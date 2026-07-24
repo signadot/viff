@@ -65,7 +65,7 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	st := entity.NewMemStore()
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: FactSel{System: "decision", Kind: "vote"},
+		Facts: entity.Pattern{System: "decision", Kind: "vote"},
 		N:     2,
 	}}
 
@@ -97,7 +97,7 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 	st := entity.NewMemStore()
 	approvals := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: FactSel{System: "decision", Kind: "vote", Where: map[string]string{"choice": "approve"}},
+		Facts: entity.Pattern{System: "decision", Kind: "vote", Fields: map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
 	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
@@ -112,7 +112,7 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 // A stubbed requirement kind (no producer yet) blocks — it never satisfies.
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
 	st := entity.NewMemStore()
-	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: FactSel{System: "decision", Kind: "judgment"}}}
+	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: entity.Pattern{System: "decision", Kind: "judgment"}}}
 	st.Put(entity.Ref{System: "decision", Kind: "judgment", ID: "x"}, entity.Payload{"verdict": "ship"})
 	if ok, _ := judged.Eval(st); ok {
 		t.Fatalf("stubbed requirement %q should block, not satisfy", ReqJudgment)

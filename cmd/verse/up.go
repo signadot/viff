@@ -222,7 +222,7 @@ func seedDemo(eng *trigger.Engine) {
 	// process is spawned (tagged with its flow subject).
 	_ = eng.AddTrigger(trigger.Trigger{
 		Name:    "review",
-		Matches: []trigger.EventMatch{{System: "demo", Fields: map[string]any{"stage": "open"}}},
+		Matches: []entity.Pattern{{System: "demo", Fields: map[string]any{"stage": "open"}}},
 		Gates:   []trigger.Gate{{Name: "review", Mode: "ask"}},
 		Action: trigger.Action{
 			Set:   map[string]any{"stage": "reviewing"},
@@ -233,7 +233,7 @@ func seedDemo(eng *trigger.Engine) {
 	// "reviewed" — the loop closing through the verse (opts into process:*).
 	_ = eng.AddTrigger(trigger.Trigger{
 		Name:    "reviewed",
-		Matches: []trigger.EventMatch{{System: "process", Kind: "instance", Fields: map[string]any{"status": "completed"}}},
+		Matches: []entity.Pattern{{System: "process", Kind: "instance", Fields: map[string]any{"status": "completed"}}},
 		// no gates: fires automatically on completion
 		Action: trigger.Action{
 			SetRef: "$flow",

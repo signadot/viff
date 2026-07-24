@@ -239,7 +239,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 	}
 	def := trigger.Trigger{
 		Name:    "validate-" + scope,
-		Matches: []trigger.EventMatch{{System: source.System, Kind: statusKind, Op: entity.Set}},
+		Matches: []entity.Pattern{{System: source.System, Kind: statusKind, Op: entity.Set}},
 		Action:  trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
 	}
 	body, _ := json.Marshal(def)

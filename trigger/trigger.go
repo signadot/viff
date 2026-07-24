@@ -15,37 +15,6 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// EventMatch is a conjunctive predicate over one entity change. Empty dimensions
-// are wildcards; Fields require key==value in the event's To payload.
-type EventMatch struct {
-	System string `json:"system,omitempty"`
-	Kind   string `json:"kind,omitempty"`
-	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
-	// Create and update are not distinguished (see entity.Op) — to fire "only the
-	// first time," match a state field the action then advances (a latch), not Op.
-	Op     entity.Op      `json:"op,omitempty"`
-	Fields map[string]any `json:"fields,omitempty"`
-}
-
-// Matches reports whether ev satisfies every non-empty dimension.
-func (m EventMatch) Matches(ev entity.Event) bool {
-	if m.System != "" && m.System != ev.Ref.System {
-		return false
-	}
-	if m.Kind != "" && m.Kind != ev.Ref.Kind {
-		return false
-	}
-	if m.Op != "" && m.Op != ev.Op {
-		return false
-	}
-	for k, want := range m.Fields {
-		if ev.To == nil || ev.To[k] != want {
-			return false
-		}
-	}
-	return true
-}
-
 // Trigger is one ECA rule — fully declarative (JSON-serializable, no Go closure), so a
 // charter can be installed over the wire, persisted, or reflected as an entity, and the
 // engine interprets it directly (there is no separate compiled form). When every Match
@@ -53,16 +22,16 @@ func (m EventMatch) Matches(ev entity.Event) bool {
 // are conjunctive (all-of); an empty Matches matches everything, an empty Gates fires with
 // no approval.
 type Trigger struct {
-	Name    string       `json:"name"`
-	Matches []EventMatch `json:"matches"` // conjunctive (all-of)
-	Gates   []Gate       `json:"gates"`   // conjunctive (all must proceed)
-	Action  Action       `json:"action"`
+	Name    string           `json:"name"`
+	Matches []entity.Pattern `json:"matches"` // conjunctive (all-of)
+	Gates   []Gate           `json:"gates"`   // conjunctive (all must proceed)
+	Action  Action           `json:"action"`
 }
 
 // matchesEvent reports whether every Match predicate matches ev (all-of).
 func (t Trigger) matchesEvent(ev entity.Event) bool {
 	for _, m := range t.Matches {
-		if !m.Matches(ev) {
+		if !m.MatchEvent(ev) {
 			return false
 		}
 	}

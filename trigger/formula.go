@@ -133,10 +133,10 @@ func requirementFromValue(kind RequirementKind, val json.RawMessage) (*Requireme
 	return &r, nil
 }
 
-// factSelFromRef parses "system:kind" (or "system") into a FactSel.
-func factSelFromRef(s string) FactSel {
+// factSelFromRef parses "system:kind" (or "system") into a fact-selecting Pattern.
+func factSelFromRef(s string) entity.Pattern {
 	parts := strings.SplitN(s, ":", 2)
-	fs := FactSel{System: parts[0]}
+	fs := entity.Pattern{System: parts[0]}
 	if len(parts) == 2 {
 		fs.Kind = parts[1]
 	}
@@ -149,11 +149,11 @@ func (r *Requirement) compactValue() any {
 	if r.Kind == ReqDeadline {
 		return r.Within
 	}
-	factsSet := r.Facts.System != "" || r.Facts.Kind != "" || len(r.Facts.Where) > 0
+	factsSet := r.Facts.System != "" || r.Facts.Kind != "" || len(r.Facts.Fields) > 0
 	switch {
 	case r.Choice == "" && !factsSet:
 		return r.N
-	case r.N == 0 && r.Choice == "" && len(r.Facts.Where) == 0:
+	case r.N == 0 && r.Choice == "" && len(r.Facts.Fields) == 0:
 		if r.Facts.Kind != "" {
 			return r.Facts.System + ":" + r.Facts.Kind
 		}
@@ -180,7 +180,7 @@ func (r *Requirement) compactValue() any {
 // present from the start.
 type Requirement struct {
 	Kind   RequirementKind `json:"kind"`
-	Facts  FactSel         `json:"facts"`            // the store facts this requirement reads
+	Facts  entity.Pattern  `json:"facts"`            // the store facts this requirement reads
 	N      int             `json:"n,omitempty"`      // quorum threshold: satisfied when ≥ N ballots match
 	Choice string          `json:"choice,omitempty"` // which ballot a quorum counts (default "approve"; "reject" = a deny-quorum)
 	Within string          `json:"within,omitempty"` // deadline duration (e.g. "4h") — a time derivation, not a store fact
@@ -198,15 +198,6 @@ const (
 	ReqAsk      RequirementKind = "ask"      // stub
 	ReqDefault  RequirementKind = "default"  // stub
 )
-
-// FactSel selects the store facts a requirement reads — the prototype's minimal atom
-// (destination: a full tony match). It picks entities of (System, Kind) whose payload
-// matches every Where entry.
-type FactSel struct {
-	System string            `json:"system"`
-	Kind   string            `json:"kind,omitempty"`
-	Where  map[string]string `json:"where,omitempty"`
-}
 
 // Eval reports whether the formula currently holds against the store, and — when it
 // holds — the witness: the fact refs whose presence satisfied it, for use as a commit
@@ -291,7 +282,7 @@ func (f *Formula) bind(decisionID string) *Formula {
 			if choice == "" {
 				choice = "approve" // default quorum counts approvals; "reject" makes a deny-quorum
 			}
-			r.Facts = FactSel{System: "vote", Kind: decisionID, Where: map[string]string{"choice": choice}}
+			r.Facts = entity.Pattern{System: "vote", Kind: decisionID, Fields: map[string]any{"choice": choice}}
 		}
 		nf.Req = &r
 	}
@@ -353,45 +344,14 @@ func (f *Formula) Subtrees() [][2]string {
 func (r *Requirement) eval(store entity.Store) (bool, []entity.Ref) {
 	switch r.Kind {
 	case ReqQuorum:
-		refs := r.Facts.match(store)
+		refs := r.Facts.Select(store)
 		return len(refs) >= r.N, refs
 	case ReqFact:
 		// presence: the fact holds iff a matching entity exists (quorum of 1). Used for
 		// oracle facts and, notably, the `deadline` leaf of an `until` — time as a fact.
-		refs := r.Facts.match(store)
+		refs := r.Facts.Select(store)
 		return len(refs) >= 1, refs
 	default:
 		return false, nil // judgment/ask/default: producers not built yet — they block
 	}
-}
-
-// match returns the refs of every store fact the selector picks: entities of (System,
-// Kind) whose payload contains each Where key/value. Requires a Lister store (the
-// in-memory and logd-backed stores both are); a non-listing store yields none.
-func (s FactSel) match(store entity.Store) []entity.Ref {
-	lister, ok := store.(entity.Lister)
-	if !ok {
-		return nil
-	}
-	ents := lister.List(func(ref entity.Ref) bool {
-		return ref.System == s.System && (s.Kind == "" || ref.Kind == s.Kind)
-	})
-	out := make([]entity.Ref, 0, len(ents))
-	for _, e := range ents {
-		if s.matches(e.Payload) {
-			out = append(out, e.Ref)
-		}
-	}
-	return out
-}
-
-// matches reports whether a payload satisfies every Where entry (string equality — the
-// prototype's minimal predicate; a full tony match is the destination).
-func (s FactSel) matches(p entity.Payload) bool {
-	for k, v := range s.Where {
-		if got, _ := p[k].(string); got != v {
-			return false
-		}
-	}
-	return true
 }

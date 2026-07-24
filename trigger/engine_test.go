@@ -25,7 +25,7 @@ func TestBudgetNotConsumedByDenials(t *testing.T) {
 	eng.SetMaxFires(1)
 	eng.AddTrigger(Trigger{
 		Name:    "gated",
-		Matches: []EventMatch{{System: "demo"}},
+		Matches: []entity.Pattern{{System: "demo"}},
 		Gates:   []Gate{{Mode: "ask"}},
 		Action:  Action{},
 	})
@@ -72,12 +72,12 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:    "review",
-		Matches: []EventMatch{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "open"}}},
+		Matches: []entity.Pattern{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "open"}}},
 		Action:  setStage("reviewed"),
 	})
 	eng.AddTrigger(Trigger{
 		Name:    "deploy",
-		Matches: []EventMatch{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "reviewed"}}},
+		Matches: []entity.Pattern{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "reviewed"}}},
 		Gates:   []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
 		Action:  setStage("deployed"),
 	})
@@ -105,7 +105,7 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:    "greedy",
-		Matches: []EventMatch{{}}, // matches everything...
+		Matches: []entity.Pattern{{}}, // matches everything...
 		Action:  Action{},         // no effect: firing is all we observe (via Fired)
 	})
 
@@ -140,7 +140,7 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
 		Name:    "spin",
-		Matches: []EventMatch{{System: "demo", Kind: "loop"}}, // any change to demo:loop:* re-matches
+		Matches: []entity.Pattern{{System: "demo", Kind: "loop"}}, // any change to demo:loop:* re-matches
 		Action:  Action{Set: map[string]any{"tick": true}},    // writes another matching change
 	})
 

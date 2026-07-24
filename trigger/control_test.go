@@ -18,7 +18,7 @@ func TestControlOutranksObservation(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:    "count",
-		Matches: []EventMatch{{System: "demo"}},
+		Matches: []entity.Pattern{{System: "demo"}},
 		Action:  Action{}, // firing is the only thing we count
 	})
 

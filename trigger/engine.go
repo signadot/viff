@@ -674,7 +674,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if fs.System == "" || fs.Kind == "" {
 		return nil, false
 	}
-	choice := fs.Where["choice"]
+	choice, _ := fs.Fields["choice"].(string)
 	sub := map[string]any{}
 	for _, w := range witness {
 		if w.System != fs.System || w.Kind != fs.Kind {
