@@ -63,10 +63,9 @@ type Engine struct {
 	flowsMu sync.Mutex
 	flows   map[string][]flowProc
 
-	// triggers + their declarative defs (the charter). Guarded because they can be
+	// the charter (e.triggers, declared above). Guarded because triggers can be
 	// added/removed at runtime (over the wire) while the loop dispatches.
 	trigMu sync.Mutex
-	defs   []Def
 
 	// goals: named goal aggregates, each owning a bundle of triggers + a done/fail
 	// lifecycle monitor (see goal.go). Guarded independently of the charter.
@@ -74,7 +73,7 @@ type Engine struct {
 	goals   map[string]*Goal
 
 	// Per-trigger (subtree) observation mode. A scoped engine (a verse connect
-	// federation) opens NO root watch; instead each Def added gets a watch on exactly
+	// federation) opens NO root watch; instead each trigger added gets a watch on exactly
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
 	subtree bool
 	bgctx   context.Context
@@ -95,13 +94,6 @@ func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 func (e *Engine) SetMaxFires(n int)    { e.maxFires = n }
 func (e *Engine) SetLog(w io.Writer)   { e.log = w }
 func (e *Engine) Store() entity.Store  { return e.store }
-
-// Add installs a trigger (closure-backed). Safe to call while the engine runs.
-func (e *Engine) Add(t Trigger) {
-	e.trigMu.Lock()
-	e.triggers = append(e.triggers, t)
-	e.trigMu.Unlock()
-}
 
 // Fired reports how many times a trigger has fired (the trace/budget counter).
 func (e *Engine) Fired() int {
@@ -126,7 +118,7 @@ func (e *Engine) Start(ctx context.Context) {
 }
 
 // ObserveScoped puts the engine in per-trigger (subtree) observation mode: it opens
-// NO root watch. Each Def added afterward gets its own watch on exactly the
+// NO root watch. Each trigger added afterward gets its own watch on exactly the
 // (system,kind) subtree it matches — the docd-aligned model (watch what you match,
 // not the whole verse). Used for a scoped engine (a verse connect federation); ctx
 // bounds every subtree watcher, so cancelling it stops them all. Baseline engines use
@@ -138,41 +130,30 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// mode (e.g. the baseline charter seeded at startup), so entering subtree mode is
 	// independent of whether triggers were added before or after this call.
 	e.trigMu.Lock()
-	type pending struct {
-		t Trigger
-		d Def
-	}
-	var ps []pending
-	for _, d := range e.defs {
-		for _, t := range e.triggers {
-			if t.Name == d.Name {
-				ps = append(ps, pending{t, d})
-				break
-			}
-		}
-	}
+	trigs := make([]Trigger, len(e.triggers))
+	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
-	for _, p := range ps {
-		if err := e.watchDefSubtree(p.t, p.d); err != nil {
-			e.tracef("subtree watch for %q: %v", p.d.Name, err)
+	for _, t := range trigs {
+		if err := e.watchTriggerSubtree(t); err != nil {
+			e.tracef("subtree watch for %q: %v", t.Name, err)
 		}
 	}
 }
 
-// watchDefSubtree opens a subtree watch for a subtree-mode trigger and fires it on
+// watchTriggerSubtree opens a subtree watch for a subtree-mode trigger and fires it on
 // each matching change. The store must support SubtreeWatcher (the logd store does).
-func (e *Engine) watchDefSubtree(t Trigger, d Def) error {
-	if len(d.Matches) != 1 || d.Matches[0].System == "" {
-		return fmt.Errorf("subtree trigger %q needs exactly one match with a system (kind optional)", d.Name)
+func (e *Engine) watchTriggerSubtree(t Trigger) error {
+	if len(t.Matches) != 1 || t.Matches[0].System == "" {
+		return fmt.Errorf("subtree trigger %q needs exactly one match with a system (kind optional)", t.Name)
 	}
 	sw, ok := e.store.(entity.SubtreeWatcher)
 	if !ok {
-		return fmt.Errorf("scoped trigger %q: store has no subtree watch", d.Name)
+		return fmt.Errorf("scoped trigger %q: store has no subtree watch", t.Name)
 	}
-	m := d.Matches[0]
+	m := t.Matches[0]
 	ch, unsub, err := sw.WatchSubtree(m.System, m.Kind)
 	if err != nil {
-		return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", d.Name, m.System, m.Kind, err)
+		return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, m.System, m.Kind, err)
 	}
 	ctx := e.bgctx
 	go func() {
@@ -375,7 +356,8 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 			}(gate, gname)
 			continue
 		}
-		if !gate.Mode.Blocks() { // auto: passes without a resolver
+		m, _ := gate.mode() // validated at AddTrigger
+		if !m.Blocks() {    // auto: passes without a resolver
 			continue
 		}
 		gname := gate.Name
@@ -387,7 +369,7 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		id := fmt.Sprintf("trigger:%s:%s#%d", t.Name, gname, e.dc)
 		e.mu.Unlock()
 		d := process.GateQuestion{
-			ID: id, Origin: t.Name, Mode: gate.Mode, Gate: gname,
+			ID: id, Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, ev.Ref),
 		}
 		wg.Add(1)
@@ -412,9 +394,7 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		return
 	}
 	e.tracef("fire %s on %s", t.Name, ev.Ref)
-	if t.Action != nil {
-		t.Action(ev, e)
-	}
+	t.Action.apply(t.Name, ev, e)
 }
 
 // monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the

@@ -51,10 +51,10 @@ func TestGoalDoneLatch(t *testing.T) {
 		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
 			Kind: ReqFact, Facts: FactSel{System: "ci", Kind: "status", Where: map[string]string{"state": "green"}},
 		}},
-		Triggers: []Def{{
+		Triggers: []Trigger{{
 			Name:    "ship-review",
 			Matches: []EventMatch{{System: "change", Fields: map[string]any{"stage": "open"}}},
-			Action:  ActionSpec{Set: map[string]any{"stage": "reviewing"}},
+			Action:  Action{Set: map[string]any{"stage": "reviewing"}},
 		}},
 	})
 	if err != nil {
@@ -62,7 +62,7 @@ func TestGoalDoneLatch(t *testing.T) {
 	}
 
 	// The owned trigger is installed (the doing).
-	if _, ok := eng.Def("ship-review"); !ok {
+	if _, ok := eng.Trigger("ship-review"); !ok {
 		t.Fatal("owned trigger not installed")
 	}
 
@@ -96,7 +96,7 @@ func TestGoalDoneLatch(t *testing.T) {
 		t.Fatalf("terminal = %v, want true", g.Payload["terminal"])
 	}
 	// The owned trigger is reaped (no orphaned charter).
-	if _, ok := eng.Def("ship-review"); ok {
+	if _, ok := eng.Trigger("ship-review"); ok {
 		t.Fatal("owned trigger not reaped on terminal")
 	}
 	// No failure latch on the success path.

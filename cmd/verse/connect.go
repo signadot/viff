@@ -237,10 +237,10 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 		// bare "validate $subject" hands it a ref it can't read, so it returns nothing.
 		task = `Read the file at path "$path" and report any problems (or that it looks fine) in one sentence.`
 	}
-	def := trigger.Def{
+	def := trigger.Trigger{
 		Name:    "validate-" + scope,
 		Matches: []trigger.EventMatch{{System: source.System, Kind: statusKind, Op: entity.Set}},
-		Action:  trigger.ActionSpec{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
+		Action:  trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
 	}
 	body, _ := json.Marshal(def)
 	resp, err := httpPost("/triggers", json.RawMessage(body)) // urlFor folds ?scope=<scope>

@@ -83,12 +83,12 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		go p.Run(context.Background())
 		return p
 	})
-	if err := eng.AddDef(Def{
+	if err := eng.AddTrigger(Trigger{
 		Name:    "validate",
 		Matches: []EventMatch{{System: "local", Kind: "file"}},
-		Action:  ActionSpec{Spawn: &launch.Spec{Task: "validate $path"}},
+		Action:  Action{Spawn: &launch.Spec{Task: "validate $path"}},
 	}); err != nil {
-		t.Fatalf("AddDef: %v", err)
+		t.Fatalf("AddTrigger: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

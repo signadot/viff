@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/process"
 )
 
 // A trigger whose gate is a temporal formula fires only once the formula holds — here a
@@ -17,21 +16,19 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	eng := New(store, denyResolver{}) // must NOT be consulted for a formula gate
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "42"}
 
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "merge",
 		Matches: []EventMatch{{System: "change"}},
 		Gates: []Gate{{
 			Name: "approvals",
-			Mode: process.Ask,
+			Mode: "ask",
 			Formula: &Formula{Op: OpAtom, Req: &Requirement{
 				Kind:  ReqQuorum,
 				Facts: FactSel{System: "decision", Kind: "vote"},
 				N:     2,
 			}},
 		}},
-		Action: func(ev entity.Event, e *Engine) {
-			store.Put(merged, entity.Payload{"ok": "yes"})
-		},
+		Action: Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,11 +71,11 @@ func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "a"}
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "merge",
 		Matches: []EventMatch{{System: "change"}},
-		Gates:   []Gate{{Name: "approvals", Mode: process.Ask, Formula: quorumUntilDeadline(2)}},
-		Action:  func(entity.Event, *Engine) { store.Put(merged, entity.Payload{"ok": "yes"}) },
+		Gates:   []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
+		Action:  Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -99,11 +96,11 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "b"}
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "merge",
 		Matches: []EventMatch{{System: "change"}},
-		Gates:   []Gate{{Name: "approvals", Mode: process.Ask, Formula: quorumUntilDeadline(2)}},
-		Action:  func(entity.Event, *Engine) { store.Put(merged, entity.Payload{"ok": "yes"}) },
+		Gates:   []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
+		Action:  Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -125,14 +122,14 @@ func TestTemporalDenyQuorum(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "d"}
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "merge",
 		Matches: []EventMatch{{System: "change"}},
-		Gates: []Gate{{Name: "approvals", Mode: process.Ask, Formula: &Formula{Op: OpUntil, Args: []*Formula{
+		Gates: []Gate{{Name: "approvals", Mode: "ask", Formula: &Formula{Op: OpUntil, Args: []*Formula{
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},                   // approve-quorum → proceed
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Choice: "reject", N: 2}}, // reject-quorum → deny
 		}}}},
-		Action: func(entity.Event, *Engine) { store.Put(merged, entity.Payload{"ok": "yes"}) },
+		Action: Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -317,14 +314,14 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "dl"}
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "merge",
 		Matches: []EventMatch{{System: "change"}},
-		Gates: []Gate{{Name: "g", Mode: process.Ask, Formula: &Formula{Op: OpUntil, Args: []*Formula{
+		Gates: []Gate{{Name: "g", Mode: "ask", Formula: &Formula{Op: OpUntil, Args: []*Formula{
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},
 			{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "40ms"}},
 		}}}},
-		Action: func(entity.Event, *Engine) { store.Put(merged, entity.Payload{"ok": "y"}) },
+		Action: Action{SetRef: merged.String(), Set: map[string]any{"ok": "y"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

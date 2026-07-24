@@ -220,22 +220,22 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 func seedDemo(eng *trigger.Engine) {
 	// review: an opened demo:pr, once approved, moves to "reviewing" and a review
 	// process is spawned (tagged with its flow subject).
-	_ = eng.AddDef(trigger.Def{
+	_ = eng.AddTrigger(trigger.Trigger{
 		Name:    "review",
 		Matches: []trigger.EventMatch{{System: "demo", Fields: map[string]any{"stage": "open"}}},
-		Gates:   []trigger.GateSpec{{Name: "review", Mode: "ask"}},
-		Action: trigger.ActionSpec{
+		Gates:   []trigger.Gate{{Name: "review", Mode: "ask"}},
+		Action: trigger.Action{
 			Set:   map[string]any{"stage": "reviewing"},
 			Spawn: &launch.Spec{Driver: "scripted", Task: "review $subject"},
 		},
 	})
 	// reviewed: when a review process completes, advance its flow's subject to
 	// "reviewed" — the loop closing through the verse (opts into process:*).
-	_ = eng.AddDef(trigger.Def{
+	_ = eng.AddTrigger(trigger.Trigger{
 		Name:    "reviewed",
 		Matches: []trigger.EventMatch{{System: "process", Kind: "instance", Fields: map[string]any{"status": "completed"}}},
 		// no gates: fires automatically on completion
-		Action: trigger.ActionSpec{
+		Action: trigger.Action{
 			SetRef: "$flow",
 			Set:    map[string]any{"stage": "reviewed"},
 		},

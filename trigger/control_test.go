@@ -16,10 +16,10 @@ import (
 func TestControlOutranksObservation(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "count",
 		Matches: []EventMatch{{System: "demo"}},
-		Action:  func(entity.Event, *Engine) {}, // firing is the only thing we count
+		Action:  Action{}, // firing is the only thing we count
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

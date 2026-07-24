@@ -17,10 +17,10 @@ import (
 func TestDropRecoveryViaReplay(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "count",
 		Matches: []EventMatch{{System: "demo"}},
-		Action:  func(entity.Event, *Engine) {},
+		Action:  Action{},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

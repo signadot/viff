@@ -654,10 +654,10 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 	eng := s.engFor(r.URL.Query().Get("scope"))
 	if eng == nil {
-		writeJSON(w, http.StatusOK, []trigger.Def{})
+		writeJSON(w, http.StatusOK, []trigger.Trigger{})
 		return
 	}
-	writeJSON(w, http.StatusOK, eng.Defs())
+	writeJSON(w, http.StatusOK, eng.Triggers())
 }
 
 // status is a one-shot summary of the running verse: the store's revision and the
@@ -666,7 +666,7 @@ func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"storeRev":  s.Store.Rev(),
-		"triggers":  len(s.Eng.Defs()),
+		"triggers":  len(s.Eng.Triggers()),
 		"flows":     len(s.Eng.Flows()),
 		"gates":     len(s.Reg.Pending()),
 		"processes": s.Procd.Count(),
@@ -979,7 +979,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 }
 
 func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
-	var d trigger.Def
+	var d trigger.Trigger
 	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -999,7 +999,7 @@ func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
 		}
 		eng = s.scopeEngine(scope)
 	}
-	if err := eng.AddDef(d); err != nil {
+	if err := eng.AddTrigger(d); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1012,7 +1012,7 @@ func (s *Server) getTrigger(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	d, ok := eng.Def(r.PathValue("name"))
+	d, ok := eng.Trigger(r.PathValue("name"))
 	if !ok {
 		http.NotFound(w, r)
 		return

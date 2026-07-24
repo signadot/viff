@@ -40,15 +40,15 @@ func TestEmergentChainOverLogd(t *testing.T) {
 	defer store.Close()
 
 	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "review",
 		Matches: []EventMatch{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "open"}}},
 		Action:  setStage("reviewed"),
 	})
-	eng.Add(Trigger{
+	eng.AddTrigger(Trigger{
 		Name:    "deploy",
 		Matches: []EventMatch{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "reviewed"}}},
-		Gates:   []Gate{{Mode: process.Ask}}, // a human/agent approves the deploy
+		Gates:   []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
 		Action:  setStage("deployed"),
 	})
 

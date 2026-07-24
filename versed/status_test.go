@@ -45,7 +45,7 @@ func TestStatus(t *testing.T) {
 	}
 
 	// Install a trigger and write an entity; the counts move.
-	if err := srv.Eng.AddDef(trigger.Def{
+	if err := srv.Eng.AddTrigger(trigger.Trigger{
 		Name:    "t",
 		Matches: []trigger.EventMatch{{System: "demo"}},
 	}); err != nil {
