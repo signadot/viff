@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: verse-docd-data
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+  - ReadWriteOnce
+  # Static binding: an empty class disables dynamic provisioning; the docd VCT (also class
+  # "") binds to this PV. claimRef pre-binds it to the StatefulSet's generated PVC.
+  storageClassName: ""
+  hostPath:
+    path: /mnt/verse
+  claimRef:
+    namespace: verse
+    name: data-docd-0

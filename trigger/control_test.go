@@ -1,0 +1,50 @@
+package trigger
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/example/infra/verse/entity"
+	"github.com/example/infra/verse/process"
+)
+
+// Steering outranks observation: a Pause (control) takes effect ahead of a burst of
+// observations, so none of them fire while paused — control can't queue behind an
+// observation backlog. On Resume the buffered burst dispatches.
+func TestControlOutranksObservation(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	eng.Add(Trigger{
+		Name:    "count",
+		Matches: []EventMatch{{System: "demo"}},
+		Action:  func(entity.Event, *Engine) {}, // firing is the only thing we count
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	eng.Pause() // synchronous: returns once the loop has applied it
+
+	// A burst of changes arrives while paused; none may fire.
+	for i := 0; i < 20; i++ {
+		store.Put(entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, nil)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if f := eng.Fired(); f != 0 {
+		t.Fatalf("fired %d while paused — steering did not outrank observation", f)
+	}
+
+	eng.Resume() // buffered burst now dispatches
+
+	deadline := time.After(2 * time.Second)
+	for eng.Fired() < 20 {
+		select {
+		case <-deadline:
+			t.Fatalf("after resume, fired = %d, want 20", eng.Fired())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}

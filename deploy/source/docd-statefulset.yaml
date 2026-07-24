@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: docd
+  labels:
+    app: verse
+    tier: docd
+spec:
+  serviceName: docd
+  replicas: 1
+  selector:
+    matchLabels:
+      app: verse
+      tier: docd
+  template:
+    metadata:
+      labels:
+        app: verse
+        tier: docd
+    spec:
+      containers:
+      - name: docd
+        image: signadot/verse:latest
+        # The stateful tier: logd+docd on the /data volume. `o sys up` runs just the
+        # daemons (no engine). versed attaches over the client/mount faces.
+        # o wants space-separated, single-dash flags (not --flag=value).
+        command:
+        - o
+        - sys
+        - up
+        - -data
+        - /data
+        - -logd-addr
+        - :7070
+        - -docd-addr
+        - :7071
+        - -docd-mount-addr
+        - :7072
+        ports:
+        - name: client
+          containerPort: 7071
+        - name: mount
+          containerPort: 7072
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        readinessProbe:
+          tcpSocket:
+            port: client
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  # The `data` volume is added by the build per storage profile: a volumeClaimTemplate
+  # (pvc) or a hostPath pod volume (minikube). See deploy/build.tony.

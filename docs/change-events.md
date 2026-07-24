@@ -1,0 +1,133 @@
+# Change events: what a store reports, and why `Op` is `set`/`delete`
+
+This note records why `entity.Op` is two-valued (`set`, `delete`) rather than
+create/update/delete, why `Since` is a pure read, and why that keeps verse Storage
+on a portable baseline instead of an exotic one.
+
+## The question
+
+A change event needs to carry enough for a trigger to react. The rich shape —
+`Op ∈ {create, update, delete}` plus full before/after payloads — is trivial for the
+in-memory MemStore (it holds prior state) but expensive for a durable, remote store.
+The logd-backed store originally faked it with a mutable `seen` set threaded through
+both the live watch and `Since`, which made the authoritative catch-up path impure,
+mislabelled creates inside a replay window, and diverged from the interface. Those
+were symptoms of one thing: **the store synthesising *edge* semantics the substrate
+doesn't carry.** So: what should a change event actually carry, and is matching
+edge- or level-triggered?
+
+## What logd's watch actually delivers (measured)
+
+A watch on the root streams one event per commit, each carrying the commit's
+`Patch`. Probing a real logd (create then update the same key, then a partial patch):
+
+```
+CREATE demo.pr.1           {verse:{demo:{pr:{"1":{stage:open,      x:1}}}}}
+UPDATE demo.pr.1 (full)    {verse:{demo:{pr:{"1":{stage:reviewing, x:1}}}}}
+UPDATE demo.pr.1 (partial) {verse:{demo:{pr:{"1":{stage:done}}}}}
+```
+
+Two facts settle the design:
+
+1. **Create and update are byte-identical.** Adding the new key `"1"` looks exactly
+   like replacing an existing `"1"`. There is no add-vs-replace marker, no new-node
+   flag — create-vs-update is simply **not in the stream.**
+2. **The delta is the writer's applied patch, verbatim — not a computed old→new
+   diff.** The full update re-emitted the unchanged `x:1`; a diff would have dropped
+   it. logd forwards *what was written this commit*, carrying zero knowledge of prior
+   state. (This holds for the **baseline** watch. A **scoped** watch over a
+   copy-on-write overlay is different: logd recomputes the scope's view and emits a
+   *computed* diff between scope states, whose first delta — diffed from an empty/null
+   baseline — is a `!replace`, not an additive merge. The encoding of a delta is logd's
+   to choose; see "Consuming a delta" below.)
+
+So the watch is already an **edge** stream (one event per commit = one transition),
+and the delta *is* the edge. We don't have to choose level-triggering and lose
+transients — logd hands us edges. And a delta carries exactly two recoverable facts,
+both without prior state: a **tombstone (null leaf) → `Delete`**, any **value →
+`Set`**. That is the whole of `Op`.
+
+## The decision
+
+- **`Op` is `set` | `delete`.** Create-vs-update is dropped — it needs prior
+  existence the substrate doesn't provide, and requiring it would tie the store to
+  an uncommon capability (below). Both stores emit `Set` for a create-or-update, so
+  MemStore and logd agree; charters are portable across them.
+- **`Since` is a pure read.** It derives `Op` from the delta alone and mutates no
+  store state, so it is idempotent and safe under concurrent/repeated callers. The
+  `seen` set is gone.
+- **`To` is the change's payload (the delta).** For verse's own writes — which are
+  full-payload replaces — that *is* the full entity; a partial `To` only arises from
+  a foreign partial writer, and any consumer needing authoritative state does `Get`
+  (index, not warehouse: follow the reference).
+
+## Consuming a delta: apply it, don't decode it
+
+`Op` is derived from a delta, but *how* a consumer reads the delta matters. The
+encoding varies and is logd's business, not ours: the baseline watch forwards the
+writer's patch verbatim (a plain object merge); a scoped COW watch emits a *computed*
+diff whose first event is a `!replace` (diffed from null) and whose later events are
+merges; a foreign writer might use `!delete`/`!insert`. A consumer that inspects the
+*structure* of the patch to see which entities appeared will silently miss some — a
+merge-style walk cannot pull the appeared key out of a `!replace`. That is exactly the
+bug that once made an N-file `verse connect` fire N−1 validators (the first scoped
+delta, the `!replace`, was dropped).
+
+The contract is therefore: **apply the delta, don't decode it.** A subtree watcher
+maintains the watched slice as a document, applies each event to it (`tony.Patch` for a
+Patch, replace for a State — opaquely, whatever ops it carries), and reads entities out
+of the *reconstructed object*, diffing against the last snapshot for per-entity
+`Set`/`Delete`. tony owns patch semantics (merge vs `!replace` vs `!delete`/`!insert`,
+field order); verse applies them and never depends on the wire shape of a diff. This is
+what `LogdStore.WatchSubtree` does. (The baseline `Since`/replay path still reads its
+patches directly — safe only because a baseline delta is always a verbatim merge, never
+a scope-computed `!replace`.)
+
+## Why this is the portable choice (not an exotic dependency)
+
+The capability verse leans on — an **ordered, resumable, revisioned change stream**
+(watch + `Since(cursor)`) — is the modern-store baseline, not a logd peculiarity:
+etcd watches, FoundationDB, Kafka offsets, Cockroach/Mongo changefeeds, Postgres
+logical replication, or an in-memory ring (MemStore) all provide it. What *would*
+tie verse to an uncommon feature is requiring **create-vs-update or prior-value in
+the interface** — etcd exposes it (`CreateRevision`, `PrevKv`), many stores don't,
+and logd (measured above) doesn't either. Keeping create/update out of the contract
+is therefore both the portable choice and the one the substrate can actually honour.
+
+## What dropping create-vs-update costs (and the idiom that recovers it)
+
+`Op` only ever surfaced to charter authors via `EventMatch.Op`. The losses:
+
+- **Kept for free:** `delete` is exact (tombstone), so teardown-on-removal is
+  unaffected; and because the delta is an edge, "fire when a field *becomes* X" is
+  still once-per-transition (the commit that set it), not once-per-incidental-change.
+- **The one real loss:** you can't distinguish "created with `stage=open`" from
+  "re-opened to `stage=open`" — both deltas set `stage=open`, so both fire. You lose
+  native **re-entry suppression** ("act on the first entry into a state, never on
+  re-entry").
+- **The idiom that recovers it:** express "once" as a **state latch**, not an edge —
+  match a field the action then advances (`stage=open` → action sets
+  `stage=reviewing`, so it can't re-fire). verse's demo already works this way; the
+  subject's stage *is* the latch. This is cleaner than an implicit edge, and it's how
+  level-triggered systems get once-semantics.
+- **The footgun to know:** a non-idempotent *gated* or *spawning* action matching a
+  re-enterable state without a latch will re-fire on re-entry (gate re-prompts,
+  duplicate processes). Same fix: a latch. It's charter-authoring discipline, not an
+  engine limit.
+
+Net: low, localised harm — you keep delete-exact, once-per-transition, and every
+state-driven flow; you give up native "once, ever," recoverable with a latch.
+
+## Residuals (punted, by design)
+
+- **Cheap re-entry suppression** would need logd to grow a create-reporting Patch
+  ("fail if it exists / report whether created"). No charter needs it yet — add it
+  when one does, not before.
+- **Truncation detection.** logd *silently under-delivers* a `Since` range it has
+  compacted (empty index range → no error), so `ok=false` can't come from an error.
+  The store guards with a low-watermark: `Since(from)` returns `ok=false` when `from`
+  predates `openCommit` (the commit this instance synced at), forcing a resync — this
+  catches a cursor carried across a restart. A cursor *within* this instance's
+  lifetime that logd nonetheless compacts is an uncaught residual; closing it needs
+  an upstream "earliest retained commit" query (an etcd-compaction-revision
+  equivalent), which logd doesn't expose yet.

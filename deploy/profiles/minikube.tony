@@ -1,0 +1,17 @@
+# Local minikube. docd's data lives on your laptop fs, so it survives pod restarts, Docker
+# Desktop stop/start, AND `minikube delete` — and is browsable at ~/.verse/minikube-default.
+#
+# Set the mount ONCE in your shell so a bare `minikube start` mounts it (minikube binds start
+# flags to MINIKUBE_* env), then you never pass --mount:
+#
+#   # ~/.zshrc
+#   export MINIKUBE_MOUNT=true
+#   export MINIKUBE_MOUNT_STRING="$HOME/.verse/minikube-default:/mnt/verse"
+#
+# then:  minikube start  (no args)  &&  make load  &&  make deploy PROFILE=minikube
+env:
+  image: "verse:dev"
+  imagePullPolicy: "Never"
+  brokerFace: true
+  hostPV: true
+  hostPath: "/mnt/verse"

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: versed
+  labels:
+    app: verse
+    tier: versed
+spec:
+  replicas: 1
+  # Singleton engine (two would double-fire triggers), and no storage — so Recreate, not
+  # RollingUpdate, avoids two versed overlapping during a rollout. Leader-election is the
+  # scale-out answer later. Stateless client of docd, so it floats (any node/AZ).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: verse
+      tier: versed
+  template:
+    metadata:
+      labels:
+        app: verse
+        tier: versed
+    spec:
+      containers:
+      - name: versed
+        image: signadot/verse:latest
+        # Attach to the docd tier — spawns nothing locally, holds no durable state.
+        args:
+        - up
+        - --docd-addr
+        - docd:7071
+        - --docd-mount-addr
+        - docd:7072
+        - --addr
+        - :9797
+        - --broker-addr
+        - :9090
+        ports:
+        - name: api
+          containerPort: 9797
+        - name: broker
+          containerPort: 9090
+        # LLM creds, if you run agents on the `llm` driver. Optional: verse runs on the
+        # credential-free `scripted` driver without it.
+        envFrom:
+        - secretRef:
+            name: verse-llm
+            optional: true
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: api
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 24
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: api
+          initialDelaySeconds: 30
+          periodSeconds: 10

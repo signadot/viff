@@ -1,0 +1,1221 @@
+// Package versed is the reactive engine as a service: it assembles the entity
+// store, the trigger engine, and a gate registry, and serves an HTTP surface that
+// the `verse` CLI drives. The surface keeps the two planes distinct — observation
+// (watch, entity reads) separate from control (gate resolve, and later flow
+// steering) — per docs/deployment-and-steering.md.
+//
+// Scaffold status: the process runtime (proc) is not yet mounted; spawning actions
+// no-op until it is wired.
+package versed
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/example/infra/verse/broker"
+	"github.com/example/infra/verse/controlpolicy"
+	"github.com/example/infra/verse/entity"
+	"github.com/example/infra/verse/launch"
+	"github.com/example/infra/verse/mirror"
+	"github.com/example/infra/verse/process"
+	"github.com/example/infra/verse/process/processd"
+	"github.com/example/infra/verse/source"
+	"github.com/example/infra/verse/trigger"
+)
+
+// Server is the monolith's in-process assembly: one store, one engine, one gate
+// registry, and the process runtime, behind one HTTP surface.
+type Server struct {
+	Store  entity.Store
+	Reg    *process.Registry
+	Eng    *trigger.Engine
+	Procd  *processd.Daemon
+	policy process.ControlPolicy // how processes are run/governed; local (processd) today
+
+	// Addr/BrokerAddr are this verse's OWN listen addresses — the operator API and (if
+	// served) the broker face — published on /status so a client or worker can discover
+	// where verse listens, as the docd addresses are published for a controller. Set by the
+	// process that binds them (cmd/verse up); empty until then.
+	Addr       string
+	BrokerAddr string
+
+	// LLM is a secrets-safe summary of the process runtime's LLM config (config.LLMConfig
+	// .Status()), published on /status so you can see whether agent creds are configured
+	// on THIS server (the one that hosts the runtime) — the common gotcha. Set by `up`.
+	LLM map[string]any
+
+	// DocdClient/DocdMount are the addresses of the docd this verse is backed by,
+	// when store-kind is docd. They are published on GET /status so a separately-run
+	// controller process (e.g. `verse connect`) can find docd's mount face without
+	// guessing the ephemeral ports `up` chose. Empty on the in-memory store.
+	DocdClient string
+	DocdMount  string
+
+	// ctx is the lifetime captured at Start; scoped engines start under a child of it.
+	ctx context.Context
+	// Per-scope engines. A trigger installed under ?scope=<s> runs on a dedicated
+	// engine observing store.Scope(s) — the reactivity for one dev's federation
+	// (verse connect) lives in its own copy-on-write scope, isolated from baseline and
+	// from other scopes. Created lazily on the first scoped trigger, stopped when the
+	// scope is dropped (disconnect).
+	scopeMu   sync.Mutex
+	scopeEngs map[string]*scopeEngine
+
+	// brokers are worker-facing handlers hosted under /broker/<nonce> (see BrokerHandler).
+	// The nonce is a capability: knowing the URL is the grant to dial in as that policy's
+	// worker. The well-known "local" nonce is handled specially (the in-process supervisor).
+	brokerMu sync.Mutex
+	brokers  map[string]http.Handler
+}
+
+// scopeEngine is a per-scope engine plus the cancel that stops it (on scope delete).
+type scopeEngine struct {
+	eng    *trigger.Engine
+	cancel context.CancelFunc
+}
+
+// New assembles the server over an in-memory store — the dev/test default.
+func New(build processd.Builder) *Server {
+	return NewWithStore(build, entity.NewMemStore())
+}
+
+// NewWithStore assembles the server with the given process driver builder
+// (scripted, LLM, …) over an explicit store (in-memory or logd-backed). The engine
+// resolves trigger gates through the shared registry, so a human answers them
+// out-of-band via POST /gate/resolve; a trigger's spawn action goes through the
+// process runtime (hosted, mirrored into the verse).
+func NewWithStore(build processd.Builder, store entity.Store) *Server {
+	reg := process.NewRegistry()
+	eng := trigger.New(store, reg)
+	procd := processd.New(build)
+	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd, scopeEngs: map[string]*scopeEngine{}}
+	s.policy = localPolicy{procd} // the in-process controlPolicy ("/broker/local")
+
+	// The Spawner owns the full lifecycle: host it via the controlPolicy, then mirror
+	// its state into the verse so triggers can react to its completion.
+	eng.SetSpawner(s.spawnerFor(store, nil))
+	return s
+}
+
+// localPolicy is the in-process controlPolicy: it hosts processes on the embedded
+// processd runtime — the "/broker/local" handler. Remote policies (a controlPolicy base
+// URL: k8s, lambda, a human broker) implement the same process.ControlPolicy behind the
+// wire contract; the engine drives them through the identical seam. See docs/control-policy.md.
+type localPolicy struct{ d *processd.Daemon }
+
+func (l localPolicy) Spawn(id, task, driver string, content process.ContentReader) process.ProcHandle {
+	return l.d.Spawn(id, task, driver, content)
+}
+
+// Attach returns the still-live in-process handle for id, or nil — after a restart the
+// in-memory runtime is gone, so the caller orphans (a local process cannot outlive verse).
+func (l localPolicy) Attach(id string) process.ProcHandle {
+	if p := l.d.Lookup(id); p != nil {
+		return p
+	}
+	return nil
+}
+
+func (localPolicy) Ref() string { return "local" }
+
+// SetPolicy rebinds how this server runs processes — e.g. to a remote controlPolicy base
+// URL (controlpolicy.HTTP) instead of the in-process local supervisor. The spawnerFor
+// closures read s.policy at spawn time, so this takes effect for subsequent spawns
+// (baseline and scoped). content federation is not forwarded to a remote policy yet.
+func (s *Server) SetPolicy(p process.ControlPolicy) { s.policy = p }
+
+// UseBroker installs an in-process dial-in broker as the controlPolicy, hosted under a
+// minted nonce, and returns it (e.g. for the operator to Revoke a claim). face is this
+// verse's externally-reachable broker base (scheme://host:broker-addr — what a worker can
+// reach); the broker publishes <face>/broker/<nonce> as each process's `dialURL`, closing
+// the mint→publish→dial loop so a worker is told where to dial in rather than pre-configured.
+func (s *Server) UseBroker(face string) *broker.Broker {
+	b := broker.New()
+	nonce := s.HostBroker("", b.WorkerHandler())
+	b.SetBase(strings.TrimRight(face, "/") + "/broker/" + nonce)
+	s.SetPolicy(b)
+	return b
+}
+
+// BrokerHandler serves this verse's broker face — the controlPolicy contract hosted under
+// /broker/<nonce>, so a remote verse or a worker reaches a policy through verse's own URL
+// rather than a separate service (see docs/control-policy.md "Hosting"). The well-known
+// "local" nonce is the built-in supervisor (processd); any other nonce is a handler
+// registered via HostBroker (e.g. a dial-in broker's WorkerHandler). It is intended for a
+// SIBLING port, kept distinct from the trusted operator API.
+func (s *Server) BrokerHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/broker/{nonce}/", func(w http.ResponseWriter, r *http.Request) {
+		nonce := r.PathValue("nonce")
+		h := s.brokerFor(nonce)
+		if h == nil {
+			http.NotFound(w, r)
+			return
+		}
+		// Strip /broker/<nonce> so the mounted handler sees its own /processes/... paths,
+		// exactly as it would if hosted at a root.
+		http.StripPrefix("/broker/"+nonce, h).ServeHTTP(w, r)
+	})
+	return mux
+}
+
+// brokerFor resolves a nonce to its worker-facing handler. "local" is the built-in
+// supervisor; every other nonce must have been registered via HostBroker.
+func (s *Server) brokerFor(nonce string) http.Handler {
+	if nonce == "local" {
+		return s.Procd.Handler()
+	}
+	s.brokerMu.Lock()
+	defer s.brokerMu.Unlock()
+	return s.brokers[nonce]
+}
+
+// HostBroker mounts a worker-facing handler under /broker/<nonce> and returns the nonce a
+// worker dials. Pass a well-known nonce to pin the URL, or "" to mint a fresh unguessable
+// one — the nonce is the capability, so an unguessable mint is the private default. The
+// handler is expected to serve the worker-facing dial-in protocol (claim/inbox/report),
+// e.g. broker.Broker.WorkerHandler().
+func (s *Server) HostBroker(nonce string, h http.Handler) string {
+	if nonce == "" {
+		nonce = mintNonce()
+	}
+	s.brokerMu.Lock()
+	if s.brokers == nil {
+		s.brokers = map[string]http.Handler{}
+	}
+	s.brokers[nonce] = h
+	s.brokerMu.Unlock()
+	return nonce
+}
+
+// mintNonce returns an unguessable path segment used as a broker capability.
+func mintNonce() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+// spawnerFor builds a Spawner that hosts a process via the controlPolicy and mirrors its
+// state into st — the baseline store for the baseline engine, a scoped store for a
+// per-scope engine, so a scoped flow's process state stays in that scope. content (nil
+// for baseline) routes a spawned agent's read_file through the verse.
+func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
+	return func(id string, spec launch.Spec) process.ProcHandle {
+		h := s.policy.Spawn(id, spec.Task, spec.Driver, content)
+		mirror.Reflect(st, id, h, spec.Subject, s.policy.Ref())
+		return h
+	}
+}
+
+// reconcileProcesses runs on Start: for each non-terminal process:instance, either RESUME
+// (a remote policy still running the work — re-attach and re-mirror from the entity's
+// policy + cursor) or ORPHAN (a local in-process runtime that died with the previous
+// run). This refines the old orphan-only reconcile now that a process can outlive verse
+// behind a remote policy. Control re-tracking (cancel/say a resumed process) is a
+// follow-on; this keeps the entity truthful.
+func (s *Server) reconcileProcesses() {
+	l, ok := s.Store.(entity.Lister)
+	if !ok {
+		return
+	}
+	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+		status, _ := ent.Payload["status"].(string)
+		if status == "" || mirror.Terminal(status) {
+			continue
+		}
+		policyRef, _ := ent.Payload["policy"].(string)
+		subject, _ := ent.Payload["flow"].(string)
+		if policyRef != "" && policyRef != "local" { // remote: the work outlived verse
+			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {
+				mirror.Reflect(s.Store, ent.Ref.ID, h, subject, policyRef) // re-attach: observe
+				s.Eng.Adopt(subject, ent.Ref.ID, h)                        // re-track: steerable
+				continue
+			}
+		}
+		// local (or unresolvable): the in-process runtime is gone → orphan.
+		p := entity.Payload{}
+		for k, v := range ent.Payload {
+			p[k] = v
+		}
+		p["status"] = mirror.StatusOrphaned
+		s.Store.Put(ent.Ref, p)
+	}
+}
+
+// storeContentReader resolves a federated file's content by fetching its
+// local:dir-content-<scope>:<path> entity — served on demand by the connect content
+// controller through docd, never stored. It reads via the baseline store, since the
+// content mount is baseline (mounts are not scope-specific).
+type storeContentReader struct {
+	store entity.Store
+	kind  string // dir-content-<scope>
+}
+
+func (c storeContentReader) ReadContent(path string) (string, bool) {
+	e, ok := c.store.Get(entity.Ref{System: source.System, Kind: c.kind, ID: path})
+	if !ok {
+		return "", false
+	}
+	s, ok := e.Payload["content"].(string)
+	return s, ok
+}
+
+// engFor returns the engine serving a scope for read/manage operations: the baseline
+// engine for the empty scope, the scope's engine if one exists, or nil if that scope
+// has no engine yet (reads treat nil as empty — never create an engine on a GET).
+func (s *Server) engFor(scope string) *trigger.Engine {
+	if scope == "" {
+		return s.Eng
+	}
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	if se, ok := s.scopeEngs[scope]; ok {
+		return se.eng
+	}
+	return nil
+}
+
+// scopeEngine returns the engine for a scope, creating and starting it on first use.
+// It observes store.Scope(scope) — one dev's copy-on-write federation — and spawns
+// into that same scope. Requires Start to have captured the lifetime ctx.
+func (s *Server) scopeEngine(scope string) *trigger.Engine {
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	if se, ok := s.scopeEngs[scope]; ok {
+		return se.eng
+	}
+	scoped := s.Store.Scope(scope)
+	eng := trigger.New(scoped, s.Reg)
+	// Scoped agents read file content through the verse (the connect content
+	// controller), so a validator isn't tied to the machine holding the files.
+	content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
+	eng.SetSpawner(s.spawnerFor(scoped, content))
+	sctx, cancel := context.WithCancel(s.ctx)
+	// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
+	// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
+	eng.ObserveScoped(sctx)
+	s.scopeEngs[scope] = &scopeEngine{eng: eng, cancel: cancel}
+	return eng
+}
+
+// Start begins the engine's reactive loop (observing the store). It returns
+// immediately; the loop runs until ctx is cancelled. It first reconciles orphans —
+// process:instance entities a previous run left running — since this is the monolith
+// (the process runtime restarts with the engine, so those processes are gone).
+func (s *Server) Start(ctx context.Context) {
+	s.ctx = ctx              // scoped engines (created later, per federation) start under this
+	s.reconcileProcesses()   // resume remote-hosted processes; orphan local-dead ones
+	// Per-trigger subtree observation — no root watch. The baseline engine watches
+	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
+	// model the scoped engines use; a mount under verse no longer collides with (and
+	// force-ends) a whole-verse root watch. The old root-watch dispatch loop (Start)
+	// and its cursor/steering control plane remain in the engine, dormant, for
+	// reintroduction when engine-wide steering is wired.
+	s.Eng.ObserveScoped(ctx)
+}
+
+// Handler returns the HTTP surface. Observation (read plane) and control are
+// deliberately distinct routes.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	// observation (read plane)
+	mux.HandleFunc("GET /status", s.status)
+	mux.HandleFunc("GET /watch", s.watch)
+	mux.HandleFunc("GET /entities", s.listEntities)
+	mux.HandleFunc("GET /entity", s.getEntity)
+	mux.HandleFunc("GET /gates", s.listGates)
+	mux.HandleFunc("GET /flows", s.listFlows)
+	mux.HandleFunc("GET /triggers", s.listTriggers)
+	mux.HandleFunc("GET /triggers/{name}", s.getTrigger)
+	mux.HandleFunc("GET /goals", s.listGoals)
+	// mutation + control (out-of-band from observation; priority-serviced)
+	mux.HandleFunc("POST /entity", s.putEntity)
+	mux.HandleFunc("DELETE /entity", s.deleteEntity)
+	mux.HandleFunc("POST /triggers", s.addTrigger)
+	mux.HandleFunc("DELETE /triggers/{name}", s.removeTrigger)
+	mux.HandleFunc("POST /goals", s.addGoal)
+	mux.HandleFunc("DELETE /goals/{name}", s.removeGoal)
+	mux.HandleFunc("POST /goal/pause", s.goalPause)
+	mux.HandleFunc("POST /goal/resume", s.goalResume)
+	mux.HandleFunc("POST /goal/cancel", s.goalCancel)
+	mux.HandleFunc("POST /goal/say", s.goalSay)
+	mux.HandleFunc("POST /scope/delete", s.deleteScope)
+	mux.HandleFunc("POST /gate/resolve", s.resolveGate)
+	mux.HandleFunc("POST /flow/pause", s.flowPause)
+	mux.HandleFunc("POST /flow/resume", s.flowResume)
+	mux.HandleFunc("POST /flow/cancel", s.flowCancel)
+	mux.HandleFunc("POST /flow/say", s.flowSay)
+	// process runtime (proc) — mounted; serves /processes[/{id}[/…]]. versed intercepts the
+	// two READ routes to union the local runtime with the active policy's own processes
+	// (e.g. a broker's), stamping each with its policy; everything else (spawn, events,
+	// control) falls through to the local runtime.
+	ph := s.Procd.Handler()
+	mux.HandleFunc("GET /processes", s.listProcesses)
+	mux.HandleFunc("POST /processes", s.spawnProcess)
+	mux.HandleFunc("GET /processes/{id}", s.getProcess)
+	mux.HandleFunc("GET /processes/{id}/inbox", s.processInbox)
+	mux.HandleFunc("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
+		s.processEvents(w, r, ph)
+	})
+	// cancel/say are policy-agnostic: local processes go to the runtime, brokered/remote
+	// ones to the policy's handle — so `process cancel`/`say` work wherever a process runs.
+	mux.HandleFunc("POST /processes/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		s.processControl(w, r, ph, "cancel")
+	})
+	mux.HandleFunc("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
+		s.processControl(w, r, ph, "say")
+	})
+	mux.HandleFunc("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
+		s.processControl(w, r, ph, "resolve")
+	})
+	mux.Handle("/processes", ph)
+	mux.Handle("/processes/", ph)
+	return mux
+}
+
+// ── scripted driver: the default process runtime driver ─────────────────────
+//
+// A dependency-free driver that performs a few steps of "work" then completes, so
+// the runtime is exercisable without model credentials. `verse up --llm` swaps in
+// the LLM harness.
+
+// ScriptedBuilder is a processd.Builder that builds a scripted, auto-gated process.
+// The scripted driver does no file I/O and ignores the requested driver/ContentReader.
+func ScriptedBuilder(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+	return process.NewProcess(id, sup, &scriptDriver{task: task, steps: 3}, scriptExec{})
+}
+
+type scriptDriver struct {
+	task  string
+	steps int
+	i     int
+}
+
+func (d *scriptDriver) Next(_ context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
+	if d.i >= d.steps {
+		return process.ToolUse{}, false, nil
+	}
+	d.i++
+	return process.ToolUse{Name: "step", Input: map[string]any{"task": d.task, "n": d.i}}, true, nil
+}
+
+type scriptExec struct{}
+
+func (scriptExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
+	time.Sleep(50 * time.Millisecond) // simulate a unit of work
+	return process.StepResult{Use: tu, Output: "did " + tu.Name}, nil, nil
+}
+
+// deleteScope drops the ?scope copy-on-write overlay and all its data — federation
+// teardown. It runs against the baseline store (only baseline may delete a scope),
+// so it is independent of scopedStore. A store without real scopes (in-memory)
+// answers 501 so the client can fall back to per-entity cleanup.
+func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("scope")
+	if name == "" {
+		http.Error(w, "scope delete: ?scope required", http.StatusBadRequest)
+		return
+	}
+	deleter, ok := s.Store.(entity.ScopeDeleter)
+	if !ok {
+		http.Error(w, "store has no scopes to delete", http.StatusNotImplemented)
+		return
+	}
+	// Stop the scope's engine (if any) before its data goes away, so it isn't
+	// observing a store whose scope is being deleted.
+	s.scopeMu.Lock()
+	if se, ok := s.scopeEngs[name]; ok {
+		se.cancel()
+		delete(s.scopeEngs, name)
+	}
+	s.scopeMu.Unlock()
+	if err := deleter.DeleteScope(name); err != nil {
+		http.Error(w, "scope delete: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// scopedStore returns the store view for the request's ?scope (baseline if absent).
+// The seam for local-dev federation — in-memory it is a passthrough; a logd-backed
+// store isolates the scope (see docs/deployment-and-steering.md).
+func (s *Server) scopedStore(r *http.Request) entity.Store {
+	if sc := r.URL.Query().Get("scope"); sc != "" {
+		return s.Store.Scope(sc)
+	}
+	return s.Store
+}
+
+// watch streams store changes as SSE, catching up from ?since=<rev> first, then
+// live — the cursor model surfaced at the wire.
+func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
+	store := s.scopedStore(r)
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	q := r.URL.Query()
+	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	sys, kind := q.Get("system"), q.Get("kind")
+	match := func(ev entity.Event) bool {
+		return (sys == "" || ev.Ref.System == sys) && (kind == "" || ev.Ref.Kind == kind)
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
+	// captured live rather than lost in the gap. The catch-up and the live stream
+	// overlap; dedup by revision (send only strictly-ascending revs).
+	ch, unsub := store.Observe()
+	defer unsub()
+
+	last := since
+	if evs, ok := store.Since(since); ok {
+		for _, ev := range evs {
+			if match(ev) {
+				writeSSE(w, eventWire(ev))
+			}
+			if ev.Rev > last {
+				last = ev.Rev
+			}
+		}
+	}
+	fl.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			if ev.Rev != 0 && ev.Rev <= last {
+				continue // already delivered by the catch-up (overlap window)
+			}
+			if ev.Gap > 0 || match(ev) {
+				writeSSE(w, eventWire(ev))
+				fl.Flush()
+			}
+			if ev.Rev > last {
+				last = ev.Rev
+			}
+		}
+	}
+}
+
+func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	sys, kind := q.Get("system"), q.Get("kind")
+	lister, ok := s.scopedStore(r).(entity.Lister)
+	if !ok {
+		http.Error(w, "store does not support listing", http.StatusNotImplemented)
+		return
+	}
+	ents := lister.List(func(ref entity.Ref) bool {
+		return (sys == "" || ref.System == sys) && (kind == "" || ref.Kind == kind)
+	})
+	out := make([]map[string]any, 0, len(ents))
+	for _, e := range ents {
+		out = append(out, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
+	ref, err := entity.ParseRef(r.URL.Query().Get("ref"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	e, ok := s.scopedStore(r).Get(ref)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
+}
+
+func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
+	ref, err := entity.ParseRef(r.URL.Query().Get("ref"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ev, ok := s.scopedStore(r).Delete(ref)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, eventWire(ev))
+}
+
+func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Ref     string         `json:"ref"`
+		Payload map[string]any `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ref, err := entity.ParseRef(body.Ref)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ev := s.scopedStore(r).Put(ref, entity.Payload(body.Payload))
+	writeJSON(w, http.StatusOK, eventWire(ev))
+}
+
+// listGates is the unified pending-gate view: engine (trigger) gates from the registry AND
+// per-process gates (an agent blocked on write/shell/delegate), which live in each process's
+// own registry and otherwise show only under `process get`. Both are resolvable by id.
+func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
+	out := make([]map[string]any, 0)
+	for _, p := range s.Reg.Pending() {
+		out = append(out, map[string]any{
+			"id": p.Question.ID, "origin": p.Question.Origin, "gate": p.Question.Gate,
+			"mode": p.Question.Mode.String(), "reason": p.Question.Reason, "tool": p.Tool,
+			"where": "engine",
+		})
+	}
+	for _, snap := range s.processSnapshots(s.scopedStore(r)) {
+		for _, d := range asMaps(snap["pending"]) {
+			d["process"], d["where"] = snap["id"], "process"
+			out = append(out, d)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// asMaps coerces a snapshot's `pending` (native []map[string]any from the local runtime, or
+// []any of maps after a remote JSON round-trip) to a uniform []map[string]any.
+func asMaps(v any) []map[string]any {
+	switch t := v.(type) {
+	case []map[string]any:
+		return t
+	case []any:
+		out := make([]map[string]any, 0, len(t))
+		for _, e := range t {
+			if m, ok := e.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID      string   `json:"id"`
+		Approve bool     `json:"approve"`
+		Say     []string `json:"say"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	res := process.Resolution{Proceed: body.Approve, By: "human:cli", Steer: body.Say}
+	// A process gate's id is <process-id>#dN; route it to that process. An engine gate id
+	// (trigger:…#N) whose owner isn't a process falls through to the registry.
+	owner := body.ID
+	if i := strings.IndexByte(owner, '#'); i >= 0 {
+		owner = owner[:i]
+	}
+	if s.isProcess(owner) {
+		if !s.resolveProcessDecision(owner, body.ID, res) {
+			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !s.Reg.Answer(body.ID, res) {
+		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── triggers: the charter ────────────────────────────────────────────────────
+
+func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		writeJSON(w, http.StatusOK, []trigger.Def{})
+		return
+	}
+	writeJSON(w, http.StatusOK, eng.Defs())
+}
+
+// status is a one-shot summary of the running verse: the store's revision and the
+// live counts across the planes — the charter size, in-flight flows, pending gates,
+// hosted processes, and total firings.
+func (s *Server) status(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{
+		"storeRev":  s.Store.Rev(),
+		"triggers":  len(s.Eng.Defs()),
+		"flows":     len(s.Eng.Flows()),
+		"gates":     len(s.Reg.Pending()),
+		"processes": s.Procd.Count(),
+		"fired":     s.Eng.Fired(),
+		"policy":    s.policyStatus(), // how processes run: kind + resume + dial legs
+	}
+	// When docd-backed, publish its addresses so a controller process (verse connect)
+	// can reach the mount face; the client face is where store clients connect.
+	if s.DocdMount != "" || s.DocdClient != "" {
+		out["docd"] = map[string]any{"client": s.DocdClient, "mount": s.DocdMount}
+	}
+	if len(s.LLM) > 0 {
+		out["llm"] = s.LLM // secrets-safe: whether agent creds are configured on this server
+	}
+	// This verse's own listen addresses (operator API, and the broker face when served).
+	listen := map[string]any{}
+	if s.Addr != "" {
+		listen["api"] = s.Addr
+	}
+	if s.BrokerAddr != "" {
+		listen["broker"] = s.BrokerAddr
+	}
+	if len(listen) > 0 {
+		out["listen"] = listen
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// policyStatus describes the run policy along its two independent legs, so the two are not
+// confused: `resume` is the VERSE-facing control/re-attach address (what a restart needs),
+// `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
+// a remote processd (one URL, no separate worker leg) and diverge for a broker (verse drives
+// it in-process — ephemeral — while a worker dials a separate face). See docs/control-policy.md.
+func (s *Server) policyStatus() map[string]any {
+	pol := map[string]any{"resume": "ephemeral", "dial": nil}
+	switch {
+	case hasFace(s.policy): // a dial-in broker: in-process control, external worker face
+		pol["kind"] = "broker"
+		if face := s.policy.(interface{ Face() string }).Face(); face != "" {
+			pol["dial"] = face
+		}
+	case s.policy.Ref() == "local":
+		pol["kind"] = "local"
+	default: // a remote controlPolicy base URL — the Ref IS the re-attach address
+		pol["kind"] = "remote"
+		pol["resume"] = s.policy.Ref()
+	}
+	return pol
+}
+
+func hasFace(p process.ControlPolicy) bool {
+	_, ok := p.(interface{ Face() string })
+	return ok
+}
+
+// processLister is a controlPolicy that keeps its OWN process registry (a broker), distinct
+// from the local runtime. localPolicy does NOT implement it — it delegates to the same
+// processd the union already lists — so brokered processes are added without double-counting
+// local ones.
+type processLister interface {
+	ListProcesses() []map[string]any
+	ProcessSnapshot(id string) (map[string]any, bool)
+}
+
+// spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
+// subject/flow, but it goes through the SAME seam: host it via the controlPolicy (so a run
+// honors --policy/--broker, not just trigger spawns) and mirror it into the store (so a run
+// is a process:instance entity — observable, and its completion can drive triggers) — the
+// consistency the "processes are entities" model wants.
+func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
+	var body struct{ ID, Task, Driver string }
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Task == "" {
+		http.Error(w, "task is required", http.StatusBadRequest)
+		return
+	}
+	id := body.ID
+	if id == "" {
+		id = "run-" + mintNonce()[:12] // ad-hoc id; a trigger spawn supplies its own
+	}
+	// Honor --scope: mirror the process:instance into that scope's copy-on-write view, not
+	// baseline — else a scoped run leaks into baseline (a baseline watch would see it). On the
+	// memory store Scope is a passthrough, so isolation only applies to the docd/logd store.
+	store := s.Store
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		store = s.Store.Scope(scope)
+	}
+	h := s.policy.Spawn(id, body.Task, body.Driver, nil)
+	mirror.Reflect(store, id, h, "", s.policy.Ref())
+	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+// listProcesses is the unified process list: the local runtime plus, when the policy is a
+// broker (or any policy with its own registry), its processes — each stamped with its policy
+// so a client sees whether a process is local or brokered (and, for a broker, its dialURL).
+func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.processSnapshots(s.scopedStore(r)))
+}
+
+// processSnapshots is the unified process list for one store view (baseline, or a ?scope
+// overlay): the local runtime plus the active policy's own processes (a broker's), each
+// stamped with its policy.
+//
+// The runtime and the broker are scope-blind — they hold every process globally — so a
+// bare list would leak a `verse connect` scope's processes into baseline (and across
+// scopes). The one record that carries scope is the process:instance:<id> entity that
+// mirror.Reflect writes (synchronously, at spawn) into the spawning scope's copy-on-write
+// store. So a process belongs to this view iff its instance entity is visible here: the
+// overlay's own writes, plus baseline seen through the overlay. On a store without real
+// scopes (the in-memory passthrough) every instance is visible in every scope, so this is
+// a no-op there — matching the documented isolation boundary (real isolation on docd/logd).
+func (s *Server) processSnapshots(store entity.Store) []map[string]any {
+	members := s.scopeMembers(store)
+	keep := func(m map[string]any) bool {
+		if members == nil {
+			return true
+		}
+		id, _ := m["id"].(string)
+		return members[id]
+	}
+	out := make([]map[string]any, 0)
+	for _, m := range s.Procd.Snapshots() {
+		if keep(m) {
+			m["policy"] = "local"
+			out = append(out, m)
+		}
+	}
+	if l, ok := s.policy.(processLister); ok {
+		ref := s.policy.Ref()
+		for _, m := range l.ListProcesses() {
+			if keep(m) {
+				m["policy"] = ref
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// scopeMembers returns the set of process ids whose process:instance entity is visible in
+// store — the scope's membership. It returns nil when the store cannot enumerate entities
+// (no real scopes to enforce), signaling processSnapshots not to filter.
+func (s *Server) scopeMembers(store entity.Store) map[string]bool {
+	lister, ok := store.(entity.Lister)
+	if !ok {
+		return nil
+	}
+	ids := map[string]bool{}
+	for _, e := range lister.List(func(ref entity.Ref) bool {
+		return ref.System == mirror.System && ref.Kind == "instance"
+	}) {
+		ids[e.Ref.ID] = true
+	}
+	return ids
+}
+
+// isProcess reports whether id names a process in the runtime or the active policy.
+func (s *Server) isProcess(id string) bool {
+	if _, ok := s.Procd.SnapshotOf(id); ok {
+		return true
+	}
+	if l, ok := s.policy.(processLister); ok {
+		_, ok := l.ProcessSnapshot(id)
+		return ok
+	}
+	return false
+}
+
+// resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the
+// runtime for a local process, the policy handle for a brokered one.
+func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) bool {
+	if _, ok := s.Procd.SnapshotOf(procID); ok {
+		return s.Procd.Resolve(procID, decisionID, res)
+	}
+	if h := s.policy.Attach(procID); h != nil {
+		if rh, ok := h.(interface {
+			Resolve(decision string, proceed bool, say string) bool
+		}); ok {
+			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "))
+		}
+	}
+	return false
+}
+
+// getProcess resolves one process across backends: the local runtime first (live detail),
+// then the policy's own registry (a brokered process) — so `process get <id>` works whether
+// the process runs locally or behind a broker.
+func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if m, ok := s.Procd.SnapshotOf(id); ok {
+		m["policy"] = "local"
+		writeJSON(w, http.StatusOK, m)
+		return
+	}
+	if l, ok := s.policy.(processLister); ok {
+		if m, ok := l.ProcessSnapshot(id); ok {
+			m["policy"] = s.policy.Ref()
+			writeJSON(w, http.StatusOK, m)
+			return
+		}
+	}
+	http.NotFound(w, r)
+}
+
+// inboxReader is a policy (a broker) that can surface a process's queued worker control for
+// operator observability, unfenced. localPolicy doesn't implement it (no dial-in worker).
+type inboxReader interface {
+	ProcessInbox(id string) ([]map[string]any, bool)
+}
+
+// processInbox is an operator peek at the control queued for a brokered process's worker —
+// unfenced, so it doesn't disturb a live worker. A local process has no worker inbox → empty.
+func (s *Server) processInbox(w http.ResponseWriter, r *http.Request) {
+	items := []map[string]any{}
+	if ir, ok := s.policy.(inboxReader); ok {
+		if got, ok := ir.ProcessInbox(r.PathValue("id")); ok {
+			items = got
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// processEvents bridges `attach` across backends: a locally-hosted process streams from the
+// runtime (its native SSE); a brokered/remote one is bridged here — Subscribe the policy
+// handle (which replays the merged log then goes live) and re-emit each event as SSE.
+func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
+	id := r.PathValue("id")
+	if _, ok := s.Procd.SnapshotOf(id); ok {
+		runtime.ServeHTTP(w, r) // local runtime owns it
+		return
+	}
+	h := s.policy.Attach(id)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	ch, unsub := h.Subscribe()
+	defer unsub()
+	fl.Flush()
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			b, _ := json.Marshal(ev)
+			w.Write([]byte("data: "))
+			w.Write(b)
+			w.Write([]byte("\n\n"))
+			fl.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// processControl routes cancel/say: a process the local runtime hosts is served by it (live
+// detail); otherwise the request goes to the policy's handle (a brokered/remote process),
+// so the same command works wherever a process runs.
+func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
+	id := r.PathValue("id")
+	if _, ok := s.Procd.SnapshotOf(id); ok {
+		runtime.ServeHTTP(w, r) // local runtime owns it
+		return
+	}
+	h := s.policy.Attach(id)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch op {
+	case "cancel":
+		h.Cancel("")
+	case "say":
+		var body struct{ Instruction, By string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		h.Steer(body.Instruction, body.By)
+	case "resolve":
+		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
+		rh, ok := h.(interface {
+			Resolve(decision string, proceed bool, say string) bool
+		})
+		if !ok {
+			http.Error(w, "policy does not support gate resolution", http.StatusNotImplemented)
+			return
+		}
+		var body struct {
+			DecisionID string `json:"decisionId"`
+			Proceed    bool   `json:"proceed"`
+			Say        string `json:"say"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if !rh.Resolve(body.DecisionID, body.Proceed, body.Say) {
+			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
+	var d trigger.Def
+	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if d.Name == "" {
+		http.Error(w, "trigger name required", http.StatusBadRequest)
+		return
+	}
+	// ?scope=<s> installs the trigger on that scope's engine (created on first use),
+	// observing and acting within the scope — the reactivity for a `verse connect`
+	// federation. No scope → the baseline charter.
+	eng := s.Eng
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		if s.ctx == nil {
+			http.Error(w, "engine not started", http.StatusServiceUnavailable)
+			return
+		}
+		eng = s.scopeEngine(scope)
+	}
+	if err := eng.AddDef(d); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) getTrigger(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		http.NotFound(w, r)
+		return
+	}
+	d, ok := eng.Def(r.PathValue("name"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil || !eng.RemoveTrigger(r.PathValue("name")) {
+		http.NotFound(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── goals: an owning aggregate (owned triggers + done/fail latches + status) ──────
+
+// listGoals returns the live goal roster read from the goal:instance entities — name,
+// subject, status, waitingOn, deadline, and (once terminal) outcome — the `verse goals` view.
+func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
+	lister, ok := s.Store.(entity.Lister)
+	if !ok {
+		writeJSON(w, http.StatusOK, []map[string]any{})
+		return
+	}
+	ents := lister.List(func(ref entity.Ref) bool { return ref.System == "goal" && ref.Kind == "instance" })
+	out := make([]map[string]any, 0, len(ents))
+	for _, e := range ents {
+		row := map[string]any{"name": e.Ref.ID}
+		for _, k := range []string{"subject", "status", "waitingOn", "deadline", "outcome", "terminal"} {
+			if v, ok := e.Payload[k]; ok {
+				row[k] = v
+			}
+		}
+		out = append(out, row)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) addGoal(w http.ResponseWriter, r *http.Request) {
+	var d trigger.GoalDef
+	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if d.Name == "" {
+		http.Error(w, "goal name required", http.StatusBadRequest)
+		return
+	}
+	if err := s.Eng.AddGoal(d); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) removeGoal(w http.ResponseWriter, r *http.Request) {
+	if !s.Eng.RemoveGoal(r.PathValue("name")) {
+		http.NotFound(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// goalPause/Resume/Cancel/Say steer a goal by delegating to its flow (a goal is a flow with a
+// destination) — the same control surface, keyed by the goal name.
+func (s *Server) goalPause(w http.ResponseWriter, r *http.Request) {
+	s.goalSteer(w, r, func(name string) map[string]any {
+		return map[string]any{"goal": name, "paused": s.Eng.PauseGoal(name)}
+	})
+}
+
+func (s *Server) goalResume(w http.ResponseWriter, r *http.Request) {
+	s.goalSteer(w, r, func(name string) map[string]any {
+		return map[string]any{"goal": name, "resumed": s.Eng.ResumeGoal(name)}
+	})
+}
+
+func (s *Server) goalCancel(w http.ResponseWriter, r *http.Request) {
+	s.goalSteer(w, r, func(name string) map[string]any {
+		return map[string]any{"goal": name, "cancelled": s.Eng.CancelGoal(name)}
+	})
+}
+
+func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+		Text string `json:"text"`
+		By   string `json:"by"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" || body.Text == "" {
+		http.Error(w, "name and text required", http.StatusBadRequest)
+		return
+	}
+	by := body.By
+	if by == "" {
+		by = "human:cli"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"goal": body.Name, "said": s.Eng.SteerGoal(body.Name, body.Text, by)})
+}
+
+func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) map[string]any) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, act(body.Name))
+}
+
+// ── flow: engine steering (control plane) ────────────────────────────────────
+
+func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		writeJSON(w, http.StatusOK, []string{})
+		return
+	}
+	writeJSON(w, http.StatusOK, eng.Flows())
+}
+
+// flowPause/flowResume are engine-wide holds — serviced with priority over
+// observation by the engine's control plane (see docs/deployment-and-steering.md).
+func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Subject string `json:"subject"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
+		http.Error(w, "subject required", http.StatusBadRequest)
+		return
+	}
+	n := s.Eng.PauseFlow(body.Subject)
+	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "paused": n})
+}
+
+func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Subject string `json:"subject"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
+		http.Error(w, "subject required", http.StatusBadRequest)
+		return
+	}
+	n := s.Eng.ResumeFlow(body.Subject)
+	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "resumed": n})
+}
+
+func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Subject string `json:"subject"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
+		http.Error(w, "subject required", http.StatusBadRequest)
+		return
+	}
+	n := s.Eng.CancelFlow(body.Subject)
+	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "cancelled": n})
+}
+
+func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Subject string `json:"subject"`
+		Text    string `json:"text"`
+		By      string `json:"by"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" || body.Text == "" {
+		http.Error(w, "subject and text required", http.StatusBadRequest)
+		return
+	}
+	by := body.By
+	if by == "" {
+		by = "human:cli"
+	}
+	n := s.Eng.SteerFlow(body.Subject, body.Text, by)
+	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "said": n})
+}
+
+func eventWire(ev entity.Event) map[string]any {
+	m := map[string]any{"rev": ev.Rev, "op": string(ev.Op), "ref": ev.Ref.String()}
+	if ev.To != nil {
+		m["to"] = ev.To
+	}
+	if ev.From != nil {
+		m["from"] = ev.From
+	}
+	if ev.Gap > 0 {
+		m["gap"] = ev.Gap
+	}
+	return m
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeSSE(w http.ResponseWriter, v any) {
+	b, _ := json.Marshal(v)
+	_, _ = w.Write([]byte("data: "))
+	_, _ = w.Write(b)
+	_, _ = w.Write([]byte("\n\n"))
+}

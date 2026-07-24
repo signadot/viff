@@ -1,0 +1,327 @@
+package broker_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/example/infra/verse/broker"
+	"github.com/example/infra/verse/process"
+)
+
+// The full two-legged dial-in loop: verse drives a process through the ControlPolicy seam
+// (Spawn + Subscribe + Cancel) while a worker dials in over claim/inbox/report. Worker
+// reports become the events verse observes; verse control becomes items the worker pulls.
+func TestBrokerDialInLoop(t *testing.T) {
+	b := broker.New()
+
+	// verse side: spawn + observe.
+	h := b.Spawn("t1", "review PR #42", "human", nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+
+	// worker side: dial in.
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	// claim → the worker gets the spec + an epoch (the fencing token).
+	var claim struct {
+		Spec    struct{ Task, Driver string }
+		Epoch   int64 `json:"epoch"`
+		CCursor int64 `json:"cCursor"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/t1/claim", `{"identity":"human:scott"}`, &claim)
+	if claim.Spec.Task != "review PR #42" {
+		t.Fatalf("claim spec.task=%q, want the spawn task", claim.Spec.Task)
+	}
+	if claim.Epoch == 0 {
+		t.Fatal("claim returned no epoch")
+	}
+
+	// report → the worker's utterances/lifecycle land on verse's read plane (carrying epoch).
+	postJSON(t, cl, srv.URL+"/processes/t1/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"say","text":"looking"},{"kind":"status","text":"completed"}],"result":"looks good"}`, nil)
+
+	seen := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		select {
+		case ev := <-ch:
+			seen[ev.Kind+":"+ev.Text] = true
+			if ev.Cursor == 0 {
+				t.Fatal("reported event carried no cursor")
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out; verse observed only %v", seen)
+		}
+	}
+	if !seen["say:looking"] || !seen["status:completed"] {
+		t.Fatalf("verse did not observe the worker's reports: %v", seen)
+	}
+	if h.Result() != "looks good" {
+		t.Fatalf("Result()=%q, want the reported result", h.Result())
+	}
+
+	// verse control → the worker's inbox (a fresh process, so the cancel is observable
+	// before terminal). Uses a second process to keep this assertion independent of the
+	// completed one above.
+	h2 := b.Spawn("t2", "watch", "human", nil)
+	var claim2 struct {
+		Epoch   int64 `json:"epoch"`
+		CCursor int64 `json:"cCursor"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/t2/claim", `{"identity":"human:scott"}`, &claim2)
+	h2.Cancel("stop")
+	var inbox struct {
+		Items []struct{ Kind string }
+	}
+	getJSON(t, cl, srv.URL+"/processes/t2/inbox?since="+itoa(claim2.CCursor)+"&epoch="+itoa(claim2.Epoch), &inbox)
+	var gotCancel bool
+	for _, it := range inbox.Items {
+		if it.Kind == "cancel" {
+			gotCancel = true
+		}
+	}
+	if !gotCancel {
+		t.Fatalf("worker inbox did not carry the cancel: %+v", inbox.Items)
+	}
+}
+
+// terminal-once: a second terminal report is a frozen no-op — the first result/status
+// stays authoritative, and a lost-ack retry reads as success (200 + terminal), not error.
+func TestTerminalOnce(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "task", "human", nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var claim struct{ Epoch int64 }
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
+
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"completed"}],"result":"first"}`, nil)
+
+	var second struct {
+		Status, Result string
+		Terminal       bool
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"second"}`, &second)
+	if !second.Terminal || second.Status != "completed" || second.Result != "first" {
+		t.Fatalf("post-terminal report should echo the frozen terminal, got %+v", second)
+	}
+	if h.Result() != "first" {
+		t.Fatalf("Result()=%q, want the first (latched) result", h.Result())
+	}
+}
+
+// Fork-1(b): verse Cancel latches terminal on verse's own authority — observable with no
+// worker report — and a late worker `completed` loses to the latch.
+func TestVerseAuthoritativeCancel(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "task", "human", nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var claim struct{ Epoch int64 }
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
+
+	h.Cancel("operator stop") // no worker report involved
+
+	select {
+	case ev := <-ch:
+		if ev.Kind != process.EvStatus || ev.Text != "cancelled" {
+			t.Fatalf("first event = %s/%s, want status/cancelled from the verse-side latch", ev.Kind, ev.Text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("verse Cancel did not surface a cancelled status")
+	}
+
+	// a late worker completion loses to the latch: the report is a frozen no-op.
+	var late struct{ Status string }
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"completed"}],"result":"done"}`, &late)
+	if late.Status != "cancelled" {
+		t.Fatalf("late completion status=%q, want the latched cancelled", late.Status)
+	}
+}
+
+// Fork-2(a): a same-identity reconnect mints a fresh epoch that fences the prior generation
+// (a zombie of the same worker), and a takeover by a different identity is legal only after
+// the claim is released (Revoke).
+func TestFenceAndTakeover(t *testing.T) {
+	b := broker.New()
+	b.Spawn("p", "task", "human", nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	// A claims twice (a reconnect): epoch advances; the first epoch is now fenced.
+	var c1, c2 struct{ Epoch int64 }
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"A"}`, &c1)
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"A"}`, &c2)
+	if c2.Epoch <= c1.Epoch {
+		t.Fatalf("reconnect epoch %d did not advance past %d", c2.Epoch, c1.Epoch)
+	}
+	if code := postCode(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(c1.Epoch)+`,"events":[{"kind":"say","text":"stale"}]}`); code != http.StatusConflict {
+		t.Fatalf("stale-epoch report = %d, want 409 fenced", code)
+	}
+	if code := postCode(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(c2.Epoch)+`,"events":[{"kind":"say","text":"live"}]}`); code != http.StatusOK {
+		t.Fatalf("current-epoch report = %d, want 200", code)
+	}
+
+	// B cannot take over a live claim...
+	if code := postCode(t, cl, srv.URL+"/processes/p/claim", `{"identity":"B"}`); code != http.StatusConflict {
+		t.Fatalf("uninvited takeover = %d, want 409", code)
+	}
+	// ...until verse revokes, which also fences A's current epoch.
+	b.Revoke("p")
+	var c3 struct{ Epoch int64 }
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"B"}`, &c3)
+	if c3.Epoch <= c2.Epoch {
+		t.Fatalf("post-revoke claim epoch %d did not advance", c3.Epoch)
+	}
+	if code := postCode(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(c2.Epoch)+`,"events":[{"kind":"say","text":"zombie"}]}`); code != http.StatusConflict {
+		t.Fatalf("revoked A's report = %d, want 409 fenced", code)
+	}
+}
+
+// The gate loop: a worker reports a pending gate (do gate), which shows on the snapshot and
+// verse's stream; a verse-side Resolve enqueues a resolve item for the worker's inbox and
+// records the decision (clearing pending). The executor never resolves its own gate.
+func TestGateLoop(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "task", "human", nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var claim struct{ Epoch int64 }
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	// worker raises a gate (report EvPending).
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"deploy-1","gate":"deploy"}]}`, nil)
+	drainFor(t, ch, "pending") // verse observes the pending gate
+
+	if _, ok := b.ProcessSnapshot("p"); !ok {
+		t.Fatal("no snapshot")
+	}
+	snap, _ := b.ProcessSnapshot("p")
+	if pend, _ := snap["pending"].([]map[string]any); len(pend) != 1 || pend[0]["id"] != "deploy-1" {
+		t.Fatalf("snapshot pending = %+v, want the raised gate", snap["pending"])
+	}
+
+	rh := h.(interface {
+		Resolve(string, bool, string) bool
+	})
+
+	// resolving an unknown decision id (typo, wrong process) matches no open gate and
+	// reports false — so verse can 404 rather than silently enqueue a phantom resolve.
+	if rh.Resolve("deploy-nope", true, "oops") {
+		t.Fatal("Resolve of an unknown decision reported success")
+	}
+
+	// governance resolves the real gate (verse-side); the worker's inbox gets a resolve item.
+	if !rh.Resolve("deploy-1", true, "ship it") {
+		t.Fatal("Resolve of the open gate reported failure")
+	}
+	drainFor(t, ch, "decision") // verse observes the resolution; pending clears
+
+	// resolving it a second time now finds nothing pending (already answered) -> false.
+	if rh.Resolve("deploy-1", true, "again") {
+		t.Fatal("second Resolve of an answered decision reported success")
+	}
+
+	inbox, ok := b.ProcessInbox("p")
+	if !ok {
+		t.Fatal("no inbox")
+	}
+	var got map[string]any
+	for _, it := range inbox {
+		if it["kind"] == "resolve" && it["decision"] == "deploy-1" {
+			got = it
+		}
+	}
+	if got == nil || got["proceed"] != true {
+		t.Fatalf("worker inbox missing the approved resolve: %+v", inbox)
+	}
+	if snap, _ := b.ProcessSnapshot("p"); len(snap["pending"].([]map[string]any)) != 0 {
+		t.Fatalf("pending should clear after resolve: %+v", snap["pending"])
+	}
+}
+
+// drainFor reads events until one of the given kind arrives (or times out).
+func drainFor(t *testing.T, ch <-chan process.Frame, kind string) {
+	t.Helper()
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Kind == kind {
+				return
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for a %q event", kind)
+		}
+	}
+}
+
+func postJSON(t *testing.T, cl *http.Client, url, body string, out any) {
+	t.Helper()
+	resp, err := cl.Post(url, "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if out != nil {
+		_ = json.NewDecoder(resp.Body).Decode(out)
+	}
+}
+
+func postCode(t *testing.T, cl *http.Client, url, body string) int {
+	t.Helper()
+	resp, err := cl.Post(url, "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST %s: %v", url, err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func getJSON(t *testing.T, cl *http.Client, url string, out any) {
+	t.Helper()
+	resp, err := cl.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	_ = json.NewDecoder(resp.Body).Decode(out)
+}
+
+func itoa(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}
+
+var _ = process.EvSay

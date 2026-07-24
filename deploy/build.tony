@@ -1,0 +1,217 @@
+# verse — Kubernetes deploy (an `o build`).
+#
+#   o build deploy | kubectl apply -f -
+#   o build deploy -p minikube | kubectl apply -f -
+#   o build deploy -p staging | kubectl apply -f -
+#
+# Split topology: a docd StatefulSet (logd+docd on a data volume — the AZ-pinned stateful
+# tier) and a versed Deployment (the stateless singleton engine that attaches to docd and
+# floats). Storage shape is per-profile: a dynamic PVC by default, a host mount on minikube,
+# EBS gp3 on staging. Sources are the base manifests in source/; env is injected via patches.
+# See deploy/README.md.
+build:
+  env:
+    namespace: verse
+    # Full image ref incl. tag (deploy/Dockerfile). Override: -e image=localhost:5000/verse:dev
+    image: "signadot/verse:latest"
+    # Container imagePullPolicy. "" = leave the k8s default (Always for :latest, else
+    # IfNotPresent). minikube/Docker Desktop use a locally-loaded image → set Never.
+    imagePullPolicy: ""
+    # Serve + expose the broker face (needed by remote policies / k8s Jobs workers).
+    brokerFace: true
+    storageSize: "10Gi"
+
+    # docd storage. The StatefulSet always uses a volumeClaimTemplate; only what BACKS the
+    # PVC varies:
+    #   default  — the cluster default StorageClass (dynamic).
+    #   staging  — a named StorageClass (dynamic EBS); set storageClassName + emitStorageClass.
+    #   minikube — a static hostPath PersistentVolume (set hostPV; class becomes "").
+    storageClassName: ""
+    # Emit a verse-gp3 StorageClass (WaitForFirstConsumer, ebs.csi.aws.com). Needs the EBS
+    # CSI driver addon on the cluster.
+    emitStorageClass: false
+    # hostPV: back the PVC with a static hostPath PersistentVolume (minikube/Docker Desktop).
+    hostPV: false
+    # The PV's in-VM host path. Docker Desktop: /run/desktop/mnt/host/Users/<you>/.verse/...
+    # minikube-mount: the node mount target (e.g. /mnt/verse). See deploy/README.md.
+    hostPath: "/mnt/verse"
+
+    # Managed-node-group capacity placement (label eks.amazonaws.com/capacityType). Keep the
+    # stateful docd on on-demand; let the stateless versed prefer spot.
+    onDemandDocd: false
+    spotVersed: false
+
+  sources:
+  # Namespace first — kubectl applies the stream in order, so namespaced resources must not
+  # precede the Namespace (else "namespaces \"verse\" not found" on the first apply).
+  - dir: namespace
+  - dir: source
+  - if: '.[emitStorageClass]'
+    dir: eks
+  - if: '.[hostPV]'
+    dir: hostpv
+
+  patches:
+  # The Namespace object's own name.
+  - match:
+      kind: Namespace
+    patch:
+      metadata:
+        name: $[namespace]
+
+  # Namespace every namespaced resource (StorageClass is cluster-scoped — excluded).
+  - match:
+      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret]
+    patch:
+      metadata:
+        namespace: $[namespace]
+
+  # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
+  # runs `verse` — one image, two roles).
+  - match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: docd
+              image: $[image]
+  - match:
+      kind: Deployment
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              image: $[image]
+
+  # imagePullPolicy on both tiers (when set) — minikube/Docker Desktop → Never (local image).
+  - if: '.[ imagePullPolicy != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: docd
+              imagePullPolicy: $[imagePullPolicy]
+  - if: '.[ imagePullPolicy != "" ]'
+    match:
+      kind: Deployment
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              imagePullPolicy: $[imagePullPolicy]
+
+  # docd volumeClaimTemplate — always present. Base: no storageClassName (omitting it =
+  # "cluster default"; "" would disable dynamic provisioning). eks/minikube override below.
+  - match:
+      kind: StatefulSet
+    patch:
+      spec:
+        volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes:
+            - ReadWriteOnce
+            resources:
+              requests:
+                storage: $[storageSize]
+
+  # staging: a named StorageClass (dynamic EBS) — re-emit the VCT with the class.
+  - if: '.[ storageClassName != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes:
+            - ReadWriteOnce
+            storageClassName: $[storageClassName]
+            resources:
+              requests:
+                storage: $[storageSize]
+
+  # minikube: static hostPath PV — class "" binds the VCT to the emitted PersistentVolume.
+  - if: '.[hostPV]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            accessModes:
+            - ReadWriteOnce
+            storageClassName: ""
+            resources:
+              requests:
+                storage: $[storageSize]
+
+  # Point the hostPath PV at the host dir, size it, and bind it to docd's namespaced PVC.
+  - if: '.[hostPV]'
+    match:
+      kind: PersistentVolume
+    patch:
+      spec:
+        capacity:
+          storage: $[storageSize]
+        hostPath:
+          path: $[hostPath]
+        claimRef:
+          namespace: $[namespace]
+          name: data-docd-0
+
+  # Pin the stateful docd tier to on-demand nodes.
+  - if: '.[onDemandDocd]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: eks.amazonaws.com/capacityType
+                      operator: In
+                      values: [ON_DEMAND]
+
+  # Let the stateless versed prefer spot.
+  - if: '.[spotVersed]'
+    match:
+      kind: Deployment
+    patch:
+      spec:
+        template:
+          spec:
+            affinity:
+              nodeAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                    - key: eks.amazonaws.com/capacityType
+                      operator: In
+                      values: [SPOT]
+
+  # Drop the broker Service unless the broker face is served.
+  - if: '.[!brokerFace]'
+    match:
+      kind: Service
+      metadata:
+        name: verse-broker
+    patch: !delete
