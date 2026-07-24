@@ -14,13 +14,13 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/example/infra/verse/controlpolicy"
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
-	"github.com/example/infra/verse/process"
-	"github.com/example/infra/verse/process/harness"
-	"github.com/example/infra/verse/trigger"
-	"github.com/example/infra/verse/versed"
+	"github.com/signadot/verse/controlpolicy"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/process/harness"
+	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/versed"
 )
 
 type upConfig struct {
@@ -135,7 +135,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown --store %q: only 'memory', or omit for docd", cfg.Store)
 	}
-	srv.Addr = g.Addr           // this verse's operator API listen address, for /status discovery
+	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
 	if cfg.Demo {
 		seedDemo(srv.Eng)

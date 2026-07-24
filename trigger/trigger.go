@@ -10,8 +10,8 @@
 package trigger
 
 import (
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 // EventMatch is a conjunctive predicate over one entity change. Empty dimensions

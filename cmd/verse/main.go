@@ -10,7 +10,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/example/infra/verse/config"
+	"github.com/signadot/verse/config"
 )
 
 const defaultAddr = "localhost:9797"

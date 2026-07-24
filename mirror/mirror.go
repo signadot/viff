@@ -9,8 +9,8 @@
 package mirror
 
 import (
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 // System is the entity-verse system reflected processes live under. Keep it out

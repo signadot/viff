@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
-	"github.com/example/infra/verse/mirror"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/process"
 )
 
 // PauseFlow holds a subject's processes at their next boundary; ResumeFlow releases

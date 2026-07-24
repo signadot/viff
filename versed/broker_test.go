@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/broker"
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/broker"
+	"github.com/signadot/verse/entity"
 )
 
 // process run (POST /processes) goes through the controlPolicy, not straight to the local

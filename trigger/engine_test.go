@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 type denyResolver struct{}

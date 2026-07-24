@@ -5,9 +5,9 @@ import (
 	"hash/fnv"
 	"strings"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/process"
 )
 
 // Def is the wire form of a trigger — fully declarative, no Go closure — so a

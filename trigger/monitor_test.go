@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 // A trigger whose gate is a temporal formula fires only once the formula holds — here a

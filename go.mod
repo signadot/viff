@@ -1,4 +1,4 @@
-module github.com/example/infra/verse
+module github.com/signadot/verse
 
 go 1.25.1
 

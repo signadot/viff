@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/controlpolicy"
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/mirror"
-	"github.com/example/infra/verse/process"
-	"github.com/example/infra/verse/process/processd"
+	"github.com/signadot/verse/controlpolicy"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/process/processd"
 )
 
 // a driver that takes `steps` no-op actions then completes.
@@ -136,7 +136,7 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 
 	pol := controlpolicy.HTTP(srv.URL)
 	pol.Spawn("t1", "task", "scripted", nil) // runs on the remote to completion
-	time.Sleep(300 * time.Millisecond)        // let it finish (retained in the ring)
+	time.Sleep(300 * time.Millisecond)       // let it finish (retained in the ring)
 
 	// "verse restart": a fresh store with a STALE running entity tagged with the policy.
 	store := entity.NewMemStore()

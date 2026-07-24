@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 // A hold that outlasts the live observe buffer drops live events — but none are

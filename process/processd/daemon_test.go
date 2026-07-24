@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 // seqDriver emits one action per step, then reports done — no model.

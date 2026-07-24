@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 type scriptedTurn struct {

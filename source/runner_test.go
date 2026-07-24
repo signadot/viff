@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/source"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/source"
 )
 
 // Webhook is a hint that targets a repo and writes nothing.

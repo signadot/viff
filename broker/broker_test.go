@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/broker"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/broker"
+	"github.com/signadot/verse/process"
 )
 
 // The full two-legged dial-in loop: verse drives a process through the ControlPolicy seam

@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/trigger"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger"
 )
 
 // /status summarizes the running verse: it reports the store revision and live

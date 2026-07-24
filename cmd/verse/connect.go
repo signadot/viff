@@ -19,10 +19,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/system/libctl"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
-	"github.com/example/infra/verse/source"
-	"github.com/example/infra/verse/trigger"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/source"
+	"github.com/signadot/verse/trigger"
 )
 
 // connect federates the local working tree into the verse under a per-session scope.

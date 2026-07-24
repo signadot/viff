@@ -14,10 +14,10 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
-	"github.com/example/infra/verse/mirror"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/process"
 )
 
 // Spawner turns a (bound) launch.Spec into a running, hosted process and returns

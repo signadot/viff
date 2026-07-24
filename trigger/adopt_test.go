@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 // a ProcHandle that records control calls; its read plane stays open (never terminal).

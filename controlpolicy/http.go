@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 // HTTP returns a ControlPolicy that drives the controlPolicy at baseURL.

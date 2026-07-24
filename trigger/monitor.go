@@ -3,7 +3,7 @@ package trigger
 import (
 	"context"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // Monitor watches the facts a Formula reads and reports when the formula's truth

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 // OpenAI-compatible Chat Completions wire types. Served here through the Portkey

@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 // demoDeriver maps the model's tool vocabulary onto typed capabilities so the

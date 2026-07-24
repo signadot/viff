@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // Formula is a temporal-logic formula over store facts — a tagged-union parse node.

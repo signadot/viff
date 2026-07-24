@@ -19,15 +19,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/infra/verse/broker"
-	"github.com/example/infra/verse/controlpolicy"
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
-	"github.com/example/infra/verse/mirror"
-	"github.com/example/infra/verse/process"
-	"github.com/example/infra/verse/process/processd"
-	"github.com/example/infra/verse/source"
-	"github.com/example/infra/verse/trigger"
+	"github.com/signadot/verse/broker"
+	"github.com/signadot/verse/controlpolicy"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/process/processd"
+	"github.com/signadot/verse/source"
+	"github.com/signadot/verse/trigger"
 )
 
 // Server is the monolith's in-process assembly: one store, one engine, one gate
@@ -310,8 +310,8 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 // process:instance entities a previous run left running — since this is the monolith
 // (the process runtime restarts with the engine, so those processes are gone).
 func (s *Server) Start(ctx context.Context) {
-	s.ctx = ctx              // scoped engines (created later, per federation) start under this
-	s.reconcileProcesses()   // resume remote-hosted processes; orphan local-dead ones
+	s.ctx = ctx            // scoped engines (created later, per federation) start under this
+	s.reconcileProcesses() // resume remote-hosted processes; orphan local-dead ones
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
 	// model the scoped engines use; a mount under verse no longer collides with (and

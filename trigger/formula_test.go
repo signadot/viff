@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // The charter's compact tag-keyed surface parses into the AST: the object key is the tag

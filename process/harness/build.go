@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 const systemPrompt = `You are an autonomous coding agent working through a supervised loop.
@@ -39,12 +39,12 @@ func Vector() *process.Vector {
 
 // Config parameterizes Build.
 type Config struct {
-	ID       string           // process id
-	Task     string           // the top-level user task (seeds the driver)
-	Root     string           // working directory the executor is confined to
+	ID       string                // process id
+	Task     string                // the top-level user task (seeds the driver)
+	Root     string                // working directory the executor is confined to
 	Resolver process.Resolver      // how ASK gates are answered (stdin, auto, Registry, …)
-	Client   completer            // model client; nil → built from the LLM creds below (or env)
-	Log      io.Writer            // local narration/exec log; nil → io.Discard
+	Client   completer             // model client; nil → built from the LLM creds below (or env)
+	Log      io.Writer             // local narration/exec log; nil → io.Discard
 	Content  process.ContentReader // read_file source; nil → local filesystem under Root
 
 	// LLM creds for the model client (resolved from verse config: file ← env). Any

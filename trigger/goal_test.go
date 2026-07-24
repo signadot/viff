@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // Unmet returns exactly the leaf requirements that do not currently hold — the "waiting on"

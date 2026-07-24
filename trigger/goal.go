@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // A goal gives an SDLC flow an explicit target: a durable record that OWNS the charter

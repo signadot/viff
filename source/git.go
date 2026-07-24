@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // GitSystem is the entity slice a git Source owns and is the single writer of.

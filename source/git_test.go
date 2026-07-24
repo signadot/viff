@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/source"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/source"
 )
 
 func gitRun(t *testing.T, dir string, args ...string) {

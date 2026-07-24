@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/example/infra/verse/entity"
+	"github.com/signadot/verse/entity"
 )
 
 // Source is an inbound reflector: it owns and is the single writer of a system slice, keeps

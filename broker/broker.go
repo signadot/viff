@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/example/infra/verse/process"
+	"github.com/signadot/verse/process"
 )
 
 // Broker hosts many processes, each awaiting a dial-in worker.

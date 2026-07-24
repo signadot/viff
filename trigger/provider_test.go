@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/infra/verse/entity"
-	"github.com/example/infra/verse/launch"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 )
 
 // auto-select picks the first eligible doer and reifies the choice on a select channel.
