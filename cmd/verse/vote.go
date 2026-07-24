@@ -96,10 +96,11 @@ func providersCmd() *cli.Command {
 		})
 }
 
-// decisionsCmd lists decision channels — what needs a vote, and how tallies stand. Each
-// is written by the engine when a quorum gate opens (decision:channel:<id>).
+// decisionsCmd lists decision channels — what needs a vote, and how tallies stand. Each is
+// written by the engine when a governed decision opens (decision:channel:<id>), across both
+// axes: a whether-gate (options proceed/deny) and a who-select (options = the eligible doers).
 func decisionsCmd() *cli.Command {
-	return leaf("decisions", "decisions — list decision channels (open votes and their outcomes)",
+	return leaf("decisions", "decisions — list decision channels (open votes/selects and their outcomes)",
 		func(cc *cli.Context, args []string) error {
 			resp, err := httpGet("/entities", url.Values{"system": {"decision"}, "kind": {"channel"}})
 			if err != nil {
@@ -117,25 +118,21 @@ func decisionsCmd() *cli.Command {
 			for _, e := range ents {
 				id := strings.TrimPrefix(e.Ref, "decision:channel:")
 				p := e.Payload
-				kind, _ := p["kind"].(string)
-				if kind == "" {
-					kind = "quorum"
+				axis, _ := p["axis"].(string)
+				if axis == "" {
+					axis = "decision"
 				}
-				line := fmt.Sprintf("%s  %-6s %-6v", id, kind, p["status"])
-				switch kind {
-				case "select": // a 1-of-N provider selection
-					if s, ok := p["selected"].(string); ok {
-						line += "  selected=" + s
-					} else if opts, ok := p["options"].([]any); ok {
-						line += fmt.Sprintf("  options=%v", opts)
+				line := fmt.Sprintf("%s  %-7s %-6v", id, axis, p["status"])
+				if names := optionLabels(p["options"]); names != "" {
+					line += "  options=[" + names + "]"
+				}
+				if o, ok := p["outcome"].(string); ok {
+					line += "  outcome=" + o
+					if tally, ok := p["tally"]; ok {
+						line += fmt.Sprintf(" tally=%v", tally)
 					}
-				default: // quorum proceed/deny
-					line += fmt.Sprintf(" need=%v", p["need"])
-					if o, ok := p["outcome"].(string); ok {
-						line += fmt.Sprintf("  outcome=%s tally=%v", o, p["tally"])
-					} else if at, ok := p["deadline_at"].(string); ok {
-						line += "  closes=" + at
-					}
+				} else if at, ok := p["deadline_at"].(string); ok {
+					line += "  closes=" + at
 				}
 				if s, ok := p["subject"].(string); ok {
 					line += "  subject=" + s
@@ -144,4 +141,24 @@ func decisionsCmd() *cli.Command {
 			}
 			return nil
 		})
+}
+
+// optionLabels renders a decision's options as "id(need) …" (the threshold shown only when
+// > 1), across both axes: "proceed(2) deny" for a whether-gate, "gpt(2) claude(2)" for a
+// select. Returns "" when there are no options.
+func optionLabels(v any) string {
+	opts, ok := v.([]any)
+	if !ok || len(opts) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(opts))
+	for _, o := range opts {
+		om, _ := o.(map[string]any)
+		id, _ := om["id"].(string)
+		if n, ok := om["need"].(float64); ok && n > 1 {
+			id = fmt.Sprintf("%s(%d)", id, int(n))
+		}
+		names = append(names, id)
+	}
+	return strings.Join(names, " ")
 }

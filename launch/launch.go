@@ -59,20 +59,14 @@ type Provider struct {
 	Eligible   []string       `json:"eligible,omitempty"`   // inline doer ids (option == driver)
 	Capability string         `json:"capability,omitempty"` // registry: select provider:<capability>:*
 	Match      map[string]any `json:"match,omitempty"`      // registry: a tony match over provider attributes
-	Select     Surface        `json:"select,omitempty"`     // the who-dial (default auto)
-	Need       int            `json:"need,omitempty"`       // vote: plurality threshold
-	Within     string         `json:"within,omitempty"`     // vote/ask: selection deadline (e.g. "4h") — no pick by then = no spawn
+	// Select is the who-dial: how the doer is picked among the eligible options —
+	// "auto" (a rule picks the first eligible), "ask" (one party picks; a threshold of 1),
+	// or "vote" (the group picks; ≥ Need). Empty defaults to auto. It is the who-axis
+	// counterpart of a whether-gate's Formula; both compile to the same governed decision.
+	Select string `json:"select,omitempty"`
+	Need   int    `json:"need,omitempty"`   // vote: plurality threshold
+	Within string `json:"within,omitempty"` // vote/ask: selection deadline (e.g. "4h") — no pick by then = no spawn
 }
-
-// Surface is the who-dial: how a provider selection is resolved among the eligible doers.
-// It is the who-axis counterpart of the whether-dial's process.Mode (auto/ask/park).
-type Surface string
-
-const (
-	SurfaceAuto Surface = "auto" // a rule picks (v1: the first eligible doer)
-	SurfaceAsk  Surface = "ask"  // a party picks — the first valid pick decides
-	SurfaceVote Surface = "vote" // the collective picks — threshold-plurality over the vote log
-)
 
 // bind expands $vars in the template-ish fields (eligible ids, capability). Select/Need
 // and the Match pattern are carried as-is (the engine evaluates Match as a tony match

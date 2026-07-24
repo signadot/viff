@@ -2,9 +2,7 @@ package trigger
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"sort"
 	"sync"
@@ -403,122 +401,25 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 // (false = ctx ended, or the gate committed a deny). If a revoke lands between
 // satisfaction and the commit, the CAS fails and it re-monitors.
 func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, ev entity.Event) bool {
-	did := decisionID(t, gname, ev)
-	channelRef := entity.Ref{System: "decision", Kind: "channel", ID: did}
-	// Bind the formula to THIS decision so a quorum atom tallies vote:<did>:* — its own
-	// vote log — and open a discoverable channel entity so voters can find and observe it.
-	f := g.Formula.bind(did)
-	e.openDecision(channelRef, t, gname, ev, f.quorumNeed())
-	commitRef := channelRef
+	channelRef := entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(t.Name + "/" + gname + "/" + ev.Ref.String())}
+	// Compile the gate's Formula into a decision over {proceed, deny}, bound to THIS
+	// channel's vote log, and open a discoverable channel entity voters can find/observe.
+	d := e.compileFormula(g.Formula, channelRef, t, gname, ev)
+	e.openChannel(d)
 	for {
-		var proceed, ok bool
-		var witness []entity.Ref
-		var recheck *Formula // the satisfy-formula the commit is predicated on (nil = none)
-		if f != nil && f.Op == OpUntil && len(f.Args) == 2 {
-			proceed, witness, ok = e.awaitUntil(ctx, channelRef, f.Args[0], f.Args[1])
-			if proceed {
-				recheck = f.Args[0] // predicate a proceed on the satisfy side still holding
-			}
-		} else {
-			witness, ok = NewMonitor(f, e.store).Await(ctx)
-			proceed = ok
-			recheck = f
-		}
+		winner, witness, ok := e.awaitDecision(ctx, d)
 		if !ok {
 			e.tracef("temporal gate %s/%s: monitor ended before commit", t.Name, gname)
 			return false
 		}
-		outcome := "deny"
-		if proceed {
-			outcome = "proceed"
-		}
-		eff, revoked := e.commitDecision(commitRef, recheck, outcome, witness)
+		// The winning option's formula is the revoke guard (nil for a deadline-default deny).
+		eff, revoked := e.commitDecision(channelRef, d.formulaOf(winner), winner, witness)
 		if revoked {
 			e.tracef("temporal gate %s/%s: revoked before commit → re-monitoring", t.Name, gname)
 			continue
 		}
 		e.tracef("temporal gate %s/%s committed %q (witness %d facts)", t.Name, gname, eff, len(witness))
 		return eff == "proceed"
-	}
-}
-
-// awaitUntil evaluates `left until right`: proceed when the left formula holds, or default
-// (deny) when the right side fires first. The right side is one of two things — a store
-// condition (a fact/quorum, watched and Eval'd like left), or a `deadline` (a duration
-// resolved against the system clock, armed as a timer; NOT a store fact, so nothing
-// produces it). Left wins a tie. Returns (proceed, witness, ok); ok is false if ctx ends
-// first.
-func (e *Engine) awaitUntil(ctx context.Context, channelRef entity.Ref, left, right *Formula) (bool, []entity.Ref, bool) {
-	// The right side is either a store condition (a fact/quorum — watch its subtree and
-	// Eval it) or a deadline (a duration resolved against the system clock — a timer). A
-	// deadline is a derivation from time, not a store fact, so it is handled here, not via
-	// Eval. Left (proceed) wins a tie.
-	dur, isDeadline := deadlineDuration(right)
-	var deadlineC <-chan time.Time
-	if isDeadline {
-		at := e.deadlineAt(channelRef, dur)     // stamp/read deadline_at on the channel (restart-safe)
-		timer := time.NewTimer(at.Sub(e.now())) // fires at the deadline (immediately if already past)
-		defer timer.Stop()                      // don't leak the timer when the store side wins first
-		deadlineC = timer.C
-	}
-
-	// check evaluates the store side(s); the deadline is signalled by deadlineC, not here.
-	check := func() (proceed, decided bool, witness []entity.Ref) {
-		if ok, w := left.Eval(e.store); ok {
-			return true, true, w
-		}
-		if !isDeadline {
-			if ok, w := right.Eval(e.store); ok {
-				return false, true, w
-			}
-		}
-		return false, false, nil
-	}
-	if proceed, decided, w := check(); decided {
-		return proceed, w, true
-	}
-
-	// One watch per DISTINCT subtree (left always; right too, unless it is a deadline):
-	// left and right frequently read the SAME subtree (approve vs reject over one vote
-	// log), and docd permits only one watch per path per session.
-	sw, ok := e.store.(entity.SubtreeWatcher)
-	if !ok {
-		return false, nil, false
-	}
-	sub, cancel := context.WithCancel(ctx)
-	defer cancel()
-	events := make(chan entity.Event, 64)
-	subtrees := left.Subtrees()
-	if !isDeadline {
-		subtrees = append(subtrees, right.Subtrees()...)
-	}
-	seen := map[[2]string]bool{}
-	for _, st := range subtrees {
-		if seen[st] {
-			continue
-		}
-		seen[st] = true
-		ch, unsub, err := sw.WatchSubtree(st[0], st[1])
-		if err != nil {
-			continue
-		}
-		defer unsub()
-		go drain(sub, ch, events)
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return false, nil, false
-		case <-deadlineC: // the clock struck — default (deny), unless the left side just made it
-			if okL, w := left.Eval(e.store); okL {
-				return true, w, true
-			}
-			return false, nil, true
-		case <-events:
-			if proceed, decided, w := check(); decided {
-				return proceed, w, true
-			}
-		}
 	}
 }
 
@@ -550,7 +451,7 @@ func deadlineDuration(f *Formula) (time.Duration, bool) {
 // deadlineAt returns the absolute instant a decision closes on timeout, stamping it on the
 // channel the first time (so `verse decisions` shows when it closes, and a restart re-arms
 // against the same absolute time — elapsed wall time is honored). It is terminal-once like
-// commitDecision/commitSelection: it returns the EFFECTIVE stamped value, so a re-fire — or
+// commitDecision: it returns the EFFECTIVE stamped value, so a re-fire — or
 // a concurrent arming of the same channel — reads the durable instant rather than sliding
 // the deadline forward or arming a timer against a value that never landed.
 func (e *Engine) deadlineAt(ref entity.Ref, dur time.Duration) time.Time {
@@ -692,32 +593,6 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	return []entity.Precondition{{Ref: entity.Ref{System: fs.System, Kind: fs.Kind}, Pattern: sub}}, true
 }
 
-// decisionID is a short, stable id for a gate's decision instance — deterministic in
-// (trigger, gate, event) so a re-fire is idempotent (same channel, terminal-once).
-func decisionID(t Trigger, gname string, ev entity.Event) string {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(t.Name + "/" + gname + "/" + ev.Ref.String()))
-	return fmt.Sprintf("%08x", h.Sum32())
-}
-
-// openDecision writes the discoverable channel entity for a decision — what is being
-// decided and the threshold — so a voter can find it (`verse decisions`) and observe the
-// tally. Idempotent: it never reopens a decision that has already closed.
-func (e *Engine) openDecision(ref entity.Ref, t Trigger, gname string, ev entity.Event, need int) {
-	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
-		if _, done := cur["outcome"]; done {
-			return cur // already closed — leave it
-		}
-		p := clonePayload(cur)
-		p["status"] = "open"
-		p["need"] = need
-		p["trigger"] = t.Name
-		p["gate"] = gname
-		p["subject"] = ev.Ref.String()
-		return p
-	})
-}
-
 // clonePayload returns a shallow copy of p (nil → empty), so a Modify can extend the
 // current value without mutating the store's clone.
 func clonePayload(p entity.Payload) entity.Payload {
@@ -740,44 +615,59 @@ func refIDs(refs []entity.Ref) []string {
 // ── the who-axis: governed provider selection ───────────────────────────────
 
 // selectProvider resolves the who-axis for a spawn whose Spec carries a Provider: it
-// reifies a `select` decision channel, resolves ONE of the eligible doers via the Select
-// surface, and returns the chosen driver (which the caller binds into Spec.Driver before
-// spawn — no live swap). The selection is CAS-latched terminal-once, so a re-fire is
-// idempotent (same channel, same choice). It is orthogonal to the controlPolicy that then
-// transports the chosen driver.
+// reifies a `select` decision — a decision over the eligible doers as options — resolves it
+// through the SAME machinery as a whether-gate (openChannel/awaitDecision/commitDecision),
+// and returns the chosen driver (bound into Spec.Driver before spawn — no live swap). The
+// commit is CAS terminal-once with the revoke guard, so a ballot retracted between threshold
+// and commit re-monitors; a re-fire is idempotent (same channel). Orthogonal to the
+// controlPolicy that then transports the chosen driver.
 func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string, bool) {
 	options, drivers := e.eligibleProviders(p)
 	if len(options) == 0 {
 		return "", false
 	}
-	did := selectionID(subject, p)
-	channelRef := entity.Ref{System: "decision", Kind: "channel", ID: did}
-	e.openSelect(channelRef, subject, p, options)
+	channelRef := entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(providerSpecSeed(subject, p))}
+	d := e.compileProvider(p, subject, channelRef, options)
+	e.openChannel(d)
 
-	var chosen string
-	switch p.Select {
-	case launch.SurfaceVote, launch.SurfaceAsk:
-		// Both resolve a pick over the vote log; ask is a vote where a single valid pick
-		// decides (the delegated-authority case), vote awaits the plurality threshold.
-		need := p.Need
-		if p.Select == launch.SurfaceAsk {
-			need = 1
-		}
-		sel, ok := e.awaitPlurality(channelRef, did, options, need, p.Within)
+	// auto: a rule picks the first eligible doer immediately — no channel await, no votes.
+	if p.Select == "" || p.Select == "auto" {
+		eff, _ := e.commitDecision(channelRef, nil, options[0], nil)
+		return driverFor(drivers, eff), true
+	}
+
+	// vote/ask: resolve over the vote log, bounded by the engine lifetime, with the revoke
+	// guard active — a ballot retracted between threshold and commit re-monitors.
+	ctx := e.bgctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		winner, witness, ok := e.awaitDecision(ctx, d)
 		if !ok {
-			e.tracef("select %s: %s ended before a decision", did, p.Select)
+			e.tracef("select %s: %s ended before a decision", channelRef.ID, p.Select)
 			return "", false
 		}
-		chosen = sel
-	default: // auto (and empty): the first eligible doer
-		chosen = options[0]
+		if winner == "" { // no pick (deadline default) — record it, do not spawn
+			e.commitDecision(channelRef, nil, "no-pick", nil)
+			return "", false
+		}
+		eff, revoked := e.commitDecision(channelRef, d.formulaOf(winner), winner, witness)
+		if revoked {
+			e.tracef("select %s: revoked before commit → re-monitoring", channelRef.ID)
+			continue
+		}
+		return driverFor(drivers, eff), true
 	}
-	selected := e.commitSelection(channelRef, chosen) // terminal-once (honors a prior fire)
-	driver, ok := drivers[selected]
-	if !ok {
-		driver = selected // a prior selection no longer in the registry — use it as the driver
+}
+
+// driverFor maps a selected option to its driver; a prior selection no longer in the
+// registry falls back to the option id itself as the driver.
+func driverFor(drivers map[string]string, selected string) string {
+	if dr, ok := drivers[selected]; ok {
+		return dr
 	}
-	return driver, true
+	return selected
 }
 
 // eligibleProviders resolves a Provider's selectable options to {option → driver}, in a
@@ -834,143 +724,6 @@ func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
 	}
 	ok, err := tony.Match(node, pattern)
 	return err == nil && ok
-}
-
-// selectionID is a short, stable id for a provider selection — deterministic in the
-// subject and the eligibility spec (inline set, capability, match), so a re-fire reuses
-// the same channel (idempotent). json.Marshal sorts map keys, so the hash is stable.
-func selectionID(subject entity.Ref, p *launch.Provider) string {
-	h := fnv.New32a()
-	spec, _ := json.Marshal(struct {
-		E []string       `json:"e"`
-		C string         `json:"c"`
-		M map[string]any `json:"m"`
-	}{p.Eligible, p.Capability, p.Match})
-	_, _ = h.Write([]byte("select/" + subject.String() + "/"))
-	_, _ = h.Write(spec)
-	return fmt.Sprintf("%08x", h.Sum32())
-}
-
-// openSelect writes the discoverable `select` decision channel — a categorical (1-of-N)
-// decision — so the choice is reified and observable (`verse decisions`). Idempotent: it
-// never reopens an already-resolved selection.
-func (e *Engine) openSelect(ref, subject entity.Ref, p *launch.Provider, options []string) {
-	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
-		if _, done := cur["selected"]; done {
-			return cur // already resolved — leave it
-		}
-		q := clonePayload(cur)
-		q["kind"] = "select"
-		q["status"] = "open"
-		q["options"] = append([]string(nil), options...)
-		q["surface"] = string(p.Select)
-		q["subject"] = subject.String()
-		if p.Capability != "" {
-			q["capability"] = p.Capability
-		}
-		if p.Need > 0 {
-			q["need"] = p.Need
-		}
-		return q
-	})
-}
-
-// commitSelection CAS-latches the chosen option onto the select channel: terminal-once
-// (the first commit wins — a later change cannot re-select). Returns the effective
-// (possibly pre-existing) selection.
-func (e *Engine) commitSelection(ref entity.Ref, selected string) (eff string) {
-	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
-		if s, done := cur["selected"].(string); done {
-			eff = s // already latched — terminal-once, honor it
-			return cur
-		}
-		eff = selected
-		q := clonePayload(cur)
-		q["status"] = "closed"
-		q["selected"] = selected
-		return q
-	})
-	return eff
-}
-
-// awaitPlurality resolves a vote-selected provider: it tallies the decision's vote log
-// (vote:<did>:<voter>{choice}) by option, restricted to eligible options, and returns the
-// first option to reach the threshold (Need, default 1) — threshold-plurality. Monitored
-// reactively on the vote subtree, and bounded two ways: the engine's lifetime ctx (so a
-// pending selection is released on stop, not leaked), and — when within is a duration — a
-// deadline armed off channelRef, the who-axis analog of an `until` gate's deadline. A
-// selection that reaches neither the threshold nor the deadline returns ("", false): no
-// pick, so the caller does not spawn.
-func (e *Engine) awaitPlurality(channelRef entity.Ref, did string, options []string, need int, within string) (string, bool) {
-	if need < 1 {
-		need = 1
-	}
-	eligible := map[string]bool{}
-	for _, o := range options {
-		eligible[o] = true
-	}
-	leader := func() (string, int) {
-		lister, ok := e.store.(entity.Lister)
-		if !ok {
-			return "", 0
-		}
-		counts := map[string]int{}
-		for _, en := range lister.List(func(r entity.Ref) bool { return r.System == "vote" && r.Kind == did }) {
-			if choice, _ := en.Payload["choice"].(string); eligible[choice] {
-				counts[choice]++
-			}
-		}
-		best, bestN := "", 0
-		for opt, n := range counts {
-			if n > bestN {
-				best, bestN = opt, n
-			}
-		}
-		return best, bestN
-	}
-
-	if opt, n := leader(); n >= need {
-		return opt, true
-	}
-	sw, ok := e.store.(entity.SubtreeWatcher)
-	if !ok {
-		return "", false
-	}
-	ch, unsub, err := sw.WatchSubtree("vote", did)
-	if err != nil {
-		return "", false
-	}
-	defer unsub()
-	bg := e.bgctx
-	if bg == nil {
-		bg = context.Background()
-	}
-
-	// Optional deadline arm (the who-axis analog of an `until` gate's deadline): a duration
-	// resolved against the system clock, stamped on the channel so it is restart-safe.
-	var deadlineC <-chan time.Time
-	if dur, err := time.ParseDuration(within); within != "" && err == nil {
-		at := e.deadlineAt(channelRef, dur)
-		timer := time.NewTimer(at.Sub(e.now())) // fires at the deadline (immediately if past)
-		defer timer.Stop()
-		deadlineC = timer.C
-	}
-
-	for {
-		select {
-		case <-bg.Done():
-			return "", false
-		case <-deadlineC: // the clock struck before any option reached the threshold — no pick
-			return "", false
-		case _, ok := <-ch:
-			if !ok {
-				return "", false
-			}
-			if opt, n := leader(); n >= need {
-				return opt, true
-			}
-		}
-	}
 }
 
 // Spawn asks the Spawner to launch a process from a launch.Spec — non-blocking.

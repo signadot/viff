@@ -58,7 +58,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 // castBallot writes a voter's ballot into a decision's vote log (vote:<did>:<voter>),
 // where did is the deterministic decision id for (trigger, gate, subject).
 func castBallot(s entity.Store, tr, gate string, subject entity.Ref, voter, choice string) {
-	did := decisionID(Trigger{Name: tr}, gate, entity.Event{Ref: subject})
+	did := decisionChannelID(tr + "/" + gate + "/" + subject.String())
 	s.Put(entity.Ref{System: "vote", Kind: did, ID: voter}, entity.Payload{"choice": choice, "by": voter})
 }
 
@@ -332,7 +332,7 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 		t.Fatal("fired despite no quorum and a passed deadline")
 	}
 	// the decision should have closed by deadline default (deny).
-	did := decisionID(Trigger{Name: "merge"}, "g", entity.Event{Ref: entity.Ref{System: "change", Kind: "pr", ID: "dl"}})
+	did := decisionChannelID("merge/g/" + entity.Ref{System: "change", Kind: "pr", ID: "dl"}.String())
 	ch, _ := store.Get(entity.Ref{System: "decision", Kind: "channel", ID: did})
 	if ch.Payload["outcome"] != "deny" {
 		t.Fatalf("decision outcome = %v, want deny (deadline default)", ch.Payload["outcome"])

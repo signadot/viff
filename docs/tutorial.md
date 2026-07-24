@@ -39,7 +39,7 @@ By default `up` is **docd-backed**: it brings up logd + docd on a fresh temp dat
 [docd](https://signadot.github.io/tony-format/docd/) — the tony-format document store.
 You don't need to know anything about docd to *play* with verse — `up` stands it up for
 you — but it's where verse's deeper properties come from (COW scopes, conditional +
-coordinated writes, edge-faithful watches, compactions), and §14 draws that out. For a
+coordinated writes, edge-faithful watches, compactions), and §13 draws that out. For a
 zero-dependency run — no daemons, no persistence — add `--store memory`. To use a
 durable dir, `--data <dir>`; to attach to an already-running docd,
 `--docd-addr <addr> --docd-mount-addr <addr>`.
@@ -65,7 +65,7 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   autonomy dial.
 - **Decision** — where a governed question is *answered* when the answer isn't one inline
   click: a **vote** on a gate (a quorum, with a deadline or a "no"), or a 1-of-N
-  **selection** of a doer (the who-dial, §9). verse reifies it as a channel you watch
+  **selection** of a doer (the who-dial, §8). verse reifies it as a channel you watch
   (`verse decisions`) and add to (`verse vote`); its committed outcome resolves the
   question. (A plain `ask` gate needs none — one person answers it directly via `gate
   resolve`.)
@@ -200,7 +200,7 @@ Anatomy of a trigger:
     matched entity);
   - `spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
     `policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed
-    **`provider`** selection of the doer (§9).
+    **`provider`** selection of the doer (§8).
 - **Bindings** in templates: `$subject` is the matched entity's ref; every field of
   the changed payload is bound by name (`$flow`, `$stage`, …). That's how the
   `reviewed` rule advances `$flow` — the subject the completed process carried.
@@ -258,7 +258,7 @@ around). Piped (non-tty), `attach` just streams without prompting.
 by default (printed at `up` start: `agents rooted at …`), *not* your cwd. So `hello.txt` is at
 `<that root>/hello.txt`. To have agents act in a directory you choose, start the server with
 `verse up --root <dir>` (e.g. `--root .`) — then check `ls <dir>/hello.txt`. (Federating a
-tree so an agent reads *through* the verse, wherever it runs, is `verse connect` — §11.)
+tree so an agent reads *through* the verse, wherever it runs, is `verse connect` — §10.)
 
 You can also resolve out-of-band from anywhere — the gate shows up in **`gate list`**
 alongside trigger gates (and in `process get <id>`), resolvable by its id (it has a `#`, so
@@ -382,15 +382,27 @@ and steers, done by a person — observed and governed through the one verse. (S
 
 ---
 
-## 8. Gates the group decides
+## 8. Gates the group decides — *whether*, and *who*
 
-In §4 a gate was `auto` · `ask` · `park` — one answerer, deciding *whether* to
-proceed. A gate can also be a small **formula** the verse watches and resolves
-*itself* — from votes, a threshold, the clock. The same autonomy dial, answered by a
-group or a condition instead of a single click.
+In §4 a gate was `auto` · `ask` · `park` — one answerer, one click, deciding *whether* an
+action proceeds. But a gate is really just **a question the charter poses**, and some
+questions aren't one person's to answer in one click: a merge that needs *two* reviewers;
+a doer *chosen* from several. verse resolves those the same way — it reifies the open
+question as a **decision** in the store, watches ballots accumulate, and commits an
+**outcome** when a tally reaches the bar. One machinery, two questions:
 
-**A vote.** Some decisions aren't one person's to make. Say a merge needs **two
-reviewers**. Give the gate a formula instead of a mode:
+- **whether** an action fires — the answer is `proceed` or `deny`.
+- **who** does the work — the answer is *a choice of doer*.
+
+Both are answered the same three ways — `auto` (verse picks by a rule), by **one person**,
+or by the **group** — over the one votable, attributable channel (`verse decisions` /
+`verse vote`). (A one-click `ask` still lives in `gate list` / `gate resolve`; a *decision*
+is what an answer that accumulates over time needs.)
+
+### Whether: a vote
+
+Say a merge needs **two reviewers**. Give the gate a **formula** instead of a mode — the
+verse watches and resolves it itself:
 
 ```json
 { "name": "merge",
@@ -404,83 +416,68 @@ verse trigger add -f merge.json
 verse entity put change:pr:42 '{"stage":"ready"}'
 ```
 
-The trigger fired, but the action is waiting — not on a person, on a **tally**. See
-what's open:
+The trigger fired, but the action is waiting — not on a person, on a **tally**. The open
+question now has a home in the store, where ballots land and the count is watched:
 
 ```sh
 verse decisions
-# a1b2c3  quorum open  need=2  subject=change:pr:42
+# a1b2c3  whether open  options=[proceed(2)]  subject=change:pr:42
 ```
 
-Here's the distinction worth holding. A **gate** is the *question* your charter poses.
-In §3 the question was an `ask` — one person answered it directly with `gate resolve`:
-one click, nothing left standing. A vote can't be one click: it accumulates, from
-several people, over time. So verse gives the open question a home in the store — the
-**decision** channel above — where ballots land and the tally is watched. The gate is
-the question; the decision is *where it gets answered*; and when the tally reaches the
-bar, the decision commits an **outcome** that resolves the gate. (So `ask` gates live in
-`gate list` / `gate resolve`; vote and deadline gates — and the doer selections of §9 —
-live in `verse decisions` / `verse vote`.)
-
-Cast ballots — each names its voter, since a decision must be attributable:
+The **options** are what can win — here just `proceed`, at a bar of 2. Cast ballots (each
+names its voter, since a decision must be attributable):
 
 ```sh
 verse vote a1b2c3 approve --as alice     # 1 of 2 — still open
 verse vote a1b2c3 approve --as bob       # 2 of 2 → closes
+verse decisions
+# a1b2c3  whether closed  options=[proceed(2)]  outcome=proceed tally=2  subject=change:pr:42
 verse entity get change:pr:42            # → { "stage": "merged" }
 ```
 
-Under the hood the gate is a formula over facts — "≥ 2 approve ballots." Each `verse
-vote` writes a ballot into the decision's log; verse *watches the log* and clears the
-gate when the count reaches the bar. It stays **live**: if alice retracts before it
-commits, the tally drops and the gate re-blocks. Nobody owns the decision; the group
-does.
+Each `verse vote` writes a ballot into the decision's log; verse *watches the log* and
+commits `proceed` when the count reaches the bar. It stays **live**: if alice retracts
+before it commits, the tally drops and the gate re-blocks. Nobody owns the decision; the
+group does.
 
-**Saying no.** A vote you can only win isn't a vote. Give the gate two bars — read
-`until` as *approvals, unless the rejections get there first*:
+**Saying no.** A vote you can only win isn't a vote. Give the decision a *second* option —
+read `until` as *approvals, unless the rejections get there first*:
 
 ```json
-"gates": [ { "name": "approvals",
-  "formula": { "until": [ {"quorum": 2}, {"quorum": {"choice":"reject","n":2}} ] } } ]
+"formula": { "until": [ {"quorum": 2}, {"quorum": {"choice":"reject","n":2}} ] }
 ```
 
-Two rejects now close it `outcome=deny` and the action never runs. "No" is a real
-outcome, not just the absence of "yes."
+Now the decision has two options, `proceed` and `deny`, and the first to *its* bar wins.
+Two rejects close it `outcome=deny` and the action never runs. "No" is a real outcome, not
+the absence of "yes."
 
-**A deadline.** Votes stall, and you don't want a decision open forever. Add a
-deadline — time is handled directly, so you just say how long:
+**A deadline.** Votes stall, and you don't want a decision open forever. Make the second
+option a **deadline** — the clock is what satisfies it:
 
 ```json
 "formula": { "until": [ {"quorum": 2}, {"deadline": "4h"} ] }
 ```
 
-Fire it and verse has already worked out when it closes:
-
 ```sh
 verse decisions
-# a1b2c3  quorum open  need=2  closes=2026-07-23T08:15:36  subject=change:pr:42
+# a1b2c3  whether open  options=[proceed(2)]  closes=2026-07-23T08:15:36  subject=change:pr:42
 ```
 
-If two approvals land first it proceeds; if the clock gets there first it
-**defaults** (`outcome=deny`, action skipped). The deadline is per-decision (each gate
-has its own clock) and durable (a restart re-reads `closes` and honors the elapsed
-wall time). For a real external signal instead of a clock, the right side can be a
-`fact` — `{"fact": "ci:status:green"}` waits for CI, a tag, a posted review.
+Two approvals first ⇒ `proceed`; the clock first ⇒ the deadline **defaults** the decision
+to `deny` (action skipped). The deadline is per-decision and durable (a restart re-reads
+`closes` and honors the elapsed wall time). For a real external signal instead of a clock,
+the right side can be a `fact` — `{"fact": "ci:status:green"}` waits for CI, a tag, a
+posted review.
 
-(The compact `{"quorum": 2}` / `{"until": […]}` form is the charter surface for a small
-formula language: a leaf is a requirement — `quorum`, `fact`, `deadline` — and
-operators compose them (`until` today; `and`/`or` coming). It's tony's tags in JSON; a
-tony charter reads `!until [ !quorum 2, … ]`.)
+(The compact `{"quorum": 2}` / `{"until": […]}` form is a small formula language: a leaf is
+a requirement — `quorum`, `fact`, `deadline` — and operators compose them (`until` today;
+`and`/`or` coming). It's tony's tags in JSON; a tony charter reads `!until [ !quorum 2, … ]`.)
 
----
+### Who: a selection
 
-## 9. Choosing who does the work
-
-Every gate so far decides **whether** something happens. There's a second question
-hiding in every action: **who** does it. In §4–5 a `spawn` named a fixed `driver`.
-That's a decision too — so verse can govern it the same way.
-
-Name the eligible doers and how to choose among them, instead of one driver:
+The second question hides in every `spawn`: **who** does it. In §4–5 a spawn named a fixed
+`driver`. That's a decision too — over a different option set. Name the eligible doers and
+how to choose, instead of one driver:
 
 ```json
 { "name": "review",
@@ -489,31 +486,31 @@ Name the eligible doers and how to choose among them, instead of one driver:
     "provider": { "eligible": ["gpt", "claude"], "select": "vote", "need": 2 } } } }
 ```
 
-`select` is the **who-dial**, mirroring the whether-dial: `auto` (verse picks by a
-rule), `ask` (one person picks), `vote` (the group picks). Fire it:
+`select` is **the same dial, on the *who* axis**: `auto` (a rule picks the first eligible),
+`ask` (one person picks), `vote` (the group picks). It opens the *same kind* of decision —
+the options are now the doers:
 
 ```sh
 verse decisions
-# d4e5f6  select open  options=[gpt claude]  subject=change:pr:1
+# d4e5f6  select open  options=[gpt(2) claude(2)]  subject=change:pr:1
 ```
 
-A **select** decision — not proceed/deny, but a *choice*. Same channel, same voting,
-but the answer is an option:
+Same channel, same ballots — but the answer is a *choice*:
 
 ```sh
 verse vote d4e5f6 claude --as x
 verse vote d4e5f6 claude --as y
 verse decisions
-# d4e5f6  select closed  selected=claude
+# d4e5f6  select closed  options=[gpt(2) claude(2)]  outcome=claude tally=2
 ```
 
-The process spawns on the chosen doer. verse now has two dials — *whether* and *who* —
-through the one votable, attributable machinery. The pick is fixed for that run;
-reassigning means cancel-and-respawn, not a live swap mid-flight.
+The process spawns on the chosen doer. The pick is fixed for that run; reassigning means
+cancel-and-respawn, not a live swap mid-flight. (A `within` deadline works here too — if no
+doer reaches the bar in time, the decision closes with no pick and nothing spawns.)
 
-**A roster of doers.** Listing driver names inline gets old, and real doers have
-attributes — a tier, a cost, a specialty. Register them once (they're just entities)
-and select by **what they are**:
+**A roster of doers.** Listing driver names inline gets old, and real doers have attributes
+— a tier, a cost, a specialty. Register them once (they're just entities) and select by
+**what they are**:
 
 ```sh
 verse entity put provider:review:claude '{"driver":"llm","tier":"premium"}'
@@ -534,18 +531,19 @@ Now the action selects by **capability + a match over attributes**, not by name:
 
 ```sh
 verse decisions
-# … select open  options=[claude gpt] …
+# … select open  options=[claude(2) gpt(2)] …
 ```
 
-`cheapo` never made the ballot — it isn't `premium`. That `match` is a real verse
-match pattern over each provider's attributes, so "premium reviewers" (or later
-"anything under $5") is just a pattern. The eligible set is discovered *at fire time*
-from the registry — add or retire doers by writing or deleting entities, no charter
-change.
+`cheapo` never made the ballot — it isn't `premium`. That `match` is a real verse match
+pattern over each provider's attributes, so "premium reviewers" (or later "anything under
+$5") is just a pattern. The eligible set is discovered *at fire time* from the registry —
+add or retire doers by writing or deleting entities, no charter change.
+
+Two questions — *whether* and *who* — one votable, attributable machinery.
 
 ---
 
-## 10. Goals — give a flow a destination
+## 9. Goals — give a flow a destination
 
 Everything so far pushes the world *forward*: a change fires a trigger, a gate decides
 whether and who, a process runs, its completion fires the next trigger. Nothing yet says
@@ -610,11 +608,11 @@ record — `verse goals add -f ship.json` — whose JSON carries `triggers: [ �
 finished goal leaves no orphaned charter.
 
 *(v0: `doneWhen` is a single fact/quorum atom; multi-condition targets, an optional plan that
-generates the owned triggers, and scope-isolated reap are next — §14.)*
+generates the owned triggers, and scope-isolated reap are next — §13.)*
 
 ---
 
-## 11. Federate your local working tree
+## 10. Federate your local working tree
 
 `verse connect` federates your working tree into the verse under a private,
 per-session **scope**, and wires a validator to every file — the local-dev loop. It
@@ -671,7 +669,7 @@ validate large files from a partial view.)
 
 ---
 
-## 12. Scopes
+## 11. Scopes
 
 Every client command takes `--scope <name>` (baseline by default). A scope is a
 **copy-on-write overlay**: reads see the scope layered on the shared baseline, and
@@ -695,7 +693,7 @@ just `local:*` files) via logd's `DeleteScope`.
 
 ---
 
-## 13. Command reference
+## 12. Command reference
 
 ```
 verse
@@ -781,12 +779,12 @@ the engine keeps running.
 
 ---
 
-## 14. What this is (and isn't) yet
+## 13. What this is (and isn't) yet
 
 - **Store** defaults to **[docd](https://signadot.github.io/tony-format/docd/)**
   (durable, observable, controller-federated). You never have to touch docd to *use*
   verse — `up` brings it up for you — but it is where verse's deeper properties come
-  from, and they're hard to see spelled out anywhere else: **COW scopes** (§12),
+  from, and they're hard to see spelled out anywhere else: **COW scopes** (§11),
   **conditional + coordinated writes** (atomic CAS, so two writers advancing one entity
   can't lose each other's fields — see `PatchIf` below), **edge-faithful watches** (the
   change stream *is* each writer's applied patch, so no reader reconstructs, reorders,
@@ -834,14 +832,14 @@ the engine keeps running.
   an external **fact** (CI green, a tag). The open question is reified as a decision
   channel — `verse decisions`, `verse vote` (§8). And the **who-axis** is governed the
   same way: which doer performs an action is a 1-of-N selection over an inline set or a
-  `provider:*` registry filtered by a match, resolved `auto`/`ask`/`vote` (§9). Left to
+  `provider:*` registry filtered by a match, resolved `auto`/`ask`/`vote` (§8). Left to
   do: richer disciplines (ranked/weighted votes, review panels), secret ballots via
   scopes.
 - **Goals** — an explicit *target* over the reactive substrate: a goal owns a bundle of
   triggers (the doing), a `doneWhen` formula, and a deadline; it latches `goal:done` /
   `goal:failed` (success *and* "unachievable" are both first-class), holds a live status
   with a `waitingOn` list, and steers as a flow — yet drives by *owning charter*, not by
-  reconciling (§10). Left to do: temporal `doneWhen` (eventually/always/sequence), an
+  reconciling (§9). Left to do: temporal `doneWhen` (eventually/always/sequence), an
   optional plan that generates the owned triggers, and `DeleteScope`-based reap of a goal's
   owned charter.
 
