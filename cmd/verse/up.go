@@ -93,7 +93,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			return versed.ScriptedBuilder(id, task, driver, reg, content)
 		case "llm":
 			if !appCfg.LLM.Available() {
-				return process.Failed(id, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
+				return process.NewFailed(id, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
 			}
 			// content (non-nil for a scoped federation) routes read_file through the
 			// verse; otherwise the agent reads the server-side --root tree.
@@ -104,7 +104,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			})
 			return p
 		default:
-			return process.Failed(id, reg, "unknown driver "+driver+" (want scripted or llm)")
+			return process.NewFailed(id, reg, "unknown driver "+driver+" (want scripted or llm)")
 		}
 	}
 

@@ -17,22 +17,9 @@ import (
 // of any default/ambient trigger match set.
 const System = "process"
 
-// Status values a reflected process carries in its entity payload.
-const (
-	StatusRunning   = "running"
-	StatusCompleted = "completed"
-	StatusCancelled = "cancelled"
-	// StatusOrphaned marks a process whose runtime died (e.g. a monolith restart):
-	// the in-memory process is gone, so its last durable state is retired rather than
-	// left claiming to run. It is terminal but did NOT complete its work — a
-	// completion trigger (status=completed) deliberately does not match it.
-	StatusOrphaned = "orphaned"
-)
-
-// Terminal reports whether a reflected status is an end state (no further work).
-func Terminal(status string) bool {
-	return status == StatusCompleted || status == StatusCancelled || status == StatusOrphaned
-}
+// The reflected status vocabulary is process.Status (running/completed/cancelled/
+// failed/orphaned), carried on the entity payload as the "status" field; its
+// Terminal() decides when to stop projecting.
 
 // Ref is the entity that mirrors process id.
 func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: "instance", ID: id} }
@@ -53,7 +40,14 @@ func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: "instan
 // process finishes. It does not collide with the $subject binding (the matched ref).
 func Reflect(store entity.Store, id string, h process.ProcHandle, subject, policy string) {
 	ch, unsub := h.Subscribe()
-	st := entity.Payload{"status": StatusRunning}
+	// A brokered process starts in the pre-running `unclaimed` state — it is hosted on
+	// the broker awaiting an executor; the claim emits an EvStatus{running} that moves it
+	// on. Local/remote processes execute immediately, so they start `running`.
+	initial := process.Running
+	if policy == "broker" {
+		initial = process.Unclaimed
+	}
+	st := entity.Payload{"status": string(initial)}
 	if subject != "" {
 		st["flow"] = subject
 	}
@@ -103,7 +97,7 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, subject, polic
 					st["paused"] = false
 				default:
 					st["status"] = ev.Text
-					if Terminal(ev.Text) {
+					if process.Status(ev.Text).Terminal() {
 						if r := h.Result(); r != "" { // keep the full final answer, durably
 							st["result"] = r
 						}

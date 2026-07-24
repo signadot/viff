@@ -5,12 +5,12 @@ import (
 	"errors"
 )
 
-// Failed builds a process that terminates immediately with msg as its error — used
+// NewFailed builds a process that terminates immediately with msg as its error — used
 // when a spawn cannot be honored (e.g. an `llm` driver requested with no creds). The
 // point is that *that spawn* errors while the engine keeps running: it is hosted like
 // any process (visible via `process get`, status error), rather than a nil that
 // vanishes or a panic that stops the loop.
-func Failed(id string, reg Resolver, msg string) *Process {
+func NewFailed(id string, reg Resolver, msg string) *Process {
 	sup := NewSupervisor(&Vector{Default: Auto}, reg)
 	return NewProcess(id, sup, failDriver{msg: msg}, nopExec{})
 }

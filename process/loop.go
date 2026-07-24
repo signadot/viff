@@ -88,7 +88,7 @@ type frame struct {
 // Outcome summarizes how a run ended and where the cursor stopped.
 type Outcome struct {
 	Process  string
-	Reason   string // completed | cancelled | driver error
+	Reason   string // completed | cancelled | failed (a process.Status)
 	Boundary int    // cursor position at exit
 }
 
@@ -260,8 +260,8 @@ func (p *Process) Run(ctx context.Context) (Outcome, error) {
 		tu, more, err := p.driver.Next(ctx, prev)
 		if err != nil {
 			p.joinChildren() // bottom-up: children unwind before the parent
-			p.teardown(ctx, "driver error")
-			return Outcome{Process: p.ID, Reason: "driver error", Boundary: p.seq}, err
+			p.teardown(ctx, Failed)
+			return Outcome{Process: p.ID, Reason: string(Failed), Boundary: p.seq}, err
 		}
 		if !more {
 			// structured join: never complete while children run (no orphans).
@@ -272,7 +272,7 @@ func (p *Process) Run(ctx context.Context) (Outcome, error) {
 				prev = StepResult{} // a completion (or steer) was folded; let the driver react
 				continue
 			}
-			return p.teardown(ctx, "completed"), nil // normal return → unwind
+			return p.teardown(ctx, Completed), nil // normal return → unwind
 		}
 		if p.repo != nil {
 			tu.Repo = p.repo()
@@ -459,7 +459,7 @@ func (p *Process) joinChildren() {
 // cancelExit joins children bottom-up, then unwinds the parent's own frame.
 func (p *Process) cancelExit(ctx context.Context, cause error) (Outcome, error) {
 	p.joinChildren()
-	return p.teardown(ctx, "cancelled"), cause
+	return p.teardown(ctx, Cancelled), cause
 }
 
 func (p *Process) pushFrame(label string) {
@@ -498,15 +498,15 @@ func (p *Process) unwind(ctx context.Context, f *frame) {
 	}
 }
 
-func (p *Process) teardown(ctx context.Context, why string) Outcome {
+func (p *Process) teardown(ctx context.Context, why Status) Outcome {
 	if len(p.frames) > 0 {
 		p.logf("— %s: unwinding %d frame(s)", why, len(p.frames))
 	}
 	for len(p.frames) > 0 {
 		p.popFrameUnwind(ctx)
 	}
-	p.emit(Frame{Kind: EvStatus, Text: why})
-	return Outcome{Process: p.ID, Reason: why, Boundary: p.seq}
+	p.emit(Frame{Kind: EvStatus, Text: string(why)})
+	return Outcome{Process: p.ID, Reason: string(why), Boundary: p.seq}
 }
 
 func (p *Process) record(tu ToolUse, res Resolution) {

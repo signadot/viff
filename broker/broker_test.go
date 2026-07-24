@@ -46,20 +46,19 @@ func TestBrokerDialInLoop(t *testing.T) {
 	postJSON(t, cl, srv.URL+"/processes/t1/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"say","text":"looking"},{"kind":"status","text":"completed"}],"result":"looks good"}`, nil)
 
+	// Read until both worker reports arrive (the claim also emitted a running transition).
 	seen := map[string]bool{}
-	for i := 0; i < 2; i++ {
+	deadline := time.After(2 * time.Second)
+	for !seen["say:looking"] || !seen["status:completed"] {
 		select {
 		case ev := <-ch:
 			seen[ev.Kind+":"+ev.Text] = true
 			if ev.Cursor == 0 {
 				t.Fatal("reported event carried no cursor")
 			}
-		case <-time.After(2 * time.Second):
-			t.Fatalf("timed out; verse observed only %v", seen)
+		case <-deadline:
+			t.Fatalf("verse did not observe the worker's reports: %v", seen)
 		}
-	}
-	if !seen["say:looking"] || !seen["status:completed"] {
-		t.Fatalf("verse did not observe the worker's reports: %v", seen)
 	}
 	if h.Result() != "looks good" {
 		t.Fatalf("Result()=%q, want the reported result", h.Result())
@@ -135,13 +134,24 @@ func TestVerseAuthoritativeCancel(t *testing.T) {
 
 	h.Cancel("operator stop") // no worker report involved
 
-	select {
-	case ev := <-ch:
-		if ev.Kind != process.EvStatus || ev.Text != "cancelled" {
-			t.Fatalf("first event = %s/%s, want status/cancelled from the verse-side latch", ev.Kind, ev.Text)
+	// The claim above emitted an unclaimed→running transition; skip it and assert the
+	// verse-side cancel then latches cancelled (observable with no worker report).
+	got := ""
+	deadline := time.After(2 * time.Second)
+loop:
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Kind == process.EvStatus && ev.Text != string(process.Running) {
+				got = ev.Text
+				break loop
+			}
+		case <-deadline:
+			t.Fatal("verse Cancel did not surface a cancelled status")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("verse Cancel did not surface a cancelled status")
+	}
+	if got != string(process.Cancelled) {
+		t.Fatalf("status after cancel = %q, want cancelled from the verse-side latch", got)
 	}
 
 	// a late worker completion loses to the latch: the report is a frozen no-op.
@@ -220,8 +230,8 @@ func TestGateLoop(t *testing.T) {
 		t.Fatal("no snapshot")
 	}
 	snap, _ := b.ProcessSnapshot("p")
-	if pend, _ := snap["pending"].([]map[string]any); len(pend) != 1 || pend[0]["id"] != "deploy-1" {
-		t.Fatalf("snapshot pending = %+v, want the raised gate", snap["pending"])
+	if len(snap.Pending) != 1 || snap.Pending[0].ID != "deploy-1" {
+		t.Fatalf("snapshot pending = %+v, want the raised gate", snap.Pending)
 	}
 
 	rh := h.(interface {
@@ -258,8 +268,8 @@ func TestGateLoop(t *testing.T) {
 	if got == nil || got["proceed"] != true {
 		t.Fatalf("worker inbox missing the approved resolve: %+v", inbox)
 	}
-	if snap, _ := b.ProcessSnapshot("p"); len(snap["pending"].([]map[string]any)) != 0 {
-		t.Fatalf("pending should clear after resolve: %+v", snap["pending"])
+	if snap, _ := b.ProcessSnapshot("p"); len(snap.Pending) != 0 {
+		t.Fatalf("pending should clear after resolve: %+v", snap.Pending)
 	}
 }
 

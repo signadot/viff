@@ -106,7 +106,7 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	eng.AddTrigger(Trigger{
 		Name:    "greedy",
 		Matches: []entity.Pattern{{}}, // matches everything...
-		Action:  Action{},         // no effect: firing is all we observe (via Fired)
+		Action:  Action{},             // no effect: firing is all we observe (via Fired)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -141,7 +141,7 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	eng.AddTrigger(Trigger{
 		Name:    "spin",
 		Matches: []entity.Pattern{{System: "demo", Kind: "loop"}}, // any change to demo:loop:* re-matches
-		Action:  Action{Set: map[string]any{"tick": true}},    // writes another matching change
+		Action:  Action{Set: map[string]any{"tick": true}},        // writes another matching change
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

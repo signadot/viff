@@ -108,7 +108,7 @@ type procState struct {
 	inboxCur int64
 	pending  map[string]string // open gate decisions raised by the worker: id -> gate
 	result   string
-	status   string // latched terminal status (completed | cancelled | failed)
+	status   process.Status // latched terminal status
 	terminal bool
 }
 
@@ -164,7 +164,7 @@ func (ps *procState) enqueue(it inboxItem) {
 // returns true iff this call performed the latch; the caller emits the status event only on
 // a true return, so a losing writer (e.g. a late worker `completed` after a verse `cancel`)
 // leaves no second terminal on the log. An optional result is frozen alongside.
-func (ps *procState) latchTerminal(status, result string) bool {
+func (ps *procState) latchTerminal(status process.Status, result string) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.terminal {
@@ -179,7 +179,7 @@ func (ps *procState) latchTerminal(status, result string) bool {
 }
 
 // terminalState reports the frozen terminal status/result, if any.
-func (ps *procState) terminalState() (status, result string, ok bool) {
+func (ps *procState) terminalState() (status process.Status, result string, ok bool) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.status, ps.result, ps.terminal
@@ -199,38 +199,33 @@ func (ps *procState) cursorNow() int64 {
 	return ps.logCur
 }
 
-func terminal(status string) bool {
-	return status == "completed" || status == "cancelled" || status == "failed"
-}
-
 // snapshot renders this process in the shape the process API returns (id/task/status/
 // result/cursor/pending), so a brokered process appears in the unified `process list`
-// alongside local ones. driver is included for context; status is running until terminal.
-func (ps *procState) snapshot() map[string]any {
+// alongside local ones. driver is included for context; status is unclaimed → running → terminal.
+func (ps *procState) snapshot() process.Instance {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	status := StatusRunning
+	status := process.Unclaimed // spawned, hosted here, no executor yet
+	if ps.claimBy != "" {
+		status = process.Running // an executor claimed it and is working
+	}
 	if ps.terminal {
 		status = ps.status
 	}
-	pending := make([]map[string]any, 0, len(ps.pending))
+	pending := make([]process.PendingGate, 0, len(ps.pending))
 	for id, gate := range ps.pending {
-		pending = append(pending, map[string]any{"id": id, "gate": gate})
+		pending = append(pending, process.PendingGate{ID: id, Gate: gate})
 	}
-	return map[string]any{
-		"id": ps.id, "task": ps.task, "driver": ps.driver, "status": status,
-		"result": ps.result, "cursor": ps.logCur, "pending": pending,
+	return process.Instance{
+		ID: ps.id, Task: ps.task, Driver: ps.driver, Status: status,
+		Result: ps.result, Cursor: ps.logCur, Pending: pending,
 	}
 }
-
-// StatusRunning is the status of a brokered process before it reaches a terminal state
-// (spawned, claimed, or working) — matching the local runtime's "running".
-const StatusRunning = "running"
 
 // ListProcesses / ProcessSnapshot enumerate the broker's processes for versed's unified
 // process list. Each brokered process carries its dialURL so its worker face is discoverable
 // from `process list`/`get` (the same base for all of a broker's processes).
-func (b *Broker) ListProcesses() []map[string]any {
+func (b *Broker) ListProcesses() []process.Instance {
 	b.mu.Lock()
 	base := b.base
 	pss := make([]*procState, 0, len(b.procs))
@@ -238,25 +233,25 @@ func (b *Broker) ListProcesses() []map[string]any {
 		pss = append(pss, ps)
 	}
 	b.mu.Unlock()
-	out := make([]map[string]any, 0, len(pss))
+	out := make([]process.Instance, 0, len(pss))
 	for _, ps := range pss {
 		m := ps.snapshot()
 		if base != "" {
-			m["dialURL"] = base
+			m.DialURL = base
 		}
 		out = append(out, m)
 	}
 	return out
 }
 
-func (b *Broker) ProcessSnapshot(id string) (map[string]any, bool) {
+func (b *Broker) ProcessSnapshot(id string) (process.Instance, bool) {
 	ps := b.get(id)
 	if ps == nil {
-		return nil, false
+		return process.Instance{}, false
 	}
 	m := ps.snapshot()
 	if base := b.dialURL(); base != "" {
-		m["dialURL"] = base
+		m.DialURL = base
 	}
 	return m, true
 }
@@ -343,8 +338,8 @@ func (h *handle) Cancel(reason string) {
 		return
 	}
 	ps.enqueue(inboxItem{Kind: "cancel", Text: reason}) // relay to a live worker
-	if ps.latchTerminal("cancelled", "") {
-		ps.emit(process.Frame{Kind: process.EvStatus, Text: "cancelled"})
+	if ps.latchTerminal(process.Cancelled, "") {
+		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Cancelled)})
 	}
 }
 func (h *handle) Steer(instr, by string) {
@@ -425,7 +420,8 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "already claimed", http.StatusConflict)
 		return
 	}
-	ps.epoch++ // mint a new generation; fences any prior holder (including a same-id zombie)
+	firstClaim := ps.claimBy == "" // unclaimed → running transition (below, off-lock)
+	ps.epoch++                     // mint a new generation; fences any prior holder (including a same-id zombie)
 	ps.claimBy = body.Identity
 	resp := map[string]any{
 		"spec":    map[string]string{"task": ps.task, "driver": ps.driver},
@@ -434,6 +430,11 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		"rCursor": ps.logCur,   // resume reporting from here
 	}
 	ps.mu.Unlock()
+	// An executor picked it up: leave the pre-running `unclaimed` state. emit takes ps.mu,
+	// so it must run off-lock. A re-claim by the same worker (resume) does not re-announce.
+	if firstClaim {
+		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Running)})
+	}
 	writeJSON(w, resp)
 }
 
@@ -499,9 +500,9 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 	}
 	latched := false
 	for _, e := range body.Events {
-		if e.Kind == process.EvStatus && terminal(e.Text) {
+		if e.Kind == process.EvStatus && process.Status(e.Text).Terminal() {
 			latched = true
-			if ps.latchTerminal(e.Text, body.Result) { // worker-authoritative done/fail
+			if ps.latchTerminal(process.Status(e.Text), body.Result) { // worker-authoritative done/fail
 				ps.emit(e)
 			}
 			break // nothing follows a terminal

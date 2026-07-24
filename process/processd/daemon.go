@@ -45,27 +45,27 @@ type hosted struct {
 	task string
 
 	mu     sync.Mutex
-	status string // running | completed | cancelled | error
+	status process.Status
 	reason string
 	err    string
 	result string // the process's final output (driver's last message), once completed
 }
 
-func (h *hosted) snapshot() map[string]any {
+func (h *hosted) snapshot() process.Instance {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	pend := h.reg.Pending()
-	pending := make([]map[string]any, 0, len(pend))
+	pending := make([]process.PendingGate, 0, len(pend))
 	for _, p := range pend {
-		pending = append(pending, map[string]any{
-			"id": p.Question.ID, "origin": p.Question.Origin, "tool": p.Tool,
-			"gate": p.Question.Gate, "mode": p.Question.Mode.String(), "reason": p.Question.Reason,
+		pending = append(pending, process.PendingGate{
+			ID: p.Question.ID, Origin: p.Question.Origin, Tool: p.Tool,
+			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Reason: p.Question.Reason,
 		})
 	}
-	return map[string]any{
-		"id": h.proc.ID, "task": h.task, "status": h.status,
-		"reason": h.reason, "err": h.err, "result": h.result, "pending": pending,
-		"cursor": h.proc.Cursor(), // resume the event stream with ?since=<cursor>
+	return process.Instance{
+		ID: h.proc.ID, Task: h.task, Status: h.status,
+		Err: h.err, Result: h.result, Pending: pending,
+		Cursor: h.proc.Cursor(), // resume the event stream with ?since=<cursor>
 	}
 }
 
@@ -119,7 +119,7 @@ func (d *Daemon) Spawn(id, task, driver string, content process.ContentReader) *
 func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentReader) *hosted {
 	reg := process.NewRegistry()
 	proc := d.build(id, task, driver, reg, content)
-	h := &hosted{proc: proc, reg: reg, task: task, status: "running"}
+	h := &hosted{proc: proc, reg: reg, task: task, status: process.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
@@ -140,10 +140,10 @@ func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentRea
 		// the stop path.
 		out, err := proc.Run(context.Background())
 		h.mu.Lock()
-		h.reason, h.status = out.Reason, out.Reason
+		h.reason, h.status = out.Reason, process.Status(out.Reason)
 		h.result = proc.Result() // the driver's final answer, if any
 		if err != nil {
-			h.status, h.err = "error", err.Error()
+			h.status, h.err = process.Failed, err.Error()
 		}
 		h.mu.Unlock()
 	}()
@@ -174,10 +174,10 @@ func (d *Daemon) list(w http.ResponseWriter, r *http.Request) {
 
 // Snapshots returns every hosted process in the shape the process API returns — for versed
 // to union the local runtime with a policy's own processes (e.g. a broker's) in one list.
-func (d *Daemon) Snapshots() []map[string]any {
+func (d *Daemon) Snapshots() []process.Instance {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	out := make([]map[string]any, 0, len(d.proc))
+	out := make([]process.Instance, 0, len(d.proc))
 	for _, h := range d.proc {
 		out = append(out, h.snapshot())
 	}
@@ -185,12 +185,12 @@ func (d *Daemon) Snapshots() []map[string]any {
 }
 
 // SnapshotOf returns one hosted process's snapshot, or false if this daemon doesn't host it.
-func (d *Daemon) SnapshotOf(id string) (map[string]any, bool) {
+func (d *Daemon) SnapshotOf(id string) (process.Instance, bool) {
 	d.mu.Lock()
 	h := d.proc[id]
 	d.mu.Unlock()
 	if h == nil {
-		return nil, false
+		return process.Instance{}, false
 	}
 	return h.snapshot(), true
 }
@@ -238,8 +238,8 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 			})
 		}
-		if st, _ := h.snapshot()["status"].(string); st != "" && st != "running" {
-			writeSSE(w, process.Frame{Kind: process.EvStatus, Text: st, Process: h.proc.ID})
+		if st := h.snapshot().Status; st.Terminal() {
+			writeSSE(w, process.Frame{Kind: process.EvStatus, Text: string(st), Process: h.proc.ID})
 		}
 	}
 	defer unsub()

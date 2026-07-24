@@ -107,7 +107,7 @@ func TestReapVsCancelFlowNoRace(t *testing.T) {
 	}
 	terminal := entity.Event{
 		Ref: mirror.Ref("b"), Op: entity.Delete,
-		To: entity.Payload{"status": mirror.StatusCompleted, "flow": subj},
+		To: entity.Payload{"status": string(process.Completed), "flow": subj},
 	}
 
 	var wg sync.WaitGroup
@@ -153,17 +153,17 @@ func TestDoNoDeadlockAfterCancel(t *testing.T) {
 // already-terminal ones.
 func TestReconcileOrphans(t *testing.T) {
 	store := entity.NewMemStore()
-	store.Put(mirror.Ref("old-running"), entity.Payload{"status": mirror.StatusRunning, "flow": "demo:pr:1"})
-	store.Put(mirror.Ref("old-done"), entity.Payload{"status": mirror.StatusCompleted, "flow": "demo:pr:2"})
+	store.Put(mirror.Ref("old-running"), entity.Payload{"status": string(process.Running), "flow": "demo:pr:1"})
+	store.Put(mirror.Ref("old-done"), entity.Payload{"status": string(process.Completed), "flow": "demo:pr:2"})
 
 	eng := New(store, process.AutoResolver{})
 	if n := eng.ReconcileOrphans(); n != 1 {
 		t.Fatalf("reconciled %d, want 1", n)
 	}
-	if e, _ := store.Get(mirror.Ref("old-running")); e.Payload["status"] != mirror.StatusOrphaned {
+	if e, _ := store.Get(mirror.Ref("old-running")); e.Payload["status"] != string(process.Orphaned) {
 		t.Fatalf("running process not orphaned: %+v", e.Payload)
 	}
-	if e, _ := store.Get(mirror.Ref("old-done")); e.Payload["status"] != mirror.StatusCompleted {
+	if e, _ := store.Get(mirror.Ref("old-done")); e.Payload["status"] != string(process.Completed) {
 		t.Fatalf("completed process wrongly touched: %+v", e.Payload)
 	}
 }

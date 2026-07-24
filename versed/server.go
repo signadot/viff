@@ -227,7 +227,7 @@ func (s *Server) reconcileProcesses() {
 	}
 	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		status, _ := ent.Payload["status"].(string)
-		if status == "" || mirror.Terminal(status) {
+		if status == "" || process.TerminalStatus(status) {
 			continue
 		}
 		policyRef, _ := ent.Payload["policy"].(string)
@@ -244,7 +244,7 @@ func (s *Server) reconcileProcesses() {
 		for k, v := range ent.Payload {
 			p[k] = v
 		}
-		p["status"] = mirror.StatusOrphaned
+		p["status"] = string(process.Orphaned)
 		s.Store.Put(ent.Ref, p)
 	}
 }
@@ -591,30 +591,15 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	for _, snap := range s.processSnapshots(s.scopedStore(r)) {
-		for _, d := range asMaps(snap["pending"]) {
-			d["process"], d["where"] = snap["id"], "process"
-			out = append(out, d)
+		for _, pg := range snap.Pending {
+			out = append(out, map[string]any{
+				"id": pg.ID, "origin": pg.Origin, "gate": pg.Gate,
+				"mode": pg.Mode, "reason": pg.Reason, "tool": pg.Tool,
+				"process": snap.ID, "where": "process",
+			})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// asMaps coerces a snapshot's `pending` (native []map[string]any from the local runtime, or
-// []any of maps after a remote JSON round-trip) to a uniform []map[string]any.
-func asMaps(v any) []map[string]any {
-	switch t := v.(type) {
-	case []map[string]any:
-		return t
-	case []any:
-		out := make([]map[string]any, 0, len(t))
-		for _, e := range t {
-			if m, ok := e.(map[string]any); ok {
-				out = append(out, m)
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
@@ -727,8 +712,8 @@ func hasFace(p process.ControlPolicy) bool {
 // processd the union already lists — so brokered processes are added without double-counting
 // local ones.
 type processLister interface {
-	ListProcesses() []map[string]any
-	ProcessSnapshot(id string) (map[string]any, bool)
+	ListProcesses() []process.Instance
+	ProcessSnapshot(id string) (process.Instance, bool)
 }
 
 // spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
@@ -781,28 +766,27 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 // overlay's own writes, plus baseline seen through the overlay. On a store without real
 // scopes (the in-memory passthrough) every instance is visible in every scope, so this is
 // a no-op there — matching the documented isolation boundary (real isolation on docd/logd).
-func (s *Server) processSnapshots(store entity.Store) []map[string]any {
+func (s *Server) processSnapshots(store entity.Store) []process.Instance {
 	members := s.scopeMembers(store)
-	keep := func(m map[string]any) bool {
+	keep := func(inst process.Instance) bool {
 		if members == nil {
 			return true
 		}
-		id, _ := m["id"].(string)
-		return members[id]
+		return members[inst.ID]
 	}
-	out := make([]map[string]any, 0)
-	for _, m := range s.Procd.Snapshots() {
-		if keep(m) {
-			m["policy"] = "local"
-			out = append(out, m)
+	out := make([]process.Instance, 0)
+	for _, inst := range s.Procd.Snapshots() {
+		if keep(inst) {
+			inst.Policy = "local"
+			out = append(out, inst)
 		}
 	}
 	if l, ok := s.policy.(processLister); ok {
 		ref := s.policy.Ref()
-		for _, m := range l.ListProcesses() {
-			if keep(m) {
-				m["policy"] = ref
-				out = append(out, m)
+		for _, inst := range l.ListProcesses() {
+			if keep(inst) {
+				inst.Policy = ref
+				out = append(out, inst)
 			}
 		}
 	}
@@ -859,15 +843,15 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 // the process runs locally or behind a broker.
 func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if m, ok := s.Procd.SnapshotOf(id); ok {
-		m["policy"] = "local"
-		writeJSON(w, http.StatusOK, m)
+	if inst, ok := s.Procd.SnapshotOf(id); ok {
+		inst.Policy = "local"
+		writeJSON(w, http.StatusOK, inst)
 		return
 	}
 	if l, ok := s.policy.(processLister); ok {
-		if m, ok := l.ProcessSnapshot(id); ok {
-			m["policy"] = s.policy.Ref()
-			writeJSON(w, http.StatusOK, m)
+		if inst, ok := l.ProcessSnapshot(id); ok {
+			inst.Policy = s.policy.Ref()
+			writeJSON(w, http.StatusOK, inst)
 			return
 		}
 	}

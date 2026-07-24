@@ -96,8 +96,8 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 	pol.Spawn("r1", "remote task", "scripted", nil)
 
 	lister, ok := pol.(interface {
-		ListProcesses() []map[string]any
-		ProcessSnapshot(string) (map[string]any, bool)
+		ListProcesses() []process.Instance
+		ProcessSnapshot(string) (process.Instance, bool)
 	})
 	if !ok {
 		t.Fatal("httpPolicy should implement the lister interface")
@@ -105,7 +105,7 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 
 	var found bool
 	for _, m := range lister.ListProcesses() {
-		if m["id"] == "r1" {
+		if m.ID == "r1" {
 			found = true
 		}
 	}
@@ -114,7 +114,7 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 	}
 
 	snap, ok := lister.ProcessSnapshot("r1")
-	if !ok || snap["task"] != "remote task" {
+	if !ok || snap.Task != "remote task" {
 		t.Fatalf("ProcessSnapshot(r1) = %+v, %v; want the remote task", snap, ok)
 	}
 	if _, ok := lister.ProcessSnapshot("nope"); ok {
@@ -148,7 +148,7 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _ := store.Get(mirror.Ref("t1"))
-		if s, _ := e.Payload["status"].(string); s == mirror.StatusCompleted {
+		if s, _ := e.Payload["status"].(string); s == string(process.Completed) {
 			return // converged: resume recovered the terminal from the remote
 		}
 		select {

@@ -1021,7 +1021,7 @@ func (e *Engine) reapOnDone(subject string, fp flowProc) {
 	ch, unsub := fp.h.Subscribe()
 	defer unsub()
 	for ev := range ch {
-		if ev.Kind == process.EvStatus && mirror.Terminal(ev.Text) {
+		if ev.Kind == process.EvStatus && process.TerminalStatus(ev.Text) {
 			break
 		}
 	}
@@ -1116,7 +1116,7 @@ func (e *Engine) reap(ev entity.Event) {
 		return
 	}
 	status, _ := ev.To["status"].(string)
-	if !mirror.Terminal(status) {
+	if !process.TerminalStatus(status) {
 		return
 	}
 	e.flowsMu.Lock()
@@ -1156,11 +1156,11 @@ func (e *Engine) ReconcileOrphans() int {
 	n := 0
 	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		status, _ := ent.Payload["status"].(string)
-		if status == "" || mirror.Terminal(status) {
+		if status == "" || process.TerminalStatus(status) {
 			continue
 		}
 		p := clonePayload(ent.Payload)
-		p["status"] = mirror.StatusOrphaned
+		p["status"] = string(process.Orphaned)
 		e.store.Put(ent.Ref, p)
 		n++
 	}

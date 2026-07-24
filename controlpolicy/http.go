@@ -56,7 +56,7 @@ func (p *httpPolicy) Ref() string { return p.base }
 // call is bounded by a short timeout so an unreachable remote yields nothing rather than
 // hanging the list — those processes remain visible via the entity mirror. The verse-facing
 // contract already serves GET /processes and GET /processes/{id}, so this is a thin client.
-func (p *httpPolicy) ListProcesses() []map[string]any {
+func (p *httpPolicy) ListProcesses() []process.Instance {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes", nil)
@@ -65,26 +65,26 @@ func (p *httpPolicy) ListProcesses() []map[string]any {
 		return nil
 	}
 	defer resp.Body.Close()
-	var out []map[string]any
+	var out []process.Instance
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return out
 }
 
-func (p *httpPolicy) ProcessSnapshot(id string) (map[string]any, bool) {
+func (p *httpPolicy) ProcessSnapshot(id string) (process.Instance, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes/"+id, nil)
 	resp, err := p.cl.Do(req)
 	if err != nil {
-		return nil, false
+		return process.Instance{}, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, false
+		return process.Instance{}, false
 	}
-	var m map[string]any
+	var m process.Instance
 	if json.NewDecoder(resp.Body).Decode(&m) != nil {
-		return nil, false
+		return process.Instance{}, false
 	}
 	return m, true
 }
