@@ -27,7 +27,7 @@ One binary. `up` runs the engine + process runtime and brings up its store; ever
 other subcommand is a client.
 
 ```sh
-cd hackspace/verse
+cd verse
 go build -o verse ./cmd/verse
 
 export VERSE_ADDR=localhost:9797     # where clients reach the verse (this is the default)
@@ -65,13 +65,13 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   autonomy dial.
 - **Decision** — where a governed question is *answered* when the answer isn't one inline
   click: a **vote** on a gate (a quorum, with a deadline or a "no"), or a 1-of-N
-  **selection** of a doer (the who-dial, §8). verse reifies it as a channel you watch
-  (`verse decisions`) and add to (`verse vote`); its committed outcome resolves the
-  question. (A plain `ask` gate needs none — one person answers it directly via `gate
-  resolve`.)
+  **selection** of a doer (§8) — the same machinery, two option-sets. verse reifies it as a
+  channel you watch (`verse decisions`) and add to (`verse vote`); its committed outcome
+  resolves the question. (A plain `ask` gate needs none — one person answers it directly via
+  `gate resolve`.)
 - **Action** — declarative data: `set` fields on an entity (a state transition) and/or
-  `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed selection
-  (the who-dial), not a fixed one.
+  `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed decision
+  (§8), not a fixed one.
 - **Process** — a governed unit of work (an agent), hosted by the runtime,
   observable and steerable. Processes are themselves entities in the verse.
 - **Subject** — the entity a piece of work is *about*: the thing moving through the
@@ -827,14 +827,15 @@ the engine keeps running.
   all three through the identical handle, and `process list`/`get`/`attach`/`cancel`/`say`/
   `resolve` work across all of them. A human or external worker executes via `verse process
   do` (§7). Left to do: inbox long-poll. See `docs/control-policy.md`.
-- **Governed decisions** — a gate can be a formula the verse resolves *itself*: a
-  quorum **vote** (with a deny-quorum for "no"), a **deadline** against the clock, or
-  an external **fact** (CI green, a tag). The open question is reified as a decision
-  channel — `verse decisions`, `verse vote` (§8). And the **who-axis** is governed the
-  same way: which doer performs an action is a 1-of-N selection over an inline set or a
-  `provider:*` registry filtered by a match, resolved `auto`/`ask`/`vote` (§8). Left to
-  do: richer disciplines (ranked/weighted votes, review panels), secret ballots via
-  scopes.
+- **Governed decisions** — one machinery answers two questions. *Whether* an action fires
+  is a gate whose **formula** the verse resolves itself: a quorum **vote** (with a
+  deny-quorum for "no"), a **deadline** against the clock, or an external **fact** (CI
+  green, a tag). *Who* does the work is the same decision over a different option set — the
+  doer, chosen from an inline set or a `provider:*` registry filtered by a match. Both
+  reify one **decision channel**: options accumulate ballots, the first to its threshold
+  wins, and the winner commits terminal-once (with a live retract guard), observed via
+  `verse decisions` / `verse vote` (§8). Left to do: richer disciplines (ranked/weighted
+  votes, review panels), secret ballots via scopes.
 - **Goals** — an explicit *target* over the reactive substrate: a goal owns a bundle of
   triggers (the doing), a `doneWhen` formula, and a deadline; it latches `goal:done` /
   `goal:failed` (success *and* "unachievable" are both first-class), holds a live status
