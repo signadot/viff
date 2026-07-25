@@ -63,14 +63,17 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
 - **Gate** — whether an action proceeds: `auto` (fire) · `ask` (a human/agent approves)
   · `park` (hold) — or a **formula** the verse resolves itself (a vote, a deadline). The
   autonomy dial.
-- **Decision** — where a governed question is *answered* when the answer isn't one inline
+- **Motion** — a governed question put to a group, when the answer isn't one inline
   click: a **vote** on a gate (a quorum, with a deadline or a "no"), or a 1-of-N
-  **selection** of a doer (§8) — the same machinery, two option-sets. verse reifies it as a
-  channel you watch (`verse decisions`) and add to (`verse vote`); its committed outcome
-  resolves the question. (A plain `ask` gate needs none — one person answers it directly via
-  `gate resolve`.)
+  **selection** of a doer (§8) — the same machinery, two option-sets. verse reifies it in
+  the store as something you watch (`verse docket`) and add to (`verse vote`); ballots
+  accumulate on it, and when a tally reaches the bar the motion **carries**, its outcome
+  resolving the question. (A plain `ask` gate raises none — one person answers it directly
+  via `gate resolve`.)
+- **Docket** — the open motions, collectively: what the verse is currently waiting on a
+  group to settle (`verse docket`).
 - **Action** — declarative data: `set` fields on an entity (a state transition) and/or
-  `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed decision
+  `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed motion
   (§8), not a fixed one.
 - **Process** — a governed unit of work (an agent), hosted by the runtime,
   observable and steerable. Processes are themselves entities in the verse.
@@ -455,16 +458,16 @@ and steers, done by a person — observed and governed through the one verse. (S
 In §4 a gate was `auto` · `ask` · `park` — one answerer, one click, deciding *whether* an
 action proceeds. But a gate is really just **a question the charter poses**, and some
 questions aren't one person's to answer in one click: a merge that needs *two* reviewers;
-a doer *chosen* from several. verse resolves those the same way — it reifies the open
-question as a **decision** in the store, watches ballots accumulate, and commits an
-**outcome** when a tally reaches the bar. One machinery, two questions:
+a doer *chosen* from several. verse resolves those the same way — it puts the open
+question to the group as a **motion** in the store, watches ballots accumulate, and
+commits an **outcome** when a tally reaches the bar. One machinery, two questions:
 
 - **whether** an action fires — the answer is `proceed` or `deny`.
 - **who** does the work — the answer is *a choice of doer*.
 
 Both are answered the same three ways — `auto` (verse picks by a rule), by **one person**,
-or by the **group** — over the one votable, attributable channel (`verse decisions` /
-`verse vote`). (A one-click `ask` still lives in `gate list` / `gate resolve`; a *decision*
+or by the **group** — over the one votable, attributable surface (`verse docket` /
+`verse vote`). (A one-click `ask` still lives in `gate list` / `gate resolve`; a *motion*
 is what an answer that accumulates over time needs.)
 
 ### Whether: a vote
@@ -485,41 +488,41 @@ verse entity put change:pr:42 '{"stage":"ready"}'
 ```
 
 The trigger fired, but the action is waiting — not on a person, on a **tally**. The open
-question now has a home in the store, where ballots land and the count is watched:
+question is now a motion on the docket, where ballots land and the count is watched:
 
 ```sh
-verse decisions
+verse docket
 # a1b2c3  whether open  options=[proceed(2)]  subject=change:pr:42
 ```
 
 The **options** are what can win — here just `proceed`, at a bar of 2. Cast ballots (each
-names its voter, since a decision must be attributable):
+names its voter, since a motion must be settled attributably):
 
 ```sh
 verse vote a1b2c3 approve --as alice     # 1 of 2 — still open
-verse vote a1b2c3 approve --as bob       # 2 of 2 → closes
-verse decisions
+verse vote a1b2c3 approve --as bob       # 2 of 2 → carries
+verse docket
 # a1b2c3  whether closed  options=[proceed(2)]  outcome=proceed tally=2  subject=change:pr:42
 verse entity get change:pr:42            # → { "stage": "merged" }
 ```
 
-Each `verse vote` writes a ballot into the decision's log; verse *watches the log* and
+Each `verse vote` writes a ballot into the motion's log; verse *watches the log* and
 commits `proceed` when the count reaches the bar. It stays **live**: if alice retracts
-before it commits, the tally drops and the gate re-blocks. Nobody owns the decision; the
-group does.
+before it commits, the tally drops and the gate re-blocks. Nobody owns the motion; the
+group carries it.
 
-**Saying no.** A vote you can only win isn't a vote. Give the decision a *second* option —
+**Saying no.** A vote you can only win isn't a vote. Give the motion a *second* option —
 read `until` as *approvals, unless the rejections get there first*:
 
 ```json
 "formula": { "until": [ {"quorum": 2}, {"quorum": {"choice":"reject","n":2}} ] }
 ```
 
-Now the decision has two options, `proceed` and `deny`, and the first to *its* bar wins.
+Now the motion has two options, `proceed` and `deny`, and the first to *its* bar wins.
 Two rejects close it `outcome=deny` and the action never runs. "No" is a real outcome, not
 the absence of "yes."
 
-**A deadline.** Votes stall, and you don't want a decision open forever. Make the second
+**A deadline.** Votes stall, and you don't want a motion open forever. Make the second
 option a **deadline** — the clock is what satisfies it:
 
 ```json
@@ -527,12 +530,12 @@ option a **deadline** — the clock is what satisfies it:
 ```
 
 ```sh
-verse decisions
+verse docket
 # a1b2c3  whether open  options=[proceed(2)]  closes=2026-07-23T08:15:36  subject=change:pr:42
 ```
 
-Two approvals first ⇒ `proceed`; the clock first ⇒ the deadline **defaults** the decision
-to `deny` (action skipped). The deadline is per-decision and durable (a restart re-reads
+Two approvals first ⇒ `proceed`; the clock first ⇒ the deadline **defaults** the motion
+to `deny` (action skipped). The deadline is per-motion and durable (a restart re-reads
 `closes` and honors the elapsed wall time). For a real external signal instead of a clock,
 the right side can be a `fact` — `{"fact": "ci:status:green"}` waits for CI, a tag, a
 posted review.
@@ -544,7 +547,7 @@ a requirement — `quorum`, `fact`, `deadline` — and operators compose them (`
 ### Who: a selection
 
 The second question hides in every `spawn`: **who** does it. In §4–5 a spawn named a fixed
-`driver`. That's a decision too — over a different option set. Name the eligible doers and
+`driver`. That's a motion too — over a different option set. Name the eligible doers and
 how to choose, instead of one driver:
 
 ```json
@@ -555,26 +558,26 @@ how to choose, instead of one driver:
 ```
 
 `select` is **the same dial, on the *who* axis**: `auto` (a rule picks the first eligible),
-`ask` (one person picks), `vote` (the group picks). It opens the *same kind* of decision —
+`ask` (one person picks), `vote` (the group picks). It raises the *same kind* of motion —
 the options are now the doers:
 
 ```sh
-verse decisions
+verse docket
 # d4e5f6  select open  options=[gpt(2) claude(2)]  subject=change:pr:1
 ```
 
-Same channel, same ballots — but the answer is a *choice*:
+Same docket, same ballots — but the answer is a *choice*:
 
 ```sh
 verse vote d4e5f6 claude --as x
 verse vote d4e5f6 claude --as y
-verse decisions
+verse docket
 # d4e5f6  select closed  options=[gpt(2) claude(2)]  outcome=claude tally=2
 ```
 
 The process spawns on the chosen doer. The pick is fixed for that run; reassigning means
 cancel-and-respawn, not a live swap mid-flight. (A `within` deadline works here too — if no
-doer reaches the bar in time, the decision closes with no pick and nothing spawns.)
+doer reaches the bar in time, the motion closes with no pick and nothing spawns.)
 
 **A roster of doers.** Listing driver names inline gets old, and real doers have attributes
 — a tier, a cost, a specialty. Register them once (they're just entities) and select by
@@ -598,7 +601,7 @@ Now the action selects by **capability + a match over attributes**, not by name:
 ```
 
 ```sh
-verse decisions
+verse docket
 # … select open  options=[claude(2) gpt(2)] …
 ```
 
@@ -785,8 +788,8 @@ verse
   entity (e)  get <ref> · put <ref> <json> · list [--system --kind]
 
   gate    list · resolve <id> --approve|--deny [--say <text>]
-  decisions                                  list decision channels (votes + provider selections)
-  vote    <decision> <choice> --as <who>     cast a ballot (approve|reject, or a select-option)
+  docket                                     list open motions (votes + provider selections)
+  vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
   providers                                  list the provider registry (provider:<capability>:<id>)
   trigger add [-f <file>|-] [file] · list · show <name> · remove <name>   (add rejects a duplicate name)
   process (ps)  run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors policy; mirrored)
@@ -911,11 +914,11 @@ the engine keeps running.
 - **Governed decisions** — one machinery answers two questions. *Whether* an action fires
   is a gate whose **formula** the verse resolves itself: a quorum **vote** (with a
   deny-quorum for "no"), a **deadline** against the clock, or an external **fact** (CI
-  green, a tag). *Who* does the work is the same decision over a different option set — the
+  green, a tag). *Who* does the work is the same motion over a different option set — the
   doer, chosen from an inline set or a `provider:*` registry filtered by a match. Both
-  reify one **decision channel**: options accumulate ballots, the first to its threshold
+  raise one **motion**: options accumulate ballots, the first to its threshold
   wins, and the winner commits terminal-once (with a live retract guard), observed via
-  `verse decisions` / `verse vote` (§8). Left to do: richer disciplines (ranked/weighted
+  `verse docket` / `verse vote` (§8). Left to do: richer disciplines (ranked/weighted
   votes, review panels), secret ballots via scopes.
 - **Goals** — an explicit *target* over the reactive substrate: a goal owns a bundle of
   triggers (the doing), a `doneWhen` formula, and a deadline; it latches `goal:done` /

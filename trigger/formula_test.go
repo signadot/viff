@@ -18,10 +18,10 @@ func TestFormulaCompactUnmarshal(t *testing.T) {
 		{`{"quorum":{"choice":"reject","n":3}}`, func(f *Formula) bool {
 			return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.Choice == "reject" && f.Req.N == 3
 		}},
-		{`{"fact":"decision:deadline"}`, func(f *Formula) bool {
-			return f.Op == OpAtom && f.Req.Kind == ReqFact && f.Req.Facts.System() == "decision" && f.Req.Facts.Kind() == "deadline"
+		{`{"fact":"motion:deadline"}`, func(f *Formula) bool {
+			return f.Op == OpAtom && f.Req.Kind == ReqFact && f.Req.Facts.System() == "motion" && f.Req.Facts.Kind() == "deadline"
 		}},
-		{`{"until":[{"quorum":2},{"fact":"decision:deadline"}]}`, func(f *Formula) bool {
+		{`{"until":[{"quorum":2},{"fact":"motion:deadline"}]}`, func(f *Formula) bool {
 			return f.Op == OpUntil && len(f.Args) == 2 && f.Args[0].Req.Kind == ReqQuorum && f.Args[1].Req.Kind == ReqFact
 		}},
 		{`{"op":"atom","req":{"kind":"quorum","n":2}}`, func(f *Formula) bool { // verbose still accepted
@@ -65,18 +65,18 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	st := entity.NewMemStore()
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: Match{"system": "decision", "kind": "vote"},
+		Facts: Match{"system": "motion", "kind": "vote"},
 		N:     2,
 	}}
 
 	// Below threshold: one vote → not satisfied.
-	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "alice"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "alice"}, entity.Payload{"choice": "approve"})
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) satisfied with 1 vote")
 	}
 
 	// At threshold: two votes → satisfied, witness names both.
-	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "bob"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "bob"}, entity.Payload{"choice": "approve"})
 	ok, witness := quorum.Eval(st)
 	if !ok {
 		t.Fatalf("quorum(2) not satisfied with 2 votes")
@@ -86,7 +86,7 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	}
 
 	// Revoke below threshold: delete a vote → un-satisfied (safety: it can flip back).
-	st.Delete(entity.Ref{System: "decision", Kind: "vote", ID: "bob"})
+	st.Delete(entity.Ref{System: "motion", Kind: "vote", ID: "bob"})
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) still satisfied after a vote was retracted")
 	}
@@ -97,12 +97,12 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 	st := entity.NewMemStore()
 	approvals := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: Match{"system": "decision", "kind": "vote", "fields": map[string]any{"choice": "approve"}},
+		Facts: Match{"system": "motion", "kind": "vote", "fields": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
-	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
-	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "b"}, entity.Payload{"choice": "reject"})
-	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "c"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Payload{"choice": "reject"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "c"}, entity.Payload{"choice": "approve"})
 	ok, witness := approvals.Eval(st)
 	if !ok || len(witness) != 2 {
 		t.Fatalf("approve-quorum(2) = (%v, %d refs), want (true, 2) — 'reject' must not count", ok, len(witness))
@@ -112,8 +112,8 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 // A stubbed requirement kind (no producer yet) blocks — it never satisfies.
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
 	st := entity.NewMemStore()
-	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: Match{"system": "decision", "kind": "judgment"}}}
-	st.Put(entity.Ref{System: "decision", Kind: "judgment", ID: "x"}, entity.Payload{"verdict": "ship"})
+	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: Match{"system": "motion", "kind": "judgment"}}}
+	st.Put(entity.Ref{System: "motion", Kind: "judgment", ID: "x"}, entity.Payload{"verdict": "ship"})
 	if ok, _ := judged.Eval(st); ok {
 		t.Fatalf("stubbed requirement %q should block, not satisfy", ReqJudgment)
 	}

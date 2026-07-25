@@ -81,7 +81,7 @@ type SubtreeWatcher interface {
 }
 
 // Precondition asserts that the current value at Ref's subtree satisfies Pattern (a tony
-// match). ID == "" selects the whole (System, Kind) subtree (e.g. a decision's vote log);
+// match). ID == "" selects the whole (System, Kind) subtree (e.g. a motion's vote log);
 // otherwise it is one entity's payload. It is the building block of a ConditionalCommitter's
 // atomic compare-and-swap, evaluated against the store state as of the commit.
 type Precondition struct {
@@ -92,11 +92,11 @@ type Precondition struct {
 // ConditionalCommitter is an optional capability: write a payload to one ref iff EVERY
 // Precondition still holds — atomically, together with the write, in a single step (docd's
 // cross-path PatchIf on the server; the in-memory store under its write lock). It is the
-// airtight substrate for a revocable, terminal-once decision commit: the verdict lands only
-// if the justifying facts still hold AND the decision has not already been decided, with no
+// airtight substrate for a revocable, terminal-once motion commit: the verdict lands only
+// if the justifying facts still hold AND the motion has not already been decided, with no
 // window between the check and the write for a revoke to slip through. Returns (committed,
 // err); (false, nil) means a precondition did not hold (a revoke, or an already-committed
-// decision). A store lacking this capability commits best-effort (check-then-Modify), which
+// motion). A store lacking this capability commits best-effort (check-then-Modify), which
 // leaves a small non-atomic window.
 type ConditionalCommitter interface {
 	CommitIf(ref Ref, payload Payload, pre ...Precondition) (committed bool, err error)

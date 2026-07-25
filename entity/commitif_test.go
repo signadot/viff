@@ -2,7 +2,7 @@ package entity
 
 import "testing"
 
-// CommitIf is the airtight substrate for a revocable, terminal-once decision commit. These
+// CommitIf is the airtight substrate for a revocable, terminal-once motion commit. These
 // exercise both the in-memory store (single-lock atomicity) and the logd-backed store
 // (docd cross-path PatchIf) through the same capability, so the two agree.
 
@@ -20,7 +20,7 @@ func conditionalCommit(t *testing.T, s Store) {
 	if !ok {
 		t.Fatal("store is not a ConditionalCommitter")
 	}
-	ch := Ref{System: "decision", Kind: "channel", ID: "d1"}
+	ch := Ref{System: "motion", Kind: "channel", ID: "d1"}
 	s.Put(ch, Payload{"status": "open", "gate": "approvals"})
 	s.Put(Ref{System: "vote", Kind: "d1", ID: "alice"}, Payload{"choice": "approve"})
 	s.Put(Ref{System: "vote", Kind: "d1", ID: "bob"}, Payload{"choice": "approve"})
@@ -46,7 +46,7 @@ func conditionalCommit(t *testing.T, s Store) {
 		t.Fatalf("second commit err: %v", err)
 	}
 	if committed2 {
-		t.Fatal("terminal-once violated: a second commit landed after the decision closed")
+		t.Fatal("terminal-once violated: a second commit landed after the motion closed")
 	}
 	if got, _ := s.Get(ch); got.Payload["outcome"] != "proceed" {
 		t.Fatalf("outcome changed after the latch: %+v", got.Payload)
@@ -58,7 +58,7 @@ func conditionalCommit(t *testing.T, s Store) {
 func conditionalCommitRevoke(t *testing.T, s Store) {
 	t.Helper()
 	cc := s.(ConditionalCommitter)
-	ch := Ref{System: "decision", Kind: "channel", ID: "d2"}
+	ch := Ref{System: "motion", Kind: "channel", ID: "d2"}
 	s.Put(ch, Payload{"status": "open"})
 	s.Put(Ref{System: "vote", Kind: "d2", ID: "alice"}, Payload{"choice": "approve"})
 

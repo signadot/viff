@@ -209,7 +209,7 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 }
 
 // Requirement.Facts is now a Match, so a formula's leaf and a trigger's subject share one
-// grammar. The compact wire form must be unchanged by that retype — `verse decisions` output
+// grammar. The compact wire form must be unchanged by that retype — `verse docket` output
 // and `goals add --done-when` inputs are user-visible.
 func TestRequirementFactsWireUnchanged(t *testing.T) {
 	cases := []string{

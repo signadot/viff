@@ -19,7 +19,7 @@ func TestSelectProviderAuto(t *testing.T) {
 	if !ok || driver != "gpt" {
 		t.Fatalf("auto select = (%q, %v), want (gpt, true)", driver, ok)
 	}
-	ch, found := store.Get(entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(providerSpecSeed(subj, p))})
+	ch, found := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if !found || ch.Payload["axis"] != "select" || ch.Payload["outcome"] != "gpt" || ch.Payload["status"] != "closed" {
 		t.Fatalf("select channel = %+v, want axis=select outcome=gpt status=closed", ch.Payload)
 	}
@@ -31,7 +31,7 @@ func TestSelectProviderVotePlurality(t *testing.T) {
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "vote", Need: 2}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "2"}
-	did := decisionChannelID(providerSpecSeed(subj, p))
+	did := motionChannelID(providerSpecSeed(subj, p))
 
 	// two ballots for claude, one for gpt → claude wins at need=2.
 	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Payload{"choice": "claude"})
@@ -51,7 +51,7 @@ func TestPluralityIgnoresIneligible(t *testing.T) {
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "vote", Need: 1}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "3"}
-	did := decisionChannelID(providerSpecSeed(subj, p))
+	did := motionChannelID(providerSpecSeed(subj, p))
 	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Payload{"choice": "rogue"}) // ineligible
 	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Payload{"choice": "gpt"})   // eligible → wins at need=1
 
@@ -67,7 +67,7 @@ func TestSelectProviderAsk(t *testing.T) {
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "ask"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "4"}
-	did := decisionChannelID(providerSpecSeed(subj, p))
+	did := motionChannelID(providerSpecSeed(subj, p))
 
 	store.Put(entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Payload{"choice": "claude"})
 	driver, ok := eng.selectProvider(p, subj)
@@ -93,7 +93,7 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 	if !ok || driver != "llm-claude" { // options sorted by id: claude, gpt → auto picks claude
 		t.Fatalf("registry auto select = (%q, %v), want (llm-claude, true)", driver, ok)
 	}
-	ch, _ := store.Get(entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(providerSpecSeed(subj, p))})
+	ch, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if opts, _ := ch.Payload["options"].([]any); len(opts) != 2 {
 		t.Fatalf("eligible options = %v, want 2 premium providers (basic filtered out)", ch.Payload["options"])
 	}
@@ -120,8 +120,8 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 	if ok || driver != "" {
 		t.Fatalf("deadline select = (%q, %v), want (\"\", false) — no pick by the deadline", driver, ok)
 	}
-	// The channel records when it closes, so `verse decisions` can show it.
-	ch, _ := store.Get(entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(providerSpecSeed(subj, p))})
+	// The channel records when it closes, so `verse docket` can show it.
+	ch, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if _, stamped := ch.Payload["deadline_at"]; !stamped {
 		t.Fatalf("select channel missing deadline_at: %+v", ch.Payload)
 	}

@@ -41,7 +41,7 @@ type Spec struct {
 	Subject string `json:"subject,omitempty"`
 	// Provider, when set, makes the who-axis (Driver) a GOVERNED SELECTION rather than a
 	// fixed authoring-time value: the engine selects one of Eligible via the Select
-	// surface, reifies it as a decision, and binds the winner into Driver before spawn
+	// surface, reifies it as a motion, and binds the winner into Driver before spawn
 	// (no live swap — reassign = cancel+respawn). Orthogonal to the controlPolicy that
 	// then transports the chosen Driver.
 	Provider *Provider `json:"provider,omitempty"`
@@ -62,7 +62,7 @@ type Provider struct {
 	// Select is the who-dial: how the doer is picked among the eligible options —
 	// "auto" (a rule picks the first eligible), "ask" (one party picks; a threshold of 1),
 	// or "vote" (the group picks; ≥ Need). Empty defaults to auto. It is the who-axis
-	// counterpart of a whether-gate's Formula; both compile to the same governed decision.
+	// counterpart of a whether-gate's Formula; both compile to the same governed motion.
 	Select string `json:"select,omitempty"`
 	Need   int    `json:"need,omitempty"`   // vote: plurality threshold
 	Within string `json:"within,omitempty"` // vote/ask: selection deadline (e.g. "4h") — no pick by then = no spawn

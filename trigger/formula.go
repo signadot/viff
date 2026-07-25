@@ -43,8 +43,8 @@ const (
 //
 //	{"quorum": 2}                                       an atom (quorum threshold 2)
 //	{"quorum": {"choice":"reject","n":2}}               a reject-quorum
-//	{"fact": "decision:deadline"}                       a fact atom (system:kind selector)
-//	{"until": [ {"quorum":2}, {"fact":"decision:deadline"} ]}   an operator over sub-formulas
+//	{"fact": "motion:deadline"}                       a fact atom (system:kind selector)
+//	{"until": [ {"quorum":2}, {"fact":"motion:deadline"} ]}   an operator over sub-formulas
 //
 // rather than the internal parse node ({"op":"atom","req":{"kind":"quorum","n":2}}). The
 // verbose {op,req,args} form is still accepted (compatibility). This mirrors tony's tags —
@@ -221,7 +221,7 @@ func unmarshalFormulaList(val json.RawMessage) ([]*Formula, error) {
 
 // requirementFromValue parses the compact value after a requirement tag: a number is the
 // quorum threshold ({"quorum":2}); a string is a "system:kind" fact selector
-// ({"fact":"decision:deadline"}); an object carries the full fields.
+// ({"fact":"motion:deadline"}); an object carries the full fields.
 func requirementFromValue(kind RequirementKind, val json.RawMessage) (*Requirement, error) {
 	var n int
 	if json.Unmarshal(val, &n) == nil {
@@ -390,11 +390,11 @@ func (r *Requirement) Label() string {
 	}
 }
 
-// bind returns a copy of the formula scoped to one decision instance: a `quorum` atom's
-// votes become that decision's vote log (`vote:<decisionID>:*`, counting approvals), so
-// concurrent decisions never share a tally and each keeps its own ordered ballot log.
+// bind returns a copy of the formula scoped to one motion instance: a `quorum` atom's
+// votes become that motion's vote log (`vote:<motionID>:*`, counting approvals), so
+// concurrent motions never share a tally and each keeps its own ordered ballot log.
 // Other atoms (e.g. a `fact` oracle or deadline, charter-specified) are left as-is.
-func (f *Formula) bind(decisionID string) *Formula {
+func (f *Formula) bind(motionID string) *Formula {
 	if f == nil {
 		return nil
 	}
@@ -406,18 +406,18 @@ func (f *Formula) bind(decisionID string) *Formula {
 			if choice == "" {
 				choice = "approve" // default quorum counts approvals; "reject" makes a deny-quorum
 			}
-			r.Facts = Match{mKeySystem: "vote", mKeyKind: decisionID, mKeyFields: map[string]any{"choice": choice}}
+			r.Facts = Match{mKeySystem: "vote", mKeyKind: motionID, mKeyFields: map[string]any{"choice": choice}}
 		}
 		nf.Req = &r
 	}
 	for _, a := range f.Args {
-		nf.Args = append(nf.Args, a.bind(decisionID))
+		nf.Args = append(nf.Args, a.bind(motionID))
 	}
 	return nf
 }
 
 // quorumNeed returns the first quorum threshold in the formula (0 if none) — for the
-// decision channel entity's `need` field.
+// motion channel entity's `need` field.
 func (f *Formula) quorumNeed() int {
 	if f == nil {
 		return 0
