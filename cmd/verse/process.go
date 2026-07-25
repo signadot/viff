@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -571,7 +570,7 @@ func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("process vector: %s is not a valid vector: %w", cfg.File, err)
 		}
 	case len(args) >= 2:
-		if err := vec.Default.UnmarshalJSON([]byte(strconv.Quote(args[1]))); err != nil {
+		if err := vec.Default.UnmarshalText([]byte(args[1])); err != nil {
 			return fmt.Errorf("%w: process vector mode must be auto|ask|park", cli.ErrUsage)
 		}
 	default:

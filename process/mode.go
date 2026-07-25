@@ -45,15 +45,18 @@ func (m Mode) String() string {
 // Blocks reports whether the mode halts the process at the boundary.
 func (m Mode) Blocks() bool { return m != Auto }
 
-// MarshalJSON renders the mode as its lowercase name ("auto"/"ask"/"park") so
-// vectors read plainly over the wire.
-func (m Mode) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + strings.ToLower(m.String()) + `"`), nil
+// MarshalText renders the mode as its lowercase name ("auto"/"ask"/"park") so vectors
+// read plainly over the wire. encoding.TextMarshaler is the encoding-agnostic spelling:
+// it is what tony's gomap honors (on both its reflection and generated paths), and it is
+// what encoding/json falls back to when a type has no MarshalJSON. One vocabulary, every
+// encoding.
+func (m Mode) MarshalText() ([]byte, error) {
+	return []byte(strings.ToLower(m.String())), nil
 }
 
-// UnmarshalJSON accepts the name (any case) or the numeric value.
-func (m *Mode) UnmarshalJSON(b []byte) error {
-	switch strings.ToLower(strings.Trim(string(b), `"`)) {
+// UnmarshalText accepts the name (any case) or the numeric value.
+func (m *Mode) UnmarshalText(b []byte) error {
+	switch strings.ToLower(strings.TrimSpace(string(b))) {
 	case "auto", "0":
 		*m = Auto
 	case "ask", "1":
@@ -61,7 +64,23 @@ func (m *Mode) UnmarshalJSON(b []byte) error {
 	case "park", "2":
 		*m = Park
 	default:
-		return fmt.Errorf("invalid gate mode %q", string(b))
+		return fmt.Errorf("invalid gate mode %q (want auto|ask|park)", string(b))
 	}
 	return nil
+}
+
+// MarshalJSON / UnmarshalJSON delegate to the text form. They exist only because
+// encoding/json quotes a TextMarshaler's output but would otherwise also accept a bare
+// number for an integer-kinded type; keeping the pair explicit means the JSON surface
+// stays exactly what it was — a quoted name, decoding a name or a number.
+func (m Mode) MarshalJSON() ([]byte, error) {
+	t, err := m.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(`"` + string(t) + `"`), nil
+}
+
+func (m *Mode) UnmarshalJSON(b []byte) error {
+	return m.UnmarshalText([]byte(strings.Trim(string(b), `"`)))
 }
