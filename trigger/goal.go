@@ -45,8 +45,9 @@ type Goal struct {
 // goalRef / goalDoneRef / goalFailedRef name a goal's entities. goal:instance carries the
 // live status + terminal latch; goal:done / goal:failed are the ordinary fact a charter
 // trigger may match ({system:"goal", kind:"done"|"failed"}) to advance a subject — emergent,
-// opt-in; the goal never sets a subject field itself. Such a trigger carries the goal's
-// subject onward with `"subject": "$flow"` (see commitGoal).
+// opt-in; the goal never sets a subject field itself. Such a trigger names the goal's subject
+// with a `subject` pattern matched against the goal:done fact's `flow` (see commitGoal) — the
+// same way a process-completion trigger names the PR its process carried.
 func goalRef(name string) entity.Ref     { return entity.Ref{System: "goal", Kind: "instance", ID: name} }
 func goalDoneRef(name string) entity.Ref { return entity.Ref{System: "goal", Kind: "done", ID: name} }
 func goalFailedRef(name string) entity.Ref {
@@ -275,9 +276,10 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	}
 
 	// The monotonic latch fact a charter may react to. It carries the goal's subject under
-	// BOTH `flow` and `subject`: `flow` is the binding a reacting trigger should use
-	// (`"subject": "$flow"`, exactly as a process-completion trigger does — mirror.Reflect
-	// publishes the same convention), while `subject` remains for display. A trigger cannot
+	// BOTH `flow` and `subject`: `flow` is what a reacting trigger's `subject` pattern is matched
+	// against (`"subject": "demo:pr:*"`, exactly as a process-completion trigger does —
+	// mirror.Reflect publishes the same `flow` convention), while `subject` remains for display.
+	// A trigger cannot
 	// use `$subject` for this: that is the reserved binding for the firing's OWN resolved
 	// subject, which for a goal:done change is the latch entity itself.
 	if outcome == "done" {

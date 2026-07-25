@@ -109,7 +109,7 @@ it as `charter.json`:
   {
     "name": "reviewed",
     "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "completed" } },
-                   "subject": "$flow" },
+                   "subject": "demo:pr:*" },
     "action": { "set": { "stage": "reviewed" } }
   }
 ]
@@ -196,23 +196,21 @@ Now, what each field of a trigger means:
     point it is watched over the verse's evolution rather than matched against one
     change.
   - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
-    It resolves four ways, all the same match grammar:
+    It resolves three ways, all the same match grammar:
     - *omitted* — the matched entity (`review`, above);
-    - an **address** — `"demo:pr:1"` is that one entity (and an action's `set` will
-      *create* it if it doesn't exist, which is how a trigger publishes a fact nothing
-      has written yet). `*` is a wildcard per segment and an id may glob, so
-      `"demo:pr:*"` is the whole kind, `"demo:pr:hotfix-*"` a family in it, and
-      `"demo:*:*"` the whole system — the same address grammar as `verse flow <addr>`
-      (§6). A glob **selects** what exists rather than naming, so it can never conjure
-      an entity called `*`;
-    - a `system`+`kind` selector (with an optional payload predicate) — the whole
-      **set** of matching entities, and the action fans out, once per member. The
-      object form is what an address glob parses to; reach for it when you also want a
-      payload predicate;
-    - a **binding** (`"$flow"`) — deferred: the address isn't known until the firing
-      expands it against the changed payload. This is how the `reviewed` rule advances
-      the PR a completed process carried. (An expansion is held to the same grammar, so
-      a half-written ref is a no-op rather than a wildcard that fans out.)
+    - an **address that names one entity** — `"demo:pr:1"` is that one entity, and an
+      action's `set` will *create* it if it doesn't exist, which is how a trigger
+      publishes a fact nothing has written yet;
+    - a **pattern** — a glob (`"demo:pr:*"` the whole kind, `"demo:pr:hotfix-*"` a family
+      in it, `"demo:*:*"` the whole system — the same grammar as `verse flow <addr>`,
+      §6) or a `system`+`kind` selector with an optional payload predicate. A pattern
+      picks what it names, and *which* names depends on the firing: if the change carries
+      its OWN subject — a reflected process's `flow` — the pattern resolves to that one
+      ref (`reviewed`, below, advances the PR its process was about); otherwise it
+      **selects the set** from the store and the action fans out, once per member
+      (`ship-reviewed`, below). A pattern that names nothing the firing is about is a
+      no-op — it never conjures an entity called `*`, nor misfires onto a flow it doesn't
+      name.
 
     A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
     goal* is still about exactly one subject. Broadcast, in other words, is a wider
@@ -247,21 +245,22 @@ Now, what each field of a trigger means:
     **`provider`** selection of the doer (§8). The spawned process is tagged with the
     subject, which is what makes it part of that subject's flow (§6).
 - **Bindings** in templates: every field of the changed payload is bound by name
-  (`$flow`, `$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So in
-  `reviewed`, `subject: "$flow"` names the PR, and `$subject` inside the action is
-  that PR, not the process that fired.
+  (`$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So `review $subject`
+  in a spawn's task names the PR the firing is about, even when the entity that fired was
+  a process, not the PR.
 
-**Where `$flow` comes from.** It is an ordinary payload field, not a magic variable.
-`review`'s `spawn` tags its process with the condition's subject (`demo:pr:1`), and the
-process is mirrored into the verse as a `process:instance` entity carrying that subject
-under the key **`flow`** — so when the process completes, the change event `reviewed`
-matches has `flow: "demo:pr:1"` in its payload, and `$flow` binds to it like any other
-field. It can't be spelled `$subject`: that binding is reserved for the firing's *own*
-resolved subject, which for a `process:instance` change is the process, not the PR.
+**How `reviewed` names the PR.** `reviewed` fires on a `process:instance` change but acts on
+the PR — so its `subject` is a *pattern* (`demo:pr:*`), matched against the process's own
+subject. `review`'s `spawn` tagged its process with the condition's subject (`demo:pr:1`); the
+process is mirrored as a `process:instance` entity carrying that subject under the key **`flow`**;
+so when the process completes, `reviewed`'s `demo:pr:*` matches `flow: "demo:pr:1"` and advances
+`demo:pr:1`. The pattern doubles as a filter — a process whose flow is not a `demo:pr` is not this
+trigger's concern. There is no back-reference to the `review` trigger and no special variable: the
+subject is the same address grammar as everywhere else.
 
 The `reviewed` rule is the **completion pattern**: *when* a `process:instance` reaches
-`status=completed`, *about* the `$flow` it carried, advance that subject. It's how multi-step flows
-close through the verse. (Triggers must opt in to `process:*` — the engine keeps
+`status=completed`, *about* the PR its process carried (the flow its `demo:pr:*` names), advance
+that subject. It's how multi-step flows close through the verse. (Triggers must opt in to `process:*` — the engine keeps
 reflected process state out of the default match set so the loop can't ignite on its
 own machinery.)
 
@@ -692,7 +691,7 @@ way everything else composes:
 
 ```json
 { "name": "on-ship",
-  "condition": { "when": { "system": "goal", "kind": "done" }, "subject": "$flow" },
+  "condition": { "when": { "system": "goal", "kind": "done" }, "subject": "change:pr:*" },
   "action":    { "set": { "stage": "shipped" } } }
 ```
 

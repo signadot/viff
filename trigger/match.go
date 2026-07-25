@@ -27,13 +27,16 @@ import (
 //	{"system": "demo", "kind": "pr", "id": "*"}                     the whole kind
 //	{"system": "demo", "kind": "pr", "id": "hotfix-*"}              an id glob
 //	"demo:pr:*"                                                     the same, as an address
-//	"$flow"                                                         deferred until a firing
 //	{}                                                              everything
+//
+// A Subject is a plain Match too: on a firing it is matched against the entity the firing is
+// about — including a reflected process's own subject (its `flow`), so `subject: "demo:pr:*"`
+// on a completion trigger advances the PR that process was about. There is no deferred `$var`
+// form: the pattern IS the reference (see Trigger.resolveSubject).
 type Match map[string]any
 
 // The match dimensions. `entity` is accepted as an alias for `fields` (docs/trigger-model.md
-// spells a Subject's payload predicate `entity:`); `ref` holds a $var address that only a
-// firing can resolve, and is deliberately NOT a matcher dimension.
+// spells a Subject's payload predicate `entity:`).
 const (
 	mKeySystem = "system"
 	mKeyKind   = "kind"
@@ -41,7 +44,6 @@ const (
 	mKeyOp     = "op"
 	mKeyFields = "fields"
 	mKeyEntity = "entity" // alias for fields
-	mKeyRef    = "ref"    // a $var address, resolved at the fire instant
 )
 
 // matchKeys is the closed set of dimensions a Match may carry. Its disjointness from the
@@ -50,22 +52,16 @@ const (
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
 	mKeySystem: true, mKeyKind: true, mKeyID: true,
-	mKeyOp: true, mKeyFields: true, mKeyEntity: true, mKeyRef: true,
+	mKeyOp: true, mKeyFields: true, mKeyEntity: true,
 }
 
-// UnmarshalJSON accepts the object form, or a STRING as sugar. A $var ("$flow") parses to
-// {"ref": …} — it names an entity that is not known until a firing expands it, so it cannot
-// be an address yet. Anything else IS an address and goes through ParseExpr, so "demo:pr:1"
-// parses to the system/kind/id dimensions and "demo:pr:*" to the whole kind.
-//
-// Every string used to become a {"ref": …} instead, and `ref` is not a matcher dimension —
-// nothing reads it. So the sugar silently misbehaved in both positions: `"when":
-// "demo:pr:1"` constrained nothing and matched every event, and `"subject": "demo:pr:*"`
-// named an entity literally called "*" (which an action's `set` would then create).
+// UnmarshalJSON accepts the object form, or a STRING as sugar for an address: "demo:pr:1"
+// parses to the system/kind/id dimensions and "demo:pr:*" to the whole kind — the same grammar
+// the CLI's `flow <addr>` uses (ParseExpr). There is no deferred `$var` form.
 func (m *Match) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
-		parsed, err := parseAddr(s)
+		parsed, err := ParseExpr(s)
 		if err != nil {
 			return err
 		}
@@ -80,12 +76,8 @@ func (m *Match) UnmarshalJSON(data []byte) error {
 	return m.Validate()
 }
 
-// MarshalJSON emits the string form for a bare ref and the object form otherwise, so a
-// charter round-trips the way it was authored (`trigger show`).
+// MarshalJSON emits the object form (`trigger show`).
 func (m Match) MarshalJSON() ([]byte, error) {
-	if ref, ok := m.Ref(); ok && len(m) == 1 {
-		return json.Marshal(ref)
-	}
 	return json.Marshal(map[string]any(m))
 }
 
@@ -108,7 +100,7 @@ func (m Match) Validate() error {
 		return fmt.Errorf("match: unknown key(s) %s (want any of %s)",
 			strings.Join(unknown, ", "), strings.Join(known, ", "))
 	}
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID, mKeyOp, mKeyRef} {
+	for _, k := range []string{mKeySystem, mKeyKind, mKeyID, mKeyOp} {
 		if v, present := m[k]; present {
 			if _, ok := v.(string); !ok {
 				return fmt.Errorf("match: %q must be a string, got %T", k, v)
@@ -153,24 +145,12 @@ func (m Match) Fields() map[string]any {
 	return f
 }
 
-// Ref returns the DEFERRED form — an address carrying a $var ("$flow") that only a firing's
-// bindings can resolve. It is not a matcher dimension: a caller holding a Ref must expand it
-// and re-read the result as an address (see Trigger.resolveSubject). A concrete address is
-// never a Ref; it parses to the system/kind/id dimensions.
-func (m Match) Ref() (string, bool) {
-	s := m.str(mKeyRef)
-	return s, s != ""
-}
-
 // Names reports whether the match designates exactly ONE entity by identity: a definite
 // system, kind, and glob-free id. This is the case a Subject may *name* rather than select —
 // an action's `set` on it creates the entity if it does not exist yet, which is how a trigger
 // publishes a fact nothing has written before. A glob in any segment makes it a selection
 // over what exists instead, so it can only ever act on entities that are really there.
 func (m Match) Names() (entity.Ref, bool) {
-	if _, deferred := m.Ref(); deferred {
-		return entity.Ref{}, false
-	}
 	r := entity.Ref{System: m.System(), Kind: m.Kind(), ID: m.ID()}
 	if r.System == "" || r.Kind == "" || r.ID == "" {
 		return entity.Ref{}, false
@@ -188,9 +168,6 @@ func (m Match) IsEmpty() bool { return len(m) == 0 }
 // system+kind, as opposed to one entity by ref. A set-valued Subject must name both, since
 // the engine has to know what kind it is selecting and spawning for.
 func (m Match) Selects() bool {
-	if _, isRef := m.Ref(); isRef {
-		return false
-	}
 	return m.System() != "" && m.Kind() != ""
 }
 
@@ -302,21 +279,6 @@ func asFields(v any) (map[string]any, bool) {
 	return nil, false
 }
 
-// refMatch builds the deferred match for an address carrying a $var — the Go-side
-// constructor for what the string sugar parses to when it cannot be an address yet.
-func refMatch(ref string) Match { return Match{mKeyRef: ref} }
-
-// parseAddr reads the string sugar. A $var is deferred (only a firing's bindings can resolve
-// it); anything else is an address, so it lands in the dimensions the matcher actually reads.
-// This is the one place the two string grammars — the charter wire and the CLI's `flow <addr>`
-// — are the same grammar.
-func parseAddr(s string) (Match, error) {
-	if strings.ContainsRune(s, '$') {
-		return refMatch(s), nil
-	}
-	return ParseExpr(s)
-}
-
 // MatchRef reports whether a bare REF satisfies the match's const dimensions
 // (system/kind/id). It is the face used to address things by identity when there is no
 // payload or change to look at — steering live processes by their subject, where the subject
@@ -350,6 +312,11 @@ func ParseExpr(s string) (Match, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, fmt.Errorf(`empty address: want "system:kind:id", with * as a wildcard`)
+	}
+	if strings.ContainsRune(s, '$') {
+		return nil, fmt.Errorf("address %q has a $var; there is no deferred subject form — a "+
+			"subject is a pattern matched against the entity a firing is about, e.g. \"demo:pr:*\" "+
+			"on a completion trigger names the PR its process was about (see docs/trigger-model.md)", s)
 	}
 	parts := strings.SplitN(s, ":", 3) // an id may itself contain colons
 	m := Match{}

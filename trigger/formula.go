@@ -50,10 +50,14 @@ const (
 // verbose {op,req,args} form is still accepted (compatibility). This mirrors tony's tags —
 // in a tony charter it reads `!until [ !quorum 2, … ]`.
 func (f *Formula) UnmarshalJSON(data []byte) error {
-	// A bare string is the match atom's ref sugar: `when: "demo:pr:1"`.
+	// A bare string is the match atom's address sugar: `when: "demo:pr:*"`.
 	var str string
 	if err := json.Unmarshal(data, &str); err == nil {
-		*f = *matchFormula(refMatch(str))
+		m, perr := ParseExpr(str)
+		if perr != nil {
+			return perr
+		}
+		*f = *matchFormula(m)
 		return nil
 	}
 	var raw map[string]json.RawMessage

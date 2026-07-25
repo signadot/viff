@@ -8,12 +8,10 @@ import (
 )
 
 // A Match round-trips without losing meaning: whatever the authored form, re-reading the
-// marshalled output yields the same dimensions. A $var stays a string (it is still a `ref`);
-// a concrete address becomes the object form it now parses to, so `trigger show` displays the
-// system/kind/id the matcher will actually apply rather than a string that reads like a ref.
+// marshalled output yields the same dimensions. A string address becomes the object form it
+// parses to, so `trigger show` displays the system/kind/id the matcher will actually apply.
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
-		`"$flow"`,
 		`"demo:pr:1"`,
 		`{"system":"demo","kind":"pr","fields":{"stage":"open"}}`,
 		`{"system":"demo","kind":"pr","id":"*"}`,
@@ -47,20 +45,18 @@ func fmtAny(v any) string {
 	return string(b)
 }
 
-// A $var is the DEFERRED form: it is not a set to select from (nothing is known until a firing
-// expands it), so Selects() must be false.
-func TestMatchRefForm(t *testing.T) {
-	var m Match
-	if err := json.Unmarshal([]byte(`"$flow"`), &m); err != nil {
-		t.Fatal(err)
+// mm parses an address into a Match — the test spelling of the string sugar.
+func mm(s string) Match {
+	m, err := ParseExpr(s)
+	if err != nil {
+		panic(err)
 	}
-	ref, ok := m.Ref()
-	if !ok || ref != "$flow" {
-		t.Fatalf("Ref() = %q, %v; want \"$flow\", true", ref, ok)
-	}
-	if m.Selects() {
-		t.Fatal("a deferred $var must not be treated as a set-valued selector")
-	}
+	return m
+}
+
+// Selects() reports a set-valued pattern: a definite system AND kind (the engine must know the
+// kind it spawns for). A system alone is not enough.
+func TestSelects(t *testing.T) {
 	if !(Match{"system": "demo", "kind": "pr"}).Selects() {
 		t.Fatal("system+kind must be a set-valued selector")
 	}
@@ -70,12 +66,10 @@ func TestMatchRefForm(t *testing.T) {
 	}
 }
 
-// The string sugar is an ADDRESS, in the same grammar `verse flow <addr>` uses. Only a $var
-// stays a `ref` — and `ref` is not a matcher dimension, so anything else landing there is
-// invisible to both MatchEvent and Select (the defect this parse fixed).
+// The string sugar is an ADDRESS, in the same grammar `verse flow <addr>` uses. There is no
+// deferred `$var` form: a `$` in an address is a typo now, and fails at install.
 func TestStringFormIsAnAddress(t *testing.T) {
 	cases := map[string]Match{
-		`"$flow"`:            {"ref": "$flow"},
 		`"demo:pr:1"`:        {"system": "demo", "kind": "pr", "id": "1"},
 		`"demo:pr:*"`:        {"system": "demo", "kind": "pr"},
 		`"demo:pr:hotfix-*"`: {"system": "demo", "kind": "pr", "id": "hotfix-*"},
@@ -96,8 +90,9 @@ func TestStringFormIsAnAddress(t *testing.T) {
 			}
 		})
 	}
-	// An empty or half-written address is a typo, not a wildcard: it must fail at install.
-	for _, bad := range []string{`""`, `"demo::1"`, `":pr:1"`} {
+	// An empty or half-written address, or a leftover $var, is a typo, not a wildcard: it must
+	// fail at install rather than silently matching nothing (or, for a subject, creating "*").
+	for _, bad := range []string{`""`, `"demo::1"`, `":pr:1"`, `"$flow"`, `"demo:pr:$id"`} {
 		var m Match
 		if err := json.Unmarshal([]byte(bad), &m); err == nil {
 			t.Errorf("accepted %s (parsed as %#v)", bad, m)
@@ -142,7 +137,6 @@ func TestMatchNames(t *testing.T) {
 		}
 	}
 	no := []string{
-		`"$flow"`,                                       // deferred — nothing named yet
 		`"demo:pr:*"`,                                   // the kind
 		`"demo:pr:hotfix-*"`,                            // a family
 		`{"system":"demo","kind":"pr"}`,                 // no id

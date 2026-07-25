@@ -371,7 +371,8 @@ func (e *Engine) reserveN(n int) int {
 func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 	subjects := t.resolveSubject(ev, e.store)
 	if len(subjects) == 0 {
-		// e.g. a "$flow" subject on an event whose payload carries no flow.
+		// e.g. a subject pattern that names nothing this firing is about — a process whose
+		// `flow` the pattern does not match, or a store selector that picks nothing.
 		e.tracef("fire %s on %s: subject resolved to nothing; not firing", t.Name, ev.Ref)
 		return
 	}

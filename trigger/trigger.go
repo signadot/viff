@@ -45,9 +45,10 @@ type Condition struct {
 	// one change event; temporal operators relate the verse's evolution instead.
 	When *Formula `json:"when"`
 	// Subject is what the firing is ABOUT, selected at the fire instant — never
-	// accumulated, so it carries no temporal operators. Omitted = the matched entity; a
-	// ref or $var ("$flow") = that one entity; a system+kind selector = the SET of
-	// matching entities, one action per member.
+	// accumulated, so it carries no temporal operators. Omitted = the matched entity; an
+	// address names one entity; a system+kind selector is a pattern — matched against the
+	// firing's own subject (a reflected process's `flow`) when it has one, else the SET of
+	// matching entities in the store, one action per member.
 	Subject Match `json:"subject,omitempty"`
 }
 
@@ -74,18 +75,15 @@ func (c Condition) validate() error {
 	if err := c.Subject.Validate(); err != nil {
 		return fmt.Errorf("condition.subject: %w", err)
 	}
-	if _, deferred := c.Subject.Ref(); deferred {
-		return nil // a $var, resolved (and re-checked as an address) at the fire instant
-	}
 	if _, names := c.Subject.Names(); names {
 		return nil // one entity, named
 	}
 	if c.Subject.Selects() {
-		return nil // a set: the engine fans out, one action per member
+		return nil // a pattern: matched against the firing's own subject (a process's flow), else fanned out
 	}
-	return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*"), a $var ` +
-		`("$flow"), or name both a system and a kind to select a set (it has to name a definite ` +
-		`kind to select and spawn for)`)
+	return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or name ` +
+		`both a system and a kind to select a set (it has to name a definite kind to select and ` +
+		`spawn for)`)
 }
 
 // matchesEvent reports whether an observed change fires this trigger — the edge face of
@@ -114,24 +112,21 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 	if len(m) == 0 {
 		return []entity.Ref{ev.Ref} // the matched entity
 	}
-	if tmpl, deferred := m.Ref(); deferred {
-		// A $var: expand against the changed payload ($flow, $stage, …), then read the result
-		// as an address, so an expansion is held to the same grammar an authored string is.
-		expanded, err := ParseExpr(launch.Expand(tmpl, payloadBinding(ev)))
-		if err != nil {
-			return nil // unresolved/invalid (e.g. no $flow on this event) → the firing is a no-op
-		}
-		// A partial address is a no-op, never a widening. An unexpanded "$flow" or a payload
-		// carrying a half-written ref would otherwise leave dimensions unset — and an unset
-		// dimension is a WILDCARD, so the firing would fan out across a kind or a system
-		// instead of doing nothing.
-		if _, names := expanded.Names(); !names && !expanded.Selects() {
-			return nil
-		}
-		m = expanded
-	}
 	if ref, names := m.Names(); names {
 		return []entity.Ref{ref} // one entity, named — a `set` may bring it into existence
+	}
+	// A pattern (an id glob, or a system:kind selector). If the firing event carries its OWN
+	// subject — a reflected process's `flow` — the pattern resolves against THAT one ref: a
+	// process about demo:pr:1, matched by a `demo:pr:*` subject, advances demo:pr:1. The pattern
+	// both names which flows this trigger acts on and picks the specific one — no back-reference
+	// to a prior trigger, just the subject grammar applied to the process's subject. Otherwise
+	// the pattern selects over the store (broadcast, one action per member).
+	if flow, ok := ev.To["flow"].(string); ok && flow != "" {
+		fref, err := entity.ParseRef(flow)
+		if err != nil || !m.MatchRef(fref) {
+			return nil // the carried subject is unresolvable, or isn't what this trigger acts on
+		}
+		return []entity.Ref{fref}
 	}
 	return m.Select(store) // a selection over what exists — one action per member
 }
@@ -166,8 +161,8 @@ func (g Gate) mode() (process.Mode, error) {
 // thing twice, by side channel, and only existed because $subject was wired to the matched
 // entity rather than to the subject.)
 //
-// Bindings available to templates: each field of the changed payload by name ($flow,
-// $stage, $path), and $subject — the RESOLVED subject, set last so a payload field cannot
+// Bindings available to templates: each field of the changed payload by name ($stage,
+// $path, …), and $subject — the RESOLVED subject, set last so a payload field cannot
 // shadow it.
 type Action struct {
 	Set   map[string]any `json:"set,omitempty"`

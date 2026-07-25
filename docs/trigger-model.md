@@ -102,9 +102,7 @@ the same match grammar:
 |---|---|---|
 | *(omitted)* | the matched entity | `review` — a change to `demo:pr:1` is about `demo:pr:1` |
 | a concrete address (`"demo:pr:1"`) | that one entity, **named** — a `set` creates it if absent | publishing a fact nothing has written yet |
-| an address glob (`"demo:pr:*"`, `"demo:pr:hotfix-*"`) | the **set** it selects | the whole kind, or a family within it |
-| a `system:kind` selector (+ entity predicate) | the **set** of matching entities | broadcast — every `demo:pr` with `stage:reviewed` |
-| a deferred `$var` (`"$flow"`) | the address the firing expands it to | `reviewed` — the PR the completed process carried |
+| a **pattern** — an address glob (`"demo:pr:*"`) or a `system:kind` selector (+ entity predicate) | the firing's OWN subject if it carries one (a reflected process's `flow`); **else** the set it selects from the store | `reviewed` — the PR its process carried; or broadcast — every `demo:pr` with `stage:reviewed` |
 
 The engine **fans out one action/process per resolved entity**, and **each is about exactly
 one subject** — the original invariant, intact. A *firing* can yield 0, 1, or N; a
@@ -122,11 +120,11 @@ wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo
 charter and `verse flow demo:pr:*` on the command line mean the same set, as they read like
 they should.
 
-Only a `$var` stays deferred, as a `ref` — it is an address that no amount of parsing can
-resolve, because the entity is not known until a firing expands it against the changed
-payload. An expansion is then re-read as an address, so it is held to the same grammar; a
-partial result is a no-op rather than a set of unset dimensions (which, being wildcards,
-would *widen* the firing across a kind or a system).
+There is no deferred `$var` form. A completion trigger — one that fires on a `process:instance`
+change but acts on the PR — does not reach back into the payload for a reference: its `Subject`
+is a plain pattern (`"demo:pr:*"`) that the firing matches against the process's OWN subject (its
+`flow`). The pattern both picks the one flow it names and filters out the flows it does not — the
+same address grammar as everything else, no back-reference, no second string form.
 
 The one distinction inside the address form is **name vs select**. A glob-free address
 *names* its entity, so an action's `set` may bring it into existence — that is how a trigger
@@ -204,26 +202,25 @@ like the whole entity but means only its payload) becomes one nested per-entity 
              "entity": { "id": <string-or-glob-match>, "value": <tony match> } }
 ```
 
-`entity` then means the entity: its identity and its content. Two things fall out:
+`entity` then means the entity: its identity and its content. Two things this document once
+deferred to the swap have already landed **ahead** of it — `ref` and the completion `$var`:
 
-- **`ref` disappears.** With `id` a typed match slot, a glob is a glob because the *slot*
-  says so, not because a parser inferred it from the string's shape — and a concrete id is
-  just its degenerate case. Nothing is left for a `ref` escape hatch to carry, so `subject:`
-  is a pattern end to end.
-- **the completion join stops needing a `$var` at all.** A tony match has a `let` binding, so
-  "the PR this completed process carried" is expressible *inside* the match language rather
-  than by substituting a payload field into the pattern slot from outside. That requires the
-  firing's matched entity to be a **value in the match environment** — today `resolveSubject`
-  only ever string-expands a template — so what that binding is called in scope is a wire
-  contract to settle with the swap.
+- **`ref` is gone.** A string `Subject`/`When` is an address (`ParseExpr`), the `id` slot owns
+  the glob, and there is no `ref` escape hatch — `subject:` is a pattern end to end. The swap
+  only makes `id` a typed match slot rather than one inferred from the string's shape.
+- **the completion join needs no `$var`.** "the PR this completed process carried" is already a
+  `Subject` pattern (`demo:pr:*`) matched against the process's `flow` — no payload field
+  substituted into the pattern slot from outside. A tony match's `let` binding could *later*
+  express that join **inside** the match language — naming the matched entity as a value in the
+  match environment — rather than by the engine reading a well-known `flow` key; what that bound
+  name is called in scope is the wire contract to settle with the swap.
 
-And then the naming resolves. `$flow` exists only because `$subject` is reserved for the
-firing's own resolved subject, so the mirrored process entity could not call its subject
-`subject` (`mirror.go`, `goal.go` each carry a comment apologizing for this). With no flat
-payload bindings in the subject slot, that collision stops applying: the mirrored key becomes
-**`subject`** — which is what it is — and `flow` goes back to naming only the pattern over
-live processes that this document says it is. Landing order: `id` glob (done) → `entity:
-{id, value}` + `let` → rename `flow` → `subject`.
+There is no `$flow` variable to reconcile any more: a completion trigger's `Subject` is a
+pattern matched against the process's subject, which `mirror.Reflect` (and a goal latch,
+`goal.go`) publish under the key **`flow`**. That key is a convention — the field IS the
+process's subject — kept distinct from the reserved `$subject` binding (the firing's OWN
+resolved subject). It could later be renamed `subject` once the match grammar can name a payload
+key to match against.
 
 The earlier "does `When` read one change or the whole verse?" question is **not** an open
 fork — the two layers answer it. `When` is a `Formula`, so it is `Monitor`ed over the verse's
@@ -253,13 +250,15 @@ only whether a given `When` happens to use temporal operators.
   "action":    { "set": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
 { "name": "reviewed",
   "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "completed" } },
-                 "subject": "$flow" },
+                 "subject": "demo:pr:*" },
   "action":    { "set": { "stage": "reviewed" } } }
 ```
 
 `reviewed` now reads as it means: *when a process completes, about the PR it carried, set
-reviewed* — the `setRef` was only ever compensating for `$subject` being wired to the
-matched entity.
+reviewed*. The `Subject` is a plain pattern — `demo:pr:*` matched against the process's own
+subject (its `flow`) — not a deferred `$flow` reaching back into the payload: the pattern names
+the flow and filters the ones it does not, in the same address grammar as everywhere else. The old
+`setRef` was only ever compensating for `$subject` being wired to the matched entity.
 
 ## Migration
 
@@ -271,11 +270,11 @@ The shape can land before the grammar. In order, each step green + smoke-tested:
 2. **Restructure.** ✅ `Trigger.Matches []entity.Pattern` → `Condition{When, Subject}`, where
    `When` is a `Formula` (its atom form is a single match, carried by the new `match`
    requirement kind — one atom carrier, so the leaf stays a `Match`) and `Subject` is a
-   point-in-time `Match`; `setRef`/charter-set `spawn.subject` folded into `Subject`. Today's
-   semantics kept: `Subject` resolves to the matched ref or a `$flow` binding, no fan-out.
-   `$subject` now binds the *resolved* subject (set last, so a payload field cannot shadow
-   it), and a goal latch publishes `flow` so a reacting trigger says `"subject": "$flow"`
-   like any completion. Charter wire, tutorial §3–4/§8–9, overview, and tests updated.
+   point-in-time `Match`; `setRef`/charter-set `spawn.subject` folded into `Subject`.
+   `$subject` now binds the *resolved* subject (set last, so a payload field cannot shadow it),
+   and a completion trigger's `Subject` is a pattern matched against the process's `flow` (a goal
+   latch publishes the same `flow` key, so a reacting trigger says `"subject": "change:pr:*"`).
+   There is no deferred `$flow` form. Charter wire, tutorial §3–4/§8–9, overview, and tests updated.
 3. **Set-valued `Subject` + fan-out.** ✅ `Subject` may select a `system:kind` set → one
    action/process per member; `spawnID` is deterministic per subject (so a re-fire is
    idempotent per member, enforced by the engine's live-id dedupe); the budget meters

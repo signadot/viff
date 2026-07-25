@@ -387,36 +387,36 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	waitStage(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "noted")
 }
 
-// A $var that expands to a PARTIAL address must be a no-op, never a widening. An unset
-// dimension is a wildcard, so a half-written payload ref would otherwise fan the firing out
-// across a whole kind or system — acting on entities the charter never named.
-func TestDeferredSubjectPartialAddressIsANoOp(t *testing.T) {
+// A completion trigger's subject pattern FILTERS which flows it acts on: a process whose flow
+// is not what the subject names is a no-op — never a misfire onto the wrong entity. This is the
+// filter the old `$flow` deref lacked (it advanced whatever the payload carried, unconstrained).
+func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	store := entity.NewMemStore()
-	victims := prs(store, "open", "1", "2", "3")
+	other := entity.Ref{System: "other", Kind: "thing", ID: "1"}
+	store.Put(other, entity.Payload{"stage": "x"})
 
 	eng := New(store, process.AutoResolver{})
-	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"advance",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"$target"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if err := eng.AddTrigger(tr); err != nil {
+	if err := eng.AddTrigger(Trigger{
+		Name: "reviewed",
+		Condition: Condition{
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "completed"}}),
+			Subject: mm("demo:pr:*"), // acts on demo:pr flows only
+		},
+		Action: Action{Set: map[string]any{"stage": "reviewed"}},
+	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
 
-	// "demo" alone: a system with no kind and no id — every dimension below it a wildcard.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"},
-		entity.Payload{"state": "green", "target": "demo"})
+	// A completed process whose flow is NOT a demo:pr — the subject pattern doesn't name it.
+	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
+		entity.Payload{"status": "completed", "flow": other.String()})
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
-	time.Sleep(50 * time.Millisecond) // give a wrong fan-out time to land, if it were going to
-	for _, ref := range victims {
-		if e, _ := store.Get(ref); e.Payload["stage"] != "open" {
-			t.Fatalf("a partial address widened into a fan-out: %s = %#v", ref, e.Payload)
-		}
+	time.Sleep(50 * time.Millisecond) // give a wrong action time to land, if it were going to
+	if e, _ := store.Get(other); e.Payload["stage"] != "x" {
+		t.Fatalf("acted on a flow the subject doesn't name: %s = %#v", other, e.Payload)
 	}
 }

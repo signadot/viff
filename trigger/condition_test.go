@@ -29,7 +29,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 		Name: "reviewed",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "completed"}}),
-			Subject: refMatch("$flow"),
+			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Set: map[string]any{"stage": "reviewed"}},
 	}); err != nil {
@@ -68,7 +68,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 		Name: "on-complete",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "completed"}}),
-			Subject: refMatch("$flow"),
+			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Spawn: &launch.Spec{Task: "follow up on $subject"}},
 	}); err != nil {
@@ -109,8 +109,8 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	}
 }
 
-// A goal latch publishes `flow` alongside `subject`, so a trigger reacting to it carries the
-// goal's subject onward with the same idiom as a process completion ("subject": "$flow").
+// A goal latch publishes `flow` alongside `subject`, so a trigger reacting to it names the
+// goal's subject the same way a process completion does: a `subject` pattern matched against `flow`.
 func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
@@ -150,7 +150,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 		Name: "needs-flow",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "process", "kind": "instance"}),
-			Subject: refMatch("$flow"),
+			Subject: mm("demo:pr:*"),
 		},
 		Gates:  []Gate{{Mode: "ask"}},
 		Action: Action{Set: map[string]any{"stage": "x"}},
@@ -161,7 +161,8 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// No `flow` field: "$flow" cannot resolve, so nothing fires and no gate is posed.
+	// No `flow` field: the demo:pr:* subject has nothing to match, so nothing fires (and, because
+	// the subject resolves before any gate, no gate is posed either).
 	store.Put(mirror.Ref("p1"), entity.Payload{"status": "completed"})
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
@@ -300,10 +301,10 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 }
 
 // A `when` round-trips as authored, so `trigger show` reads like the installed charter
-// rather than exposing the internal parse node.
+// rather than exposing the internal parse node; the subject round-trips as its dimensions.
 func TestConditionJSONRoundTrip(t *testing.T) {
 	const in = `{"name":"reviewed","condition":{"when":{"system":"process","kind":"instance",` +
-		`"fields":{"status":"completed"}},"subject":"$flow"},"action":{"set":{"stage":"reviewed"}}}`
+		`"fields":{"status":"completed"}},"subject":"demo:pr:*"},"action":{"set":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := json.Unmarshal([]byte(in), &tr); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -311,31 +312,29 @@ func TestConditionJSONRoundTrip(t *testing.T) {
 	if err := tr.Condition.validate(); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	if ref, ok := tr.Condition.Subject.Ref(); !ok || ref != "$flow" {
-		t.Fatalf("subject did not parse as the ref sugar: %#v", tr.Condition.Subject)
+	// The subject parsed to a demo:pr selector — the address dimensions, not a leftover ref.
+	if !tr.Condition.Subject.Selects() {
+		t.Fatalf("subject did not parse as a selector: %#v", tr.Condition.Subject)
 	}
 	out, err := json.Marshal(&tr)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// Compare structurally, not byte-wise: a Match is a map, so its keys come back sorted.
-	// What must hold is the SHAPE — `when` is the bare match object and `subject` is the
-	// string sugar, with no internal parse node ({"op":…,"req":…} or {"ref":…}) leaking out.
-	var got, want map[string]any
+	// `when` must emit the bare match object — no internal parse node ({"op":…,"req":…}) leaks.
+	var got map[string]any
 	if err := json.Unmarshal(out, &got); err != nil {
 		t.Fatalf("re-decode: %v", err)
-	}
-	if err := json.Unmarshal([]byte(in), &want); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("round-trip drifted:\n in: %s\nout: %s", in, out)
 	}
 	cond := got["condition"].(map[string]any)
 	if _, leaked := cond["when"].(map[string]any)["op"]; leaked {
 		t.Errorf("`when` leaked the internal parse node: %s", out)
 	}
-	if _, isString := cond["subject"].(string); !isString {
-		t.Errorf("`subject` did not emit its string sugar: %#v", cond["subject"])
+	// Re-reading the output yields the same condition.
+	var tr2 Trigger
+	if err := json.Unmarshal(out, &tr2); err != nil {
+		t.Fatalf("re-unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(tr.Condition, tr2.Condition) {
+		t.Fatalf("condition drifted on round-trip:\n in: %#v\nout: %#v", tr.Condition, tr2.Condition)
 	}
 }
