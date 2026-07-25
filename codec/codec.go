@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 	"sync/atomic"
 
 	"github.com/signadot/tony-format/go-tony/encode"
@@ -125,9 +126,17 @@ func Decode(r io.Reader, v any, f Format) error {
 
 // ── values ↔ IR ──────────────────────────────────────────────────────────────
 
-// ToNode converts a Go value to IR. An *ir.Node field passes through untouched, tags and
-// comments intact — the json.RawMessage equivalent.
-func ToNode(v any) (*ir.Node, error) { return gomap.ToTonyIR(v) }
+// ToNode converts a Go value to IR, honoring `omitzero` on struct tags (which gomap's
+// reflection path ignores on its own — see omitzero.go). An *ir.Node field passes through
+// untouched, tags and comments intact: the json.RawMessage equivalent.
+func ToNode(v any) (*ir.Node, error) {
+	n, err := gomap.ToTonyIR(v)
+	if err != nil {
+		return nil, err
+	}
+	pruneZero(reflect.ValueOf(v), n)
+	return n, nil
+}
 
 // FromNode decodes IR into a Go value.
 func FromNode(n *ir.Node, v any) error { return gomap.FromTonyIR(n, v) }
