@@ -83,6 +83,35 @@ what `LogdStore.WatchSubtree` does. (The baseline `Since`/replay path still read
 patches directly — safe only because a baseline delta is always a verbatim merge, never
 a scope-computed `!replace`.)
 
+## One commit, many entities: the entity is the reactive grain
+
+A logd commit is a single, atomic transaction that can patch **many** branches at once —
+several `verse.<system>.<kind>.<id>` paths, across systems and kinds. But an
+`entity.Event` names exactly one `Ref`, so the store normalises: `walkEntities` recurses
+the commit's delta and, at path-depth 3 (`system/kind/id`), emits **one `Event` per
+entity** — all sharing that commit's number as their `Rev` (`LogdStore.eventsFromDelta`).
+Patch five branches in one tx → five per-entity events; patch a whole kind subtree, or
+above it → it descends to each `id` and still yields one event apiece. The "one entity per
+change" grain is imposed *here*, at the logd↔store seam, not assumed by the engine.
+
+This is what makes a trigger's **subject well-defined**: a firing is driven by one event,
+which carries one `Ref`, so `$subject` — and hence the flow, and a goal keyed on it — is
+always exactly one entity. Not because a match *pattern* is constrained to one entity (it
+isn't; `{system:"demo"}` matches every demo entity), but because dispatch is
+per-entity-edge. A broad pattern simply fans out to one independent firing per matching
+change.
+
+**The subtlety (and its cost).** This normalisation is deliberately lossy in one way: the
+reactive grain is the **entity, not the transaction.** A commit that atomically sets
+`demo:pr:1` *and* `demo:pr:2` surfaces as two independent events; the engine dispatches
+them one at a time and fires each trigger with its own subject. The shared `Rev` is the
+*only* trace that they were one tx — and nothing in the engine groups by `Rev`. So a
+well-defined subject is guaranteed, but **cross-entity, transaction-scoped reactivity does
+not exist**: you cannot write a trigger that reacts to "these two changed together in one
+tx" as a unit. The store can *write* atomically across entities; the engine can only
+*observe* the result as separate entity edges. This is subtle and may warrant revisiting —
+see Residuals.
+
 ## Why this is the portable choice (not an exotic dependency)
 
 The capability verse leans on — an **ordered, resumable, revisioned change stream**
@@ -120,6 +149,16 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
 
 ## Residuals (punted, by design)
 
+- **Transaction-scoped reactivity (subtle — may need cleaning up).** The per-entity
+  normalisation above flattens a multi-branch commit into independent per-entity events
+  (sharing a `Rev`), so triggers react at *entity* grain, never at *transaction* grain.
+  This keeps every subject/flow/goal well-defined, but an atomic multi-entity write can't
+  be reacted to as a unit — there is no "these changed together in one tx" trigger. The
+  raw material to recover it is already present (events of a commit share a `Rev`), but the
+  engine has no commit-grouped dispatch mode, and `entity.Event` carries no "N of a commit"
+  framing. Revisit if a charter ever needs cross-entity transactional reactions; until
+  then it is an unadvertised, load-bearing assumption worth naming rather than a settled
+  design.
 - **Cheap re-entry suppression** would need logd to grow a create-reporting Patch
   ("fail if it exists / report whether created"). No charter needs it yet — add it
   when one does, not before.

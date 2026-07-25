@@ -16,16 +16,13 @@ import (
 
 	"github.com/signadot/verse/controlpolicy"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/harness"
-	"github.com/signadot/verse/trigger"
 	"github.com/signadot/verse/versed"
 )
 
 type upConfig struct {
 	*cli.Command
-	Demo bool   `cli:"name=demo desc='seed a demo trigger (open→[ask:review]→spawn+reviewed) so the CLI loop is runnable'"`
 	Root string `cli:"name=root desc='working dir an llm agent reads/acts in (e.g. . for local-dev federation); default: isolated temp dir'"`
 
 	// Store backend. Default: docd (durable, controller-federated). The store client
@@ -137,9 +134,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	}
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
-	if cfg.Demo {
-		seedDemo(srv.Eng)
-	}
 	if cfg.Policy != "" && cfg.Broker {
 		return fmt.Errorf("verse up: --policy and --broker are mutually exclusive (one run policy)")
 	}
@@ -199,11 +193,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}()
 	}
 
-	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + proc[default:%s])", g.Addr, storeKind, defaultDriver)
-	if cfg.Demo {
-		fmt.Fprint(cc.Out, " [--demo trigger seeded]")
-	}
-	fmt.Fprintln(cc.Out, ". ctrl-c to stop.")
+	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + proc[default:%s]). ctrl-c to stop.\n", g.Addr, storeKind, defaultDriver)
 
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
@@ -211,42 +201,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	return nil
 }
 
-// seedDemo installs one gated rule — now as a declarative Def, the same wire form
-// `verse trigger add` uses — so the whole plumbing is exercisable from the CLI: put
-// a demo:*:* entity with stage=open → an ASK gate posts (visible via `gate list`,
-// answerable via `gate resolve`) → on approve, a review *process* is spawned on the
-// runtime (visible via `process list` / `watch --system process`) and the subject
-// advances to reviewed.
-func seedDemo(eng *trigger.Engine) {
-	// review: an opened demo:pr, once approved, moves to "reviewing" and a review
-	// process is spawned (tagged with its flow subject).
-	_ = eng.AddTrigger(trigger.Trigger{
-		Name:    "review",
-		Matches: []entity.Pattern{{System: "demo", Fields: map[string]any{"stage": "open"}}},
-		Gates:   []trigger.Gate{{Name: "review", Mode: "ask"}},
-		Action: trigger.Action{
-			Set:   map[string]any{"stage": "reviewing"},
-			Spawn: &launch.Spec{Driver: "scripted", Task: "review $subject"},
-		},
-	})
-	// reviewed: when a review process completes, advance its flow's subject to
-	// "reviewed" — the loop closing through the verse (opts into process:*).
-	_ = eng.AddTrigger(trigger.Trigger{
-		Name:    "reviewed",
-		Matches: []entity.Pattern{{System: "process", Kind: "instance", Fields: map[string]any{"status": "completed"}}},
-		// no gates: fires automatically on completion
-		Action: trigger.Action{
-			SetRef: "$flow",
-			Set:    map[string]any{"stage": "reviewed"},
-		},
-	})
-}
-
-// openDocdStore opens the logd/docd store, retrying the first connect for up to `wait`.
-// k8s brings versed and docd up concurrently, so versed usually loses the race; without this
-// it would error out, get killed, and crash-loop until a restart happens to land after docd
-// is ready. Retrying in-process turns that into a quiet wait. OpenLogdStore cleans up a
-// failed attempt (cancels its context, closes any session), so retrying does not leak.
 func openDocdStore(cfg entity.LogdConfig, wait time.Duration, cc *cli.Context) (*entity.LogdStore, error) {
 	cfg.ConnectTimeout = 2 * time.Second // fail fast per attempt so we can poll every few sec
 	deadline := time.Now().Add(wait)

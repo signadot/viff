@@ -31,7 +31,7 @@ cd verse
 go build -o verse ./cmd/verse
 
 export VERSE_ADDR=localhost:9797     # where clients reach the verse (this is the default)
-./verse up --demo                    # docd-backed by default (see below)
+./verse up                           # docd-backed by default (see below)
 ```
 
 By default `up` is **docd-backed**: it brings up logd + docd on a fresh temp data dir
@@ -44,9 +44,9 @@ zero-dependency run — no daemons, no persistence — add `--store memory`. To 
 durable dir, `--data <dir>`; to attach to an already-running docd,
 `--docd-addr <addr> --docd-mount-addr <addr>`.
 
-`--demo` seeds a tiny two-rule charter so you have something to drive. Leave it
-running; open a second terminal for the client commands below. (Everywhere below,
-`verse` means the binary you just built.)
+Leave it running and open a second terminal for the client commands below; you'll
+install a charter and drive it in §3. (Everywhere below, `verse` means the binary you
+just built.)
 
 Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default address,
 `export VERSE_ADDR=host:port` or pass `--addr host:port` to any command.
@@ -86,11 +86,38 @@ serviced with priority, so a runaway flow can always be stopped in time.
 
 ---
 
-## 3. Drive the demo flow
+## 3. Install a charter and drive it
 
-The `--demo` charter has two rules: `review` (on an opened `demo:pr`, ask, then mark
-*reviewing* and spawn a review process) and `reviewed` (when that process completes,
-advance the subject to *reviewed*).
+A **charter** is JSON — one trigger, or an array of them. Here's a tiny two-rule one; save
+it as `charter.json`:
+
+```json
+[
+  {
+    "name": "review",
+    "matches": [ { "system": "demo", "fields": { "stage": "open" } } ],
+    "gates":   [ { "name": "review", "mode": "ask" } ],
+    "action": {
+      "set":   { "stage": "reviewing" },
+      "spawn": { "driver": "scripted", "task": "review $subject" }
+    }
+  },
+  {
+    "name": "reviewed",
+    "matches": [ { "system": "process", "kind": "instance", "fields": { "status": "completed" } } ],
+    "gates":   [],
+    "action": { "setRef": "$flow", "set": { "stage": "reviewed" } }
+  }
+]
+```
+
+Two rules: `review` (on an opened `demo:pr`, ask, then mark *reviewing* and spawn a review
+process) and `reviewed` (when that process completes, advance the subject to *reviewed*).
+Install it — §4 dissects each field:
+
+```sh
+verse trigger add -f charter.json     # or: cat charter.json | verse trigger add -f -
+```
 
 **Terminal A** — watch the `demo` entities change:
 
@@ -138,48 +165,17 @@ verse entity get demo:pr:1     # → { "stage": "reviewed" }
 
 ---
 
-## 4. Write your own charter
+## 4. Anatomy of a trigger
 
-Restart without the seed:
-
-```sh
-# ctrl-c the demo, then:
-verse up
-```
-
-A charter is JSON — one trigger, or an array of them. Here's the demo, written out
-as `charter.json`:
-
-```json
-[
-  {
-    "name": "review",
-    "matches": [ { "system": "demo", "fields": { "stage": "open" } } ],
-    "gates":   [ { "name": "review", "mode": "ask" } ],
-    "action": {
-      "set":   { "stage": "reviewing" },
-      "spawn": { "driver": "scripted", "task": "review $subject" }
-    }
-  },
-  {
-    "name": "reviewed",
-    "matches": [ { "system": "process", "kind": "instance", "fields": { "status": "completed" } } ],
-    "gates":   [],
-    "action": { "setRef": "$flow", "set": { "stage": "reviewed" } }
-  }
-]
-```
-
-Install and inspect it:
+You installed that two-rule charter in §3. Inspect and manage it:
 
 ```sh
-verse trigger add -f charter.json     # or: cat charter.json | verse trigger add -f -
 verse trigger list
 verse trigger show review
-verse trigger remove review
+verse trigger remove <name>           # uninstall one (`add` rejects a duplicate name)
 ```
 
-Anatomy of a trigger:
+Now, what each field of a trigger means:
 
 - **`matches`** — a list of predicates, *all* of which must match the change
   (conjunctive). Each predicate ANDs its own dimensions: `system` / `kind` / `op`
@@ -282,23 +278,38 @@ verse watch --system process
 ## 6. Steer flows
 
 Steering is the control plane — out-of-band from observation, honored at a process's
-next boundary, never a store write. Each command acts on one **flow**: the processes
-tagged with that subject (a PR, a change, a release).
+next boundary, never a store write. Each command acts on one **flow**: the *in-flight*
+processes tagged with that subject (a PR, a change, a release).
+
+A flow exists only while its processes run, so give yourself one to steer — open another
+change and approve its review, so a review process spawns under `demo:pr:2`:
 
 ```sh
+verse entity put demo:pr:2 '{"stage":"open"}'
+verse gate list                       # find the new review gate's id, then:
+verse gate resolve <that-id> --approve
 verse flow list                       # subjects with in-flight processes
-verse flow pause  demo:pr:1           # freeze this flow's agents at their next boundary
-verse flow resume demo:pr:1           # release them
-verse flow cancel demo:pr:1           # stop this flow's processes (destructive)
-verse flow say    demo:pr:1 "hurry"   # say something to them (inject an instruction)
+```
+
+Now steer that subject's flow:
+
+```sh
+verse flow pause  demo:pr:2           # freeze its agents at their next boundary
+verse flow resume demo:pr:2           # release them
+verse flow say    demo:pr:2 "hurry"   # inject an instruction
+verse flow cancel demo:pr:2           # stop its processes (destructive)
 ```
 
 They fan out to that subject's processes and land at each one's next boundary, so a
 flow can be held, redirected, or stopped mid-flight — while every *other* flow keeps
-reacting. `pause` is the operator's ad-hoc freeze ("hold this flow, I want to
-look"), distinct from `cancel` (which ends the work) and from a `park` gate (a hold
-the *charter* declares, per action). `pause` is you, live, holding **this** subject's
-work.
+reacting. Each command reports how many processes it signalled (`{"paused": 1, …}`).
+A `scripted` review is brief, so steering matters most for a real, longer-running
+agent — the `llm` driver, or a longer task — where `pause`/`say`/`cancel` take hold
+mid-run.
+
+`pause` is the operator's ad-hoc freeze ("hold this flow, I want to look"), distinct from
+`cancel` (which ends the work) and from a `park` gate (a hold the *charter* declares, per
+action). `pause` is you, live, holding **this** subject's work.
 
 Why "out-of-band, with priority" matters: an intervention that has to queue behind a
 backlog of observations is an intervention defeated. Control never rides the change
@@ -697,7 +708,7 @@ just `local:*` files) via logd's `DeleteScope`.
 
 ```
 verse
-  up   [--demo] [--root <dir>]               start the monolith (engine + store + proc)
+  up   [--root <dir>]                        start the monolith (engine + store + proc)
        [--llm]                               make `llm` the default driver (per-spawn --driver still wins)
        [--store memory]                      opt out of docd (no daemons, no persistence)
        [--data <dir>]                        bring logd+docd up on <dir> (default: fresh temp dir)
@@ -801,6 +812,17 @@ the engine keeps running.
   as an opaque cursor and reconciles via `Since`. Writes are atomic via CAS
   (`PatchIf`), so concurrent modifies don't lose updates. (Op is `set`/`delete`;
   create≡update, since logd delivers the writer's applied patch verbatim.)
+- **The reactive grain is the entity, not the transaction** — *subtle, and may need
+  cleaning up.* A single docd commit can atomically patch many entities, but the store
+  normalises each commit into one change event **per entity** (`walkEntities`, at
+  path-depth `system/kind/id`), all sharing that commit's revision. That normalisation is
+  exactly what guarantees a trigger's **subject is always one entity**: dispatch is
+  per-entity-edge, so `$subject` — and the flow or goal keyed on it — is never ambiguous,
+  even under a broad match (a broad pattern just fans out to one firing per matching
+  change). The cost is that transaction atomicity is flattened: the engine cannot react to
+  "these two changed together in one tx" as a unit — the shared revision is the only trace,
+  and nothing groups by it. A load-bearing assumption worth naming; revisit if cross-entity
+  transactional reactions are ever needed. See `docs/change-events.md`.
 - **Scopes** are real copy-on-write overlays on the docd/logd store (writes isolated,
   reads layered on baseline, `disconnect --scope` drops the overlay via `DeleteScope`);
   on `--store memory` they remain a passthrough.
