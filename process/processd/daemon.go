@@ -344,12 +344,15 @@ func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var v process.Vector
-	if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+	var body struct {
+		Vector process.Vector `json:"vector"`
+		By     string         `json:"by"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h.proc.SetVector(&v)
+	h.proc.SetVector(&body.Vector, body.By)
 	w.WriteHeader(http.StatusNoContent)
 }
 

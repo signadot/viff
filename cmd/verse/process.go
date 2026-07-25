@@ -534,6 +534,7 @@ func (cfg *procSayConfig) run(cc *cli.Context, args []string) error {
 type procVectorConfig struct {
 	*cli.Command
 	File string `cli:"name=file desc='load a full gate vector from JSON ({\"gates\":[…],\"default\":\"ask\"}); overrides the mode arg'"`
+	As   string `cli:"name=as desc='operator identity to attribute the slide to (recorded on the read plane)'"`
 }
 
 func procVectorCmd() *cli.Command {
@@ -576,7 +577,7 @@ func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
 	default:
 		return fmt.Errorf("%w: process vector wants a mode (auto|ask|park) or --file", cli.ErrUsage)
 	}
-	resp, err := httpPut("/processes/"+id+"/vector", vec)
+	resp, err := httpPut("/processes/"+id+"/vector", map[string]any{"vector": vec, "by": cfg.As})
 	if err != nil {
 		return fmt.Errorf("process vector: %w", err)
 	}

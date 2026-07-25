@@ -946,14 +946,17 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		h.Steer(body.Instruction, body.By)
 	case "vector":
-		// slide autonomy on a running (brokered/remote) process: the request body is the
-		// new gate vector, relayed to the worker via the handle.
-		var v process.Vector
-		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+		// slide autonomy on a running (brokered/remote) process: {vector, by} is relayed to
+		// the worker via the handle, `by` attributing the operator who slid it.
+		var body struct {
+			Vector process.Vector `json:"vector"`
+			By     string         `json:"by"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		h.SetVector(&v)
+		h.SetVector(&body.Vector, body.By)
 	case "resolve":
 		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
 		rh, ok := h.(interface {

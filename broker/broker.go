@@ -357,10 +357,10 @@ func (h *handle) Steer(instr, by string) {
 // the worker applies it at its next boundary. Like a say-to, it is operator-authored, so verse
 // records an EvVector on the read plane immediately (the new default mode) rather than waiting
 // on the worker to echo it back.
-func (h *handle) SetVector(v *process.Vector) {
-	h.enqueue(inboxItem{Kind: "vector", Vector: v})
+func (h *handle) SetVector(v *process.Vector, by string) {
+	h.enqueue(inboxItem{Kind: "vector", Vector: v, By: by})
 	if ps := h.b.get(h.id); ps != nil {
-		ps.emit(process.Frame{Kind: process.EvVector, Mode: v.Default.String()})
+		ps.emit(process.Frame{Kind: process.EvVector, Mode: v.Default.String(), By: by})
 	}
 }
 

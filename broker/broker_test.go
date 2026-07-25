@@ -281,7 +281,7 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 	b := broker.New()
 	h := b.Spawn("p", "task", "human", nil)
 
-	h.SetVector(&process.Vector{Default: process.Ask})
+	h.SetVector(&process.Vector{Default: process.Ask}, "human:scott")
 
 	inbox, ok := b.ProcessInbox("p")
 	if !ok {
@@ -316,7 +316,7 @@ func TestSetVectorObservable(t *testing.T) {
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
-	h.SetVector(&process.Vector{Default: process.Ask})
+	h.SetVector(&process.Vector{Default: process.Ask}, "human:scott")
 
 	deadline := time.After(2 * time.Second)
 	for {
@@ -327,6 +327,9 @@ func TestSetVectorObservable(t *testing.T) {
 			}
 			if ev.Mode != process.Ask.String() {
 				t.Fatalf("EvVector should carry the new default mode %q, got %q", process.Ask.String(), ev.Mode)
+			}
+			if ev.By != "human:scott" {
+				t.Fatalf("EvVector should attribute the operator, got By=%q", ev.By)
 			}
 			return
 		case <-deadline:

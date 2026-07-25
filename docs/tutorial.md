@@ -220,7 +220,7 @@ verse process run --wait "summarize what verse is"    # …and block for the fin
 verse process list
 verse process get <id>        # snapshot: status, say, lastOutput, result, pending gates
 verse process say <id> "also mention the dial"        # say to the agent mid-run (re-prompt)
-verse process vector <id> ask                         # slide autonomy on a running process (auto|ask|park)
+verse process vector <id> ask --as human:scott        # slide autonomy (auto|ask|park); --as attributes the slide
 verse process vector <id> --file vector.json          # …or install a full gate vector
 verse process cancel <id>
 ```
