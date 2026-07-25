@@ -1139,60 +1139,83 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, eng.Flows())
 }
 
-// flowPause/flowResume are engine-wide holds — serviced with priority over
-// observation by the engine's control plane (see docs/deployment-and-steering.md).
-func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Subject string `json:"subject"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
-		http.Error(w, "subject required", http.StatusBadRequest)
-		return
-	}
-	n := s.Eng.PauseFlow(body.Subject)
-	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "paused": n})
-}
-
-func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Subject string `json:"subject"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
-		http.Error(w, "subject required", http.StatusBadRequest)
-		return
-	}
-	n := s.Eng.ResumeFlow(body.Subject)
-	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "resumed": n})
-}
-
-func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Subject string `json:"subject"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
-		http.Error(w, "subject required", http.StatusBadRequest)
-		return
-	}
-	n := s.Eng.CancelFlow(body.Subject)
-	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "cancelled": n})
-}
-
-func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
-	var body struct {
+// flowAddress decodes the steering body's `subject` — an entity ADDRESS, not just a ref:
+// "demo:pr:1" names one subject, "demo:pr:*" the whole kind. A flow is a query over live
+// processes' subjects, so one field serves both, and a plain ref stays valid (no client
+// breaks). Returns false having already written the error response.
+func flowAddress(w http.ResponseWriter, r *http.Request, extra any) (trigger.Match, bool) {
+	body := struct {
 		Subject string `json:"subject"`
 		Text    string `json:"text"`
 		By      string `json:"by"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
+		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
+		return nil, false
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" || body.Text == "" {
-		http.Error(w, "subject and text required", http.StatusBadRequest)
+	m, err := trigger.ParseExpr(body.Subject)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil, false
+	}
+	if p, ok := extra.(*flowSteerBody); ok {
+		*p = flowSteerBody{Subject: body.Subject, Text: body.Text, By: body.By}
+	}
+	return m, true
+}
+
+// flowSteerBody carries the say-specific fields back out of flowAddress.
+type flowSteerBody struct {
+	Subject string
+	Text    string
+	By      string
+}
+
+// flowPause/flowResume hold the addressed processes at their next boundary — serviced with
+// priority over observation by the engine's control plane (see
+// docs/deployment-and-steering.md).
+func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
+	var b flowSteerBody
+	m, ok := flowAddress(w, r, &b)
+	if !ok {
 		return
 	}
-	by := body.By
+	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "paused": s.Eng.PauseFlow(m)})
+}
+
+func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
+	var b flowSteerBody
+	m, ok := flowAddress(w, r, &b)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "resumed": s.Eng.ResumeFlow(m)})
+}
+
+func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
+	var b flowSteerBody
+	m, ok := flowAddress(w, r, &b)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "cancelled": s.Eng.CancelFlow(m)})
+}
+
+func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
+	var b flowSteerBody
+	m, ok := flowAddress(w, r, &b)
+	if !ok {
+		return
+	}
+	if b.Text == "" {
+		http.Error(w, "text required", http.StatusBadRequest)
+		return
+	}
+	by := b.By
 	if by == "" {
 		by = "human:cli"
 	}
-	n := s.Eng.SteerFlow(body.Subject, body.Text, by)
-	writeJSON(w, http.StatusOK, map[string]any{"subject": body.Subject, "said": n})
+	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "said": s.Eng.SteerFlow(m, b.Text, by)})
 }
 
 func eventWire(ev entity.Event) map[string]any {

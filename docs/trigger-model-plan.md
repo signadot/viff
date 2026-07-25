@@ -279,7 +279,14 @@ must produce a `match` atom that `MatchEvent`s a `Set` event, not a `Formula{Op:
 
 ---
 
-## Step 4 (do third) — Flow as a query, not a stored index
+## Step 4 (do third) — Flow as a query, not a stored index ✅ DONE
+
+*Landed as specified. One extra, not in the plan: `matchFlow` also applies a payload predicate
+(`fields`) by reading the subject entity, so "pause every open PR's work" is the same selector
+— it was a few lines and avoids silently ignoring a dimension the Match grammar allows. Also
+fixed `printBody`, which swallowed non-JSON error bodies: harmless before (any string was a
+valid subject, so `/flow/*` could not 400), but this step made a malformed address rejectable,
+and a rejected command must not look like it succeeded.*
 
 Replace the maintained `flows map[string][]flowProc` index (`engine.go:61,739-893`) with a
 flat live registry plus a query. Strictly smaller code and strictly more expressive.

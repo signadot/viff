@@ -2,8 +2,10 @@
 
 *Status: **partly built**. Steps 1–2 of the migration below have landed — `Match` exists as
 the named leaf, `Trigger.Matches []entity.Pattern` is now `Condition{When, Subject}`, and
-`action.setRef`/charter-set `spawn.subject` are gone. Still to come: set-valued `Subject` and
-fan-out (step 3), flow-as-a-query (step 4), and the tony match leaf (step 5) — so a
+`action.setRef`/charter-set `spawn.subject` are gone. Flow-as-a-query (step 4) has landed too:
+`flows[subject]` is gone, replaced by a subject-`Match` over live processes, so
+`flow pause demo:pr:*` works. Still to come: set-valued `Subject` and fan-out (step 3), and
+the tony match leaf (step 5) — so a
 set-valued `Subject` and a temporal `When` are rejected at install for now, with an error
 that says why. The implementation plan is `trigger-model-plan.md`. The substrate this leans
 on — per-entity change events — is `change-events.md`.*
@@ -217,8 +219,10 @@ The shape can land before the grammar. In order, each step green + smoke-tested:
    like any completion. Charter wire, tutorial §3–4/§8–9, overview, and tests updated.
 3. **Set-valued `Subject` + fan-out.** `Subject` may select a `system:kind` set → one process
    per member; deterministic per-subject `spawnID`; budget meters entities.
-4. **Flow as a query.** Replace `flows[subject]` with a subject-`Match` over live processes;
-   `flow <cmd> <match>`.
+4. **Flow as a query.** ✅ `flows[subject]` replaced by an id-keyed live registry plus a
+   subject-`Match` query over it; `flow <cmd> <address>` where `*` is a per-segment wildcard,
+   and a payload predicate works too. Spawn is now idempotent per id, which is what step 3's
+   fan-out needs.
 5. **Grow the leaf.** Swap `Match`'s map backing for a real tony match; the richer leaf
    (globs, references) flows into `When`/gate formulas, `Subject` selectors, and flow
    addressing alike — the temporal `Formula` layer above is unchanged.

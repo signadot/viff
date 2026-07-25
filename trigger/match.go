@@ -226,3 +226,53 @@ func asFields(v any) (map[string]any, bool) {
 // refMatch builds the degenerate single-entity match for a ref or $var — the Go-side
 // constructor for what the string sugar parses to.
 func refMatch(ref string) Match { return Match{mKeyRef: ref} }
+
+// MatchRef reports whether a bare REF satisfies the match's const dimensions
+// (system/kind/id). It is the face used to address things by identity when there is no
+// payload or change to look at — steering live processes by their subject, where the subject
+// is a ref string. `fields` is not consulted here: a caller wanting a payload predicate must
+// read the entity and use MatchEvent.
+func (m Match) MatchRef(ref entity.Ref) bool {
+	if s := m.System(); s != "" && s != ref.System {
+		return false
+	}
+	if k := m.Kind(); k != "" && k != ref.Kind {
+		return false
+	}
+	return m.matchID(ref.ID)
+}
+
+// ParseExpr parses an entity-address expression into a Match — the CLI/wire surface for
+// addressing a set of entities by identity, where `*` is a wildcard per segment:
+//
+//	demo:pr:1    one entity
+//	demo:pr:*    the whole kind
+//	demo:*:*     the whole system
+//	demo:pr      trailing segments omitted are wildcards
+//	*            everything
+//
+// This is what makes "relational flows" fall out of the model rather than being a second
+// primitive: steering an entity-set is the same selector, at a wider setting. (A subtree
+// form — "demo:pr:1/**" — waits for the reference grammar of the tony leaf.)
+func ParseExpr(s string) (Match, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf(`empty address: want "system:kind:id", with * as a wildcard`)
+	}
+	parts := strings.SplitN(s, ":", 3) // an id may itself contain colons
+	m := Match{}
+	for i, key := range []string{mKeySystem, mKeyKind, mKeyID} {
+		if i >= len(parts) {
+			break
+		}
+		seg := strings.TrimSpace(parts[i])
+		if seg == "" {
+			return nil, fmt.Errorf("empty segment %d in address %q", i+1, s)
+		}
+		if seg == "*" {
+			continue // a wildcard is simply an unset dimension
+		}
+		m[key] = seg
+	}
+	return m, nil
+}

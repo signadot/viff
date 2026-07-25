@@ -35,7 +35,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 		t.Fatal("spawner was not invoked")
 	}
 
-	if n := eng.PauseFlow(subj); n != 1 {
+	if n := eng.PauseFlow(mustExpr(t, subj)); n != 1 {
 		t.Fatalf("PauseFlow signalled %d, want 1", n)
 	}
 	go proc.Run(context.Background())
@@ -48,7 +48,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 		t.Fatal("flow completed while paused — PauseFlow did not hold")
 	}
 
-	if n := eng.ResumeFlow(subj); n != 1 {
+	if n := eng.ResumeFlow(mustExpr(t, subj)); n != 1 {
 		t.Fatalf("ResumeFlow signalled %d, want 1", n)
 	}
 	deadline := time.After(2 * time.Second)
@@ -95,12 +95,13 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 	}
 }
 
-// reap must not corrupt the flow slice a control op is iterating: reap runs on the
-// loop goroutine while CancelFlow reads the slice unlocked. Under -race this trips if
-// reap filters the backing array in place. (Behavioral guard; -race is the assertion.)
+// reap must not race a concurrent control op: reap runs on the loop goroutine while
+// matchFlow snapshots the live registry. Under -race this trips if either touches the map
+// unguarded. (Behavioral guard; -race is the assertion.)
 func TestReapVsCancelFlowNoRace(t *testing.T) {
 	eng := New(entity.NewMemStore(), process.AutoResolver{})
 	const subj = "demo:pr:1"
+	addr := mustExpr(t, subj)
 	mkproc := func(id string) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, immediate{}, noExec{})
@@ -112,22 +113,34 @@ func TestReapVsCancelFlowNoRace(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { // repopulate then reap a member — the in-place-filter writer
+	go func() { // repopulate then reap a member
 		defer wg.Done()
-		for i := 0; i < 3000; i++ {
-			eng.flowsMu.Lock()
-			eng.flows[subj] = []flowProc{{id: "a", h: mkproc("a")}, {id: "b", h: mkproc("b")}, {id: "c", h: mkproc("c")}}
-			eng.flowsMu.Unlock()
+		for range 3000 {
+			eng.liveMu.Lock()
+			for _, id := range []string{"a", "b", "c"} {
+				eng.live[id] = flowProc{id: id, subject: subj, h: mkproc(id)}
+			}
+			eng.liveMu.Unlock()
 			eng.reap(terminal)
 		}
 	}()
-	go func() { // read the flow slice concurrently
+	go func() { // address the flow concurrently
 		defer wg.Done()
-		for i := 0; i < 3000; i++ {
-			eng.CancelFlow(subj)
+		for range 3000 {
+			eng.CancelFlow(addr)
 		}
 	}()
 	wg.Wait()
+}
+
+// mustExpr parses a flow address for a test.
+func mustExpr(t *testing.T, s string) Match {
+	t.Helper()
+	m, err := ParseExpr(s)
+	if err != nil {
+		t.Fatalf("ParseExpr(%q): %v", s, err)
+	}
+	return m
 }
 
 // do() must not deadlock when the loop has already exited (ctx cancelled): the

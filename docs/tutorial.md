@@ -78,7 +78,8 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   lifecycle (a PR, a change, a release), named by its ref (e.g. `demo:pr:1`). When a
   trigger spawns a process, that process is tagged with its subject.
 - **Flow** — a subject's in-flight lifecycle: all the processes spawned for that
-  subject, steerable as a unit.
+  subject, steerable as a unit. It is a *query* over live processes' subjects, not a stored
+  index, so one address can steer a subject, a kind, or a system (§6).
 
 Two planes, and they stay apart: **observation** (`watch`, `get`, `list`) is read;
 **steering** (`gate resolve`, `flow pause/cancel`) is control — out-of-band and
@@ -297,8 +298,12 @@ verse watch --system process
 ## 6. Steer flows
 
 Steering is the control plane — out-of-band from observation, honored at a process's
-next boundary, never a store write. Each command acts on one **flow**: the *in-flight*
-processes tagged with that subject (a PR, a change, a release).
+next boundary, never a store write. Each command acts on a **flow**: the *in-flight*
+processes tagged with a subject (a PR, a change, a release).
+
+A flow is **not a stored thing** — it is a *query* over the subjects of live processes. That
+is why steering takes an **address**, not just a ref, and why steering a whole set needs no
+new machinery: it is the same selector at a wider setting.
 
 A flow exists only while its processes run, so give yourself one to steer — open another
 change and approve its review, so a review process spawns under `demo:pr:2`:
@@ -319,9 +324,20 @@ verse flow say    demo:pr:2 "hurry"   # inject an instruction
 verse flow cancel demo:pr:2           # stop its processes (destructive)
 ```
 
-They fan out to that subject's processes and land at each one's next boundary, so a
-flow can be held, redirected, or stopped mid-flight — while every *other* flow keeps
-reacting. Each command reports how many processes it signalled (`{"paused": 1, …}`).
+…or steer a whole **set** of subjects with the same verbs, since the address is a selector
+(`*` is a wildcard per segment):
+
+```sh
+verse flow pause 'demo:pr:*'          # every PR's in-flight work
+verse flow say   'demo:*:*' "hurry"   # everything in the demo system
+verse flow list                       # the distinct subjects with live work
+```
+
+Each command reports how many processes it reached, so `{"paused": 2}` tells you the address
+selected two.
+
+They fan out to the addressed processes and land at each one's next boundary, so a flow can
+be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting.
 A `scripted` review is brief, so steering matters most for a real, longer-running
 agent — the `llm` driver, or a longer task — where `pause`/`say`/`cancel` take hold
 mid-run.
@@ -756,7 +772,9 @@ verse
                 cancel <id> · say <id> <text…> · resolve <id> <decision> --approve|--deny
                 do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
                 do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
-  flow    list · pause <subject> · resume <subject> · cancel <subject> · say <subject> <text…>
+  flow    list · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
+          <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
+          demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
   goals   list · add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
           add -f <file> (full record incl. owned triggers) · remove <name>
           pause|resume|cancel <name> · say <name> <text…>            (alias: goal)

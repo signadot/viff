@@ -331,27 +331,33 @@ func (e *Engine) ResumeGoal(name string) int { return e.onGoalFlow(name, e.Resum
 func (e *Engine) CancelGoal(name string) int { return e.onGoalFlow(name, e.CancelFlow) }
 
 func (e *Engine) SteerGoal(name, text, by string) int {
-	subj, ok := e.goalSubject(name)
+	m, ok := e.goalFlowMatch(name)
 	if !ok {
 		return 0
 	}
-	return e.SteerFlow(subj, text, by)
+	return e.SteerFlow(m, text, by)
 }
 
-func (e *Engine) onGoalFlow(name string, fn func(subject string) int) int {
-	subj, ok := e.goalSubject(name)
+func (e *Engine) onGoalFlow(name string, fn func(Match) int) int {
+	m, ok := e.goalFlowMatch(name)
 	if !ok {
 		return 0
 	}
-	return fn(subj)
+	return fn(m)
 }
 
-func (e *Engine) goalSubject(name string) (string, bool) {
+// goalFlowMatch addresses a goal's in-flight work: its subject as a one-entity Match, so goal
+// steering is the flow query at its narrowest setting rather than a separate path.
+func (e *Engine) goalFlowMatch(name string) (Match, bool) {
 	e.goalsMu.Lock()
 	g, ok := e.goals[name]
 	e.goalsMu.Unlock()
 	if !ok || g.Def.Subject == "" {
-		return "", false
+		return nil, false
 	}
-	return g.Def.Subject, true
+	m, err := ParseExpr(g.Def.Subject)
+	if err != nil {
+		return nil, false
+	}
+	return m, true
 }
