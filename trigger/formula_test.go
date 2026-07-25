@@ -19,7 +19,7 @@ func TestFormulaCompactUnmarshal(t *testing.T) {
 			return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.Choice == "reject" && f.Req.N == 3
 		}},
 		{`{"fact":"decision:deadline"}`, func(f *Formula) bool {
-			return f.Op == OpAtom && f.Req.Kind == ReqFact && f.Req.Facts.System == "decision" && f.Req.Facts.Kind == "deadline"
+			return f.Op == OpAtom && f.Req.Kind == ReqFact && f.Req.Facts.System() == "decision" && f.Req.Facts.Kind() == "deadline"
 		}},
 		{`{"until":[{"quorum":2},{"fact":"decision:deadline"}]}`, func(f *Formula) bool {
 			return f.Op == OpUntil && len(f.Args) == 2 && f.Args[0].Req.Kind == ReqQuorum && f.Args[1].Req.Kind == ReqFact
@@ -65,7 +65,7 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	st := entity.NewMemStore()
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: entity.Pattern{System: "decision", Kind: "vote"},
+		Facts: Match{"system": "decision", "kind": "vote"},
 		N:     2,
 	}}
 
@@ -97,7 +97,7 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 	st := entity.NewMemStore()
 	approvals := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: entity.Pattern{System: "decision", Kind: "vote", Fields: map[string]any{"choice": "approve"}},
+		Facts: Match{"system": "decision", "kind": "vote", "fields": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
 	st.Put(entity.Ref{System: "decision", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
@@ -112,7 +112,7 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 // A stubbed requirement kind (no producer yet) blocks — it never satisfies.
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
 	st := entity.NewMemStore()
-	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: entity.Pattern{System: "decision", Kind: "judgment"}}}
+	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: Match{"system": "decision", "kind": "judgment"}}}
 	st.Put(entity.Ref{System: "decision", Kind: "judgment", ID: "x"}, entity.Payload{"verdict": "ship"})
 	if ok, _ := judged.Eval(st); ok {
 		t.Fatalf("stubbed requirement %q should block, not satisfy", ReqJudgment)

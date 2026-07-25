@@ -133,12 +133,12 @@ func requirementFromValue(kind RequirementKind, val json.RawMessage) (*Requireme
 	return &r, nil
 }
 
-// factSelFromRef parses "system:kind" (or "system") into a fact-selecting Pattern.
-func factSelFromRef(s string) entity.Pattern {
+// factSelFromRef parses "system:kind" (or "system") into a fact-selecting Match.
+func factSelFromRef(s string) Match {
 	parts := strings.SplitN(s, ":", 2)
-	fs := entity.Pattern{System: parts[0]}
+	fs := Match{mKeySystem: parts[0]}
 	if len(parts) == 2 {
-		fs.Kind = parts[1]
+		fs[mKeyKind] = parts[1]
 	}
 	return fs
 }
@@ -149,15 +149,15 @@ func (r *Requirement) compactValue() any {
 	if r.Kind == ReqDeadline {
 		return r.Within
 	}
-	factsSet := r.Facts.System != "" || r.Facts.Kind != "" || len(r.Facts.Fields) > 0
+	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || len(r.Facts.Fields()) > 0
 	switch {
 	case r.Choice == "" && !factsSet:
 		return r.N
-	case r.N == 0 && r.Choice == "" && len(r.Facts.Fields) == 0:
-		if r.Facts.Kind != "" {
-			return r.Facts.System + ":" + r.Facts.Kind
+	case r.N == 0 && r.Choice == "" && len(r.Facts.Fields()) == 0:
+		if r.Facts.Kind() != "" {
+			return r.Facts.System() + ":" + r.Facts.Kind()
 		}
-		return r.Facts.System
+		return r.Facts.System()
 	default:
 		m := map[string]any{}
 		if r.N != 0 {
@@ -180,7 +180,7 @@ func (r *Requirement) compactValue() any {
 // present from the start.
 type Requirement struct {
 	Kind   RequirementKind `json:"kind"`
-	Facts  entity.Pattern  `json:"facts"`            // the store facts this requirement reads
+	Facts  Match           `json:"facts"`            // the store facts this requirement reads (a point-in-time Match)
 	N      int             `json:"n,omitempty"`      // quorum threshold: satisfied when ≥ N ballots match
 	Choice string          `json:"choice,omitempty"` // which ballot a quorum counts (default "approve"; "reject" = a deny-quorum)
 	Within string          `json:"within,omitempty"` // deadline duration (e.g. "4h") — a time derivation, not a store fact
@@ -257,10 +257,10 @@ func (r *Requirement) Label() string {
 		}
 		return fmt.Sprintf("quorum(%d %s)", r.N, choice)
 	case ReqFact:
-		if r.Facts.Kind != "" {
-			return "fact:" + r.Facts.System + ":" + r.Facts.Kind
+		if r.Facts.Kind() != "" {
+			return "fact:" + r.Facts.System() + ":" + r.Facts.Kind()
 		}
-		return "fact:" + r.Facts.System
+		return "fact:" + r.Facts.System()
 	default:
 		return string(r.Kind)
 	}
@@ -282,7 +282,7 @@ func (f *Formula) bind(decisionID string) *Formula {
 			if choice == "" {
 				choice = "approve" // default quorum counts approvals; "reject" makes a deny-quorum
 			}
-			r.Facts = entity.Pattern{System: "vote", Kind: decisionID, Fields: map[string]any{"choice": choice}}
+			r.Facts = Match{mKeySystem: "vote", mKeyKind: decisionID, mKeyFields: map[string]any{"choice": choice}}
 		}
 		nf.Req = &r
 	}
@@ -322,7 +322,7 @@ func (f *Formula) Subtrees() [][2]string {
 		if n.Op == OpAtom {
 			// a deadline is a time derivation, not a store fact — it has no subtree to watch.
 			if n.Req != nil && n.Req.Kind != ReqDeadline {
-				k := [2]string{n.Req.Facts.System, n.Req.Facts.Kind}
+				k := [2]string{n.Req.Facts.System(), n.Req.Facts.Kind()}
 				if !seen[k] {
 					seen[k] = true
 					out = append(out, k)

@@ -572,13 +572,14 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 		return nil, false
 	}
 	fs := recheck.Req.Facts
-	if fs.System == "" || fs.Kind == "" {
+	system, kind := fs.System(), fs.Kind()
+	if system == "" || kind == "" {
 		return nil, false
 	}
-	choice, _ := fs.Fields["choice"].(string)
+	choice, _ := fs.Fields()["choice"].(string)
 	sub := map[string]any{}
 	for _, w := range witness {
-		if w.System != fs.System || w.Kind != fs.Kind {
+		if w.System != system || w.Kind != kind {
 			continue
 		}
 		ballot := map[string]any{}
@@ -590,7 +591,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if len(sub) == 0 {
 		return nil, false
 	}
-	return []entity.Precondition{{Ref: entity.Ref{System: fs.System, Kind: fs.Kind}, Pattern: sub}}, true
+	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: sub}}, true
 }
 
 // clonePayload returns a shallow copy of p (nil → empty), so a Modify can extend the

@@ -24,7 +24,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 			Mode: "ask",
 			Formula: &Formula{Op: OpAtom, Req: &Requirement{
 				Kind:  ReqQuorum,
-				Facts: entity.Pattern{System: "decision", Kind: "vote"},
+				Facts: Match{"system": "decision", "kind": "vote"},
 				N:     2,
 			}},
 		}},
@@ -152,8 +152,8 @@ func TestTemporalDenyQuorum(t *testing.T) {
 // quorumUntilDeadline builds `quorum(n over decision/vote) until (deadline fact exists)`.
 func quorumUntilDeadline(n int) *Formula {
 	return &Formula{Op: OpUntil, Args: []*Formula{
-		{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: entity.Pattern{System: "decision", Kind: "vote"}, N: n}},
-		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: entity.Pattern{System: "decision", Kind: "deadline"}}},
+		{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "decision", "kind": "vote"}, N: n}},
+		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "decision", "kind": "deadline"}}},
 	}}
 }
 
@@ -189,7 +189,7 @@ func TestCommitDecisionRevokeGuard(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	ref := entity.Ref{System: "decision", Kind: "commit", ID: "t2"}
-	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: entity.Pattern{System: "decision", Kind: "vote"}, N: 2}}
+	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "decision", "kind": "vote"}, N: 2}}
 
 	// The witness was captured, but the facts have since dropped (0 votes now) → revoked.
 	if _, revoked := eng.commitDecision(ref, quorum, "proceed", nil); !revoked {
@@ -212,7 +212,7 @@ func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
 	channel := entity.Ref{System: "decision", Kind: "channel", ID: did}
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: entity.Pattern{System: "vote", Kind: did, Fields: map[string]any{"choice": "approve"}},
+		Facts: Match{"system": "vote", "kind": did, "fields": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
 	alice := entity.Ref{System: "vote", Kind: did, ID: "alice"}
@@ -235,7 +235,7 @@ func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
 	// Fresh decision, a witness ballot retracted before commit → revoked, nothing written.
 	const did2 = "dtest2"
 	ch2 := entity.Ref{System: "decision", Kind: "channel", ID: did2}
-	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: entity.Pattern{System: "vote", Kind: did2, Fields: map[string]any{"choice": "approve"}}, N: 2}}
+	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "vote", "kind": did2, "fields": map[string]any{"choice": "approve"}}, N: 2}}
 	a2 := entity.Ref{System: "vote", Kind: did2, ID: "alice"}
 	b2 := entity.Ref{System: "vote", Kind: did2, ID: "bob"}
 	store.Put(ch2, entity.Payload{"status": "open"})
@@ -254,7 +254,7 @@ func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
 // retracted, and it is reached again (safety — the answer stays live until commit).
 func TestMonitorRevocable(t *testing.T) {
 	store := entity.NewMemStore()
-	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: entity.Pattern{System: "decision", Kind: "vote"}, N: 2}}
+	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "decision", "kind": "vote"}, N: 2}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	states := NewMonitor(quorum, store).Watch(ctx)
