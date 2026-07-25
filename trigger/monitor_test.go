@@ -24,7 +24,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 			Mode: "ask",
 			Formula: &Formula{Op: OpAtom, Req: &Requirement{
 				Kind:  ReqQuorum,
-				Facts: Match{"system": "decision", "kind": "vote"},
+				Facts: Match{"system": "motion", "kind": "vote"},
 				N:     2,
 			}},
 		}},
@@ -42,7 +42,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	if existsWithin(store, merged, 100*time.Millisecond) {
 		t.Fatal("merged before any votes")
 	}
-	// One vote → still short of quorum(2). Votes go to THIS decision's log (vote:<did>:*).
+	// One vote → still short of quorum(2). Votes go to THIS motion's log (vote:<did>:*).
 	pr := entity.Ref{System: "change", Kind: "pr", ID: "42"}
 	castVote(store, "merge", "approvals", pr, "alice")
 	if existsWithin(store, merged, 80*time.Millisecond) {
@@ -55,10 +55,10 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	}
 }
 
-// castBallot writes a voter's ballot into a decision's vote log (vote:<did>:<voter>),
-// where did is the deterministic decision id for (trigger, gate, subject).
+// castBallot writes a voter's ballot into a motion's vote log (vote:<did>:<voter>),
+// where did is the deterministic motion id for (trigger, gate, subject).
 func castBallot(s entity.Store, tr, gate string, subject entity.Ref, voter, choice string) {
-	did := decisionChannelID(tr + "/" + gate + "/" + subject.String())
+	did := motionChannelID(tr + "/" + gate + "/" + subject.String())
 	s.Put(entity.Ref{System: "vote", Kind: did, ID: voter}, entity.Payload{"choice": choice, "by": voter})
 }
 
@@ -108,15 +108,15 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 
 	store.Put(entity.Ref{System: "change", Kind: "pr", ID: "b"}, entity.Payload{})
 	// one vote (short of quorum), then the deadline fires first → default deny.
-	store.Put(entity.Ref{System: "decision", Kind: "vote", ID: "x"}, entity.Payload{"choice": "approve"})
-	store.Put(entity.Ref{System: "decision", Kind: "deadline", ID: "b"}, entity.Payload{"at": "now"})
+	store.Put(entity.Ref{System: "motion", Kind: "vote", ID: "x"}, entity.Payload{"choice": "approve"})
+	store.Put(entity.Ref{System: "motion", Kind: "deadline", ID: "b"}, entity.Payload{"at": "now"})
 	if existsWithin(store, merged, 300*time.Millisecond) {
 		t.Fatal("fired despite deadline reached before quorum")
 	}
 }
 
 // A deny-quorum: `approve-quorum(2) until reject-quorum(2)` — enough rejects deny the
-// decision (the action does NOT fire), making "no" a first-class outcome. The channel
+// motion (the action does NOT fire), making "no" a first-class outcome. The channel
 // closes as denied; separately, reaching the approve-quorum first would proceed.
 func TestTemporalDenyQuorum(t *testing.T) {
 	store := entity.NewMemStore()
@@ -149,34 +149,34 @@ func TestTemporalDenyQuorum(t *testing.T) {
 	}
 }
 
-// quorumUntilDeadline builds `quorum(n over decision/vote) until (deadline fact exists)`.
+// quorumUntilDeadline builds `quorum(n over motion/vote) until (deadline fact exists)`.
 func quorumUntilDeadline(n int) *Formula {
 	return &Formula{Op: OpUntil, Args: []*Formula{
-		{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "decision", "kind": "vote"}, N: n}},
-		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "decision", "kind": "deadline"}}},
+		{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "motion", "kind": "vote"}, N: n}},
+		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "motion", "kind": "deadline"}}},
 	}}
 }
 
-// commitDecision latches once and freezes: a second commit (even a contradicting one)
+// commitMotion latches once and freezes: a second commit (even a contradicting one)
 // is a no-op, and the recorded witness is kept.
-func TestCommitDecisionTerminalOnce(t *testing.T) {
+func TestCommitMotionTerminalOnce(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
-	ref := entity.Ref{System: "decision", Kind: "commit", ID: "t1"}
-	witness := []entity.Ref{{System: "decision", Kind: "vote", ID: "a"}, {System: "decision", Kind: "vote", ID: "b"}}
+	ref := entity.Ref{System: "motion", Kind: "commit", ID: "t1"}
+	witness := []entity.Ref{{System: "motion", Kind: "vote", ID: "a"}, {System: "motion", Kind: "vote", ID: "b"}}
 
-	if eff, revoked := eng.commitDecision(ref, nil, "proceed", witness); revoked || eff != "proceed" {
+	if eff, revoked := eng.commitMotion(ref, nil, "proceed", witness); revoked || eff != "proceed" {
 		t.Fatalf("first commit: eff=%q revoked=%v, want proceed/false", eff, revoked)
 	}
 	got, ok := store.Get(ref)
 	if !ok || got.Payload["outcome"] != "proceed" {
-		t.Fatalf("decision not committed: %+v", got.Payload)
+		t.Fatalf("motion not committed: %+v", got.Payload)
 	}
 	if w, _ := got.Payload["witness"].([]string); len(w) != 2 {
 		t.Fatalf("witness not recorded: %+v", got.Payload["witness"])
 	}
 	// a later, contradicting commit is frozen out.
-	if eff, _ := eng.commitDecision(ref, nil, "deny", nil); eff != "proceed" {
+	if eff, _ := eng.commitMotion(ref, nil, "deny", nil); eff != "proceed" {
 		t.Fatalf("terminal-once violated: second commit eff=%q, want proceed", eff)
 	}
 	if got, _ := store.Get(ref); got.Payload["outcome"] != "proceed" {
@@ -185,31 +185,31 @@ func TestCommitDecisionTerminalOnce(t *testing.T) {
 }
 
 // A commit predicated on a formula that no longer holds is revoked — it does not write.
-func TestCommitDecisionRevokeGuard(t *testing.T) {
+func TestCommitMotionRevokeGuard(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
-	ref := entity.Ref{System: "decision", Kind: "commit", ID: "t2"}
-	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "decision", "kind": "vote"}, N: 2}}
+	ref := entity.Ref{System: "motion", Kind: "commit", ID: "t2"}
+	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "motion", "kind": "vote"}, N: 2}}
 
 	// The witness was captured, but the facts have since dropped (0 votes now) → revoked.
-	if _, revoked := eng.commitDecision(ref, quorum, "proceed", nil); !revoked {
+	if _, revoked := eng.commitMotion(ref, quorum, "proceed", nil); !revoked {
 		t.Fatal("commit should be revoked when the recheck formula no longer holds")
 	}
 	if _, ok := store.Get(ref); ok {
-		t.Fatal("a revoked commit must not write the decision entity")
+		t.Fatal("a revoked commit must not write the motion entity")
 	}
 }
 
 // The atomic commit path (ConditionalCommitter, e.g. MemStore) is revocable at the instant
-// of commit: a witness ballot retracted before commitDecision runs makes the CAS precondition
-// fail, so the decision is NOT committed (revoked) — no stale proceed. With the witness whole,
+// of commit: a witness ballot retracted before commitMotion runs makes the CAS precondition
+// fail, so the motion is NOT committed (revoked) — no stale proceed. With the witness whole,
 // it commits. This exercises the airtight guard, distinct from the empty-witness fallback in
-// TestCommitDecisionRevokeGuard.
-func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
+// TestCommitMotionRevokeGuard.
+func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	const did = "dtest"
-	channel := entity.Ref{System: "decision", Kind: "channel", ID: did}
+	channel := entity.Ref{System: "motion", Kind: "channel", ID: did}
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
 		Facts: Match{"system": "vote", "kind": did, "fields": map[string]any{"choice": "approve"}},
@@ -225,16 +225,16 @@ func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
 
 	// Witness whole → commits proceed.
 	seed()
-	if eff, revoked := eng.commitDecision(channel, quorum, "proceed", []entity.Ref{alice, bob}); revoked || eff != "proceed" {
+	if eff, revoked := eng.commitMotion(channel, quorum, "proceed", []entity.Ref{alice, bob}); revoked || eff != "proceed" {
 		t.Fatalf("whole witness: eff=%q revoked=%v, want proceed/false", eff, revoked)
 	}
 	if got, _ := store.Get(channel); got.Payload["outcome"] != "proceed" || got.Payload["gate"] != "approvals" {
 		t.Fatalf("committed payload = %+v, want outcome=proceed with open fields preserved", got.Payload)
 	}
 
-	// Fresh decision, a witness ballot retracted before commit → revoked, nothing written.
+	// Fresh motion, a witness ballot retracted before commit → revoked, nothing written.
 	const did2 = "dtest2"
-	ch2 := entity.Ref{System: "decision", Kind: "channel", ID: did2}
+	ch2 := entity.Ref{System: "motion", Kind: "channel", ID: did2}
 	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "vote", "kind": did2, "fields": map[string]any{"choice": "approve"}}, N: 2}}
 	a2 := entity.Ref{System: "vote", Kind: did2, ID: "alice"}
 	b2 := entity.Ref{System: "vote", Kind: did2, ID: "bob"}
@@ -242,7 +242,7 @@ func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
 	store.Put(a2, entity.Payload{"choice": "approve"})
 	store.Put(b2, entity.Payload{"choice": "approve"})
 	store.Delete(b2) // bob retracts — the captured witness no longer holds
-	if eff, revoked := eng.commitDecision(ch2, q2, "proceed", []entity.Ref{a2, b2}); !revoked || eff != "" {
+	if eff, revoked := eng.commitMotion(ch2, q2, "proceed", []entity.Ref{a2, b2}); !revoked || eff != "" {
 		t.Fatalf("retracted witness: eff=%q revoked=%v, want \"\"/true", eff, revoked)
 	}
 	if got, _ := store.Get(ch2); got.Payload["outcome"] != nil {
@@ -254,7 +254,7 @@ func TestCommitDecisionAtomicWitnessRevoke(t *testing.T) {
 // retracted, and it is reached again (safety — the answer stays live until commit).
 func TestMonitorRevocable(t *testing.T) {
 	store := entity.NewMemStore()
-	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "decision", "kind": "vote"}, N: 2}}
+	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "motion", "kind": "vote"}, N: 2}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	states := NewMonitor(quorum, store).Watch(ctx)
@@ -262,16 +262,16 @@ func TestMonitorRevocable(t *testing.T) {
 	if st := recvState(t, states); st.True {
 		t.Fatal("initial state should be false (no votes)")
 	}
-	store.Put(entity.Ref{System: "decision", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
-	store.Put(entity.Ref{System: "decision", Kind: "vote", ID: "b"}, entity.Payload{"choice": "approve"})
+	store.Put(entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
+	store.Put(entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Payload{"choice": "approve"})
 	if st := recvState(t, states); !st.True || len(st.Witness) != 2 {
 		t.Fatalf("expected true with witness 2 after quorum, got %+v", st)
 	}
-	store.Delete(entity.Ref{System: "decision", Kind: "vote", ID: "b"})
+	store.Delete(entity.Ref{System: "motion", Kind: "vote", ID: "b"})
 	if st := recvState(t, states); st.True {
 		t.Fatal("expected false after a vote was retracted (revocable)")
 	}
-	store.Put(entity.Ref{System: "decision", Kind: "vote", ID: "b"}, entity.Payload{"choice": "approve"})
+	store.Put(entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Payload{"choice": "approve"})
 	if st := recvState(t, states); !st.True {
 		t.Fatal("expected true again after quorum re-reached")
 	}
@@ -296,7 +296,7 @@ func TestDeadlineAtStampAndReuse(t *testing.T) {
 	eng := New(store, denyResolver{})
 	base := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 	eng.SetClock(func() time.Time { return base })
-	ref := entity.Ref{System: "decision", Kind: "channel", ID: "z"}
+	ref := entity.Ref{System: "motion", Kind: "channel", ID: "z"}
 
 	at1 := eng.deadlineAt(ref, time.Hour)
 	if !at1.Equal(base.Add(time.Hour)) {
@@ -331,11 +331,11 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 	if existsWithin(store, merged, 250*time.Millisecond) {
 		t.Fatal("fired despite no quorum and a passed deadline")
 	}
-	// the decision should have closed by deadline default (deny).
-	did := decisionChannelID("merge/g/" + entity.Ref{System: "change", Kind: "pr", ID: "dl"}.String())
-	ch, _ := store.Get(entity.Ref{System: "decision", Kind: "channel", ID: did})
+	// the motion should have closed by deadline default (deny).
+	did := motionChannelID("merge/g/" + entity.Ref{System: "change", Kind: "pr", ID: "dl"}.String())
+	ch, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: did})
 	if ch.Payload["outcome"] != "deny" {
-		t.Fatalf("decision outcome = %v, want deny (deadline default)", ch.Payload["outcome"])
+		t.Fatalf("motion outcome = %v, want deny (deadline default)", ch.Payload["outcome"])
 	}
 }
 

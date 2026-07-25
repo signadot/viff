@@ -11,48 +11,48 @@ import (
 	"github.com/signadot/verse/launch"
 )
 
-// A governed decision is ONE primitive with two faces. A whether-gate is a decision over
-// the options {proceed, deny}; a who-select is a decision over {doerA, doerB, …}. In both,
+// A governed motion is ONE primitive with two faces. A whether-gate is a motion over
+// the options {proceed, deny}; a who-select is a motion over {doerA, doerB, …}. In both,
 // each option is "satisfied" by a tally over the shared vote log (or by a fact, or — for a
 // default — by a deadline), the FIRST option to reach its threshold wins (earlier options
 // win ties), and the winner is committed terminal-once with a revoke guard. This file holds
-// that unified representation and the two compilers (Formula → decision, Provider →
-// decision); the engine resolves it via openChannel / awaitDecision / commitDecision.
+// that unified representation and the two compilers (Formula → motion, Provider →
+// motion); the engine resolves it via openChannel / awaitMotion / commitMotion.
 
-// decision is the engine-internal, reified governed question, built from a charter surface
+// motion is the engine-internal, reified governed question, built from a charter surface
 // (a gate Formula or a launch.Provider) and resolved over the store.
-type decision struct {
-	channel  entity.Ref  // decision:channel:<id>
-	subject  string      // the entity ref the decision is about
-	axis     string      // "whether" | "select" — channel rendering + winner mapping
-	options  []decOption // ORDERED: first to reach threshold wins; earlier wins ties
-	deadline *decDeadline
-	// provenance for the channel entity (verse decisions):
+type motion struct {
+	channel  entity.Ref     // motion:channel:<id>
+	subject  string         // the entity ref the motion is about
+	axis     string         // "whether" | "select" — channel rendering + winner mapping
+	options  []motionOption // ORDERED: first to reach threshold wins; earlier wins ties
+	deadline *motionDeadline
+	// provenance for the channel entity (verse docket):
 	trigger, gate, capability string
 }
 
-// decOption is one choosable outcome. It is satisfied when its formula holds (a vote quorum
+// motionOption is one choosable outcome. It is satisfied when its formula holds (a vote quorum
 // on a `choice`, or a fact presence); a nil formula marks a DEFAULT option, satisfied only
 // when the deadline fires. `need`/`choice` are carried for the channel display.
-type decOption struct {
+type motionOption struct {
 	id      string
 	need    int
 	choice  string
 	formula *Formula // nil = default (only the deadline satisfies it)
 }
 
-// decDeadline arms a clock: when it fires with no option yet satisfied, defaultOption wins.
+// motionDeadline arms a clock: when it fires with no option yet satisfied, defaultOption wins.
 // defaultOption "" means "no pick" (a select that reaches neither threshold nor a designated
 // default — the caller does not spawn).
-type decDeadline struct {
+type motionDeadline struct {
 	within        string
 	defaultOption string
 }
 
 // formulaOf returns the winning option's satisfy-formula — the recheck the commit is
 // predicated on (the revoke guard). nil for a default/auto winner (no witness to guard).
-func (d *decision) formulaOf(winner string) *Formula {
-	for _, o := range d.options {
+func (m *motion) formulaOf(winner string) *Formula {
+	for _, o := range m.options {
 		if o.id == winner {
 			return o.formula
 		}
@@ -60,9 +60,9 @@ func (d *decision) formulaOf(winner string) *Formula {
 	return nil
 }
 
-// decisionChannelID hashes a seed into the stable, re-fire-idempotent channel id shared by
+// motionChannelID hashes a seed into the stable, re-fire-idempotent channel id shared by
 // both axes (a re-fire reuses the same channel, terminal-once).
-func decisionChannelID(seed string) string {
+func motionChannelID(seed string) string {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(seed))
 	return fmt.Sprintf("%08x", h.Sum32())
@@ -80,37 +80,37 @@ func providerSpecSeed(subject entity.Ref, p *launch.Provider) string {
 	return "select/" + subject.String() + "/" + string(spec)
 }
 
-// compileFormula builds a whether-axis decision from a gate's Formula. The formula is bound
-// to THIS channel's vote log (a quorum atom tallies vote:<did>:*). A bare atom is a single
+// compileFormula builds a whether-axis motion from a gate's Formula. The formula is bound
+// to THIS channel's vote log (a quorum atom tallies vote:<mid>:*). A bare atom is a single
 // `proceed` option (waits until it holds). An `until[left, right]` is `proceed` (left) plus
 // `deny` (right) — where right is either a store condition (deny when it holds) or a deadline
 // (deny defaults when the clock strikes). Left/proceed wins a tie.
-func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, ev entity.Event) *decision {
+func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, ev entity.Event) *motion {
 	f = f.bind(channel.ID)
-	d := &decision{
+	m := &motion{
 		channel: channel, subject: ev.Ref.String(), axis: "whether",
 		trigger: t.Name, gate: gname,
 	}
 	if f != nil && f.Op == OpUntil && len(f.Args) == 2 {
-		d.options = append(d.options, optionFromFormula("proceed", f.Args[0]))
+		m.options = append(m.options, optionFromFormula("proceed", f.Args[0]))
 		if dur, isDeadline := deadlineDuration(f.Args[1]); isDeadline {
-			d.deadline = &decDeadline{within: dur.String(), defaultOption: "deny"}
-			d.options = append(d.options, decOption{id: "deny"}) // default: only the clock satisfies it
+			m.deadline = &motionDeadline{within: dur.String(), defaultOption: "deny"}
+			m.options = append(m.options, motionOption{id: "deny"}) // default: only the clock satisfies it
 		} else {
-			d.options = append(d.options, optionFromFormula("deny", f.Args[1]))
+			m.options = append(m.options, optionFromFormula("deny", f.Args[1]))
 		}
-		return d
+		return m
 	}
 	// A bare atom: proceed when it holds, no deny side (waits like the old Monitor.Await).
-	d.options = append(d.options, optionFromFormula("proceed", f))
-	return d
+	m.options = append(m.options, optionFromFormula("proceed", f))
+	return m
 }
 
-// compileProvider builds a select-axis decision from a launch.Provider over its resolved
+// compileProvider builds a select-axis motion from a launch.Provider over its resolved
 // eligible options: each doer is an option satisfied by a vote quorum on its own id. `ask`
 // is a vote with threshold 1; `within` arms a no-pick deadline. (`auto` short-circuits in
 // the caller — it never awaits.)
-func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref, options []string) *decision {
+func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref, options []string) *motion {
 	need := p.Need
 	if p.Select == "ask" {
 		need = 1
@@ -118,26 +118,26 @@ func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref
 	if need < 1 {
 		need = 1
 	}
-	d := &decision{
+	m := &motion{
 		channel: channel, subject: subject.String(), axis: "select",
 		capability: p.Capability,
 	}
 	for _, opt := range options {
-		d.options = append(d.options, decOption{
+		m.options = append(m.options, motionOption{
 			id: opt, need: need, choice: opt,
 			formula: quorumFormula(channel.ID, opt, need),
 		})
 	}
 	if p.Within != "" {
-		d.deadline = &decDeadline{within: p.Within, defaultOption: ""} // "" = no pick
+		m.deadline = &motionDeadline{within: p.Within, defaultOption: ""} // "" = no pick
 	}
-	return d
+	return m
 }
 
-// optionFromFormula wraps a satisfy-formula (a bound quorum or fact atom) as a decision
+// optionFromFormula wraps a satisfy-formula (a bound quorum or fact atom) as a motion
 // option, extracting its threshold/choice for the channel display.
-func optionFromFormula(id string, f *Formula) decOption {
-	o := decOption{id: id, formula: f, need: f.quorumNeed()}
+func optionFromFormula(id string, f *Formula) motionOption {
+	o := motionOption{id: id, formula: f, need: f.quorumNeed()}
 	if o.need == 0 {
 		o.need = 1 // a fact/presence atom is a quorum of one
 	}
@@ -147,29 +147,29 @@ func optionFromFormula(id string, f *Formula) decOption {
 	return o
 }
 
-// quorumFormula builds a bound quorum atom that tallies vote:<did>:* where choice==opt,
+// quorumFormula builds a bound quorum atom that tallies vote:<mid>:* where choice==opt,
 // satisfied at ≥ need — the same shape Formula.bind produces for a whether quorum.
-func quorumFormula(did, opt string, need int) *Formula {
+func quorumFormula(mid, opt string, need int) *Formula {
 	return &Formula{Op: OpAtom, Req: &Requirement{
 		Kind: ReqQuorum, N: need,
-		Facts: Match{mKeySystem: "vote", mKeyKind: did, mKeyFields: map[string]any{"choice": opt}},
+		Facts: Match{mKeySystem: "vote", mKeyKind: mid, mKeyFields: map[string]any{"choice": opt}},
 	}}
 }
 
-// openChannel writes the discoverable decision:channel entity (unified across both axes) so
-// a voter can find it (`verse decisions`) and observe the tally. Idempotent: it never
+// openChannel writes the discoverable motion:channel entity (unified across both axes) so
+// a voter can find it (`verse docket`) and observe the tally. Idempotent: it never
 // reopens a channel that has already closed (an `outcome` is present).
-func (e *Engine) openChannel(d *decision) {
-	e.store.Modify(d.channel, func(cur entity.Payload) entity.Payload {
+func (e *Engine) openChannel(m *motion) {
+	e.store.Modify(m.channel, func(cur entity.Payload) entity.Payload {
 		if _, done := cur["outcome"]; done {
 			return cur // already closed — leave it
 		}
 		p := clonePayload(cur)
-		p["axis"] = d.axis
+		p["axis"] = m.axis
 		p["status"] = "open"
-		p["subject"] = d.subject
-		opts := make([]any, 0, len(d.options))
-		for _, o := range d.options {
+		p["subject"] = m.subject
+		opts := make([]any, 0, len(m.options))
+		for _, o := range m.options {
 			om := map[string]any{"id": o.id}
 			if o.need > 0 {
 				om["need"] = o.need
@@ -180,36 +180,36 @@ func (e *Engine) openChannel(d *decision) {
 			opts = append(opts, om)
 		}
 		p["options"] = opts
-		if d.trigger != "" {
-			p["trigger"] = d.trigger
+		if m.trigger != "" {
+			p["trigger"] = m.trigger
 		}
-		if d.gate != "" {
-			p["gate"] = d.gate
+		if m.gate != "" {
+			p["gate"] = m.gate
 		}
-		if d.capability != "" {
-			p["capability"] = d.capability
+		if m.capability != "" {
+			p["capability"] = m.capability
 		}
 		return p
 	})
 }
 
-// awaitDecision resolves a decision: it watches the union of the options' vote/fact subtrees
+// awaitMotion resolves a motion: it watches the union of the options' vote/fact subtrees
 // and returns the FIRST option (in slice order — earlier wins ties) to reach its threshold.
 // An optional deadline defaults to the designated option when the clock strikes with nothing
 // yet satisfied ("" = no pick). ok is false only if ctx ends first. Generalizes the old
 // awaitUntil (2 options) and awaitPlurality (N options) into one.
-func (e *Engine) awaitDecision(ctx context.Context, d *decision) (winner string, witness []entity.Ref, ok bool) {
+func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, witness []entity.Ref, ok bool) {
 	var deadlineC <-chan time.Time
-	if d.deadline != nil {
-		if dur, err := time.ParseDuration(d.deadline.within); err == nil {
-			at := e.deadlineAt(d.channel, dur) // stamp/read (restart-safe)
+	if m.deadline != nil {
+		if dur, err := time.ParseDuration(m.deadline.within); err == nil {
+			at := e.deadlineAt(m.channel, dur) // stamp/read (restart-safe)
 			timer := time.NewTimer(at.Sub(e.now()))
 			defer timer.Stop()
 			deadlineC = timer.C
 		}
 	}
 	check := func() (string, []entity.Ref, bool) {
-		for _, o := range d.options {
+		for _, o := range m.options {
 			if o.formula == nil {
 				continue // a default option is satisfied only by the deadline
 			}
@@ -230,7 +230,7 @@ func (e *Engine) awaitDecision(ctx context.Context, d *decision) (winner string,
 	defer cancel()
 	events := make(chan entity.Event, 64)
 	seen := map[[2]string]bool{} // one watch per distinct subtree (options often share the vote log)
-	for _, o := range d.options {
+	for _, o := range m.options {
 		if o.formula == nil {
 			continue
 		}
@@ -255,7 +255,7 @@ func (e *Engine) awaitDecision(ctx context.Context, d *decision) (winner string,
 			if id, w, decided := check(); decided {
 				return id, w, true
 			}
-			return d.deadline.defaultOption, nil, true
+			return m.deadline.defaultOption, nil, true
 		case <-events:
 			if id, w, decided := check(); decided {
 				return id, w, true

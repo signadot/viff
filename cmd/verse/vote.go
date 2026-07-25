@@ -8,8 +8,8 @@ import (
 	"github.com/scott-cotton/cli"
 )
 
-// voteCmd casts a ballot into a decision's vote log — the participant side of the quorum
-// surface. A vote is a plain, visible entity (vote:<decision>:<who>): open, cooperative
+// voteCmd casts a ballot into a motion's vote log — the participant side of the quorum
+// surface. A vote is a plain, visible entity (vote:<motion>:<who>): open, cooperative
 // voting, not enforced secrecy. Storing each ballot as its own record keeps the ordered
 // vote log, so richer disciplines (ranked, timed-ranked) can read it later; secret
 // ballots via COW scopes are a later, deliberately soft option.
@@ -25,7 +25,7 @@ func voteCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "vote").
-		WithSynopsis("vote <decision> <choice> --as <who> — cast a ballot (approve|reject, or a select-option)").
+		WithSynopsis("vote <motion> <choice> --as <who> — cast a ballot (approve|reject, or a select-option)").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -36,18 +36,18 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("%w: vote wants a decision id and a choice (approve|reject) — see `verse decisions`", cli.ErrUsage)
+		return fmt.Errorf("%w: vote wants a motion id and a choice (approve|reject) — see `verse docket`", cli.ErrUsage)
 	}
-	// choice is approve|reject for a quorum decision, or an option id for a select
-	// decision — the vote log is the same, the discipline that reads it differs.
-	decision, choice := args[0], args[1]
+	// choice is approve|reject for a quorum motion, or an option id for a select
+	// motion — the vote log is the same, the discipline that reads it differs.
+	motion, choice := args[0], args[1]
 	if choice == "" {
-		return fmt.Errorf("vote: a choice is required (approve|reject, or an option for a select decision)")
+		return fmt.Errorf("vote: a choice is required (approve|reject, or an option for a select motion)")
 	}
 	if cfg.As == "" {
 		return fmt.Errorf("vote: --as <who> is required (a ballot names its voter)")
 	}
-	ref := "vote:" + decision + ":" + cfg.As
+	ref := "vote:" + motion + ":" + cfg.As
 	resp, err := httpPost("/entity", map[string]any{
 		"ref":     ref,
 		"payload": map[string]any{"choice": choice, "by": cfg.As},
@@ -56,7 +56,7 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("vote: %w", err)
 	}
 	resp.Body.Close()
-	fmt.Fprintf(cc.Out, "%s voted %s on decision %s\n", cfg.As, choice, decision)
+	fmt.Fprintf(cc.Out, "%s voted %s on motion %s\n", cfg.As, choice, motion)
 	return nil
 }
 
@@ -96,15 +96,15 @@ func providersCmd() *cli.Command {
 		})
 }
 
-// decisionsCmd lists decision channels — what needs a vote, and how tallies stand. Each is
-// written by the engine when a governed decision opens (decision:channel:<id>), across both
+// docketCmd lists the docket — the open motions, what each needs, and how tallies stand. Each
+// is written by the engine when a governed motion opens (motion:channel:<id>), across both
 // axes: a whether-gate (options proceed/deny) and a who-select (options = the eligible doers).
-func decisionsCmd() *cli.Command {
-	return leaf("decisions", "decisions — list decision channels (open votes/selects and their outcomes)",
+func docketCmd() *cli.Command {
+	return leaf("docket", "docket — list open motions (votes/selects and their outcomes)",
 		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/entities", url.Values{"system": {"decision"}, "kind": {"channel"}})
+			resp, err := httpGet("/entities", url.Values{"system": {"motion"}, "kind": {"channel"}})
 			if err != nil {
-				return fmt.Errorf("decisions: %w", err)
+				return fmt.Errorf("docket: %w", err)
 			}
 			var ents []struct {
 				Ref     string         `json:"ref"`
@@ -112,15 +112,15 @@ func decisionsCmd() *cli.Command {
 			}
 			decodeClose(resp, &ents)
 			if len(ents) == 0 {
-				fmt.Fprintln(cc.Out, "no decisions")
+				fmt.Fprintln(cc.Out, "nothing on the docket")
 				return nil
 			}
 			for _, e := range ents {
-				id := strings.TrimPrefix(e.Ref, "decision:channel:")
+				id := strings.TrimPrefix(e.Ref, "motion:channel:")
 				p := e.Payload
 				axis, _ := p["axis"].(string)
 				if axis == "" {
-					axis = "decision"
+					axis = "motion"
 				}
 				line := fmt.Sprintf("%s  %-7s %-6v", id, axis, p["status"])
 				if names := optionLabels(p["options"]); names != "" {
@@ -143,7 +143,7 @@ func decisionsCmd() *cli.Command {
 		})
 }
 
-// optionLabels renders a decision's options as "id(need) …" (the threshold shown only when
+// optionLabels renders a motion's options as "id(need) …" (the threshold shown only when
 // > 1), across both axes: "proceed(2) deny" for a whether-gate, "gpt(2) claude(2)" for a
 // select. Returns "" when there are no options.
 func optionLabels(v any) string {

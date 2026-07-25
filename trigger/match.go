@@ -25,12 +25,15 @@ import (
 //	{"system": "demo", "kind": "pr", "fields": {"stage": "open"}}   an entity predicate
 //	{"system": "demo", "kind": "pr", "id": "1"}                     one entity
 //	{"system": "demo", "kind": "pr", "id": "*"}                     the whole kind
-//	"$flow"                                                         a bound ref (sugar)
+//	{"system": "demo", "kind": "pr", "id": "hotfix-*"}              an id glob
+//	"demo:pr:*"                                                     the same, as an address
+//	"$flow"                                                         deferred until a firing
 //	{}                                                              everything
 type Match map[string]any
 
 // The match dimensions. `entity` is accepted as an alias for `fields` (docs/trigger-model.md
-// spells a Subject's payload predicate `entity:`); `ref` carries the string sugar below.
+// spells a Subject's payload predicate `entity:`); `ref` holds a $var address that only a
+// firing can resolve, and is deliberately NOT a matcher dimension.
 const (
 	mKeySystem = "system"
 	mKeyKind   = "kind"
@@ -38,7 +41,7 @@ const (
 	mKeyOp     = "op"
 	mKeyFields = "fields"
 	mKeyEntity = "entity" // alias for fields
-	mKeyRef    = "ref"    // the single-entity/bound-ref form
+	mKeyRef    = "ref"    // a $var address, resolved at the fire instant
 )
 
 // matchKeys is the closed set of dimensions a Match may carry. Its disjointness from the
@@ -50,13 +53,23 @@ var matchKeys = map[string]bool{
 	mKeyOp: true, mKeyFields: true, mKeyEntity: true, mKeyRef: true,
 }
 
-// UnmarshalJSON accepts the object form, or a STRING as sugar for the single-entity form:
-// "$flow" and "demo:pr:1" both parse to {"ref": …}. The string may be a $var (expanded
-// against a firing's bindings) or a literal ref.
+// UnmarshalJSON accepts the object form, or a STRING as sugar. A $var ("$flow") parses to
+// {"ref": …} — it names an entity that is not known until a firing expands it, so it cannot
+// be an address yet. Anything else IS an address and goes through ParseExpr, so "demo:pr:1"
+// parses to the system/kind/id dimensions and "demo:pr:*" to the whole kind.
+//
+// Every string used to become a {"ref": …} instead, and `ref` is not a matcher dimension —
+// nothing reads it. So the sugar silently misbehaved in both positions: `"when":
+// "demo:pr:1"` constrained nothing and matched every event, and `"subject": "demo:pr:*"`
+// named an entity literally called "*" (which an action's `set` would then create).
 func (m *Match) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
-		*m = refMatch(s)
+		parsed, err := parseAddr(s)
+		if err != nil {
+			return err
+		}
+		*m = parsed
 		return nil
 	}
 	var raw map[string]any
@@ -114,6 +127,15 @@ func (m Match) Validate() error {
 			return fmt.Errorf("match: set either %q or its alias %q, not both", mKeyFields, mKeyEntity)
 		}
 	}
+	// Only `id` globs. A "*" inside system or kind would silently match nothing (they are
+	// compared exactly), and silently matching nothing is the failure this Validate exists to
+	// prevent. Write the whole segment as "*" — an unset dimension — to mean "any".
+	for _, k := range []string{mKeySystem, mKeyKind} {
+		if v := m.str(k); v != "*" && strings.ContainsRune(v, '*') {
+			return fmt.Errorf("match: %q cannot glob (%q); only %q does — write the whole "+
+				"segment as \"*\" to match any", k, v, mKeyID)
+		}
+	}
 	return nil
 }
 
@@ -131,11 +153,32 @@ func (m Match) Fields() map[string]any {
 	return f
 }
 
-// Ref returns the single-entity/bound-ref form ("$flow", "demo:pr:1") if present. It is the
-// degenerate single-entity selector; the string form is sugar for it.
+// Ref returns the DEFERRED form — an address carrying a $var ("$flow") that only a firing's
+// bindings can resolve. It is not a matcher dimension: a caller holding a Ref must expand it
+// and re-read the result as an address (see Trigger.resolveSubject). A concrete address is
+// never a Ref; it parses to the system/kind/id dimensions.
 func (m Match) Ref() (string, bool) {
 	s := m.str(mKeyRef)
 	return s, s != ""
+}
+
+// Names reports whether the match designates exactly ONE entity by identity: a definite
+// system, kind, and glob-free id. This is the case a Subject may *name* rather than select —
+// an action's `set` on it creates the entity if it does not exist yet, which is how a trigger
+// publishes a fact nothing has written before. A glob in any segment makes it a selection
+// over what exists instead, so it can only ever act on entities that are really there.
+func (m Match) Names() (entity.Ref, bool) {
+	if _, deferred := m.Ref(); deferred {
+		return entity.Ref{}, false
+	}
+	r := entity.Ref{System: m.System(), Kind: m.Kind(), ID: m.ID()}
+	if r.System == "" || r.Kind == "" || r.ID == "" {
+		return entity.Ref{}, false
+	}
+	if strings.ContainsRune(r.System+r.Kind+r.ID, '*') {
+		return entity.Ref{}, false
+	}
+	return r, true
 }
 
 // IsEmpty reports whether the match constrains nothing (matches everything).
@@ -201,11 +244,43 @@ func (m Match) pattern() (entity.Pattern, error) {
 	}, nil
 }
 
-// matchID applies the `id` dimension: unset or "*" is a wildcard, otherwise exact equality.
-// Richer globs ("demo:pr:1/**") arrive with the tony leaf.
+// matchID applies the `id` dimension: unset is a wildcard, otherwise a glob — so "*" alone is
+// the whole kind and "hotfix-*" a family within it. The id is ONE address segment, so there is
+// no separator to be significant here; path-shaped globs ("demo:pr:1/**", where "/" bounds
+// what "*" may cross) are a reference question and arrive with the tony leaf.
 func (m Match) matchID(id string) bool {
 	want := m.ID()
-	return want == "" || want == "*" || want == id
+	if want == "" {
+		return true
+	}
+	return globMatch(want, id)
+}
+
+// globMatch reports whether s satisfies a "*"-glob, where "*" matches any run of characters
+// (including none) and everything else is literal. It is deliberately the smallest grammar
+// that makes "demo:pr:*" mean the kind. Linear: one backtrack point, so a pathological
+// pattern cannot make matching blow up. Byte-wise, which is UTF-8-safe because the only
+// metacharacter is ASCII.
+func globMatch(pat, s string) bool {
+	i, j := 0, 0        // cursors into s and pat
+	star, mark := -1, 0 // the last "*" in pat, and how much of s it had consumed there
+	for i < len(s) {
+		switch {
+		case j < len(pat) && pat[j] == s[i]:
+			i, j = i+1, j+1
+		case j < len(pat) && pat[j] == '*':
+			star, mark, j = j, i, j+1
+		case star >= 0: // mismatch — give the last "*" one more character and retry
+			mark++
+			i, j = mark, star+1
+		default:
+			return false
+		}
+	}
+	for j < len(pat) && pat[j] == '*' { // trailing stars may match nothing
+		j++
+	}
+	return j == len(pat)
 }
 
 func (m Match) str(key string) string {
@@ -227,9 +302,20 @@ func asFields(v any) (map[string]any, bool) {
 	return nil, false
 }
 
-// refMatch builds the degenerate single-entity match for a ref or $var — the Go-side
-// constructor for what the string sugar parses to.
+// refMatch builds the deferred match for an address carrying a $var — the Go-side
+// constructor for what the string sugar parses to when it cannot be an address yet.
 func refMatch(ref string) Match { return Match{mKeyRef: ref} }
+
+// parseAddr reads the string sugar. A $var is deferred (only a firing's bindings can resolve
+// it); anything else is an address, so it lands in the dimensions the matcher actually reads.
+// This is the one place the two string grammars — the charter wire and the CLI's `flow <addr>`
+// — are the same grammar.
+func parseAddr(s string) (Match, error) {
+	if strings.ContainsRune(s, '$') {
+		return refMatch(s), nil
+	}
+	return ParseExpr(s)
+}
 
 // MatchRef reports whether a bare REF satisfies the match's const dimensions
 // (system/kind/id). It is the face used to address things by identity when there is no
@@ -246,14 +332,16 @@ func (m Match) MatchRef(ref entity.Ref) bool {
 	return m.matchID(ref.ID)
 }
 
-// ParseExpr parses an entity-address expression into a Match — the CLI/wire surface for
-// addressing a set of entities by identity, where `*` is a wildcard per segment:
+// ParseExpr parses an entity-address expression into a Match — the ONE string surface for
+// addressing entities by identity, shared by the CLI (`flow pause <addr>`) and the charter
+// wire (a string-form Match). `*` is a wildcard per segment, and an id may also glob:
 //
-//	demo:pr:1    one entity
-//	demo:pr:*    the whole kind
-//	demo:*:*     the whole system
-//	demo:pr      trailing segments omitted are wildcards
-//	*            everything
+//	demo:pr:1         one entity
+//	demo:pr:*         the whole kind
+//	demo:pr:hotfix-*  a family within it (an id glob — see matchID)
+//	demo:*:*          the whole system
+//	demo:pr           trailing segments omitted are wildcards
+//	*                 everything
 //
 // This is what makes "relational flows" fall out of the model rather than being a second
 // primitive: steering an entity-set is the same selector, at a wider setting. (A subtree

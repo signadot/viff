@@ -67,7 +67,7 @@ func rootCmd() *cli.Command {
 			triggerCmd(),
 			goalsCmd(),
 			voteCmd(),
-			decisionsCmd(),
+			docketCmd(),
 			providersCmd(),
 			connectCmd(),
 			disconnectCmd(),

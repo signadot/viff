@@ -199,11 +199,17 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 		},
 		"subject without kind": {
 			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"system": "demo"}},
-			"must be a ref",
+			"must be an address",
 		},
 		"bad subject key": {
 			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"sytem": "demo"}},
 			"condition.subject",
+		},
+		// Only `id` globs. A "*" inside system or kind is a typo for the whole segment, and it
+		// would match nothing at all — the failure mode Validate exists to turn into an error.
+		"globbed kind": {
+			Condition{When: MatchWhen(Match{"system": "demo", "kind": "p*"})},
+			"cannot glob",
 		},
 	}
 	for name, c := range cases {

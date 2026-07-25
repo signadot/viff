@@ -7,9 +7,10 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// A Match round-trips as authored: the object form stays an object, and the string sugar
-// ("$flow", "demo:pr:1") comes back as a string rather than leaking the {"ref": …} form into
-// `trigger show`.
+// A Match round-trips without losing meaning: whatever the authored form, re-reading the
+// marshalled output yields the same dimensions. A $var stays a string (it is still a `ref`);
+// a concrete address becomes the object form it now parses to, so `trigger show` displays the
+// system/kind/id the matcher will actually apply rather than a string that reads like a ref.
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
 		`"$flow"`,
@@ -46,9 +47,8 @@ func fmtAny(v any) string {
 	return string(b)
 }
 
-// The string form is the degenerate single-entity selector, and it is NOT a set to select
-// from: a bound ref names one entity, so Selects() must be false (a set-valued Subject has to
-// name a definite system+kind).
+// A $var is the DEFERRED form: it is not a set to select from (nothing is known until a firing
+// expands it), so Selects() must be false.
 func TestMatchRefForm(t *testing.T) {
 	var m Match
 	if err := json.Unmarshal([]byte(`"$flow"`), &m); err != nil {
@@ -59,7 +59,7 @@ func TestMatchRefForm(t *testing.T) {
 		t.Fatalf("Ref() = %q, %v; want \"$flow\", true", ref, ok)
 	}
 	if m.Selects() {
-		t.Fatal("a bound ref must not be treated as a set-valued selector")
+		t.Fatal("a deferred $var must not be treated as a set-valued selector")
 	}
 	if !(Match{"system": "demo", "kind": "pr"}).Selects() {
 		t.Fatal("system+kind must be a set-valued selector")
@@ -67,6 +67,130 @@ func TestMatchRefForm(t *testing.T) {
 	// A system alone cannot select: the engine must know the kind it spawns for.
 	if (Match{"system": "demo"}).Selects() {
 		t.Fatal("system without kind must not be a set-valued selector")
+	}
+}
+
+// The string sugar is an ADDRESS, in the same grammar `verse flow <addr>` uses. Only a $var
+// stays a `ref` — and `ref` is not a matcher dimension, so anything else landing there is
+// invisible to both MatchEvent and Select (the defect this parse fixed).
+func TestStringFormIsAnAddress(t *testing.T) {
+	cases := map[string]Match{
+		`"$flow"`:            {"ref": "$flow"},
+		`"demo:pr:1"`:        {"system": "demo", "kind": "pr", "id": "1"},
+		`"demo:pr:*"`:        {"system": "demo", "kind": "pr"},
+		`"demo:pr:hotfix-*"`: {"system": "demo", "kind": "pr", "id": "hotfix-*"},
+		`"demo:*:*"`:         {"system": "demo"},
+		`"demo:pr"`:          {"system": "demo", "kind": "pr"},
+		`"*"`:                {},
+		// An id may itself contain colons, so only the first two separators are structural.
+		`"github:pr:org/repo#42"`: {"system": "github", "kind": "pr", "id": "org/repo#42"},
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			var m Match
+			if err := json.Unmarshal([]byte(in), &m); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if fmtAny(m) != fmtAny(want) {
+				t.Fatalf("%s parsed to %#v, want %#v", in, m, want)
+			}
+		})
+	}
+	// An empty or half-written address is a typo, not a wildcard: it must fail at install.
+	for _, bad := range []string{`""`, `"demo::1"`, `":pr:1"`} {
+		var m Match
+		if err := json.Unmarshal([]byte(bad), &m); err == nil {
+			t.Errorf("accepted %s (parsed as %#v)", bad, m)
+		}
+	}
+}
+
+// REGRESSION: a string-form `when` used to become a {"ref": …}, which no matcher dimension
+// reads — so `"when": "demo:pr:1"` was an unconstrained match that fired on EVERY event in
+// the verse. It must now constrain exactly the address it names.
+func TestStringFormWhenConstrains(t *testing.T) {
+	var m Match
+	if err := json.Unmarshal([]byte(`"demo:pr:1"`), &m); err != nil {
+		t.Fatal(err)
+	}
+	named := entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set}
+	other := entity.Event{Ref: entity.Ref{System: "totally", Kind: "unrelated", ID: "9"}, Op: entity.Set}
+	if !m.MatchEvent(named) {
+		t.Error(`"demo:pr:1" did not match demo:pr:1`)
+	}
+	if m.MatchEvent(other) {
+		t.Error(`"demo:pr:1" matched an unrelated event — the string form is not constraining`)
+	}
+}
+
+// Names() is what separates the one case a Subject may bring into existence from a selection
+// over what already exists. A glob anywhere must fall to the selection side, so an action can
+// never `set` an entity literally called "*".
+func TestMatchNames(t *testing.T) {
+	yes := map[string]entity.Ref{
+		`{"system":"demo","kind":"pr","id":"1"}`: {System: "demo", Kind: "pr", ID: "1"},
+		`"demo:pr:1"`:                            {System: "demo", Kind: "pr", ID: "1"},
+	}
+	for in, want := range yes {
+		var m Match
+		if err := json.Unmarshal([]byte(in), &m); err != nil {
+			t.Fatal(err)
+		}
+		got, ok := m.Names()
+		if !ok || got != want {
+			t.Errorf("%s: Names() = %v, %v; want %v, true", in, got, ok, want)
+		}
+	}
+	no := []string{
+		`"$flow"`,                                       // deferred — nothing named yet
+		`"demo:pr:*"`,                                   // the kind
+		`"demo:pr:hotfix-*"`,                            // a family
+		`{"system":"demo","kind":"pr"}`,                 // no id
+		`{"system":"demo","kind":"pr","id":"*"}`,        // explicit wildcard
+		`{"system":"demo","kind":"pr","id":"hotfix-*"}`, // a glob is never a name
+	}
+	for _, in := range no {
+		var m Match
+		if err := json.Unmarshal([]byte(in), &m); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := m.Names(); ok {
+			t.Errorf("%s: Names() = %v, true; must not name a single entity", in, got)
+		}
+	}
+}
+
+// The id glob, which is what makes "demo:pr:*" mean the kind and "hotfix-*" a family in it.
+func TestGlobMatch(t *testing.T) {
+	cases := []struct {
+		pat, s string
+		want   bool
+	}{
+		{"*", "anything", true},
+		{"*", "", true},
+		{"1", "1", true},
+		{"1", "2", false},
+		{"hotfix-*", "hotfix-42", true},
+		{"hotfix-*", "hotfix-", true},
+		{"hotfix-*", "hotfi", false},
+		{"hotfix-*", "release-42", false},
+		{"*-42", "hotfix-42", true},
+		{"*-42", "hotfix-421", false},
+		{"pr-*-fix", "pr-9-fix", true},
+		{"pr-*-fix", "pr--fix", true},
+		{"pr-*-fix", "pr-9-fixup", false},
+		{"a*b*c", "azzbzzc", true},
+		{"a*b*c", "azzc", false},
+		// The backtracking case: the first "*" must give ground for the literal to land.
+		{"*abc", "aabc", true},
+		{"*a*a", "aXaXa", true},
+		{"", "", true},
+		{"", "x", false},
+	}
+	for _, c := range cases {
+		if got := globMatch(c.pat, c.s); got != c.want {
+			t.Errorf("globMatch(%q, %q) = %v, want %v", c.pat, c.s, got, c.want)
+		}
 	}
 }
 
@@ -209,7 +333,7 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 }
 
 // Requirement.Facts is now a Match, so a formula's leaf and a trigger's subject share one
-// grammar. The compact wire form must be unchanged by that retype — `verse decisions` output
+// grammar. The compact wire form must be unchanged by that retype — `verse docket` output
 // and `goals add --done-when` inputs are user-visible.
 func TestRequirementFactsWireUnchanged(t *testing.T) {
 	cases := []string{

@@ -101,8 +101,10 @@ the same match grammar:
 | `Subject` | resolves to | example |
 |---|---|---|
 | *(omitted)* | the matched entity | `review` — a change to `demo:pr:1` is about `demo:pr:1` |
-| a bound ref (`"$flow"`) | the one referenced entity | `reviewed` — the PR the completed process carried |
+| a concrete address (`"demo:pr:1"`) | that one entity, **named** — a `set` creates it if absent | publishing a fact nothing has written yet |
+| an address glob (`"demo:pr:*"`, `"demo:pr:hotfix-*"`) | the **set** it selects | the whole kind, or a family within it |
 | a `system:kind` selector (+ entity predicate) | the **set** of matching entities | broadcast — every `demo:pr` with `stage:reviewed` |
+| a deferred `$var` (`"$flow"`) | the address the firing expands it to | `reviewed` — the PR the completed process carried |
 
 The engine **fans out one action/process per resolved entity**, and **each is about exactly
 one subject** — the original invariant, intact. A *firing* can yield 0, 1, or N; a
@@ -111,8 +113,32 @@ one subject** — the original invariant, intact. A *firing* can yield 0, 1, or 
 This is why `Subject` is bounded where a `When` formula ranges freely: it pins `system:kind`
 (it must name a definite kind to select and spawn for) and predicates over the single
 entity's payload. "all open PRs" is just `{system: demo, kind: pr, entity: {stage: open}}`.
-A bound ref like `"$flow"` is the degenerate single-entity selector; the string form is
-sugar.
+
+### The string form is an address, in one grammar
+
+There is **one** string grammar for addressing entities by identity, and both the charter
+wire and the CLI (`verse flow <addr>`) parse it with `ParseExpr`: three segments, `*` a
+wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo:pr:*"` in a
+charter and `verse flow demo:pr:*` on the command line mean the same set, as they read like
+they should.
+
+Only a `$var` stays deferred, as a `ref` — it is an address that no amount of parsing can
+resolve, because the entity is not known until a firing expands it against the changed
+payload. An expansion is then re-read as an address, so it is held to the same grammar; a
+partial result is a no-op rather than a set of unset dimensions (which, being wildcards,
+would *widen* the firing across a kind or a system).
+
+The one distinction inside the address form is **name vs select**. A glob-free address
+*names* its entity, so an action's `set` may bring it into existence — that is how a trigger
+publishes a fact nothing has written yet. A glob anywhere *selects* over what exists, so it
+can only act on entities that are really there (and can never conjure one called `*`).
+
+> This replaced a parse where *every* string became a `ref` — and `ref` is not a matcher
+> dimension, so nothing read it. The sugar silently misbehaved in both positions: `"when":
+> "demo:pr:1"` constrained nothing and fired on every event in the verse, and `"subject":
+> "demo:pr:*"` named an entity literally called `*`, which the action's `set` then created.
+> Routing the string through the address grammar fixes both, and is the natural seat for the
+> id glob.
 
 ## Flow — a subject-match over live processes
 
@@ -161,12 +187,43 @@ tony match. Naming it as one type means the swap lands **squarely, in one place*
 — the temporal layer — already exists and composes those leaves; it grows only as `Match`
 does. Two decisions stay quarantined behind the leaf swap:
 
-- **the match grammar** — globs, references, `!and`/`!or`, nested payload matches. (The
-  temporal operators — `until`/`deadline`/… — live in `Formula` and are already settled;
-  only the leaf is in flux.)
+- **the match grammar** — globs (the `id` glob has landed), references, `!and`/`!or`, nested
+  payload matches. (The temporal operators — `until`/`deadline`/… — live in `Formula` and are
+  already settled; only the leaf is in flux.)
 - **fan-out** — a set-valued `Subject` spawns per entity; `spawnID` must be deterministic
   *per subject entity* (an idempotent re-fire per member), and the runaway backstop meters
   *entities*, not firings.
+
+### The shape the leaf swap lands: `entity: {id, value}`
+
+The flat `id` + `fields` pair (with `entity` a confusing *alias* for `fields` — it sounds
+like the whole entity but means only its payload) becomes one nested per-entity match:
+
+```json
+"subject": { "system": "demo", "kind": "pr",
+             "entity": { "id": <string-or-glob-match>, "value": <tony match> } }
+```
+
+`entity` then means the entity: its identity and its content. Two things fall out:
+
+- **`ref` disappears.** With `id` a typed match slot, a glob is a glob because the *slot*
+  says so, not because a parser inferred it from the string's shape — and a concrete id is
+  just its degenerate case. Nothing is left for a `ref` escape hatch to carry, so `subject:`
+  is a pattern end to end.
+- **the completion join stops needing a `$var` at all.** A tony match has a `let` binding, so
+  "the PR this completed process carried" is expressible *inside* the match language rather
+  than by substituting a payload field into the pattern slot from outside. That requires the
+  firing's matched entity to be a **value in the match environment** — today `resolveSubject`
+  only ever string-expands a template — so what that binding is called in scope is a wire
+  contract to settle with the swap.
+
+And then the naming resolves. `$flow` exists only because `$subject` is reserved for the
+firing's own resolved subject, so the mirrored process entity could not call its subject
+`subject` (`mirror.go`, `goal.go` each carry a comment apologizing for this). With no flat
+payload bindings in the subject slot, that collision stops applying: the mirrored key becomes
+**`subject`** — which is what it is — and `flow` goes back to naming only the pattern over
+live processes that this document says it is. Landing order: `id` glob (done) → `entity:
+{id, value}` + `let` → rename `flow` → `subject`.
 
 The earlier "does `When` read one change or the whole verse?" question is **not** an open
 fork — the two layers answer it. `When` is a `Formula`, so it is `Monitor`ed over the verse's

@@ -69,7 +69,7 @@ func (m *Monitor) Watch(ctx context.Context) <-chan State {
 			if err != nil {
 				// A base-logd subtree watch does not fail on a missing path; an error here
 				// is a real one (e.g. a controller-owned/mount subtree that can't watch on
-				// appearance). Skip it — a future decision-channel surface would own that.
+				// appearance). Skip it — a future motion-channel surface would own that.
 				continue
 			}
 			defer unsub()

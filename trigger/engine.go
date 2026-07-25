@@ -46,7 +46,7 @@ type Engine struct {
 	mu       sync.Mutex
 	fired    int
 	maxFires int // 0 = unbounded (a runaway backstop, not a design limit)
-	dc       int // decision counter for gate ids
+	dc       int // motion counter for gate ids
 
 	// Control plane — steering, serviced with strict priority over observation
 	// (see docs/deployment-and-steering.md). Closures run on the loop goroutine, so
@@ -451,19 +451,19 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 // (false = ctx ended, or the gate committed a deny). If a revoke lands between
 // satisfaction and the commit, the CAS fails and it re-monitors.
 func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, ev entity.Event) bool {
-	channelRef := entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(t.Name + "/" + gname + "/" + ev.Ref.String())}
-	// Compile the gate's Formula into a decision over {proceed, deny}, bound to THIS
+	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(t.Name + "/" + gname + "/" + ev.Ref.String())}
+	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
 	// channel's vote log, and open a discoverable channel entity voters can find/observe.
-	d := e.compileFormula(g.Formula, channelRef, t, gname, ev)
-	e.openChannel(d)
+	m := e.compileFormula(g.Formula, channelRef, t, gname, ev)
+	e.openChannel(m)
 	for {
-		winner, witness, ok := e.awaitDecision(ctx, d)
+		winner, witness, ok := e.awaitMotion(ctx, m)
 		if !ok {
 			e.tracef("temporal gate %s/%s: monitor ended before commit", t.Name, gname)
 			return false
 		}
 		// The winning option's formula is the revoke guard (nil for a deadline-default deny).
-		eff, revoked := e.commitDecision(channelRef, d.formulaOf(winner), winner, witness)
+		eff, revoked := e.commitMotion(channelRef, m.formulaOf(winner), winner, witness)
 		if revoked {
 			e.tracef("temporal gate %s/%s: revoked before commit → re-monitoring", t.Name, gname)
 			continue
@@ -498,10 +498,10 @@ func deadlineDuration(f *Formula) (time.Duration, bool) {
 	return d, true
 }
 
-// deadlineAt returns the absolute instant a decision closes on timeout, stamping it on the
-// channel the first time (so `verse decisions` shows when it closes, and a restart re-arms
+// deadlineAt returns the absolute instant a motion closes on timeout, stamping it on the
+// channel the first time (so `verse docket` shows when it closes, and a restart re-arms
 // against the same absolute time — elapsed wall time is honored). It is terminal-once like
-// commitDecision: it returns the EFFECTIVE stamped value, so a re-fire — or
+// commitMotion: it returns the EFFECTIVE stamped value, so a re-fire — or
 // a concurrent arming of the same channel — reads the durable instant rather than sliding
 // the deadline forward or arming a timer against a value that never landed.
 func (e *Engine) deadlineAt(ref entity.Ref, dur time.Duration) time.Time {
@@ -539,7 +539,7 @@ func parseDeadlineAt(p entity.Payload) (time.Time, bool) {
 	return at, err == nil
 }
 
-// commitDecision latches a gate's verdict onto the decision entity: terminal-once (the
+// commitMotion latches a gate's verdict onto the motion entity: terminal-once (the
 // first commit wins; a later change cannot un-commit) and — for a proceed predicated on a
 // quorum — revocable, so a witness ballot retracted before the commit aborts it. It returns
 // the effective (possibly pre-existing) outcome and whether it was revoked. The witness is
@@ -549,10 +549,10 @@ func parseDeadlineAt(p entity.Payload) (time.Time, bool) {
 // ATOMIC conditional write (terminal-once via the channel's status, revoke via the witness
 // ballots) — no window between the check and the commit. Otherwise it falls back to a
 // best-effort check-then-Modify, which leaves a small non-atomic window.
-func (e *Engine) commitDecision(ref entity.Ref, recheck *Formula, outcome string, witness []entity.Ref) (eff string, revoked bool) {
+func (e *Engine) commitMotion(ref entity.Ref, recheck *Formula, outcome string, witness []entity.Ref) (eff string, revoked bool) {
 	cc, canCommitIf := e.store.(entity.ConditionalCommitter)
 	if wpre, ok := witnessPreconditions(recheck, witness); canCommitIf && ok {
-		return e.commitDecisionAtomic(cc, ref, outcome, witness, wpre)
+		return e.commitMotionAtomic(cc, ref, outcome, witness, wpre)
 	}
 	// Fallback: a store without conditional commit, or a deny with no satisfy side to
 	// predicate on. Best-effort recheck, then a terminal-once Modify.
@@ -567,23 +567,23 @@ func (e *Engine) commitDecision(ref entity.Ref, recheck *Formula, outcome string
 			return cur
 		}
 		eff = outcome
-		return closedDecision(cur, outcome, witness)
+		return closedMotion(cur, outcome, witness)
 	})
 	return eff, false
 }
 
-// commitDecisionAtomic commits the verdict via one atomic conditional write: terminal-once
+// commitMotionAtomic commits the verdict via one atomic conditional write: terminal-once
 // (the channel is still "open") AND the revoke guard (wpre — the witness ballots still
 // hold), both checked with the write in a single step. A refused commit is either an
-// already-latched decision (read it back and honor it — terminal-once) or a revoke (the
+// already-latched motion (read it back and honor it — terminal-once) or a revoke (the
 // witness moved — re-monitor).
-func (e *Engine) commitDecisionAtomic(cc entity.ConditionalCommitter, ref entity.Ref, outcome string, witness []entity.Ref, wpre []entity.Precondition) (eff string, revoked bool) {
+func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.Ref, outcome string, witness []entity.Ref, wpre []entity.Precondition) (eff string, revoked bool) {
 	cur, _ := e.store.Get(ref)
 	if o, done := cur.Payload["outcome"].(string); done {
 		return o, false // already committed — terminal-once
 	}
 	pre := append([]entity.Precondition{{Ref: ref, Pattern: map[string]any{"status": "open"}}}, wpre...)
-	committed, err := cc.CommitIf(ref, closedDecision(cur.Payload, outcome, witness), pre...)
+	committed, err := cc.CommitIf(ref, closedMotion(cur.Payload, outcome, witness), pre...)
 	if err != nil {
 		e.tracef("commit %s: conditional commit error: %v", ref.ID, err)
 		return "", true // treat as a revoke; monitorGate re-monitors
@@ -599,9 +599,9 @@ func (e *Engine) commitDecisionAtomic(cc entity.ConditionalCommitter, ref entity
 	return outcome, false
 }
 
-// closedDecision builds the closed channel payload from the open one, preserving its open
+// closedMotion builds the closed channel payload from the open one, preserving its open
 // fields (need/gate/subject) and recording the outcome, tally, and witness.
-func closedDecision(cur entity.Payload, outcome string, witness []entity.Ref) entity.Payload {
+func closedMotion(cur entity.Payload, outcome string, witness []entity.Ref) entity.Payload {
 	p := clonePayload(cur)
 	p["status"] = "closed"
 	p["outcome"] = outcome
@@ -614,7 +614,7 @@ func closedDecision(cur entity.Payload, outcome string, witness []entity.Ref) en
 
 // witnessPreconditions builds the revoke-guard precondition for an atomic commit: it is
 // applicable only when the satisfy-formula is a quorum atom, in which case it requires each
-// witness ballot to still be present with the counted choice, over the decision's vote
+// witness ballot to still be present with the counted choice, over the motion's vote
 // subtree. Returns ok=false when there is no quorum recheck or no witness (the deny path, or
 // a non-quorum formula) — the caller then uses the best-effort fallback.
 func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Precondition, bool) {
@@ -654,7 +654,7 @@ func clonePayload(p entity.Payload) entity.Payload {
 	return out
 }
 
-// refIDs renders a witness as its entity ref strings (audit trail on the decision).
+// refIDs renders a witness as its entity ref strings (audit trail on the motion).
 func refIDs(refs []entity.Ref) []string {
 	out := make([]string, 0, len(refs))
 	for _, r := range refs {
@@ -666,8 +666,8 @@ func refIDs(refs []entity.Ref) []string {
 // ── the who-axis: governed provider selection ───────────────────────────────
 
 // selectProvider resolves the who-axis for a spawn whose Spec carries a Provider: it
-// reifies a `select` decision — a decision over the eligible doers as options — resolves it
-// through the SAME machinery as a whether-gate (openChannel/awaitDecision/commitDecision),
+// reifies a `select` motion — a motion over the eligible doers as options — resolves it
+// through the SAME machinery as a whether-gate (openChannel/awaitMotion/commitMotion),
 // and returns the chosen driver (bound into Spec.Driver before spawn — no live swap). The
 // commit is CAS terminal-once with the revoke guard, so a ballot retracted between threshold
 // and commit re-monitors; a re-fire is idempotent (same channel). Orthogonal to the
@@ -677,13 +677,13 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 	if len(options) == 0 {
 		return "", false
 	}
-	channelRef := entity.Ref{System: "decision", Kind: "channel", ID: decisionChannelID(providerSpecSeed(subject, p))}
-	d := e.compileProvider(p, subject, channelRef, options)
-	e.openChannel(d)
+	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subject, p))}
+	m := e.compileProvider(p, subject, channelRef, options)
+	e.openChannel(m)
 
 	// auto: a rule picks the first eligible doer immediately — no channel await, no votes.
 	if p.Select == "" || p.Select == "auto" {
-		eff, _ := e.commitDecision(channelRef, nil, options[0], nil)
+		eff, _ := e.commitMotion(channelRef, nil, options[0], nil)
 		return driverFor(drivers, eff), true
 	}
 
@@ -694,16 +694,16 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 		ctx = context.Background()
 	}
 	for {
-		winner, witness, ok := e.awaitDecision(ctx, d)
+		winner, witness, ok := e.awaitMotion(ctx, m)
 		if !ok {
-			e.tracef("select %s: %s ended before a decision", channelRef.ID, p.Select)
+			e.tracef("select %s: %s ended before the motion closed", channelRef.ID, p.Select)
 			return "", false
 		}
 		if winner == "" { // no pick (deadline default) — record it, do not spawn
-			e.commitDecision(channelRef, nil, "no-pick", nil)
+			e.commitMotion(channelRef, nil, "no-pick", nil)
 			return "", false
 		}
-		eff, revoked := e.commitDecision(channelRef, d.formulaOf(winner), winner, witness)
+		eff, revoked := e.commitMotion(channelRef, m.formulaOf(winner), winner, witness)
 		if revoked {
 			e.tracef("select %s: revoked before commit → re-monitoring", channelRef.ID)
 			continue
