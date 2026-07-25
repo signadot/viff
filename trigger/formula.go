@@ -20,9 +20,9 @@ import (
 // leaves are matches" holds literally; a second carrier would make an atom two things.
 // Boolean composition (and/or) lives inside the leaf match, not as Formula nodes.
 type Formula struct {
-	Op   FormulaOp    `json:"op"`
-	Req  *Requirement `json:"req,omitempty"`  // Op == OpAtom: the leaf requirement
-	Args []*Formula   `json:"args,omitempty"` // operands for temporal operators
+	Op   FormulaOp    `json:"op" tony:"field=op"`
+	Req  *Requirement `json:"req,omitempty" tony:"field=req,omitzero"`   // Op == OpAtom: the leaf requirement
+	Args []*Formula   `json:"args,omitempty" tony:"field=args,omitzero"` // operands for temporal operators
 }
 
 // FormulaOp tags the parse node. OpAtom is a leaf requirement; the rest are temporal
@@ -295,11 +295,11 @@ func (r *Requirement) compactValue() any {
 // first pass; the others are stubbed so the requirement/producer-binding shape is
 // present from the start.
 type Requirement struct {
-	Kind   RequirementKind `json:"kind"`
-	Facts  Match           `json:"facts"`            // the store facts this requirement reads (a point-in-time Match)
-	N      int             `json:"n,omitempty"`      // quorum threshold: satisfied when ≥ N ballots match
-	Choice string          `json:"choice,omitempty"` // which ballot a quorum counts (default "approve"; "reject" = a deny-quorum)
-	Within string          `json:"within,omitempty"` // deadline duration (e.g. "4h") — a time derivation, not a store fact
+	Kind   RequirementKind `json:"kind" tony:"field=kind"`
+	Facts  Match           `json:"facts" tony:"field=facts"`                      // the store facts this requirement reads (a point-in-time Match)
+	N      int             `json:"n,omitempty" tony:"field=n,omitzero"`           // quorum threshold: satisfied when ≥ N ballots match
+	Choice string          `json:"choice,omitempty" tony:"field=choice,omitzero"` // which ballot a quorum counts (default "approve"; "reject" = a deny-quorum)
+	Within string          `json:"within,omitempty" tony:"field=within,omitzero"` // deadline duration (e.g. "4h") — a time derivation, not a store fact
 }
 
 // RequirementKind is the verse-native requirement vocabulary. The concrete surface that

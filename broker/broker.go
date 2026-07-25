@@ -115,15 +115,15 @@ type procState struct {
 // inboxItem is one control instruction directed at the worker, cursored so a reconnecting
 // worker resumes with ?since=<cursor>.
 type inboxItem struct {
-	Cursor   int64           `json:"cursor"`
-	Kind     string          `json:"kind"` // spec | say | cancel | pause | resume | vector | resolve
-	Task     string          `json:"task,omitempty"`
-	Driver   string          `json:"driver,omitempty"`
-	Text     string          `json:"text,omitempty"`
-	By       string          `json:"by,omitempty"`
-	Decision string          `json:"decision,omitempty"` // resolve: the decision id being answered
-	Proceed  bool            `json:"proceed,omitempty"`  // resolve: approve (true) or deny (false)
-	Vector   *process.Vector `json:"vector,omitempty"`   // vector: the new gate vector to slide to
+	Cursor   int64           `json:"cursor" tony:"field=cursor"`
+	Kind     string          `json:"kind" tony:"field=kind"` // spec | say | cancel | pause | resume | vector | resolve
+	Task     string          `json:"task,omitempty" tony:"field=task,omitzero"`
+	Driver   string          `json:"driver,omitempty" tony:"field=driver,omitzero"`
+	Text     string          `json:"text,omitempty" tony:"field=text,omitzero"`
+	By       string          `json:"by,omitempty" tony:"field=by,omitzero"`
+	Decision string          `json:"decision,omitempty" tony:"field=decision,omitzero"` // resolve: the decision id being answered
+	Proceed  bool            `json:"proceed,omitempty" tony:"field=proceed,omitzero"`   // resolve: approve (true) or deny (false)
+	Vector   *process.Vector `json:"vector,omitempty" tony:"field=vector,omitzero"`     // vector: the new gate vector to slide to
 }
 
 // emit appends an event to the merged log (stamping the next cursor) and broadcasts it to
@@ -500,9 +500,9 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Events []process.Frame `json:"events"`
-		Result string          `json:"result,omitempty"`
-		Epoch  int64           `json:"epoch,omitempty"`
+		Events []process.Frame `json:"events" tony:"field=events"`
+		Result string          `json:"result,omitempty" tony:"field=result,omitzero"`
+		Epoch  int64           `json:"epoch,omitempty" tony:"field=epoch,omitzero"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

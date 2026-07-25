@@ -63,11 +63,19 @@ HOSTPATH ?=
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=true HOSTPATH=… to host-link)
 	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) | kubectl apply -f -
 
+# NOTE: no package currently carries a //go:generate tony-codegen directive, so these are
+# no-ops today. tony-codegen v0.0.87 cannot generate for verse's types — one unsupported
+# field type (map[string]any, []NamedString) takes a whole package out, and there is no way
+# to tell it "this type has its own codec, just call it", so the failure propagates to every
+# referencing type. See tony-format#f69agjyeh12ksa25cnn0 and codec/omitzero.go, which
+# implements `omitzero` over the reflection path instead. The targets and the tool pin stay:
+# the struct tags are already the ones tony-codegen reads, so generation can be switched on
+# per package if those gaps close.
+#
 # Codegen is deliberately NOT a dependency of `bin`/`dist-linux`: keeping it out of the
-# build path is what lets the Dockerfile just COPY binaries. Generated files are committed;
-# `check-generate` is the guard that they are current.
+# build path is what lets the Dockerfile just COPY binaries.
 .PHONY: generate
-generate: ## regenerate tony codegen (<pkg>_gen.go + schema/)
+generate: ## regenerate tony codegen (currently a no-op — see the note above)
 	$(GO) generate ./...
 
 .PHONY: check-generate

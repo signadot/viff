@@ -29,10 +29,10 @@ import (
 // holds and every Gate resolves to proceed, the Action fires. Gates are conjunctive
 // (all-of); an empty Gates fires with no approval.
 type Trigger struct {
-	Name      string    `json:"name"`
-	Condition Condition `json:"condition"`
-	Gates     []Gate    `json:"gates,omitempty"` // conjunctive (all must proceed)
-	Action    Action    `json:"action"`
+	Name      string    `json:"name" tony:"field=name"`
+	Condition Condition `json:"condition" tony:"field=condition"`
+	Gates     []Gate    `json:"gates,omitempty" tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	Action    Action    `json:"action" tony:"field=action"`
 }
 
 // Condition is the ECA "cause": what fires the trigger, and what the firing is about.
@@ -43,13 +43,13 @@ type Trigger struct {
 type Condition struct {
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
 	// one change event; temporal operators relate the verse's evolution instead.
-	When *Formula `json:"when"`
+	When *Formula `json:"when" tony:"field=when"`
 	// Subject is what the firing is ABOUT, selected at the fire instant — never
 	// accumulated, so it carries no temporal operators. Omitted = the matched entity; an
 	// address names one entity; a system+kind selector is a pattern — matched against the
 	// firing's own subject (a reflected process's `flow`) when it has one, else the SET of
 	// matching entities in the store, one action per member.
-	Subject Match `json:"subject,omitempty"`
+	Subject Match `json:"subject,omitempty" tony:"field=subject,omitzero"`
 }
 
 // validate reports whether the condition is installable. It is deliberately strict: the
@@ -137,9 +137,9 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 // is set the gate is monitored on the store's watch stream (see Monitor) rather than posed
 // to a resolver; Mode is then optional (defaults to a blocking gate).
 type Gate struct {
-	Name    string   `json:"name,omitempty"`
-	Mode    string   `json:"mode,omitempty"` // auto | ask | park
-	Formula *Formula `json:"formula,omitempty"`
+	Name    string   `json:"name,omitempty" tony:"field=name,omitzero"`
+	Mode    string   `json:"mode,omitempty" tony:"field=mode,omitzero"` // auto | ask | park
+	Formula *Formula `json:"formula,omitempty" tony:"field=formula,omitzero"`
 }
 
 // mode resolves the gate's autonomy mode. A temporal gate (Formula set) with no explicit
@@ -165,8 +165,8 @@ func (g Gate) mode() (process.Mode, error) {
 // $path, …), and $subject — the RESOLVED subject, set last so a payload field cannot
 // shadow it.
 type Action struct {
-	Set   map[string]any `json:"set,omitempty"`
-	Spawn *launch.Spec   `json:"spawn,omitempty"`
+	Set   map[string]any `json:"set,omitempty" tony:"field=set,omitzero"`
+	Spawn *launch.Spec   `json:"spawn,omitempty" tony:"field=spawn,omitzero"`
 }
 
 // apply runs the action once per resolved subject: apply the Set (a state transition on

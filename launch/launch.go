@@ -29,22 +29,22 @@ import (
 // turning a generic action into a specific launch. All fields are optional; a
 // runtime supplies defaults for any left blank.
 type Spec struct {
-	Driver      string `json:"driver,omitempty"`
-	Task        string `json:"task,omitempty"`
-	Policy      string `json:"policy,omitempty"`
-	Resolver    string `json:"resolver,omitempty"`
-	Scope       string `json:"scope,omitempty"`
-	Environment string `json:"environment,omitempty"`
+	Driver      string `json:"driver,omitempty" tony:"field=driver,omitzero"`
+	Task        string `json:"task,omitempty" tony:"field=task,omitzero"`
+	Policy      string `json:"policy,omitempty" tony:"field=policy,omitzero"`
+	Resolver    string `json:"resolver,omitempty" tony:"field=resolver,omitzero"`
+	Scope       string `json:"scope,omitempty" tony:"field=scope,omitzero"`
+	Environment string `json:"environment,omitempty" tony:"field=environment,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The
 	// engine tracks a flow's processes by subject so it can be steered/cancelled as
 	// a unit. Usually the concrete matched ref, not a template.
-	Subject string `json:"subject,omitempty"`
+	Subject string `json:"subject,omitempty" tony:"field=subject,omitzero"`
 	// Provider, when set, makes the who-axis (Driver) a GOVERNED SELECTION rather than a
 	// fixed authoring-time value: the engine selects one of Eligible via the Select
 	// surface, reifies it as a motion, and binds the winner into Driver before spawn
 	// (no live swap — reassign = cancel+respawn). Orthogonal to the controlPolicy that
 	// then transports the chosen Driver.
-	Provider *Provider `json:"provider,omitempty"`
+	Provider *Provider `json:"provider,omitempty" tony:"field=provider,omitzero"`
 }
 
 // Provider declares the who-axis as a governed 1-of-N selection: the eligible doers (a
@@ -56,16 +56,16 @@ type Spec struct {
 // entities whose attributes match — attribute-rich, discoverable doers resolved at fire
 // time. A matched provider entity carries the `driver` bound into the spawn.
 type Provider struct {
-	Eligible   []string       `json:"eligible,omitempty"`   // inline doer ids (option == driver)
-	Capability string         `json:"capability,omitempty"` // registry: select provider:<capability>:*
-	Match      map[string]any `json:"match,omitempty"`      // registry: a tony match over provider attributes
+	Eligible   []string       `json:"eligible,omitempty" tony:"field=eligible,omitzero"`     // inline doer ids (option == driver)
+	Capability string         `json:"capability,omitempty" tony:"field=capability,omitzero"` // registry: select provider:<capability>:*
+	Match      map[string]any `json:"match,omitempty" tony:"field=match,omitzero"`           // registry: a tony match over provider attributes
 	// Select is the who-dial: how the doer is picked among the eligible options —
 	// "auto" (a rule picks the first eligible), "ask" (one party picks; a threshold of 1),
 	// or "vote" (the group picks; ≥ Need). Empty defaults to auto. It is the who-axis
 	// counterpart of a whether-gate's Formula; both compile to the same governed motion.
-	Select string `json:"select,omitempty"`
-	Need   int    `json:"need,omitempty"`   // vote: plurality threshold
-	Within string `json:"within,omitempty"` // vote/ask: selection deadline (e.g. "4h") — no pick by then = no spawn
+	Select string `json:"select,omitempty" tony:"field=select,omitzero"`
+	Need   int    `json:"need,omitempty" tony:"field=need,omitzero"`     // vote: plurality threshold
+	Within string `json:"within,omitempty" tony:"field=within,omitzero"` // vote/ask: selection deadline (e.g. "4h") — no pick by then = no spawn
 }
 
 // bind expands $vars in the template-ish fields (eligible ids, capability). Select/Need
