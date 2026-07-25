@@ -104,9 +104,9 @@ ok "baseline entity readable from the scope (read-through)"
 step "trigger add + drive (reactive core)"
 v trigger add -f - >/dev/null <<'JSON' || die "trigger add failed"
 [ { "name": "smoke-advance",
-    "matches": [ { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } ],
-    "gates":   [],
-    "action":  { "set": { "stage": "reviewed" } } } ]
+    "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
+    "gates":     [],
+    "action":    { "set": { "stage": "reviewed" } } } ]
 JSON
 ok "charter installed"
 # putting a matching entity fires the trigger, which advances the matched subject.
