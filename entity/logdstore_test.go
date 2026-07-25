@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -36,12 +37,10 @@ func concurrentIncrement(t *testing.T, store Store) {
 		wg.Add(1)
 		go func(f string) {
 			defer wg.Done()
-			for i := 0; i < n; i++ {
+			for range n {
 				store.Modify(ref, func(cur Payload) Payload {
 					p := Payload{}
-					for k, v := range cur {
-						p[k] = v
-					}
+					maps.Copy(p, cur)
 					p[f] = asInt(p[f]) + 1
 					return p
 				})
@@ -276,6 +275,70 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 			t.Fatalf("Since drifted at %d: %+v vs %+v", i, first[i], second[i])
 		}
 	}
+}
+
+// Concurrent Since calls must all replay, on one session, with no serialization. This is
+// what let the store drop its second "-replay" session and the mutex that serialized
+// replays against it: a session may hold several watches on the SAME path, each keyed by
+// its request id (go-tony ≥ v0.0.85). Run under -race, since removing that mutex is
+// exactly the kind of change a data race would punish.
+//
+// Both faces are covered because the admission rule lives in two places: logd's session
+// (direct) and docd's per-watch bookkeeping (which is what verse actually talks to).
+func TestLogdStore_ConcurrentSince(t *testing.T) {
+	run := func(t *testing.T, s *LogdStore) {
+		t.Helper()
+		start := s.Rev()
+		refs := []Ref{
+			{System: "demo", Kind: "pr", ID: "1"},
+			{System: "demo", Kind: "pr", ID: "2"},
+			{System: "demo", Kind: "pr", ID: "3"},
+		}
+		for i, r := range refs {
+			s.Put(r, Payload{"stage": "open", "i": int64(i)})
+		}
+		// Let the writes land, so every concurrent replay has the same window to see.
+		eventually(t, "writes to be replayable", func() bool {
+			evs, ok := s.Since(start)
+			return ok && len(evs) >= len(refs)
+		})
+
+		const n = 8
+		type result struct {
+			evs []Event
+			ok  bool
+		}
+		results := make([]result, n)
+		var wg sync.WaitGroup
+		for i := range n {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				evs, ok := s.Since(start)
+				results[i] = result{evs, ok}
+			}(i)
+		}
+		wg.Wait()
+
+		for i, got := range results {
+			if !got.ok {
+				t.Fatalf("concurrent Since #%d returned ok=false — replays are interfering "+
+					"(a session must admit several id-keyed watches on one path)", i)
+			}
+			for _, r := range refs {
+				if !hasRef(got.evs, r) {
+					t.Fatalf("concurrent Since #%d missed %s (got %d events) — a concurrent "+
+						"replay on the same path lost events", i, r, len(got.evs))
+				}
+			}
+		}
+	}
+
+	t.Run("direct logd", func(t *testing.T) { run(t, openStore(t)) })
+	t.Run("through docd", func(t *testing.T) {
+		s, _ := storeOverDocd(t)
+		run(t, s)
+	})
 }
 
 // A cursor older than a store instance's sync point can't be served (logd may have

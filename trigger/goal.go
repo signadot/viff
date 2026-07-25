@@ -150,11 +150,15 @@ func (e *Engine) Goals() []GoalDef {
 	return out
 }
 
-// runGoal drives the goal's lifecycle from ONE watch over doneWhen (so a docd session never
-// opens two watches on the same path): every relevant change updates the live status, and
-// the terminal is decided in the same loop — doneWhen true ⇒ done, deadline elapsed ⇒
-// unachievable (done wins a tie). On a terminal it commits the latch (terminal-once) and
-// reaps the owned triggers.
+// runGoal drives the goal's lifecycle from ONE watch over doneWhen: every relevant change
+// updates the live status, and the terminal is decided in the same loop — doneWhen true ⇒
+// done, deadline elapsed ⇒ unachievable (done wins a tie). On a terminal it commits the latch
+// (terminal-once) and reaps the owned triggers.
+//
+// The single watch is a simplification, not a constraint: status and terminal are decided from
+// the same evaluation, so splitting them would mean re-deriving one from the other. (It once
+// also worked around a session admitting only one watch per path; since go-tony v0.0.85 a
+// session may hold several, each keyed by its request id.)
 func (e *Engine) runGoal(ctx context.Context, g *Goal) {
 	done := g.Def.DoneWhen
 
