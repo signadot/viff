@@ -49,6 +49,18 @@ type motionDeadline struct {
 	defaultOption string
 }
 
+// guardFor returns the revoke guard for a winner about to be committed: the winning
+// option's satisfy-formula, but ONLY when there is a witness to guard. A win with no
+// witness is a deadline default or an auto pick — nothing was retracted, so there is
+// nothing to recheck, and predicating the commit on a formula that never held would make
+// every such commit read as revoked (an unbounded re-monitor loop).
+func (m *motion) guardFor(winner string, witness []entity.Ref) *Formula {
+	if len(witness) == 0 {
+		return nil
+	}
+	return m.formulaOf(winner)
+}
+
 // formulaOf returns the winning option's satisfy-formula — the recheck the commit is
 // predicated on (the revoke guard). nil for a default/auto winner (no witness to guard).
 func (m *motion) formulaOf(winner string) *Formula {

@@ -464,7 +464,7 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 			return false
 		}
 		// The winning option's formula is the revoke guard (nil for a deadline-default deny).
-		eff, revoked := e.commitMotion(channelRef, m.formulaOf(winner), winner, witness)
+		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
 		if revoked {
 			e.tracef("temporal gate %s/%s: revoked before commit → re-monitoring", t.Name, gname)
 			continue
@@ -704,7 +704,7 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 			e.commitMotion(channelRef, nil, "no-pick", nil)
 			return "", false
 		}
-		eff, revoked := e.commitMotion(channelRef, m.formulaOf(winner), winner, witness)
+		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
 		if revoked {
 			e.tracef("select %s: revoked before commit → re-monitoring", channelRef.ID)
 			continue
