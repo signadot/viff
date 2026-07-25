@@ -14,10 +14,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/controlpolicy"
@@ -392,33 +392,62 @@ func (s *Server) Handler() http.Handler {
 // the runtime is exercisable without model credentials. `verse up --llm` swaps in
 // the LLM harness.
 
-// ScriptedBuilder is a processd.Builder that builds a scripted, auto-gated process.
-// The scripted driver does no file I/O and ignores the requested driver/ContentReader.
+// ScriptedBuilder builds the credential-free process runtime driver: it runs the task as a real
+// shell command (`bash -lc`), confined to root and cancellable via the process context — a
+// governed shell command as a process. It is the dependency-free stand-in for an LLM agent, so
+// the runtime is exercisable and steerable (and can run real work like `sleep`) without model
+// credentials. The gate vector is Auto — a scripted command runs freely; the LLM harness is what
+// wires the effect-gating vector.
+// ScriptedBuilder is the processd.Builder form (root = the process's cwd). `verse up` uses
+// NewScriptedProcess directly to confine scripted commands to the agent root.
 func ScriptedBuilder(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
-	return process.NewProcess(id, sup, &scriptDriver{task: task, steps: 3}, scriptExec{})
+	return NewScriptedProcess(id, task, "", reg)
 }
 
+// NewScriptedProcess builds a scripted process rooted at root.
+func NewScriptedProcess(id, task, root string, reg *process.Registry) *process.Process {
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+	return process.NewProcess(id, sup, &scriptDriver{command: task}, &shellExec{root: root})
+}
+
+// scriptDriver runs its task as a single shell command, then completes.
 type scriptDriver struct {
-	task  string
-	steps int
-	i     int
+	command string
+	done    bool
 }
 
 func (d *scriptDriver) Next(_ context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
-	if d.i >= d.steps {
+	if d.done || strings.TrimSpace(d.command) == "" {
 		return process.ToolUse{}, false, nil
 	}
-	d.i++
-	return process.ToolUse{Name: "step", Input: map[string]any{"task": d.task, "n": d.i}}, true, nil
+	d.done = true
+	return process.ToolUse{Name: "run_bash", Input: map[string]any{"command": d.command}}, true, nil
 }
 
-type scriptExec struct{}
+// shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),
+// confined to root. It is the scripted driver's counterpart of the harness's fsExec.
+type shellExec struct{ root string }
 
-func (scriptExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
-	time.Sleep(50 * time.Millisecond) // simulate a unit of work
-	return process.StepResult{Use: tu, Output: "did " + tu.Name}, nil, nil
+func (e *shellExec) Execute(ctx context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
+	// bash -c (non-login): inherits the server's env/PATH, and avoids the login shell's
+	// job-control setpgid ("failed to change group ID") that fails in restricted envs (CI, sandboxes).
+	c := exec.CommandContext(ctx, "bash", "-c", str(tu.Input, "command"))
+	c.Dir = e.root
+	out, err := c.CombinedOutput()
+	res := strings.TrimSpace(string(out))
+	if err != nil {
+		if res != "" {
+			res += "\n"
+		}
+		res += "exit: " + err.Error()
+	}
+	if res == "" {
+		res = "(ok)"
+	}
+	return process.StepResult{Use: tu, Output: res}, nil, nil
 }
+
+func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
 
 // deleteScope drops the ?scope copy-on-write overlay and all its data — federation
 // teardown. It runs against the baseline store (only baseline may delete a scope),

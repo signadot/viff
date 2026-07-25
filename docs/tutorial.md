@@ -100,7 +100,7 @@ it as `charter.json`:
     "gates":     [ { "name": "review", "mode": "ask" } ],
     "action": {
       "set":   { "stage": "reviewing" },
-      "spawn": { "driver": "scripted", "task": "review $subject" }
+      "spawn": { "driver": "scripted", "task": "echo reviewing $subject; sleep 1" }
     }
   },
   {
@@ -250,8 +250,8 @@ A trigger's `spawn` runs a process, but you can run one directly too. `run` prin
 process id (a `run-…`):
 
 ```sh
-verse process run "summarize what verse is"           # runs an agent; prints the id
-verse process run --wait "summarize what verse is"    # …and block for the final answer
+verse process run "echo summarizing; sleep 2"          # scripted: runs the task as a shell command
+verse process run --wait "echo done"                   # …and block for the final output
 verse process list
 verse process get <id>        # snapshot: status, say, lastOutput, result, pending gates
 verse process say <id> "also mention the dial"        # say to the agent mid-run (re-prompt)
@@ -269,9 +269,10 @@ A direct run is mirrored as a `process:instance` entity like any other process, 
 `verse entity get process:instance:<id>` shows what it produced — the latest `say`, last
 tool output, and full `result` — even after it finishes.
 
-**Which agent runs it.** With LLM creds configured, the default driver is a real **LLM
-agent**; with no creds it falls back to **scripted** (a few canned steps, no credentials — so
-the runtime is demoable anywhere). Choose explicitly per spawn with `--driver scripted|llm`.
+**Which driver runs it.** With LLM creds configured, the default driver is a real **LLM
+agent**; with no creds it falls back to **scripted**, which runs the task as a governed
+**shell command** (no credentials — so the runtime is demoable anywhere, and a scripted process
+can do real work: `sleep`, `go test`, `git …`). Choose explicitly per spawn with `--driver scripted|llm`.
 The creds live with the **server** — the `up` process hosts the runtime, so it reads *its*
 environment (or `~/.config/verse.tony`), not the `process run` client's; set them before `up`
 (§1). Check with `verse status` — the `llm` block shows `available` and a masked key.
@@ -312,7 +313,7 @@ verse:
 
 ```sh
 verse watch --system process
-# process:instance:review-1  running → step → step → completed
+# process:instance:review-1  running → … → completed
 ```
 
 ---
@@ -327,14 +328,18 @@ A flow is **not a stored thing** — it is a *query* over the subjects of live p
 is why steering takes an **address**, not just a ref, and why steering a whole set needs no
 new machinery: it is the same selector at a wider setting.
 
-A flow exists only while its processes run, so give yourself one to steer — open another
-change and approve its review, so a review process spawns under `demo:pr:2`:
+A flow exists only while its processes run, and a scripted review is brief. So give yourself a
+durable flow to steer: install a `hold` trigger — when you mark a PR `watching`, it runs a
+60-second process under that subject — then flip a PR into it:
 
 ```sh
-verse entity put demo:pr:2 '{"stage":"open"}'
-verse gate list                       # find the new review gate's id, then:
-verse gate resolve <that-id> --approve
-verse flow list                       # subjects with in-flight processes
+verse trigger add -f - <<'JSON'
+[ { "name": "hold",
+    "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "watching" } } },
+    "action":    { "spawn": { "driver": "scripted", "task": "sleep 60" } } } ]
+JSON
+verse entity put demo:pr:2 '{"stage":"watching"}'   # → a 60s process spawns under demo:pr:2
+verse flow list                                     # demo:pr:2 — a live flow to steer
 ```
 
 Now steer that subject's flow:
@@ -359,10 +364,11 @@ Each command reports how many processes it reached, so `{"paused": 2}` tells you
 selected two.
 
 They fan out to the addressed processes and land at each one's next boundary, so a flow can
-be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting.
-A `scripted` review is brief, so steering matters most for a real, longer-running
-agent — the `llm` driver, or a longer task — where `pause`/`say`/`cancel` take hold
-mid-run.
+be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting. Because a
+scripted process is a single command, `flow list` sees the `sleep` above and `flow cancel` stops
+it at once (it kills the command), while `pause`/`say` land at its next boundary — which for a
+one-command process is when it ends. They take hold *mid-run* on a multi-step process: the `llm`
+driver, whose every tool call is a boundary.
 
 `pause` is the operator's ad-hoc freeze ("hold this flow, I want to look"), distinct from
 `cancel` (which ends the work) and from a `park` gate (a hold the *charter* declares, per

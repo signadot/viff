@@ -87,7 +87,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 		switch driver {
 		case "scripted":
-			return versed.ScriptedBuilder(id, task, driver, reg, content)
+			return versed.NewScriptedProcess(id, task, root, reg)
 		case "llm":
 			if !appCfg.LLM.Available() {
 				return process.NewFailed(id, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
