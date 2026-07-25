@@ -157,8 +157,12 @@ func NewProcess(id string, sup *Supervisor, d Driver, e Executor) *Process {
 func (p *Process) SetSpawn(f SpawnFunc) { p.spawn = f }
 
 // SetVector swaps the gate vector on the running supervisor — the autonomy slide,
-// applied at the next boundary with no restart.
-func (p *Process) SetVector(v *Vector) { p.sup.SetVector(v) }
+// applied at the next boundary with no restart. It emits an EvVector frame so the slide is
+// observable on the read plane (the new default mode; the operator who slid it rides By).
+func (p *Process) SetVector(v *Vector, by string) {
+	p.sup.SetVector(v)
+	p.emit(Frame{Kind: EvVector, Mode: v.Default.String(), By: by})
+}
 
 // SetFailFast makes a child's error cancel its still-running siblings
 // (errgroup-style). Off by default: siblings run to their own completion.

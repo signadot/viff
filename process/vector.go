@@ -10,8 +10,8 @@ import (
 // structure (model invariant #2): a Supervisor can swap it on a running
 // process without restart, which is how autonomy slides.
 type Vector struct {
-	Gates   []Gate
-	Default Mode // mode when no gate matches (a permissive baseline; hard scope/deny is a separate layer)
+	Gates   []Gate `json:"gates,omitempty"`
+	Default Mode   `json:"default"` // mode when no gate matches (a permissive baseline; hard scope/deny is a separate layer)
 }
 
 // GateQuestion is what evaluating the vector against an action poses: the mode the

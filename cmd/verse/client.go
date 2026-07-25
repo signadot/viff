@@ -53,6 +53,16 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 	return nil
 }
 
+func httpPut(path string, body any) (*http.Response, error) {
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPut, urlFor(path, nil), bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return http.DefaultClient.Do(req)
+}
+
 func httpDelete(path string, q url.Values) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodDelete, urlFor(path, q), nil)
 	if err != nil {

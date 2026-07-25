@@ -20,7 +20,7 @@ func (h *recHandle) Pause()                                    {}
 func (h *recHandle) Resume()                                   {}
 func (h *recHandle) Cancel(string)                             { h.mu.Lock(); h.cancelled = true; h.mu.Unlock() }
 func (h *recHandle) Steer(string, string)                      {}
-func (h *recHandle) SetVector(*process.Vector)                 {}
+func (h *recHandle) SetVector(*process.Vector, string)         {}
 func (h *recHandle) Result() string                            { return "" }
 
 // A resumed process (Adopt) must be steerable, not merely observed: it is re-tracked

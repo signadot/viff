@@ -140,8 +140,8 @@ func (h *remoteHandle) Steer(instr, by string) {
 	h.post("/say", map[string]string{"instruction": instr, "by": by})
 }
 
-func (h *remoteHandle) SetVector(v *process.Vector) {
-	b, _ := json.Marshal(v)
+func (h *remoteHandle) SetVector(v *process.Vector, by string) {
+	b, _ := json.Marshal(map[string]any{"vector": v, "by": by})
 	req, _ := http.NewRequest(http.MethodPut, h.url("/vector"), bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if resp, err := h.cl.Do(req); err == nil {
@@ -186,12 +186,12 @@ func (f failedHandle) Subscribe() (<-chan process.Frame, func()) {
 	close(ch)
 	return ch, func() {}
 }
-func (failedHandle) Pause()                    {}
-func (failedHandle) Resume()                   {}
-func (failedHandle) Cancel(string)             {}
-func (failedHandle) Steer(string, string)      {}
-func (failedHandle) SetVector(*process.Vector) {}
-func (failedHandle) Result() string            { return "" }
+func (failedHandle) Pause()                            {}
+func (failedHandle) Resume()                           {}
+func (failedHandle) Cancel(string)                     {}
+func (failedHandle) Steer(string, string)              {}
+func (failedHandle) SetVector(*process.Vector, string) {}
+func (failedHandle) Result() string                    { return "" }
 
 var (
 	_ process.ControlPolicy = (*httpPolicy)(nil)

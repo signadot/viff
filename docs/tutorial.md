@@ -220,8 +220,15 @@ verse process run --wait "summarize what verse is"    # …and block for the fin
 verse process list
 verse process get <id>        # snapshot: status, say, lastOutput, result, pending gates
 verse process say <id> "also mention the dial"        # say to the agent mid-run (re-prompt)
+verse process vector <id> ask --as human:scott        # slide autonomy (auto|ask|park); --as attributes the slide
+verse process vector <id> --file vector.json          # …or install a full gate vector
 verse process cancel <id>
 ```
+
+`say` and `vector` are different levers: `say` re-prompts the agent (new instructions);
+`vector` re-vectors it — swapping the gate vector that governs its autonomy, applied at the
+next boundary with no restart. It works wherever the process runs: the local runtime slides it
+directly, a brokered/remote worker gets it relayed through its inbox.
 
 A direct run is mirrored as a `process:instance` entity like any other process, so
 `verse entity get process:instance:<id>` shows what it produced — the latest `say`, last

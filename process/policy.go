@@ -36,7 +36,7 @@ type ProcHandle interface {
 	Resume()
 	Cancel(reason string)
 	Steer(instruction, by string)
-	SetVector(v *Vector)
+	SetVector(v *Vector, by string)
 	Result() string
 }
 

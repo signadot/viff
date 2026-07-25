@@ -115,14 +115,15 @@ type procState struct {
 // inboxItem is one control instruction directed at the worker, cursored so a reconnecting
 // worker resumes with ?since=<cursor>.
 type inboxItem struct {
-	Cursor   int64  `json:"cursor"`
-	Kind     string `json:"kind"` // spec | say | cancel | pause | resume | vector | resolve
-	Task     string `json:"task,omitempty"`
-	Driver   string `json:"driver,omitempty"`
-	Text     string `json:"text,omitempty"`
-	By       string `json:"by,omitempty"`
-	Decision string `json:"decision,omitempty"` // resolve: the decision id being answered
-	Proceed  bool   `json:"proceed,omitempty"`  // resolve: approve (true) or deny (false)
+	Cursor   int64           `json:"cursor"`
+	Kind     string          `json:"kind"` // spec | say | cancel | pause | resume | vector | resolve
+	Task     string          `json:"task,omitempty"`
+	Driver   string          `json:"driver,omitempty"`
+	Text     string          `json:"text,omitempty"`
+	By       string          `json:"by,omitempty"`
+	Decision string          `json:"decision,omitempty"` // resolve: the decision id being answered
+	Proceed  bool            `json:"proceed,omitempty"`  // resolve: approve (true) or deny (false)
+	Vector   *process.Vector `json:"vector,omitempty"`   // vector: the new gate vector to slide to
 }
 
 // emit appends an event to the merged log (stamping the next cursor) and broadcasts it to
@@ -272,6 +273,9 @@ func (b *Broker) ProcessInbox(id string) ([]map[string]any, bool) {
 		if it.Kind == "resolve" {
 			m["decision"], m["proceed"] = it.Decision, it.Proceed
 		}
+		if it.Kind == "vector" {
+			m["vector"] = it.Vector
+		}
 		out = append(out, m)
 	}
 	return out, true
@@ -348,7 +352,17 @@ func (h *handle) Steer(instr, by string) {
 		ps.emit(process.Frame{Kind: process.EvSay, Text: instr, By: by})
 	}
 }
-func (h *handle) SetVector(*process.Vector) { h.enqueue(inboxItem{Kind: "vector"}) }
+
+// SetVector relays an autonomy slide to the worker: the new vector rides the inbox item so
+// the worker applies it at its next boundary. Like a say-to, it is operator-authored, so verse
+// records an EvVector on the read plane immediately (the new default mode) rather than waiting
+// on the worker to echo it back.
+func (h *handle) SetVector(v *process.Vector, by string) {
+	h.enqueue(inboxItem{Kind: "vector", Vector: v, By: by})
+	if ps := h.b.get(h.id); ps != nil {
+		ps.emit(process.Frame{Kind: process.EvVector, Mode: v.Default.String(), By: by})
+	}
+}
 
 // Resolve answers a gate the worker raised (via do gate). It relays the outcome to the
 // worker's inbox (a resolve item it pulls to unblock) and records the decision on the log,
