@@ -273,6 +273,41 @@ func TestGateLoop(t *testing.T) {
 	}
 }
 
+// A re-vector (autonomy slide) must reach the worker with its payload intact: the handle
+// enqueues a "vector" inbox item CARRYING the new vector, so a dialed-in worker pulls it and
+// slides at its next boundary. (The bug this guards: the handle used to enqueue a bare
+// "vector" marker and drop the vector, so the worker had nothing to apply.)
+func TestSetVectorRelaysPayload(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "task", "human", nil)
+
+	h.SetVector(&process.Vector{Default: process.Ask})
+
+	inbox, ok := b.ProcessInbox("p")
+	if !ok {
+		t.Fatal("no inbox")
+	}
+	var got map[string]any
+	for _, it := range inbox {
+		if it["kind"] == "vector" {
+			got = it
+		}
+	}
+	if got == nil {
+		t.Fatalf("worker inbox missing the vector item: %+v", inbox)
+	}
+	// The vector rode the item (not dropped). ProcessInbox marshals via the struct, so the
+	// nested vector reads as its JSON shape: {"default":"ask"}.
+	vec, _ := got["vector"].(*process.Vector)
+	if vec == nil || vec.Default != process.Ask {
+		// tolerate map-shaped decode if a caller round-trips through JSON
+		raw, _ := json.Marshal(got["vector"])
+		if !strings.Contains(string(raw), `"default":"ask"`) {
+			t.Fatalf("vector item did not carry default=ask: vec=%+v raw=%s", vec, raw)
+		}
+	}
+}
+
 // drainFor reads events until one of the given kind arrives (or times out).
 func drainFor(t *testing.T, ch <-chan process.Frame, kind string) {
 	t.Helper()

@@ -9,10 +9,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/process"
 )
 
 func processCmd() *cli.Command {
@@ -26,6 +29,7 @@ func processCmd() *cli.Command {
 			procAttachCmd(),
 			procCancelCmd(),
 			procSayCmd(),
+			procVectorCmd(),
 			procResolveCmd(),
 			procDoCmd(),
 		)
@@ -523,6 +527,66 @@ func (cfg *procSayConfig) run(cc *cli.Context, args []string) error {
 	id, text := args[0], strings.Join(args[1:], " ")
 	return noContent(cc, "process say", "/processes/"+id+"/say",
 		map[string]any{"instruction": text}, id)
+}
+
+// ── vector (slide autonomy on a running process — the re-vector surface) ──────
+
+type procVectorConfig struct {
+	*cli.Command
+	File string `cli:"name=file desc='load a full gate vector from JSON ({\"gates\":[…],\"default\":\"ask\"}); overrides the mode arg'"`
+}
+
+func procVectorCmd() *cli.Command {
+	cfg := &procVectorConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return cli.NewCommandAt(&cfg.Command, "vector").
+		WithSynopsis("vector <id> <auto|ask|park> [--file <vector.json>] — slide autonomy on a running process").
+		WithOpts(opts...).WithRun(cfg.run)
+}
+
+// run re-vectors a process: the common form sets the default autonomy (auto|ask|park); --file
+// supplies a full gate vector. The vector rides a PUT to /processes/{id}/vector, which is
+// policy-agnostic — the runtime slides a local process, the broker relays it to a remote one.
+func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
+	if len(args) < 1 {
+		return fmt.Errorf("%w: process vector wants a process id", cli.ErrUsage)
+	}
+	id := args[0]
+	var vec process.Vector
+	switch {
+	case cfg.File != "":
+		b, err := os.ReadFile(cfg.File)
+		if err != nil {
+			return fmt.Errorf("process vector: read %s: %w", cfg.File, err)
+		}
+		if err := json.Unmarshal(b, &vec); err != nil {
+			return fmt.Errorf("process vector: %s is not a valid vector: %w", cfg.File, err)
+		}
+	case len(args) >= 2:
+		if err := vec.Default.UnmarshalJSON([]byte(strconv.Quote(args[1]))); err != nil {
+			return fmt.Errorf("%w: process vector mode must be auto|ask|park", cli.ErrUsage)
+		}
+	default:
+		return fmt.Errorf("%w: process vector wants a mode (auto|ask|park) or --file", cli.ErrUsage)
+	}
+	resp, err := httpPut("/processes/"+id+"/vector", vec)
+	if err != nil {
+		return fmt.Errorf("process vector: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("process vector: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	fmt.Fprintln(cc.Out, "process vector", id, strings.ToLower(vec.Default.String()))
+	return nil
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

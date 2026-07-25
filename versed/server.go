@@ -375,6 +375,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "resolve")
 	})
+	// re-vector (slide autonomy on a running process) — policy-agnostic like cancel/say: a
+	// local process is served by the runtime mount (processd's setVector), a brokered/remote
+	// one goes to the policy handle's SetVector.
+	mux.HandleFunc("PUT /processes/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
+		s.processControl(w, r, ph, "vector")
+	})
 	mux.Handle("/processes", ph)
 	mux.Handle("/processes/", ph)
 	return mux
@@ -939,6 +945,15 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		var body struct{ Instruction, By string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		h.Steer(body.Instruction, body.By)
+	case "vector":
+		// slide autonomy on a running (brokered/remote) process: the request body is the
+		// new gate vector, relayed to the worker via the handle.
+		var v process.Vector
+		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		h.SetVector(&v)
 	case "resolve":
 		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
 		rh, ok := h.(interface {
