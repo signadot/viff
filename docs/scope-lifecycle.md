@@ -40,7 +40,9 @@ materializing a scope registry out of the same substrate as everything else: ent
 
 - A `scope:<name>` entity (reserve a `scope` system so it can't collide with a user system),
   carrying metadata: created rev, creating client/identity, a label/purpose, kind
-  (**nonce** ephemeral vs **named** durable), maybe last-write and a lease/heartbeat.
+  (**nonce** ephemeral vs **named** durable), maybe last-write and a lease/heartbeat. A separate,
+  legibly-named **exposure** record may reference a scope (its files live there); see
+  [expose.md](expose.md) — the exposure and scope are coupled by convention, not one entity.
 - Recorded **in the baseline**, so it is discoverable from anywhere regardless of which scope a
   client is in.
 - Recorded **on write, not read**: a read *through* a scope materializes no overlay; only a write
