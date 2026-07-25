@@ -32,7 +32,11 @@ const (
 	// narration (the agent's words); By set = a say-to folded in from an operator or a
 	// resolver (what was "steer"). One kind, speaker in By — "you say to it, it says back".
 	EvSay = "say"
-	EvGap = "gap" // a slow subscriber missed N events
+	// EvVector records an autonomy slide (SetVector): the new default mode rides Mode and
+	// the operator rides By. Observable so `entity get`/attach show the dial change mid-run,
+	// the same way a say-to is observed — an operator-authored control effect on the plane.
+	EvVector = "vector"
+	EvGap    = "gap" // a slow subscriber missed N events
 )
 
 type subscriber struct {

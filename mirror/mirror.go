@@ -107,6 +107,11 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, subject, polic
 				}
 				store.Put(Ref(id), st)
 				continue
+			case process.EvVector: // an autonomy slide — project the dial so `entity get` shows it
+				st["vector"] = ev.Mode
+				if ev.By != "" {
+					st["vectorBy"] = ev.By
+				}
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
 			}

@@ -308,6 +308,33 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 	}
 }
 
+// A re-vector is operator-authored, so verse observes it on the read plane immediately (an
+// EvVector carrying the new default mode) — like a say-to, not waiting on the worker to echo.
+func TestSetVectorObservable(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "task", "human", nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+
+	h.SetVector(&process.Vector{Default: process.Ask})
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Kind != process.EvVector {
+				continue
+			}
+			if ev.Mode != process.Ask.String() {
+				t.Fatalf("EvVector should carry the new default mode %q, got %q", process.Ask.String(), ev.Mode)
+			}
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for an EvVector on the read plane")
+		}
+	}
+}
+
 // drainFor reads events until one of the given kind arrives (or times out).
 func drainFor(t *testing.T, ch <-chan process.Frame, kind string) {
 	t.Helper()
