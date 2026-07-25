@@ -74,14 +74,18 @@ func (c Condition) validate() error {
 	if err := c.Subject.Validate(); err != nil {
 		return fmt.Errorf("condition.subject: %w", err)
 	}
-	if _, isRef := c.Subject.Ref(); isRef {
-		return nil
+	if _, deferred := c.Subject.Ref(); deferred {
+		return nil // a $var, resolved (and re-checked as an address) at the fire instant
+	}
+	if _, names := c.Subject.Names(); names {
+		return nil // one entity, named
 	}
 	if c.Subject.Selects() {
 		return nil // a set: the engine fans out, one action per member
 	}
-	return fmt.Errorf(`condition.subject must be a ref ("$flow", "demo:pr:1") or name both a ` +
-		`system and a kind to select a set (it has to name a definite kind to select and spawn for)`)
+	return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*"), a $var ` +
+		`("$flow"), or name both a system and a kind to select a set (it has to name a definite ` +
+		`kind to select and spawn for)`)
 }
 
 // matchesEvent reports whether an observed change fires this trigger — the edge face of
@@ -110,15 +114,26 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 	if len(m) == 0 {
 		return []entity.Ref{ev.Ref} // the matched entity
 	}
-	if tmpl, isRef := m.Ref(); isRef {
-		// A ref or $var: expand against the changed payload ($flow, $stage, …), then parse.
-		ref, err := entity.ParseRef(launch.Expand(tmpl, payloadBinding(ev)))
+	if tmpl, deferred := m.Ref(); deferred {
+		// A $var: expand against the changed payload ($flow, $stage, …), then read the result
+		// as an address, so an expansion is held to the same grammar an authored string is.
+		expanded, err := ParseExpr(launch.Expand(tmpl, payloadBinding(ev)))
 		if err != nil {
 			return nil // unresolved/invalid (e.g. no $flow on this event) → the firing is a no-op
 		}
-		return []entity.Ref{ref}
+		// A partial address is a no-op, never a widening. An unexpanded "$flow" or a payload
+		// carrying a half-written ref would otherwise leave dimensions unset — and an unset
+		// dimension is a WILDCARD, so the firing would fan out across a kind or a system
+		// instead of doing nothing.
+		if _, names := expanded.Names(); !names && !expanded.Selects() {
+			return nil
+		}
+		m = expanded
 	}
-	return m.Select(store) // the set — one action per member
+	if ref, names := m.Names(); names {
+		return []entity.Ref{ref} // one entity, named — a `set` may bring it into existence
+	}
+	return m.Select(store) // a selection over what exists — one action per member
 }
 
 // Gate is one decision point on a trigger firing: a named mode, or a temporal Formula. A

@@ -187,7 +187,8 @@ Now, what each field of a trigger means:
   - **`when`** is a **match** — a point-in-time predicate over the verse. It ANDs its
     dimensions: `system` / `kind` / `id` / `op` (`set` for created-or-updated, or
     `delete`) / `fields` (key=value in the changed payload); empty dimensions are
-    wildcards, and `{}` matches everything. *Keep it small* — the "when" is where
+    wildcards, and `{}` matches everything. The address string is sugar for the identity
+    dimensions, so `"demo:pr:*"` means `{"system":"demo","kind":"pr"}`. *Keep it small* — the "when" is where
     complexity hides. (Create and update are one `set` — to fire "only the first
     time," match a state field your action then advances, a latch, rather than an
     edge. See `docs/change-events.md`.) A `when` may also grow *temporal* operators
@@ -195,12 +196,23 @@ Now, what each field of a trigger means:
     point it is watched over the verse's evolution rather than matched against one
     change.
   - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
-    It resolves three ways, all the same match grammar:
+    It resolves four ways, all the same match grammar:
     - *omitted* — the matched entity (`review`, above);
-    - a ref or binding (`"$flow"`, `"demo:pr:1"`) — that one entity, which is how the
-      `reviewed` rule advances the PR a completed process carried;
+    - an **address** — `"demo:pr:1"` is that one entity (and an action's `set` will
+      *create* it if it doesn't exist, which is how a trigger publishes a fact nothing
+      has written yet). `*` is a wildcard per segment and an id may glob, so
+      `"demo:pr:*"` is the whole kind, `"demo:pr:hotfix-*"` a family in it, and
+      `"demo:*:*"` the whole system — the same address grammar as `verse flow <addr>`
+      (§6). A glob **selects** what exists rather than naming, so it can never conjure
+      an entity called `*`;
     - a `system`+`kind` selector (with an optional payload predicate) — the whole
-      **set** of matching entities, and the action fans out, once per member.
+      **set** of matching entities, and the action fans out, once per member. The
+      object form is what an address glob parses to; reach for it when you also want a
+      payload predicate;
+    - a **binding** (`"$flow"`) — deferred: the address isn't known until the firing
+      expands it against the changed payload. This is how the `reviewed` rule advances
+      the PR a completed process carried. (An expansion is held to the same grammar, so
+      a half-written ref is a no-op rather than a wildcard that fans out.)
 
     A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
     goal* is still about exactly one subject. Broadcast, in other words, is a wider
@@ -238,6 +250,14 @@ Now, what each field of a trigger means:
   (`$flow`, `$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So in
   `reviewed`, `subject: "$flow"` names the PR, and `$subject` inside the action is
   that PR, not the process that fired.
+
+**Where `$flow` comes from.** It is an ordinary payload field, not a magic variable.
+`review`'s `spawn` tags its process with the condition's subject (`demo:pr:1`), and the
+process is mirrored into the verse as a `process:instance` entity carrying that subject
+under the key **`flow`** — so when the process completes, the change event `reviewed`
+matches has `flow: "demo:pr:1"` in its payload, and `$flow` binds to it like any other
+field. It can't be spelled `$subject`: that binding is reserved for the firing's *own*
+resolved subject, which for a `process:instance` change is the process, not the PR.
 
 The `reviewed` rule is the **completion pattern**: *when* a `process:instance` reaches
 `status=completed`, *about* the `$flow` it carried, advance that subject. It's how multi-step flows

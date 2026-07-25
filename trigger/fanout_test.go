@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -298,6 +299,124 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 		case <-deadline:
 			t.Fatalf("timed out waiting for %s", why)
 		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// An ADDRESS GLOB is the string spelling of a set-valued Subject, and it must dispatch
+// identically to the object form — `"demo:pr:*"` is the whole kind, exactly as `verse flow
+// demo:pr:*` addresses the whole kind's live processes. It used to parse to a `ref` naming an
+// entity literally called "*", so nothing fanned out and `set` created `demo:pr:*` instead.
+func TestGlobSubjectFansOut(t *testing.T) {
+	store := entity.NewMemStore()
+	open := prs(store, "open", "1", "2", "3")
+
+	eng := New(store, process.AutoResolver{})
+	var tr Trigger
+	if err := json.Unmarshal([]byte(`{"name":"ship-all",
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:*"},
+		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := eng.AddTrigger(tr); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+
+	for _, ref := range open {
+		waitStage(t, store, ref, "shipped")
+	}
+	// And no entity called "*" was conjured by the action's `set`.
+	if e, ok := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "*"}); ok {
+		t.Fatalf("the glob was named instead of selected: created demo:pr:* = %#v", e.Payload)
+	}
+}
+
+// An id glob selects a FAMILY within a kind, not the whole kind.
+func TestIdGlobSelectsAFamily(t *testing.T) {
+	store := entity.NewMemStore()
+	prs(store, "open", "hotfix-1", "hotfix-2", "feature-9")
+
+	eng := New(store, process.AutoResolver{})
+	var tr Trigger
+	if err := json.Unmarshal([]byte(`{"name":"ship-hotfixes",
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:hotfix-*"},
+		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := eng.AddTrigger(tr); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+
+	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}, "shipped")
+	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-2"}, "shipped")
+	if e, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "feature-9"}); e.Payload["stage"] != "open" {
+		t.Fatalf("the glob overreached beyond its family: %#v", e.Payload)
+	}
+}
+
+// A CONCRETE address still NAMES its entity, so a `set` brings it into existence — the way a
+// trigger publishes a fact nothing has written yet. Routing the string form through the address
+// grammar must not quietly turn this into a select-what-exists no-op.
+func TestConcreteSubjectNamesAndCreates(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	var tr Trigger
+	if err := json.Unmarshal([]byte(`{"name":"record",
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit:record:latest"},
+		"action":{"set":{"stage":"noted"}}}`), &tr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := eng.AddTrigger(tr); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	waitStage(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "noted")
+}
+
+// A $var that expands to a PARTIAL address must be a no-op, never a widening. An unset
+// dimension is a wildcard, so a half-written payload ref would otherwise fan the firing out
+// across a whole kind or system — acting on entities the charter never named.
+func TestDeferredSubjectPartialAddressIsANoOp(t *testing.T) {
+	store := entity.NewMemStore()
+	victims := prs(store, "open", "1", "2", "3")
+
+	eng := New(store, process.AutoResolver{})
+	var tr Trigger
+	if err := json.Unmarshal([]byte(`{"name":"advance",
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"$target"},
+		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := eng.AddTrigger(tr); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	// "demo" alone: a system with no kind and no id — every dimension below it a wildcard.
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"},
+		entity.Payload{"state": "green", "target": "demo"})
+
+	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
+	time.Sleep(50 * time.Millisecond) // give a wrong fan-out time to land, if it were going to
+	for _, ref := range victims {
+		if e, _ := store.Get(ref); e.Payload["stage"] != "open" {
+			t.Fatalf("a partial address widened into a fan-out: %s = %#v", ref, e.Payload)
 		}
 	}
 }
