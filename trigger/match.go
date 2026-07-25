@@ -165,22 +165,26 @@ func (m Match) MatchEvent(ev entity.Event) bool {
 
 // Select returns the refs of every stored entity the match picks — the SET face, used to
 // resolve a set-valued Subject and to read a formula's facts. An invalid match picks none.
+//
+// The result is sorted by ref, so a fan-out acts on its members in a stable order (which
+// matters when a budget truncates it) and a formula's witness is a stable audit trail.
 func (m Match) Select(store entity.Store) []entity.Ref {
 	p, err := m.pattern()
 	if err != nil {
 		return nil
 	}
 	refs := p.Select(store)
-	if m.ID() == "" {
-		return refs
-	}
-	out := refs[:0]
-	for _, r := range refs {
-		if m.matchID(r.ID) {
-			out = append(out, r)
+	if m.ID() != "" {
+		kept := refs[:0]
+		for _, r := range refs {
+			if m.matchID(r.ID) {
+				kept = append(kept, r)
+			}
 		}
+		refs = kept
 	}
-	return out
+	sort.Slice(refs, func(i, j int) bool { return refs[i].String() < refs[j].String() })
+	return refs
 }
 
 // pattern interprets the match as today's typed matcher. This is THE seam: when Match grows

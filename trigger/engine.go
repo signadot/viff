@@ -332,16 +332,31 @@ func (e *Engine) overBudget() bool {
 	return e.maxFires > 0 && e.fired >= e.maxFires
 }
 
-// reserve consumes a fire from the budget; false when exhausted. Called only once a
-// firing has passed its gates, so the backstop bounds actions taken, not attempts.
-func (e *Engine) reserve() bool {
+// reserveN consumes budget for n subject-actions and returns how many were granted (0..n).
+// Called only once a firing has passed its gates, so the backstop bounds actions taken, not
+// attempts.
+//
+// The budget meters ENTITIES ACTED ON, not firings: one firing that fans out over 50
+// subjects is 50 actions, because that is what the backstop exists to bound (a runaway does
+// its damage per entity). It is partially satisfiable, so a fan-out wider than the remaining
+// budget acts on as many members as it can rather than being dropped whole — the cap is a
+// safety limit, not a transaction boundary.
+func (e *Engine) reserveN(n int) int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.maxFires > 0 && e.fired >= e.maxFires {
-		return false
+	if e.maxFires <= 0 { // unbounded
+		e.fired += n
+		return n
 	}
-	e.fired++
-	return true
+	room := e.maxFires - e.fired
+	if room <= 0 {
+		return 0
+	}
+	if room < n {
+		n = room
+	}
+	e.fired += n
+	return n
 }
 
 // fire names what the firing is about, resolves the trigger's gates (conjunctively), and
@@ -415,11 +430,18 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 	if !allProceed {
 		return // some gate denied — no budget consumed
 	}
-	if !e.reserve() { // consume a slot only for a firing that actually proceeds
+	// Consume budget only for a firing that actually proceeds, metered per subject acted on.
+	granted := e.reserveN(len(subjects))
+	if granted == 0 {
 		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
 		return
 	}
-	e.tracef("fire %s on %s (subject %v)", t.Name, ev.Ref, subjects)
+	if granted < len(subjects) {
+		e.tracef("budget allows %d of %d subjects for %s on %s; acting on the first %d",
+			granted, len(subjects), t.Name, ev.Ref, granted)
+		subjects = subjects[:granted]
+	}
+	e.tracef("fire %s on %s (%d subject(s): %v)", t.Name, ev.Ref, len(subjects), subjects)
 	t.Action.apply(t.Name, ev, subjects, e)
 }
 

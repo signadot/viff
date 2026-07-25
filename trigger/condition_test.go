@@ -197,10 +197,6 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 		"bad when match": {
 			Condition{When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
 		},
-		"set-valued subject (step 3)": {
-			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"system": "demo", "kind": "pr"}},
-			"fan-out is not implemented yet",
-		},
 		"subject without kind": {
 			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"system": "demo"}},
 			"must be a ref",

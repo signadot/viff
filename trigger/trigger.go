@@ -60,8 +60,10 @@ func (c Condition) validate() error {
 	}
 	if !c.When.IsMatchAtom() {
 		return fmt.Errorf("condition.when carries temporal operators, which are not evaluated " +
-			"yet — a temporal when has no matched entity, so it needs a subject to say what it " +
-			"is about (see docs/trigger-model-plan.md step 3)")
+			"yet: a temporal when has no change to dispatch on, so it needs a long-lived monitor " +
+			"over the subtrees it reads (see docs/trigger-model-plan.md). Use a point-in-time " +
+			"match here; temporal composition works today in a gate's `formula` and a goal's " +
+			"`doneWhen`")
 	}
 	if err := c.When.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.when: %w", err)
@@ -76,12 +78,10 @@ func (c Condition) validate() error {
 		return nil
 	}
 	if c.Subject.Selects() {
-		return fmt.Errorf("condition.subject selects a set (%s:%s), and fan-out is not "+
-			"implemented yet — name one entity by ref or $var for now "+
-			"(see docs/trigger-model-plan.md step 3)", c.Subject.System(), c.Subject.Kind())
+		return nil // a set: the engine fans out, one action per member
 	}
-	return fmt.Errorf(`condition.subject must be a ref ("$flow", "demo:pr:1") or name a ` +
-		`system and kind to select`)
+	return fmt.Errorf(`condition.subject must be a ref ("$flow", "demo:pr:1") or name both a ` +
+		`system and a kind to select a set (it has to name a definite kind to select and spawn for)`)
 }
 
 // matchesEvent reports whether an observed change fires this trigger — the edge face of

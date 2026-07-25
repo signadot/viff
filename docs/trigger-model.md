@@ -2,10 +2,12 @@
 
 *Status: **partly built**. Steps 1–2 of the migration below have landed — `Match` exists as
 the named leaf, `Trigger.Matches []entity.Pattern` is now `Condition{When, Subject}`, and
-`action.setRef`/charter-set `spawn.subject` are gone. Flow-as-a-query (step 4) has landed too:
-`flows[subject]` is gone, replaced by a subject-`Match` over live processes, so
-`flow pause demo:pr:*` works. Still to come: set-valued `Subject` and fan-out (step 3), and
-the tony match leaf (step 5) — so a
+`action.setRef`/charter-set `spawn.subject` are gone. Flow-as-a-query (step 4) and set-valued
+`Subject` with fan-out (step 3) have landed too: `flows[subject]` is gone, replaced by a
+subject-`Match` over live processes (so `flow pause demo:pr:*` works), and a `Subject` naming
+a `system:kind` set fans the action out one member at a time. Still to come: the tony match
+leaf (step 5), and evaluating a *temporal* `When` (which needs a long-lived monitor rather
+than per-change dispatch, and is rejected at install with an error saying so) — so a
 set-valued `Subject` and a temporal `When` are rejected at install for now, with an error
 that says why. The implementation plan is `trigger-model-plan.md`. The substrate this leans
 on — per-entity change events — is `change-events.md`.*
@@ -217,8 +219,11 @@ The shape can land before the grammar. In order, each step green + smoke-tested:
    `$subject` now binds the *resolved* subject (set last, so a payload field cannot shadow
    it), and a goal latch publishes `flow` so a reacting trigger says `"subject": "$flow"`
    like any completion. Charter wire, tutorial §3–4/§8–9, overview, and tests updated.
-3. **Set-valued `Subject` + fan-out.** `Subject` may select a `system:kind` set → one process
-   per member; deterministic per-subject `spawnID`; budget meters entities.
+3. **Set-valued `Subject` + fan-out.** ✅ `Subject` may select a `system:kind` set → one
+   action/process per member; `spawnID` is deterministic per subject (so a re-fire is
+   idempotent per member, enforced by the engine's live-id dedupe); the budget meters
+   entities acted on, truncating a too-wide fan-out rather than dropping it. Gates stay per
+   firing — a broadcast asks once.
 4. **Flow as a query.** ✅ `flows[subject]` replaced by an id-keyed live registry plus a
    subject-`Match` query over it; `flow <cmd> <address>` where `*` is a per-segment wildcard,
    and a payload predicate works too. Spawn is now idempotent per id, which is what step 3's

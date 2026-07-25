@@ -192,12 +192,34 @@ Now, what each field of a trigger means:
     point it is watched over the verse's evolution rather than matched against one
     change.
   - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
-    Omit it and the subject is the matched entity. Give it a ref or a binding
-    (`"$flow"`) and the firing is about *that* entity instead — which is how the
-    `reviewed` rule advances the PR a completed process carried. (A `system`+`kind`
-    selector, for acting on a whole *set*, is next; see `docs/trigger-model.md`.)
+    It resolves three ways, all the same match grammar:
+    - *omitted* — the matched entity (`review`, above);
+    - a ref or binding (`"$flow"`, `"demo:pr:1"`) — that one entity, which is how the
+      `reviewed` rule advances the PR a completed process carried;
+    - a `system`+`kind` selector (with an optional payload predicate) — the whole
+      **set** of matching entities, and the action fans out, once per member.
+
+    A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
+    goal* is still about exactly one subject. Broadcast, in other words, is a wider
+    setting of the same selector, not a new mechanism:
+
+    ```json
+    { "name": "ship-reviewed",
+      "condition": { "when":    { "system": "ci", "kind": "status" },
+                     "subject": { "system": "demo", "kind": "pr",
+                                  "fields": { "stage": "reviewed" } } },
+      "gates":     [ { "name": "ship", "mode": "ask" } ],
+      "action":    { "set": { "stage": "shipped" } } }
+    ```
+
+    One CI change fires this once, one `ask` gate is raised for the *firing* (not one
+    per PR), and then every reviewed PR advances. A spawn would give each member its
+    own process, tagged with that member as its subject — so each is its own flow (§6).
+    Re-firing is idempotent per member: a spawn's id is derived from its subject, so a
+    second broadcast reuses it rather than starting a duplicate.
 - **`gates`** — a list of gates, *all* of which must resolve to proceed
-  (conjunctive) before the action fires. Each is `{ "name": …, "mode":
+  (conjunctive) before the action fires. Gates are per *firing*, so a broadcast asks
+  once, not once per subject. Each is `{ "name": …, "mode":
   auto|ask|park }`. An empty list fires with no approval. Multiple gates model
   multi-approval — e.g. a deploy needing both a security and a release-manager
   sign-off is two `ask` gates. A gate can also carry a **`formula`** the verse

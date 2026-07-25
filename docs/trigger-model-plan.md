@@ -333,7 +333,14 @@ step 5's reference grammar.
 
 ---
 
-## Step 3 (do fourth) — Set-valued `Subject` + fan-out
+## Step 3 (do fourth) — Set-valued `Subject` + fan-out ✅ DONE
+
+*Most of the mechanism had already landed in steps 2 and 4 (the per-member apply loop,
+subject-keyed `spawnID`, per-firing gates, live-id dedupe), so this step was: lift the install
+rejection, meter the budget per entity (`reserveN`, partially satisfiable), and sort
+`Match.Select` so a truncated fan-out is deterministic. The temporal-`When` half is NOT done —
+it needs a long-lived per-trigger monitor, not per-change dispatch; the install error now says
+that instead of pointing at this step.*
 
 Enable `resolveSubject` case 3 and lift the step-2 install rejection.
 
