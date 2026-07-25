@@ -63,6 +63,18 @@ HOSTPATH ?=
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=true HOSTPATH=… to host-link)
 	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) | kubectl apply -f -
 
+# Codegen is deliberately NOT a dependency of `bin`/`dist-linux`: keeping it out of the
+# build path is what lets the Dockerfile just COPY binaries. Generated files are committed;
+# `check-generate` is the guard that they are current.
+.PHONY: generate
+generate: ## regenerate tony codegen (<pkg>_gen.go + schema/)
+	$(GO) generate ./...
+
+.PHONY: check-generate
+check-generate: ## fail if the generated files are stale (CI)
+	$(GO) generate ./...
+	git diff --exit-code
+
 .PHONY: test
 test: ## go test ./...
 	$(GO) test ./...

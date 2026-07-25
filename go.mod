@@ -17,7 +17,13 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/tools v0.39.0 // indirect
 )
 
-tool github.com/signadot/tony-format/go-tony/cmd/o
+tool (
+	github.com/signadot/tony-format/go-tony/cmd/o
+	github.com/signadot/tony-format/go-tony/cmd/tony-codegen
+)
