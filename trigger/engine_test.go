@@ -24,10 +24,10 @@ func TestBudgetNotConsumedByDenials(t *testing.T) {
 	eng := New(store, denyResolver{})
 	eng.SetMaxFires(1)
 	eng.AddTrigger(Trigger{
-		Name:    "gated",
-		Matches: []entity.Pattern{{System: "demo"}},
-		Gates:   []Gate{{Mode: "ask"}},
-		Action:  Action{},
+		Name:      "gated",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo"})},
+		Gates:     []Gate{{Mode: "ask"}},
+		Action:    Action{},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,15 +71,15 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
-		Name:    "review",
-		Matches: []entity.Pattern{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "open"}}},
-		Action:  setStage("reviewed"),
+		Name:      "review",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}})},
+		Action:    setStage("reviewed"),
 	})
 	eng.AddTrigger(Trigger{
-		Name:    "deploy",
-		Matches: []entity.Pattern{{System: "demo", Kind: "pr", Fields: map[string]any{"stage": "reviewed"}}},
-		Gates:   []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
-		Action:  setStage("deployed"),
+		Name:      "deploy",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}})},
+		Gates:     []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
+		Action:    setStage("deployed"),
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -104,9 +104,9 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
-		Name:    "greedy",
-		Matches: []entity.Pattern{{}}, // matches everything...
-		Action:  Action{},             // no effect: firing is all we observe (via Fired)
+		Name:      "greedy",
+		Condition: Condition{When: MatchWhen(Match{})}, // matches everything...
+		Action:    Action{},                            // no effect: firing is all we observe (via Fired)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -139,9 +139,9 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
-		Name:    "spin",
-		Matches: []entity.Pattern{{System: "demo", Kind: "loop"}}, // any change to demo:loop:* re-matches
-		Action:  Action{Set: map[string]any{"tick": true}},        // writes another matching change
+		Name:      "spin",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop"})}, // any change to demo:loop:* re-matches
+		Action:    Action{Set: map[string]any{"tick": true}},                           // writes another matching change
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

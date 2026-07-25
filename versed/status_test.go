@@ -46,8 +46,8 @@ func TestStatus(t *testing.T) {
 
 	// Install a trigger and write an entity; the counts move.
 	if err := srv.Eng.AddTrigger(trigger.Trigger{
-		Name:    "t",
-		Matches: []entity.Pattern{{System: "demo"}},
+		Name:      "t",
+		Condition: trigger.Condition{When: trigger.MatchWhen(trigger.Match{"system": "demo"})},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -30,7 +30,7 @@ func TestAdoptMakesResumedProcessSteerable(t *testing.T) {
 	h := &recHandle{ch: make(chan process.Frame)}
 	eng.Adopt("demo:pr:1", "review-demo:pr:1", h)
 
-	if n := eng.CancelFlow("demo:pr:1"); n != 1 {
+	if n := eng.CancelFlow(mustExpr(t, "demo:pr:1")); n != 1 {
 		t.Fatalf("CancelFlow reached %d processes, want 1 (adopted process not tracked)", n)
 	}
 	h.mu.Lock()

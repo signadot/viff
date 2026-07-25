@@ -21,7 +21,7 @@ import (
 // counterpart to the local:dir-status-<scope> metadata (see docs/content-federation.md).
 type Content struct {
 	root  string
-	mount string // op-path prefix, e.g. "verse.local.dir-content-<scope>"
+	mount string // op-path prefix, e.g. "versemnt.local.dir-content-<scope>" (entity.MountKPath)
 	max   int64  // cap a single content read
 }
 

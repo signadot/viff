@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,12 +42,24 @@ func httpPost(path string, body any) (*http.Response, error) {
 	return http.Post(urlFor(path, nil), "application/json", bytes.NewReader(b))
 }
 
-// printBody pretty-prints a JSON response. (-o tony-format is a TODO — it needs
-// the go-tony formatters; for now this is indented JSON.)
+// printBody pretty-prints a JSON response. (-o tony-format is a TODO — it needs the go-tony
+// formatters; for now this is indented JSON.) A 4xx/5xx is surfaced as an ERROR carrying the
+// server's message — which is usually plain text (http.Error), so decoding it as JSON fails
+// and it would otherwise be swallowed entirely, leaving a rejected command looking like it
+// succeeded. Callers that handle a specific status (404, 201, 204) check it before calling
+// this, so they are unaffected.
 func printBody(cc *cli.Context, resp *http.Response) error {
 	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return errors.New(msg)
+	}
 	var v any
-	if json.NewDecoder(resp.Body).Decode(&v) == nil {
+	if json.Unmarshal(body, &v) == nil {
 		b, _ := json.MarshalIndent(v, "", "  ")
 		fmt.Fprintln(cc.Out, string(b))
 	}

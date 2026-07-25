@@ -45,7 +45,8 @@ type Goal struct {
 // goalRef / goalDoneRef / goalFailedRef name a goal's entities. goal:instance carries the
 // live status + terminal latch; goal:done / goal:failed are the ordinary fact a charter
 // trigger may match ({system:"goal", kind:"done"|"failed"}) to advance a subject — emergent,
-// opt-in; the goal never sets a subject field itself.
+// opt-in; the goal never sets a subject field itself. Such a trigger carries the goal's
+// subject onward with `"subject": "$flow"` (see commitGoal).
 func goalRef(name string) entity.Ref     { return entity.Ref{System: "goal", Kind: "instance", ID: name} }
 func goalDoneRef(name string) entity.Ref { return entity.Ref{System: "goal", Kind: "done", ID: name} }
 func goalFailedRef(name string) entity.Ref {
@@ -150,11 +151,15 @@ func (e *Engine) Goals() []GoalDef {
 	return out
 }
 
-// runGoal drives the goal's lifecycle from ONE watch over doneWhen (so a docd session never
-// opens two watches on the same path): every relevant change updates the live status, and
-// the terminal is decided in the same loop — doneWhen true ⇒ done, deadline elapsed ⇒
-// unachievable (done wins a tie). On a terminal it commits the latch (terminal-once) and
-// reaps the owned triggers.
+// runGoal drives the goal's lifecycle from ONE watch over doneWhen: every relevant change
+// updates the live status, and the terminal is decided in the same loop — doneWhen true ⇒
+// done, deadline elapsed ⇒ unachievable (done wins a tie). On a terminal it commits the latch
+// (terminal-once) and reaps the owned triggers.
+//
+// The single watch is a simplification, not a constraint: status and terminal are decided from
+// the same evaluation, so splitting them would mean re-deriving one from the other. (It once
+// also worked around a session admitting only one watch per path; since go-tony v0.0.85 a
+// session may hold several, each keyed by its request id.)
 func (e *Engine) runGoal(ctx context.Context, g *Goal) {
 	done := g.Def.DoneWhen
 
@@ -269,10 +274,16 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 		return // a concurrent commit latched first — honor it
 	}
 
-	// The monotonic latch fact a charter may react to.
+	// The monotonic latch fact a charter may react to. It carries the goal's subject under
+	// BOTH `flow` and `subject`: `flow` is the binding a reacting trigger should use
+	// (`"subject": "$flow"`, exactly as a process-completion trigger does — mirror.Reflect
+	// publishes the same convention), while `subject` remains for display. A trigger cannot
+	// use `$subject` for this: that is the reserved binding for the firing's OWN resolved
+	// subject, which for a goal:done change is the latch entity itself.
 	if outcome == "done" {
 		fact := entity.Payload{"goal": g.Def.Name}
 		if g.Def.Subject != "" {
+			fact["flow"] = g.Def.Subject
 			fact["subject"] = g.Def.Subject
 		}
 		if ids := refIDs(witness); len(ids) > 0 {
@@ -282,6 +293,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	} else {
 		fact := entity.Payload{"goal": g.Def.Name, "reason": "deadline"}
 		if g.Def.Subject != "" {
+			fact["flow"] = g.Def.Subject
 			fact["subject"] = g.Def.Subject
 		}
 		e.store.Put(goalFailedRef(g.Def.Name), fact)
@@ -319,27 +331,33 @@ func (e *Engine) ResumeGoal(name string) int { return e.onGoalFlow(name, e.Resum
 func (e *Engine) CancelGoal(name string) int { return e.onGoalFlow(name, e.CancelFlow) }
 
 func (e *Engine) SteerGoal(name, text, by string) int {
-	subj, ok := e.goalSubject(name)
+	m, ok := e.goalFlowMatch(name)
 	if !ok {
 		return 0
 	}
-	return e.SteerFlow(subj, text, by)
+	return e.SteerFlow(m, text, by)
 }
 
-func (e *Engine) onGoalFlow(name string, fn func(subject string) int) int {
-	subj, ok := e.goalSubject(name)
+func (e *Engine) onGoalFlow(name string, fn func(Match) int) int {
+	m, ok := e.goalFlowMatch(name)
 	if !ok {
 		return 0
 	}
-	return fn(subj)
+	return fn(m)
 }
 
-func (e *Engine) goalSubject(name string) (string, bool) {
+// goalFlowMatch addresses a goal's in-flight work: its subject as a one-entity Match, so goal
+// steering is the flow query at its narrowest setting rather than a separate path.
+func (e *Engine) goalFlowMatch(name string) (Match, bool) {
 	e.goalsMu.Lock()
 	g, ok := e.goals[name]
 	e.goalsMu.Unlock()
 	if !ok || g.Def.Subject == "" {
-		return "", false
+		return nil, false
 	}
-	return g.Def.Subject, true
+	m, err := ParseExpr(g.Def.Subject)
+	if err != nil {
+		return nil, false
+	}
+	return m, true
 }

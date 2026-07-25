@@ -142,7 +142,7 @@ func optionFromFormula(id string, f *Formula) decOption {
 		o.need = 1 // a fact/presence atom is a quorum of one
 	}
 	if f != nil && f.Op == OpAtom && f.Req != nil {
-		o.choice, _ = f.Req.Facts.Fields["choice"].(string)
+		o.choice, _ = f.Req.Facts.Fields()["choice"].(string)
 	}
 	return o
 }
@@ -152,7 +152,7 @@ func optionFromFormula(id string, f *Formula) decOption {
 func quorumFormula(did, opt string, need int) *Formula {
 	return &Formula{Op: OpAtom, Req: &Requirement{
 		Kind: ReqQuorum, N: need,
-		Facts: entity.Pattern{System: "vote", Kind: did, Fields: map[string]any{"choice": opt}},
+		Facts: Match{mKeySystem: "vote", mKeyKind: did, mKeyFields: map[string]any{"choice": opt}},
 	}}
 }
 

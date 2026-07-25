@@ -78,7 +78,8 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   lifecycle (a PR, a change, a release), named by its ref (e.g. `demo:pr:1`). When a
   trigger spawns a process, that process is tagged with its subject.
 - **Flow** — a subject's in-flight lifecycle: all the processes spawned for that
-  subject, steerable as a unit.
+  subject, steerable as a unit. It is a *query* over live processes' subjects, not a stored
+  index, so one address can steer a subject, a kind, or a system (§6).
 
 Two planes, and they stay apart: **observation** (`watch`, `get`, `list`) is read;
 **steering** (`gate resolve`, `flow pause/cancel`) is control — out-of-band and
@@ -95,8 +96,8 @@ it as `charter.json`:
 [
   {
     "name": "review",
-    "matches": [ { "system": "demo", "fields": { "stage": "open" } } ],
-    "gates":   [ { "name": "review", "mode": "ask" } ],
+    "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
+    "gates":     [ { "name": "review", "mode": "ask" } ],
     "action": {
       "set":   { "stage": "reviewing" },
       "spawn": { "driver": "scripted", "task": "review $subject" }
@@ -104,9 +105,9 @@ it as `charter.json`:
   },
   {
     "name": "reviewed",
-    "matches": [ { "system": "process", "kind": "instance", "fields": { "status": "completed" } } ],
-    "gates":   [],
-    "action": { "setRef": "$flow", "set": { "stage": "reviewed" } }
+    "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "completed" } },
+                   "subject": "$flow" },
+    "action": { "set": { "stage": "reviewed" } }
   }
 ]
 ```
@@ -177,32 +178,66 @@ verse trigger remove <name>           # uninstall one (`add` rejects a duplicate
 
 Now, what each field of a trigger means:
 
-- **`matches`** — a list of predicates, *all* of which must match the change
-  (conjunctive). Each predicate ANDs its own dimensions: `system` / `kind` / `op`
-  (`set` for created-or-updated, or `delete`) / `fields` (key=value in the changed
-  payload); empty dimensions are wildcards. An empty list matches everything. *Keep
-  it small* — the "when" is where complexity hides. (Create and update are one
-  `set` — to fire "only the first time," match a state field your action then
-  advances, a latch, rather than an edge. See `docs/change-events.md`.)
+- **`condition`** — the *cause*, in two halves: **`when`** fires the trigger, and
+  **`subject`** says what the firing is *about*. They are two different grammars, and
+  that is the point:
+  - **`when`** is a **match** — a point-in-time predicate over the verse. It ANDs its
+    dimensions: `system` / `kind` / `id` / `op` (`set` for created-or-updated, or
+    `delete`) / `fields` (key=value in the changed payload); empty dimensions are
+    wildcards, and `{}` matches everything. *Keep it small* — the "when" is where
+    complexity hides. (Create and update are one `set` — to fire "only the first
+    time," match a state field your action then advances, a latch, rather than an
+    edge. See `docs/change-events.md`.) A `when` may also grow *temporal* operators
+    (`until`, `deadline`, … — the same language a gate formula uses, §8), at which
+    point it is watched over the verse's evolution rather than matched against one
+    change.
+  - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
+    It resolves three ways, all the same match grammar:
+    - *omitted* — the matched entity (`review`, above);
+    - a ref or binding (`"$flow"`, `"demo:pr:1"`) — that one entity, which is how the
+      `reviewed` rule advances the PR a completed process carried;
+    - a `system`+`kind` selector (with an optional payload predicate) — the whole
+      **set** of matching entities, and the action fans out, once per member.
+
+    A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
+    goal* is still about exactly one subject. Broadcast, in other words, is a wider
+    setting of the same selector, not a new mechanism:
+
+    ```json
+    { "name": "ship-reviewed",
+      "condition": { "when":    { "system": "ci", "kind": "status" },
+                     "subject": { "system": "demo", "kind": "pr",
+                                  "fields": { "stage": "reviewed" } } },
+      "gates":     [ { "name": "ship", "mode": "ask" } ],
+      "action":    { "set": { "stage": "shipped" } } }
+    ```
+
+    One CI change fires this once, one `ask` gate is raised for the *firing* (not one
+    per PR), and then every reviewed PR advances. A spawn would give each member its
+    own process, tagged with that member as its subject — so each is its own flow (§6).
+    Re-firing is idempotent per member: a spawn's id is derived from its subject, so a
+    second broadcast reuses it rather than starting a duplicate.
 - **`gates`** — a list of gates, *all* of which must resolve to proceed
-  (conjunctive) before the action fires. Each is `{ "name": …, "mode":
+  (conjunctive) before the action fires. Gates are per *firing*, so a broadcast asks
+  once, not once per subject. Each is `{ "name": …, "mode":
   auto|ask|park }`. An empty list fires with no approval. Multiple gates model
   multi-approval — e.g. a deploy needing both a security and a release-manager
   sign-off is two `ask` gates. A gate can also carry a **`formula`** the verse
   resolves itself — a vote, a deadline, a threshold; see §8.
-- **`action`** — data, not code:
-  - `set` writes fields on an entity (a state transition);
-  - `setRef` targets a *different* entity than the one that fired (default: the
-    matched entity);
+- **`action`** — data, not code, and it needs no target of its own: an action acts on
+  the condition's **subject**.
+  - `set` writes fields on the subject (a state transition);
   - `spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
     `policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed
-    **`provider`** selection of the doer (§8).
-- **Bindings** in templates: `$subject` is the matched entity's ref; every field of
-  the changed payload is bound by name (`$flow`, `$stage`, …). That's how the
-  `reviewed` rule advances `$flow` — the subject the completed process carried.
+    **`provider`** selection of the doer (§8). The spawned process is tagged with the
+    subject, which is what makes it part of that subject's flow (§6).
+- **Bindings** in templates: every field of the changed payload is bound by name
+  (`$flow`, `$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So in
+  `reviewed`, `subject: "$flow"` names the PR, and `$subject` inside the action is
+  that PR, not the process that fired.
 
-The `reviewed` rule is the **completion pattern**: match `process:instance
-status=completed`, read its `$flow`, advance that subject. It's how multi-step flows
+The `reviewed` rule is the **completion pattern**: *when* a `process:instance` reaches
+`status=completed`, *about* the `$flow` it carried, advance that subject. It's how multi-step flows
 close through the verse. (Triggers must opt in to `process:*` — the engine keeps
 reflected process state out of the default match set so the loop can't ignite on its
 own machinery.)
@@ -285,8 +320,12 @@ verse watch --system process
 ## 6. Steer flows
 
 Steering is the control plane — out-of-band from observation, honored at a process's
-next boundary, never a store write. Each command acts on one **flow**: the *in-flight*
-processes tagged with that subject (a PR, a change, a release).
+next boundary, never a store write. Each command acts on a **flow**: the *in-flight*
+processes tagged with a subject (a PR, a change, a release).
+
+A flow is **not a stored thing** — it is a *query* over the subjects of live processes. That
+is why steering takes an **address**, not just a ref, and why steering a whole set needs no
+new machinery: it is the same selector at a wider setting.
 
 A flow exists only while its processes run, so give yourself one to steer — open another
 change and approve its review, so a review process spawns under `demo:pr:2`:
@@ -307,9 +346,20 @@ verse flow say    demo:pr:2 "hurry"   # inject an instruction
 verse flow cancel demo:pr:2           # stop its processes (destructive)
 ```
 
-They fan out to that subject's processes and land at each one's next boundary, so a
-flow can be held, redirected, or stopped mid-flight — while every *other* flow keeps
-reacting. Each command reports how many processes it signalled (`{"paused": 1, …}`).
+…or steer a whole **set** of subjects with the same verbs, since the address is a selector
+(`*` is a wildcard per segment):
+
+```sh
+verse flow pause 'demo:pr:*'          # every PR's in-flight work
+verse flow say   'demo:*:*' "hurry"   # everything in the demo system
+verse flow list                       # the distinct subjects with live work
+```
+
+Each command reports how many processes it reached, so `{"paused": 2}` tells you the address
+selected two.
+
+They fan out to the addressed processes and land at each one's next boundary, so a flow can
+be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting.
 A `scripted` review is brief, so steering matters most for a real, longer-running
 agent — the `llm` driver, or a longer task — where `pause`/`say`/`cancel` take hold
 mid-run.
@@ -424,9 +474,9 @@ verse watches and resolves it itself:
 
 ```json
 { "name": "merge",
-  "matches": [ { "system": "change", "fields": { "stage": "ready" } } ],
-  "gates":   [ { "name": "approvals", "formula": { "quorum": 2 } } ],
-  "action":  { "set": { "stage": "merged" } } }
+  "condition": { "when": { "system": "change", "fields": { "stage": "ready" } } },
+  "gates":     [ { "name": "approvals", "formula": { "quorum": 2 } } ],
+  "action":    { "set": { "stage": "merged" } } }
 ```
 
 ```sh
@@ -499,7 +549,7 @@ how to choose, instead of one driver:
 
 ```json
 { "name": "review",
-  "matches": [ { "system": "change", "fields": { "stage": "open" } } ],
+  "condition": { "when": { "system": "change", "fields": { "stage": "open" } } },
   "action": { "spawn": { "task": "review $subject",
     "provider": { "eligible": ["gpt", "claude"], "select": "vote", "need": 2 } } } }
 ```
@@ -607,8 +657,8 @@ way everything else composes:
 
 ```json
 { "name": "on-ship",
-  "matches": [ { "system": "goal", "kind": "done" } ],
-  "action":  { "setRef": "$subject", "set": { "stage": "shipped" } } }
+  "condition": { "when": { "system": "goal", "kind": "done" }, "subject": "$flow" },
+  "action":    { "set": { "stage": "shipped" } } }
 ```
 
 And because a goal's owned triggers spawn processes tracked as **flows**, a goal *is a flow
@@ -744,7 +794,9 @@ verse
                 cancel <id> · say <id> <text…> · resolve <id> <decision> --approve|--deny
                 do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
                 do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
-  flow    list · pause <subject> · resume <subject> · cancel <subject> · say <subject> <text…>
+  flow    list · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
+          <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
+          demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
   goals   list · add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
           add -f <file> (full record incl. owned triggers) · remove <name>
           pause|resume|cancel <name> · say <name> <text…>            (alias: goal)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,9 +17,61 @@ import (
 )
 
 // DefaultRoot is the top-level kinded-path segment the verse lives under in logd.
-// All entities are stored at <root>.<system>.<kind>.<id>, so a single watch on the
-// root observes the whole verse.
+// Log-backed entities are stored at <root>.<system>.<kind>.<id>, so a single watch on
+// the root observes the whole (historied) verse.
 const DefaultRoot = "verse"
+
+// MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
+// disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
+//
+// A mount is process-driven, so it has NO HISTORY. A controller backs its subtree with
+// something that is not the log (a filesystem, an API), and across a mount/unmount there
+// is no durable commit sequence to replay; a self-backed controller has no past to ask
+// for at all (libctl.Handler says such a controller "should reject a historical read
+// rather than answer from an uncoordinated timeline"). So history belongs to the
+// log-backed base, and a history-bearing watch must never span a mount.
+//
+// docd enforces nothing here — it composes a watch whose path is a strict ANCESTOR of a
+// mount, and a composed watch silently drops FromCommit and never emits ReplayComplete.
+// With mounts under DefaultRoot, the root watch became composed the moment a `verse
+// connect` content controller appeared, and Since (a FromCommit replay on the root)
+// returned ok=true with ZERO events after running to its internal timeout — a silent,
+// successful-looking under-delivery of the engine's catch-up. Mount/unmount are also
+// coordinator WRITERS, so the mount additionally blocked ~5s on the overlapping root
+// watch before force-ending it.
+//
+// Holding mounts on a sibling root removes both: "verse" is not a field-prefix of
+// "versemnt", so no watch is ever an ancestor of a mount and nothing overlaps. One root
+// watch, no subtree enumeration, Since untouched. See entity/composedwatch_test.go and
+// docs/trigger-model-plan.md.
+//
+// This is a PATH-RENDERING split only: the entity namespace is unchanged, so a mounted
+// slice is still addressed as the ordinary ref local:dir-content-<scope>:<path>.
+const MountRoot = DefaultRoot + "mnt"
+
+// mountedKinds are the (system, kind-prefix) slices served by a controller mount rather
+// than by the log, so refPath renders them under MountRoot. Kept here — not derived from
+// package source, which imports this package — and held in step by
+// source.TestFederationKindsAreMountOwned.
+//
+// Only the content slice is mounted today: `verse connect` serves file bytes on demand at
+// local:dir-content-<scope> and stores nothing. Its sibling local:dir-status-<scope> is
+// ordinary log-backed metadata and stays under DefaultRoot, which is what keeps the
+// trigger that matches it watchable.
+var mountedKinds = []struct{ System, KindPrefix string }{
+	{"local", "dir-content-"},
+}
+
+// IsMountOwned reports whether a (system, kind) slice is served by a controller mount,
+// and so lives under MountRoot with no history.
+func IsMountOwned(system, kind string) bool {
+	for _, m := range mountedKinds {
+		if m.System == system && strings.HasPrefix(kind, m.KindPrefix) {
+			return true
+		}
+	}
+	return false
+}
 
 // LogdStore is an entity.Store backed by a logd document server (tony-format),
 // reached through the embedded libctl client — the durable, observable substrate
@@ -32,9 +85,15 @@ const DefaultRoot = "verse"
 // Since — which the engine does. Since is served natively by a FromCommit replay
 // watch (a query by revision), so a hold costs a cursor, not a buffer.
 type LogdStore struct {
-	root   string
-	sess   *libctl.LogdSession // reads, writes, and the live root watch (multiplexed)
-	replay *libctl.LogdSession // dedicated session for Since replay watches (same path)
+	root string
+	// sess multiplexes everything: reads, writes, the live root watch, per-trigger
+	// subtree watches, and Since's FromCommit replays. One session suffices because logd
+	// and docd key each watch by its request id, so a session may hold several
+	// concurrent watches — including several on the SAME path (go-tony ≥ v0.0.85;
+	// libctl.Watch always stamps an id). Before that a path admitted one watch per
+	// session, which is why this used to need a second "-replay" session and a mutex
+	// serializing replays against it.
+	sess   *libctl.LogdSession
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -48,8 +107,6 @@ type LogdStore struct {
 	closed      bool
 	synced      bool               // rev/openCommit have been seeded (by ensureSynced or the lazy watch)
 	watchCancel context.CancelFunc // cancels the lazy root watch; nil when no Observe subscribers
-
-	replayMu sync.Mutex // serializes Since replays: one watch per path per session
 
 	scopesMu sync.Mutex
 	scopes   map[string]*LogdStore // lazily-created scoped children, keyed by scope name
@@ -105,15 +162,9 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 		cancel()
 		return nil, err
 	}
-	replay, err := dial("-replay")
-	if err != nil {
-		sess.Close()
-		cancel()
-		return nil, err
-	}
 
 	s := &LogdStore{
-		root: root, cfg: cfg, sess: sess, replay: replay, ctx: ctx, cancel: cancel,
+		root: root, cfg: cfg, sess: sess, ctx: ctx, cancel: cancel,
 		subs: map[int]*observer{},
 	}
 
@@ -131,16 +182,39 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 // refPath renders an entity ref as a kinded path <root>.<system>.<kind>.<id>, with
 // each segment quoted as needed so arbitrary ids (e.g. "signadot/x#42") stay a
 // single field. Note: kpaths are '.'-delimited; '/' is a literal character.
+//
+// A mount-owned slice renders under MountRoot instead, so no watch on this store's root
+// is ever an ancestor of a mount (see MountRoot). The ref itself is unchanged — this is
+// the one place the two roots are chosen between, and reads/writes route by the rendered
+// path, so every caller keeps addressing a mounted slice as an ordinary ref.
 func (s *LogdStore) refPath(ref Ref) string {
-	return seg(s.root) + "." + seg(ref.System) + "." + seg(ref.Kind) + "." + seg(ref.ID)
+	return s.rootFor(ref) + "." + seg(ref.System) + "." + seg(ref.Kind) + "." + seg(ref.ID)
 }
 
-// MountKPath renders the kinded-path <DefaultRoot>.<system>.<kind> at which a
-// controller mounts to own that (system,kind) slice — e.g. verse connect's content
-// controller mounts the local:dir-content-<scope> slice. A controller process holds
-// no store, so this lets it and the store agree on the path.
+// rootFor picks the top-level segment a ref renders under: MountRoot for a
+// controller-mounted (historyless) slice, this store's root otherwise.
+func (s *LogdStore) rootFor(ref Ref) string {
+	if IsMountOwned(ref.System, ref.Kind) {
+		return seg(MountRoot)
+	}
+	return seg(s.root)
+}
+
+// MountKPath renders the kinded-path <MountRoot>.<system>.<kind> at which a controller
+// mounts to own that (system,kind) slice — e.g. verse connect's content controller
+// mounts the local:dir-content-<scope> slice. A controller process holds no store, so
+// this lets it and the store agree on the path.
+//
+// It renders under MountRoot, disjoint from the entity root, so a mount never sits below
+// a watched path (see MountRoot). A (system,kind) passed here must therefore also satisfy
+// IsMountOwned, or the store would render its refs under the other root and reads would
+// miss the mount — MountKPath panics rather than let the two drift silently.
 func MountKPath(system, kind string) string {
-	return seg(DefaultRoot) + "." + seg(system) + "." + seg(kind)
+	if !IsMountOwned(system, kind) {
+		panic("entity.MountKPath: " + system + ":" + kind + " is not a registered mount-owned slice " +
+			"(add it to mountedKinds, else refPath will render it under the entity root and miss the mount)")
+	}
+	return seg(MountRoot) + "." + seg(system) + "." + seg(kind)
 }
 
 func seg(v string) string {
@@ -397,10 +471,10 @@ func (s *LogdStore) Rev() int64 {
 
 // ensureSynced seeds rev and openCommit once, from a transient current-state read, for
 // the cursor consumers (Rev's value, Since's watermark) on a store with no lazy root
-// watch running. It holds NO standing watch — it opens a watch on the replay session,
-// reads the initial State commit, and closes it — so it cannot become the kind of
-// long-lived root watch a controller mount would force-end. Skipped once synced, or
-// while the lazy root watch is already keeping rev live.
+// watch running. It holds NO standing watch — it opens one, reads the initial State
+// commit, and closes it — so it never becomes a long-lived root watch. It needs no
+// serialization against a concurrent Observe or Since on the same path: each watch is
+// keyed by its own request id (see LogdStore.sess).
 func (s *LogdStore) ensureSynced() {
 	s.mu.Lock()
 	skip := s.synced || s.watchCancel != nil
@@ -408,11 +482,9 @@ func (s *LogdStore) ensureSynced() {
 	if skip {
 		return
 	}
-	s.replayMu.Lock() // reuse the replay session; serialize with Since's replays
-	defer s.replayMu.Unlock()
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
-	w, err := s.replay.Watch(ctx, s.root, &libctl.WatchOptions{})
+	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{})
 	if err != nil {
 		return
 	}
@@ -788,14 +860,13 @@ func (s *LogdStore) Since(from int64) ([]Event, bool) {
 	// FromCommit replay itself be authoritative — it streams commits after `from` and
 	// signals ReplayComplete when caught up (empty when there is nothing new).
 
-	// One watch per path per session, so serialize replays on the shared session.
-	s.replayMu.Lock()
-	defer s.replayMu.Unlock()
-
+	// Concurrent Since calls need no serialization: each replay is its own id-keyed watch,
+	// so several may be in flight on this session at once, on this same path (see
+	// LogdStore.sess). Since mutates no store state, so they stay independent.
 	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
 	defer cancel()
 	fc := from
-	w, err := s.replay.Watch(ctx, s.root, &libctl.WatchOptions{FromCommit: &fc, NoInit: true})
+	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{FromCommit: &fc, NoInit: true})
 	if err != nil {
 		return nil, false
 	}
@@ -939,9 +1010,6 @@ func (s *LogdStore) Close() error {
 		close(o.ch)
 	}
 	s.cancel()
-	if s.replay != nil {
-		s.replay.Close()
-	}
 	if s.sess != nil {
 		s.sess.Close()
 	}

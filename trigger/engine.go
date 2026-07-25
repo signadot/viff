@@ -25,12 +25,13 @@ import (
 // an RPC to a remote runtime when distributed).
 type Spawner func(id string, spec launch.Spec) process.ProcHandle
 
-// flowProc is one process tracked under a flow: its id (for store-driven reap by ref)
-// and its governing handle (the control target — a *Process locally, a remote handle
+// flowProc is one LIVE process: its id (for store-driven reap by ref), the subject it is
+// about, and its governing handle (the control target — a *Process locally, a remote handle
 // behind a controlPolicy URL later). The engine holds handles, not concrete processes.
 type flowProc struct {
-	id string
-	h  process.ProcHandle
+	id      string
+	subject string // the resolved subject this process is about — a flow is a query over these
+	h       process.ProcHandle
 }
 
 // Engine runs the ECA loop over an entity-verse.
@@ -56,10 +57,13 @@ type Engine struct {
 	paused  bool
 	cursor  int64 // highest processed store revision (the catch-up cursor)
 
-	// flow tracking: a flow's processes by subject (an entity ref), so a flow can be
-	// steered or cancelled as a unit. Guarded independently of the loop.
-	flowsMu sync.Mutex
-	flows   map[string][]flowProc
+	// Live processes, keyed by process id. A FLOW IS NOT STORED HERE: it is a QUERY over
+	// these processes' subjects (see matchFlow), so "the processes of demo:pr:1" and "…of
+	// every demo:pr" are the same operation at two settings — relational steering falls out
+	// of the selector rather than needing a second index. Keying by id also makes reap a
+	// delete and spawn-dedupe a lookup. Guarded independently of the loop.
+	liveMu sync.Mutex
+	live   map[string]flowProc
 
 	// the charter (e.triggers, declared above). Guarded because triggers can be
 	// added/removed at runtime (over the wire) while the loop dispatches.
@@ -83,7 +87,7 @@ func New(store entity.Store, resolver process.Resolver) *Engine {
 		store: store, resolver: resolver, log: io.Discard,
 		control: make(chan func(), 64),
 		stopped: make(chan struct{}),
-		flows:   map[string][]flowProc{},
+		live:    map[string]flowProc{},
 		goals:   map[string]*Goal{},
 	}
 }
@@ -138,39 +142,51 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	}
 }
 
-// watchTriggerSubtree opens a subtree watch for a subtree-mode trigger and fires it on
-// each matching change. The store must support SubtreeWatcher (the logd store does).
+// watchTriggerSubtree opens a subtree watch per (system,kind) the trigger's When READS and
+// fires it on each matching change. Asking the formula which subtrees it reads — the same
+// question a Monitor asks — means a When over several subtrees is watched correctly for
+// free, and there is no "exactly one match" restriction to enforce. The store must support
+// SubtreeWatcher (the logd store does).
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
-	if len(t.Matches) != 1 || t.Matches[0].System == "" {
-		return fmt.Errorf("subtree trigger %q needs exactly one match with a system (kind optional)", t.Name)
+	subtrees := t.Condition.When.Subtrees()
+	if len(subtrees) == 0 {
+		return fmt.Errorf("subtree trigger %q: its when reads no subtree to watch", t.Name)
+	}
+	for _, st := range subtrees {
+		if st[0] == "" {
+			return fmt.Errorf("subtree trigger %q needs a system in its when (kind optional); "+
+				"a scoped engine opens no root watch, so there is nothing to watch without one", t.Name)
+		}
 	}
 	sw, ok := e.store.(entity.SubtreeWatcher)
 	if !ok {
 		return fmt.Errorf("scoped trigger %q: store has no subtree watch", t.Name)
 	}
-	m := t.Matches[0]
-	ch, unsub, err := sw.WatchSubtree(m.System, m.Kind)
-	if err != nil {
-		return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, m.System, m.Kind, err)
-	}
 	ctx := e.bgctx
-	go func() {
-		defer unsub()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case ev, ok := <-ch:
-				if !ok {
-					return
-				}
-				if !t.matchesEvent(ev) || e.overBudget() {
-					continue
-				}
-				go e.fire(ctx, t, ev) // off the watcher goroutine: a gate must not stall it
-			}
+	for _, st := range subtrees {
+		system, kind := st[0], st[1]
+		ch, unsub, err := sw.WatchSubtree(system, kind)
+		if err != nil {
+			return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, system, kind, err)
 		}
-	}()
+		go func() {
+			defer unsub()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case ev, ok := <-ch:
+					if !ok {
+						return
+					}
+					if !t.matchesEvent(ev) || e.overBudget() {
+						continue
+					}
+					go e.fire(ctx, t, ev) // off the watcher goroutine: a gate must not stall it
+				}
+			}
+		}()
+	}
 	return nil
 }
 
@@ -316,23 +332,50 @@ func (e *Engine) overBudget() bool {
 	return e.maxFires > 0 && e.fired >= e.maxFires
 }
 
-// reserve consumes a fire from the budget; false when exhausted. Called only once a
-// firing has passed its gates, so the backstop bounds actions taken, not attempts.
-func (e *Engine) reserve() bool {
+// reserveN consumes budget for n subject-actions and returns how many were granted (0..n).
+// Called only once a firing has passed its gates, so the backstop bounds actions taken, not
+// attempts.
+//
+// The budget meters ENTITIES ACTED ON, not firings: one firing that fans out over 50
+// subjects is 50 actions, because that is what the backstop exists to bound (a runaway does
+// its damage per entity). It is partially satisfiable, so a fan-out wider than the remaining
+// budget acts on as many members as it can rather than being dropped whole — the cap is a
+// safety limit, not a transaction boundary.
+func (e *Engine) reserveN(n int) int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.maxFires > 0 && e.fired >= e.maxFires {
-		return false
+	if e.maxFires <= 0 { // unbounded
+		e.fired += n
+		return n
 	}
-	e.fired++
-	return true
+	room := e.maxFires - e.fired
+	if room <= 0 {
+		return 0
+	}
+	if room < n {
+		n = room
+	}
+	e.fired += n
+	return n
 }
 
-// fire resolves a matched trigger's gates (conjunctively) and runs its action if
-// they all proceed. All blocking gates are posed *concurrently* — so a trigger's
-// gates appear together and approvers can act in parallel — then fire waits for
+// fire names what the firing is about, resolves the trigger's gates (conjunctively), and
+// runs its action if they all proceed. All blocking gates are posed *concurrently* — so a
+// trigger's gates appear together and approvers can act in parallel — then fire waits for
 // every one; any denial stops the firing.
+//
+// The subject is resolved BEFORE any gate, because it is named at the instant When fires:
+// a long approval then cannot slide it (and, under fan-out, cannot change the member set
+// between asking and acting), and a firing that resolves to nothing never troubles an
+// approver. Gates are per FIRING, not per subject — a broadcast raises one approval.
 func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
+	subjects := t.resolveSubject(ev, e.store)
+	if len(subjects) == 0 {
+		// e.g. a "$flow" subject on an event whose payload carries no flow.
+		e.tracef("fire %s on %s: subject resolved to nothing; not firing", t.Name, ev.Ref)
+		return
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	allProceed := true
@@ -387,12 +430,19 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 	if !allProceed {
 		return // some gate denied — no budget consumed
 	}
-	if !e.reserve() { // consume a slot only for a firing that actually proceeds
+	// Consume budget only for a firing that actually proceeds, metered per subject acted on.
+	granted := e.reserveN(len(subjects))
+	if granted == 0 {
 		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
 		return
 	}
-	e.tracef("fire %s on %s", t.Name, ev.Ref)
-	t.Action.apply(t.Name, ev, e)
+	if granted < len(subjects) {
+		e.tracef("budget allows %d of %d subjects for %s on %s; acting on the first %d",
+			granted, len(subjects), t.Name, ev.Ref, granted)
+		subjects = subjects[:granted]
+	}
+	e.tracef("fire %s on %s (%d subject(s): %v)", t.Name, ev.Ref, len(subjects), subjects)
+	t.Action.apply(t.Name, ev, subjects, e)
 }
 
 // monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the
@@ -572,13 +622,14 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 		return nil, false
 	}
 	fs := recheck.Req.Facts
-	if fs.System == "" || fs.Kind == "" {
+	system, kind := fs.System(), fs.Kind()
+	if system == "" || kind == "" {
 		return nil, false
 	}
-	choice, _ := fs.Fields["choice"].(string)
+	choice, _ := fs.Fields()["choice"].(string)
 	sub := map[string]any{}
 	for _, w := range witness {
-		if w.System != fs.System || w.Kind != fs.Kind {
+		if w.System != system || w.Kind != kind {
 			continue
 		}
 		ballot := map[string]any{}
@@ -590,7 +641,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if len(sub) == 0 {
 		return nil, false
 	}
-	return []entity.Precondition{{Ref: entity.Ref{System: fs.System, Kind: fs.Kind}, Pattern: sub}}, true
+	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: sub}}, true
 }
 
 // clonePayload returns a shallow copy of p (nil → empty), so a Modify can extend the
@@ -734,16 +785,32 @@ func (e *Engine) Spawn(id string, spec launch.Spec) process.ProcHandle {
 		e.tracef("no spawner configured; cannot spawn %q", id)
 		return nil
 	}
+	// Idempotent per id: spawnID is deterministic per (trigger, subject), so a re-fire about
+	// the same subject must not start a second process. The runtime would not stop it — a
+	// processd Spawn overwrites its registry entry while the old process keeps running — so
+	// the engine, which owns the live registry, is where this belongs.
+	e.liveMu.Lock()
+	if fp, running := e.live[id]; running {
+		e.liveMu.Unlock()
+		e.tracef("process %s already live (subject %s); not respawning", id, fp.subject)
+		return fp.h
+	}
+	e.liveMu.Unlock()
+
 	e.tracef("spawn process %s (driver=%s): %s", id, spec.Driver, spec.Task)
 	h := e.spawn(id, spec)
-	if h != nil && spec.Subject != "" { // record the process under its flow
-		fp := flowProc{id: id, h: h}
-		e.flowsMu.Lock()
-		e.flows[spec.Subject] = append(e.flows[spec.Subject], fp)
-		e.flowsMu.Unlock()
-		go e.reapOnDone(spec.Subject, fp) // retire it from flow tracking when it ends
+	if h != nil && spec.Subject != "" {
+		e.track(flowProc{id: id, subject: spec.Subject, h: h})
 	}
 	return h
+}
+
+// track registers a live process and arms its lifecycle-driven reaper.
+func (e *Engine) track(fp flowProc) {
+	e.liveMu.Lock()
+	e.live[fp.id] = fp
+	e.liveMu.Unlock()
+	go e.reapOnDone(fp) // retire it when it ends
 }
 
 // Adopt registers an already-running process (id + governing handle) under a flow — the
@@ -755,11 +822,7 @@ func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
 	if h == nil || subject == "" {
 		return
 	}
-	fp := flowProc{id: id, h: h}
-	e.flowsMu.Lock()
-	e.flows[subject] = append(e.flows[subject], fp)
-	e.flowsMu.Unlock()
-	go e.reapOnDone(subject, fp)
+	e.track(flowProc{id: id, subject: subject, h: h})
 }
 
 // reapOnDone retires a process from its flow's tracking once it reaches a terminal
@@ -770,7 +833,7 @@ func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
 // replay) — in baseline mode reap (store-driven, via the root watch) is the race-free
 // path; this is the backstop and the scoped-mode path. The range also exits if the
 // process closes its bus, so this cannot outlive p.
-func (e *Engine) reapOnDone(subject string, fp flowProc) {
+func (e *Engine) reapOnDone(fp flowProc) {
 	ch, unsub := fp.h.Subscribe()
 	defer unsub()
 	for ev := range ch {
@@ -778,53 +841,77 @@ func (e *Engine) reapOnDone(subject string, fp flowProc) {
 			break
 		}
 	}
-	e.flowsMu.Lock()
-	defer e.flowsMu.Unlock()
-	ps := e.flows[subject]
-	kept := make([]flowProc, 0, len(ps))
-	for _, q := range ps {
-		if q.h != fp.h {
-			kept = append(kept, q)
-		}
-	}
-	if len(kept) == 0 {
-		delete(e.flows, subject)
-	} else {
-		e.flows[subject] = kept
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	if cur, ok := e.live[fp.id]; ok && cur.h == fp.h {
+		delete(e.live, fp.id) // same id, same handle — not a successor that reused the id
 	}
 }
 
-// Flows lists the subjects with in-flight processes. Terminal processes are reaped
-// (see reap), so a subject drops off once its work finishes; the handles here are
-// this engine's live processes (control targets), not a durable membership view.
+// Flows lists the distinct subjects with in-flight processes — a QUERY over the live
+// registry, not a maintained index. Terminal processes are reaped, so a subject drops off
+// once its work finishes; the handles behind it are this engine's live processes (control
+// targets), not a durable membership view.
 func (e *Engine) Flows() []string {
-	e.flowsMu.Lock()
-	defer e.flowsMu.Unlock()
-	out := make([]string, 0, len(e.flows))
-	for s := range e.flows {
+	e.liveMu.Lock()
+	seen := make(map[string]bool, len(e.live))
+	for _, fp := range e.live {
+		seen[fp.subject] = true
+	}
+	e.liveMu.Unlock()
+	out := make([]string, 0, len(seen))
+	for s := range seen {
 		out = append(out, s)
 	}
+	sort.Strings(out) // deterministic for a CLI listing
 	return out
 }
 
-// CancelFlow cancels every process of a flow (out-of-band control, honored at each
-// process's next boundary — never a store write). Returns how many were signalled.
-func (e *Engine) CancelFlow(subject string) int {
-	e.flowsMu.Lock()
-	ps := e.flows[subject]
-	e.flowsMu.Unlock()
+// matchFlow selects the live processes a subject-Match addresses. This IS the flow
+// primitive: a flow is not a stored key but the answer to "which live processes are about
+// entities matching this". A payload predicate (`fields`) is applied by reading the subject
+// entity, so "pause every open PR's work" is the same selector at a wider setting.
+func (e *Engine) matchFlow(m Match) []flowProc {
+	e.liveMu.Lock()
+	all := make([]flowProc, 0, len(e.live))
+	for _, fp := range e.live {
+		all = append(all, fp)
+	}
+	e.liveMu.Unlock()
+
+	fields := m.Fields()
+	out := make([]flowProc, 0, len(all))
+	for _, fp := range all {
+		ref, err := entity.ParseRef(fp.subject)
+		if err != nil || !m.MatchRef(ref) {
+			continue
+		}
+		if len(fields) > 0 {
+			ent, ok := e.store.Get(ref)
+			if !ok || !m.MatchEvent(entity.Event{Ref: ref, To: ent.Payload}) {
+				continue
+			}
+		}
+		out = append(out, fp)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].id < out[j].id })
+	return out
+}
+
+// CancelFlow cancels every process the address selects (out-of-band control, honored at
+// each process's next boundary — never a store write). Returns how many were signalled.
+func (e *Engine) CancelFlow(m Match) int {
+	ps := e.matchFlow(m)
 	for _, fp := range ps {
-		fp.h.Cancel("flow cancel: " + subject)
+		fp.h.Cancel("flow cancel: " + fp.subject)
 	}
 	return len(ps)
 }
 
-// SteerFlow says an instruction to every process of a flow, attributed to by. Returns
-// how many were said-to.
-func (e *Engine) SteerFlow(subject, text, by string) int {
-	e.flowsMu.Lock()
-	ps := e.flows[subject]
-	e.flowsMu.Unlock()
+// SteerFlow says an instruction to every process the address selects, attributed to by.
+// Returns how many were said-to.
+func (e *Engine) SteerFlow(m Match, text, by string) int {
+	ps := e.matchFlow(m)
 	for _, fp := range ps {
 		fp.h.Steer(text, by)
 	}
@@ -837,10 +924,8 @@ func (e *Engine) SteerFlow(subject, text, by string) int {
 // control, honored at the boundary, never a store write. Lift it with ResumeFlow.
 // Returns how many were signalled. (This is per-flow; it does not pause the engine's
 // dispatch loop — other flows keep reacting.)
-func (e *Engine) PauseFlow(subject string) int {
-	e.flowsMu.Lock()
-	ps := e.flows[subject]
-	e.flowsMu.Unlock()
+func (e *Engine) PauseFlow(m Match) int {
+	ps := e.matchFlow(m)
 	for _, fp := range ps {
 		fp.h.Pause()
 	}
@@ -849,21 +934,20 @@ func (e *Engine) PauseFlow(subject string) int {
 
 // ResumeFlow lifts a PauseFlow, releasing each process to run from its held
 // boundary. Returns how many were signalled.
-func (e *Engine) ResumeFlow(subject string) int {
-	e.flowsMu.Lock()
-	ps := e.flows[subject]
-	e.flowsMu.Unlock()
+func (e *Engine) ResumeFlow(m Match) int {
+	ps := e.matchFlow(m)
 	for _, fp := range ps {
 		fp.h.Resume()
 	}
 	return len(ps)
 }
 
-// reap retires a process from its flow when its reflected entity reaches a terminal
-// status, so Flows()/CancelFlow/… see only in-flight work — no lingering completed
-// handles. It is store-driven: the same process:instance change a completion trigger
-// reacts to also releases the flow handle. A subject with no live processes is
-// dropped entirely.
+// reap retires a process when its reflected entity reaches a terminal status, so
+// Flows()/matchFlow see only in-flight work — no lingering completed handles. It is
+// store-driven: the same process:instance change a completion trigger reacts to also
+// releases the handle. Keyed by process id, so this is one delete — no scan of subjects, and
+// none of the "never filter in place" hazard the per-subject slices used to carry (the
+// control ops copied a slice header under the lock and iterated it unlocked).
 func (e *Engine) reap(ev entity.Event) {
 	if ev.Ref.System != mirror.System {
 		return
@@ -872,24 +956,9 @@ func (e *Engine) reap(ev entity.Event) {
 	if !process.TerminalStatus(status) {
 		return
 	}
-	e.flowsMu.Lock()
-	defer e.flowsMu.Unlock()
-	for subj, ps := range e.flows {
-		// Build a fresh slice — never filter ps in place. CancelFlow/SteerFlow/… copy
-		// only the slice header under the lock and then iterate it unlocked, so an
-		// in-place compaction here would corrupt the array they are reading.
-		kept := make([]flowProc, 0, len(ps))
-		for _, fp := range ps {
-			if fp.id != ev.Ref.ID {
-				kept = append(kept, fp)
-			}
-		}
-		if len(kept) == 0 {
-			delete(e.flows, subj)
-		} else {
-			e.flows[subj] = kept
-		}
-	}
+	e.liveMu.Lock()
+	delete(e.live, ev.Ref.ID)
+	e.liveMu.Unlock()
 }
 
 // ReconcileOrphans retires process:instance entities that a previous run left

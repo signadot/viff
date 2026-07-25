@@ -31,15 +31,16 @@ store, not through a scheduler.
 - **Entity** — anything the SDLC refers to, named by a `system:kind:id` triple
   (`demo:pr:1`, `github:pr:org/repo#42`, `process:instance:review-1`) with an arbitrary
   payload value. The **entity store** is the shared, observable, cursored log of these.
-- **Trigger** — one charter rule: *when a matching change happens and its gates resolve, an
-  action fires.* `matches` (conjunctive predicates over system/kind/op/fields), `gates`
-  (conjunctive), `action`.
+- **Trigger** — one charter rule: *when the condition holds and its gates resolve, an action
+  fires.* `condition` (a `when` — a point-in-time **match** over system/kind/id/op/fields, or
+  a temporal formula — plus the `subject` the firing is about), `gates` (conjunctive),
+  `action`. See `docs/trigger-model.md`.
 - **Gate** — `auto` (fire) · `ask` (a human/agent must approve) · `park` (hold). This is the
   autonomy dial, expressed per action.
 - **Action** — *data, not code*: `set` fields on an entity (a state transition) and/or
-  `spawn` a process (a `launch.Spec`). `setRef` targets a different entity than the one that
-  fired; template bindings (`$subject`, and every field of the changed payload) parameterize
-  it.
+  `spawn` a process (a `launch.Spec`). It acts on the condition's `subject` — it carries no
+  target of its own; template bindings (`$subject`, and every field of the changed payload)
+  parameterize it.
 - **Process** — a governed unit of agentic work, hosted by a runtime, observable and
   steerable. Processes are themselves entities (`process:instance:<id>`), so the fleet's
   lifecycle is visible by watching the store.

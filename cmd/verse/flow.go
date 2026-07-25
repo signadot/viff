@@ -9,7 +9,7 @@ import (
 
 func flowCmd() *cli.Command {
 	return cli.NewCommand("flow").
-		WithSynopsis("flow — engine steering, per subject (control plane)").
+		WithSynopsis("flow — steer live processes by the subject they are about (control plane)").
 		WithSubs(
 			flowListCmd(),
 			flowPauseCmd(),
@@ -20,7 +20,7 @@ func flowCmd() *cli.Command {
 }
 
 func flowListCmd() *cli.Command {
-	return leaf("list", "list in-flight flows",
+	return leaf("list", "list the distinct subjects with in-flight processes",
 		func(cc *cli.Context, args []string) error {
 			resp, err := httpGet("/flows", nil)
 			if err != nil {
@@ -35,11 +35,11 @@ type flowPauseConfig struct{ *cli.Command }
 func flowPauseCmd() *cli.Command {
 	cfg := &flowPauseConfig{}
 	return cli.NewCommandAt(&cfg.Command, "pause").
-		WithSynopsis("pause a flow's processes at their next boundary: pause <subject>").WithRun(cfg.run)
+		WithSynopsis("hold the addressed processes at their next boundary: pause <subject|demo:pr:*>").WithRun(cfg.run)
 }
 
 func (cfg *flowPauseConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow pause wants a subject (entity ref)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow pause wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
 	if err != nil {
 		return err
 	}
@@ -55,11 +55,11 @@ type flowResumeConfig struct{ *cli.Command }
 func flowResumeCmd() *cli.Command {
 	cfg := &flowResumeConfig{}
 	return cli.NewCommandAt(&cfg.Command, "resume").
-		WithSynopsis("resume a paused flow's processes: resume <subject>").WithRun(cfg.run)
+		WithSynopsis("release held processes: resume <subject|demo:pr:*>").WithRun(cfg.run)
 }
 
 func (cfg *flowResumeConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow resume wants a subject (entity ref)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow resume wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
 	if err != nil {
 		return err
 	}
@@ -75,11 +75,11 @@ type flowCancelConfig struct{ *cli.Command }
 func flowCancelCmd() *cli.Command {
 	cfg := &flowCancelConfig{}
 	return cli.NewCommandAt(&cfg.Command, "cancel").
-		WithSynopsis("cancel a flow's processes: cancel <subject>").WithRun(cfg.run)
+		WithSynopsis("stop the addressed processes (destructive): cancel <subject|demo:pr:*>").WithRun(cfg.run)
 }
 
 func (cfg *flowCancelConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow cancel wants a subject (entity ref)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow cancel wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ type flowSayConfig struct{ *cli.Command }
 func flowSayCmd() *cli.Command {
 	cfg := &flowSayConfig{}
 	return cli.NewCommandAt(&cfg.Command, "say").
-		WithSynopsis("say something to a flow's processes: say <subject> <text…>").WithRun(cfg.run)
+		WithSynopsis("inject an instruction: say <subject|demo:pr:*> <text…>").WithRun(cfg.run)
 }
 
 func (cfg *flowSayConfig) run(cc *cli.Context, args []string) error {

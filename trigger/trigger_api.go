@@ -14,6 +14,9 @@ import (
 // rejects a duplicate name. The engine interprets the trigger directly — there is no
 // separate compiled form.
 func (e *Engine) AddTrigger(t Trigger) error {
+	if err := t.Condition.validate(); err != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
 	for _, g := range t.Gates {
 		if _, err := g.mode(); err != nil {
 			return err
@@ -106,13 +109,28 @@ func safeSeg(s string) string {
 	}, s)
 }
 
-// bindingFor builds the template binding for an event: $subject = the matched ref,
-// plus each changed-payload field by its name (e.g. $flow, $stage).
-func bindingFor(ev entity.Event) launch.Binding {
-	b := launch.Binding{"subject": ev.Ref.String()}
+// payloadBinding binds each field of the changed payload by its name (e.g. $flow, $stage,
+// $path). It carries no $subject: resolving a Subject expression ("$flow") needs these
+// bindings, so the subject cannot be among them without circularity.
+func payloadBinding(ev entity.Event) launch.Binding {
+	b := launch.Binding{}
 	for k, v := range ev.To {
 		b[k] = fmt.Sprint(v)
 	}
+	return b
+}
+
+// bindingFor builds the template binding for a firing: the changed payload's fields, plus
+// $subject — the RESOLVED subject the action is about, which coincides with the matched ref
+// only when no Subject was declared.
+//
+// $subject is set LAST, deliberately: it is the one reserved binding, and a payload field
+// happening to be called "subject" must not shadow it. (It used to be set first and
+// overwritten, which is why a goal:done fact carrying a `subject` field silently redirected
+// $subject — see goal.go, which now also publishes `flow` for that job.)
+func bindingFor(ev entity.Event, subject entity.Ref) launch.Binding {
+	b := payloadBinding(ev)
+	b["subject"] = subject.String()
 	return b
 }
 
