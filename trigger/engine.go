@@ -138,39 +138,51 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	}
 }
 
-// watchTriggerSubtree opens a subtree watch for a subtree-mode trigger and fires it on
-// each matching change. The store must support SubtreeWatcher (the logd store does).
+// watchTriggerSubtree opens a subtree watch per (system,kind) the trigger's When READS and
+// fires it on each matching change. Asking the formula which subtrees it reads — the same
+// question a Monitor asks — means a When over several subtrees is watched correctly for
+// free, and there is no "exactly one match" restriction to enforce. The store must support
+// SubtreeWatcher (the logd store does).
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
-	if len(t.Matches) != 1 || t.Matches[0].System == "" {
-		return fmt.Errorf("subtree trigger %q needs exactly one match with a system (kind optional)", t.Name)
+	subtrees := t.Condition.When.Subtrees()
+	if len(subtrees) == 0 {
+		return fmt.Errorf("subtree trigger %q: its when reads no subtree to watch", t.Name)
+	}
+	for _, st := range subtrees {
+		if st[0] == "" {
+			return fmt.Errorf("subtree trigger %q needs a system in its when (kind optional); "+
+				"a scoped engine opens no root watch, so there is nothing to watch without one", t.Name)
+		}
 	}
 	sw, ok := e.store.(entity.SubtreeWatcher)
 	if !ok {
 		return fmt.Errorf("scoped trigger %q: store has no subtree watch", t.Name)
 	}
-	m := t.Matches[0]
-	ch, unsub, err := sw.WatchSubtree(m.System, m.Kind)
-	if err != nil {
-		return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, m.System, m.Kind, err)
-	}
 	ctx := e.bgctx
-	go func() {
-		defer unsub()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case ev, ok := <-ch:
-				if !ok {
-					return
-				}
-				if !t.matchesEvent(ev) || e.overBudget() {
-					continue
-				}
-				go e.fire(ctx, t, ev) // off the watcher goroutine: a gate must not stall it
-			}
+	for _, st := range subtrees {
+		system, kind := st[0], st[1]
+		ch, unsub, err := sw.WatchSubtree(system, kind)
+		if err != nil {
+			return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, system, kind, err)
 		}
-	}()
+		go func() {
+			defer unsub()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case ev, ok := <-ch:
+					if !ok {
+						return
+					}
+					if !t.matchesEvent(ev) || e.overBudget() {
+						continue
+					}
+					go e.fire(ctx, t, ev) // off the watcher goroutine: a gate must not stall it
+				}
+			}
+		}()
+	}
 	return nil
 }
 
@@ -328,11 +340,23 @@ func (e *Engine) reserve() bool {
 	return true
 }
 
-// fire resolves a matched trigger's gates (conjunctively) and runs its action if
-// they all proceed. All blocking gates are posed *concurrently* — so a trigger's
-// gates appear together and approvers can act in parallel — then fire waits for
+// fire names what the firing is about, resolves the trigger's gates (conjunctively), and
+// runs its action if they all proceed. All blocking gates are posed *concurrently* — so a
+// trigger's gates appear together and approvers can act in parallel — then fire waits for
 // every one; any denial stops the firing.
+//
+// The subject is resolved BEFORE any gate, because it is named at the instant When fires:
+// a long approval then cannot slide it (and, under fan-out, cannot change the member set
+// between asking and acting), and a firing that resolves to nothing never troubles an
+// approver. Gates are per FIRING, not per subject — a broadcast raises one approval.
 func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
+	subjects := t.resolveSubject(ev, e.store)
+	if len(subjects) == 0 {
+		// e.g. a "$flow" subject on an event whose payload carries no flow.
+		e.tracef("fire %s on %s: subject resolved to nothing; not firing", t.Name, ev.Ref)
+		return
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	allProceed := true
@@ -391,8 +415,8 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
 		return
 	}
-	e.tracef("fire %s on %s", t.Name, ev.Ref)
-	t.Action.apply(t.Name, ev, e)
+	e.tracef("fire %s on %s (subject %v)", t.Name, ev.Ref, subjects)
+	t.Action.apply(t.Name, ev, subjects, e)
 }
 
 // monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the

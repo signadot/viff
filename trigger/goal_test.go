@@ -52,9 +52,9 @@ func TestGoalDoneLatch(t *testing.T) {
 			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}},
 		}},
 		Triggers: []Trigger{{
-			Name:    "ship-review",
-			Matches: []entity.Pattern{{System: "change", Fields: map[string]any{"stage": "open"}}},
-			Action:  Action{Set: map[string]any{"stage": "reviewing"}},
+			Name:      "ship-review",
+			Condition: Condition{When: MatchWhen(Match{"system": "change", "fields": map[string]any{"stage": "open"}})},
+			Action:    Action{Set: map[string]any{"stage": "reviewing"}},
 		}},
 	})
 	if err != nil {

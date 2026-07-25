@@ -45,7 +45,8 @@ type Goal struct {
 // goalRef / goalDoneRef / goalFailedRef name a goal's entities. goal:instance carries the
 // live status + terminal latch; goal:done / goal:failed are the ordinary fact a charter
 // trigger may match ({system:"goal", kind:"done"|"failed"}) to advance a subject — emergent,
-// opt-in; the goal never sets a subject field itself.
+// opt-in; the goal never sets a subject field itself. Such a trigger carries the goal's
+// subject onward with `"subject": "$flow"` (see commitGoal).
 func goalRef(name string) entity.Ref     { return entity.Ref{System: "goal", Kind: "instance", ID: name} }
 func goalDoneRef(name string) entity.Ref { return entity.Ref{System: "goal", Kind: "done", ID: name} }
 func goalFailedRef(name string) entity.Ref {
@@ -273,10 +274,16 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 		return // a concurrent commit latched first — honor it
 	}
 
-	// The monotonic latch fact a charter may react to.
+	// The monotonic latch fact a charter may react to. It carries the goal's subject under
+	// BOTH `flow` and `subject`: `flow` is the binding a reacting trigger should use
+	// (`"subject": "$flow"`, exactly as a process-completion trigger does — mirror.Reflect
+	// publishes the same convention), while `subject` remains for display. A trigger cannot
+	// use `$subject` for this: that is the reserved binding for the firing's OWN resolved
+	// subject, which for a goal:done change is the latch entity itself.
 	if outcome == "done" {
 		fact := entity.Payload{"goal": g.Def.Name}
 		if g.Def.Subject != "" {
+			fact["flow"] = g.Def.Subject
 			fact["subject"] = g.Def.Subject
 		}
 		if ids := refIDs(witness); len(ids) > 0 {
@@ -286,6 +293,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	} else {
 		fact := entity.Payload{"goal": g.Def.Name, "reason": "deadline"}
 		if g.Def.Subject != "" {
+			fact["flow"] = g.Def.Subject
 			fact["subject"] = g.Def.Subject
 		}
 		e.store.Put(goalFailedRef(g.Def.Name), fact)

@@ -17,8 +17,8 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "42"}
 
 	eng.AddTrigger(Trigger{
-		Name:    "merge",
-		Matches: []entity.Pattern{{System: "change"}},
+		Name:      "merge",
+		Condition: Condition{Subject: refMatch(merged.String()), When: MatchWhen(Match{"system": "change"})},
 		Gates: []Gate{{
 			Name: "approvals",
 			Mode: "ask",
@@ -28,7 +28,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 				N:     2,
 			}},
 		}},
-		Action: Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
+		Action: Action{Set: map[string]any{"ok": "yes"}},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -72,10 +72,10 @@ func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "a"}
 	eng.AddTrigger(Trigger{
-		Name:    "merge",
-		Matches: []entity.Pattern{{System: "change"}},
-		Gates:   []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
-		Action:  Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
+		Name:      "merge",
+		Condition: Condition{Subject: refMatch(merged.String()), When: MatchWhen(Match{"system": "change"})},
+		Gates:     []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
+		Action:    Action{Set: map[string]any{"ok": "yes"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -97,10 +97,10 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "b"}
 	eng.AddTrigger(Trigger{
-		Name:    "merge",
-		Matches: []entity.Pattern{{System: "change"}},
-		Gates:   []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
-		Action:  Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
+		Name:      "merge",
+		Condition: Condition{Subject: refMatch(merged.String()), When: MatchWhen(Match{"system": "change"})},
+		Gates:     []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
+		Action:    Action{Set: map[string]any{"ok": "yes"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -123,13 +123,13 @@ func TestTemporalDenyQuorum(t *testing.T) {
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "d"}
 	eng.AddTrigger(Trigger{
-		Name:    "merge",
-		Matches: []entity.Pattern{{System: "change"}},
+		Name:      "merge",
+		Condition: Condition{Subject: refMatch(merged.String()), When: MatchWhen(Match{"system": "change"})},
 		Gates: []Gate{{Name: "approvals", Mode: "ask", Formula: &Formula{Op: OpUntil, Args: []*Formula{
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},                   // approve-quorum → proceed
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Choice: "reject", N: 2}}, // reject-quorum → deny
 		}}}},
-		Action: Action{SetRef: merged.String(), Set: map[string]any{"ok": "yes"}},
+		Action: Action{Set: map[string]any{"ok": "yes"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -315,13 +315,13 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 	eng := New(store, denyResolver{})
 	merged := entity.Ref{System: "result", Kind: "merged", ID: "dl"}
 	eng.AddTrigger(Trigger{
-		Name:    "merge",
-		Matches: []entity.Pattern{{System: "change"}},
+		Name:      "merge",
+		Condition: Condition{Subject: refMatch(merged.String()), When: MatchWhen(Match{"system": "change"})},
 		Gates: []Gate{{Name: "g", Mode: "ask", Formula: &Formula{Op: OpUntil, Args: []*Formula{
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},
 			{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "40ms"}},
 		}}}},
-		Action: Action{SetRef: merged.String(), Set: map[string]any{"ok": "y"}},
+		Action: Action{Set: map[string]any{"ok": "y"}},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

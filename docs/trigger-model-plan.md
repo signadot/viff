@@ -64,7 +64,7 @@ dedupe a one-line check instead of a throwaway guard.
 
 ---
 
-## Step 1 — Name the placeholder: `Match`
+## Step 1 — Name the placeholder: `Match` ✅ DONE (cc845d9)
 
 **New file `trigger/match.go`.** No behaviour change.
 
@@ -104,7 +104,12 @@ The `"facts"` JSON key and its emitted shape are unchanged, so `verse decisions`
 
 ---
 
-## Step 2 — Restructure: `Condition{When, Subject}`
+## Step 2 — Restructure: `Condition{When, Subject}` ✅ DONE
+
+*Landed as specified, with two deviations, both noted inline below: the subject is resolved
+BEFORE gates rather than after (it is named at the fire instant, and a no-op firing should not
+pose a gate), and `spawnID` was keyed off the subject here rather than waiting for step 3
+(same code path, one touch instead of two).*
 
 ### `trigger/trigger.go`
 

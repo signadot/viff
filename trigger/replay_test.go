@@ -18,9 +18,9 @@ func TestDropRecoveryViaReplay(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
-		Name:    "count",
-		Matches: []entity.Pattern{{System: "demo"}},
-		Action:  Action{},
+		Name:      "count",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo"})},
+		Action:    Action{},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -3,21 +3,22 @@ package trigger
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/signadot/verse/entity"
 )
 
-// Formula is a temporal-logic formula over store facts — a tagged-union parse node.
-// A gate may carry one Formula; evaluating it against the store IS the gate's match
-// (as opposed to the tool-use GateMatch on Gate.Match). Leaves are Requirements (fact
-// predicates a producer satisfies by writing facts); interior nodes are temporal
-// operators over the store's evolution. Boolean composition (and/or) lives inside a
-// Requirement's fact selection (a tony match), not as Formula nodes.
+// Formula is the TEMPORAL grammar: matches composed with operators over the verse's
+// evolution. A Trigger's Condition.When, a Gate's Formula, and a Goal's DoneWhen are all
+// Formulas, differing only in consequence — a satisfied When *fires*, a satisfied gate
+// *proceeds*, a satisfied doneWhen *latches*.
 //
-// This first pass implements the atom node and evaluates it as a snapshot predicate;
-// temporal operators (until, eventually, always, sequence) are added as further Op
-// variants — each a new case here, per the plan's front-loaded build.
+// Its leaves are Requirements, and a Requirement is A MATCH PLUS HOW IT IS EVALUATED
+// (see RequirementKind): `match` is an edge on a change, `fact` is presence, `quorum` is a
+// tally, `deadline` is the clock. There is exactly ONE atom carrier — Req — so "a formula's
+// leaves are matches" holds literally; a second carrier would make an atom two things.
+// Boolean composition (and/or) lives inside the leaf match, not as Formula nodes.
 type Formula struct {
 	Op   FormulaOp    `json:"op"`
 	Req  *Requirement `json:"req,omitempty"`  // Op == OpAtom: the leaf requirement
@@ -49,11 +50,41 @@ const (
 // verbose {op,req,args} form is still accepted (compatibility). This mirrors tony's tags —
 // in a tony charter it reads `!until [ !quorum 2, … ]`.
 func (f *Formula) UnmarshalJSON(data []byte) error {
+	// A bare string is the match atom's ref sugar: `when: "demo:pr:1"`.
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*f = *matchFormula(refMatch(str))
+		return nil
+	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
+		return fmt.Errorf("formula: want an object, or a ref string: %w", err)
 	}
-	if _, verbose := raw["op"]; verbose {
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// ORDERED CLASSIFICATION. The order matters: `op` is both a match dimension and the
+	// verbose node's discriminator (the one overlap, asserted in
+	// TestMatchKeysDisjointFromFormulaTags), so match keys are tested FIRST. Branching on
+	// `op` alone — as this once did — silently decoded a match carrying `op: "set"` as
+	// Formula{Op:"set"}, which matches nothing.
+	switch {
+	case len(raw) == 0: // {} — an empty match: everything
+		*f = *matchFormula(Match{})
+		return nil
+
+	case hasMatchKey(keys): // a bare match object
+		var m Match
+		if err := json.Unmarshal(data, &m); err != nil {
+			return err
+		}
+		*f = *matchFormula(m)
+		return nil
+
+	case isVerboseNode(keys, raw): // {op, req, args} — the internal parse node
 		type alias Formula // no UnmarshalJSON → parse the raw node; children still use ours
 		var v alias
 		if err := json.Unmarshal(data, &v); err != nil {
@@ -61,27 +92,100 @@ func (f *Formula) UnmarshalJSON(data []byte) error {
 		}
 		*f = Formula(v)
 		return nil
-	}
-	if len(raw) != 1 {
-		return fmt.Errorf(`formula: want a single tag, e.g. {"quorum":2} or {"until":[…]} (got %d keys)`, len(raw))
-	}
-	for tag, val := range raw {
+
+	case len(raw) == 1:
+		tag := keys[0]
 		switch op := FormulaOp(tag); op {
 		case OpUntil, OpEventually, OpAlways, OpSequence:
-			args, err := unmarshalFormulaList(val)
+			args, err := unmarshalFormulaList(raw[tag])
 			if err != nil {
 				return fmt.Errorf("formula %q: %w", tag, err)
 			}
 			*f = Formula{Op: op, Args: args}
-		default:
-			req, err := requirementFromValue(RequirementKind(tag), val)
-			if err != nil {
-				return err
-			}
-			*f = Formula{Op: OpAtom, Req: req}
+			return nil
+		}
+		if !isRequirementKind(tag) {
+			return fmt.Errorf("formula: unknown tag %q (want a match object, an operator "+
+				"(until/eventually/always/sequence), or a requirement (match/quorum/fact/deadline))", tag)
+		}
+		req, err := requirementFromValue(RequirementKind(tag), raw[tag])
+		if err != nil {
+			return err
+		}
+		*f = Formula{Op: OpAtom, Req: req}
+		return nil
+	}
+	return fmt.Errorf("formula: want a single tag (e.g. {\"quorum\":2}), a match object, or "+
+		"{op,req,args}; got keys %v", keys)
+}
+
+// hasMatchKey reports whether these object keys name a MATCH rather than a formula tag: at
+// least one match dimension other than the ambiguous `op`. Every other key must then also be
+// a match dimension — Match.Validate rejects the object otherwise, so a mixed
+// {"system":…,"quorum":…} fails loudly instead of being resolved one way in silence.
+func hasMatchKey(keys []string) bool {
+	for _, k := range keys {
+		if k != mKeyOp && matchKeys[k] {
+			return true
 		}
 	}
-	return nil
+	return false
+}
+
+// isVerboseNode reports whether these keys are the internal {op,req,args} parse node: only
+// those keys, and `op` holding a known FormulaOp. Requiring a valid op is what keeps a match
+// whose only dimension is `op` (e.g. {"op":"set"}) out of this branch.
+func isVerboseNode(keys []string, raw map[string]json.RawMessage) bool {
+	for _, k := range keys {
+		if k != "op" && k != "req" && k != "args" {
+			return false
+		}
+	}
+	var op string
+	if err := json.Unmarshal(raw["op"], &op); err != nil {
+		return false
+	}
+	switch FormulaOp(op) {
+	case OpAtom, OpUntil, OpEventually, OpAlways, OpSequence:
+		return true
+	}
+	return false
+}
+
+// isRequirementKind reports whether a tag names a leaf requirement.
+func isRequirementKind(tag string) bool {
+	switch RequirementKind(tag) {
+	case ReqMatch, ReqQuorum, ReqFact, ReqDeadline, ReqJudgment, ReqAsk, ReqDefault:
+		return true
+	}
+	return false
+}
+
+// matchFormula wraps a point-in-time Match as the degenerate (atom) Formula — the form a
+// `when` takes when it names entities rather than relating the verse over time.
+func matchFormula(m Match) *Formula {
+	return &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqMatch, Facts: m}}
+}
+
+// MatchWhen builds a Condition.When from a point-in-time Match — the Go-side equivalent of
+// writing the match object inline in a charter. For a Go caller assembling a trigger
+// programmatically (verse connect's per-file validator, tests) rather than parsing JSON.
+func MatchWhen(m Match) *Formula { return matchFormula(m) }
+
+// MatchEvent is the EDGE face of a formula: whether one observed change satisfies it. Only a
+// match atom has an edge — a temporal formula relates the verse's evolution and is resolved by
+// Monitor instead, so it reports false here and is routed to that path.
+func (f *Formula) MatchEvent(ev entity.Event) bool {
+	if f == nil || f.Op != OpAtom || f.Req == nil || f.Req.Kind != ReqMatch {
+		return false
+	}
+	return f.Req.Facts.MatchEvent(ev)
+}
+
+// IsMatchAtom reports whether the formula is a bare point-in-time match (no temporal
+// operators), i.e. dispatchable per change event.
+func (f *Formula) IsMatchAtom() bool {
+	return f != nil && f.Op == OpAtom && f.Req != nil && f.Req.Kind == ReqMatch
 }
 
 // MarshalJSON emits the compact tag-keyed form, so `trigger show` and stored charters read
@@ -90,6 +194,11 @@ func (f Formula) MarshalJSON() ([]byte, error) {
 	if f.Op == OpAtom {
 		if f.Req == nil {
 			return []byte("null"), nil
+		}
+		// A match atom emits its match UNWRAPPED, so a `when` reads back the way it was
+		// authored ({"system":"demo",…}) rather than as {"match":{…}}.
+		if f.Req.Kind == ReqMatch {
+			return json.Marshal(f.Req.Facts)
 		}
 		return json.Marshal(map[string]any{string(f.Req.Kind): f.Req.compactValue()})
 	}
@@ -149,6 +258,9 @@ func (r *Requirement) compactValue() any {
 	if r.Kind == ReqDeadline {
 		return r.Within
 	}
+	if r.Kind == ReqMatch {
+		return r.Facts
+	}
 	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || len(r.Facts.Fields()) > 0
 	switch {
 	case r.Choice == "" && !factsSet:
@@ -191,6 +303,10 @@ type Requirement struct {
 type RequirementKind string
 
 const (
+	// ReqMatch is the point-in-time leaf: its Facts match is evaluated as an EDGE on a
+	// change (Formula.MatchEvent — the `when` face) and, as a store predicate, as presence.
+	// It is what makes a `when` and a gate one grammar with two consequences.
+	ReqMatch    RequirementKind = "match"
 	ReqQuorum   RequirementKind = "quorum"
 	ReqFact     RequirementKind = "fact"     // presence of a matching fact
 	ReqDeadline RequirementKind = "deadline" // a duration resolved against the system clock (an `until` right side)
@@ -250,6 +366,14 @@ func (f *Formula) Unmet(store entity.Store) []*Requirement {
 // `waitingOn` list — a fact's `system:kind`, a quorum's threshold/choice, etc.
 func (r *Requirement) Label() string {
 	switch r.Kind {
+	case ReqMatch:
+		if r.Facts.Kind() != "" {
+			return "match:" + r.Facts.System() + ":" + r.Facts.Kind()
+		}
+		if r.Facts.System() != "" {
+			return "match:" + r.Facts.System()
+		}
+		return "match:*"
 	case ReqQuorum:
 		choice := r.Choice
 		if choice == "" {
@@ -346,9 +470,11 @@ func (r *Requirement) eval(store entity.Store) (bool, []entity.Ref) {
 	case ReqQuorum:
 		refs := r.Facts.Select(store)
 		return len(refs) >= r.N, refs
-	case ReqFact:
+	case ReqFact, ReqMatch:
 		// presence: the fact holds iff a matching entity exists (quorum of 1). Used for
 		// oracle facts and, notably, the `deadline` leaf of an `until` — time as a fact.
+		// A match leaf reads the same way when evaluated as a store predicate rather than
+		// as an edge, so a `when` composes inside a temporal formula.
 		refs := r.Facts.Select(store)
 		return len(refs) >= 1, refs
 	default:

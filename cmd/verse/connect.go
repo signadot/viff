@@ -238,9 +238,15 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 		task = `Read the file at path "$path" and report any problems (or that it looks fine) in one sentence.`
 	}
 	def := trigger.Trigger{
-		Name:    "validate-" + scope,
-		Matches: []entity.Pattern{{System: source.System, Kind: statusKind, Op: entity.Set}},
-		Action:  trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
+		Name: "validate-" + scope,
+		Condition: trigger.Condition{
+			// No subject: the firing is about the dir-status entity that changed, which is
+			// what the validator process is tagged with.
+			When: trigger.MatchWhen(trigger.Match{
+				"system": source.System, "kind": statusKind, "op": string(entity.Set),
+			}),
+		},
+		Action: trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
 	}
 	body, _ := json.Marshal(def)
 	resp, err := httpPost("/triggers", json.RawMessage(body)) // urlFor folds ?scope=<scope>

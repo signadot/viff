@@ -1,11 +1,12 @@
 # The trigger model — entities, matches, and one selector grammar
 
-*Status: **design**, not the current code. This is the shape the trigger engine is
-converging on and should be built against. It replaces `Trigger.Matches []entity.Pattern`
-with a single `Condition{When, Subject}`, folds `action.setRef` and `spawn.subject` into
-`Subject`, and puts flows, goals, and gates on one grammar. Where today's engine differs,
-that is a migration step (last section), not a disagreement. The substrate this leans on —
-per-entity change events — is `change-events.md`.*
+*Status: **partly built**. Steps 1–2 of the migration below have landed — `Match` exists as
+the named leaf, `Trigger.Matches []entity.Pattern` is now `Condition{When, Subject}`, and
+`action.setRef`/charter-set `spawn.subject` are gone. Still to come: set-valued `Subject` and
+fan-out (step 3), flow-as-a-query (step 4), and the tony match leaf (step 5) — so a
+set-valued `Subject` and a temporal `When` are rejected at install for now, with an error
+that says why. The implementation plan is `trigger-model-plan.md`. The substrate this leans
+on — per-entity change events — is `change-events.md`.*
 
 ## Two layers: point-in-time matches, temporal formulas
 
@@ -203,14 +204,17 @@ matched entity.
 
 The shape can land before the grammar. In order, each step green + smoke-tested:
 
-1. **Name the placeholder.** Introduce `Match` (map-backed); the engine parses it into
-   today's typed matcher — no behaviour change, no lost coverage.
-2. **Restructure.** `Trigger.Matches []entity.Pattern` → `Condition{When, Subject}`, where
-   `When` is a `Formula` (its atom form is today's single match — reuse the existing
-   formula/`Monitor` path a gate uses) and `Subject` is a point-in-time `Match`; fold
-   `setRef`/`spawn.subject` into `Subject`. Keep today's semantics: `Subject` resolves to the
-   matched ref or a `$flow` binding (no fan-out yet). Update the charter wire, tutorial
-   §3–4, and tests.
+1. **Name the placeholder.** ✅ Introduce `Match` (map-backed); the engine parses it into
+   today's typed matcher — no behaviour change, no lost coverage. `Requirement.Facts` became
+   a `Match` too, so a formula's leaves really are matches.
+2. **Restructure.** ✅ `Trigger.Matches []entity.Pattern` → `Condition{When, Subject}`, where
+   `When` is a `Formula` (its atom form is a single match, carried by the new `match`
+   requirement kind — one atom carrier, so the leaf stays a `Match`) and `Subject` is a
+   point-in-time `Match`; `setRef`/charter-set `spawn.subject` folded into `Subject`. Today's
+   semantics kept: `Subject` resolves to the matched ref or a `$flow` binding, no fan-out.
+   `$subject` now binds the *resolved* subject (set last, so a payload field cannot shadow
+   it), and a goal latch publishes `flow` so a reacting trigger says `"subject": "$flow"`
+   like any completion. Charter wire, tutorial §3–4/§8–9, overview, and tests updated.
 3. **Set-valued `Subject` + fan-out.** `Subject` may select a `system:kind` set → one process
    per member; deterministic per-subject `spawnID`; budget meters entities.
 4. **Flow as a query.** Replace `flows[subject]` with a subject-`Match` over live processes;

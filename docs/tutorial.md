@@ -95,8 +95,8 @@ it as `charter.json`:
 [
   {
     "name": "review",
-    "matches": [ { "system": "demo", "fields": { "stage": "open" } } ],
-    "gates":   [ { "name": "review", "mode": "ask" } ],
+    "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
+    "gates":     [ { "name": "review", "mode": "ask" } ],
     "action": {
       "set":   { "stage": "reviewing" },
       "spawn": { "driver": "scripted", "task": "review $subject" }
@@ -104,9 +104,9 @@ it as `charter.json`:
   },
   {
     "name": "reviewed",
-    "matches": [ { "system": "process", "kind": "instance", "fields": { "status": "completed" } } ],
-    "gates":   [],
-    "action": { "setRef": "$flow", "set": { "stage": "reviewed" } }
+    "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "completed" } },
+                   "subject": "$flow" },
+    "action": { "set": { "stage": "reviewed" } }
   }
 ]
 ```
@@ -177,32 +177,44 @@ verse trigger remove <name>           # uninstall one (`add` rejects a duplicate
 
 Now, what each field of a trigger means:
 
-- **`matches`** — a list of predicates, *all* of which must match the change
-  (conjunctive). Each predicate ANDs its own dimensions: `system` / `kind` / `op`
-  (`set` for created-or-updated, or `delete`) / `fields` (key=value in the changed
-  payload); empty dimensions are wildcards. An empty list matches everything. *Keep
-  it small* — the "when" is where complexity hides. (Create and update are one
-  `set` — to fire "only the first time," match a state field your action then
-  advances, a latch, rather than an edge. See `docs/change-events.md`.)
+- **`condition`** — the *cause*, in two halves: **`when`** fires the trigger, and
+  **`subject`** says what the firing is *about*. They are two different grammars, and
+  that is the point:
+  - **`when`** is a **match** — a point-in-time predicate over the verse. It ANDs its
+    dimensions: `system` / `kind` / `id` / `op` (`set` for created-or-updated, or
+    `delete`) / `fields` (key=value in the changed payload); empty dimensions are
+    wildcards, and `{}` matches everything. *Keep it small* — the "when" is where
+    complexity hides. (Create and update are one `set` — to fire "only the first
+    time," match a state field your action then advances, a latch, rather than an
+    edge. See `docs/change-events.md`.) A `when` may also grow *temporal* operators
+    (`until`, `deadline`, … — the same language a gate formula uses, §8), at which
+    point it is watched over the verse's evolution rather than matched against one
+    change.
+  - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
+    Omit it and the subject is the matched entity. Give it a ref or a binding
+    (`"$flow"`) and the firing is about *that* entity instead — which is how the
+    `reviewed` rule advances the PR a completed process carried. (A `system`+`kind`
+    selector, for acting on a whole *set*, is next; see `docs/trigger-model.md`.)
 - **`gates`** — a list of gates, *all* of which must resolve to proceed
   (conjunctive) before the action fires. Each is `{ "name": …, "mode":
   auto|ask|park }`. An empty list fires with no approval. Multiple gates model
   multi-approval — e.g. a deploy needing both a security and a release-manager
   sign-off is two `ask` gates. A gate can also carry a **`formula`** the verse
   resolves itself — a vote, a deadline, a threshold; see §8.
-- **`action`** — data, not code:
-  - `set` writes fields on an entity (a state transition);
-  - `setRef` targets a *different* entity than the one that fired (default: the
-    matched entity);
+- **`action`** — data, not code, and it needs no target of its own: an action acts on
+  the condition's **subject**.
+  - `set` writes fields on the subject (a state transition);
   - `spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
     `policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed
-    **`provider`** selection of the doer (§8).
-- **Bindings** in templates: `$subject` is the matched entity's ref; every field of
-  the changed payload is bound by name (`$flow`, `$stage`, …). That's how the
-  `reviewed` rule advances `$flow` — the subject the completed process carried.
+    **`provider`** selection of the doer (§8). The spawned process is tagged with the
+    subject, which is what makes it part of that subject's flow (§6).
+- **Bindings** in templates: every field of the changed payload is bound by name
+  (`$flow`, `$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So in
+  `reviewed`, `subject: "$flow"` names the PR, and `$subject` inside the action is
+  that PR, not the process that fired.
 
-The `reviewed` rule is the **completion pattern**: match `process:instance
-status=completed`, read its `$flow`, advance that subject. It's how multi-step flows
+The `reviewed` rule is the **completion pattern**: *when* a `process:instance` reaches
+`status=completed`, *about* the `$flow` it carried, advance that subject. It's how multi-step flows
 close through the verse. (Triggers must opt in to `process:*` — the engine keeps
 reflected process state out of the default match set so the loop can't ignite on its
 own machinery.)
@@ -424,9 +436,9 @@ verse watches and resolves it itself:
 
 ```json
 { "name": "merge",
-  "matches": [ { "system": "change", "fields": { "stage": "ready" } } ],
-  "gates":   [ { "name": "approvals", "formula": { "quorum": 2 } } ],
-  "action":  { "set": { "stage": "merged" } } }
+  "condition": { "when": { "system": "change", "fields": { "stage": "ready" } } },
+  "gates":     [ { "name": "approvals", "formula": { "quorum": 2 } } ],
+  "action":    { "set": { "stage": "merged" } } }
 ```
 
 ```sh
@@ -499,7 +511,7 @@ how to choose, instead of one driver:
 
 ```json
 { "name": "review",
-  "matches": [ { "system": "change", "fields": { "stage": "open" } } ],
+  "condition": { "when": { "system": "change", "fields": { "stage": "open" } } },
   "action": { "spawn": { "task": "review $subject",
     "provider": { "eligible": ["gpt", "claude"], "select": "vote", "need": 2 } } } }
 ```
@@ -607,8 +619,8 @@ way everything else composes:
 
 ```json
 { "name": "on-ship",
-  "matches": [ { "system": "goal", "kind": "done" } ],
-  "action":  { "setRef": "$subject", "set": { "stage": "shipped" } } }
+  "condition": { "when": { "system": "goal", "kind": "done" }, "subject": "$flow" },
+  "action":    { "set": { "stage": "shipped" } } }
 ```
 
 And because a goal's owned triggers spawn processes tracked as **flows**, a goal *is a flow
