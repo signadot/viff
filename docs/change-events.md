@@ -83,6 +83,16 @@ what `LogdStore.WatchSubtree` does. (The baseline `Since`/replay path still read
 patches directly — safe only because a baseline delta is always a verbatim merge, never
 a scope-computed `!replace`.)
 
+**The diff makes the subtree watch edge-on-real-change: an entity whose reconstructed content
+is unchanged emits nothing.** Both stores do this — `LogdStore.WatchSubtree` and
+`MemStore.WatchSubtree` alike — so a write that changes no content is *not a reactive edge*.
+That is what keeps a reactive re-write from looping: a trigger whose effect re-touches its own
+cause — e.g. a `reviewed` rule re-setting a PR that is already `reviewed` when the process it
+spawned completes — writes the *same value*, so no edge fires and the trigger does not re-run.
+No charter latch is required for that case; the substrate reacts to changes, not to writes. (The
+engine's per-trigger subtree watch is the production path — `versed` runs `ObserveScoped`; the
+root-watch `Start`/`Since` dispatch loop is dormant and does not yet diff.)
+
 ## One commit, many entities: the entity is the reactive grain
 
 A logd commit is a single, atomic transaction that can patch **many** branches at once —
@@ -139,10 +149,12 @@ is therefore both the portable choice and the one the substrate can actually hon
   `stage=reviewing`, so it can't re-fire). verse's demo already works this way; the
   subject's stage *is* the latch. This is cleaner than an implicit edge, and it's how
   level-triggered systems get once-semantics.
-- **The footgun to know:** a non-idempotent *gated* or *spawning* action matching a
-  re-enterable state without a latch will re-fire on re-entry (gate re-prompts,
-  duplicate processes). Same fix: a latch. It's charter-authoring discipline, not an
-  engine limit.
+- **The footgun to know:** a non-idempotent *gated* or *spawning* action that matches a state
+  it can genuinely **re-enter** — a real round-trip like `reviewed`→`open`→`reviewed` — re-fires
+  on each real entry. (A re-write to the *same* value does **not**: edge-on-real-change makes it
+  inert, so a reactive re-write that re-touches its own cause does not loop — see "Consuming a
+  delta" above.) For a genuine re-entry you still want a latch — charter-authoring discipline,
+  not an engine limit.
 
 Net: low, localised harm — you keep delete-exact, once-per-transition, and every
 state-driven flow; you give up native "once, ever," recoverable with a latch.

@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"reflect"
 	"sync"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -343,10 +344,33 @@ func (s *MemStore) WatchSubtree(system, kind string) (<-chan Event, func(), erro
 	done := make(chan struct{})
 	go func() {
 		defer close(out)
-		for _, e := range snap {
+		// prev is the last emitted payload per ref. Like LogdStore.WatchSubtree, this watch is
+		// EDGE-ON-REAL-CHANGE: a write that does not change an entity's content emits nothing, so
+		// a reactive re-write (a trigger's effect re-touching its own cause) does not loop back
+		// into the trigger that caused it — no charter-level latch needed.
+		prev := map[Ref]Payload{}
+		emit := func(e Event) bool {
+			switch e.Op {
+			case Set:
+				if old, ok := prev[e.Ref]; ok && reflect.DeepEqual(old, e.To) {
+					return true // unchanged content — not a reactive edge
+				}
+				prev[e.Ref] = e.To
+			case Delete:
+				if _, ok := prev[e.Ref]; !ok {
+					return true // a delete of something we never had present — no edge
+				}
+				delete(prev, e.Ref)
+			}
 			select {
-			case out <- Event{Ref: e.Ref, Op: Set, To: e.Payload}:
+			case out <- e:
+				return true
 			case <-done:
+				return false
+			}
+		}
+		for _, e := range snap {
+			if !emit(Event{Ref: e.Ref, Op: Set, To: e.Payload}) {
 				return
 			}
 		}
@@ -358,10 +382,16 @@ func (s *MemStore) WatchSubtree(system, kind string) (<-chan Event, func(), erro
 				if !ok {
 					return
 				}
-				if ev.Gap > 0 || match(ev.Ref) {
+				if ev.Gap > 0 { // a drop marker: forward as-is (the consumer resyncs), never diffed
 					select {
 					case out <- ev:
 					case <-done:
+						return
+					}
+					continue
+				}
+				if match(ev.Ref) {
+					if !emit(ev) {
 						return
 					}
 				}

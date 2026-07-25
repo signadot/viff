@@ -132,27 +132,61 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	}
 }
 
-// A self-perpetuating trigger (rule soup / non-termination) is bounded by the
-// budget instead of hanging — the ECA backstop.
+// A self-perpetuating chain (rule soup / non-termination) is bounded by the budget
+// instead of hanging — the ECA backstop. This is a genuine OSCILLATION: each fire flips
+// the phase (a→b, b→a), so every write is a real content change. (An idempotent self-write
+// would instead be defused by edge-on-real-change and never run away — see
+// TestIdempotentWriteDoesNotLoop; the budget is what bounds a real oscillation.)
 func TestBudgetBoundsRunaway(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
-		Name:      "spin",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop"})}, // any change to demo:loop:* re-matches
-		Action:    Action{Set: map[string]any{"tick": true}},                           // writes another matching change
+		Name:      "ping",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "a"}})},
+		Action:    Action{Set: map[string]any{"phase": "b"}},
+	})
+	eng.AddTrigger(Trigger{
+		Name:      "pong",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "b"}})},
+		Action:    Action{Set: map[string]any{"phase": "a"}},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	eng.Start(ctx)
+	eng.ObserveScoped(ctx) // versed's production path (per-trigger subtree watch)
 
-	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Payload{"tick": true}) // ignite
+	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Payload{"phase": "a"}) // ignite
 
 	// It must settle at the budget, not run forever.
 	time.Sleep(300 * time.Millisecond)
 	if f := eng.Fired(); f != 5 {
 		t.Fatalf("fired = %d, want capped at 5", f)
+	}
+}
+
+// The complement: an idempotent self-write does NOT run away — edge-on-real-change makes a
+// set-to-the-same-value inert, so a trigger whose effect re-touches its own cause fires once,
+// not forever. This is the substrate mechanism that lets a "hold on reviewed" charter not loop
+// without a latch. (Budget is untouched: 1 ≪ 5.)
+func TestIdempotentWriteDoesNotLoop(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	eng.SetMaxFires(5)
+	eng.AddTrigger(Trigger{
+		Name:      "spin",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop"})}, // any change re-matches
+		Action:    Action{Set: map[string]any{"tick": true}},                           // writes the SAME value back
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+
+	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Payload{"tick": true}) // ignite
+
+	time.Sleep(300 * time.Millisecond)
+	if f := eng.Fired(); f != 1 {
+		t.Fatalf("fired = %d, want 1 (the idempotent re-write is inert, no loop)", f)
 	}
 }

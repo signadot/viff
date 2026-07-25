@@ -329,18 +329,24 @@ is why steering takes an **address**, not just a ref, and why steering a whole s
 new machinery: it is the same selector at a wider setting.
 
 A flow exists only while its processes run, and a scripted review is brief. So give yourself a
-durable flow to steer: install a `hold` trigger — when you mark a PR `watching`, it runs a
-60-second process under that subject — then flip a PR into it:
+durable flow to steer: add a `hold` trigger — once a PR reaches `reviewed`, it runs a 60-second
+process about that PR — then drive a change through review to trip it:
 
 ```sh
 verse trigger add -f - <<'JSON'
 [ { "name": "hold",
-    "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "watching" } } },
+    "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "reviewed" } } },
     "action":    { "spawn": { "driver": "scripted", "task": "sleep 60" } } } ]
 JSON
-verse entity put demo:pr:2 '{"stage":"watching"}'   # → a 60s process spawns under demo:pr:2
-verse flow list                                     # demo:pr:2 — a live flow to steer
+verse entity put demo:pr:2 '{"stage":"open"}'   # open a change…
+verse gate list                                 # …find its review gate, then:
+verse gate resolve <that-id> --approve          # review runs, the PR reaches `reviewed`, hold fires
+verse flow list                                 # demo:pr:2 — a live 60s flow to steer
 ```
+
+The hold process's own completion re-sets the PR to `reviewed` — but that write changes nothing,
+and the engine reacts to real changes, not re-writes, so `hold` fires exactly **once**. No loop,
+no latch: a set-to-the-same-value is inert (`docs/change-events.md`).
 
 Now steer that subject's flow:
 
