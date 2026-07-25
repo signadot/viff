@@ -145,7 +145,9 @@ func docketCmd() *cli.Command {
 
 // optionLabels renders a motion's options as "id(need) …" (the threshold shown only when
 // > 1), across both axes: "proceed(2) deny" for a whether-gate, "gpt(2) claude(2)" for a
-// select. Returns "" when there are no options.
+// select. Where the ballot that counts differs from the option's name — a whether-motion
+// tallies approve/reject, not proceed/deny — it is shown as "id=choice", so the listing
+// tells a voter what to actually type. Returns "" when there are no options.
 func optionLabels(v any) string {
 	opts, ok := v.([]any)
 	if !ok || len(opts) == 0 {
@@ -155,6 +157,9 @@ func optionLabels(v any) string {
 	for _, o := range opts {
 		om, _ := o.(map[string]any)
 		id, _ := om["id"].(string)
+		if choice, _ := om["choice"].(string); choice != "" && choice != id {
+			id = id + "=" + choice
+		}
 		if n, ok := om["need"].(float64); ok && n > 1 {
 			id = fmt.Sprintf("%s(%d)", id, int(n))
 		}
