@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/codec"
 )
 
 // voteCmd casts a ballot into a motion's vote log — the participant side of the quorum
@@ -160,8 +162,10 @@ func optionLabels(v any) string {
 		if choice, _ := om["choice"].(string); choice != "" && choice != id {
 			id = id + "=" + choice
 		}
-		if n, ok := om["need"].(float64); ok && n > 1 {
-			id = fmt.Sprintf("%s(%d)", id, int(n))
+		// A threshold read out of a decoded payload has no guaranteed Go type — it is
+		// float64 from encoding/json, int64 from tony — so it goes through codec.
+		if n, ok := codec.AsInt64(om["need"]); ok && n > 1 {
+			id = fmt.Sprintf("%s(%d)", id, n)
 		}
 		names = append(names, id)
 	}
