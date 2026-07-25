@@ -6,10 +6,15 @@ import "strings"
 // it matches. Gate *definition* (Match) is deliberately orthogonal to resolver
 // *assignment* (held by the Supervisor), per the model's constraint that the
 // two are independent.
+// The tony field names are lowercase where the Go fields are not. There were no wire
+// tags here before, so encoding/json spelled these `Name`/`Match`/`Mode` — odd next to
+// every other verse document. Renaming them is a breaking change to
+// `verse process vector --file`, and it ships with the default-format flip rather than
+// drifting in ahead of it.
 type Gate struct {
-	Name  string
-	Match GateMatch
-	Mode  Mode
+	Name  string    `tony:"field=name,omitzero"`
+	Match GateMatch `tony:"field=match,omitzero"`
+	Mode  Mode      `tony:"field=mode"`
 }
 
 // GateMatch predicates over an action. Every non-empty dimension must match
@@ -17,18 +22,18 @@ type Gate struct {
 // derived typed capability (Verbs, Resources), the file-path convenience
 // (Paths, à la 42), and git-repo state (Branches, OnPush).
 type GateMatch struct {
-	Tools     []string       // glob(s) on ToolUse.Name (self-reported)
-	Verbs     []Verb         // match if any derived effect has one of these verbs
-	Resources []ResourcePred // typed resource predicates over derived effects
-	Paths     []PathPred     // file predicates over file-kind effects
-	Branches  []string       // glob(s) on Repo.Branch
-	OnPush    bool           // matches only actions targeting the push / promotion ref
+	Tools     []string       `tony:"field=tools,omitzero"`     // glob(s) on ToolUse.Name (self-reported)
+	Verbs     []Verb         `tony:"field=verbs,omitzero"`     // match if any derived effect has one of these verbs
+	Resources []ResourcePred `tony:"field=resources,omitzero"` // typed resource predicates over derived effects
+	Paths     []PathPred     `tony:"field=paths,omitzero"`     // file predicates over file-kind effects
+	Branches  []string       `tony:"field=branches,omitzero"`  // glob(s) on Repo.Branch
+	OnPush    bool           `tony:"field=onPush,omitzero"`    // matches only actions targeting the push / promotion ref
 }
 
 // ResourcePred matches a derived effect's resource.
 type ResourcePred struct {
-	Kind    ResourceKind
-	Pattern string // glob on Resource.Ref ("" = any ref of the kind)
+	Kind    ResourceKind `tony:"field=kind,omitzero"`
+	Pattern string       `tony:"field=pattern,omitzero"` // glob on Resource.Ref ("" = any ref of the kind)
 }
 
 // Matches reports whether the gate applies to the action, with a human reason.

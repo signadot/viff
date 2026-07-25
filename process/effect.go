@@ -18,8 +18,28 @@ const (
 	// boundary, so it is a separate verb added later, not a flag on CallAgent.
 )
 
+// MarshalText / UnmarshalText spell Verb as its text, which is what it already is.
+//
+// They exist because a named string type is otherwise emitted as an integer conversion
+// by tony-codegen — it resolves such a type to no schema and falls back to int64,
+// producing code that does not compile. TextMarshaler is the one hook honored by both
+// gomap paths (reflection and generated), so it is how a scalar vocabulary declares its
+// wire form. Same reason as Mode's, and tracked upstream as
+// tony-format#f69agjyeh12ksa25cnn0.
+//
+// Deliberately permissive: an unknown verb decodes rather than erroring, matching what
+// encoding/json does today. Validation belongs where a verb is interpreted, not at the
+// serialization boundary, or a new verb from a newer peer becomes a decode failure.
+func (v Verb) MarshalText() ([]byte, error) { return []byte(v), nil }
+
+func (v *Verb) UnmarshalText(b []byte) error { *v = Verb(b); return nil }
+
 // ResourceKind classifies what a capability acts on.
 type ResourceKind string
+
+func (k ResourceKind) MarshalText() ([]byte, error) { return []byte(k), nil }
+
+func (k *ResourceKind) UnmarshalText(b []byte) error { *k = ResourceKind(b); return nil }
 
 const (
 	KindFile    ResourceKind = "file"

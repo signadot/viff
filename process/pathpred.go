@@ -12,8 +12,8 @@ import (
 // PathPred here, not Subject, to avoid colliding with the flow subject a launch
 // is about — launch.Spec.Subject.)
 type PathPred struct {
-	Name string // pattern or identifier
-	Type string // glob | extension | directory | any
+	Name string `tony:"field=name,omitzero"` // pattern or identifier
+	Type string `tony:"field=type,omitzero"` // glob | extension | directory | any
 }
 
 // MatchFiles returns the subset of files the predicate matches.

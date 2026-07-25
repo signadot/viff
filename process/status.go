@@ -41,3 +41,9 @@ func (s Status) Terminal() bool {
 // TerminalStatus reports whether a raw status string is a terminal end state —
 // for callers holding an untyped status (e.g. read off an entity payload).
 func TerminalStatus(s string) bool { return Status(s).Terminal() }
+
+// MarshalText / UnmarshalText spell Status as its text — see Verb's, which explains why a
+// named string type needs them at all.
+func (s Status) MarshalText() ([]byte, error) { return []byte(s), nil }
+
+func (s *Status) UnmarshalText(b []byte) error { *s = Status(b); return nil }

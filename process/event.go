@@ -1,23 +1,23 @@
 package process
 
-// Frame is one structured entry on a Process's read plane. It is JSON-friendly
+// Frame is one structured entry on a Process's read plane. It is a plain document
 // so a daemon can stream it over SSE. The loop emits loop-level events; a driver's
 // own narration is a separate concern (wired at the edge, not here).
 type Frame struct {
-	Kind    string `json:"kind"`
-	Process string `json:"process"`
-	Cursor  int64  `json:"cursor,omitempty"` // per-process monotonic; resume with ?since=<cursor>
+	Kind    string `json:"kind" tony:"field=kind"`
+	Process string `json:"process" tony:"field=process"`
+	Cursor  int64  `json:"cursor,omitempty" tony:"field=cursor,omitzero"` // per-process monotonic; resume with ?since=<cursor>
 
-	ID      string `json:"id,omitempty"` // decision id, for resolve-by-id
-	Seq     int    `json:"seq,omitempty"`
-	Tool    string `json:"tool,omitempty"`
-	Gate    string `json:"gate,omitempty"`
-	Mode    string `json:"mode,omitempty"`
-	By      string `json:"by,omitempty"`
-	Proceed bool   `json:"proceed,omitempty"`
-	Text    string `json:"text,omitempty"` // reason / detail / result
-	Err     string `json:"err,omitempty"`
-	Dropped int    `json:"dropped,omitempty"` // gap marker: events a slow subscriber missed
+	ID      string `json:"id,omitempty" tony:"field=id,omitzero"` // decision id, for resolve-by-id
+	Seq     int    `json:"seq,omitempty" tony:"field=seq,omitzero"`
+	Tool    string `json:"tool,omitempty" tony:"field=tool,omitzero"`
+	Gate    string `json:"gate,omitempty" tony:"field=gate,omitzero"`
+	Mode    string `json:"mode,omitempty" tony:"field=mode,omitzero"`
+	By      string `json:"by,omitempty" tony:"field=by,omitzero"`
+	Proceed bool   `json:"proceed,omitempty" tony:"field=proceed,omitzero"`
+	Text    string `json:"text,omitempty" tony:"field=text,omitzero"` // reason / detail / result
+	Err     string `json:"err,omitempty" tony:"field=err,omitzero"`
+	Dropped int    `json:"dropped,omitempty" tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
 // Event kinds.
