@@ -67,6 +67,10 @@ deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=tr
 test: ## go test ./...
 	$(GO) test ./...
 
+.PHONY: smoke
+smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a free port)
+	@./smoke.sh
+
 .PHONY: clean
 clean: ## remove dist/
 	rm -rf $(DIST)
