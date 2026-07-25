@@ -117,9 +117,22 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 	return c.Epoch, c.CCursor, nil
 }
 
+// inboxItem is the client's view of one broker inbox entry — the subset an executor acts
+// on. It is decoded into a struct rather than a map[string]any on purpose: a map forces
+// every read through a type assertion on the decoder's choice of Go type for a number,
+// which differs between encodings (encoding/json always says float64; tony says int64 for
+// an integer). Naming the type here makes the cursor an int64 whatever decoded it. Fields
+// the broker sends but no executor reads are simply ignored.
+type inboxItem struct {
+	Cursor   int64  `json:"cursor"`
+	Kind     string `json:"kind"`     // spec | say | cancel | pause | resume | vector | resolve
+	Decision string `json:"decision"` // resolve: the decision id being answered
+	Proceed  bool   `json:"proceed"`  // resolve: approve (true) or deny (false)
+}
+
 // brokerInbox pulls the worker inbox at base for id — items with cursor > since, carrying
 // epoch for the fence — returning the items and the highest cursor seen (to advance since).
-func brokerInbox(base, id string, since, epoch int64) ([]map[string]any, int64, error) {
+func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error) {
 	u := base + "/processes/" + id + "/inbox?since=" +
 		strconv.FormatInt(since, 10) + "&epoch=" + strconv.FormatInt(epoch, 10)
 	resp, err := http.Get(u)
@@ -132,13 +145,13 @@ func brokerInbox(base, id string, since, epoch int64) ([]map[string]any, int64, 
 		return nil, since, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var box struct {
-		Items []map[string]any `json:"items"`
+		Items []inboxItem `json:"items"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&box)
 	max := since
 	for _, it := range box.Items {
-		if c, ok := it["cursor"].(float64); ok && int64(c) > max {
-			max = int64(c)
+		if it.Cursor > max {
+			max = it.Cursor
 		}
 	}
 	return box.Items, max, nil

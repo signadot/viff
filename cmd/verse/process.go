@@ -155,8 +155,8 @@ func (cfg *procDoGateConfig) run(cc *cli.Context, args []string) error {
 		}
 		since = max
 		for _, it := range items {
-			if it["kind"] == "resolve" && it["decision"] == decision {
-				if proceed, _ := it["proceed"].(bool); proceed {
+			if it.Kind == "resolve" && it.Decision == decision {
+				if it.Proceed {
 					fmt.Fprintln(cc.Out, decision, "approved")
 				} else {
 					fmt.Fprintln(cc.Out, decision, "denied")
