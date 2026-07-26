@@ -190,6 +190,33 @@ func TestFormulaSurvivesDialectRoundTrip(t *testing.T) {
 
 // An unknown tag is an error, not a silently-ignored formula. A typo'd charter must fail at
 // install rather than match nothing — the same discipline Match.Validate enforces.
+// An unquoted duration is the easy mistake to make, and it is a quiet one: a tony literal
+// may not start with a digit and commas are optional, so `!deadline 4h` reads as the
+// number 4 beside a separate "h" rather than as the string "4h". That is the correct
+// reading, which is the problem — the document is well-formed, so the parser has nothing
+// to say and we are the last line. Taking the 4 as a threshold would leave the deadline
+// empty, and a gate whose deadline silently isn't one waits forever.
+func TestNumericDeadlineIsRejected(t *testing.T) {
+	for _, src := range []string{`!deadline 4`, `!until [!quorum 2, !deadline 4]`} {
+		var f Formula
+		err := codec.Unmarshal([]byte(src), &f, codec.Tony)
+		if err == nil {
+			t.Fatalf("%s: a numeric deadline was accepted", src)
+		}
+		if !strings.Contains(err.Error(), `"4h"`) {
+			t.Errorf("%s: the error does not show the fix: %v", src, err)
+		}
+	}
+	// The quoted spelling is the one that works, and it must keep working.
+	var f Formula
+	if err := codec.Unmarshal([]byte(`!deadline "4h"`), &f, codec.Tony); err != nil {
+		t.Fatalf(`!deadline "4h": %v`, err)
+	}
+	if got := f.Req.Within; got != "4h" {
+		t.Errorf("Within = %q, want %q", got, "4h")
+	}
+}
+
 func TestUnknownFormulaTagIsRejected(t *testing.T) {
 	var f Formula
 	err := codec.Unmarshal([]byte(`!untl [!quorum 2]`), &f, codec.Tony)
