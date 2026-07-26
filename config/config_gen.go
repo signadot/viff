@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
+	"reflect"
 )
 
 // ToTonyIR converts Config to a Tony IR node.
@@ -35,19 +36,23 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["scope"] = ir.FromString(s.Scope)
 	}
 
-	// Field: Format
-	node, err = s.Format.ToTonyIR()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert field %q: %w", "Format", err)
+	// Field: Format (optional)
+	if !isZeroValue_Config_Format(s.Format) {
+		node, err = s.Format.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Format", err)
+		}
+		irMap["format"] = node
 	}
-	irMap["format"] = node
 
-	// Field: LLM
-	node, err = s.LLM.ToTonyIR()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert field %q: %w", "LLM", err)
+	// Field: LLM (optional)
+	if !isZeroValue_Config_LLM(s.LLM) {
+		node, err = s.LLM.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "LLM", err)
+		}
+		irMap["llm"] = node
 	}
-	irMap["llm"] = node
 
 	return ir.FromMap(irMap), nil
 }
@@ -96,12 +101,12 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Scope = fieldNodeUnwrapped.String
 		case "format":
 			// Field: Format
-			if err := s.Format.FromTonyIR(fieldNode); err != nil {
+			if err := s.Format.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "format", err)
 			}
 		case "llm":
 			// Field: LLM
-			if err := s.LLM.FromTonyIR(fieldNode); err != nil {
+			if err := s.LLM.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "llm", err)
 			}
 		}
@@ -383,4 +388,13 @@ func (s *LLMConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 		return err
 	}
 	return s.FromTonyIR(node, opts...)
+}
+
+// Zero-value check helpers
+func isZeroValue_Config_Format(v FormatConfig) bool {
+	return reflect.ValueOf(v).IsZero()
+}
+
+func isZeroValue_Config_LLM(v LLMConfig) bool {
+	return reflect.ValueOf(v).IsZero()
 }

@@ -61,7 +61,7 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Provider (optional)
 	if s.Provider != nil {
-		node, err = s.Provider.ToTonyIR()
+		node, err = s.Provider.ToTonyIR(opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -146,7 +146,7 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		case "provider":
 			// Field: Provider
 			s.Provider = &Provider{}
-			if err := s.Provider.FromTonyIR(fieldNode); err != nil {
+			if err := s.Provider.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		}

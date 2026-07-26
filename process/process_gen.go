@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
+	"reflect"
 )
 
 // ToTonyIR converts Frame to a Tony IR node.
@@ -237,12 +238,14 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["name"] = ir.FromString(s.Name)
 	}
 
-	// Field: Match
-	node, err = s.Match.ToTonyIR()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert field %q: %w", "Match", err)
+	// Field: Match (optional)
+	if !isZeroValue_Gate_Match(s.Match) {
+		node, err = s.Match.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Match", err)
+		}
+		irMap["match"] = node
 	}
-	irMap["match"] = node
 
 	// Field: Mode
 	if txt, err := s.Mode.MarshalText(); err != nil {
@@ -292,7 +295,7 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Name = fieldNodeUnwrapped.String
 		case "match":
 			// Field: Match
-			if err := s.Match.FromTonyIR(fieldNode); err != nil {
+			if err := s.Match.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "match", err)
 			}
 		case "mode":
@@ -365,7 +368,7 @@ func (s *GateMatch) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if len(s.Resources) > 0 {
 		slice := make([]*ir.Node, len(s.Resources))
 		for i, v := range s.Resources {
-			node, err = v.ToTonyIR()
+			node, err = v.ToTonyIR(opts...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
 			}
@@ -378,7 +381,7 @@ func (s *GateMatch) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if len(s.Paths) > 0 {
 		slice := make([]*ir.Node, len(s.Paths))
 		for i, v := range s.Paths {
-			node, err = v.ToTonyIR()
+			node, err = v.ToTonyIR(opts...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
 			}
@@ -470,7 +473,7 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				slice := make([]ResourcePred, len(fieldNodeUnwrapped.Values))
 				for i, v := range fieldNodeUnwrapped.Values {
 					elem := ResourcePred{}
-					if err := elem.FromTonyIR(v); err != nil {
+					if err := elem.FromTonyIR(v, opts...); err != nil {
 						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
 					}
 					slice[i] = elem
@@ -483,7 +486,7 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				slice := make([]PathPred, len(fieldNodeUnwrapped.Values))
 				for i, v := range fieldNodeUnwrapped.Values {
 					elem := PathPred{}
-					if err := elem.FromTonyIR(v); err != nil {
+					if err := elem.FromTonyIR(v, opts...); err != nil {
 						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
 					}
 					slice[i] = elem
@@ -700,7 +703,7 @@ func (s *Instance) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if len(s.Pending) > 0 {
 		slice := make([]*ir.Node, len(s.Pending))
 		for i, v := range s.Pending {
-			node, err = v.ToTonyIR()
+			node, err = v.ToTonyIR(opts...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
 			}
@@ -803,7 +806,7 @@ func (s *Instance) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				slice := make([]PendingGate, len(fieldNodeUnwrapped.Values))
 				for i, v := range fieldNodeUnwrapped.Values {
 					elem := PendingGate{}
-					if err := elem.FromTonyIR(v); err != nil {
+					if err := elem.FromTonyIR(v, opts...); err != nil {
 						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
 					}
 					slice[i] = elem
@@ -1079,7 +1082,7 @@ func (s *Vector) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if len(s.Gates) > 0 {
 		slice := make([]*ir.Node, len(s.Gates))
 		for i, v := range s.Gates {
-			node, err = v.ToTonyIR()
+			node, err = v.ToTonyIR(opts...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
 			}
@@ -1134,7 +1137,7 @@ func (s *Vector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				slice := make([]Gate, len(fieldNodeUnwrapped.Values))
 				for i, v := range fieldNodeUnwrapped.Values {
 					elem := Gate{}
-					if err := elem.FromTonyIR(v); err != nil {
+					if err := elem.FromTonyIR(v, opts...); err != nil {
 						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
 					}
 					slice[i] = elem
@@ -1174,4 +1177,9 @@ func (s *Vector) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 		return err
 	}
 	return s.FromTonyIR(node, opts...)
+}
+
+// Zero-value check helpers
+func isZeroValue_Gate_Match(v GateMatch) bool {
+	return reflect.ValueOf(v).IsZero()
 }
