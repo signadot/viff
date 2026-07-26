@@ -79,9 +79,9 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Set:    map[string]any{"stage": "reviewing"},
+			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:  &launch.Spec{Task: "review $subject"},
-			OnDone: &Action{Set: map[string]any{"stage": "reviewed"}},
+			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -112,16 +112,16 @@ func TestOnDoneChains(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Set:   map[string]any{"stage": "reviewing"},
+			Patch:   entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{
-				Set:   map[string]any{"stage": "reviewed"},
+				Patch:   entity.Obj{"stage": "reviewed"}.Payload(),
 				Spawn: &launch.Spec{Task: "merge $subject"},
 				OnDone: &Action{
-					Set:   map[string]any{"stage": "merged"},
+					Patch:   entity.Obj{"stage": "merged"}.Payload(),
 					Spawn: &launch.Spec{Task: "approve $subject"},
 					OnDone: &Action{
-						Set: map[string]any{"stage": "approved"},
+						Patch: entity.Obj{"stage": "approved"}.Payload(),
 					},
 				},
 			},
@@ -170,10 +170,10 @@ func TestOnFailed(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Set:      map[string]any{"stage": "reviewing"},
+			Patch:      entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:    &launch.Spec{Task: "review and fail $subject"},
-			OnDone:   &Action{Set: map[string]any{"stage": "reviewed"}},
-			OnFailed: &Action{Set: map[string]any{"stage": "rejected"}},
+			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
+			OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -201,9 +201,9 @@ func TestOnHookPerProcess(t *testing.T) {
 	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	subj := prRef("1").String()
 	eng.spawnHooked("pa", launch.Spec{Subject: subj, Task: "a"},
-		&Action{OnDone: &Action{Set: map[string]any{"a": "1"}}}, "pa")
+		&Action{OnDone: &Action{Patch: entity.Obj{"a": "1"}.Payload()}}, "pa")
 	eng.spawnHooked("pb", launch.Spec{Subject: subj, Task: "b"},
-		&Action{OnDone: &Action{Set: map[string]any{"b": "1"}}}, "pb")
+		&Action{OnDone: &Action{Patch: entity.Obj{"b": "1"}.Payload()}}, "pb")
 
 	waitField(t, store, prRef("1"), "a", "1")
 	waitField(t, store, prRef("1"), "b", "1")
@@ -215,20 +215,20 @@ func TestOnHookValidation(t *testing.T) {
 	cond := Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})}
 
 	if err := eng.AddTrigger(Trigger{Name: "a", Condition: cond,
-		Action: Action{OnDone: &Action{Set: map[string]any{"x": "1"}}}}); err == nil {
+		Action: Action{OnDone: &Action{Patch: entity.Obj{"x": "1"}.Payload()}}}); err == nil {
 		t.Fatal("expected error: onDone without a spawn")
 	}
 	if err := eng.AddTrigger(Trigger{Name: "b", Condition: cond,
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "t"},
-			OnDone: &Action{OnFailed: &Action{Set: map[string]any{"x": "1"}}}, // nested hook, no nested spawn
+			OnDone: &Action{OnFailed: &Action{Patch: entity.Obj{"x": "1"}.Payload()}}, // nested hook, no nested spawn
 		}}); err == nil {
 		t.Fatal("expected error: nested onFailed without a spawn")
 	}
 	if err := eng.AddTrigger(Trigger{Name: "c", Condition: cond,
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "t"},
-			OnDone: &Action{Set: map[string]any{"x": "1"}},
+			OnDone: &Action{Patch: entity.Obj{"x": "1"}.Payload()},
 		}}); err != nil {
 		t.Fatalf("valid onDone rejected: %v", err)
 	}
@@ -238,8 +238,8 @@ func TestOnHookValidation(t *testing.T) {
 func TestOnHookTonyRoundTrip(t *testing.T) {
 	a := Action{
 		Spawn:    &launch.Spec{Task: "review"},
-		OnDone:   &Action{Set: map[string]any{"stage": "reviewed"}},
-		OnFailed: &Action{Set: map[string]any{"stage": "rejected"}},
+		OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
+		OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 	}
 	b, err := a.ToTony()
 	if err != nil {
@@ -252,10 +252,10 @@ func TestOnHookTonyRoundTrip(t *testing.T) {
 	if err := got.FromTony(b); err != nil {
 		t.Fatalf("FromTony: %v", err)
 	}
-	if got.OnDone == nil || got.OnDone.Set["stage"] != "reviewed" {
+	if got.OnDone == nil || entity.Str(got.OnDone.Patch, "stage") != "reviewed" {
 		t.Fatalf("onDone did not round-trip: %+v", got.OnDone)
 	}
-	if got.OnFailed == nil || got.OnFailed.Set["stage"] != "rejected" {
+	if got.OnFailed == nil || entity.Str(got.OnFailed.Patch, "stage") != "rejected" {
 		t.Fatalf("onFailed did not round-trip: %+v", got.OnFailed)
 	}
 }

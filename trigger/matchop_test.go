@@ -346,7 +346,7 @@ func TestSetOnAScalarPayloadReplacesIt(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "milestone",
 		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "count", "payload": int64(100)})},
-		Action:    Action{Set: map[string]any{"note": "milestone"}},
+		Action:    Action{Patch: entity.Obj{"note": "milestone"}.Payload()},
 	}); err != nil {
 		t.Fatalf("install: %v", err)
 	}

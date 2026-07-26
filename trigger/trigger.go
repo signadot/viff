@@ -18,6 +18,9 @@ package trigger
 import (
 	"fmt"
 
+	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
@@ -173,8 +176,21 @@ func (g Gate) mode() (process.Mode, error) {
 //
 //tony:schemagen=verse-action,notag
 type Action struct {
-	Set   map[string]any `tony:"field=set,omitzero"`
-	Spawn *launch.Spec   `tony:"field=spawn,omitzero"`
+	// Patch is applied to the subject's payload with tony.Patch — the WRITE half of the
+	// vocabulary whose read half is a Match. It merges rather than assigns, so a nested
+	// write touches one subtree instead of replacing its parent, and it can carry the
+	// mergeop operators (`!delete`, `!replace`, …) that a field overlay had no way to say.
+	//
+	// It replaced `set`, a shallow top-level overlay. The name went with the semantics:
+	// this deep-merges, deletes and replaces, and "set" describes one of those. (The read
+	// side keeps `fields` beside `payload` because requiring an object there is what makes
+	// `fields: "stage=open"` an install error; nothing here needs that guard — `patch: 42`
+	// is a legitimate whole-value replace.) See docs/patch-plan.md.
+	// Spelled *ir.Node rather than its alias entity.Payload — which is what it IS — because
+	// tony-codegen resolves field types syntactically and cannot follow an alias
+	// ("Payload is not a named type"). entity/payload.go anticipated half of this.
+	Patch *ir.Node     `tony:"field=patch,omitzero"`
+	Spawn *launch.Spec `tony:"field=spawn,omitzero"`
 
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
@@ -251,25 +267,37 @@ func (a Action) validate() error {
 func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine) {
 	for _, subj := range subjects {
 		b := bindingFor(ev, subj)
-		if a.Set != nil {
-			// Atomic read-modify-write: carry the subject's current payload and overlay Set.
-			// Via Modify (compare-and-swap) so two triggers advancing the same entity can't
-			// lose each other's fields.
+		if a.Patch != nil {
+			// Atomic read-modify-write: tony.Patch the subject's current payload. Via Modify
+			// (compare-and-swap) so two triggers advancing the same entity cannot lose each
+			// other's writes — and now at DEPTH, since a patch merges subtrees where the old
+			// overlay replaced whichever top-level key it touched.
 			//
-			// A NON-OBJECT payload is REPLACED, not merged into: `set` writes fields, and a
-			// scalar has none to carry forward, so an entity whose payload is 42 becomes the
-			// record the action describes and the 42 is gone. That is the same whole-value
-			// replace Put has always done, and the alternative — refusing to advance a
-			// subject because of the shape of its current value — would strand a flow with
-			// no way to say so. Worth knowing before matching a scalar payload with a
-			// trigger that also sets fields on it.
+			// The error is captured out of the closure because Modify's fn cannot fail (it
+			// may run more than once under retry; the last run's verdict is the one that
+			// stands). A failed patch must not be swallowed: see below.
+			var perr error
 			e.Store().Modify(subj, func(cur entity.Payload) entity.Payload {
-				p := clonePayload(cur)
-				for k, v := range a.Set {
-					p[k] = v
+				// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a
+				// nil doc, and null is what "nothing there yet" means in tony anyway. This is
+				// what keeps a named subject's patch CREATING the entity, as `set` did.
+				if cur == nil {
+					cur = ir.Null()
 				}
-				return p.Payload()
+				out, err := tony.Patch(cur, a.Patch)
+				if err != nil {
+					perr = err
+					return cur // leave it exactly as it was
+				}
+				return out
 			})
+			if perr != nil {
+				// Fail the firing for this subject rather than continuing into the spawn: a
+				// process started about a state the trigger FAILED to establish is worse than
+				// no process at all, and it would be the harder failure to read afterwards.
+				e.tracef("trigger %s: patch on %s failed (%v); not spawning", chain, subj, perr)
+				continue
+			}
 		}
 		if a.Spawn == nil {
 			continue

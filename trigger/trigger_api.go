@@ -18,6 +18,13 @@ func (e *Engine) AddTrigger(t Trigger) error {
 	if err := validTriggerName(t.Name); err != nil {
 		return err
 	}
+	// A patch arrives as a raw node — the generated codec passes it through untouched — so
+	// the JSON spelling of an operator (`{"tmp": {"delete": null}}`) is still a plain object
+	// at this point. desugar turns it into the tag the mergeops actually read, which is what
+	// keeps a .json charter and a .tony charter one grammar rather than two (the same job
+	// opNode does for a Match's operators). Done once, at install, so the firing path sees
+	// only the canonical tagged form.
+	desugarPatches(&t.Action)
 	if err := t.Condition.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
@@ -219,5 +226,19 @@ func ParseMode(s string) (process.Mode, error) {
 		return process.Park, nil
 	default:
 		return process.Auto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
+	}
+}
+
+// desugarPatches rewrites the tag-keyed operator spelling into tags across an action and its
+// completion hooks. Recursive because an Action is: a hook is a full action with its own patch.
+func desugarPatches(a *Action) {
+	if a == nil {
+		return
+	}
+	if a.Patch != nil {
+		a.Patch = desugar(a.Patch)
+	}
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+		desugarPatches(h)
 	}
 }

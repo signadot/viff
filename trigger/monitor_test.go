@@ -28,7 +28,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 				N:     2,
 			}},
 		}},
-		Action: Action{Set: map[string]any{"ok": "yes"}},
+		Action: Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -75,7 +75,7 @@ func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
 		Gates:     []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
-		Action:    Action{Set: map[string]any{"ok": "yes"}},
+		Action:    Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -100,7 +100,7 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
 		Gates:     []Gate{{Name: "approvals", Mode: "ask", Formula: quorumUntilDeadline(2)}},
-		Action:    Action{Set: map[string]any{"ok": "yes"}},
+		Action:    Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -129,7 +129,7 @@ func TestTemporalDenyQuorum(t *testing.T) {
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},                   // approve-quorum → proceed
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Choice: "reject", N: 2}}, // reject-quorum → deny
 		}}}},
-		Action: Action{Set: map[string]any{"ok": "yes"}},
+		Action: Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -321,7 +321,7 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 			{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},
 			{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "40ms"}},
 		}}}},
-		Action: Action{Set: map[string]any{"ok": "y"}},
+		Action: Action{Patch: entity.Obj{"ok": "y"}.Payload()},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

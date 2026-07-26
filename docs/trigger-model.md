@@ -110,7 +110,7 @@ the same match grammar:
 | `Subject` | resolves to | example |
 |---|---|---|
 | *(omitted)* | the matched entity | `review` — a change to `demo:pr:1` is about `demo:pr:1` |
-| a concrete address (`"demo:pr:1"`) | that one entity, **named** — a `set` creates it if absent | publishing a fact nothing has written yet |
+| a concrete address (`"demo:pr:1"`) | that one entity, **named** — a `patch` creates it if absent | publishing a fact nothing has written yet |
 | a **pattern** — an address glob (`"demo:pr:*"`) or a `system:kind` selector (+ entity predicate) | the firing's OWN subject if it carries one (a reflected process's `flow`); **else** the set it selects from the store | `reviewed` — the PR its process carried; or broadcast — every `demo:pr` with `stage:reviewed` |
 
 The engine **fans out one action/process per resolved entity**, and **each is about exactly
@@ -136,7 +136,7 @@ is a plain pattern (`"demo:pr:*"`) that the firing matches against the process's
 same address grammar as everything else, no back-reference, no second string form.
 
 The one distinction inside the address form is **name vs select**. A glob-free address
-*names* its entity, so an action's `set` may bring it into existence — that is how a trigger
+*names* its entity, so an action's `patch` may bring it into existence — that is how a trigger
 publishes a fact nothing has written yet. A glob anywhere *selects* over what exists, so it
 can only act on entities that are really there (and can never conjure one called `*`).
 
@@ -256,11 +256,11 @@ only whether a given `When` happens to use temporal operators.
 { "name": "review",
   "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
   "gates":     [ { "name": "review", "mode": "ask" } ],
-  "action":    { "set": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
+  "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
 { "name": "reviewed",
   "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "done" } },
                  "subject": "demo:pr:*" },
-  "action":    { "set": { "stage": "reviewed" } } }
+  "action":    { "patch": { "stage": "reviewed" } } }
 ```
 
 `reviewed` now reads as it means: *when a process completes, about the PR it carried, set
@@ -281,13 +281,13 @@ linear chain owned by one trigger, the follow-up can instead ride the spawn dire
   "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
   "gates":     [ { "name": "review", "mode": "ask" } ],
   "action": {
-    "set":    { "stage": "reviewing" },
+    "patch":  { "stage": "reviewing" },
     "spawn":  { "driver": "scripted", "task": "review $subject" },
-    "onDone": { "set": { "stage": "reviewed" } } } }
+    "onDone": { "patch": { "stage": "reviewed" } } } }
 ```
 
 An `Action` carries one hook per terminal status — `onDone` (status `done`), `onFailed`,
-`onCancelled`, `onOrphaned` — and each is itself a full `Action` (`set` + `spawn` + its own
+`onCancelled`, `onOrphaned` — and each is itself a full `Action` (`patch` + `spawn` + its own
 hooks), so a chain (`review → merge → approve`) nests `onDone`s and reads top-to-bottom in one
 rule. When the action's `spawn` reaches a terminal status, the engine fires the matching hook
 about the *same subject*, scoped to exactly that process: the hook rides the live process

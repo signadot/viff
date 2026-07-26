@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 )
 
@@ -21,7 +22,7 @@ func TestCharterRoundTrip(t *testing.T) {
 				When:    MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}),
 				Subject: Match{"system": "demo", "kind": "pr", "id": "*"},
 			},
-			Action: Action{Set: map[string]any{"stage": "reviewed"}},
+			Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 		{
 			Name: "spawn-a-review",
@@ -42,7 +43,7 @@ func TestCharterRoundTrip(t *testing.T) {
 				Name:    "two-approvals",
 				Formula: &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},
 			}},
-			Action: Action{Set: map[string]any{"stage": "shipped"}},
+			Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}
 
@@ -89,7 +90,7 @@ func TestCharterOmitsUnsetFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(b)
-	for _, gone := range []string{"gates:", "subject:", "spawn:", "set:"} {
+	for _, gone := range []string{"gates:", "subject:", "spawn:", "patch:"} {
 		if strings.Contains(got, gone) {
 			t.Errorf("unset field %q leaked into the charter:\n%s", gone, got)
 		}

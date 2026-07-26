@@ -63,16 +63,19 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
 - **Gate** — whether an action proceeds: `auto` (fire) · `ask` (a human/agent approves)
   · `park` (hold) — or a **formula** the verse resolves itself (a vote, a deadline). The
   autonomy dial.
-- **Motion** — a governed question put to a group, when the answer isn't one inline
-  click: a **vote** on a gate (a quorum, with a deadline or a "no"), or a 1-of-N
-  **selection** of a doer (§8) — the same machinery, two option-sets. verse reifies it in
-  the store as something you watch (`verse docket`) and add to (`verse vote`); ballots
-  accumulate on it, and when a tally reaches the bar the motion **carries**, its outcome
-  resolving the question. (A plain `ask` gate raises none — one person answers it directly
-  via `gate resolve`.)
-- **Docket** — the open motions, collectively: what the verse is currently waiting on a
-  group to settle (`verse docket`).
-- **Action** — declared as: `set` fields on an entity (a state transition) and/or
+- **Docket** — everything the verse is currently waiting on a *group* to settle
+  (`verse docket`). It is not a side-channel or a UI queue: each open question is an
+  ordinary entity, `motion:channel:<id>`, so the docket is a *view of the store* — you can
+  `watch` it, `get` one, and write a trigger that reacts to it, exactly as with a PR.
+- **Motion** — one question on the docket, put to a group when the answer isn't one inline
+  click. Ballots accumulate on it (`verse vote`), and when a tally reaches the bar the
+  motion **carries**, its outcome resolving the question. One machinery, two option-sets:
+  a **vote** decides *whether* an action fires (a quorum, with a deadline or a "no"), and a
+  **selection** decides *who* does the work, 1-of-N (§8). Both are the same kind of entity
+  in the same store, differing only in what can win — which is why one `verse docket` shows
+  both and one `verse vote` answers either. (A plain `ask` gate raises no motion — one
+  person answers it directly via `gate resolve`.)
+- **Action** — declared as: `patch` an entity's payload (a state transition) and/or
   `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed motion
   (§8), not a fixed one.
 - **Process** — a governed unit of work (an agent), hosted by the runtime,
@@ -102,10 +105,10 @@ A **charter** is one trigger, or a list of them. Here's a tiny one-rule one; sav
   gates:
   - { name: review, mode: ask }
   action:
-    set:    { stage: reviewing }
+    patch:    { stage: reviewing }
     spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 1" }
     onDone:
-      set: { stage: reviewed }
+      patch: { stage: reviewed }
 ```
 
 One rule, `review`: on an opened `demo:pr`, ask, then mark *reviewing* and spawn a review
@@ -187,14 +190,6 @@ The review process finishing (its `process:instance` reaching `status=done`) fir
 `review` trigger's `onDone` hook, which advanced the subject — so the process step and its
 follow-up read top-to-bottom in one rule.
 
-> **The decoupled alternative.** The same flow can emerge from *two* triggers instead: a
-> separate `reviewed` trigger whose `when` matches `process:instance` `status=done` and whose
-> `subject` is the pattern `demo:pr:*` (matched against the completed process's `flow`). Reach
-> for that when a completion should fan into several independent reactions, advance a *different*
-> subject, or be authored by a different party. `onDone` is the legible choice for a linear
-> chain owned by one trigger; the two-trigger form is covered in
-> [the trigger model](trigger-model.md).
-
 ```sh
 verse entity get demo:pr:1
 # payload:
@@ -213,6 +208,17 @@ verse trigger list
 verse trigger show review
 verse trigger remove <name>           # uninstall one (`add` rejects a duplicate name)
 ```
+
+`trigger show` hands the rule back in **[tony](https://signadot.github.io/tony-format/)**,
+the same document language you wrote `charter.tony` in — so installing and inspecting are a
+round trip, not two formats. Tony is JSON's document model made easier to write (unquoted
+keys and strings, optional commas, comments — a charter is a rulebook, and rulebooks want
+annotating) plus one thing the rest of this chapter leans on: **tags**. A tag names what a
+value *is*, right where the value sits — `!glob "hotfix-*"`, `!quorum 2`, `!until [ … ]`.
+That is what keeps a charter a *structure the engine walks* rather than a string it
+re-parses, and the fields below are built out of them. Write your charter in JSON or YAML
+if you prefer — going *in*, all three work; see [Representation](#representation) for why
+only tony and YAML come back out.
 
 Now, what each field of a trigger means:
 
@@ -236,7 +242,7 @@ Now, what each field of a trigger means:
     It resolves three ways, all the same match grammar:
     - *omitted* — the matched entity (`review`, above);
     - an **address that names one entity** — `demo:pr:1` is that one entity, and an
-      action's `set` will *create* it if it doesn't exist, which is how a trigger
+      action's `patch` will *create* it if it doesn't exist, which is how a trigger
       publishes a fact nothing has written yet;
     - a **pattern** — a glob (`demo:pr:*` the whole kind, `demo:pr:hotfix-*` a family
       in it, `demo:*:*` the whole system — the same grammar as `verse flow <addr>`,
@@ -337,7 +343,7 @@ Now, what each field of a trigger means:
     gates:
     - { name: ship, mode: ask }
     action:
-      set: { stage: shipped }
+      patch: { stage: shipped }
     ```
 
     One CI change fires this once, one `ask` gate is raised for the *firing* (not one
@@ -354,14 +360,19 @@ Now, what each field of a trigger means:
   resolves itself — a vote, a deadline, a threshold; see §8.
 - **`action`** — data, not code, and it needs no target of its own: an action acts on
   the condition's **subject**.
-  - `set` writes fields on the subject (a state transition);
+  - `patch` writes to the subject's payload (a state transition). It is a **tony patch**,
+    not an assignment: a nested write merges into the subtree it names rather than replacing
+    it, so two triggers writing under one key do not clobber each other, and the mergeop
+    operators apply — `patch: { tmp: !delete null }` removes a key, which is something no
+    amount of setting fields could say. Writing a scalar (`patch: 42`) replaces the whole
+    payload;
   - `spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
     `policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed
     **`provider`** selection of the doer (§8). The spawned process is tagged with the
     subject, which is what makes it part of that subject's flow (§6).
   - **completion hooks** — `onDone`, `onFailed`, `onCancelled`, `onOrphaned`: when the
     `spawn`'s process reaches that terminal status, the hook fires as a full action (its
-    own `set` / `spawn` / hooks) about the same subject. `onDone` is the success hook; a
+    own `patch` / `spawn` / hooks) about the same subject. `onDone` is the success hook; a
     chain (`review` → `merge` → `approve`) nests its `onDone`s and reads top-to-bottom in
     one trigger, with the process step visible inline. Each hook can read the finished
     process's payload via bindings (`$result`, `$status`).
@@ -711,7 +722,7 @@ verse watches and resolves it itself:
   gates:
   - { name: approvals, formula: !quorum 2 }
   action:
-    set: { stage: merged }
+    patch: { stage: merged }
 ```
 
 `!quorum` is a **tag** — tony's way of naming what a value *is*, right where the value
@@ -939,7 +950,7 @@ way everything else composes:
     when:    { system: goal, kind: done }
     subject: change:pr:*
   action:
-    set: { stage: shipped }
+    patch: { stage: shipped }
 ```
 
 And because a goal's owned triggers spawn processes tracked as **flows**, a goal *is a flow

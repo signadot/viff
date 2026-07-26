@@ -54,7 +54,7 @@ func TestGoalDoneLatch(t *testing.T) {
 		Triggers: []Trigger{{
 			Name:      "ship-review",
 			Condition: Condition{When: MatchWhen(Match{"system": "change", "fields": map[string]any{"stage": "open"}})},
-			Action:    Action{Set: map[string]any{"stage": "reviewing"}},
+			Action:    Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
 		}},
 	})
 	if err != nil {
