@@ -175,6 +175,55 @@ func (g Gate) mode() (process.Mode, error) {
 type Action struct {
 	Set   map[string]any `json:"set,omitempty" tony:"field=set,omitzero"`
 	Spawn *launch.Spec   `json:"spawn,omitempty" tony:"field=spawn,omitzero"`
+
+	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
+	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
+	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
+	// it scoped to exactly this spawn's process (see Engine.applyHook / hookFor). onOrphaned is
+	// inert until resume rehydrates hooks (see docs/completion-hooks.md).
+	OnDone      *Action `json:"onDone,omitempty" tony:"field=onDone,omitzero"`           // status done (success)
+	OnFailed    *Action `json:"onFailed,omitempty" tony:"field=onFailed,omitzero"`       // status failed
+	OnCancelled *Action `json:"onCancelled,omitempty" tony:"field=onCancelled,omitzero"` // status cancelled
+	OnOrphaned  *Action `json:"onOrphaned,omitempty" tony:"field=onOrphaned,omitzero"`   // status orphaned
+}
+
+// hookFor returns the completion hook for a terminal status (nil if none). The four terminal
+// statuses map to the four onX fields; non-terminal statuses have no hook.
+func (a *Action) hookFor(s process.Status) *Action {
+	switch s {
+	case process.Done:
+		return a.OnDone
+	case process.Failed:
+		return a.OnFailed
+	case process.Cancelled:
+		return a.OnCancelled
+	case process.Orphaned:
+		return a.OnOrphaned
+	}
+	return nil
+}
+
+// hasHooks reports whether any completion hook is set — used to require a spawn for them.
+func (a *Action) hasHooks() bool {
+	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil
+}
+
+// validate reports whether the action is installable (called from AddTrigger). A completion
+// hook needs a process to complete, so any onX requires a spawn; each hook is itself an action
+// and is validated recursively.
+func (a Action) validate() error {
+	if a.hasHooks() && a.Spawn == nil {
+		return fmt.Errorf("action.onX requires a spawn — a completion hook needs a process to complete")
+	}
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+		if h == nil {
+			continue
+		}
+		if err := h.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // apply runs the action once per resolved subject: apply the Set (a state transition on
@@ -214,7 +263,11 @@ func (a Action) apply(name string, ev entity.Event, subjects []entity.Ref, e *En
 			spec.Driver = driver
 		}
 		// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject
-		// is idempotent (and, under fan-out, each member gets its own deterministic id).
-		e.Spawn(spawnID(name, subj), spec)
+		// is idempotent (and, under fan-out, each member gets its own deterministic id). The
+		// action carries its own completion hooks (onX): they ride the spawned process's
+		// flowProc and fire when it reaches a terminal status. name is the chain position, so
+		// a hook's own spawn gets a distinct, deterministic id (see engine.applyHook).
+		a := a
+		e.spawnHooked(spawnID(name, subj), spec, &a, name)
 	}
 }

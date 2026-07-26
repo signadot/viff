@@ -3,6 +3,10 @@ context:
 - tony-format/context
 - launch: github.com/signadot/verse/launch
 define:
+  onCancelled: .[nullable(verse-action)]
+  onDone: .[nullable(verse-action)]
+  onFailed: .[nullable(verse-action)]
+  onOrphaned: .[nullable(verse-action)]
   set: .[object(object)]
   spawn: .[nullable(launch:spec)]
 signature:

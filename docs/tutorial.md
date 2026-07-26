@@ -92,7 +92,7 @@ serviced with priority, so a runaway flow can always be stopped in time.
 
 ## 3. Install a charter and drive it
 
-A **charter** is JSON — one trigger, or an array of them. Here's a tiny two-rule one; save
+A **charter** is JSON — one trigger, or an array of them. Here's a tiny one-rule one; save
 it as `charter.json`:
 
 ```json
@@ -102,22 +102,18 @@ it as `charter.json`:
     "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
     "gates":     [ { "name": "review", "mode": "ask" } ],
     "action": {
-      "set":   { "stage": "reviewing" },
-      "spawn": { "driver": "scripted", "task": "echo reviewing $subject; sleep 1" }
+      "set":    { "stage": "reviewing" },
+      "spawn":  { "driver": "scripted", "task": "echo reviewing $subject; sleep 1" },
+      "onDone": { "set": { "stage": "reviewed" } }
     }
-  },
-  {
-    "name": "reviewed",
-    "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "completed" } },
-                   "subject": "demo:pr:*" },
-    "action": { "set": { "stage": "reviewed" } }
   }
 ]
 ```
 
-Two rules: `review` (on an opened `demo:pr`, ask, then mark *reviewing* and spawn a review
-process) and `reviewed` (when that process completes, advance the subject to *reviewed*).
-Install it — §4 dissects each field:
+One rule, `review`: on an opened `demo:pr`, ask, then mark *reviewing* and spawn a review
+process; when that process finishes, its `onDone` hook marks the subject *reviewed*. The
+whole chain — the state change, the process it launches, and what happens when the process
+completes — is visible in one trigger. Install it — §4 dissects each field:
 
 ```sh
 verse trigger add -f charter.json     # or: cat charter.json | verse trigger add -f -
@@ -156,12 +152,21 @@ Now watch it self-drive. In Terminal A you'll see the stage advance **twice**:
 ```
 {"op":"create","ref":"demo:pr:1","rev":1,"to":{"stage":"open"}}
 {"op":"update","ref":"demo:pr:1","rev":2,"to":{"stage":"reviewing"}}   ← review action
-{"op":"update","ref":"demo:pr:1","rev":N,"to":{"stage":"reviewed"}}    ← reviewed trigger, after the process finished
+{"op":"update","ref":"demo:pr:1","rev":N,"to":{"stage":"reviewed"}}    ← review's onDone, after the process finished
 ```
 
-The second transition is the point: **nobody wrote "reviewing → reviewed."** The
-review process completing became a `process:instance` entity change, which the
-`reviewed` trigger reacted to. The flow emerged.
+The second transition is the point: **you did not drive "reviewing → reviewed" by hand.**
+The review process finishing (its `process:instance` reaching `status=done`) fired the
+`review` trigger's `onDone` hook, which advanced the subject — so the process step and its
+follow-up read top-to-bottom in one rule.
+
+> **The decoupled alternative.** The same flow can emerge from *two* triggers instead: a
+> separate `reviewed` trigger whose `when` matches `process:instance` `status=done` and whose
+> `subject` is the pattern `demo:pr:*` (matched against the completed process's `flow`). Reach
+> for that when a completion should fan into several independent reactions, advance a *different*
+> subject, or be authored by a different party. `onDone` is the legible choice for a linear
+> chain owned by one trigger; the two-trigger form is covered in
+> [the trigger model](trigger-model.md).
 
 ```sh
 verse entity get demo:pr:1     # → { "stage": "reviewed" }
@@ -171,7 +176,7 @@ verse entity get demo:pr:1     # → { "stage": "reviewed" }
 
 ## 4. Anatomy of a trigger
 
-You installed that two-rule charter in §3. Inspect and manage it:
+You installed that one-rule charter in §3. Inspect and manage it:
 
 ```sh
 verse trigger list
@@ -244,25 +249,44 @@ Now, what each field of a trigger means:
     `policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed
     **`provider`** selection of the doer (§8). The spawned process is tagged with the
     subject, which is what makes it part of that subject's flow (§6).
+  - **completion hooks** — `onDone`, `onFailed`, `onCancelled`, `onOrphaned`: when the
+    `spawn`'s process reaches that terminal status, the hook fires as a full action (its
+    own `set` / `spawn` / hooks) about the same subject. `onDone` is the success hook; a
+    chain (`review` → `merge` → `approve`) nests its `onDone`s and reads top-to-bottom in
+    one trigger, with the process step visible inline. Each hook can read the finished
+    process's payload via bindings (`$result`, `$status`).
 - **Bindings** in templates: every field of the changed payload is bound by name
   (`$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So `review $subject`
   in a spawn's task names the PR the firing is about, even when the entity that fired was
   a process, not the PR.
 
-**How `reviewed` names the PR.** `reviewed` fires on a `process:instance` change but acts on
-the PR — so its `subject` is a *pattern* (`demo:pr:*`), matched against the process's own
-subject. `review`'s `spawn` tagged its process with the condition's subject (`demo:pr:1`); the
-process is mirrored as a `process:instance` entity carrying that subject under the key **`flow`**;
-so when the process completes, `reviewed`'s `demo:pr:*` matches `flow: "demo:pr:1"` and advances
-`demo:pr:1`. The pattern doubles as a filter — a process whose flow is not a `demo:pr` is not this
-trigger's concern. There is no back-reference to the `review` trigger and no special variable: the
-subject is the same address grammar as everywhere else.
+**The decoupled completion pattern.** §3 closed the loop with `review`'s `onDone` hook. The same
+close can be written as a *separate* trigger — worth understanding, because it exposes the mechanic
+`onDone` hides and is the right tool when a completion should fan out or cross subjects:
 
-The `reviewed` rule is the **completion pattern**: *when* a `process:instance` reaches
-`status=completed`, *about* the PR its process carried (the flow its `demo:pr:*` names), advance
-that subject. It's how multi-step flows close through the verse. (Triggers must opt in to `process:*` — the engine keeps
-reflected process state out of the default match set so the loop can't ignite on its
-own machinery.)
+```json
+{ "name": "reviewed",
+  "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "done" } },
+                 "subject": "demo:pr:*" },
+  "action": { "set": { "stage": "reviewed" } } }
+```
+
+`reviewed` fires on a `process:instance` change but acts on the PR — so its `subject` is a *pattern*
+(`demo:pr:*`), matched against the process's own subject. A `spawn` tags its process with the
+condition's subject (`demo:pr:1`); the process is mirrored as a `process:instance` entity carrying
+that subject under the key **`flow`**; so when the process reaches `status=done`, `reviewed`'s
+`demo:pr:*` matches `flow: "demo:pr:1"` and advances `demo:pr:1`. The pattern doubles as a filter —
+a process whose flow is not a `demo:pr` is not this trigger's concern. There is no back-reference to
+the spawning trigger and no special variable: the subject is the same address grammar as everywhere
+else.
+
+This is the **completion pattern**: *when* a `process:instance` reaches `status=done`, *about* the
+PR its process carried (the flow its `demo:pr:*` names), advance that subject. `onDone` is the same
+close *inlined* onto the spawn — one trigger, scoped to exactly that process; the decoupled form is
+preferred when a completion should fan into several independent reactions, advance a *different*
+subject, or be authored by a different party. Either way, triggers must opt in to `process:*` — the
+engine keeps reflected process state out of the default match set so the loop can't ignite on its
+own machinery.
 
 ---
 
@@ -335,7 +359,7 @@ verse:
 
 ```sh
 verse watch --system process
-# process:instance:review-1  running → … → completed
+# process:instance:review-1  running → … → done
 ```
 
 ---
@@ -466,7 +490,7 @@ Then finish the work (or `do fail "$ID" <reason>` to end it the other way):
 verse process do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
 ```
 
-The process is now `completed`, with your result on its `process:instance` entity — so a
+The process is now `done`, with your result on its `process:instance` entity — so a
 completion trigger reacts to it exactly as if an agent had finished (§3–4). A *human* did the
 work; the flow moves on.
 

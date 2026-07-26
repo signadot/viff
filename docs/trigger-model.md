@@ -238,7 +238,7 @@ only whether a given `When` happens to use temporal operators.
   "gates":   [ { "name": "review", "mode": "ask" } ],
   "action":  { "set": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
 { "name": "reviewed",
-  "matches": [ { "system": "process", "kind": "instance", "fields": { "status": "completed" } } ],
+  "matches": [ { "system": "process", "kind": "instance", "fields": { "status": "done" } } ],
   "action":  { "setRef": "$flow", "set": { "stage": "reviewed" } } }
 ```
 
@@ -249,7 +249,7 @@ only whether a given `When` happens to use temporal operators.
   "gates":     [ { "name": "review", "mode": "ask" } ],
   "action":    { "set": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
 { "name": "reviewed",
-  "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "completed" } },
+  "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "done" } },
                  "subject": "demo:pr:*" },
   "action":    { "set": { "stage": "reviewed" } } }
 ```
@@ -259,6 +259,38 @@ reviewed*. The `Subject` is a plain pattern — `demo:pr:*` matched against the 
 subject (its `flow`) — not a deferred `$flow` reaching back into the payload: the pattern names
 the flow and filters the ones it does not, in the same address grammar as everywhere else. The old
 `setRef` was only ever compensating for `$subject` being wired to the matched entity.
+
+## Completion hooks: one trigger, chaining visible
+
+`reviewed` is a *decoupled* completion trigger — the tool when a completion should fan into
+several reactions, advance a different subject, or be authored separately. For the common case, a
+linear chain owned by one trigger, the follow-up can instead ride the spawn directly, as a
+**completion hook** on the action:
+
+```json
+{ "name": "review",
+  "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
+  "gates":     [ { "name": "review", "mode": "ask" } ],
+  "action": {
+    "set":    { "stage": "reviewing" },
+    "spawn":  { "driver": "scripted", "task": "review $subject" },
+    "onDone": { "set": { "stage": "reviewed" } } } }
+```
+
+An `Action` carries one hook per terminal status — `onDone` (status `done`), `onFailed`,
+`onCancelled`, `onOrphaned` — and each is itself a full `Action` (`set` + `spawn` + its own
+hooks), so a chain (`review → merge → approve`) nests `onDone`s and reads top-to-bottom in one
+rule. When the action's `spawn` reaches a terminal status, the engine fires the matching hook
+about the *same subject*, scoped to exactly that process: the hook rides the live process
+registry (keyed by process id), so there is no `flow` match and no separate trigger — the
+scoping the `demo:pr:*` pattern does for `reviewed` is implicit. A hook can read the finished
+process's payload via bindings (`$result`, `$status`). `onDone` is the completion pattern
+inlined; the two-rule `reviewed` form above remains the tool for fan-out / cross-subject /
+cross-author closes.
+
+(`onOrphaned` is currently inert: a resumed process is re-adopted without its hooks, so
+`orphaned` — written only at startup reconcile — never finds a tracked process. `done` / `failed`
+/ `cancelled` all fire within a run. See docs/completion-hooks.md.)
 
 ## Migration
 

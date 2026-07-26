@@ -17,6 +17,9 @@ func (e *Engine) AddTrigger(t Trigger) error {
 	if err := t.Condition.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	if err := t.Action.validate(); err != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
 	for _, g := range t.Gates {
 		if _, err := g.mode(); err != nil {
 			return err
