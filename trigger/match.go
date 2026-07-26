@@ -31,6 +31,44 @@ import (
 // (Formula.Subtrees, engine.witnessPreconditions) and the store's List prefilter (Select), and
 // an operator has no path. `id` is only ever a filter, which is exactly why it goes first.
 //
+// `fields` IS THE NEXT DIMENSION, and now unblocked: a payload is an ir.Node
+// (entity.Payload), so tony.Match(payload, pattern) needs no conversion — the same collapse
+// already happened in engine.providerMatches, which used to marshal a map through gomap to
+// call it. What it buys, measured against tony.Match at v0.0.92:
+//
+//   - operators inside a payload predicate — `{id: !glob "hotfix-*"}` matches, so the growth
+//     listed above (globs, !and/!or, nested matches) arrives for `fields` at once;
+//   - a scalar payload against a field predicate answers FALSE for free, which is the rule
+//     matchPayload now spells out by hand;
+//   - a scalar payload against a scalar pattern MATCHES, so `payload: 42` becomes sayable —
+//     the thing a field-shaped dimension structurally cannot express;
+//   - extra payload fields are ignored, i.e. it stays a subset match, as today.
+//
+// TWO SEMANTICS WOULD CHANGE, and they are why this is not done here:
+//
+//  1. NUMBERS BECOME TYPE-EXACT. tony.Match compares int to int and float to float, and
+//     answers false across them: a payload `{n: 2.0}` does not match `{n: 2}`. valueEqual
+//     deliberately does the opposite, and TestMatchPayloadNumericTypes asserts it over a
+//     36-case cross-product. The justification for that tolerance has WEAKENED — it existed
+//     because payloads arrived as Go values from different decoders (encoding/json's float64,
+//     a Go literal's int), and payload-as-node removed most of that variance: every dialect
+//     now goes through the tony parser, so `2` is an int64 whichever way it was written.
+//     What remains is a genuinely fractional spelling (`2.0`) and Go callers handing floats
+//     to entity.Val. Making the swap means deciding that `2.0` and `2` are different values,
+//     which is tony's position and a defensible one — but it is a charter-visible decision,
+//     not a refactor.
+//  2. ABSENT STOPS READING AS NULL. tony.Match requires every pattern key to be present, so
+//     `fields: {stage: null}` would no longer match an entity that merely lacks `stage`. The
+//     comment on matchPayload calls today's behaviour a real question; this would answer it,
+//     in the direction tony already takes.
+//
+// The remaining migration risk is small and known: Fields() is read for a VALUE, not just
+// evaluated, at engine.quorumWitness and motion.optionFromFormula — both recover a ballot's
+// choice from `{choice: approve}`. Against a node predicate that is ir.Get plus a string
+// check, and against one carrying operators there is no single value to recover; since the
+// engine constructs those predicates itself (quorumFormula), the recoverable case is the one
+// that actually occurs, and the accessor should answer "" rather than pretend.
+//
 //	{"system": "demo", "kind": "pr", "fields": {"stage": "open"}}   an entity predicate
 //	{"system": "demo", "kind": "pr", "id": "1"}                     one entity
 //	{"system": "demo", "kind": "pr", "id": "*"}                     the whole kind
