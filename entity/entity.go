@@ -90,11 +90,10 @@ const (
 
 // MarshalText / UnmarshalText spell an Op as its text, which is what it already is.
 //
-// They exist for the reason process.Verb's do: tony-codegen resolves a named scalar through
-// its TextMarshaler, and without one the generated code does not compile — at v0.0.93 it
-// emits ir.FromString(s.Op) with no conversion from the named type (earlier it was an int64
-// conversion and a .[int] schema). TextMarshaler is the hook both gomap paths honor, so it
-// is how a scalar vocabulary declares its wire form.
+// Same standing as process.Verb's: required until go-tony v0.0.94 (a named scalar generated
+// as an int64 conversion, then as an unconverted assignment — neither compiled), kept now
+// because declaring a scalar vocabulary's wire form explicitly is right on its own terms
+// rather than because a generator needs it.
 //
 // Deliberately permissive on the way in: an unknown op decodes rather than erroring, so a
 // new op from a newer peer is not a decode failure. Validation belongs where an op is

@@ -20,12 +20,16 @@ const (
 
 // MarshalText / UnmarshalText spell Verb as its text, which is what it already is.
 //
-// They exist because a named string type is otherwise emitted as an integer conversion
-// by tony-codegen — it resolves such a type to no schema and falls back to int64,
-// producing code that does not compile. TextMarshaler is the one hook honored by both
-// gomap paths (reflection and generated), so it is how a scalar vocabulary declares its
-// wire form. Same reason as Mode's, and tracked upstream as
-// tony-format#f69agjyeh12ksa25cnn0.
+// They were REQUIRED until go-tony v0.0.94: a named string type was emitted as an integer
+// conversion by tony-codegen, which resolved it to no schema and fell back to int64 —
+// producing a wrong signature and code that did not compile (item 8 of
+// tony-format#f69agjyeh12ksa25cnn0). v0.0.93 fixed the signature and v0.0.94 the emitted
+// conversion, so a bare named string works now.
+//
+// They stay because they are right independently: TextMarshaler is the hook honored by both
+// gomap paths (reflection and generated) and by encoding/text consumers, so it is how a
+// scalar vocabulary declares its wire form rather than leaving each path to infer one. Same
+// for Mode and entity.Op.
 //
 // Deliberately permissive: an unknown verb decodes rather than erroring, matching what
 // encoding/json does today. Validation belongs where a verb is interpreted, not at the
