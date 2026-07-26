@@ -1,0 +1,55 @@
+# CURATED signatures — hand-written, not generated.
+#
+# Every signature here describes a type tony-codegen cannot describe correctly today. They
+# are kept separate from the generated files, and reported separately by the endpoint, so a
+# reader can tell which part of the published schema is derived from the code and which part
+# is a human's claim about it. A curated signature can drift from the code; a generated one
+# cannot. That difference is worth surfacing rather than hiding behind a uniform document.
+#
+# Remove an entry as soon as codegen can produce it, and the endpoint will serve the
+# generated one instead.
+
+# entity.Entity — codegen's generated CODE is right (it finds Ref.MarshalText and emits a
+# string) but its generated SIGNATURE says `ref: .[int]`, because the schema type mapper
+# never consults TextMarshaler. Publishing that would misdescribe the one identifier every
+# surface shares, so the signature is written by hand to match what the code actually emits.
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  ref: .[string]
+  payload: .[tony-base:ir]
+signature:
+  name: verse-entity
+---
+# entity.Event — one observed change. Same Ref problem as above. `from` and `to` are
+# payloads, so they are open values; `to` is null on a delete.
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  ref: .[string]
+  op: .[string]
+  from: .[tony-base:ir]
+  to: .[tony-base:ir]
+  rev: .[int]
+  gap: .[int]
+signature:
+  name: verse-event
+---
+# trigger.Match — the charter's selector grammar. codec=custom, so codegen emits an empty
+# `define`, which would publish the most-authored type in the system as having no shape at
+# all. Described here as what it is: an object of match dimensions, each of which may be a
+# literal or a tony match operator, which is why the values are open.
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  system: .[string]
+  kind: .[string]
+  id: .[tony-base:ir]
+  op: .[tony-base:ir]
+  fields: .[object(tony-base:ir)]
+  entity: .[object(tony-base:ir)]
+signature:
+  name: verse-match

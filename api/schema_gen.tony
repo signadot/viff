@@ -38,6 +38,23 @@ signature:
 context:
 - tony-format/context
 define:
+  method: .[string]
+  path: .[string]
+  request: .[string]
+  response: .[string]
+signature:
+  name: verse-route
+---
+context:
+- tony-format/context
+define:
+  routes: .[array(verse-route)]
+signature:
+  name: verse-routes
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   instruction: .[string]
 signature:

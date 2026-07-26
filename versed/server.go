@@ -74,6 +74,10 @@ type Server struct {
 	// worker. The well-known "local" nonce is handled specially (the in-process supervisor).
 	brokerMu sync.Mutex
 	brokers  map[string]http.Handler
+
+	// routes is the published route table, filled in by Handler as it registers each
+	// route — never maintained separately. See routes.go.
+	routes []api.Route
 }
 
 // scopeEngine is a per-scope engine plus the cancel that stops it (on scope delete).
@@ -338,67 +342,72 @@ func (s *Server) Start(ctx context.Context) {
 // Handler returns the HTTP surface. Observation (read plane) and control are
 // deliberately distinct routes.
 func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
+	rt := &router{mux: http.NewServeMux()}
 	// observation (read plane)
-	mux.HandleFunc("GET /status", s.status)
-	mux.HandleFunc("GET /watch", s.watch)
-	mux.HandleFunc("GET /entities", s.listEntities)
-	mux.HandleFunc("GET /entity", s.getEntity)
-	mux.HandleFunc("GET /gates", s.listGates)
-	mux.HandleFunc("GET /flows", s.listFlows)
-	mux.HandleFunc("GET /flow/tree", s.flowTree)
-	mux.HandleFunc("GET /triggers", s.listTriggers)
-	mux.HandleFunc("GET /triggers/{name}", s.getTrigger)
-	mux.HandleFunc("GET /goals", s.listGoals)
+	rt.handle("GET /status", s.status, "", "")
+	rt.handle("GET /watch", s.watch, "", "verse-event")
+	rt.handle("GET /entities", s.listEntities, "", "")
+	rt.handle("GET /entity", s.getEntity, "", "verse-entity")
+	rt.handle("GET /gates", s.listGates, "", "")
+	rt.handle("GET /flows", s.listFlows, "", "")
+	rt.handle("GET /flow/tree", s.flowTree, "", "verse-flow-tree")
+	rt.handle("GET /triggers", s.listTriggers, "", "verse-trigger")
+	rt.handle("GET /triggers/{name}", s.getTrigger, "", "verse-trigger")
+	rt.handle("GET /goals", s.listGoals, "", "verse-goal")
+	// the API describing itself: the route table, and the signatures it points at
+	rt.handle("GET /api", s.serveAPI, "", "verse-routes")
+	rt.handle("GET /schema", s.serveSchema, "", "")
+	rt.handle("GET /schema/{name}", s.serveSignature, "", "")
 	// mutation + control (out-of-band from observation; priority-serviced)
-	mux.HandleFunc("POST /entity", s.putEntity)
-	mux.HandleFunc("DELETE /entity", s.deleteEntity)
-	mux.HandleFunc("POST /triggers", s.addTrigger)
-	mux.HandleFunc("DELETE /triggers/{name}", s.removeTrigger)
-	mux.HandleFunc("POST /goals", s.addGoal)
-	mux.HandleFunc("DELETE /goals/{name}", s.removeGoal)
-	mux.HandleFunc("POST /goal/pause", s.goalPause)
-	mux.HandleFunc("POST /goal/resume", s.goalResume)
-	mux.HandleFunc("POST /goal/cancel", s.goalCancel)
-	mux.HandleFunc("POST /goal/say", s.goalSay)
-	mux.HandleFunc("POST /scope/delete", s.deleteScope)
-	mux.HandleFunc("POST /gate/resolve", s.resolveGate)
-	mux.HandleFunc("POST /flow/pause", s.flowPause)
-	mux.HandleFunc("POST /flow/resume", s.flowResume)
-	mux.HandleFunc("POST /flow/cancel", s.flowCancel)
-	mux.HandleFunc("POST /flow/say", s.flowSay)
+	rt.handle("POST /entity", s.putEntity, "verse-put-entity", "verse-event")
+	rt.handle("DELETE /entity", s.deleteEntity, "", "verse-event")
+	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", "")
+	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", "")
+	rt.handle("POST /goals", s.addGoal, "verse-goal", "")
+	rt.handle("DELETE /goals/{name}", s.removeGoal, "", "")
+	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", "")
+	rt.handle("POST /goal/resume", s.goalResume, "verse-goal-steer", "")
+	rt.handle("POST /goal/cancel", s.goalCancel, "verse-goal-steer", "")
+	rt.handle("POST /goal/say", s.goalSay, "verse-goal-steer", "")
+	rt.handle("POST /scope/delete", s.deleteScope, "", "")
+	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", "")
+	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", "")
+	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", "")
+	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", "")
+	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", "")
 	// process runtime (proc) — mounted; serves /processes[/{id}[/…]]. versed intercepts the
 	// two READ routes to union the local runtime with the active policy's own processes
 	// (e.g. a broker's), stamping each with its policy; everything else (spawn, events,
 	// control) falls through to the local runtime.
 	ph := s.Procd.Handler()
-	mux.HandleFunc("GET /processes", s.listProcesses)
-	mux.HandleFunc("POST /processes", s.spawnProcess)
-	mux.HandleFunc("GET /processes/{id}", s.getProcess)
-	mux.HandleFunc("GET /processes/{id}/inbox", s.processInbox)
-	mux.HandleFunc("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
+	rt.handle("GET /processes", s.listProcesses, "", "verse-instance")
+	rt.handle("POST /processes", s.spawnProcess, "verse-spawn", "verse-spawned")
+	rt.handle("GET /processes/{id}", s.getProcess, "", "verse-instance")
+	rt.handle("GET /processes/{id}/inbox", s.processInbox, "", "")
+	rt.handle("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.processEvents(w, r, ph)
-	})
+	}, "", "verse-frame")
 	// cancel/say are policy-agnostic: local processes go to the runtime, brokered/remote
 	// ones to the policy's handle — so `process cancel`/`say` work wherever a process runs.
-	mux.HandleFunc("POST /processes/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+	rt.handle("POST /processes/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "cancel")
-	})
-	mux.HandleFunc("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
+	}, "", "")
+	rt.handle("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "say")
-	})
-	mux.HandleFunc("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
+	}, "verse-say", "")
+	rt.handle("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "resolve")
-	})
+	}, "verse-resolve", "")
 	// re-vector (slide autonomy on a running process) — policy-agnostic like cancel/say: a
 	// local process is served by the runtime mount (processd's setVector), a brokered/remote
 	// one goes to the policy handle's SetVector.
-	mux.HandleFunc("PUT /processes/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
+	rt.handle("PUT /processes/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "vector")
-	})
-	mux.Handle("/processes", ph)
-	mux.Handle("/processes/", ph)
-	return mux
+	}, "verse-set-vector", "")
+	rt.mount("/processes", ph)
+	rt.mount("/processes/", ph)
+	s.routes = rt.routes
+	return rt.mux
 }
 
 // ── scripted driver: the default process runtime driver ─────────────────────

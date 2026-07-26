@@ -121,3 +121,27 @@ type FlowSteer struct {
 	Text    string `tony:"field=text,omitzero"`
 	By      string `tony:"field=by,omitzero"`
 }
+
+// Route is one entry of the API's own route table (`GET /api`): a method and path, and the
+// signature names of what it accepts and returns.
+//
+// An empty Request is a route with no body (a GET, or a control POST that takes none). An
+// empty Response means the response shape is NOT YET a named type — most handlers still
+// assemble map literals. That absence is deliberate and load-bearing: it makes the remaining
+// naming work visible in the published artifact rather than hiding it behind a claim like
+// "returns an open value", which would be true of anything and useful about nothing.
+//
+//tony:schemagen=verse-route,notag
+type Route struct {
+	Method   string `tony:"field=method"`
+	Path     string `tony:"field=path"`
+	Request  string `tony:"field=request,omitzero"`
+	Response string `tony:"field=response,omitzero"`
+}
+
+// Routes is the whole table, as served.
+//
+//tony:schemagen=verse-routes,notag
+type Routes struct {
+	Routes []Route `tony:"field=routes"`
+}
