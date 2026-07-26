@@ -18,19 +18,22 @@ import (
 	"github.com/signadot/verse/process"
 )
 
+// ps moved off this group and onto `processes`: as a group alias `verse ps` was an error
+// ("no command provided"), which is not what anyone typing it expects. On the listing it
+// means what it means everywhere else.
 func processCmd() *cli.Command {
-	return cli.NewCommand("process").WithAliases("ps").
-		WithSynopsis("process — the process runtime").
+	return cli.NewCommand("process").
+		WithSynopsis("process — one process in the runtime (list them with `verse processes`)").
 		WithSubs(
 			procRunCmd(),
-			procListCmd(),
 			procGetCmd(),
 			procInboxCmd(),
 			procAttachCmd(),
 			procCancelCmd(),
 			procSayCmd(),
 			procVectorCmd(),
-			procResolveCmd(),
+			procAnswerCmd(true),
+			procAnswerCmd(false),
 			procDoCmd(),
 		)
 }
@@ -42,7 +45,7 @@ type procInboxConfig struct{ *cli.Command }
 func procInboxCmd() *cli.Command {
 	cfg := &procInboxConfig{}
 	return cli.NewCommandAt(&cfg.Command, "inbox").
-		WithSynopsis("show the control queued for a process's worker: inbox <id>").WithRun(cfg.run)
+		WithSynopsis("inbox — the control queued for a process's worker: inbox <id>").WithRun(cfg.run)
 }
 
 func (cfg *procInboxConfig) run(cc *cli.Context, args []string) error {
@@ -84,7 +87,7 @@ func procDoCmd() *cli.Command {
 
 type procDoGateConfig struct {
 	*cli.Command
-	As     string `cli:"name=as desc='identity executing the process (REQUIRED)'"`
+	As     string `cli:"name=as desc='identity executing the process (REQUIRED — a claim must be attributable)'"`
 	Reason string `cli:"name=reason desc='what is being decided (shown to resolvers)'"`
 	Wait   bool   `cli:"name=wait desc='block until the gate is resolved, then print the outcome'"`
 }
@@ -96,7 +99,7 @@ func procDoGateCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "gate").
-		WithSynopsis("raise a gate up to versed for resolution: gate <id> <name> --as <identity> [--reason <t>] [--wait]").
+		WithSynopsis("gate — raise a gate up to versed for resolution: gate <id> <name> --as <identity> [--reason <t>] [--wait]").
 		WithOpts(opts...).WithRun(cfg.run)
 }
 
@@ -108,8 +111,8 @@ func (cfg *procDoGateConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("%w: process do gate wants a process id and a gate name", cli.ErrUsage)
 	}
-	if cfg.As == "" {
-		return fmt.Errorf("%w: --as <identity> is required (a claim must be attributable)", cli.ErrUsage)
+	if err := requireAs(cfg.As, "identity", "a claim must be attributable"); err != nil {
+		return err
 	}
 	id, name := args[0], args[1]
 	r, err := httpGet("/processes/"+id, nil)
@@ -191,7 +194,7 @@ func procDoVerb(verb string) *cli.Command {
 	syn := map[string]string{
 		"complete": "complete a process you're executing: complete <id> [result] --as <identity>",
 		"fail":     "fail a process you're executing: fail <id> [reason] --as <identity>",
-		"note":     "narrate onto a process you're executing: note <id> <text…> --as <identity>",
+		"note":     "note — narrate onto a process you're executing: note <id> <text…> --as <identity>",
 	}[verb]
 	return cli.NewCommandAt(&cfg.Command, verb).WithSynopsis(syn).WithOpts(opts...).
 		WithRun(func(cc *cli.Context, args []string) error {
@@ -220,8 +223,8 @@ func procDoVerb(verb string) *cli.Command {
 // execReport is the executor's report action: resolve the process's broker (its dialURL),
 // claim it as `as`, and report events onto the merged log verse observes.
 func execReport(cc *cli.Context, as, id string, events []map[string]any, result string) error {
-	if as == "" {
-		return fmt.Errorf("%w: --as <identity> is required (a claim must be attributable)", cli.ErrUsage)
+	if err := requireAs(as, "identity", "a claim must be attributable"); err != nil {
+		return err
 	}
 	r, err := httpGet("/processes/"+id, nil)
 	if err != nil {
@@ -259,45 +262,58 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 
 // ── resolve (answer a process's own tool gate) ──────────────────────────────
 
-type procResolveConfig struct {
+// approve/deny rather than `resolve --approve|--deny`, for the reasons in gateAnswerCmd:
+// the answer is a verb, so it is the command.
+type procAnswerConfig struct {
 	*cli.Command
-	Approve bool `cli:"name=approve desc='approve the decision'"`
-	Deny    bool `cli:"name=deny desc='deny the decision'"`
+	Say string `cli:"name=say aliases=s desc='words to say to the executor on resolution'"`
 }
 
-func procResolveCmd() *cli.Command {
-	cfg := &procResolveConfig{}
+func procAnswerCmd(approve bool) *cli.Command {
+	cfg := &procAnswerConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "resolve").
-		WithSynopsis("resolve a process gate: resolve <process-id> <decision-id> --approve|--deny").
+	name := "approve"
+	syn := "approve a process gate (also: y, yes): approve <process-id> <decision-id> [--say <text>]"
+	aliases := []string{"y", "yes"}
+	if !approve {
+		name = "deny"
+		syn = "deny a process gate (also: n, no): deny <process-id> <decision-id> [--say <text>]"
+		aliases = []string{"n", "no"}
+	}
+	return cli.NewCommandAt(&cfg.Command, name).WithAliases(aliases...).
+		WithSynopsis(syn).
 		WithOpts(opts...).
-		WithRun(cfg.run)
+		WithRun(func(cc *cli.Context, args []string) error { return cfg.run(cc, args, name, approve) })
 }
 
-func (cfg *procResolveConfig) run(cc *cli.Context, args []string) error {
+func (cfg *procAnswerConfig) run(cc *cli.Context, args []string, verb string, approve bool) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("%w: process resolve wants a process id and a decision id", cli.ErrUsage)
-	}
-	if cfg.Approve == cfg.Deny {
-		return fmt.Errorf("%w: pass exactly one of --approve / --deny", cli.ErrUsage)
+		return fmt.Errorf("%w: process %s wants a process id and a decision id", cli.ErrUsage, verb)
 	}
 	pid, did := args[0], args[1]
-	return noContent(cc, "process resolve", "/processes/"+pid+"/resolve",
-		api.Resolve{ID: did, Approve: cfg.Approve}, did)
+	// Same body as `gate approve`, --say included: this route relays the answer to a remote
+	// worker's inbox, which is a difference in WHERE it goes, not in what can be said. The
+	// flag was missing here alone, so "yes, but do it this way" was unsayable to the one
+	// executor that is a person reading their inbox.
+	body := api.Resolve{ID: did, Approve: approve}
+	if cfg.Say != "" {
+		body.Say = []string{cfg.Say}
+	}
+	return noContent(cc, "process "+verb, "/processes/"+pid+"/resolve", body, did)
 }
 
 // ── run ──────────────────────────────────────────────────────────────────────
 
 type procRunConfig struct {
 	*cli.Command
-	Wait   bool   `cli:"name=wait desc='block until the process completes, then print the result'"`
+	Wait   bool   `cli:"name=wait desc='block until the process completes, then print the result (composes with --attach)'"`
 	Attach bool   `cli:"name=attach desc='stream the live transcript (words, actions, gates) until it ends'"`
 	Driver string `cli:"name=driver desc='process driver: scripted | llm (default: the runtime default)'"`
 }
@@ -337,24 +353,36 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 		// Spawn + watch in one command: the transcript streams live, so you SEE the agent
 		// hit a gate. It blocks there until you resolve it (another terminal) — then the
 		// stream continues to completion. Ctrl-c to detach; the process keeps running.
-		return streamEvents(cc, sp.ID)
+		if err := streamEvents(cc, sp.ID); err != nil {
+			return err
+		}
 	}
+	// --wait is honored WITH --attach, not swallowed by it. The two ask for different
+	// things — the transcript as it happens, and the final result — and passing both used
+	// to silently drop the second, so the answer the agent produced never got printed. The
+	// stream has already reached a terminal status by here, so the poll returns at once.
 	if !cfg.Wait {
 		return nil
 	}
-	deadline := time.Now().Add(30 * time.Second)
+	return waitForResult(cc, sp.ID, 30*time.Second)
+}
+
+// waitForResult polls a process until it leaves `running`, then prints its status and the
+// result it produced.
+func waitForResult(cc *cli.Context, id string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		var snap struct {
 			Status string `tony:"field=status"`
 			Result string `tony:"field=result"`
 		}
-		r, err := httpGet("/processes/"+sp.ID, nil)
+		r, err := httpGet("/processes/"+id, nil)
 		if err != nil {
 			return fmt.Errorf("process run --wait: %w", err)
 		}
 		decodeClose(r, &snap)
 		if snap.Status != "" && snap.Status != "running" {
-			fmt.Fprintln(cc.Out, sp.ID, snap.Status)
+			fmt.Fprintln(cc.Out, id, snap.Status)
 			if snap.Result != "" { // the agent's final answer
 				fmt.Fprintf(cc.Out, "\n%s\n", snap.Result)
 			}
@@ -362,20 +390,15 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("process run --wait: %s did not complete in time", sp.ID)
+	return fmt.Errorf("process run --wait: %s did not complete in %s", id, timeout)
 }
 
 // ── list / get ───────────────────────────────────────────────────────────────
 
-func procListCmd() *cli.Command {
-	return leaf("list", "list processes",
-		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/processes", nil)
-			if err != nil {
-				return fmt.Errorf("process list: %w", err)
-			}
-			return printBody(cc, resp)
-		})
+func processesCmd() *cli.Command {
+	return collection("processes", "/processes",
+		"processes — list processes (also: ps; act on one with `verse process`)", "process").
+		WithAliases("ps")
 }
 
 type procGetConfig struct{ *cli.Command }
@@ -574,7 +597,9 @@ func (cfg *procSayConfig) run(cc *cli.Context, args []string) error {
 
 type procVectorConfig struct {
 	*cli.Command
-	File string `cli:"name=file desc='load a full gate vector from JSON ({\"gates\":[…],\"default\":\"ask\"}); overrides the mode arg'"`
+	// Not "from JSON": codec.ReadFile takes the dialect from the suffix, so a .tony vector
+	// is as readable as a .json one — and tony is what the rest of the CLI writes.
+	File string `cli:"name=file aliases=f desc='load a full gate vector from FILE (gates + a default; .tony/.json/.yaml); overrides the mode arg'"`
 	As   string `cli:"name=as desc='operator identity to attribute the slide to (recorded on the read plane)'"`
 }
 
@@ -585,7 +610,7 @@ func procVectorCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "vector").
-		WithSynopsis("vector <id> <auto|ask|park> [--file <vector.json>] — slide autonomy on a running process").
+		WithSynopsis("vector <id> <auto|ask|park> [--file <vector.tony>] — slide autonomy on a running process").
 		WithOpts(opts...).WithRun(cfg.run)
 }
 
@@ -630,6 +655,16 @@ func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+// requireAs refuses an unattributed action. A claim, a ballot and a report all name who
+// made them, and the refusal is a USAGE error in each — `vote` used to return a plain one,
+// so the one command whose --as is most obviously load-bearing printed no usage.
+func requireAs(as, noun, why string) error {
+	if as == "" {
+		return fmt.Errorf("%w: --as <%s> is required (%s)", cli.ErrUsage, noun, why)
+	}
+	return nil
+}
 
 // oneArg parses flags (anywhere) and returns the single required positional.
 func oneArg(cmd *cli.Command, cc *cli.Context, args []string, want string) (string, error) {

@@ -27,6 +27,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/scott-cotton/cli v0.2.3 h1:t04QyvR0vaS05F5BZv4+33QsqDaS3K2K6dzLLyCkMZc=
 github.com/scott-cotton/cli v0.2.3/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
+github.com/scott-cotton/cli v0.2.4 h1:d3Kit1chF0Zt4/D8mE1vfcVmHptSjwOKIOhZ1g07H0s=
+github.com/scott-cotton/cli v0.2.4/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
 github.com/signadot/tony-format/go-tony v0.0.92 h1:6JtZHAwgVE7EuQfB2+vvjfv6ecPoBBXS0TNPY5QJOpY=

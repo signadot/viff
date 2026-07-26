@@ -19,7 +19,7 @@ import (
 // ballots via COW scopes are a later, deliberately soft option.
 type voteConfig struct {
 	*cli.Command
-	As string `cli:"name=as desc='voter identity (required) — a ballot names its voter'"`
+	As string `cli:"name=as desc='voter identity (REQUIRED — a ballot names its voter)'"`
 }
 
 func voteCmd() *cli.Command {
@@ -46,10 +46,10 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	// motion — the vote log is the same, the discipline that reads it differs.
 	motion, choice := args[0], args[1]
 	if choice == "" {
-		return fmt.Errorf("vote: a choice is required (approve|reject, or an option for a select motion)")
+		return fmt.Errorf("%w: vote wants a choice (approve|reject, or an option for a select motion)", cli.ErrUsage)
 	}
-	if cfg.As == "" {
-		return fmt.Errorf("vote: --as <who> is required (a ballot names its voter)")
+	if err := requireAs(cfg.As, "who", "a ballot names its voter"); err != nil {
+		return err
 	}
 	ref := "vote:" + motion + ":" + cfg.As
 	resp, err := httpPost("/entity", api.PutEntity{

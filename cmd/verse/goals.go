@@ -13,11 +13,14 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-func goalsCmd() *cli.Command {
-	return cli.NewCommand("goals").WithAliases("goal").
-		WithSynopsis("goals — owning aggregates (owned triggers + done/fail latch + status)").
+// The group is `goal`, singular, and `goals` is the listing — the one place the plural rule
+// cost a rename rather than just adding a command. It was `goals` with a `goal` alias, so the
+// plural named the group AND the listing under it (`goals list`), which is precisely the
+// ambiguity the rule removes everywhere else.
+func goalCmd() *cli.Command {
+	return cli.NewCommand("goal").
+		WithSynopsis("goal — one owning aggregate: owned triggers + done/fail latch + status (list them with `verse goals`)").
 		WithSubs(
-			goalsListCmd(),
 			goalsAddCmd(),
 			goalsRemoveCmd(),
 			goalsPauseCmd(),
@@ -27,22 +30,19 @@ func goalsCmd() *cli.Command {
 		)
 }
 
-func goalsListCmd() *cli.Command {
-	return leaf("list", "list goals with status / waitingOn / outcome",
-		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/goals", nil)
-			if err != nil {
-				return fmt.Errorf("goals list: %w", err)
-			}
-			return printBody(cc, resp)
-		})
+func goalsCmd() *cli.Command {
+	return collection("goals", "/goals",
+		"goals — list goals with status / waitingOn / outcome (act on one with `verse goal`)", "goal")
 }
 
 type goalsAddConfig struct {
 	*cli.Command
-	File     string `cli:"name=f desc='read a full GoalDef (JSON, incl. owned triggers) from FILE (- = stdin)'"`
-	Subject  string `cli:"name=subject desc='the subject entity this goal targets (steering key)'"`
-	DoneWhen string `cli:"name=done-when desc='success predicate as a formula, e.g. {\"fact\":\"ci:status\"}'"`
+	File    string `cli:"name=file aliases=f desc='read a full GoalDef (incl. owned triggers) from FILE (- = stdin); format follows the suffix'"`
+	Subject string `cli:"name=subject desc='the subject entity this goal targets (steering key)'"`
+	// The old desc spelled the formula as JSON, which is the one dialect that cannot write
+	// the tagged form the engine actually takes — `!fact` has no JSON spelling, so the
+	// example taught a shape the interesting formulas cannot use.
+	DoneWhen string `cli:"name=done-when desc='success predicate as a formula, e.g. !fact ci:status or !until [ !quorum 2, !deadline 4h ]'"`
 	Deadline string `cli:"name=deadline desc='fail-latch: elapsed with doneWhen unmet ⇒ unachievable (e.g. 4h)'"`
 }
 
@@ -53,7 +53,7 @@ func goalsAddCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add a goal: add -f <file> | add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]").
+		WithSynopsis("add a goal: add --file <f> | add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -64,7 +64,7 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 
-	// Full-record mode: -f FILE (or "-" for stdin) carries a complete GoalDef, including
+	// Full-record mode: --file FILE (or "-" for stdin) carries a complete GoalDef, including
 	// owned triggers. Inline mode: build a GoalDef from a name positional + flags (no owned
 	// triggers — install those via `verse trigger add` or the file form).
 	var node *ir.Node
@@ -72,20 +72,20 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 		// The file's suffix names its dialect; stdin uses --ifmt or the configured default.
 		data, srcFmt, err := codec.ReadSource(cc.In, cfg.File, inFmt())
 		if err != nil {
-			return fmt.Errorf("goals add: %w", err)
+			return fmt.Errorf("goal add: %w", err)
 		}
 		n, err := codec.ParseNode(data, srcFmt)
 		if err != nil {
-			return fmt.Errorf("goals add: %w", err)
+			return fmt.Errorf("goal add: %w", err)
 		}
 		node = n
 	} else {
-		name, err := oneArg(cfg.Command, cc, args, "goals add wants a name (or -f <file>)")
+		name, err := oneArg(cfg.Command, cc, args, "goal add wants a name (or --file <f>)")
 		if err != nil {
 			return err
 		}
 		if cfg.DoneWhen == "" {
-			return fmt.Errorf("%w: goals add wants --done-when <formula> (or a -f <file>)", cli.ErrUsage)
+			return fmt.Errorf("%w: goal add wants --done-when <formula> (or a --file <f>)", cli.ErrUsage)
 		}
 		// --done-when is a formula typed on the command line, so it names no format of its
 		// own: it is read as --ifmt / the configured default. It stays a DOCUMENT from here
@@ -93,7 +93,7 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 		// `--done-when '!until [ !quorum 2, !deadline "4h" ]'` work, tags and all.
 		doneWhen, err := codec.ParseNode([]byte(cfg.DoneWhen), inFmt())
 		if err != nil {
-			return fmt.Errorf("goals add: --done-when: %w", err)
+			return fmt.Errorf("goal add: --done-when: %w", err)
 		}
 		kvs := []ir.KeyVal{
 			{Key: ir.FromString("name"), Val: ir.FromString(name)},
@@ -110,12 +110,12 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 
 	resp, err := httpPostNode("/goals", node)
 	if err != nil {
-		return fmt.Errorf("goals add: %w", err)
+		return fmt.Errorf("goal add: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("goals add: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("goal add: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	fmt.Fprintln(cc.Out, "installed goal")
 	return nil
@@ -130,20 +130,20 @@ func goalsRemoveCmd() *cli.Command {
 }
 
 func (cfg *goalsRemoveConfig) run(cc *cli.Context, args []string) error {
-	name, err := oneArg(cfg.Command, cc, args, "goals remove wants a name")
+	name, err := oneArg(cfg.Command, cc, args, "goal remove wants a name")
 	if err != nil {
 		return err
 	}
 	resp, err := httpDelete("/goals/"+name, nil)
 	if err != nil {
-		return fmt.Errorf("goals remove: %w", err)
+		return fmt.Errorf("goal remove: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("goals remove: no such goal %q", name)
+		return fmt.Errorf("goal remove: no such goal %q", name)
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("goals remove: %s", resp.Status)
+		return fmt.Errorf("goal remove: %s", resp.Status)
 	}
 	fmt.Fprintln(cc.Out, "removed", name)
 	return nil
@@ -156,13 +156,13 @@ func goalSteerCmd(name, synopsis, path string) *cli.Command {
 	return cli.NewCommandAt(&cfg.Command, name).
 		WithSynopsis(synopsis).
 		WithRun(func(cc *cli.Context, args []string) error {
-			gname, err := oneArg(cfg.Command, cc, args, "goals "+name+" wants a goal name")
+			gname, err := oneArg(cfg.Command, cc, args, "goal "+name+" wants a goal name")
 			if err != nil {
 				return err
 			}
 			resp, err := httpPost(path, api.GoalSteer{Name: gname})
 			if err != nil {
-				return fmt.Errorf("goals %s: %w", name, err)
+				return fmt.Errorf("goal %s: %w", name, err)
 			}
 			return printBody(cc, resp)
 		})
@@ -192,11 +192,11 @@ func (cfg *goalsSayConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("%w: goals say wants a name and text", cli.ErrUsage)
+		return fmt.Errorf("%w: goal say wants a name and text", cli.ErrUsage)
 	}
 	resp, err := httpPost("/goal/say", api.GoalSteer{Name: args[0], Text: strings.Join(args[1:], " ")})
 	if err != nil {
-		return fmt.Errorf("goals say: %w", err)
+		return fmt.Errorf("goal say: %w", err)
 	}
 	return printBody(cc, resp)
 }

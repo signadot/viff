@@ -13,7 +13,7 @@ doctrine: "an index, not a warehouse"). A process that must *act* on a file foll
 the reference into the real system — it reads the file.
 
 The old read went through the process executor's `read_file`, confined to a
-**server-side filesystem root** (`fsExec.root`, set by `verse up --llm --root .`). So
+**server-side filesystem root** (`fsExec.root`, set by `verse up --root .`). So
 the two halves of a file came from two different places:
 
 - **metadata** — from the *client's* tree, via `connect`;

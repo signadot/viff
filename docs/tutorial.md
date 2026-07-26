@@ -34,6 +34,8 @@ export VERSE_ADDR=localhost:9797     # where clients reach the verse (this is th
 ./verse up                           # docd-backed by default (see below)
 ```
 
+TODO: remove memory store (in code too, it's a PITA)
+
 By default `up` is **docd-backed**: it brings up logd + docd on a fresh temp data dir
 (printed, and kept) via `o sys up`, and points the store at
 [docd](https://signadot.github.io/tony-format/docd/) — the tony-format document store.
@@ -74,7 +76,7 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   **selection** decides *who* does the work, 1-of-N (§8). Both are the same kind of entity
   in the same store, differing only in what can win — which is why one `verse docket` shows
   both and one `verse vote` answers either. (A plain `ask` gate raises no motion — one
-  person answers it directly via `gate resolve`.)
+  person answers it directly via `gate approve` / `gate deny`.)
 - **Action** — declared as: `patch` an entity's payload (a state transition) and/or
   `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed motion
   (§8), not a fixed one.
@@ -88,7 +90,7 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   index, so one address can steer a subject, a kind, or a system (§6).
 
 Two planes, and they stay apart: **observation** (`watch`, `get`, `list`) is read;
-**steering** (`gate resolve`, `flow pause/cancel`) is control — out-of-band and
+**steering** (`gate approve`, `flow pause/cancel`) is control — out-of-band and
 serviced with priority, so a runaway flow can always be stopped in time.
 
 ---
@@ -133,6 +135,7 @@ verse watch --system demo
 
 **Terminal B** — open a change and drive it:
 
+TODO CLI level set/create/patch(or put)
 ```sh
 verse entity put demo:pr:1 '{stage: open}'
 # op: set
@@ -148,8 +151,9 @@ optional in tony, so `{stage: open, id: 7}` and `{stage: open id: 7}` are the sa
 
 The `review` trigger fires but its gate is `ask`, so it blocks:
 
+TODO: the gate field in a gate should be trigger right? it's the trigger's name
 ```sh
-verse gate list
+verse gates
 # - gate: review
 #   id: trigger:review:review~1
 #   mode: ASK
@@ -166,12 +170,12 @@ process id is derived from the trigger and the subject, so it is settled before 
 is raised even though nothing is running yet. (`where: engine` gates have no `process`
 for that reason; a process gate, §5, has one because its process is already running.)
 
-Approve it, using the `id` from `gate list` (the flag can come after the id — the
+Approve it, using the `id` from `verse gates` (the flag can come after the id — the
 CLI handles that). The id is `trigger:<trigger>:<gate>~n` — a trigger can have
 several named gates, so the gate name is part of the id:
 
 ```sh
-verse gate resolve trigger:review:review~1 --approve
+verse gate approve trigger:review:review~1
 ```
 
 Now watch it self-drive. In Terminal A you'll see the stage advance **twice**:
@@ -204,7 +208,7 @@ verse entity get demo:pr:1
 You installed that one-rule charter in §3. Inspect and manage it:
 
 ```sh
-verse trigger list
+verse triggers
 verse trigger show review
 verse trigger remove <name>           # uninstall one (`add` rejects a duplicate name)
 ```
@@ -240,6 +244,7 @@ Now, what each field of a trigger means:
     change.
   - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
     It resolves three ways, all the same match grammar:
+    TODO: if omitted and everything matches, what happens?  perhaps add subject above?
     - *omitted* — the matched entity (`review`, above);
     - an **address that names one entity** — `demo:pr:1` is that one entity, and an
       action's `patch` will *create* it if it doesn't exist, which is how a trigger
@@ -283,6 +288,7 @@ Now, what each field of a trigger means:
     cannot be a predicate. Write the whole segment as `*` for "any", and put the
     operator on `id`.
 
+    TODO it says payload or fields?
     **The payload predicate takes operators too**, and it is the same tony match — it is
     just evaluated against the payload instead of the id:
 
@@ -391,7 +397,7 @@ process id (a `run-…`):
 ```sh
 verse process run "echo summarizing; sleep 2"          # scripted: runs the task as a shell command
 verse process run --wait "echo done"                   # …and block for the final output
-verse process list
+verse processes
 verse process get <id>        # snapshot: status, say, lastOutput, result, pending gates
 verse process say <id> "also mention the dial"        # say to the agent mid-run (re-prompt)
 verse process vector <id> ask --as human:scott        # slide autonomy (auto|ask|park); --as attributes the slide
@@ -449,7 +455,7 @@ until you approve. `run --attach` spawns *and* streams the transcript, and on a 
 **prompts you inline** when the agent blocks:
 
 ```sh
-verse process run --attach --driver llm 'Write a file hello.txt containing "hi".'
+verse process run --attach 'Write a file hello.txt containing "hi".'
 # the agent narrates, then blocks and asks:
 #   ⏸ gate "write" (write_file) — approve? [y/N] y
 # → you answer, the write runs (wrote 2 bytes), and the process completes — one stream.
@@ -459,23 +465,27 @@ That's the autonomy dial at the process level: reads are auto, effects ask. Answ
 allow or anything else to deny (a denied gate comes back to the agent as an error it re-plans
 around). Piped (non-tty), `attach` just streams without prompting.
 
+TODO fold this under the verse up call explanation, ask for root and then the note is
+when absent it's this hidden tmp dir thing
+
 **Where the file went.** The agent reads and writes under its **root** — an isolated temp dir
 by default (printed at `up` start: `agents rooted at …`), *not* your cwd. So `hello.txt` is at
 `<that root>/hello.txt`. To have agents act in a directory you choose, start the server with
 `verse up --root <dir>` (e.g. `--root .`) — then check `ls <dir>/hello.txt`. (Federating a
 tree so an agent reads *through* the verse, wherever it runs, is `verse connect` — §10.)
 
-You can also resolve out-of-band from anywhere — the gate shows up in **`gate list`**
+You can also resolve out-of-band from anywhere — the gate shows up in **`verse gates`**
 alongside trigger gates (and in `process get <id>`), resolvable by its id — the `~` that
 separates the gate from its process needs no quoting and no escaping, in a shell or in a URL:
 
 ```sh
-verse gate list                                       # engine + process gates, unified
-verse gate resolve run-…~d1 --approve                 # or: process resolve run-… run-…~d1 --approve
+verse gates                                       # engine + process gates, unified
+verse gate approve run-…~d1                           # or: process approve run-… run-…~d1
 ```
 
 Because processes are entities, you can watch the whole fleet's lifecycle through the
 verse:
+
 
 ```sh
 verse watch --system process
@@ -507,9 +517,9 @@ verse trigger add -f - <<'TONY'
     spawn: { driver: scripted, task: "sleep 60" }
 TONY
 verse entity put demo:pr:2 '{stage: open}'      # open a change…
-verse gate list                                 # …find its review gate, then:
-verse gate resolve <that-id> --approve          # review runs, the PR reaches `reviewed`, hold fires
-verse flow list
+verse gates                                 # …find its review gate, then:
+verse gate approve <that-id>                    # review runs, the PR reaches `reviewed`, hold fires
+verse flows
 # - demo:pr:1
 # - demo:pr:2                                   ← a live 60s flow to steer
 ```
@@ -536,10 +546,10 @@ verse flow cancel demo:pr:2           # stop its processes (destructive)
 ```sh
 verse flow pause 'demo:pr:*'          # every PR's in-flight work
 verse flow say   'demo:*:*' "hurry"   # everything in the demo system
-verse flow list                       # the distinct subjects with live work
+verse flows                       # the distinct subjects with live work
 ```
 
-`flow list` answers *which subjects are busy*. To see what is happening to **one** — and what
+`verse flows` answers *which subjects are busy*. To see what is happening to **one** — and what
 comes next — ask for its shape:
 
 ```sh
@@ -605,7 +615,7 @@ address.
 
 They fan out to the addressed processes and land at each one's next boundary, so a flow can
 be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting. Because a
-scripted process is a single command, `flow list` sees the `sleep` above and `flow cancel` stops
+scripted process is a single command, `verse flows` sees the `sleep` above and `flow cancel` stops
 it at once (it kills the command), while `pause`/`say` land at its next boundary — which for a
 one-command process is when it ends. They take hold *mid-run* on a multi-step process: the `llm`
 driver, whose every tool call is a boundary.
@@ -619,6 +629,8 @@ backlog of observations is an intervention defeated. Control never rides the cha
 stream — cancel/say/pause reach the process directly and are serviced ahead of
 observation. (See `docs/deployment-and-steering.md` for the invariant and the
 engine's priority servicing.)
+
+TODO kpath
 
 ---
 
@@ -637,12 +649,12 @@ verse up --broker --broker-addr :9090
 ```
 
 Now spawn a process. With a broker policy it **lands on the broker awaiting an executor**
-instead of running itself — `process list` shows its policy and where to dial in (you never
+instead of running itself — `verse processes` shows its policy and where to dial in (you never
 type that URL; verse resolves it for you):
 
 ```sh
 ID=$(verse process run "review the auth change")
-verse process list
+verse processes
 # - dialURL: "http://localhost:9090/broker/<nonce>"
 #   id: run-…
 #   policy: broker
@@ -672,7 +684,7 @@ verse process do gate "$ID" deploy-approval --as human:scott --reason prod --wai
 In another terminal, someone with the authority resolves it — your `--wait` unblocks:
 
 ```sh
-verse process resolve "$ID" deploy-approval-a1b2c3d4 --approve
+verse process approve "$ID" deploy-approval-a1b2c3d4
 ```
 
 Then finish the work (or `do fail "$ID" <reason>` to end it the other way):
@@ -713,7 +725,7 @@ commits an **outcome** when a tally reaches the bar. One machinery, two question
 
 Both are answered the same three ways — `auto` (verse picks by a rule), by **one person**,
 or by the **group** — over the one votable, attributable surface (`verse docket` /
-`verse vote`). (A one-click `ask` still lives in `gate list` / `gate resolve`; a *motion*
+`verse vote`). (A one-click `ask` still lives in `verse gates` / `gate approve`; a *motion*
 is what an answer that accumulates over time needs.)
 
 ### Whether: a vote
@@ -803,6 +815,7 @@ to `deny` (action skipped). The deadline is per-motion and durable (a restart re
 the right side can be a `fact` — `!fact ci:status:green` waits for CI, a tag, a posted
 review.
 
+TODO and/or has landed AFAIK
 (That's the whole formula language: a leaf is a requirement — `!quorum`, `!fact`,
 `!deadline` — and operators compose them (`!until` today; `and`/`or` coming). The tags
 *are* the grammar. In JSON, which has no tags, each one spells as a single-key object —
@@ -895,7 +908,7 @@ A goal is three things: a **`doneWhen`** predicate (the target), an optional **`
 formula language you gate with (§8) — but here it's a *target*, not a gate:
 
 ```sh
-verse goals add ship --subject change:pr:42 \
+verse goal add ship --subject change:pr:42 \
   --done-when '!fact ci:status' --deadline 4h
 ```
 
@@ -905,7 +918,7 @@ naming a target. (`--deadline` is an ordinary flag, not tony, so `4h` is fine un
 there.)
 
 ```sh
-verse goals list
+verse goals
 # - deadline: "4h"
 #   name: ship
 #   status: blocked
@@ -921,7 +934,7 @@ target true — however that happens, a trigger, a source, or a person:
 
 ```sh
 verse entity put ci:status:build '{state: green}'
-verse goals list
+verse goals
 # - deadline: "4h"
 #   name: ship
 #   outcome: done
@@ -963,13 +976,13 @@ And because a goal's owned triggers spawn processes tracked as **flows**, a goal
 with a destination* — steer it with the very same verbs (§6), keyed by the goal:
 
 ```sh
-verse goals pause  ship          # freeze its in-flight work
-verse goals say    ship "hurry"  # inject an instruction
-verse goals cancel ship          # stop it
+verse goal pause  ship          # freeze its in-flight work
+verse goal say    ship "hurry"  # inject an instruction
+verse goal cancel ship          # stop it
 ```
 
 To ship the owned triggers *with* the goal instead of hand-authoring them, hand `add` a full
-record — `verse goals add -f ship.tony` — which carries `triggers: [ … ]` alongside
+record — `verse goal add -f ship.tony` — which carries `triggers: [ … ]` alongside
 `doneWhen`. On a terminal, done or unachievable, the goal reaps its owned triggers, so a
 finished goal leaves no orphaned charter.
 
@@ -1015,9 +1028,9 @@ verse connect . --driver llm \
 In a third terminal (use the scope `connect` printed):
 
 ```sh
-verse process list                     # a validator per file — local-dev feedback!
+verse processes                     # a validator per file — local-dev feedback!
 verse process get <id>                 # its result: the agent's read-and-validated report
-verse entity list --system local --scope <scope>       # your files, as dir-status entities
+verse entities --system local --scope <scope>       # your files, as dir-status entities
 verse entity get local:dir-content-<scope>:README.md   # a file's bytes, served on demand
 ```
 
@@ -1080,36 +1093,47 @@ verse
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--system --kind --since <rev>]     stream store changes (cursored)
-  entity (e)  get <ref> · put <ref> <payload> · list [--system --kind]
 
-  gate    list · resolve <id> --approve|--deny [--say <text>]
+  Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
+
+  entities [--system <s>] [--kind <k>]       the store
+  entity (e)  get <ref> · put <ref> <payload>
+  gates                                      pending decisions across the fleet
+  gate    approve <id> [--say <text>] · deny <id> [--say <text>]
+          approve: y, yes · deny: n, no · --say: -s
+  triggers                                   the installed charter
+  trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
+  processes (ps)                             every process, whatever runs it
+  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors policy; mirrored)
+          get <id> · attach <id> · inbox <id>            operator vantage (any backend):
+          cancel <id> · say <id> <text…>
+          approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
+          do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
+          do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
+  flows                                      the distinct subjects with live work
+  flow    show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
+          <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
+          demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
+  goals                                      status / waitingOn / outcome, per goal
+  goal    add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
+          add --file <f> (full record incl. owned triggers) · remove <name>
+          pause|resume|cancel <name> · say <name> <text…>
+
   docket                                     list open motions (votes + provider selections)
   vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
   providers                                  list the provider registry (provider:<capability>:<id>)
-  trigger add [-f <file>|-] [file] · list · show <name> · remove <name>   (add rejects a duplicate name)
-  process (ps)  run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors policy; mirrored)
-                list · get <id> · attach <id> · inbox <id>       operator vantage (any backend):
-                cancel <id> · say <id> <text…> · resolve <id> <decision> --approve|--deny
-                do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
-                do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
-  flow    list · show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
-          <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
-          demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
-  goals   list · add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
-          add -f <file> (full record incl. owned triggers) · remove <name>
-          pause|resume|cancel <name> · say <name> <text…>            (alias: goal)
 
   connect [path] [--task <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +
           [--interval <dur>]                  content controller + a validator per file
   disconnect                                  drop the --scope overlay (else remove local:* entities)
 
   global:  --addr <host:port>   --scope <name>
-           -o <tony|json|yaml>     output format (default tony)
-           --ifmt <tony|json|yaml> input format for stdin / extensionless files
+           --ofmt, -o <tony|yaml>  output format (default tony; verse renders no json)
+           --ifmt, -i <tony|json|yaml>  input format for stdin / extensionless files
            --color auto|always|never   colorize (auto = a terminal only)
 ```
 
-Flags may appear before or after positionals (`gate resolve <id> --approve` works).
+Flags may appear before or after positionals (`gate approve <id> --say ok` works).
 
 ### Configuration
 
@@ -1145,9 +1169,9 @@ verse **reads** tony, JSON and YAML, and **writes** tony and YAML. The asymmetry
 deliberate, and it is worth thirty seconds up front:
 
 ```sh
-verse trigger list             # tony (the default)
-verse trigger list -o yaml     # yaml
-verse trigger list -o json     # refused — see below
+verse triggers             # tony (the default)
+verse triggers -o yaml     # yaml
+verse triggers -o json     # refused — see below
 curl -s localhost:9797/status                              # tony
 curl -s -H 'Accept: application/yaml' localhost:9797/status # yaml
 ```
@@ -1176,7 +1200,7 @@ is only unambiguous where the keyspace is closed, so it is *not* applied inside 
 predicate, where a key may itself be named `or`. Plain equality predicates work in JSON;
 an operator over a payload needs tony (§4).
 
-Output is colorized on a terminal and plain when piped, so `verse trigger list | o v` keeps
+Output is colorized on a terminal and plain when piped, so `verse triggers | o v` keeps
 working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
 off.
 
@@ -1266,8 +1290,8 @@ the engine keeps running.
 - **controlPolicy**: how a process is *run* is a seam. The default is the in-process
   supervisor, but `up --policy <url>` hosts processes on a remote verse, and `up --broker`
   hosts them behind a broker a firewalled worker (or a human) dials *in* to — verse drives
-  all three through the identical handle, and `process list`/`get`/`attach`/`cancel`/`say`/
-  `resolve` work across all of them. A human or external worker executes via `verse process
+  all three through the identical handle, and `verse processes` / `process get`/`attach`/`cancel`/
+  `say`/`approve`|`deny` work across all of them. A human or external worker executes via `verse process
   do` (§7). Left to do: inbox long-poll. See `docs/control-policy.md`.
 - **Governed decisions** — one machinery answers two questions. *Whether* an action fires
   is a gate whose **formula** the verse resolves itself: a quorum **vote** (with a

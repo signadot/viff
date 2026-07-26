@@ -77,9 +77,9 @@ for two independent reasons:
 `(system[,kind])` subtree it matches — `LogdStore.WatchSubtree` / `Engine.ObserveScoped`
 — never the root. A subtree watch collides with a mount only if the mount is *in that
 subtree*, which is rare and, when it happens, is survived by re-establishing the watch
-and resyncing (below), not by dying. `verse watch --all` may take a transient root watch
-while a human is actively watching, and it retries on a force-end — but nothing holds one
-at rest.
+and resyncing (below), not by dying. An unfiltered `verse watch` (no `--system`/`--kind`)
+may take a transient root watch while a human is actively watching, and it retries on a
+force-end — but nothing holds one at rest.
 
 ## Invariants for the Handler itself
 

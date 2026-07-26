@@ -35,7 +35,12 @@ type docd struct {
 // `o sys up`, so it already knows the addresses (no stdout scraping), and waits for
 // docd to accept connections before returning.
 func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
-	if cfg.DocdAddr != "" {
+	if cfg.DocdAddr != "" { // contradictory combinations are refused by upConfig.validate
+		if cfg.DocdMountAddr == "" {
+			// Not fatal — the store only needs the client face — but `verse connect` reads
+			// the mount face off /status, so federation would fail later with no hint why.
+			fmt.Fprintf(cc.Err, "verse up: no --docd-mount-addr; `verse connect` (which mounts a content controller) will not work against this verse\n")
+		}
 		return docd{clientAddr: cfg.DocdAddr, mountAddr: cfg.DocdMountAddr, stop: func() {}}, nil
 	}
 

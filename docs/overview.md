@@ -59,7 +59,7 @@ they separate into services without changing callers.
                                                              ▼
    ┌─────────────────────────────  versed.Server  ─────────────────────────────┐
    │  observation plane          │           control plane                      │
-   │  watch · get · list         │  gate resolve · flow steer · process control │
+   │  watch · get · list         │  gate approve · flow steer · process control │
    └───────┬───────────────────────────────┬───────────────────────┬───────────┘
            │                                │                        │
       entity.Store                    trigger.Engine            controlPolicy
@@ -110,7 +110,7 @@ update. This is what lets the engine, a restart, or a second reader converge on 
 state without coordination.
 
 **Observation and control are separate planes, and control has priority.** Reads (watch,
-get, list) can lag; steering (gate resolve, `flow pause/cancel/say`) is out-of-band and
+get, list) can lag; steering (`gate approve|deny`, `flow pause/cancel/say`) is out-of-band and
 serviced *ahead* of observation, never riding the change stream. An intervention that has to
 queue behind a backlog of observations is an intervention defeated — so a runaway flow can
 always be stopped in time. See `deployment-and-steering.md`.
@@ -142,7 +142,7 @@ drives every process through that handle and never touches the runtime directly 
   `report`); the broker glues that leg to verse's handle. It is the `ProcHandle` turned
   inside-out: the same process behind two handles, one where it runs, one where it's observed.
 
-Because the seam is uniform, `verse process list/get/attach/cancel/say/resolve` work whether a
+Because the seam is uniform, `verse processes` and `verse process get/attach/cancel/say/approve` work whether a
 process is local, remote, or brokered, and a **human executes** a process via `verse process
 do` exactly as an agent would. See `control-policy.md`.
 

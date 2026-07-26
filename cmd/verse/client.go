@@ -61,13 +61,14 @@ func httpGet(path string, q url.Values) (*http.Response, error) {
 	return http.Get(urlFor(path, q))
 }
 
-// httpPost sends a document in the input format and asks for the output format back.
+// httpPost sends a document in the wire format (see wireFmt — the input format when verse
+// can render it, else tony) and asks for the output format back.
 //
 // Asking matters even though the client re-renders anyway: it is what lets the server send
 // tony once it can, so the round trip stops being lossy — a tagged charter survives as tags
 // rather than being flattened to the JSON key form on the way out and back.
 func httpPost(path string, body any) (*http.Response, error) {
-	f := inFmt()
+	f := wireFmt()
 	b, err := codec.Marshal(body, f)
 	if err != nil {
 		return nil, err
@@ -85,7 +86,7 @@ func httpPost(path string, body any) (*http.Response, error) {
 // — a tagged charter goes to the server AS tags, rather than being flattened through JSON
 // and rebuilt from the key form at the far end.
 func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
-	f := inFmt()
+	f := wireFmt()
 	b, err := codec.NodeBytes(node, f)
 	if err != nil {
 		return nil, err
@@ -171,7 +172,7 @@ func respFmt(resp *http.Response) codec.Format {
 }
 
 func httpPut(path string, body any) (*http.Response, error) {
-	f := inFmt()
+	f := wireFmt()
 	b, err := codec.Marshal(body, f)
 	if err != nil {
 		return nil, err
@@ -212,7 +213,7 @@ func decodeBody(resp *http.Response, v any) {
 // httpPostURL posts to an ABSOLUTE url — used for a process's broker face (its dialURL),
 // which lives on a sibling port, not the operator API at g.Addr.
 func httpPostURL(u string, body any) (*http.Response, error) {
-	f := inFmt()
+	f := wireFmt()
 	b, err := codec.Marshal(body, f)
 	if err != nil {
 		return nil, err
@@ -301,11 +302,13 @@ type watchConfig struct {
 	*cli.Command
 	System string `cli:"name=system desc='filter by entity system'"`
 	Kind   string `cli:"name=kind desc='filter by entity kind'"`
-	Since  string `cli:"name=since desc='start from store revision (cursor)'"`
+	// default= in the tag rather than a struct literal, so `verse watch --help` SAYS where
+	// the stream starts. A literal sets the same value and tells the reader nothing.
+	Since string `cli:"name=since default=0 desc='start from store revision (cursor); 0 = from the beginning'"`
 }
 
 func watchCmd() *cli.Command {
-	cfg := &watchConfig{Since: "0"}
+	cfg := &watchConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
@@ -360,67 +363,75 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 
 // ── gate ─────────────────────────────────────────────────────────────────────
 
+func gatesCmd() *cli.Command {
+	return collection("gates", "/gates",
+		"gates — list pending decisions across the fleet (answer one with `verse gate`)", "gate")
+}
+
 func gateCmd() *cli.Command {
 	return cli.NewCommand("gate").
-		WithSynopsis("gate — human-in-the-loop decisions").
-		WithSubs(gateListCmd(), gateResolveCmd())
+		WithSynopsis("gate — answer one human-in-the-loop decision (list them with `verse gates`)").
+		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false))
 }
 
-func gateListCmd() *cli.Command {
-	return leaf("list", "list pending decisions across the fleet",
-		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/gates", nil)
-			if err != nil {
-				return fmt.Errorf("gate list: %w", err)
-			}
-			return printBody(cc, resp)
-		})
-}
-
-type gateResolveConfig struct {
+// The answer to a gate is a VERB, so it is a command — `gate approve <id>` — rather than
+// `gate resolve <id> --approve|--deny`, a flag pair that could be left empty or set both
+// ways and so needed a runtime check to police two states the grammar should never have
+// allowed. Every other verb in this CLI is already a subcommand (flow pause/resume/cancel,
+// goals pause/resume/cancel, process cancel/say); the gate's answer was the one that had
+// been demoted into a flag, mirroring api.Resolve's `Approve bool` rather than the operator.
+//
+// `vote <motion> <choice>` deliberately stays a positional: a select motion's choice is an
+// arbitrary option id (a provider name), an OPEN set, which is data. A gate's answer is a
+// closed binary, which is grammar.
+type gateAnswerConfig struct {
 	*cli.Command
-	Approve bool   `cli:"name=approve desc='approve the decision'"`
-	Deny    bool   `cli:"name=deny desc='deny the decision'"`
-	Say     string `cli:"name=say desc='words to say to the agent on resolution'"`
+	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
 }
 
-func gateResolveCmd() *cli.Command {
-	cfg := &gateResolveConfig{}
+func gateAnswerCmd(approve bool) *cli.Command {
+	cfg := &gateAnswerConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "resolve").
-		WithSynopsis("resolve a decision: resolve <id> --approve|--deny [--say <text>]").
+	name, syn := "approve", "approve a decision (also: y, yes): approve <id> [--say <text>]"
+	aliases, done := []string{"y", "yes"}, "approved"
+	if !approve {
+		name, syn = "deny", "deny a decision (also: n, no): deny <id> [--say <text>]"
+		aliases, done = []string{"n", "no"}, "denied"
+	}
+	// The aliases are named in the SYNOPSIS because cli's usage never prints them — it
+	// renders a child as (first word of synopsis, synopsis) and never reads Aliases, which
+	// is why `ps`, `e` and `goal` are invisible in the help today.
+	return cli.NewCommandAt(&cfg.Command, name).WithAliases(aliases...).
+		WithSynopsis(syn).
 		WithOpts(opts...).
-		WithRun(cfg.run)
+		WithRun(func(cc *cli.Context, args []string) error { return cfg.run(cc, args, name, done, approve) })
 }
 
-func (cfg *gateResolveConfig) run(cc *cli.Context, args []string) error {
+func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done string, approve bool) error {
 	args, err := cfg.Parse(cc, args) // leaf: flags parse even after the <id> positional
 	if err != nil {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: gate resolve wants a decision id", cli.ErrUsage)
+		return fmt.Errorf("%w: gate %s wants a decision id", cli.ErrUsage, verb)
 	}
-	if cfg.Approve == cfg.Deny {
-		return fmt.Errorf("%w: pass exactly one of --approve / --deny", cli.ErrUsage)
-	}
-	body := api.Resolve{ID: args[0], Approve: cfg.Approve}
+	body := api.Resolve{ID: args[0], Approve: approve}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}
 	resp, err := httpPost("/gate/resolve", body)
 	if err != nil {
-		return fmt.Errorf("gate resolve: %w", err)
+		return fmt.Errorf("gate %s: %w", verb, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("gate resolve: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("gate %s: %s: %s", verb, resp.Status, strings.TrimSpace(string(msg)))
 	}
-	fmt.Fprintln(cc.Out, "resolved", args[0])
+	fmt.Fprintln(cc.Out, done, args[0])
 	return nil
 }
 
@@ -428,8 +439,8 @@ func (cfg *gateResolveConfig) run(cc *cli.Context, args []string) error {
 
 func entityCmd() *cli.Command {
 	return cli.NewCommand("entity").WithAliases("e").
-		WithSynopsis("entity — the store").
-		WithSubs(entityGetCmd(), entityPutCmd(), entityListCmd())
+		WithSynopsis("entity — one entity in the store: get|put <ref> (list them with `verse entities`)").
+		WithSubs(entityGetCmd(), entityPutCmd())
 }
 
 type entityGetConfig struct{ *cli.Command }
@@ -491,26 +502,32 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	return printBody(cc, resp)
 }
 
-type entityListConfig struct {
+// entities is the one collection with filters of its own, so it does not go through
+// collection() — the shape is the same, the query is not.
+type entitiesConfig struct {
 	*cli.Command
-	System string `cli:"name=system desc='filter by system'"`
-	Kind   string `cli:"name=kind desc='filter by kind'"`
+	System string `cli:"name=system desc='filter by entity system'"`
+	Kind   string `cli:"name=kind desc='filter by entity kind'"`
 }
 
-func entityListCmd() *cli.Command {
-	cfg := &entityListConfig{}
+func entitiesCmd() *cli.Command {
+	cfg := &entitiesConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "list").
-		WithSynopsis("list entities").
+	return cli.NewCommandAt(&cfg.Command, "entities").
+		WithSynopsis("entities — list the store [--system <s>] [--kind <k>] (get or put one with `verse entity`)").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
 
-func (cfg *entityListConfig) run(cc *cli.Context, args []string) error {
-	if _, err := cfg.Parse(cc, args); err != nil {
+func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
+	if err := noArgs("entities", "entity", args); err != nil {
 		return err
 	}
 	q := url.Values{}
@@ -522,7 +539,7 @@ func (cfg *entityListConfig) run(cc *cli.Context, args []string) error {
 	}
 	resp, err := httpGet("/entities", q)
 	if err != nil {
-		return fmt.Errorf("entity list: %w", err)
+		return fmt.Errorf("entities: %w", err)
 	}
 	return printBody(cc, resp)
 }

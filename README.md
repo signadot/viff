@@ -20,12 +20,13 @@ entity change ──▶ trigger matches ──▶ gate resolves ──▶ action
 ```sh
 go build -o verse ./cmd/verse     # or: make bin
 export VERSE_ADDR=localhost:9797
-./verse up --demo                 # engine + process runtime + store, in one process
+./verse up                        # engine + process runtime + store, in one process
 ```
 
 `up` is **docd-backed by default** (durable; it brings up logd+docd as children); add
-`--store memory` for a zero-dependency, no-persistence run. In another terminal, drive the
-seeded demo (`verse entity put …`, `verse gate list`, `verse gate resolve …`). The
+`--store memory` for a zero-dependency, no-persistence run. In another terminal, install a
+charter and drive it (`verse trigger add …`, `verse entity put …`, `verse gates`,
+`verse gate approve …`). The
 **[tutorial](docs/tutorial.md)** walks it end to end — charters, gates, processes, steering,
 human-executed (dial-in) processes, and federating your local working tree.
 

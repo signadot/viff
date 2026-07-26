@@ -105,6 +105,13 @@ v entity get demo:pr:1 -o json >/dev/null 2>&1 && die "-o json was accepted"
 has "$(v entity get demo:pr:1 -o json 2>&1 || true)" 'does not render json' \
 	|| die "-o json failed without explaining itself"
 ok "-o tony | yaml render; a bad value and json are rejected"
+# --ifmt says how to READ what the operator supplied; it must not decide how the REQUEST is
+# rendered, because verse renders no json. A WRITE is the case that proves the two are
+# separate: --ifmt json used to fail every command that sends a body — i.e. every write —
+# complaining about rendering json to someone who had only asked to type it.
+v --ifmt json entity put demo:pr:7 '{"stage":"open"}' >/dev/null || die "--ifmt json write failed"
+haskv "$(v entity get demo:pr:7)" stage open || die "the --ifmt json write did not land"
+ok "--ifmt json writes (the input dialect is not the wire rendering)"
 # curl straight at the API: no Accept header at all gets the configured default...
 haskv "$(curl -s "http://$ADDR/entity?ref=demo:pr:1")" stage open || die "the wire did not answer"
 # ...demanding JSON is 406, not tony wearing a JSON label...
@@ -177,8 +184,10 @@ cat >"$tmp/charter.tony" <<'TONY'
     patch:
       stage: reviewed
 TONY
-v trigger add -f "$tmp/charter.tony" >/dev/null || die "tony charter add failed"
-has "$(v trigger list)" 'smoke-advance-tony' || die "the tony charter did not install"
+# --file here and `-f` on the stdin case above: both spellings are exercised on purpose,
+# since smoke is the only thing that would catch the alias disappearing.
+v trigger add --file "$tmp/charter.tony" >/dev/null || die "tony charter add failed"
+has "$(v triggers)" 'smoke-advance-tony' || die "the tony charter did not install"
 ok "installed a .tony charter (block list, suffix-dispatched)"
 
 v entity put demo:pr:3 '{"stage":"queued"}' >/dev/null || die "entity put failed"
@@ -225,12 +234,54 @@ done
 haskv "$(v entity get demo:task:feature-9)" stage open || die "the glob subject escalated a task it excludes"
 ok "!glob subject selected hotfix-9 and left feature-9 alone"
 
+# ── the human loop: an ask gate HOLDS, and answering it releases the action ───
+# The charters above prove the engine reacts on its own. This is the other half — the dial
+# turned down to `ask` — and it is the one surface with no unit-level end-to-end: the gate
+# has to reach `verse gates`, and the answer has to travel back and unblock the action.
+#
+# Answering is a VERB (`gate approve <id>`), not a flag on a `resolve` command, so the two
+# states that are not a decision cannot be typed. The short forms are exercised here rather
+# than the long ones because they are what an operator actually types at a held release.
+step "gate: an ask gate holds; answering it releases the action"
+v trigger add --file - >/dev/null <<'JSON' || die "gated charter add failed"
+[ { "name": "smoke-gated",
+    "condition": { "when": { "system": "demo", "kind": "release", "fields": { "stage": "open" } } },
+    "gates":     [ { "name": "ship", "mode": "ask" } ],
+    "action":    { "patch": { "stage": "shipped" } } } ]
+JSON
+v entity put demo:release:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
+# A gate id carries colons (trigger:smoke-gated:ship~1), so it is cut by prefix, not by field.
+GID=
+for _ in $(seq 1 100); do
+	GID=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	[ -n "$GID" ] && break
+	sleep 0.2
+done
+[ -n "$GID" ] || die "the ask gate never appeared in verse gates"
+ok "the action is held; verse gates shows $GID"
+# Still open: an ask gate that let the action through would be indistinguishable from auto.
+haskv "$(v entity get demo:release:1)" stage open || die "the ask gate did not hold the action"
+ok "demo:release:1 still open while the gate is pending"
+v gate y "$GID" -s "ship it" >/dev/null || die "gate approve (y) failed"
+shipped=
+for _ in $(seq 1 100); do
+	if haskv "$(v entity get demo:release:1 2>/dev/null || true)" stage shipped; then
+		shipped=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$shipped" ] || die "the approved gate did not release the action"
+ok "gate y + -s released it: demo:release:1 open → shipped"
+has "$(v gates)" "$GID" && die "an answered gate is still pending"
+ok "the answered gate left the docket"
+
 # ── process runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
 # live process to exercise the control surfaces against (and observe the slide on).
 step "process run + control surfaces"
 v process run --driver scripted "sleep 30" >/dev/null || die "process run failed"
-ID=$(v process list -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
+ID=$(v processes -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no process id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v process get "$ID")" "$ID" || die "process get missing the id"
@@ -265,7 +316,7 @@ SCOPE="smoke$$"
 CONN=$!
 fed=
 for _ in $(seq 1 150); do
-	out=$(v --scope "$SCOPE" entity list --system local 2>/dev/null || true)
+	out=$(v --scope "$SCOPE" entities --system local 2>/dev/null || true)
 	if has "$out" 'a.txt' && has "$out" 'b.txt'; then
 		fed=1
 		break

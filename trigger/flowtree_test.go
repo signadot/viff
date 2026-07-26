@@ -161,7 +161,7 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	}
 }
 
-// A process with no trigger behind it (`verse process run --subject`) is still part of the
+// A process with no trigger behind it (a bare `verse process run`) is still part of the
 // subject's flow. It has no charter position, so it is a root of its own rather than being
 // dropped — a tree that silently omits work is worse than one with a bare node in it.
 func TestFlowTreeIncludesChainlessProcesses(t *testing.T) {

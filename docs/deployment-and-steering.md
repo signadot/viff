@@ -107,16 +107,17 @@ verse
 ├── up|down [engine|proc|all]     start/stop daemon(s); `up all` = monolith in one process
 ├── status                        what's running + current store rev
 │
-├── process (ps)                  ── process runtime (proc) ──
-│   run <spec> [--wait] · get · list · attach · say · pause|resume · cancel
-├── trigger                       ── the charter (engine rules) ──
-│   add · list · show · remove
-├── flow                          ── engine steering, per subject (control plane) ──
-│   list · pause|resume [subject] · cancel <subject> · say <subject> <text>
-├── gate                          ── human-in-the-loop decisions ──
-│   list · resolve <id> --approve|--deny [--say <text>]
-├── entity (e)                    ── the store ──
-│   get · list · put
+│   (the plural lists a collection; the singular acts on one member of it)
+├── processes (ps) / process      ── process runtime (proc) ──
+│   run <spec> [--wait] · get · attach · say · pause|resume · cancel
+├── triggers / trigger            ── the charter (engine rules) ──
+│   add · show · remove
+├── flows / flow                  ── engine steering, per subject (control plane) ──
+│   pause|resume [subject] · cancel <subject> · say <subject> <text>
+├── gates / gate                  ── human-in-the-loop decisions ──
+│   approve|y <id> [--say <text>] · deny|n <id> [--say <text>]
+├── entities / entity (e)         ── the store ──
+│   get · put
 ├── watch [--system --kind --since <rev>]   stream store changes, cursored
 └── connect [path] / disconnect   ── local-dev federation (see below) ──
 
@@ -124,7 +125,7 @@ global:  --scope <name>  (baseline default) · -o <tony-format> · --config
 ```
 
 **The tree encodes the plane split.** *Observe* (`watch`, `process attach`, `get`,
-`list`, `status`) hits the read plane; *steer* (`flow`, `gate resolve`, `process
+`list`, `status`) hits the read plane; *steer* (`flow`, `gate approve|deny`, `process
 cancel|say`) hits the out-of-band control plane — the operator can't accidentally
 "steer via a write." Saying something to a running agent (`process say` / `flow say`,
 a re-prompt) is one such steering gesture: out-of-band, folded in at the process's next
@@ -178,7 +179,7 @@ to a running docd); versed's HTTP surface with the control/observation split; an
 per-flow control ops — **pause/resume**, **cancel a flow**, **say to a flow** (inject an
 instruction) — each
 carrying a subject ref, plus `verse status`. Gate answers ride the out-of-band resolver
-path (`gate resolve`).
+path (`gate approve` / `gate deny` → `POST /gate/resolve`).
 
 **Next, for the dogfood:**
 - **Rebind autonomy** at runtime (slide a gate) as a first-class control op.

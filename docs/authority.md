@@ -186,7 +186,7 @@ are the decision point, and `GateQuestion` is the decision request travelling be
 their profiles map directly:
 
 - an **approval profile** (Access Request and Approval) for decisions that require a human —
-  our `ask` mode, `gate resolve`, and the docket;
+  our `ask` mode, `gate approve`/`gate deny`, and the docket;
 - a **tool-authorization profile** for Model Context Protocol servers, whose question is
   literally *may this agent, acting for this user, call this tool with these arguments* — which
   is our `Effect` (a verb applied to a typed resource), better typed than a string tool name.

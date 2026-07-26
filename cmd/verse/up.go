@@ -41,6 +41,49 @@ type upConfig struct {
 	Broker     bool   `cli:"name=broker desc='run processes on an in-process dial-in broker (requires --broker-addr; publishes each process dialURL from it)'"`
 }
 
+// validate rejects contradictory flag combinations BEFORE anything is started.
+//
+// These checks used to sit further down run, past the point where docd had been brought up
+// and a store opened — so `verse up --policy … --broker` spent forty seconds compiling and
+// launching daemons, then refused the command it could have refused immediately. A flag
+// combination that cannot work is knowable from the flags alone; nothing should have
+// happened yet when we say so.
+func (cfg *upConfig) validate() error {
+	switch cfg.Store {
+	case "memory", "mem":
+		// The memory store spawns and connects to nothing, so every docd knob is inert.
+		// Silently ignoring them reads as "verse used my running docd" when it did not.
+		if cfg.DocdAddr != "" || cfg.DocdMountAddr != "" || cfg.Data != "" {
+			return fmt.Errorf("%w: verse up: --store memory runs no docd, so --docd-addr/--docd-mount-addr/--data have nothing to act on",
+				cli.ErrUsage)
+		}
+	case "":
+	default:
+		// Name every accepted spelling: "mem" works and the old message denied it, which is
+		// how a person who typed the abbreviation once learns it is unsupported.
+		return fmt.Errorf("%w: unknown --store %q: pass 'memory' (or 'mem'), or omit it for the default docd store",
+			cli.ErrUsage, cfg.Store)
+	}
+	// Refuse the docd knobs that only LOOK like they were honored. --data names a dir to
+	// bring daemons up in, so with --docd-addr (which spawns nothing) it is dead; and
+	// --docd-mount-addr names a face of the docd being connected to, so without --docd-addr
+	// there is no docd it can be about. Both used to be dropped in silence, which reads as
+	// "verse ignored where I told it to put my data".
+	if cfg.DocdAddr != "" && cfg.Data != "" {
+		return fmt.Errorf("%w: verse up: --data is meaningless with --docd-addr (nothing is spawned to use it)", cli.ErrUsage)
+	}
+	if cfg.DocdAddr == "" && cfg.DocdMountAddr != "" {
+		return fmt.Errorf("%w: verse up: --docd-mount-addr needs --docd-addr (it is the mount face of the docd being connected to)", cli.ErrUsage)
+	}
+	if cfg.Policy != "" && cfg.Broker {
+		return fmt.Errorf("%w: verse up: --policy and --broker are mutually exclusive (one run policy)", cli.ErrUsage)
+	}
+	if cfg.Broker && cfg.BrokerAddr == "" {
+		return fmt.Errorf("%w: verse up: --broker requires --broker-addr (the worker face to dial in on)", cli.ErrUsage)
+	}
+	return nil
+}
+
 // upCmd starts the monolith: store + engine + process runtime + the versed HTTP
 // surface, in one process.
 func upCmd() *cli.Command {
@@ -57,6 +100,9 @@ func upCmd() *cli.Command {
 
 func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if _, err := cfg.Parse(cc, args); err != nil {
+		return err
+	}
+	if err := cfg.validate(); err != nil {
 		return err
 	}
 
@@ -114,7 +160,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 
 	var srv *versed.Server
 	storeKind := "docd"
-	switch cfg.Store {
+	switch cfg.Store { // validate() has already refused anything but "", memory and mem
 	case "memory", "mem":
 		srv = versed.New(build) // in-memory: no persistence, no daemons
 		storeKind = "memory"
@@ -136,21 +182,13 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		// the mount face and run the file controller against it.
 		srv.DocdClient, srv.DocdMount = d.clientAddr, d.mountAddr
 		storeKind = fmt.Sprintf("docd[client=%s mount=%s]", d.clientAddr, d.mountAddr)
-	default:
-		return fmt.Errorf("unknown --store %q: only 'memory', or omit for docd", cfg.Store)
 	}
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
-	if cfg.Policy != "" && cfg.Broker {
-		return fmt.Errorf("verse up: --policy and --broker are mutually exclusive (one run policy)")
-	}
-	if cfg.Policy != "" { // run processes on a remote controlPolicy instead of in-process
+	if cfg.Policy != "" {         // run processes on a remote controlPolicy instead of in-process
 		srv.SetPolicy(controlpolicy.HTTP(cfg.Policy))
 	}
 	if cfg.Broker { // run processes on an in-process dial-in broker, hosted on the broker face
-		if cfg.BrokerAddr == "" {
-			return fmt.Errorf("verse up: --broker requires --broker-addr (the worker face to dial in on)")
-		}
 		face := brokerFace(cfg.BrokerAddr)
 		srv.UseBroker(face)
 		fmt.Fprintf(cc.Out, "verse up: dial-in broker policy; workers dial %s\n", face)

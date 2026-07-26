@@ -12,10 +12,15 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
+func triggersCmd() *cli.Command {
+	return collection("triggers", "/triggers",
+		"triggers — list the installed charter (add or remove one with `verse trigger`)", "trigger")
+}
+
 func triggerCmd() *cli.Command {
 	return cli.NewCommand("trigger").
-		WithSynopsis("trigger — the charter (engine rules)").
-		WithSubs(triggerListCmd(), triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd())
+		WithSynopsis("trigger — one charter rule: add|show|remove (list them with `verse triggers`)").
+		WithSubs(triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd())
 }
 
 type triggerShowConfig struct{ *cli.Command }
@@ -70,20 +75,12 @@ func (cfg *triggerRemoveConfig) run(cc *cli.Context, args []string) error {
 	return nil
 }
 
-func triggerListCmd() *cli.Command {
-	return leaf("list", "list installed triggers",
-		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/triggers", nil)
-			if err != nil {
-				return fmt.Errorf("trigger list: %w", err)
-			}
-			return printBody(cc, resp)
-		})
-}
-
 type triggerAddConfig struct {
 	*cli.Command
-	File string `cli:"name=f desc='read charter from FILE (- for stdin); also accepts a positional [file]'"`
+	// --file everywhere a command reads a document (goals add, process vector), -f kept as
+	// the alias: this was `-f` here, `-f` on goals and `--file` on vector, so the same idea
+	// had three spellings and knowing one told you nothing about the next.
+	File string `cli:"name=file aliases=f desc='read the charter from FILE (- = stdin); also accepts a positional [file]'"`
 }
 
 func triggerAddCmd() *cli.Command {
@@ -93,7 +90,7 @@ func triggerAddCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add trigger(s): add -f <file> (- = stdin) | [file] | stdin; one trigger, a list, or `---`-separated documents. Format follows the file suffix (.tony/.json/.yaml)").
+		WithSynopsis("add trigger(s): add --file <f> (- = stdin) | [file] | stdin; one trigger, a list, or `---`-separated documents. Format follows the file suffix (.tony/.json/.yaml)").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }

@@ -242,7 +242,7 @@ Isolated stores only (`entity.NewMemStore()` / spare-port docd). **Never** the d
   reapOnDone are concurrency-sensitive).
 - `make smoke` (isolated in-memory server on a free port) — no core regression.
 - End-to-end on an isolated server (`--store memory`, spare port): install the collapsed charter,
-  `verse entity put demo:pr:1 stage=open`, `verse gate resolve …`, `verse watch demo:pr:1` → observe
+  `verse entity put demo:pr:1 stage=open`, `verse gate approve …`, `verse watch demo:pr:1` → observe
   `reviewing` then `reviewed` driven by the single `review` trigger. Add a nested `onDone` (merge)
   and confirm the chain advances through `merged`.
 

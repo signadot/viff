@@ -34,13 +34,15 @@ import (
 // store. It is its own process; run it in a second terminal.
 type connectConfig struct {
 	*cli.Command
-	Interval string `cli:"name=interval desc='tree poll interval'"`
-	Driver   string `cli:"name=driver desc='validator driver (default: the runtime default)'"`
-	Task     string `cli:"name=task desc='per-file validator task (default: validate $subject)'"`
+	Interval string `cli:"name=interval default=2s desc='tree poll interval'"`
+	Driver   string `cli:"name=driver desc='validator driver: scripted | llm (default: the runtime default)'"`
+	// What the default task actually is, not what it once was: it reads the file at $path
+	// and reports, because "validate $subject" hands an agent a ref it cannot read.
+	Task string `cli:"name=task desc='per-file validator task (default: read the file at $path and report on it)'"`
 }
 
 func connectCmd() *cli.Command {
-	cfg := &connectConfig{Interval: "2s"}
+	cfg := &connectConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
@@ -61,8 +63,12 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 		root = args[0]
 	}
 	root, _ = filepath.Abs(root)
-	if _, err := time.ParseDuration(cfg.Interval); err != nil {
-		return fmt.Errorf("connect: bad --interval: %w", err)
+	// Parse the interval ONCE and carry the duration. It used to be validated here and
+	// re-parsed in pollLoop discarding the error, so the two could only ever agree by
+	// coincidence — and a value that slipped past this check would have ticked at 0.
+	interval, err := time.ParseDuration(cfg.Interval)
+	if err != nil {
+		return fmt.Errorf("%w: connect: bad --interval %q: %v", cli.ErrUsage, cfg.Interval, err)
 	}
 
 	// One nonce scope per session (unless the user named one). Every client request
@@ -136,7 +142,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 		defer cfg.dropScope(cc, scope)
 	}
 
-	cfg.pollLoop(ctx, cc, store, root, statusKind)
+	cfg.pollLoop(ctx, cc, store, root, statusKind, interval)
 	fmt.Fprintln(cc.Out, "disconnected.")
 	return nil
 }
@@ -184,7 +190,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 // pollLoop reflects the tree into the scope until ctx is cancelled: on each tick it
 // writes metadata for new/changed files and deletes vanished ones. Change detection
 // is by size:mtime signature (the hash is carried in the written metadata).
-func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *entity.LogdStore, root, statusKind string) {
+func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *entity.LogdStore, root, statusKind string, interval time.Duration) {
 	prev := map[string]string{} // relpath → size:mtime signature
 	tick := func() {
 		cur := source.WalkStatus(root)
@@ -213,7 +219,6 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 		}
 	}
 
-	interval, _ := time.ParseDuration(cfg.Interval)
 	tick() // reflect the initial tree at once
 	t := time.NewTicker(interval)
 	defer t.Stop()
