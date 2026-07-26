@@ -238,6 +238,79 @@ observable and worth preserving: a `Deny` gate means the tool exists, the agent 
 and is refused — a refusal it can see, log, and route around. Outside the floor there was
 nothing to reach for. Denials belong in the ledger; absences belong in the definition.
 
+## Prior art: two systems that already define a sandbox
+
+Two existing designs cover parts of this ground, and both are worth borrowing from — one for
+the environment record, one for the surface table.
+
+### Agent Sandbox (Kubernetes) — the record split is one finer than ours
+
+Agent Sandbox is a Kubernetes project (`kubernetes-sigs/agent-sandbox`, generally available as of
+2026) for running agent workloads in isolation. It defines four resource types, and the first
+three are the shape this note has been converging on:
+
+- **`SandboxTemplate`** — a reusable, named definition: a pod template (container image,
+  environment variables, mounted volumes) plus a network policy. This is the *sandbox
+  definition* above, near enough exactly.
+- **`SandboxClaim`** — a request for an environment made *from* a template
+  (`sandboxTemplateRef`), which the platform satisfies with an instance.
+- **`Sandbox`** — the running instance: one stateful pod with a stable hostname, persistent
+  storage that survives restarts, and pause / resume / scheduled-deletion lifecycle.
+- **`SandboxWarmPool`** — pre-provisioned replicas of a template, so a claim is satisfied
+  immediately rather than by cold-starting a pod.
+
+The **claim** is the record this note is missing. We have a definition (the environment) and an
+instance (the exposure with its scope), and no word for *a spawn asking for one*. Adding it makes
+`launch.Spec.Environment` resolvable in the obvious way — a spawn does not merely *reference* an
+environment, it **claims** an instance of one — and it dissolves the open question below about
+whether `expose` creates environments or joins them: `expose` registers a definition, a spawn
+claims an instance, and the two readings stop competing for the same record.
+
+**A consequence worth taking seriously: a warm pool means the definition must be instantiable
+before anyone claims it.** So an environment record has to stay free of request-specific data.
+That cuts against the tempting move of folding "what this run may do" into the environment — a
+derived grant ([authority.md](authority.md)) belongs to the *claim*, not the definition, or
+environments stop being shareable and pre-warmable.
+
+**Their floor is real but non-semantic, which is why ours is not redundant.** Agent Sandbox
+enforces isolation with gVisor (a user-space kernel interposed between the container and the host
+kernel), optionally Kata Containers (lightweight virtual machines), default-deny network policy,
+and Kubernetes' own role-based access control and quotas. That is a floor enforced by
+construction, exactly as argued above — but it can only say "no network"; it can never say "may
+exec `go test` but not `rm -rf /`". A `Grant` of predicates over `Effect` (verb + typed resource)
+*can* say that. The two compose: an infrastructural floor underneath, a semantic grant above.
+This is the answer to "why not just use a container."
+
+### Model Context Protocol roots — the surface table, already specified
+
+The Model Context Protocol has **roots**: a list of URIs the client hands the server to
+declare where it may operate, with a `roots/list_changed` notification when the list changes
+without restarting anything. That is the named-surface table of "A process sees more than one
+surface", plus the working-surface control, already written down by someone else.
+
+Two differences, both in our favor and worth preserving:
+
+- **Roots are advisory; surfaces are load-bearing.** A root is a boundary a server is trusted to
+  honor. A surface here is the *resolver* — it sources the bytes. A process cannot read outside
+  its table by ignoring a convention, because there is nowhere else for a path to resolve.
+- **Direction of control.** Roots are handed *from the client to the server*, never requested by
+  the server. Same instinct as the no-silent-fallback rule: what a process may see is declared by
+  whoever launched it, not negotiated by the process.
+
+### What has no counterpart
+
+Both systems are built for **isolation, density, and latency** — running untrusted,
+model-generated code cheaply and safely. Neither cares whether a sandbox is *legible*. Agent
+Substrate (Google's newer, early-stage layer above Agent Sandbox) addresses actors by stable
+identity so it can multiplex a large population of mostly-idle agents onto a small pool of pods,
+but nobody filters reactions on "Alice's review trees, by role" — because their agents are not
+programmed by a shared reactive control plane.
+
+That is the difference in kind. The floor is a solved problem worth borrowing outright. The
+**named, filterable, programmable surface** — the thing that makes a trigger able to target an
+exposure it was not told about by nonce — is what this design is actually adding, and it is why
+the exposure name has to be meaningful rather than opaque.
+
 ## What this buys
 
 - **`connect` becomes a thin preset** — `expose <path> --name <n>` plus a validator charter over
@@ -260,7 +333,9 @@ nothing to reach for. Denials belong in the ledger; absences belong in the defin
 - **Expose vs. environment** — whether `verse expose <path> --name n` *is* a single-surface
   environment (sugar) or registers into a separate exposure registry that environments then
   reference. The second keeps a directory shareable across environments; the first is one record
-  fewer.
+  fewer. The definition / claim / instance split borrowed from Agent Sandbox above probably
+  settles this — `expose` registers a definition, a spawn claims an instance — but the claim
+  record has to be designed before that is more than a suggestion.
 - **Floor inheritance across delegation** — a `call_agent` child names an environment; must it be
   the parent's, or a sub-environment of it? `Grant.Subset` gives the grant its monotonicity at the
   boundary; the floor needs an equivalent rule or delegation becomes the escalation hatch (spawn
@@ -270,3 +345,17 @@ nothing to reach for. Denials belong in the ledger; absences belong in the defin
 - **Surface qualification** — the concrete syntax for a qualified path (`<name>:<path>` collides
   with nothing in a filesystem path, but neither does a `/<name>/` mount prefix), and whether the
   local `Root` is always in the table or must be granted like any other surface.
+
+## References
+
+- [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) (`kubernetes-sigs/agent-sandbox`) and its
+  [documentation](https://agent-sandbox.sigs.k8s.io/docs/) — the `Sandbox` / `SandboxTemplate` /
+  `SandboxClaim` / `SandboxWarmPool` resource types; field-level detail in the
+  [custom resource definition reference](https://docs.cloud.google.com/kubernetes-engine/docs/reference/crds/agentsandbox).
+- [Bringing you Agent Sandbox on GKE and Agent Substrate](https://cloud.google.com/blog/products/containers-kubernetes/bringing-you-agent-sandbox-on-gke-and-agent-substrate)
+  — warm pools, pod snapshots, and the isolation defaults.
+- [Agent Substrate](https://github.com/agent-substrate/substrate) — the actor/worker multiplexing
+  layer above it (early-stage; its API is expected to change). An accessible walkthrough:
+  [How Google Agent Substrate Works](https://www.solo.io/topics/ai-infrastructure/how-google-agent-substrate-works).
+- [Roots](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) — the Model
+  Context Protocol's client-declared filesystem boundaries and its change notification.

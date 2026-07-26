@@ -140,10 +140,70 @@ granted it and the agent is not the party who may.
   carry that authorization into the process, closing the double-ask.
 - **Environments** — the unbypassable floor from [expose.md](expose.md) sits outside both:
   *possible* ⊇ *granted* ⊇ *auto*. The floor is enforced by construction, the grant by refusal,
-  the vector by asking.
+  the vector by asking. A floor is also *infrastructural* and therefore non-semantic — it can
+  withhold a network, never a particular command — which is precisely the room the grant layer
+  exists to fill.
+- **Where a derived grant lives** — on the *claim*, not the environment. An environment
+  definition is shared and pre-warmable ([expose.md](expose.md)); a grant is derived from one
+  request and belongs to that spawn alone. Folding it into the environment would make every
+  environment single-use.
 - **Naming** — `Process.scope` (the field holding a `Grant`, `process/loop.go`) is the last
   place in the process package where "scope" means authority rather than store isolation; it
   wants the same rename `launch.Spec.Grant` got.
+
+## Prior art: the same gap, approached from identity
+
+The authorization world reached this problem from the other direction and named it. Worth
+knowing, because the vocabulary is becoming standard and because our position differs from the
+default one in a way we should state deliberately rather than by accident.
+
+**The failure has a name: the confused deputy.** A program acting on someone's behalf, holding
+that party's authority, induced into using it for something they did not intend. The current
+framing of the agent version — *a non-deterministic system acting on a user's behalf with
+implicitly delegated access, failing at machine speed and scale* — is a precise description of a
+wildcard root grant with a soft per-action dial, which is what we have.
+
+**The standard delegation patterns are two, and we are proposing a third.**
+
+- **On-behalf-of** — the agent authenticates in the user's context and inherits *the user's
+  permissions*. Simple, and structurally over-broad: the agent may do anything the user may do,
+  so every restraint has to be clawed back afterward, per action, by a policy check.
+- **Autonomous** — the agent holds its own standing identity, independent of any human session.
+  Appropriate for scheduled and unattended work; says nothing about a request the human just
+  typed.
+
+The position of this note is neither: the envelope derives from **what the user asked for**, not
+from what the user is *able* to do. That is a far tighter envelope from the outset, and it is
+available only at the call boundary, where the request exists as text. Say this explicitly
+wherever the design is presented, because a reader will otherwise pattern-match it to
+on-behalf-of and conclude we are re-deriving something ordinary.
+
+**We already have the enforcement pieces, under our own names.** The OpenID Foundation's AuthZEN
+working group standardizes the interface between two roles: a *policy enforcement point* (the
+code that intercepts an action before it happens) and a *policy decision point* (the service that
+answers permit/deny). Our vector evaluation is the enforcement point, the resolver and its motions
+are the decision point, and `GateQuestion` is the decision request travelling between them. Two of
+their profiles map directly:
+
+- an **approval profile** (Access Request and Approval) for decisions that require a human —
+  our `ask` mode, `gate resolve`, and the docket;
+- a **tool-authorization profile** for Model Context Protocol servers, whose question is
+  literally *may this agent, acting for this user, call this tool with these arguments* — which
+  is our `Effect` (a verb applied to a typed resource), better typed than a string tool name.
+
+The identity model behind all of it asks three questions of an agent: who deployed it, what is it
+authorized to do, and **on whose behalf is it currently acting**. The third is the open question
+at the end of this note — whether an envelope belongs to the process or to the (requester,
+request) pair — arriving from the other side.
+
+**Runtimes are converging on the mechanics too.** Google's Agent Executor (an open-source
+distributed agent runtime, early as of 2026) keeps a durable event log with snapshots held
+separately, resumes a session from a step rather than replaying it, and — the relevant part —
+treats *suspended while awaiting an approval* as a first-class runtime state rather than a
+blocked thread. That is `park`. Its single-writer session state is the same conclusion as the
+claim-and-report, compare-and-swap model in [external-processes.md](external-processes.md).
+None of these systems, however, derives authority from the request; they carry a decision made
+elsewhere. The derivation is the part that is ours to design.
 
 ## Risks
 
@@ -176,3 +236,15 @@ granted it and the agent is not the party who may.
 - **Does the envelope belong to the process or the request?** Two `process run`s of the same
   task by different callers may deserve different envelopes; that argues the envelope is a
   property of the (requester, request) pair, which is where an identity model would enter.
+
+## References
+
+- [AuthZEN at Identiverse 2026: authorization in the agent era](https://openid.net/authzen-at-identiverse-2026-authorization-in-the-agent-era/)
+  — the policy enforcement point / policy decision point interface, the approval profile, and the
+  Model Context Protocol tool-authorization profile.
+- [Agent2Agent (A2A) protocol specification](https://a2a-protocol.org/latest/specification/) — how
+  a peer protocol represents an action needing authorization or human approval.
+- [Agent Executor](https://github.com/google/ax) (`google/ax`) and its
+  [announcement](https://cloud.google.com/blog/products/ai-machine-learning/agent-executor-googles-distributed-agent-runtime)
+  — durable event log, snapshot-and-resume, single-writer session state, and suspension while
+  awaiting approval.
