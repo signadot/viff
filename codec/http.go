@@ -115,6 +115,11 @@ func WriteNode(w http.ResponseWriter, r *http.Request, code int, n *ir.Node) {
 // AN EMPTY BODY IS NOT AN ERROR: several handlers POST with no body at all and rely on the
 // decode being a no-op, so this returns nil and leaves v alone. Malformed input is still an
 // error — the distinction is "nothing was sent" versus "something unreadable was".
+//
+// The bracket hint is dropped here, at the one point where a document becomes a value verse
+// holds (StripBrackets). Doing it per-route would mean finding every field that is an opaque
+// tony node — a charter's `patch`, a match's `fields`, an entity payload, whatever the next
+// one is — and missing one is invisible until someone notices their braces coming back.
 func Read(r *http.Request, v any) error {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -127,17 +132,22 @@ func Read(r *http.Request, v any) error {
 	if node == nil {
 		return nil // no body
 	}
-	return FromNode(node, v)
+	return FromNode(StripBrackets(node), v)
 }
 
 // ReadNode reads a request body as a document, for a handler that forwards it rather than
-// decoding it into a type.
+// decoding it into a type. It drops the bracket hint for the same reason Read does —
+// forwarding a document verbatim is exactly how typography reaches storage.
 func ReadNode(r *http.Request) (*ir.Node, error) {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading the request body: %w", err)
 	}
-	return ParseNode(data, RequestFormat(r))
+	node, err := ParseNode(data, RequestFormat(r))
+	if err != nil {
+		return nil, err
+	}
+	return StripBrackets(node), nil
 }
 
 // HTTPError writes an error response.
