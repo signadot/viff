@@ -245,8 +245,12 @@ claiming leaves a window in which a firing reads "not done", the running sequenc
 releases, and the reader then wins a free claim — a second run, reproducing about one time in
 three. Every predicate guarding the decision has to be evaluated under the exclusive thing.
 
-Known limitation: a claim outlives a crash. A restart already abandons the sequences it would
-guard (hooks are dropped on `Adopt`), so startup reconcile should clear claims — not built.
+Startup reconcile clears every claim, which is what makes a durable lease safe: a claim is
+exactly as durable as the run it guards, and no more. A restart already abandons that run —
+a resumed process is re-adopted without its hooks, so nothing will ever advance the sequence —
+so a surviving claim would block it forever with no live process to explain why. Residue:
+scoped engines hold claims in their own scope stores, which reconcile does not walk; that is
+the same gap as scoped resume, and worth closing with it.
 
 Rule 7 is what keeps this a predicate rather than a search: with at most one `seq` per chain,
 the node is a unique ancestor of every live chain, so "which sequence is this process in" has

@@ -231,6 +231,12 @@ func (s *Server) reconcileProcesses() {
 		return
 	}
 	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+		if ent.Ref.Kind == mirror.ClaimKind {
+			// A run claim, not a process. It is cleared below rather than here, and it is
+			// named explicitly so it is not merely skipped by accident (a claim carries no
+			// `status`, so it would fall through the check that follows).
+			continue
+		}
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || process.TerminalStatus(status) {
 			continue
@@ -258,6 +264,29 @@ func (s *Server) reconcileProcesses() {
 		}
 		p["status"] = string(process.Orphaned)
 		s.Store.Put(ent.Ref, p.Payload())
+	}
+	s.reconcileClaims(l)
+}
+
+// reconcileClaims drops every run claim at startup.
+//
+// A claim is an exclusive lease on a sequence, released when the sequence ends. Nothing
+// releases one across a restart — and nothing should: the run it guards is already abandoned,
+// because a resumed process is re-adopted WITHOUT its hooks, so no completion will ever
+// advance the sequence (docs/completion-hooks.md). A claim that outlived the run would then
+// block that sequence forever, with no live process to explain why.
+//
+// So the claim's lifetime is the process that took it, and a restart ends both. This is what
+// makes a durable claim safe: it is exactly as durable as the thing it guards, and no more.
+//
+// Scoped engines hold their claims in their own scope stores; those are created lazily and
+// are not walked here. A scoped sequence therefore keeps a stale claim across a restart —
+// worth fixing when scoped resume is, since both are the same gap.
+func (s *Server) reconcileClaims(l entity.Lister) {
+	for _, ent := range l.List(func(r entity.Ref) bool {
+		return r.System == mirror.System && r.Kind == mirror.ClaimKind
+	}) {
+		s.Store.Delete(ent.Ref)
 	}
 }
 
