@@ -90,10 +90,14 @@ type Say struct {
 // SetVector slides a running process's gate vector — the autonomy dial — applied at its
 // next boundary with no restart (`PUT /processes/{id}/vector`).
 //
-// Vector is a pointer because that is what process.SetVector takes and because an
-// absent vector and a zero one are different requests. It also sidesteps a
-// tony-codegen defect: a struct-valued field of another package makes the generator
-// emit an import it never qualifies, and the generated file does not compile.
+// Vector is a pointer because that is what process.SetVector takes and because an absent
+// vector and a zero one are different requests — a distinction this route needs, since
+// "slide to this vector" and "slide to the zero vector" are not the same instruction.
+//
+// It was ALSO a workaround, and no longer is: until go-tony v0.0.94 a struct-valued field of
+// another package made the generator emit an import it never qualified (item 17 of
+// tony-format#f69agjyeh12ksa25cnn0). Fixed, so a value field would compile today. The
+// pointer stays on the first reason alone.
 //
 //tony:schemagen=verse-set-vector,notag
 type SetVector struct {

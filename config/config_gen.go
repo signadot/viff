@@ -28,12 +28,12 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Addr
 	if s.Addr != "" {
-		irMap["addr"] = ir.FromString(s.Addr)
+		irMap["addr"] = ir.FromString(string(s.Addr))
 	}
 
 	// Field: Scope
 	if s.Scope != "" {
-		irMap["scope"] = ir.FromString(s.Scope)
+		irMap["scope"] = ir.FromString(string(s.Scope))
 	}
 
 	// Field: Format (optional)
@@ -92,13 +92,13 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "addr", fieldNodeUnwrapped.Type)
 			}
-			s.Addr = fieldNodeUnwrapped.String
+			s.Addr = string(fieldNodeUnwrapped.String)
 		case "scope":
 			// Field: Scope
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "scope", fieldNodeUnwrapped.Type)
 			}
-			s.Scope = fieldNodeUnwrapped.String
+			s.Scope = string(fieldNodeUnwrapped.String)
 		case "format":
 			// Field: Format
 			if err := s.Format.FromTonyIR(fieldNode, opts...); err != nil {
@@ -287,22 +287,22 @@ func (s *LLMConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: BaseURL
 	if s.BaseURL != "" {
-		irMap["baseURL"] = ir.FromString(s.BaseURL)
+		irMap["baseURL"] = ir.FromString(string(s.BaseURL))
 	}
 
 	// Field: APIKey
 	if s.APIKey != "" {
-		irMap["apiKey"] = ir.FromString(s.APIKey)
+		irMap["apiKey"] = ir.FromString(string(s.APIKey))
 	}
 
 	// Field: VirtualKey
 	if s.VirtualKey != "" {
-		irMap["virtualKey"] = ir.FromString(s.VirtualKey)
+		irMap["virtualKey"] = ir.FromString(string(s.VirtualKey))
 	}
 
 	// Field: Model
 	if s.Model != "" {
-		irMap["model"] = ir.FromString(s.Model)
+		irMap["model"] = ir.FromString(string(s.Model))
 	}
 
 	return ir.FromMap(irMap), nil
@@ -343,25 +343,25 @@ func (s *LLMConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "baseURL", fieldNodeUnwrapped.Type)
 			}
-			s.BaseURL = fieldNodeUnwrapped.String
+			s.BaseURL = string(fieldNodeUnwrapped.String)
 		case "apiKey":
 			// Field: APIKey
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "apiKey", fieldNodeUnwrapped.Type)
 			}
-			s.APIKey = fieldNodeUnwrapped.String
+			s.APIKey = string(fieldNodeUnwrapped.String)
 		case "virtualKey":
 			// Field: VirtualKey
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "virtualKey", fieldNodeUnwrapped.Type)
 			}
-			s.VirtualKey = fieldNodeUnwrapped.String
+			s.VirtualKey = string(fieldNodeUnwrapped.String)
 		case "model":
 			// Field: Model
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "model", fieldNodeUnwrapped.Type)
 			}
-			s.Model = fieldNodeUnwrapped.String
+			s.Model = string(fieldNodeUnwrapped.String)
 		}
 	}
 

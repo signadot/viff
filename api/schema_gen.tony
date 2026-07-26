@@ -65,7 +65,7 @@ context:
 - process: github.com/signadot/verse/process
 define:
   by: .[string]
-  vector: .[nullable(process:vector)]
+  vector: .[nullable(process:verse-vector)]
 signature:
   name: verse-set-vector
 ---

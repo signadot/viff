@@ -27,33 +27,33 @@ func (s *FlowNode) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Chain
 	if s.Chain != "" {
-		irMap["chain"] = ir.FromString(s.Chain)
+		irMap["chain"] = ir.FromString(string(s.Chain))
 	}
 
 	// Field: Kind
-	irMap["kind"] = ir.FromString(s.Kind)
+	irMap["kind"] = ir.FromString(string(s.Kind))
 
 	// Field: ID
 	if s.ID != "" {
-		irMap["id"] = ir.FromString(s.ID)
+		irMap["id"] = ir.FromString(string(s.ID))
 	}
 
 	// Field: Task
 	if s.Task != "" {
-		irMap["task"] = ir.FromString(s.Task)
+		irMap["task"] = ir.FromString(string(s.Task))
 	}
 
 	// Field: Status
-	irMap["status"] = ir.FromString(s.Status)
+	irMap["status"] = ir.FromString(string(s.Status))
 
 	// Field: Gate
 	if s.Gate != "" {
-		irMap["gate"] = ir.FromString(s.Gate)
+		irMap["gate"] = ir.FromString(string(s.Gate))
 	}
 
 	// Field: LastAction
 	if s.LastAction != "" {
-		irMap["lastAction"] = ir.FromString(s.LastAction)
+		irMap["lastAction"] = ir.FromString(string(s.LastAction))
 	}
 
 	// Field: Children
@@ -107,43 +107,43 @@ func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "chain", fieldNodeUnwrapped.Type)
 			}
-			s.Chain = fieldNodeUnwrapped.String
+			s.Chain = string(fieldNodeUnwrapped.String)
 		case "kind":
 			// Field: Kind
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
 			}
-			s.Kind = fieldNodeUnwrapped.String
+			s.Kind = string(fieldNodeUnwrapped.String)
 		case "id":
 			// Field: ID
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "id", fieldNodeUnwrapped.Type)
 			}
-			s.ID = fieldNodeUnwrapped.String
+			s.ID = string(fieldNodeUnwrapped.String)
 		case "task":
 			// Field: Task
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
 			}
-			s.Task = fieldNodeUnwrapped.String
+			s.Task = string(fieldNodeUnwrapped.String)
 		case "status":
 			// Field: Status
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "status", fieldNodeUnwrapped.Type)
 			}
-			s.Status = fieldNodeUnwrapped.String
+			s.Status = string(fieldNodeUnwrapped.String)
 		case "gate":
 			// Field: Gate
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "gate", fieldNodeUnwrapped.Type)
 			}
-			s.Gate = fieldNodeUnwrapped.String
+			s.Gate = string(fieldNodeUnwrapped.String)
 		case "lastAction":
 			// Field: LastAction
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "lastAction", fieldNodeUnwrapped.Type)
 			}
-			s.LastAction = fieldNodeUnwrapped.String
+			s.LastAction = string(fieldNodeUnwrapped.String)
 		case "children":
 			// Field: Children
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -199,7 +199,7 @@ func (s *FlowTree) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	irMap := make(map[string]*ir.Node)
 
 	// Field: Subject
-	irMap["subject"] = ir.FromString(s.Subject)
+	irMap["subject"] = ir.FromString(string(s.Subject))
 
 	// Field: Roots
 	if len(s.Roots) > 0 {
@@ -252,7 +252,7 @@ func (s *FlowTree) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
-			s.Subject = fieldNodeUnwrapped.String
+			s.Subject = string(fieldNodeUnwrapped.String)
 		case "roots":
 			// Field: Roots
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -308,11 +308,11 @@ func (s *GoalDef) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	irMap := make(map[string]*ir.Node)
 
 	// Field: Name
-	irMap["name"] = ir.FromString(s.Name)
+	irMap["name"] = ir.FromString(string(s.Name))
 
 	// Field: Subject
 	if s.Subject != "" {
-		irMap["subject"] = ir.FromString(s.Subject)
+		irMap["subject"] = ir.FromString(string(s.Subject))
 	}
 
 	// Field: DoneWhen (optional)
@@ -326,7 +326,7 @@ func (s *GoalDef) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Deadline
 	if s.Deadline != "" {
-		irMap["deadline"] = ir.FromString(s.Deadline)
+		irMap["deadline"] = ir.FromString(string(s.Deadline))
 	}
 
 	// Field: Triggers
@@ -380,13 +380,13 @@ func (s *GoalDef) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
-			s.Name = fieldNodeUnwrapped.String
+			s.Name = string(fieldNodeUnwrapped.String)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
-			s.Subject = fieldNodeUnwrapped.String
+			s.Subject = string(fieldNodeUnwrapped.String)
 		case "doneWhen":
 			// Field: DoneWhen
 			s.DoneWhen = &Formula{}
@@ -398,7 +398,7 @@ func (s *GoalDef) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "deadline", fieldNodeUnwrapped.Type)
 			}
-			s.Deadline = fieldNodeUnwrapped.String
+			s.Deadline = string(fieldNodeUnwrapped.String)
 		case "triggers":
 			// Field: Triggers
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -454,7 +454,7 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	irMap := make(map[string]*ir.Node)
 
 	// Field: Name
-	irMap["name"] = ir.FromString(s.Name)
+	irMap["name"] = ir.FromString(string(s.Name))
 
 	// Field: Condition
 	node, err = s.Condition.ToTonyIR(opts...)
@@ -521,7 +521,7 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
-			s.Name = fieldNodeUnwrapped.String
+			s.Name = string(fieldNodeUnwrapped.String)
 		case "condition":
 			// Field: Condition
 			if err := s.Condition.FromTonyIR(fieldNode, opts...); err != nil {
@@ -588,12 +588,12 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Name
 	if s.Name != "" {
-		irMap["name"] = ir.FromString(s.Name)
+		irMap["name"] = ir.FromString(string(s.Name))
 	}
 
 	// Field: Mode
 	if s.Mode != "" {
-		irMap["mode"] = ir.FromString(s.Mode)
+		irMap["mode"] = ir.FromString(string(s.Mode))
 	}
 
 	// Field: Formula (optional)
@@ -643,13 +643,13 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
-			s.Name = fieldNodeUnwrapped.String
+			s.Name = string(fieldNodeUnwrapped.String)
 		case "mode":
 			// Field: Mode
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "mode", fieldNodeUnwrapped.Type)
 			}
-			s.Mode = fieldNodeUnwrapped.String
+			s.Mode = string(fieldNodeUnwrapped.String)
 		case "formula":
 			// Field: Formula
 			s.Formula = &Formula{}

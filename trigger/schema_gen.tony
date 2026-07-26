@@ -9,7 +9,7 @@ define:
   onFailed: .[nullable(verse-action)]
   onOrphaned: .[nullable(verse-action)]
   patch: .[tony-base:ir]
-  spawn: .[nullable(launch:spec)]
+  spawn: .[nullable(launch:verse-launch-spec)]
 signature:
   name: verse-action
 ---

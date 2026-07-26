@@ -26,42 +26,42 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Driver
 	if s.Driver != "" {
-		irMap["driver"] = ir.FromString(s.Driver)
+		irMap["driver"] = ir.FromString(string(s.Driver))
 	}
 
 	// Field: Task
 	if s.Task != "" {
-		irMap["task"] = ir.FromString(s.Task)
+		irMap["task"] = ir.FromString(string(s.Task))
 	}
 
 	// Field: Policy
 	if s.Policy != "" {
-		irMap["policy"] = ir.FromString(s.Policy)
+		irMap["policy"] = ir.FromString(string(s.Policy))
 	}
 
 	// Field: Resolver
 	if s.Resolver != "" {
-		irMap["resolver"] = ir.FromString(s.Resolver)
+		irMap["resolver"] = ir.FromString(string(s.Resolver))
 	}
 
 	// Field: Grant
 	if s.Grant != "" {
-		irMap["grant"] = ir.FromString(s.Grant)
+		irMap["grant"] = ir.FromString(string(s.Grant))
 	}
 
 	// Field: Environment
 	if s.Environment != "" {
-		irMap["environment"] = ir.FromString(s.Environment)
+		irMap["environment"] = ir.FromString(string(s.Environment))
 	}
 
 	// Field: Subject
 	if s.Subject != "" {
-		irMap["subject"] = ir.FromString(s.Subject)
+		irMap["subject"] = ir.FromString(string(s.Subject))
 	}
 
 	// Field: Chain
 	if s.Chain != "" {
-		irMap["chain"] = ir.FromString(s.Chain)
+		irMap["chain"] = ir.FromString(string(s.Chain))
 	}
 
 	// Field: Provider (optional)
@@ -111,49 +111,49 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "driver", fieldNodeUnwrapped.Type)
 			}
-			s.Driver = fieldNodeUnwrapped.String
+			s.Driver = string(fieldNodeUnwrapped.String)
 		case "task":
 			// Field: Task
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
 			}
-			s.Task = fieldNodeUnwrapped.String
+			s.Task = string(fieldNodeUnwrapped.String)
 		case "policy":
 			// Field: Policy
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "policy", fieldNodeUnwrapped.Type)
 			}
-			s.Policy = fieldNodeUnwrapped.String
+			s.Policy = string(fieldNodeUnwrapped.String)
 		case "resolver":
 			// Field: Resolver
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "resolver", fieldNodeUnwrapped.Type)
 			}
-			s.Resolver = fieldNodeUnwrapped.String
+			s.Resolver = string(fieldNodeUnwrapped.String)
 		case "grant":
 			// Field: Grant
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "grant", fieldNodeUnwrapped.Type)
 			}
-			s.Grant = fieldNodeUnwrapped.String
+			s.Grant = string(fieldNodeUnwrapped.String)
 		case "environment":
 			// Field: Environment
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "environment", fieldNodeUnwrapped.Type)
 			}
-			s.Environment = fieldNodeUnwrapped.String
+			s.Environment = string(fieldNodeUnwrapped.String)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
-			s.Subject = fieldNodeUnwrapped.String
+			s.Subject = string(fieldNodeUnwrapped.String)
 		case "chain":
 			// Field: Chain
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "chain", fieldNodeUnwrapped.Type)
 			}
-			s.Chain = fieldNodeUnwrapped.String
+			s.Chain = string(fieldNodeUnwrapped.String)
 		case "provider":
 			// Field: Provider
 			s.Provider = &Provider{}
@@ -207,7 +207,7 @@ func (s *Provider) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Capability
 	if s.Capability != "" {
-		irMap["capability"] = ir.FromString(s.Capability)
+		irMap["capability"] = ir.FromString(string(s.Capability))
 	}
 
 	// Field: Match
@@ -225,7 +225,7 @@ func (s *Provider) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Select
 	if s.Select != "" {
-		irMap["select"] = ir.FromString(s.Select)
+		irMap["select"] = ir.FromString(string(s.Select))
 	}
 
 	// Field: Need
@@ -235,7 +235,7 @@ func (s *Provider) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Within
 	if s.Within != "" {
-		irMap["within"] = ir.FromString(s.Within)
+		irMap["within"] = ir.FromString(string(s.Within))
 	}
 
 	return ir.FromMap(irMap), nil
@@ -291,7 +291,7 @@ func (s *Provider) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "capability", fieldNodeUnwrapped.Type)
 			}
-			s.Capability = fieldNodeUnwrapped.String
+			s.Capability = string(fieldNodeUnwrapped.String)
 		case "match":
 			// Field: Match
 			if fieldNodeUnwrapped.Type == ir.ObjectType {
@@ -311,7 +311,7 @@ func (s *Provider) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "select", fieldNodeUnwrapped.Type)
 			}
-			s.Select = fieldNodeUnwrapped.String
+			s.Select = string(fieldNodeUnwrapped.String)
 		case "need":
 			// Field: Need
 			if fieldNodeUnwrapped.Int64 == nil {
@@ -323,7 +323,7 @@ func (s *Provider) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "within", fieldNodeUnwrapped.Type)
 			}
-			s.Within = fieldNodeUnwrapped.String
+			s.Within = string(fieldNodeUnwrapped.String)
 		}
 	}
 

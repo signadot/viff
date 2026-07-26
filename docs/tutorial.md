@@ -227,7 +227,7 @@ Now, what each field of a trigger means:
   that is the point:
   - **`when`** is a **match** — a point-in-time predicate over the verse. It ANDs its
     dimensions: `system` / `kind` / `id` / `op` (`set` for created-or-updated, or
-    `delete`) / `fields` (key=value in the changed payload); empty dimensions are
+    `delete`) / a **payload predicate** (`fields`, or `payload` — below); empty dimensions are
     wildcards, and `{}` matches everything. The address string is sugar for the identity
     dimensions, so `demo:pr:*` means `{system: demo, kind: pr}` — and since a trailing
     wildcard *is* an unset dimension, that is what reads back when you `trigger show` it:
@@ -283,10 +283,53 @@ Now, what each field of a trigger means:
     cannot be a predicate. Write the whole segment as `*` for "any", and put the
     operator on `id`.
 
-    Inside `fields` there are no operators yet — a payload predicate is equality-only —
-    and writing one is an **error** rather than a silent flattening. (`fields` is your
-    own document, so it has no closed keyspace to borrow the JSON spelling from: a
-    payload key may itself be named `or`.)
+    **The payload predicate takes operators too**, and it is the same tony match — it is
+    just evaluated against the payload instead of the id:
+
+    ```tony
+    when: { system: demo, kind: pr, fields: { stage: !or [open, merged] } }
+    when: { system: demo, kind: pr, fields: { branch: !glob "hotfix-*" } }
+    ```
+
+    It has **two spellings, one meaning**. `fields` is the object-shaped one — a predicate
+    over a record's fields, which is what almost every charter matches. `payload` is the
+    general one, a predicate on the payload *root*, for the entities whose payload is not a
+    record at all (an entity's payload is any tony value: a count, a flag, a state name, a
+    list):
+
+    ```tony
+    when: { system: demo, kind: count, payload: 100 }              # the payload IS 100
+    when: { system: demo, kind: count, payload: !or [10, 100] }    # an operator at the root
+    when: { system: demo, kind: pr, payload: { stage: open } }     # the object case, spelled generally
+    ```
+
+    Set **one** of them, not both — two predicates on the same value have no stated way to
+    combine. `fields` (and `entity`, its alias in a `subject`) must be an object; a scalar
+    there is an install error pointing you at `payload`, which is what keeps a typo like
+    `fields: "stage=open"` from becoming a predicate that quietly matches nothing.
+
+    Three things about matching a payload are worth knowing before you write one.
+
+    **A `null` in a predicate is a PRESENCE test, not "is null".** A null pattern matches
+    any value, so the only thing it constrains is that the field is there. The three
+    questions have three different spellings:
+
+    ```tony
+    fields: { stage: null }            # stage is PRESENT, whatever its value
+    fields: !not { stage: null }       # stage is ABSENT
+    fields: { stage: !irtype null }    # stage is present AND its value is null
+    ```
+
+    **Numbers are type-exact**: `2` and `2.0` are different values, so a predicate written
+    `{n: 2}` does not match a payload of `{n: 2.0}`. Integer widths do not matter — that is
+    an artifact of whoever wrote the value, not of the value.
+
+    **Operators inside a payload predicate are tony-only.** The id dimension accepts the
+    JSON single-key spelling (`{"id": {"glob": "hotfix-*"}}`) because its keyspace is
+    closed, but a payload is *your* document — a key in it may itself be named `or` — so
+    that sugar cannot be borrowed here without changing what some charter already means.
+    A JSON charter can still write plain equality predicates; an operator over a payload
+    needs tony.
 
     A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
     goal* is still about exactly one subject. Broadcast, in other words, is a wider
@@ -1121,6 +1164,11 @@ Reading is unaffected by all of this, including the single-key spelling: a chart
 writes `{"quorum": 2}` loads exactly like one that writes `!quorum 2`. That is how you
 reach an operator from JSON, and it is why JSON stays a first-class way to write a charter
 even though it is no longer a way to read one back.
+
+With one exception, for the same reason the rendering is refused: the single-key spelling
+is only unambiguous where the keyspace is closed, so it is *not* applied inside a payload
+predicate, where a key may itself be named `or`. Plain equality predicates work in JSON;
+an operator over a payload needs tony (§4).
 
 Output is colorized on a terminal and plain when piped, so `verse trigger list | o v` keeps
 working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
