@@ -105,25 +105,29 @@ than the plumbing:
 runs `set` *then* `spawn`; skipping a failed write and spawning anyway starts a process about a
 state the trigger failed to establish, which is worse than not firing at all.
 
-## Scalar payloads: still a policy decision, and patch does not make it
+## Scalar payloads: settled, and not a priority
 
-I expected patch to turn this into a diagnostic. It does not — measured:
+tony replaces a scalar with the patched object and does not error — measured:
 
 | document | patch | result |
 |---|---|---|
-| `42` | `{stage: open}` | `{stage: open}` — the scalar is **replaced**, no error |
-| `{stage: open}` | `42` | `42` — the object is replaced, no error |
+| `42` | `{stage: open}` | `{stage: open}` — the scalar is replaced, silently |
+| `{stage: open}` | `42` | `42` |
 
-So tony's semantics agree with today's behaviour, and adopting patch changes nothing here; it
-only makes the rule *inherited* rather than invented. The choice remains verse's:
+**Decided: fail loudly, via a conditional write.** The store already has the mechanism —
+`CommitIf(ref, payload, pre…)` takes preconditions expressed as patterns — so a write onto a
+flow's subject carries a precondition that the payload is object-shaped, and a scalar sitting
+there fails the commit rather than being overwritten.
 
-- **(a) accept replace** — the status quo, now with a stated pedigree;
-- **(b) refuse an object patch against a scalar payload** and fail the firing.
+The framing matters more than the mechanism: this is **invariant checking**, not a policy
+compromise. A user putting a scalar where a flow's subject lives is interfering with a flow's
+state out of band; a failed write is the correct answer and the diagnostic is the feature. That
+also disposes of the objection recorded in `apply`'s comment today — refusing "would strand a
+flow with no way to say so" — since a conditional write is precisely a way to say so.
 
-I lean (b) *for a write onto a subject*: a flow's subject silently losing its value is the bad
-case, and it is exactly what a sequence publishing progress onto a scalar-payload entity would
-do (`seq-plan.md`). But it is a policy verse chooses, not something the patch vocabulary
-decides — so state it out loud either way.
+**Not a priority.** Scalar payloads are rare (federated files, providers, processes are all
+records), and this only becomes load-bearing when `seq` starts publishing progress. It rides
+along with the error path above rather than gating anything.
 
 ## Charter grammar: tags have to reach the patch
 
@@ -157,7 +161,8 @@ node-carrying, and codegen/schema follow.
 3. Deletion: `!delete` removes a key that `set` could only ever have overwritten.
 4. A failing patch fails the firing **and does not spawn** — the ordering hazard, not just the
    error.
-5. Scalar policy, whichever is chosen, pinned with the reason in the test name.
+5. A patch onto a scalar-payload subject fails the write via its precondition, and the firing
+   reports it — the invariant, not a policy.
 6. Charter round-trip: a patch carrying an operator survives tony and json charter forms.
 7. Concurrency: two triggers patching disjoint subtrees of one entity both survive — the
    `Modify` CAS property, now exercised at depth rather than at the top level.
@@ -166,7 +171,8 @@ node-carrying, and codegen/schema follow.
 
 - ~~**Does `set` stay a field?**~~ **Settled: renamed to `patch`,** with `set` an install-time
   error rather than an alias or a silently dropped key.
-- **Scalar policy** — (a) or (b) above. This is now the only open decision.
+- ~~**Scalar policy**~~ **Settled:** fail via a `CommitIf` precondition; see above. Nothing
+  open here now.
 - **`verse entity patch` ergonomics.** `verse entity patch demo:pr:1 '{tmp: !delete null}'`
   parses fine, but an operator on a command line is a new thing for the CLI to teach.
 - Hooks and `seq` elements get patch for free, since both are `Action`s — worth a test, not a
