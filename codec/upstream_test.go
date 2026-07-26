@@ -214,47 +214,64 @@ func TestUpstreamCodegenDropsNestedOpts(t *testing.T) {
 	}
 }
 
-// `omitzero` is very nearly a no-op upstream: the generator consults it only for
-// reflect.Bool, and the reflection path reads only `field=`. The guards on slices, maps and
-// pointers are unconditional — present whether or not the field carries the tag — which is
-// what makes it look like the tag works.
+// gomap honors `omitzero` on the reflection path: an empty scalar, collection or pointer
+// carrying the tag is absent from the document, and a field WITHOUT the tag survives even
+// when empty. Both halves matter — the second is what lets a caller say "explicitly empty".
 //
-// codec/omitzero.go exists solely because of this. When this test starts failing, upstream
-// honors the tag and pruneZero can be deleted for any type that has a generated codec.
-// Filed as tony-format#f69agjyeh12ksa25cnn0 item 10.
-func TestUpstreamOmitzeroStillIgnored(t *testing.T) {
+// Before v0.0.89 the tag was consulted only for reflect.Bool in generated code and not at
+// all under reflection, and this package carried its own pruning pass to compensate. That
+// pass is gone; this pin is what stands in its place.
+func TestUpstreamHonorsOmitzero(t *testing.T) {
 	type probe struct {
-		ID    string `tony:"field=id"`
-		Task  string `tony:"field=task,omitzero"`
-		Count int    `tony:"field=count,omitzero"`
+		ID        string   `tony:"field=id"`
+		Task      string   `tony:"field=task,omitzero"`
+		Count     int      `tony:"field=count,omitzero"`
+		MtSlice   []string `tony:"field=mtSlice,omitzero"`
+		KeepStr   string   `tony:"field=keepStr"`
+		KeepSlice []string `tony:"field=keepSlice"`
 	}
-	out, err := gomap.ToTony(&probe{ID: "x"}, gomap.EncodeFormat(format.TonyFormat))
+	out, err := gomap.ToTony(&probe{ID: "x", MtSlice: []string{}}, gomap.EncodeFormat(format.TonyFormat))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(out)
-	if !strings.Contains(got, `task: ""`) || !strings.Contains(got, "count: 0") {
-		t.Errorf("go-tony now honors omitzero. THIS IS THE TRIGGER TO ADOPT tony-codegen: "+
-			"generated codecs can omit their own empty fields, so codegen stops being an "+
-			"addition on top of pruneZero and becomes a replacement for it. See the note in "+
-			"the Makefile and codec/omitzero.go.\n%s", got)
+	for _, gone := range []string{"task", "count", "mtSlice"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("omitzero field %q was emitted — codec would need its own pruning pass "+
+				"again:\n%s", gone, got)
+		}
+	}
+	for _, kept := range []string{"id:", "keepStr:", "keepSlice:"} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("field %q was dropped without an omitzero tag — an explicitly empty "+
+				"value must survive:\n%s", kept, got)
+		}
 	}
 }
 
-// The other half of the same defect, and the sharper one: `omit` is honored by codegen but
-// ignored by reflection, so whether a field marked for exclusion reaches the wire depends on
-// whether its type happened to be generated. No verse type relies on `omit` — this pin is
-// here so that stays a deliberate choice rather than a lucky one.
-func TestUpstreamOmitStillIgnoredByReflection(t *testing.T) {
+// `omit`, `-` and `field=-` exclude a field on the reflection path as well as in generated
+// code. Before v0.0.89 reflection ignored all three, so a field explicitly marked for
+// exclusion was serialized — under its GO field name when no `field=` was given. No verse
+// type relies on `omit` yet; this pin is what makes relying on it safe.
+func TestUpstreamHonorsOmit(t *testing.T) {
 	type probe struct {
 		ID     string `tony:"field=id"`
 		Secret string `tony:"field=secret,omit"`
+		Dashed string `tony:"-"`
+		Named  string `tony:"field=-"`
 	}
-	out, err := gomap.ToTony(&probe{ID: "x", Secret: "shh"}, gomap.EncodeFormat(format.TonyFormat))
+	out, err := gomap.ToTony(&probe{ID: "x", Secret: "shh", Dashed: "d", Named: "n"},
+		gomap.EncodeFormat(format.TonyFormat))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "secret") {
-		t.Logf("reflection now honors `omit` — verse types may rely on it:\n%s", out)
+	got := string(out)
+	for _, leaked := range []string{"secret", "shh", "Dashed", "Named"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("a field marked for exclusion reached the document (%q):\n%s", leaked, got)
+		}
+	}
+	if !strings.Contains(got, "id: x") {
+		t.Errorf("exclusion took an ordinary field with it:\n%s", got)
 	}
 }

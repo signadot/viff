@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/scott-cotton/cli v0.2.3
-	github.com/signadot/tony-format/go-tony v0.0.88
+	github.com/signadot/tony-format/go-tony v0.0.89
 )
 
 require (

@@ -64,19 +64,19 @@ deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=tr
 	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) | kubectl apply -f -
 
 # NOTE: no package carries a //go:generate tony-codegen directive, so these are no-ops
-# today. That is a deliberate WAIT, not an obstacle: as of go-tony v0.0.88 codegen runs on
-# verse's types perfectly well (v0.0.87 could not — see tony-format#f69agjyeh12ksa25cnn0
-# items 2, 4, 7, 8, all fixed).
+# today — but nothing blocks it any more. Every defect that did is fixed as of go-tony
+# v0.0.89 (tony-format#f69agjyeh12ksa25cnn0 items 1-4, 6-8, 10, 11).
 #
-# What it cannot yet do is OMIT. Generated code honors `omitzero` for bool and nothing else
-# (item 10), so switching it on today makes documents strictly worse than the reflection
-# path does — `cursor: 0`, `driver: ""`, `task: ""` on every process instance — because
-# codec/omitzero.go steps aside for any type carrying its own ToTonyIR. Adopting codegen
-# would therefore ADD a build step while keeping pruneZero, and lose the omission.
+# What changed with v0.0.89 is the CASE for codegen, not the ability. gomap's reflection
+# path now honors omitzero/omit itself, so verse's ~130-line pruning pass is gone and
+# reflection alone produces correct documents. Codegen is therefore no longer needed for
+# correctness; what it still offers is schema_gen.tony artifacts (validation, docs, docd
+# registration) and no reflection at run time, against the cost of committed generated
+# files and a staleness check. That is a live choice rather than a blocked one.
 #
-# The trigger to revisit is item 10 landing; codec's TestUpstreamOmitzeroStillIgnored fails
-# when it does. Nothing about verse's types needs to change first — the struct tags are
-# already exactly the ones tony-codegen reads.
+# The struct tags are already exactly the ones tony-codegen reads, so adopting it changes
+# no type declaration — only the charter grammar in package trigger stays hand-written, via
+# codec=custom.
 #
 # Codegen is deliberately NOT a dependency of `bin`/`dist-linux`: keeping it out of the
 # build path is what lets the Dockerfile just COPY binaries.

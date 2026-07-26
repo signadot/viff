@@ -24,8 +24,10 @@ type inner struct {
 	B string `tony:"field=b,omitzero"`
 }
 
-// Without pruning, gomap's reflection path emits every field — the whole point of the
-// pass is that an optional field that is not set does not appear.
+// An optional field that is not set does not appear. This is verse's requirement rather
+// than a test of gomap: it is what makes a document readable, and it was carried by a
+// pruning pass in this package until go-tony v0.0.89 honored the tag itself. The tests stay
+// where the requirement is.
 func TestOmitZeroPrunesEmptyFields(t *testing.T) {
 	b, err := Marshal(optional{ID: "x"}, Tony)
 	if err != nil {
@@ -84,9 +86,8 @@ func TestOmitZeroKeepsRequiredEmptyFields(t *testing.T) {
 	}
 }
 
-// An empty-but-non-nil slice or map is omitted, matching how tony-codegen reads omitzero
-// (`if len(...) > 0`) rather than reflect.Value.IsZero. If generated codecs ever take
-// over per package, the two must agree on what a document looks like.
+// An empty-but-non-nil slice or map carrying omitzero is omitted too — "set to empty" is
+// not a reason to appear when the field asked to be omitted when zero.
 func TestOmitZeroTreatsEmptyCollectionsAsAbsent(t *testing.T) {
 	b, err := Marshal(optional{ID: "x", Items: []string{}, Labels: map[string]string{}}, Tony)
 	if err != nil {
@@ -98,9 +99,8 @@ func TestOmitZeroTreatsEmptyCollectionsAsAbsent(t *testing.T) {
 	}
 }
 
-// Pruning must not reach inside a value whose own codec built the node: its shape need
-// not track the struct's fields, so pruning by field name could delete something that
-// merely shares a name.
+// A hand-written codec owns its own output, including what it omits. Nothing downstream
+// second-guesses it by field name — its node shape need not mirror the struct at all.
 type ownCodec struct {
 	Task string `tony:"field=task,omitzero"`
 }
@@ -110,7 +110,7 @@ func (o ownCodec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromKeyVals([]ir.KeyVal{{Key: ir.FromString("task"), Val: ir.FromString("")}}), nil
 }
 
-func TestOmitZeroSkipsTypesWithTheirOwnCodec(t *testing.T) {
+func TestOwnCodecOutputIsNotSecondGuessed(t *testing.T) {
 	// Reached as a pointer field, which is the shape gomap dispatches on.
 	type host struct {
 		Own *ownCodec `tony:"field=own"`
@@ -120,7 +120,7 @@ func TestOmitZeroSkipsTypesWithTheirOwnCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), "task") {
-		t.Errorf("pruning reached inside a type with its own codec: %q", b)
+		t.Errorf("a hand-written codec's output was altered downstream: %q", b)
 	}
 }
 
