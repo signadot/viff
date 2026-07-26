@@ -108,7 +108,7 @@ func waitFor(t *testing.T, store entity.Store, ref entity.Ref) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, ok := store.Get(ref); ok {
+		if _, ok, _ := store.Get(ref); ok {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)

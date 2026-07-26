@@ -117,10 +117,16 @@ func (e *fsExec) Execute(ctx context.Context, tu process.ToolUse) (process.StepR
 		if e.content != nil {
 			// Federated: read the file's bytes through the verse (docd content
 			// controller), by its path relative to the federated tree.
-			if body, ok := e.content.ReadContent(str(tu.Input, "path")); ok {
+			path := str(tu.Input, "path")
+			switch body, ok, err := e.content.ReadContent(path); {
+			case err != nil:
+				// A failed lookup is NOT a missing file, and must not be reported as
+				// one: an agent told the file does not exist will go and create it.
+				rec.Err = "reading " + path + " through the verse failed: " + err.Error()
+			case !ok:
+				rec.Err = "file not found in the verse: " + path
+			default:
 				rec.Stdout = body
-			} else {
-				rec.Err = "file not found in the verse: " + str(tu.Input, "path")
 			}
 		} else if p, err := e.path(tu, "path"); err != nil {
 			rec.Err = err.Error()

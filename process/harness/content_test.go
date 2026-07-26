@@ -34,7 +34,7 @@ func TestToolResultNotTruncated(t *testing.T) {
 // content controller).
 type fakeContent map[string]string
 
-func (f fakeContent) ReadContent(p string) (string, bool) { s, ok := f[p]; return s, ok }
+func (f fakeContent) ReadContent(p string) (string, bool, error) { s, ok := f[p]; return s, ok, nil }
 
 // With a ContentReader, read_file reads through the verse (not the filesystem): the
 // bytes come from the reader, and a path it doesn't know is a not-found error — even

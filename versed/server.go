@@ -258,13 +258,16 @@ type storeContentReader struct {
 	kind  string // dir-content-<scope>
 }
 
-func (c storeContentReader) ReadContent(path string) (string, bool) {
-	e, ok := c.store.Get(entity.Ref{System: source.System, Kind: c.kind, ID: path})
+func (c storeContentReader) ReadContent(path string) (string, bool, error) {
+	e, ok, err := c.store.Get(entity.Ref{System: source.System, Kind: c.kind, ID: path})
+	if err != nil {
+		return "", false, err
+	}
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 	s, ok := e.Payload["content"].(string)
-	return s, ok
+	return s, ok, nil
 }
 
 // engFor returns the engine serving a scope for read/manage operations: the baseline
@@ -573,7 +576,15 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	e, ok := s.scopedStore(r).Get(ref)
+	e, ok, err := s.scopedStore(r).Get(ref)
+	if err != nil {
+		// A read that could not be performed is NOT a 404. Reporting it as one tells the
+		// caller the entity does not exist, which is a different — and actionable —
+		// statement from "the store is unreachable", and the caller acts on it: an agent
+		// creates the file it was told is missing. 502: verse is up, its store is not.
+		http.Error(w, "entity read failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
 	if !ok {
 		http.NotFound(w, r)
 		return

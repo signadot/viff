@@ -46,7 +46,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	waitStage(t, store, pr, "reviewed")
 
 	// The process entity itself must NOT have been advanced — the firing was about the PR.
-	if e, _ := store.Get(mirror.Ref("rev-1")); e.Payload["stage"] != nil {
+	if e, _, _ := store.Get(mirror.Ref("rev-1")); e.Payload["stage"] != nil {
 		t.Fatalf("the action was applied to the matched entity, not the subject: %#v", e.Payload)
 	}
 }
@@ -126,7 +126,7 @@ func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 	var latch entity.Payload
 	deadline := time.After(2 * time.Second)
 	for latch == nil {
-		if e, ok := store.Get(goalDoneRef("ship")); ok && e.Payload["goal"] == "ship" {
+		if e, ok, _ := store.Get(goalDoneRef("ship")); ok && e.Payload["goal"] == "ship" {
 			latch = e.Payload
 			break
 		}

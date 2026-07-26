@@ -35,7 +35,7 @@ func conditionalCommit(t *testing.T, s Store) {
 	if err != nil || !committed {
 		t.Fatalf("commit should succeed: committed=%v err=%v", committed, err)
 	}
-	got, _ := s.Get(ch)
+	got, _, _ := s.Get(ch)
 	if got.Payload["outcome"] != "proceed" || got.Payload["gate"] != "approvals" {
 		t.Fatalf("committed payload = %+v, want outcome=proceed gate=approvals (open fields preserved)", got.Payload)
 	}
@@ -48,7 +48,7 @@ func conditionalCommit(t *testing.T, s Store) {
 	if committed2 {
 		t.Fatal("terminal-once violated: a second commit landed after the motion closed")
 	}
-	if got, _ := s.Get(ch); got.Payload["outcome"] != "proceed" {
+	if got, _, _ := s.Get(ch); got.Payload["outcome"] != "proceed" {
 		t.Fatalf("outcome changed after the latch: %+v", got.Payload)
 	}
 }
@@ -75,7 +75,7 @@ func conditionalCommitRevoke(t *testing.T, s Store) {
 	if committed {
 		t.Fatal("commit should have been refused: bob's witness ballot is absent")
 	}
-	if got, _ := s.Get(ch); got.Payload["status"] != "open" {
+	if got, _, _ := s.Get(ch); got.Payload["status"] != "open" {
 		t.Fatalf("channel must stay open on a refused commit: %+v", got.Payload)
 	}
 }

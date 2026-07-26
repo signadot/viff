@@ -49,7 +49,7 @@ func concurrentIncrement(t *testing.T, store Store) {
 	}
 	wg.Wait()
 
-	e, ok := store.Get(ref)
+	e, ok, _ := store.Get(ref)
 	if !ok {
 		t.Fatal("entity missing after increments")
 	}
@@ -115,14 +115,14 @@ func TestLogdStore_PutGet(t *testing.T) {
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
 	s.Put(ref, Payload{"stage": "open", "num": int64(42), "ok": true})
 
-	e, ok := s.Get(ref)
+	e, ok, _ := s.Get(ref)
 	if !ok {
 		t.Fatal("Get after Put: not found")
 	}
 	if e.Payload["stage"] != "open" || e.Payload["num"] != int64(42) || e.Payload["ok"] != true {
 		t.Fatalf("payload not preserved: %#v", e.Payload)
 	}
-	if _, ok := s.Get(Ref{System: "demo", Kind: "pr", ID: "nope"}); ok {
+	if _, ok, _ := s.Get(Ref{System: "demo", Kind: "pr", ID: "nope"}); ok {
 		t.Fatal("Get of absent ref returned found")
 	}
 }
@@ -133,7 +133,7 @@ func TestLogdStore_QuotedID(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "github", Kind: "pr", ID: "signadot/x#42"}
 	s.Put(ref, Payload{"stage": "review"})
-	e, ok := s.Get(ref)
+	e, ok, _ := s.Get(ref)
 	if !ok || e.Payload["stage"] != "review" {
 		t.Fatalf("quoted-id round-trip failed: ok=%v payload=%#v", ok, e.Payload)
 	}
@@ -147,7 +147,7 @@ func TestLogdStore_PutReplaces(t *testing.T) {
 	s.Put(ref, Payload{"stage": "open", "extra": "x"})
 	s.Put(ref, Payload{"stage": "reviewing"}) // drops "extra"
 
-	e, _ := s.Get(ref)
+	e, _, _ := s.Get(ref)
 	if e.Payload["stage"] != "reviewing" {
 		t.Fatalf("stage not updated: %#v", e.Payload)
 	}
@@ -171,7 +171,7 @@ func TestLogdStore_Delete(t *testing.T) {
 	if ev.Op != Delete || ev.From["stage"] != "open" {
 		t.Fatalf("delete event wrong: %#v", ev)
 	}
-	if _, ok := s.Get(ref); ok {
+	if _, ok, _ := s.Get(ref); ok {
 		t.Fatal("entity still present after Delete")
 	}
 }
@@ -189,26 +189,26 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 	}
 
 	// Reads see baseline through the overlay.
-	if e, ok := scoped.Get(ref); !ok || e.Payload["stage"] != "open" {
+	if e, ok, _ := scoped.Get(ref); !ok || e.Payload["stage"] != "open" {
 		t.Fatalf("scope did not read baseline through: ok=%v payload=%#v", ok, e.Payload)
 	}
 
 	// A scope write is isolated: the scope sees it, baseline does not.
 	scoped.Put(ref, Payload{"stage": "reviewing"})
-	if e, _ := scoped.Get(ref); e.Payload["stage"] != "reviewing" {
+	if e, _, _ := scoped.Get(ref); e.Payload["stage"] != "reviewing" {
 		t.Fatalf("scope write not visible in scope: %#v", e.Payload)
 	}
-	if e, _ := base.Get(ref); e.Payload["stage"] != "open" {
+	if e, _, _ := base.Get(ref); e.Payload["stage"] != "open" {
 		t.Fatalf("scope write leaked into baseline: %#v", e.Payload)
 	}
 
 	// A scope-only entity does not exist in baseline.
 	only := Ref{System: "demo", Kind: "pr", ID: "scope-only"}
 	scoped.Put(only, Payload{"x": "1"})
-	if _, ok := base.Get(only); ok {
+	if _, ok, _ := base.Get(only); ok {
 		t.Fatal("scope-only entity leaked into baseline")
 	}
-	if _, ok := scoped.Get(only); !ok {
+	if _, ok, _ := scoped.Get(only); !ok {
 		t.Fatal("scope-only entity missing from scope")
 	}
 
@@ -217,10 +217,10 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 		t.Fatalf("DeleteScope: %v", err)
 	}
 	fresh := base.Scope("me")
-	if e, _ := fresh.Get(ref); e.Payload["stage"] != "open" {
+	if e, _, _ := fresh.Get(ref); e.Payload["stage"] != "open" {
 		t.Fatalf("after DeleteScope, scope still overlaid: %#v", e.Payload)
 	}
-	if _, ok := fresh.Get(only); ok {
+	if _, ok, _ := fresh.Get(only); ok {
 		t.Fatal("after DeleteScope, scope-only entity survived")
 	}
 

@@ -70,7 +70,7 @@ func TestGoalDoneLatch(t *testing.T) {
 	if existsWithin(store, goalDoneRef("ship"), 100*time.Millisecond) {
 		t.Fatal("goal latched done before the fact held")
 	}
-	g, _ := store.Get(goalRef("ship"))
+	g, _, _ := store.Get(goalRef("ship"))
 	if g.Payload["terminal"] != false {
 		t.Fatalf("terminal = %v, want false", g.Payload["terminal"])
 	}
@@ -86,13 +86,13 @@ func TestGoalDoneLatch(t *testing.T) {
 	if !existsWithin(store, goalDoneRef("ship"), 2*time.Second) {
 		t.Fatal("goal did not latch done after doneWhen held")
 	}
-	done, _ := store.Get(goalDoneRef("ship"))
+	done, _, _ := store.Get(goalDoneRef("ship"))
 	if done.Payload["goal"] != "ship" || done.Payload["subject"] != "change:pr:42" {
 		t.Fatalf("done fact = %+v", done.Payload)
 	}
 	// The instance is terminal with status done.
 	waitForStatus(t, store, "ship", "done")
-	if g, _ := store.Get(goalRef("ship")); g.Payload["terminal"] != true {
+	if g, _, _ := store.Get(goalRef("ship")); g.Payload["terminal"] != true {
 		t.Fatalf("terminal = %v, want true", g.Payload["terminal"])
 	}
 	// The owned trigger is reaped (no orphaned charter).
@@ -100,7 +100,7 @@ func TestGoalDoneLatch(t *testing.T) {
 		t.Fatal("owned trigger not reaped on terminal")
 	}
 	// No failure latch on the success path.
-	if _, ok := store.Get(goalFailedRef("ship")); ok {
+	if _, ok, _ := store.Get(goalFailedRef("ship")); ok {
 		t.Fatal("unexpected fail latch on the done path")
 	}
 }
@@ -128,12 +128,12 @@ func TestGoalDeadlineFail(t *testing.T) {
 	if !existsWithin(store, goalFailedRef("flaky"), 2*time.Second) {
 		t.Fatal("goal did not latch failed after the deadline elapsed")
 	}
-	fail, _ := store.Get(goalFailedRef("flaky"))
+	fail, _, _ := store.Get(goalFailedRef("flaky"))
 	if fail.Payload["reason"] != "deadline" {
 		t.Fatalf("fail fact = %+v, want reason=deadline", fail.Payload)
 	}
 	waitForStatus(t, store, "flaky", "unachievable")
-	if _, ok := store.Get(goalDoneRef("flaky")); ok {
+	if _, ok, _ := store.Get(goalDoneRef("flaky")); ok {
 		t.Fatal("unexpected done latch on the fail path")
 	}
 }
@@ -163,7 +163,7 @@ func TestGoalDoneWinsDeadline(t *testing.T) {
 	}
 	// Give the (short) deadline time to elapse; it must not have latched failed.
 	time.Sleep(60 * time.Millisecond)
-	if _, ok := store.Get(goalFailedRef("already")); ok {
+	if _, ok, _ := store.Get(goalFailedRef("already")); ok {
 		t.Fatal("fail latched despite doneWhen holding — done should win the tie")
 	}
 }
@@ -177,19 +177,19 @@ func TestGoalTerminalOnce(t *testing.T) {
 	store.Put(goalRef("once"), entity.Payload{"name": "once", "status": "active", "terminal": false})
 
 	eng.commitGoal(g, "done", []entity.Ref{{System: "ci", Kind: "status", ID: "x"}})
-	if inst, _ := store.Get(goalRef("once")); inst.Payload["outcome"] != "done" || inst.Payload["terminal"] != true {
+	if inst, _, _ := store.Get(goalRef("once")); inst.Payload["outcome"] != "done" || inst.Payload["terminal"] != true {
 		t.Fatalf("first commit: %+v, want outcome=done terminal=true", inst.Payload)
 	}
-	if _, ok := store.Get(goalDoneRef("once")); !ok {
+	if _, ok, _ := store.Get(goalDoneRef("once")); !ok {
 		t.Fatal("done fact not written")
 	}
 
 	// A contradicting second commit must not change the latched outcome or write a fail fact.
 	eng.commitGoal(g, "unachievable", nil)
-	if inst, _ := store.Get(goalRef("once")); inst.Payload["outcome"] != "done" {
+	if inst, _, _ := store.Get(goalRef("once")); inst.Payload["outcome"] != "done" {
 		t.Fatalf("terminal-once violated: outcome now %v", inst.Payload["outcome"])
 	}
-	if _, ok := store.Get(goalFailedRef("once")); ok {
+	if _, ok, _ := store.Get(goalFailedRef("once")); ok {
 		t.Fatal("a frozen-out commit still wrote a fail fact")
 	}
 }
@@ -249,14 +249,14 @@ func waitForStatus(t *testing.T, s entity.Store, name, want string) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
 	for {
-		if g, ok := s.Get(goalRef(name)); ok {
+		if g, ok, _ := s.Get(goalRef(name)); ok {
 			if got, _ := g.Payload["status"].(string); got == want {
 				return
 			}
 		}
 		select {
 		case <-deadline:
-			g, _ := s.Get(goalRef(name))
+			g, _, _ := s.Get(goalRef(name))
 			t.Fatalf("status never reached %q; last = %+v", want, g.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}

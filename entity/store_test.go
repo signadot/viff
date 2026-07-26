@@ -32,7 +32,7 @@ func TestPutCreateThenUpdate(t *testing.T) {
 	if ev.Op != Set || ev.From["stage"] != "open" || ev.To["stage"] != "reviewed" {
 		t.Fatalf("update event wrong: %+v", ev)
 	}
-	got, ok := s.Get(ref)
+	got, ok, _ := s.Get(ref)
 	if !ok || got.Payload["stage"] != "reviewed" {
 		t.Fatalf("get after update: %+v ok=%v", got, ok)
 	}
@@ -44,7 +44,7 @@ func TestPutClonesPayload(t *testing.T) {
 	p := Payload{"n": 1}
 	s.Put(ref, p)
 	p["n"] = 999 // mutate caller's map after Put
-	got, _ := s.Get(ref)
+	got, _, _ := s.Get(ref)
 	if got.Payload["n"] != 1 {
 		t.Fatalf("store aliased caller payload: %+v", got.Payload)
 	}
@@ -61,7 +61,7 @@ func TestDeleteAndMissing(t *testing.T) {
 	if !ok || ev.Op != Delete || ev.From["a"] != 1 || ev.To != nil {
 		t.Fatalf("delete event wrong: %+v ok=%v", ev, ok)
 	}
-	if _, ok := s.Get(ref); ok {
+	if _, ok, _ := s.Get(ref); ok {
 		t.Fatal("entity still present after delete")
 	}
 }
@@ -178,7 +178,7 @@ func TestNamespaceIsAQuery(t *testing.T) {
 	s.Put(Ref{"github", "pr", "1"}, Payload{"env": "prod"})
 	s.Put(Ref{"github", "pr", "2"}, Payload{"env": "staging"})
 	prodTouching := s.List(func(r Ref) bool {
-		e, _ := s.Get(r)
+		e, _, _ := s.Get(r)
 		return e.Payload["env"] == "prod"
 	})
 	if len(prodTouching) != 1 || prodTouching[0].Ref.ID != "1" {

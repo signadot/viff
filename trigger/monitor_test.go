@@ -168,7 +168,7 @@ func TestCommitMotionTerminalOnce(t *testing.T) {
 	if eff, revoked := eng.commitMotion(ref, nil, "proceed", witness); revoked || eff != "proceed" {
 		t.Fatalf("first commit: eff=%q revoked=%v, want proceed/false", eff, revoked)
 	}
-	got, ok := store.Get(ref)
+	got, ok, _ := store.Get(ref)
 	if !ok || got.Payload["outcome"] != "proceed" {
 		t.Fatalf("motion not committed: %+v", got.Payload)
 	}
@@ -179,7 +179,7 @@ func TestCommitMotionTerminalOnce(t *testing.T) {
 	if eff, _ := eng.commitMotion(ref, nil, "deny", nil); eff != "proceed" {
 		t.Fatalf("terminal-once violated: second commit eff=%q, want proceed", eff)
 	}
-	if got, _ := store.Get(ref); got.Payload["outcome"] != "proceed" {
+	if got, _, _ := store.Get(ref); got.Payload["outcome"] != "proceed" {
 		t.Fatal("committed outcome changed after the latch")
 	}
 }
@@ -195,7 +195,7 @@ func TestCommitMotionRevokeGuard(t *testing.T) {
 	if _, revoked := eng.commitMotion(ref, quorum, "proceed", nil); !revoked {
 		t.Fatal("commit should be revoked when the recheck formula no longer holds")
 	}
-	if _, ok := store.Get(ref); ok {
+	if _, ok, _ := store.Get(ref); ok {
 		t.Fatal("a revoked commit must not write the motion entity")
 	}
 }
@@ -228,7 +228,7 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	if eff, revoked := eng.commitMotion(channel, quorum, "proceed", []entity.Ref{alice, bob}); revoked || eff != "proceed" {
 		t.Fatalf("whole witness: eff=%q revoked=%v, want proceed/false", eff, revoked)
 	}
-	if got, _ := store.Get(channel); got.Payload["outcome"] != "proceed" || got.Payload["gate"] != "approvals" {
+	if got, _, _ := store.Get(channel); got.Payload["outcome"] != "proceed" || got.Payload["gate"] != "approvals" {
 		t.Fatalf("committed payload = %+v, want outcome=proceed with open fields preserved", got.Payload)
 	}
 
@@ -245,7 +245,7 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	if eff, revoked := eng.commitMotion(ch2, q2, "proceed", []entity.Ref{a2, b2}); !revoked || eff != "" {
 		t.Fatalf("retracted witness: eff=%q revoked=%v, want \"\"/true", eff, revoked)
 	}
-	if got, _ := store.Get(ch2); got.Payload["outcome"] != nil {
+	if got, _, _ := store.Get(ch2); got.Payload["outcome"] != nil {
 		t.Fatalf("committed despite a retracted witness ballot: %+v", got.Payload)
 	}
 }
@@ -333,7 +333,7 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 	}
 	// the motion should have closed by deadline default (deny).
 	did := motionChannelID("merge/g/" + entity.Ref{System: "change", Kind: "pr", ID: "dl"}.String())
-	ch, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: did})
+	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: did})
 	if ch.Payload["outcome"] != "deny" {
 		t.Fatalf("motion outcome = %v, want deny (deadline default)", ch.Payload["outcome"])
 	}
@@ -343,7 +343,7 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 func existsWithin(s entity.Store, ref entity.Ref, d time.Duration) bool {
 	deadline := time.After(d)
 	for {
-		if _, ok := s.Get(ref); ok {
+		if _, ok, _ := s.Get(ref); ok {
 			return true
 		}
 		select {

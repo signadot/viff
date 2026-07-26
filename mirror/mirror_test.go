@@ -61,7 +61,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	ref := Ref("p2")
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok := store.Get(ref); ok && e.Payload["status"] == "completed" {
+		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "completed" {
 			if e.Payload["say"] != "working on it" {
 				t.Fatalf("narration not projected: %+v", e.Payload)
 			}
@@ -75,7 +75,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 		}
 		select {
 		case <-deadline:
-			e, _ := store.Get(ref)
+			e, _, _ := store.Get(ref)
 			t.Fatalf("timed out; entity = %+v", e.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}
@@ -100,7 +100,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 	const url = "http://verse.test:9090/broker/abc123"
 	Reflect(store, p.ID, dialer{p, url}, "", "broker") // initial Put is synchronous
 
-	got, ok := store.Get(Ref("d1"))
+	got, ok, _ := store.Get(Ref("d1"))
 	if !ok || got.Payload["dialURL"] != url {
 		t.Fatalf("dialURL not published: %+v", got.Payload)
 	}
@@ -108,7 +108,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 	// a plain handle (no DialURL) publishes no dialURL key.
 	p2 := process.NewProcess("d2", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p2.ID, p2, "", "local")
-	if g2, _ := store.Get(Ref("d2")); g2.Payload["dialURL"] != nil {
+	if g2, _, _ := store.Get(Ref("d2")); g2.Payload["dialURL"] != nil {
 		t.Fatalf("local handle should publish no dialURL: %+v", g2.Payload)
 	}
 }
@@ -151,7 +151,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 	}
 
 	// the terminal entity remains, queryable, marked completed
-	got, ok := store.Get(ref)
+	got, ok, _ := store.Get(ref)
 	if !ok || got.Payload["status"] != "completed" {
 		t.Fatalf("terminal entity wrong: %+v ok=%v", got, ok)
 	}

@@ -3,6 +3,7 @@ package entity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -290,14 +291,21 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 // --- Store: reads and writes ---
 
 // Get returns an entity by ref. An absent (or deleted) path reads back as null.
-func (s *LogdStore) Get(ref Ref) (Entity, bool) {
+// Get reads one entity. A failed READ is reported as an error, never as absence: the
+// read crosses a network and may traverse a mount owned by another process, so "I could
+// not ask" and "it is not there" are genuinely different answers and the caller has to be
+// able to tell them apart. A null node IS absence — that is how the log spells a tombstone.
+func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	node, err := s.sess.Match(ctx, s.refPath(ref))
-	if err != nil || node == nil || node.Type == ir.NullType {
-		return Entity{}, false
+	if err != nil {
+		return Entity{}, false, fmt.Errorf("read %s: %w", ref, err)
 	}
-	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true
+	if node == nil || node.Type == ir.NullType {
+		return Entity{}, false, nil
+	}
+	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true, nil
 }
 
 // Put creates or updates an entity with replace semantics and returns a best-effort

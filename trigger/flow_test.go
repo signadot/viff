@@ -44,7 +44,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	// unpaused, so still-running well past that proves the hold.
 	ref := mirror.Ref("work-1")
 	time.Sleep(150 * time.Millisecond)
-	if e, _ := store.Get(ref); e.Payload["status"] == "completed" {
+	if e, _, _ := store.Get(ref); e.Payload["status"] == "completed" {
 		t.Fatal("flow completed while paused — PauseFlow did not hold")
 	}
 
@@ -53,7 +53,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	}
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok := store.Get(ref); ok && e.Payload["status"] == "completed" {
+		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "completed" {
 			return
 		}
 		select {
@@ -173,10 +173,10 @@ func TestReconcileOrphans(t *testing.T) {
 	if n := eng.ReconcileOrphans(); n != 1 {
 		t.Fatalf("reconciled %d, want 1", n)
 	}
-	if e, _ := store.Get(mirror.Ref("old-running")); e.Payload["status"] != string(process.Orphaned) {
+	if e, _, _ := store.Get(mirror.Ref("old-running")); e.Payload["status"] != string(process.Orphaned) {
 		t.Fatalf("running process not orphaned: %+v", e.Payload)
 	}
-	if e, _ := store.Get(mirror.Ref("old-done")); e.Payload["status"] != string(process.Completed) {
+	if e, _, _ := store.Get(mirror.Ref("old-done")); e.Payload["status"] != string(process.Completed) {
 		t.Fatalf("completed process wrongly touched: %+v", e.Payload)
 	}
 }

@@ -50,7 +50,7 @@ func TestProcessRunHonorsPolicy(t *testing.T) {
 	}
 
 	// mirrored: it is a process:instance entity like any other process.
-	if _, ok := srv.Store.Get(entity.Ref{System: "process", Kind: "instance", ID: sp.ID}); !ok {
+	if _, ok, _ := srv.Store.Get(entity.Ref{System: "process", Kind: "instance", ID: sp.ID}); !ok {
 		t.Fatal("process run was not mirrored as a process:instance entity")
 	}
 }

@@ -46,12 +46,12 @@ func waitStage(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok := s.Get(ref); ok && e.Payload["stage"] == want {
+		if e, ok, _ := s.Get(ref); ok && e.Payload["stage"] == want {
 			return
 		}
 		select {
 		case <-deadline:
-			e, _ := s.Get(ref)
+			e, _, _ := s.Get(ref)
 			t.Fatalf("timed out waiting for %s stage=%q; have %+v", ref, want, e.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}

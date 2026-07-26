@@ -70,7 +70,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	}
 
 	get := func(kind, id string) entity.Payload {
-		e, ok := store.Get(entity.Ref{System: source.GitSystem, Kind: kind, ID: id})
+		e, ok, _ := store.Get(entity.Ref{System: source.GitSystem, Kind: kind, ID: id})
 		if !ok {
 			t.Fatalf("missing git:%s:%s", kind, id)
 		}
@@ -97,7 +97,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 		t.Fatalf("git:commit:A/%s = %+v", shaA, c)
 	}
 	// a commit is repo-scoped, not a global sha key.
-	if _, ok := store.Get(entity.Ref{System: source.GitSystem, Kind: "commit", ID: shaA}); ok {
+	if _, ok, _ := store.Get(entity.Ref{System: source.GitSystem, Kind: "commit", ID: shaA}); ok {
 		t.Fatal("commit should be keyed git:commit:<repo>/<sha>, not by bare sha")
 	}
 
@@ -106,7 +106,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	if err := g.Reconcile(ctx, store, entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}); err != nil {
 		t.Fatalf("targeted reconcile: %v", err)
 	}
-	if _, ok := store.Get(entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/feature"}); ok {
+	if _, ok, _ := store.Get(entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/feature"}); ok {
 		t.Fatal("A/feature should have tombstoned after branch delete")
 	}
 	get("ref", "B/dev") // B's slice untouched by A's targeted reconcile

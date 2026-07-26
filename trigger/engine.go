@@ -506,8 +506,9 @@ func deadlineDuration(f *Formula) (time.Duration, bool) {
 // a concurrent arming of the same channel — reads the durable instant rather than sliding
 // the deadline forward or arming a timer against a value that never landed.
 func (e *Engine) deadlineAt(ref entity.Ref, dur time.Duration) time.Time {
-	// Fast path: already stamped — honor it without a write.
-	if cur, ok := e.store.Get(ref); ok {
+	// Fast path: already stamped — honor it without a write. A failed read only costs
+	// the fast path; the Modify below does its own read-modify-write under CAS.
+	if cur, ok, _ := e.store.Get(ref); ok {
 		if at, ok := parseDeadlineAt(cur.Payload); ok {
 			return at
 		}
@@ -579,7 +580,14 @@ func (e *Engine) commitMotion(ref entity.Ref, recheck *Formula, outcome string, 
 // already-latched motion (read it back and honor it — terminal-once) or a revoke (the
 // witness moved — re-monitor).
 func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.Ref, outcome string, witness []entity.Ref, wpre []entity.Precondition) (eff string, revoked bool) {
-	cur, _ := e.store.Get(ref)
+	// A failed read must NOT fall through to the commit below: the new payload is built
+	// FROM cur, so committing on an empty cur would overwrite a motion with a stripped
+	// one. Treat it as a revoke — monitorGate re-monitors and we try again with a real read.
+	cur, _, err := e.store.Get(ref)
+	if err != nil {
+		e.tracef("commit %s: read failed: %v", ref.ID, err)
+		return "", true
+	}
 	if o, done := cur.Payload["outcome"].(string); done {
 		return o, false // already committed — terminal-once
 	}
@@ -590,7 +598,9 @@ func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.R
 		return "", true // treat as a revoke; monitorGate re-monitors
 	}
 	if !committed {
-		if got, ok := e.store.Get(ref); ok {
+		// A failed read here is indistinguishable from "no latch yet", and both lead to
+		// the same answer: revoked, re-monitor.
+		if got, ok, _ := e.store.Get(ref); ok {
 			if o, done := got.Payload["outcome"].(string); done {
 				return o, false // a concurrent commit latched first — honor it
 			}
@@ -888,7 +898,9 @@ func (e *Engine) matchFlow(m Match) []flowProc {
 			continue
 		}
 		if len(fields) > 0 {
-			ent, ok := e.store.Get(ref)
+			// Unreadable is treated as non-matching: a field predicate that cannot be
+			// evaluated must not select the flow. Skipping is the conservative answer.
+			ent, ok, _ := e.store.Get(ref)
 			if !ok || !m.MatchEvent(entity.Event{Ref: ref, To: ent.Payload}) {
 				continue
 			}

@@ -54,7 +54,7 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 		waitStage(t, store, ref, "shipped")
 	}
 	// The non-matching PR is untouched: the Subject selected a set, not everything.
-	if e, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "4"}); e.Payload["stage"] != "open" {
+	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "4"}); e.Payload["stage"] != "open" {
 		t.Fatalf("an unselected entity was acted on: %#v", e.Payload)
 	}
 	// Budget metering is per entity acted on, so three members are three.
@@ -196,7 +196,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 	}
 	shipped := 0
 	for _, id := range ids {
-		if e, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); e.Payload["stage"] == "shipped" {
+		if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); e.Payload["stage"] == "shipped" {
 			shipped++
 		}
 	}
@@ -331,7 +331,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 		waitStage(t, store, ref, "shipped")
 	}
 	// And no entity called "*" was conjured by the action's `set`.
-	if e, ok := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "*"}); ok {
+	if e, ok, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "*"}); ok {
 		t.Fatalf("the glob was named instead of selected: created demo:pr:* = %#v", e.Payload)
 	}
 }
@@ -359,7 +359,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 
 	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}, "shipped")
 	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-2"}, "shipped")
-	if e, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "feature-9"}); e.Payload["stage"] != "open" {
+	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "feature-9"}); e.Payload["stage"] != "open" {
 		t.Fatalf("the glob overreached beyond its family: %#v", e.Payload)
 	}
 }
@@ -416,7 +416,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
 	time.Sleep(50 * time.Millisecond) // give a wrong action time to land, if it were going to
-	if e, _ := store.Get(other); e.Payload["stage"] != "x" {
+	if e, _, _ := store.Get(other); e.Payload["stage"] != "x" {
 		t.Fatalf("acted on a flow the subject doesn't name: %s = %#v", other, e.Payload)
 	}
 }

@@ -56,12 +56,12 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	ref := mirror.Ref("rev-1")
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok := store.Get(ref); ok && e.Payload["status"] == "completed" {
+		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "completed" {
 			return
 		}
 		select {
 		case <-deadline:
-			e, _ := store.Get(ref)
+			e, _, _ := store.Get(ref)
 			t.Fatalf("spawned process never completed in the verse: %+v", e.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}
@@ -110,7 +110,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		// and it is routable/findable in the verse under that id (mirror is async)
 		found := false
 		for deadline := time.After(2 * time.Second); !found; {
-			if _, ok := store.Get(mirror.Ref(id)); ok {
+			if _, ok, _ := store.Get(mirror.Ref(id)); ok {
 				found = true
 				break
 			}

@@ -147,13 +147,13 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 
 	deadline := time.After(5 * time.Second)
 	for {
-		e, _ := store.Get(mirror.Ref("t1"))
+		e, _, _ := store.Get(mirror.Ref("t1"))
 		if s, _ := e.Payload["status"].(string); s == string(process.Completed) {
 			return // converged: resume recovered the terminal from the remote
 		}
 		select {
 		case <-deadline:
-			e, _ := store.Get(mirror.Ref("t1"))
+			e, _, _ := store.Get(mirror.Ref("t1"))
 			t.Fatalf("entity never converged to completed; status=%v", e.Payload["status"])
 		case <-time.After(20 * time.Millisecond):
 		}

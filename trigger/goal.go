@@ -240,7 +240,15 @@ func (e *Engine) updateGoalStatus(g *Goal, done *Formula) {
 // goal already terminated — a no-op.
 func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	ref := goalRef(g.Def.Name)
-	cur, _ := e.store.Get(ref)
+	// As in commitMotionAtomic: `next` is built from cur, so a failed read would latch a
+	// goal terminal with a payload stripped of everything it carried. Leave it un-latched
+	// and let the next evaluation retry — a goal that latches late is recoverable, one
+	// that latches wrong is not.
+	cur, _, err := e.store.Get(ref)
+	if err != nil {
+		e.tracef("goal %s: commit read failed: %v", g.Def.Name, err)
+		return
+	}
 	if t, _ := cur.Payload["terminal"].(bool); t {
 		return // already terminal
 	}

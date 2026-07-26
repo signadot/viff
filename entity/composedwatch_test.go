@@ -215,7 +215,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 
 	// End-to-end: a mount-owned ref still resolves through refPath → MountRoot → docd →
 	// the controller. This is what makes the split path-rendering only.
-	got, ok := s.Get(Ref{System: "local", Kind: contentMountKind, ID: "README.md"})
+	got, ok, _ := s.Get(Ref{System: "local", Kind: contentMountKind, ID: "README.md"})
 	if !ok || got.Payload["content"] != "hi" {
 		t.Fatalf("mount-owned ref did not resolve through MountRoot: ok=%v payload=%#v", ok, got.Payload)
 	}

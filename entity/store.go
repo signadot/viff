@@ -36,8 +36,19 @@ type Store interface {
 	Modify(ref Ref, fn func(cur Payload) Payload) Event
 	// Delete removes an entity, emitting a Delete change; reports whether it existed.
 	Delete(ref Ref) (Event, bool)
-	// Get returns an entity by ref.
-	Get(ref Ref) (Entity, bool)
+	// Get returns an entity by ref: ok reports whether it exists, err reports whether
+	// the read could be performed at all.
+	//
+	// THE TWO ARE NOT THE SAME THING and the distinction is the point. A durable store
+	// reads over a network, through mounts owned by other processes; that read can fail
+	// while the entity exists perfectly well. Collapsing both into a single "not found"
+	// tells a caller the opposite of the truth at exactly the moment it can least afford
+	// it — an agent is told the file it is looking at does not exist, and goes off to
+	// create it.
+	//
+	// When err != nil, ok is meaningless: nothing is known about the entity. A caller
+	// that genuinely does not care may discard it, but has to say so.
+	Get(ref Ref) (Entity, bool, error)
 	// Observe returns a channel of live change events (from now) and an unsubscribe
 	// func — a low-latency hint, not the source of truth: it may drop under
 	// backpressure. Correctness comes from the revision cursor + Since.
@@ -253,12 +264,13 @@ func (s *MemStore) record(ev Event) {
 	}
 }
 
-// Get returns an entity by ref.
-func (s *MemStore) Get(ref Ref) (Entity, bool) {
+// Get returns an entity by ref. The error is always nil: an in-memory map read has no
+// way to fail, so absence here really does mean absence.
+func (s *MemStore) Get(ref Ref) (Entity, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	e, ok := s.ents[ref.String()]
-	return e, ok
+	return e, ok, nil
 }
 
 // Since returns retained changes with Rev > from, in order. ok is false when `from`

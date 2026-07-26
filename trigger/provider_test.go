@@ -19,7 +19,7 @@ func TestSelectProviderAuto(t *testing.T) {
 	if !ok || driver != "gpt" {
 		t.Fatalf("auto select = (%q, %v), want (gpt, true)", driver, ok)
 	}
-	ch, found := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
+	ch, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if !found || ch.Payload["axis"] != "select" || ch.Payload["outcome"] != "gpt" || ch.Payload["status"] != "closed" {
 		t.Fatalf("select channel = %+v, want axis=select outcome=gpt status=closed", ch.Payload)
 	}
@@ -93,7 +93,7 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 	if !ok || driver != "llm-claude" { // options sorted by id: claude, gpt → auto picks claude
 		t.Fatalf("registry auto select = (%q, %v), want (llm-claude, true)", driver, ok)
 	}
-	ch, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
+	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if opts, _ := ch.Payload["options"].([]any); len(opts) != 2 {
 		t.Fatalf("eligible options = %v, want 2 premium providers (basic filtered out)", ch.Payload["options"])
 	}
@@ -121,7 +121,7 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 		t.Fatalf("deadline select = (%q, %v), want (\"\", false) — no pick by the deadline", driver, ok)
 	}
 	// The channel records when it closes, so `verse docket` can show it.
-	ch, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
+	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if _, stamped := ch.Payload["deadline_at"]; !stamped {
 		t.Fatalf("select channel missing deadline_at: %+v", ch.Payload)
 	}
