@@ -24,6 +24,11 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; checks=$((checks + 1)); }
 note() { printf '  \033[33m~\033[0m %s\n' "$*"; }
 die()  { printf '  \033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 has()  { printf '%s' "$1" | grep -qF -- "$2"; }
+# haskv asserts a document carries key: value, in WHICHEVER dialect it is written —
+# `"stage": "open"` and `stage: open` both match. The suite runs under both defaults
+# (see the double-run at the end), so a shape-dependent assertion would only ever be
+# testing whichever one happened to be configured.
+haskv() { printf '%s' "$1" | grep -qE "\"?$2\"?[[:space:]]*:[[:space:]]*\"?$3\"?"; }
 
 # ── a free TCP port (avoids clobbering a dev server) ─────────────────────────
 free_port() {
@@ -80,8 +85,24 @@ ok "docd-backed server ready"
 # ── entity: put/get roundtrip ────────────────────────────────────────────────
 step "entity put/get"
 v entity put demo:pr:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
-has "$(v entity get demo:pr:1)" '"stage": "open"' || die "entity get did not roundtrip"
+haskv "$(v entity get demo:pr:1)" stage open || die "entity get did not roundtrip"
 ok "demo:pr:1 = {stage:open}"
+
+# ── the representation: tony by default, every dialect on request ────────────
+# The flip changed the DEFAULT, not the capability. Both directions are asserted here
+# rather than left to the double-run, because a default that silently stopped being
+# overridable would still pass a suite run only one way.
+step "representation (-o / negotiation)"
+haskv "$(v entity get demo:pr:1 -o tony)" stage open || die "-o tony did not render"
+has "$(v entity get demo:pr:1 -o json)" '"stage": "open"' || die "-o json did not render JSON"
+has "$(v entity get demo:pr:1 -o yaml)" 'stage: open' || die "-o yaml did not render"
+v entity get demo:pr:1 -o tny >/dev/null 2>&1 && die "a bad -o value was accepted"
+ok "-o tony | json | yaml render; a bad value is rejected"
+# curl straight at the API: no Accept header at all gets the configured default, and
+# asking for JSON gets JSON — the negotiation, not the client's re-rendering.
+has "$(curl -s -H 'Accept: application/json' "http://$ADDR/entity?ref=demo:pr:1")" '"stage": "open"' \
+	|| die "Accept: application/json did not negotiate"
+ok "the wire negotiates (Accept honored)"
 
 # ── scope: copy-on-write isolation (docd overlays) ───────────────────────────
 # Note: a scope created here is not torn down — there is no general scope teardown yet, only
@@ -97,7 +118,7 @@ if has "$(v entity get demo:pr:9 2>/dev/null || true)" 'scoped-only'; then
 fi
 ok "scoped write invisible in the baseline (isolation)"
 # ...but a baseline entity IS visible from within the scope (copy-on-write read-through)
-has "$(v --scope "$SC" entity get demo:pr:1)" '"stage": "open"' || die "scope cannot read the baseline (no read-through)"
+haskv "$(v --scope "$SC" entity get demo:pr:1)" stage open || die "scope cannot read the baseline (no read-through)"
 ok "baseline entity readable from the scope (read-through)"
 
 # ── reactive core: a non-gated trigger auto-advances its subject ─────────────
@@ -113,7 +134,7 @@ ok "charter installed"
 v entity put demo:pr:2 '{"stage":"open"}' >/dev/null || die "entity put failed"
 advanced=
 for _ in $(seq 1 100); do
-	if has "$(v entity get demo:pr:2 2>/dev/null || true)" '"stage": "reviewed"'; then
+	if haskv "$(v entity get demo:pr:2 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi
@@ -147,7 +168,7 @@ ok "installed a .tony charter (block list, suffix-dispatched)"
 v entity put demo:pr:3 '{"stage":"queued"}' >/dev/null || die "entity put failed"
 advanced=
 for _ in $(seq 1 100); do
-	if has "$(v entity get demo:pr:3 2>/dev/null || true)" '"stage": "reviewed"'; then
+	if haskv "$(v entity get demo:pr:3 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi
@@ -161,7 +182,7 @@ ok "a tony-authored trigger fires identically to its JSON twin"
 # live process to exercise the control surfaces against (and observe the slide on).
 step "process run + control surfaces"
 v process run --driver scripted "sleep 30" >/dev/null || die "process run failed"
-ID=$(v process list | awk -F'"' '/"id"/ {print $4; exit}')
+ID=$(v process list -o json | awk -F'"' '/"id"/ {print $4; exit}')
 [ -n "$ID" ] || die "no process id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v process get "$ID")" "$ID" || die "process get missing the id"
@@ -174,7 +195,7 @@ ok "process vector → ask (as human:smoke)"
 # the slide is observable on the read plane (the process is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if has "$(v entity get "process:instance:$ID" 2>/dev/null || true)" '"vectorBy": "human:smoke"'; then
+	if haskv "$(v entity get "process:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
 		observed=1
 		break
 	fi

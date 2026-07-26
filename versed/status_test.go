@@ -1,11 +1,11 @@
 package versed
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
 )
@@ -28,9 +28,7 @@ func TestStatus(t *testing.T) {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
 		var m map[string]any
-		if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-			t.Fatalf("decode: %v", err)
-		}
+		decodeResp(t, resp, &m)
 		return m
 	}
 
@@ -40,7 +38,7 @@ func TestStatus(t *testing.T) {
 			t.Fatalf("status missing %q: %v", k, m)
 		}
 	}
-	if n := m["triggers"].(float64); n != 0 {
+	if n, _ := codec.AsInt64(m["triggers"]); n != 0 {
 		t.Fatalf("triggers = %v, want 0 on a fresh verse", n)
 	}
 
@@ -54,10 +52,10 @@ func TestStatus(t *testing.T) {
 	srv.Store.Put(entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Payload{"k": "v"})
 
 	m = get()
-	if n := m["triggers"].(float64); n != 1 {
+	if n, _ := codec.AsInt64(m["triggers"]); n != 1 {
 		t.Fatalf("triggers = %v, want 1 after install", n)
 	}
-	if rev := m["storeRev"].(float64); rev < 1 {
+	if rev, _ := codec.AsInt64(m["storeRev"]); rev < 1 {
 		t.Fatalf("storeRev = %v, want >= 1 after a Put", rev)
 	}
 }

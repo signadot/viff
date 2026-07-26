@@ -839,7 +839,9 @@ verse
           [--interval <dur>]                  content controller + a validator per file
   disconnect                                  drop the --scope overlay (else remove local:* entities)
 
-  global:  --addr <host:port>   --scope <name>   -o <format> (tony-format; TODO)
+  global:  --addr <host:port>   --scope <name>
+           -o <tony|json|yaml>     output format (default tony)
+           --ifmt <tony|json|yaml> input format for stdin / extensionless files
 ```
 
 Flags may appear before or after positionals (`gate resolve <id> --approve` works).
@@ -848,14 +850,19 @@ Flags may appear before or after positionals (`gate resolve <id> --approve` work
 
 Defaults are resolved through layers, each overriding the one before:
 
-1. `/etc/verse.tony` — system base
-2. `~/.config/verse.tony` — per-user; it **patches** the system file (a tony merge, so
-   you set only the keys you want to change; everything else falls through)
+1. `/etc/verse.{tony,json,yaml}` — system base
+2. `~/.config/verse.{tony,json,yaml}` — per-user; it **patches** the system file (a merge,
+   so you set only the keys you want to change; everything else falls through)
 3. environment variables
 4. CLI flags
 
-The files are [tony](https://github.com/signadot/tony-format) documents; a missing file
-is simply an absent layer. Example `~/.config/verse.tony`:
+**A config layer's format comes from its file name** — `.tony`, `.json`, `.yaml` or `.yml`
+— and the two layers need not agree: `/etc/verse.json` patched by `~/.config/verse.tony`
+merges fine, because both are parsed to the same tree before the merge. A config file
+cannot declare its own format, so its name declares it. Two files for one layer is an error
+rather than a silent precedence rule. `VERSE_CONFIG=<file>` replaces both layers outright.
+
+A missing file is simply an absent layer. Example `~/.config/verse.tony`:
 
 ```tony
 addr:  "localhost:9797"
@@ -865,6 +872,33 @@ llm: {
   apiKey:     "pk-…"
   virtualKey: "vk-…"
 }
+```
+
+### Representation
+
+verse reads and writes [tony](https://github.com/signadot/tony-format) by default, and JSON
+and YAML are dialects of the same documents rather than separate support:
+
+```sh
+verse trigger list             # tony
+verse trigger list -o json     # JSON — for `| jq`
+curl -s localhost:9797/status                              # tony
+curl -s -H 'Accept: application/json' localhost:9797/status # JSON
+```
+
+The **file suffix decides** what a file is read as, so `verse trigger add -f charter.json`
+and `-f charter.tony` both work regardless of the default. For input that names no format —
+stdin, an extensionless file, a payload typed on the command line — `--ifmt` decides, then
+the config default.
+
+To change the default: `format.default` in the config file, or `VERSE_FORMAT`. `format.output`
+(CLI stdout) and `format.wire` (HTTP bodies) override it separately, because wanting tony on
+the wire and JSON on stdout — to pipe into `jq` — is a reasonable thing to want.
+
+```tony
+format:
+  default: tony
+  output:  json   # …but render CLI output as JSON
 ```
 
 `addr` and `scope` are read by every command (they say which verse to talk to). The `llm`
@@ -930,8 +964,6 @@ the engine keeps running.
   Linear) into an owned verse slice through a docd controller (webhook-hint +
   poll-reconcile) is designed; the first, a **git Source**, is next. See
   `docs/sources.md`.
-- **`-o`** accepts a format flag but currently prints JSON; tony-format formatters
-  are the next step.
 - **Deployment**: today `up` runs the engine + proc runtime in one process and spawns
   logd+docd as children (or attaches to a running docd). The pieces — store, engine
   (`versed`), process runtime (`proc`) — are separable services behind the same

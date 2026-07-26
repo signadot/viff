@@ -3,13 +3,14 @@ package processd
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -63,8 +64,10 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var sp struct{ ID string }
-	json.NewDecoder(resp.Body).Decode(&sp)
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
+	decodeResp(t, resp, &sp)
 	resp.Body.Close()
 	if sp.ID == "" {
 		t.Fatal("no id returned")
@@ -79,6 +82,7 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer es.Body.Close()
+	frameFmt := streamFmt(es)
 
 	decisionID := ""
 	sc := bufio.NewScanner(es.Body)
@@ -88,7 +92,7 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 			continue
 		}
 		var ev process.Frame
-		if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev) != nil {
+		if codec.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev, frameFmt) != nil {
 			continue
 		}
 		if ev.Kind == process.EvPending {
@@ -115,8 +119,10 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		g, _ := http.Get(srv.URL + "/processes/" + sp.ID)
-		var snap struct{ Status string }
-		json.NewDecoder(g.Body).Decode(&snap)
+		var snap struct {
+			Status string `tony:"field=status"`
+		}
+		decodeResp(t, g, &snap)
 		g.Body.Close()
 		if snap.Status == "completed" {
 			return
@@ -132,8 +138,10 @@ func TestDaemonResolveUnknown(t *testing.T) {
 	defer srv.Close()
 
 	resp, _ := http.Post(srv.URL+"/processes", "application/json", strings.NewReader(`{"task":"t"}`))
-	var sp struct{ ID string }
-	json.NewDecoder(resp.Body).Decode(&sp)
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
+	decodeResp(t, resp, &sp)
 	resp.Body.Close()
 
 	rr, err := http.Post(srv.URL+"/processes/"+sp.ID+"/resolve", "application/json",
@@ -145,4 +153,32 @@ func TestDaemonResolveUnknown(t *testing.T) {
 	if rr.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown-decision resolve status = %d, want 404", rr.StatusCode)
 	}
+}
+
+// decodeResp reads a response in the format it DECLARES rather than assuming JSON — the
+// daemon renders in the configured default, which is not necessarily the one this test
+// would have guessed.
+func decodeResp(t *testing.T, resp *http.Response, v any) {
+	t.Helper()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading the response: %v", err)
+	}
+	f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type"))
+	if !ok {
+		f = codec.Default()
+	}
+	if err := codec.Unmarshal(body, v, f); err != nil {
+		t.Fatalf("decoding a %v response: %v\n%s", f, err, body)
+	}
+}
+
+// streamFmt reads the format an SSE stream declares its frames are in.
+func streamFmt(resp *http.Response) codec.Format {
+	if v := resp.Header.Get(codec.HeaderFormat); v != "" {
+		if f, err := codec.Parse(v); err == nil {
+			return f
+		}
+	}
+	return codec.JSON
 }

@@ -2,6 +2,7 @@ package broker_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/broker"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -30,9 +32,12 @@ func TestBrokerDialInLoop(t *testing.T) {
 
 	// claim → the worker gets the spec + an epoch (the fencing token).
 	var claim struct {
-		Spec    struct{ Task, Driver string }
-		Epoch   int64 `json:"epoch"`
-		CCursor int64 `json:"cCursor"`
+		Spec struct {
+			Task   string `tony:"field=task"`
+			Driver string `tony:"field=driver"`
+		} `tony:"field=spec"`
+		Epoch   int64 `json:"epoch" tony:"field=epoch"`
+		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
 	}
 	postJSON(t, cl, srv.URL+"/processes/t1/claim", `{"identity":"human:scott"}`, &claim)
 	if claim.Spec.Task != "review PR #42" {
@@ -69,13 +74,15 @@ func TestBrokerDialInLoop(t *testing.T) {
 	// completed one above.
 	h2 := b.Spawn("t2", "watch", "human", nil)
 	var claim2 struct {
-		Epoch   int64 `json:"epoch"`
-		CCursor int64 `json:"cCursor"`
+		Epoch   int64 `json:"epoch" tony:"field=epoch"`
+		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
 	}
 	postJSON(t, cl, srv.URL+"/processes/t2/claim", `{"identity":"human:scott"}`, &claim2)
 	h2.Cancel("stop")
 	var inbox struct {
-		Items []struct{ Kind string }
+		Items []struct {
+			Kind string `tony:"field=kind"`
+		} `tony:"field=items"`
 	}
 	getJSON(t, cl, srv.URL+"/processes/t2/inbox?since="+itoa(claim2.CCursor)+"&epoch="+itoa(claim2.Epoch), &inbox)
 	var gotCancel bool
@@ -98,15 +105,18 @@ func TestTerminalOnce(t *testing.T) {
 	defer srv.Close()
 	cl := srv.Client()
 
-	var claim struct{ Epoch int64 }
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
 
 	postJSON(t, cl, srv.URL+"/processes/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"completed"}],"result":"first"}`, nil)
 
 	var second struct {
-		Status, Result string
-		Terminal       bool
+		Status   string `tony:"field=status"`
+		Result   string `tony:"field=result"`
+		Terminal bool   `tony:"field=terminal"`
 	}
 	postJSON(t, cl, srv.URL+"/processes/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"second"}`, &second)
@@ -129,7 +139,9 @@ func TestVerseAuthoritativeCancel(t *testing.T) {
 	defer srv.Close()
 	cl := srv.Client()
 
-	var claim struct{ Epoch int64 }
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
 
 	h.Cancel("operator stop") // no worker report involved
@@ -155,7 +167,9 @@ loop:
 	}
 
 	// a late worker completion loses to the latch: the report is a frozen no-op.
-	var late struct{ Status string }
+	var late struct {
+		Status string `tony:"field=status"`
+	}
 	postJSON(t, cl, srv.URL+"/processes/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"completed"}],"result":"done"}`, &late)
 	if late.Status != "cancelled" {
@@ -174,7 +188,9 @@ func TestFenceAndTakeover(t *testing.T) {
 	cl := srv.Client()
 
 	// A claims twice (a reconnect): epoch advances; the first epoch is now fenced.
-	var c1, c2 struct{ Epoch int64 }
+	var c1, c2 struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"A"}`, &c1)
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"A"}`, &c2)
 	if c2.Epoch <= c1.Epoch {
@@ -195,7 +211,9 @@ func TestFenceAndTakeover(t *testing.T) {
 	}
 	// ...until verse revokes, which also fences A's current epoch.
 	b.Revoke("p")
-	var c3 struct{ Epoch int64 }
+	var c3 struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"B"}`, &c3)
 	if c3.Epoch <= c2.Epoch {
 		t.Fatalf("post-revoke claim epoch %d did not advance", c3.Epoch)
@@ -218,7 +236,9 @@ func TestGateLoop(t *testing.T) {
 	defer srv.Close()
 	cl := srv.Client()
 
-	var claim struct{ Epoch int64 }
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	// worker raises a gate (report EvPending).
@@ -361,7 +381,7 @@ func postJSON(t *testing.T, cl *http.Client, url, body string, out any) {
 	}
 	defer resp.Body.Close()
 	if out != nil {
-		_ = json.NewDecoder(resp.Body).Decode(out)
+		decodeResp(t, resp, out)
 	}
 }
 
@@ -382,7 +402,25 @@ func getJSON(t *testing.T, cl *http.Client, url string, out any) {
 		t.Fatalf("GET %s: %v", url, err)
 	}
 	defer resp.Body.Close()
-	_ = json.NewDecoder(resp.Body).Decode(out)
+	decodeResp(t, resp, out)
+}
+
+// decodeResp reads a response in the format it DECLARES. These tests send JSON bodies on
+// purpose — that is the negotiation being exercised — but what comes back follows the
+// server's default, so assuming JSON on the way in AND out would only test one half.
+func decodeResp(t *testing.T, resp *http.Response, out any) {
+	t.Helper()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading the response: %v", err)
+	}
+	f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type"))
+	if !ok {
+		f = codec.Default()
+	}
+	if err := codec.Unmarshal(body, out, f); err != nil {
+		t.Fatalf("decoding a %v response: %v\n%s", f, err, body)
+	}
 }
 
 func itoa(n int64) string {

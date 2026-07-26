@@ -181,7 +181,6 @@ carrying a subject ref, plus `verse status`. Gate answers ride the out-of-band r
 path (`gate resolve`).
 
 **Next, for the dogfood:**
-- `-o` via the go-tony formatters (today `-o` prints JSON).
 - **Rebind autonomy** at runtime (slide a gate) as a first-class control op.
 - Wire the gate resolver to a real surface — Slack — for the release approver.
 - `verse down`; a **git Source** (the first generic external Source).

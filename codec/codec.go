@@ -45,11 +45,11 @@ const (
 // Baseline is verse's representation when nothing overrides it — no config, no env, no
 // flag, no header.
 //
-// It is JSON today and becomes tony at the flip. That is deliberately ONE line, here, in
-// the package that owns format decisions: everything else about tony support lands before
-// it, so the user-visible change is a single revertible edit and `VERSE_FORMAT=json` keeps
-// working either way.
-var Baseline = JSON
+// It is tony. Everything else about tony support landed before this line did, so the flip
+// itself was a single edit — and it stays a single edit to revert. `VERSE_FORMAT=json`,
+// `-o json` and `Accept: application/json` all still work, and CI runs the end-to-end smoke
+// BOTH ways so the JSON path cannot quietly rot.
+var Baseline = Tony
 
 // defaultFormat holds Format+1 so that zero means UNSET — format.TonyFormat is 0, so a
 // plain value could not distinguish "nobody called SetDefault" from "somebody chose tony",

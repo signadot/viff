@@ -2,6 +2,7 @@ package entity
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -230,12 +231,19 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 // watches; MountRoot would then no longer be required for THIS reason (the writer-priority
 // stall and "a process has no history" would still argue for it).
 func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
-	// ~65s: the mount waits out MountForceAfter (~5s) and each Since attempt runs to its
-	// 15s internal timeout. Both delays ARE the finding, so they cannot be shortened —
-	// skip under -short instead.
-	if testing.Short() {
-		t.Skip("slow by nature: waits out MountForceAfter and three 15s Since timeouts")
-	}
+	// NOT RUN BY DEFAULT — set GOTEST_LONG=1 to run it.
+	//
+	// It takes ~65s, which was ~90% of this package's entire test time and most of the
+	// whole suite's. The cost is intrinsic: the mount waits out MountForceAfter (~5s) and
+	// each Since attempt runs to its 15s internal timeout, and those delays ARE the finding
+	// — shortening them would remove what is being demonstrated.
+	//
+	// So it is skipped rather than trimmed, and the honest consequence is that this
+	// evidence is NOT exercised on an ordinary run: a change that fixed (or worsened) the
+	// composed-watch behaviour would not be noticed until someone runs it deliberately.
+	// It is kept because the rationale for MountRoot is worth being able to re-check on
+	// demand rather than trusting a comment.
+	requireLong(t)
 	s, docd := storeOverDocd(t)
 
 	before := s.Rev()
@@ -351,5 +359,20 @@ TestLogdStore_SinceUnderMountBelowRoot.`, root, patches)
 				patches++
 			}
 		}
+	}
+}
+
+// requireLong skips a test unless GOTEST_LONG is set to something non-empty.
+//
+// For tests whose runtime is the point rather than an accident — waiting out a real
+// timeout to demonstrate what happens when it expires. Those cannot be made fast without
+// destroying what they show, and leaving them in the default run costs more than they earn
+// on an ordinary edit-test loop.
+//
+//	GOTEST_LONG=1 go test ./entity/
+func requireLong(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GOTEST_LONG") == "" {
+		t.Skip("long: set GOTEST_LONG=1 to run (skipped by default; see the test's comment)")
 	}
 }

@@ -2,7 +2,6 @@ package versed
 
 import (
 	"bufio"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,8 +26,10 @@ func TestProcessRunHonorsPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	var sp struct{ ID string }
-	_ = json.NewDecoder(resp.Body).Decode(&sp)
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
+	decodeResp(t, resp, &sp)
 	resp.Body.Close()
 	if sp.ID == "" {
 		t.Fatal("no id returned from process run")
@@ -37,7 +38,7 @@ func TestProcessRunHonorsPolicy(t *testing.T) {
 	// honored the policy: the run is on the broker, not the local runtime.
 	lr, _ := ts.Client().Get(ts.URL + "/processes")
 	var list []map[string]any
-	_ = json.NewDecoder(lr.Body).Decode(&list)
+	decodeResp(t, lr, &list)
 	lr.Body.Close()
 	var pol string
 	for _, m := range list {
@@ -115,9 +116,13 @@ func TestStatusShowsBrokerPolicy(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var st struct {
-		Policy struct{ Kind, Resume, Dial string }
+		Policy struct {
+			Kind   string `tony:"field=kind"`
+			Resume string `tony:"field=resume"`
+			Dial   string `tony:"field=dial"`
+		} `tony:"field=policy"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&st)
+	decodeResp(t, resp, &st)
 	if st.Policy.Kind != "broker" || st.Policy.Resume != "ephemeral" {
 		t.Fatalf("policy = %+v, want kind=broker resume=ephemeral", st.Policy)
 	}
@@ -139,11 +144,12 @@ func TestStatusShowsLocalPolicy(t *testing.T) {
 	defer resp.Body.Close()
 	var st struct {
 		Policy struct {
-			Kind, Resume string
-			Dial         *string
-		}
+			Kind   string  `tony:"field=kind"`
+			Resume string  `tony:"field=resume"`
+			Dial   *string `tony:"field=dial"`
+		} `tony:"field=policy"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&st)
+	decodeResp(t, resp, &st)
 	if st.Policy.Kind != "local" || st.Policy.Resume != "ephemeral" || st.Policy.Dial != nil {
 		t.Fatalf("policy = %+v, want kind=local resume=ephemeral dial=null", st.Policy)
 	}
@@ -175,7 +181,7 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var list []map[string]any
-	_ = json.NewDecoder(resp.Body).Decode(&list)
+	decodeResp(t, resp, &list)
 	var found map[string]any
 	for _, m := range list {
 		if m["id"] == "bp1" {
@@ -202,7 +208,7 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 		t.Fatalf("get brokered = %d, want 200", gr.StatusCode)
 	}
 	var got map[string]any
-	_ = json.NewDecoder(gr.Body).Decode(&got)
+	decodeResp(t, gr, &got)
 	if got["policy"] != "broker" || got["task"] != "brokered review" {
 		t.Fatalf("get = %+v, want the brokered process tagged broker", got)
 	}
@@ -236,9 +242,13 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 	}
 	defer ir.Body.Close()
 	var box struct {
-		Items []struct{ Kind, Text, By string }
+		Items []struct {
+			Kind string `tony:"field=kind"`
+			Text string `tony:"field=text"`
+			By   string `tony:"field=by"`
+		} `tony:"field=items"`
 	}
-	_ = json.NewDecoder(ir.Body).Decode(&box)
+	decodeResp(t, ir, &box)
 	var sawSay bool
 	for _, it := range box.Items {
 		if it.Kind == "say" && it.Text == "focus on auth" && it.By == "op" {
@@ -259,8 +269,10 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 		t.Fatalf("cancel routing = %d, want 204", cr.StatusCode)
 	}
 	gr, _ := cl.Get(ts.URL + "/processes/bp1")
-	var snap struct{ Status string }
-	_ = json.NewDecoder(gr.Body).Decode(&snap)
+	var snap struct {
+		Status string `tony:"field=status"`
+	}
+	decodeResp(t, gr, &snap)
 	gr.Body.Close()
 	if snap.Status != "cancelled" {
 		t.Fatalf("after cancel status=%q, want cancelled", snap.Status)
@@ -310,9 +322,11 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 		t.Fatalf("claim through broker mount = %d, want 200", resp.StatusCode)
 	}
 	var claim struct {
-		Spec struct{ Task string }
+		Spec struct {
+			Task string `tony:"field=task"`
+		} `tony:"field=spec"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&claim)
+	decodeResp(t, resp, &claim)
 	if claim.Spec.Task != "review PR #7" {
 		t.Fatalf("claim spec.task=%q, want the spawn task through the mount", claim.Spec.Task)
 	}

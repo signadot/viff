@@ -101,9 +101,24 @@ check-generate: ## fail if the generated files are stale or uncommitted
 test: ## go test ./...
 	$(GO) test ./...
 
+# Tests whose RUNTIME is the point — waiting out a real timeout to show what happens when it
+# expires — are skipped by default via requireLong(), because one of them was ~90% of the
+# suite's wall time. They are not exercised on an ordinary run; this is how to run them.
+.PHONY: test-long
+test-long: ## go test ./... including the long, timeout-waiting tests (GOTEST_LONG=1)
+	GOTEST_LONG=1 $(GO) test ./...
+
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a free port)
 	@./smoke.sh
+
+# The representation is a DEFAULT, not a fixture: tony out of the box, JSON when asked for.
+# Running the suite only one way would let the other rot silently — and the JSON path is what
+# every existing client and `curl | jq` still uses. This is the target CI should call.
+.PHONY: smoke-all
+smoke-all: ## smoke under both representations (tony default, then VERSE_FORMAT=json)
+	@./smoke.sh
+	@VERSE_FORMAT=json ./smoke.sh
 
 .PHONY: clean
 clean: ## remove dist/

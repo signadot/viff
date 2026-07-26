@@ -11,10 +11,9 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// The wire is negotiated, and the DEFAULT is still JSON. Both halves matter: a client that
-// asks gets what it asked for, and a client that says nothing gets exactly what verse sent
-// before any of this — which is what makes the eventual flip a one-line change rather than
-// a compatibility event.
+// The wire is negotiated and the default is tony. Both halves matter: a client that says
+// nothing gets tony, and a client that asks for JSON still gets JSON — the flip changed the
+// default, not the capability, and `VERSE_WIRE_FORMAT=json` puts it back without a rebuild.
 func TestWireNegotiation(t *testing.T) {
 	srv := New(ScriptedBuilder)
 	ts := httptest.NewServer(srv.Handler())
@@ -39,22 +38,22 @@ func TestWireNegotiation(t *testing.T) {
 		return resp.Header.Get("Content-Type"), string(b)
 	}
 
-	// No preference at all — the baseline, which is JSON until the flip.
+	// No preference at all — the baseline, which is tony.
 	ct, body := get("", "")
-	if ct != codec.MediaJSON {
-		t.Errorf("no Accept: Content-Type = %q, want %q", ct, codec.MediaJSON)
-	}
-	if !strings.HasPrefix(strings.TrimSpace(body), "{") {
-		t.Errorf("no Accept: body is not JSON:\n%s", body)
-	}
-
-	// Asking by header.
-	ct, body = get(codec.MediaTony, "")
 	if ct != codec.MediaTony {
-		t.Errorf("Accept tony: Content-Type = %q, want %q", ct, codec.MediaTony)
+		t.Errorf("no Accept: Content-Type = %q, want %q", ct, codec.MediaTony)
 	}
 	if strings.HasPrefix(strings.TrimSpace(body), "{") {
-		t.Errorf("Accept tony: body still looks like JSON:\n%s", body)
+		t.Errorf("no Accept: body looks like JSON, want tony:\n%s", body)
+	}
+
+	// JSON is still reachable by asking — the flip changed the default, not the capability.
+	ct, body = get(codec.MediaJSON, "")
+	if ct != codec.MediaJSON {
+		t.Errorf("Accept json: Content-Type = %q, want %q", ct, codec.MediaJSON)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(body), "{") {
+		t.Errorf("Accept json: body is not JSON:\n%s", body)
 	}
 
 	// Asking by query parameter — the lever that also works on an SSE route, where Accept
@@ -67,18 +66,18 @@ func TestWireNegotiation(t *testing.T) {
 	}
 
 	// The parameter outranks the header — it is the more specific request.
-	if ct, _ = get(codec.MediaJSON, "tony"); ct != codec.MediaTony {
-		t.Errorf("?format=tony with Accept json: Content-Type = %q, want tony", ct)
+	if ct, _ = get(codec.MediaTony, "json"); ct != codec.MediaJSON {
+		t.Errorf("?format=json with Accept tony: Content-Type = %q, want json", ct)
 	}
 
 	// */* expresses no preference, so it must not be read as one.
-	if ct, _ = get("*/*", ""); ct != codec.MediaJSON {
-		t.Errorf("Accept */*: Content-Type = %q, want the default %q", ct, codec.MediaJSON)
+	if ct, _ = get("*/*", ""); ct != codec.MediaTony {
+		t.Errorf("Accept */*: Content-Type = %q, want the default %q", ct, codec.MediaTony)
 	}
 
 	// A malformed parameter falls back rather than failing the request: it is a rendering
 	// preference, and a 400 would be a worse answer than the default rendering.
-	if ct, _ = get("", "tny"); ct != codec.MediaJSON {
+	if ct, _ = get("", "tny"); ct != codec.MediaTony {
 		t.Errorf("?format=tny: Content-Type = %q, want the default", ct)
 	}
 }

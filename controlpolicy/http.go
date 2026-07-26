@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -66,7 +67,7 @@ func (p *httpPolicy) ListProcesses() []process.Instance {
 	}
 	defer resp.Body.Close()
 	var out []process.Instance
-	_ = json.NewDecoder(resp.Body).Decode(&out)
+	_ = decodeResp(resp, &out)
 	return out
 }
 
@@ -83,7 +84,7 @@ func (p *httpPolicy) ProcessSnapshot(id string) (process.Instance, bool) {
 		return process.Instance{}, false
 	}
 	var m process.Instance
-	if json.NewDecoder(resp.Body).Decode(&m) != nil {
+	if decodeResp(resp, &m) != nil {
 		return process.Instance{}, false
 	}
 	return m, true
@@ -109,6 +110,16 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 		cancel()
 		return out, func() {}
 	}
+	// Frames come in whatever format the stream declares — Content-Type is spoken for by
+	// text/event-stream, so the format rides its own header. Assuming JSON here made every
+	// frame fail to parse the moment the remote's default changed, and because an
+	// unparseable frame is skipped rather than reported, the symptom was a stream that
+	// simply never delivered anything.
+	frameFmt := codec.JSON
+	if f, err := codec.Parse(resp.Header.Get(codec.HeaderFormat)); err == nil &&
+		resp.Header.Get(codec.HeaderFormat) != "" {
+		frameFmt = f
+	}
 	go func() {
 		defer close(out)
 		defer resp.Body.Close()
@@ -120,7 +131,7 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 				continue // blank line / comment
 			}
 			var ev process.Frame
-			if json.Unmarshal([]byte(data), &ev) != nil {
+			if codec.Unmarshal([]byte(data), &ev, frameFmt) != nil {
 				continue
 			}
 			select {
@@ -159,11 +170,29 @@ func (h *remoteHandle) Result() string {
 	var snap struct {
 		Result string `json:"result" tony:"field=result"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&snap)
+	_ = decodeResp(resp, &snap)
 	return snap.Result
 }
 
 func (h *remoteHandle) url(suffix string) string { return h.base + "/processes/" + h.id + suffix }
+
+// decodeResp reads a response in the format it DECLARES.
+//
+// Requests here still send labelled JSON, which a negotiating server reads happily. What
+// cannot be assumed is the REPLY: the remote renders in its own configured default, so
+// hard-coding a decoder here breaks the moment the two ends differ — which is exactly what
+// happened when the default moved.
+func decodeResp(resp *http.Response, v any) error {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type"))
+	if !ok {
+		f = codec.JSON
+	}
+	return codec.Unmarshal(body, v, f)
+}
 
 func (h *remoteHandle) post(path string, body any) {
 	var r io.Reader
