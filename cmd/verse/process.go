@@ -463,14 +463,10 @@ func streamEvents(cc *cli.Context, id string) error {
 			continue
 		}
 		fmt.Fprintln(cc.Out, compactFrame(data, in, out))
-		var ev struct {
-			Kind    string `tony:"field=kind"`
-			Text    string `tony:"field=text"`
-			ID      string `tony:"field=id"`
-			Gate    string `tony:"field=gate"`
-			Tool    string `tony:"field=tool"`
-			Process string `tony:"field=process"`
-		}
+		// process.Frame, not a hand-copied subset of it: the six fields this loop reads
+		// were re-declared here with their tony tags, so a rename on the emitting side
+		// would have gone unnoticed and simply stopped populating them.
+		var ev process.Frame
 		_ = codec.Unmarshal([]byte(data), &ev, in)
 		// The process reached a terminal status — the stream won't emit more, so detach
 		// (else attach would hang waiting on a closed-but-not-EOF stream).

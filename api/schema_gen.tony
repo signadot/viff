@@ -2,6 +2,14 @@
 context:
 - tony-format/context
 define:
+  client: .[string]
+  mount: .[string]
+signature:
+  name: verse-docd
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   subject: .[string]
   text: .[string]
@@ -32,6 +40,34 @@ define:
   vector: .[nullable(process:verse-vector)]
 signature:
   name: verse-inbox-item
+---
+context:
+- tony-format/context
+define:
+  apiKey: .[string]
+  available: .[bool]
+  baseURL: .[string]
+  model: .[string]
+  virtualKey: .[string]
+signature:
+  name: verse-llm
+---
+context:
+- tony-format/context
+define:
+  api: .[string]
+  broker: .[string]
+signature:
+  name: verse-listen
+---
+context:
+- tony-format/context
+define:
+  dial: .[string]
+  kind: .[string]
+  resume: .[string]
+signature:
+  name: verse-policy-status
 ---
 context:
 - tony-format/context
@@ -100,6 +136,22 @@ define:
   id: .[string]
 signature:
   name: verse-spawned
+---
+context:
+- tony-format/context
+define:
+  docd: .[nullable(verse-docd)]
+  fired: .[int]
+  flows: .[int]
+  gates: .[int]
+  listen: .[nullable(verse-listen)]
+  llm: .[nullable(verse-llm)]
+  policy: .[nullable(verse-policy-status)]
+  processes: .[int]
+  storeRev: .[int]
+  triggers: .[int]
+signature:
+  name: verse-status
 ---
 context:
 - tony-format/context

@@ -31,6 +31,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
@@ -136,19 +137,14 @@ func (l LLMConfig) Available() bool { return l.APIKey != "" }
 // Status is a secrets-safe summary for /status: whether the llm driver is usable, the model
 // and base URL (not secret), and MASKED key fragments — enough to tell which key is set (and
 // catch a stale/typo'd one) without exposing it. The full keys never leave the process.
-func (l LLMConfig) Status() map[string]any {
-	m := map[string]any{
-		"available":  l.Available(),
-		"apiKey":     maskSecret(l.APIKey),
-		"virtualKey": maskSecret(l.VirtualKey),
+func (l LLMConfig) Status() *api.LLM {
+	return &api.LLM{
+		Available:  l.Available(),
+		APIKey:     maskSecret(l.APIKey),
+		VirtualKey: maskSecret(l.VirtualKey),
+		Model:      l.Model,
+		BaseURL:    l.BaseURL,
 	}
-	if l.Model != "" {
-		m["model"] = l.Model
-	}
-	if l.BaseURL != "" {
-		m["baseURL"] = l.BaseURL
-	}
-	return m
 }
 
 // maskSecret elides a secret to "unset", "set" (too short to mask safely), or a

@@ -47,10 +47,10 @@ type Server struct {
 	Addr       string
 	BrokerAddr string
 
-	// LLM is a secrets-safe summary of the process runtime's LLM config (config.LLMConfig
-	// .Status()), published on /status so you can see whether agent creds are configured
-	// on THIS server (the one that hosts the runtime) — the common gotcha. Set by `up`.
-	LLM map[string]any
+	// LLM is a secrets-safe summary of the process runtime's LLM config, published on
+	// /status so you can see whether agent creds are configured on THIS server (the one
+	// that hosts the runtime) — the common gotcha. Set by `up`; nil when unconfigured.
+	LLM *api.LLM
 
 	// DocdClient/DocdMount are the addresses of the docd this verse is backed by,
 	// when store-kind is docd. They are published on GET /status so a separately-run
@@ -344,7 +344,7 @@ func (s *Server) Start(ctx context.Context) {
 func (s *Server) Handler() http.Handler {
 	rt := &router{mux: http.NewServeMux()}
 	// observation (read plane)
-	rt.handle("GET /status", s.status, "", "")
+	rt.handle("GET /status", s.status, "", "verse-status")
 	rt.handle("GET /watch", s.watch, "", "verse-event")
 	rt.handle("GET /entities", s.listEntities, "", "")
 	rt.handle("GET /entity", s.getEntity, "", "verse-entity")
@@ -539,7 +539,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	if evs, ok := store.Since(since); ok {
 		for _, ev := range evs {
 			if match(ev) {
-				_ = sse.Send(eventWire(ev))
+				_ = sse.Send(ev)
 			}
 			if ev.Rev > last {
 				last = ev.Rev
@@ -560,7 +560,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 				continue // already delivered by the catch-up (overlap window)
 			}
 			if ev.Gap > 0 || match(ev) {
-				_ = sse.Send(eventWire(ev))
+				_ = sse.Send(ev)
 			}
 			if ev.Rev > last {
 				last = ev.Rev
@@ -606,7 +606,10 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
+	// The entity itself. Its Ref carries MarshalText, so it still renders as the address
+	// string this always sent — and the route table's `verse-entity` now names the type
+	// actually written rather than a map that happened to match it.
+	writeOut(w, r, http.StatusOK, e)
 }
 
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
@@ -620,7 +623,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeOut(w, r, http.StatusOK, eventWire(ev))
+	writeOut(w, r, http.StatusOK, ev)
 }
 
 func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
@@ -635,7 +638,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ev := s.scopedStore(r).Put(ref, body.Payload)
-	writeOut(w, r, http.StatusOK, eventWire(ev))
+	writeOut(w, r, http.StatusOK, ev)
 }
 
 // listGates is the unified pending-gate view: engine (trigger) gates from the registry AND
@@ -729,33 +732,24 @@ func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 // live counts across the planes — the charter size, in-flight flows, pending gates,
 // hosted processes, and total firings.
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{
-		"storeRev":  s.Store.Rev(),
-		"triggers":  len(s.Eng.Triggers()),
-		"flows":     len(s.Eng.Flows()),
-		"gates":     len(s.Reg.Pending()),
-		"processes": s.Procd.Count(),
-		"fired":     s.Eng.Fired(),
-		"policy":    s.policyStatus(), // how processes run: kind + resume + dial legs
+	out := api.Status{
+		StoreRev:  s.Store.Rev(),
+		Triggers:  len(s.Eng.Triggers()),
+		Flows:     len(s.Eng.Flows()),
+		Gates:     len(s.Reg.Pending()),
+		Processes: s.Procd.Count(),
+		Fired:     s.Eng.Fired(),
+		Policy:    s.policyStatus(), // how processes run: kind + resume + dial legs
+		LLM:       s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
 	// When docd-backed, publish its addresses so a controller process (verse connect)
 	// can reach the mount face; the client face is where store clients connect.
 	if s.DocdMount != "" || s.DocdClient != "" {
-		out["docd"] = map[string]any{"client": s.DocdClient, "mount": s.DocdMount}
-	}
-	if len(s.LLM) > 0 {
-		out["llm"] = s.LLM // secrets-safe: whether agent creds are configured on this server
+		out.Docd = &api.Docd{Client: s.DocdClient, Mount: s.DocdMount}
 	}
 	// This verse's own listen addresses (operator API, and the broker face when served).
-	listen := map[string]any{}
-	if s.Addr != "" {
-		listen["api"] = s.Addr
-	}
-	if s.BrokerAddr != "" {
-		listen["broker"] = s.BrokerAddr
-	}
-	if len(listen) > 0 {
-		out["listen"] = listen
+	if s.Addr != "" || s.BrokerAddr != "" {
+		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -765,19 +759,19 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 // `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
 // a remote processd (one URL, no separate worker leg) and diverge for a broker (verse drives
 // it in-process — ephemeral — while a worker dials a separate face). See docs/control-policy.md.
-func (s *Server) policyStatus() map[string]any {
-	pol := map[string]any{"resume": "ephemeral", "dial": nil}
+func (s *Server) policyStatus() *api.PolicyStatus {
+	pol := &api.PolicyStatus{Resume: "ephemeral"}
 	switch {
 	case hasFace(s.policy): // a dial-in broker: in-process control, external worker face
-		pol["kind"] = "broker"
+		pol.Kind = "broker"
 		if face := s.policy.(interface{ Face() string }).Face(); face != "" {
-			pol["dial"] = face
+			pol.Dial = face
 		}
 	case s.policy.Ref() == "local":
-		pol["kind"] = "local"
+		pol.Kind = "local"
 	default: // a remote controlPolicy base URL — the Ref IS the re-attach address
-		pol["kind"] = "remote"
-		pol["resume"] = s.policy.Ref()
+		pol.Kind = "remote"
+		pol.Resume = s.policy.Ref()
 	}
 	return pol
 }
@@ -1300,19 +1294,11 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "say", Affected: s.Eng.SteerFlow(m, b.Text, by)})
 }
 
-func eventWire(ev entity.Event) map[string]any {
-	m := map[string]any{"rev": ev.Rev, "op": string(ev.Op), "ref": ev.Ref.String()}
-	if ev.To != nil {
-		m["to"] = ev.To
-	}
-	if ev.From != nil {
-		m["from"] = ev.From
-	}
-	if ev.Gap > 0 {
-		m["gap"] = ev.Gap
-	}
-	return m
-}
+// eventWire is gone: an Event is written as itself. It used to be rebuilt field by field
+// into a map — ref stringified, to/from/gap copied conditionally — which is exactly what the
+// type's own tony tags already say (omitzero on to, from and gap), and entity.Ref renders as
+// its address through MarshalText. The rebuild could only ever agree with the type by
+// coincidence.
 
 // writeOut renders a response in the format the request asked for. It takes the request
 // because that is where the answer lives — ?format=, then Accept, then the process default.

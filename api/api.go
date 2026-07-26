@@ -206,3 +206,68 @@ type InboxItem struct {
 	// Vector slides the worker's autonomy dial mid-run.
 	Vector *process.Vector `tony:"field=vector,omitzero"`
 }
+
+// Status is what GET /status answers: what this verse is, what it is running, and where to
+// reach the pieces around it.
+//
+// The counters are the cheap health read; the three optional blocks are discovery. `docd` is
+// how `verse connect` finds the store's mount face without guessing the ephemeral port `up`
+// chose, `listen` publishes this verse's own addresses, and `llm` says whether agent creds
+// are configured ON THIS SERVER — the common gotcha, since the runtime reads its own
+// environment rather than the client's.
+//
+//tony:schemagen=verse-status,notag
+type Status struct {
+	StoreRev  int64 `tony:"field=storeRev"`
+	Triggers  int   `tony:"field=triggers"`
+	Flows     int   `tony:"field=flows"`
+	Gates     int   `tony:"field=gates"`
+	Processes int   `tony:"field=processes"`
+	Fired     int   `tony:"field=fired"`
+
+	Policy *PolicyStatus `tony:"field=policy,omitzero"`
+	Docd   *Docd         `tony:"field=docd,omitzero"`
+	LLM    *LLM          `tony:"field=llm,omitzero"`
+	Listen *Listen       `tony:"field=listen,omitzero"`
+}
+
+// PolicyStatus is how this verse runs processes: local (in-process), broker (a dial-in
+// worker face), or remote (a controlPolicy base URL). Resume says what survives a restart,
+// and Dial is the worker-facing address when there is one.
+//
+//tony:schemagen=verse-policy-status,notag
+type PolicyStatus struct {
+	Kind   string `tony:"field=kind"`
+	Resume string `tony:"field=resume"`
+	Dial   string `tony:"field=dial,omitzero"`
+}
+
+// Docd is the document store's two faces: the client address store clients connect to, and
+// the mount address a controller process reaches.
+//
+//tony:schemagen=verse-docd,notag
+type Docd struct {
+	Client string `tony:"field=client,omitzero"`
+	Mount  string `tony:"field=mount,omitzero"`
+}
+
+// LLM is a SECRETS-SAFE summary of the process runtime's model config: whether it is usable
+// at all, and masked keys so an operator can tell which credential is configured without the
+// credential leaving the server.
+//
+//tony:schemagen=verse-llm,notag
+type LLM struct {
+	Available  bool   `tony:"field=available"`
+	APIKey     string `tony:"field=apiKey,omitzero"`
+	VirtualKey string `tony:"field=virtualKey,omitzero"`
+	Model      string `tony:"field=model,omitzero"`
+	BaseURL    string `tony:"field=baseURL,omitzero"`
+}
+
+// Listen is this verse's own addresses: the operator API, and the broker face when served.
+//
+//tony:schemagen=verse-listen,notag
+type Listen struct {
+	API    string `tony:"field=api,omitzero"`
+	Broker string `tony:"field=broker,omitzero"`
+}
