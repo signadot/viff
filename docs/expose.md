@@ -74,7 +74,8 @@ A process's working context is its `Root` + bound `ContentReader` (`harness`), f
 today. To let an agent change directories to an exposure:
 
 - **Bind a process to an exposure by name** at spawn — its file tools resolve against
-  `local:*-<name>:*`.
+  `local:*-<name>:*`. Binding must not mean *only*, though: see "A process sees more than one
+  surface" below.
 - **A working-surface control**, analogous to re-vectoring: an operator (or the engine) swaps a
   running process's bound exposure — "attach to exposure `<name>`" — the file-context equivalent of
   `SetVector` sliding the gate vector mid-run.
@@ -83,6 +84,44 @@ today. To let an agent change directories to an exposure:
 
 Open: whether `cd` is primarily an operator control, an agent tool, or both (operator sets the
 initial surface; the agent moves within a permitted set).
+
+### A process sees more than one surface
+
+The harness today is all-or-nothing: `fsExec` federates `read_file` when a `ContentReader` is
+bound and reads the local filesystem under `Root` when it is not (`process/harness/exec.go`) —
+there is no third case. So binding a process to an exposure would *take away* its own tree: it
+could not read the charter or config it was spawned beside, write scratch output next to itself,
+or look at a second exposure it is meant to compare against. Real work needs all three at once —
+the exposure it is operating on, its own `Root`, and sometimes another exposure.
+
+A process's working context should therefore be a **table of named surfaces with one current
+surface**, not a single bound reader:
+
+- **The table** maps a surface name to a resolver — an exposure (served as `local:*-<name>:*`
+  through the content controller) or the process's own `Root` (the local filesystem, named
+  `local` by convention). Its membership is fixed at spawn and adjusted by the same
+  working-surface control that swaps a binding above; it *is* the permitted set `cd` moves
+  within.
+- **The current surface** is what a bare path resolves against — so unqualified
+  `read_file`/`list_dir`/`write_file` keep working exactly as they do now, and `cd <name>` only
+  moves the cursor.
+- **Qualified paths** — `<name>:<path>` reaches another surface in the table without moving.
+  That is what a compare-across-exposures or copy-out task needs, and it keeps cross-surface
+  access legible in the execution ledger instead of implicit in whatever the cursor happened to
+  be.
+
+Deliberately **not** a search path: a bare path must never fall back from the current surface to
+the local filesystem. Silent fallback is how a process reads the wrong `config.yaml`, and it
+would dissolve exactly the isolation the exposure's scope exists to provide — a file missing on
+the current surface is an error, not a reason to go looking elsewhere.
+
+Authority stays per-surface. A write is gated at the surface it lands on (the process's vector
+checked at the write boundary, per "Write authority" below), so the table can hold an exposure a
+process may read and another it may also write, and the difference is enforced where the write
+crosses rather than by which surface happens to be current.
+
+`run_bash` is unaffected: it runs where the process runs, so a current surface that is a remote
+exposure gives it nothing — same local-proc constraint as above.
 
 ## Exposure and scope: coupled by convention, not unified
 
@@ -116,6 +155,89 @@ This still reconciles the session tension — triggers are decoupled from the *e
 the exposure (and its scope) is named and durable, not because they escape it — while keeping the
 refs legible enough to filter by owner, place, and role.
 
+## Exposure, or environment? — the `launch.Spec` axis with no referent
+
+`launch.Spec` already declares the axis this note is circling. Its fields are all *references to
+something named elsewhere* rather than inlined things:
+
+	Policy      → the gate vector (the autonomy dial) — soft, slidable
+	Grant       → hard authority — what it may do at all
+	Environment → the sandbox/workspace floor — unbypassable
+
+A naming correction has already been applied, because these two sit next to each other from here
+on. **"Scope" is taken**: everywhere else in verse it means the entity-store isolation overlay —
+`entity.Store.Scope`, `config.Scope`, `--scope`, `VERSE_SCOPE`, connect's nonce, and this document
+up to this point. `launch.Spec.Scope` was the one place it meant *authority*, and its own comment
+translated it away ("Scope → the Grant"). The authority axis is the **grant** — the word the type
+(`process.Grant`) and the delegation check (`Grant.Subset`) already use — so the field is now
+spelled `launch.Spec.Grant` (wire field `grant`). Nothing read `Spec.Scope`, so the rename cost a
+wire field and no behavior. This note says *grant* for authority and reserves *scope* for isolation.
+
+`Environment` has no referent. `Bind` expands its `$vars` and that is the entire implementation —
+nothing in the tree resolves the name (`launch/launch.go`); the test binds it to the suggestive
+`sandbox-demo:pr:1`. It is a declared axis waiting for a named, durable, registered thing to
+point at, and `expose` is minting exactly such a thing.
+
+`Policy` is in the same state, and it is the more visible of the two: the spawned process's
+vector is whatever its driver hardcodes (`harness.Vector()` for llm, an empty `Default: auto` for
+scripted), so a trigger cannot say "spawn this one auto — I already gated the firing." That is
+why a trigger-spawned agent asks twice: once at the firing, through the trigger's own `gates`,
+and again per action, through a vector the trigger had no way to name. Both axes want the same
+thing — a named record the runtime resolves at spawn — which is the shape `expose` is arriving at
+from the file-surface side. Where that spawn-time authority should come from is
+[authority.md](authority.md).
+
+Which suggests the record being designed here is not really "an exposed directory". It is a
+**sandbox definition**, of which the directory surface is one member:
+
+	environment <name>
+	  surfaces:      the table above — exposures plus the process's own root, one of them current
+	  env:           the variables the process, and its run_bash, actually see
+	  capabilities:  the floor — which tools exist at all, which surfaces are writable, network or not
+
+with `verse expose` as the verb that puts a directory *into* one, and `spawn { environment:
+<name> }` as what binds a process to it.
+
+An environment is **not** a scope, and adding it does not re-merge what the previous section
+separated: a scope isolates *entities* (a COW overlay in the store), an environment configures
+*execution* (surfaces, variables, capability floor). The exposure is what ties one to the other.
+
+### It makes the surface table declarative
+
+The multi-surface table above is otherwise an ad-hoc bundle of spawn arguments, assembled per
+process and re-assembled by every trigger that launches into the same tree. An environment record
+is its natural home: declare the surfaces once under a name, and every process launched into it
+gets the same set, `cd` moves within a set that was *declared* rather than accumulated, and a
+trigger action says `environment: alice-webapp` instead of enumerating mounts. The `Environment`
+axis then carries the working context the way `Policy` carries the vector.
+
+### Env today is inherited, which is a leak
+
+`run_bash` builds `exec.CommandContext(ctx, "bash", "-lc", command)` and never sets `c.Env`
+(`process/harness/exec.go`), so the agent's shell inherits the *server's* entire environment —
+including the `PORTKEY_API_KEY` / `PORTKEY_VIRTUAL_KEY` the harness itself runs on. An
+environment record fixes that by construction rather than by policy: the environment *defines*
+the variables, so the default becomes "what this sandbox declares" and inheritance becomes an
+explicit passthrough list. A floor that has to be enforced by a gate is not a floor.
+
+### Capabilities: floor, grant, dial
+
+Three layers, narrowing, and the note's "base capabilities" is the outermost:
+
+- **Environment — what is *possible*.** Which tools exist at all, which surfaces are writable,
+  whether there is a network. Enforced by *construction* — the tool is absent from the driver's
+  tool set, the surface is absent from the table, the variable is unset — which is what earns
+  the word "unbypassable" in `launch.go`. A vector slides mid-run via `SetVector`; a floor does
+  not slide.
+- **Grant — what this process may *exercise*** of what is possible, non-increasing down a
+  delegation chain (`Grant.Subset` checked at each `call_agent` boundary).
+- **Policy (`Vector`) — which of those must *ask*.** Soft, slidable, the autonomy dial.
+
+Read as possible ⊇ granted ⊇ auto. The difference between the first layer and the other two is
+observable and worth preserving: a `Deny` gate means the tool exists, the agent reaches for it,
+and is refused — a refusal it can see, log, and route around. Outside the floor there was
+nothing to reach for. Denials belong in the ledger; absences belong in the definition.
+
 ## What this buys
 
 - **`connect` becomes a thin preset** — `expose <path> --name <n>` plus a validator charter over
@@ -135,3 +257,16 @@ refs legible enough to filter by owner, place, and role.
 - **Write authority** — who may `write_file` into an exposed tree, gated by the process's vector at
   the write boundary (the existing gate model).
 - **`cd` semantics** — control vs tool vs both; permission to move between exposures.
+- **Expose vs. environment** — whether `verse expose <path> --name n` *is* a single-surface
+  environment (sugar) or registers into a separate exposure registry that environments then
+  reference. The second keeps a directory shareable across environments; the first is one record
+  fewer.
+- **Floor inheritance across delegation** — a `call_agent` child names an environment; must it be
+  the parent's, or a sub-environment of it? `Grant.Subset` gives the grant its monotonicity at the
+  boundary; the floor needs an equivalent rule or delegation becomes the escalation hatch (spawn
+  a child into a roomier sandbox).
+- **Variables vs. secrets** — an environment that declares creds is a secret-bearing record.
+  Whether values live in it, or it references a secret store and resolves at spawn.
+- **Surface qualification** — the concrete syntax for a qualified path (`<name>:<path>` collides
+  with nothing in a filesystem path, but neither does a `/<name>/` mount prefix), and whether the
+  local `Root` is always in the table or must be granted like any other surface.

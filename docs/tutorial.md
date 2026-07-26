@@ -72,7 +72,7 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
   via `gate resolve`.)
 - **Docket** — the open motions, collectively: what the verse is currently waiting on a
   group to settle (`verse docket`).
-- **Action** — declarative data: `set` fields on an entity (a state transition) and/or
+- **Action** — declared as: `set` fields on an entity (a state transition) and/or
   `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed motion
   (§8), not a fixed one.
 - **Process** — a governed unit of work (an agent), hosted by the runtime,
@@ -148,7 +148,7 @@ The `review` trigger fires but its gate is `ask`, so it blocks:
 ```sh
 verse gate list
 # - gate: review
-#   id: "trigger:review:review#1"
+#   id: trigger:review:review~1
 #   mode: ASK
 #   origin: review
 #   reason: "trigger review gate review on demo:pr:1"
@@ -164,11 +164,11 @@ is raised even though nothing is running yet. (`where: engine` gates have no `pr
 for that reason; a process gate, §5, has one because its process is already running.)
 
 Approve it, using the `id` from `gate list` (the flag can come after the id — the
-CLI handles that). The id is `trigger:<trigger>:<gate>#n` — a trigger can have
+CLI handles that). The id is `trigger:<trigger>:<gate>~n` — a trigger can have
 several named gates, so the gate name is part of the id:
 
 ```sh
-verse gate resolve trigger:review:review#1 --approve
+verse gate resolve trigger:review:review~1 --approve
 ```
 
 Now watch it self-drive. In Terminal A you'll see the stage advance **twice**:
@@ -294,36 +294,6 @@ Now, what each field of a trigger means:
   in a spawn's task names the PR the firing is about, even when the entity that fired was
   a process, not the PR.
 
-**The decoupled completion pattern.** §3 closed the loop with `review`'s `onDone` hook. The same
-close can be written as a *separate* trigger — worth understanding, because it exposes the mechanic
-`onDone` hides and is the right tool when a completion should fan out or cross subjects:
-
-```tony
-name: reviewed
-condition:
-  when:    { system: process, kind: instance, fields: { status: done } }
-  subject: demo:pr:*
-action:
-  set: { stage: reviewed }
-```
-
-`reviewed` fires on a `process:instance` change but acts on the PR — so its `subject` is a *pattern*
-(`demo:pr:*`), matched against the process's own subject. A `spawn` tags its process with the
-condition's subject (`demo:pr:1`); the process is mirrored as a `process:instance` entity carrying
-that subject under the key **`flow`**; so when the process reaches `status=done`, `reviewed`'s
-`demo:pr:*` matches `flow: "demo:pr:1"` and advances `demo:pr:1`. The pattern doubles as a filter —
-a process whose flow is not a `demo:pr` is not this trigger's concern. There is no back-reference to
-the spawning trigger and no special variable: the subject is the same address grammar as everywhere
-else.
-
-This is the **completion pattern**: *when* a `process:instance` reaches `status=done`, *about* the
-PR its process carried (the flow its `demo:pr:*` names), advance that subject. `onDone` is the same
-close *inlined* onto the spawn — one trigger, scoped to exactly that process; the decoupled form is
-preferred when a completion should fan into several independent reactions, advance a *different*
-subject, or be authored by a different party. Either way, triggers must opt in to `process:*` — the
-engine keeps reflected process state out of the default match set so the loop can't ignite on its
-own machinery.
-
 ---
 
 ## 5. Processes
@@ -352,14 +322,41 @@ A direct run is mirrored as a `process:instance` entity like any other process, 
 tool output, and full `result` — even after it finishes.
 
 **Which driver runs it.** With LLM creds configured, the default driver is a real **LLM
-agent**; with no creds it falls back to **scripted**, which runs the task as a governed
-**shell command** (no credentials — so the runtime is demoable anywhere, and a scripted process
-can do real work: `sleep`, `go test`, `git …`). Choose explicitly per spawn with `--driver scripted|llm`.
+agent**; with no creds it falls back to **scripted**, which runs the task as a **shell command**
+— steerable and cancellable like any process (no credentials, so the runtime is demoable
+anywhere, and a scripted process can do real work: `sleep`, `go test`, `git …`). Choose explicitly per spawn with `--driver scripted|llm`.
 The creds live with the **server** — the `up` process hosts the runtime, so it reads *its*
 environment (or `~/.config/verse.tony`), not the `process run` client's; set them before `up`
 (§1). Check with `verse status` — the `llm` block shows `available` and a masked key.
 
-**Gates — an agent asks permission.** An agent's *reads* run freely, but *writing a file*,
+**The two drivers carry different vectors**, and the difference is the whole point of a gate:
+it asks about what you have *not* already authorized.
+
+- **scripted runs ungated** — no gates, everything auto. Its task *is* the shell command, so
+  you authorized it by typing it; asking "run a shell command?" after `verse process run
+  "go test ./..."` would be asking you to confirm the sentence you just wrote. Spawned from a
+  trigger, the same holds one level up: the trigger's own `gates` (§4) already ran, per firing,
+  before the action fired.
+- **llm asks before effects** — because the agent *chose* them. Approving a command the agent
+  thought up is a real decision.
+
+**A rough edge, stated plainly.** Which rule applies depends on how you addressed the runtime,
+and today the runtime cannot tell. Ask an *agent* to do something — the `--attach` example below —
+and being asked before the write is the convention you expect; you opted into a loop and you are
+watching it. Hand it a *command* — `verse process run "go test ./..."` — and you addressed a
+runner, not an agent: with creds configured the default driver is llm, so the command you just
+typed comes back as `⏸ gate "shell" (run_bash) — approve?`. Nothing was decided that you had not
+already decided; the prompt only reveals that verse chose to satisfy your command with an agent.
+
+The vector is fixed by the driver and nothing overrides it at spawn (`run` takes only
+`--wait/--attach/--driver`; the `policy` axis of §4 is one of the "later" fields). So today:
+pass `--driver scripted` when your task *is* a command — that is exactly what it is for — or
+slide the vector once it starts (`process vector <id> auto`). A trigger hits the same edge from
+the other side: its `gates` approve *the firing*, not the actions the spawned agent then chooses,
+and it has no way to say it already decided. Where the permission *should* come from is
+[authority](authority.md).
+
+**Gates — an LLM agent asks permission.** Its *reads* run freely, but *writing a file*,
 *running a shell command*, and *delegating to a sub-agent* are **gated**: the agent blocks
 until you approve. `run --attach` spawns *and* streams the transcript, and on a terminal it
 **prompts you inline** when the agent blocks:
@@ -382,12 +379,12 @@ by default (printed at `up` start: `agents rooted at …`), *not* your cwd. So `
 tree so an agent reads *through* the verse, wherever it runs, is `verse connect` — §10.)
 
 You can also resolve out-of-band from anywhere — the gate shows up in **`gate list`**
-alongside trigger gates (and in `process get <id>`), resolvable by its id (it has a `#`, so
-quote it in zsh):
+alongside trigger gates (and in `process get <id>`), resolvable by its id — the `~` that
+separates the gate from its process needs no quoting and no escaping, in a shell or in a URL:
 
 ```sh
 verse gate list                                       # engine + process gates, unified
-verse gate resolve "run-…#d1" --approve               # or: process resolve run-… "run-…#d1" --approve
+verse gate resolve run-…~d1 --approve                 # or: process resolve run-… run-…~d1 --approve
 ```
 
 Because processes are entities, you can watch the whole fleet's lifecycle through the
