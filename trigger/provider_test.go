@@ -21,7 +21,7 @@ func TestSelectProviderAuto(t *testing.T) {
 		t.Fatalf("auto select = (%q, %v), want (gpt, true)", driver, ok)
 	}
 	ch, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
-	if !found || ch.Payload["axis"] != "select" || ch.Payload["outcome"] != "gpt" || ch.Payload["status"] != "closed" {
+	if !found || entity.ToObj(ch.Payload)["axis"] != "select" || entity.ToObj(ch.Payload)["outcome"] != "gpt" || entity.ToObj(ch.Payload)["status"] != "closed" {
 		t.Fatalf("select channel = %+v, want axis=select outcome=gpt status=closed", ch.Payload)
 	}
 }
@@ -35,9 +35,9 @@ func TestSelectProviderVotePlurality(t *testing.T) {
 	did := motionChannelID(providerSpecSeed(subj, p))
 
 	// two ballots for claude, one for gpt → claude wins at need=2.
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Payload{"choice": "claude"})
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Payload{"choice": "claude"})
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "z"}, entity.Payload{"choice": "gpt"})
+	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "claude"}.Payload())
+	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "claude"}.Payload())
+	store.Put(entity.Ref{System: "vote", Kind: did, ID: "z"}, entity.Obj{"choice": "gpt"}.Payload())
 
 	driver, ok := eng.selectProvider(p, subj)
 	if !ok || driver != "claude" {
@@ -53,8 +53,8 @@ func TestPluralityIgnoresIneligible(t *testing.T) {
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "vote", Need: 1}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "3"}
 	did := motionChannelID(providerSpecSeed(subj, p))
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Payload{"choice": "rogue"}) // ineligible
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Payload{"choice": "gpt"})   // eligible → wins at need=1
+	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "rogue"}.Payload()) // ineligible
+	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "gpt"}.Payload())   // eligible → wins at need=1
 
 	driver, ok := eng.selectProvider(p, subj)
 	if !ok || driver != "gpt" {
@@ -70,7 +70,7 @@ func TestSelectProviderAsk(t *testing.T) {
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "4"}
 	did := motionChannelID(providerSpecSeed(subj, p))
 
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Payload{"choice": "claude"})
+	store.Put(entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Obj{"choice": "claude"}.Payload())
 	driver, ok := eng.selectProvider(p, subj)
 	if !ok || driver != "claude" {
 		t.Fatalf("ask select = (%q, %v), want (claude, true) — the first pick decides", driver, ok)
@@ -83,9 +83,9 @@ func TestSelectProviderAsk(t *testing.T) {
 func TestSelectProviderRegistryMatch(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "gpt"}, entity.Payload{"driver": "llm-gpt", "tier": "premium"})
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "claude"}, entity.Payload{"driver": "llm-claude", "tier": "premium"})
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "cheapo"}, entity.Payload{"driver": "scripted", "tier": "basic"})
+	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "gpt"}, entity.Obj{"driver": "llm-gpt", "tier": "premium"}.Payload())
+	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "claude"}, entity.Obj{"driver": "llm-claude", "tier": "premium"}.Payload())
+	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "cheapo"}, entity.Obj{"driver": "scripted", "tier": "basic"}.Payload())
 
 	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "9"}
@@ -95,8 +95,8 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 		t.Fatalf("registry auto select = (%q, %v), want (llm-claude, true)", driver, ok)
 	}
 	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
-	if opts, _ := ch.Payload["options"].([]any); len(opts) != 2 {
-		t.Fatalf("eligible options = %v, want 2 premium providers (basic filtered out)", ch.Payload["options"])
+	if opts, _ := entity.ToObj(ch.Payload)["options"].([]any); len(opts) != 2 {
+		t.Fatalf("eligible options = %v, want 2 premium providers (basic filtered out)", entity.ToObj(ch.Payload)["options"])
 	}
 }
 
@@ -123,7 +123,7 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 	}
 	// The channel records when it closes, so `verse docket` can show it.
 	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
-	if _, stamped := ch.Payload["deadline_at"]; !stamped {
+	if _, stamped := entity.ToObj(ch.Payload)["deadline_at"]; !stamped {
 		t.Fatalf("select channel missing deadline_at: %+v", ch.Payload)
 	}
 }
@@ -149,7 +149,7 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 	// Registered but excluded: the answer is "loosen the match", the opposite fix — and
 	// the match is echoed in tony, as the charter spells it, not as Go prints a map.
 	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "cheapo"},
-		entity.Payload{"driver": "scripted", "tier": "basic"})
+		entity.Obj{"driver": "scripted", "tier": "basic"}.Payload())
 	got = eng.whyNoEligible(p)
 	if !strings.Contains(got, "all 1 registered") {
 		t.Errorf("excluded: %q", got)

@@ -125,7 +125,7 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 	// both names which flows this trigger acts on and picks the specific one — no back-reference
 	// to a prior trigger, just the subject grammar applied to the process's subject. Otherwise
 	// the pattern selects over the store (broadcast, one action per member).
-	if flow, ok := ev.To["flow"].(string); ok && flow != "" {
+	if flow := entity.Str(ev.To, "flow"); flow != "" {
 		fref, err := entity.ParseRef(flow)
 		if err != nil || !m.MatchRef(fref) {
 			return nil // the carried subject is unresolvable, or isn't what this trigger acts on
@@ -260,7 +260,7 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 				for k, v := range a.Set {
 					p[k] = v
 				}
-				return p
+				return p.Payload()
 			})
 		}
 		if a.Spawn == nil {

@@ -31,24 +31,11 @@ func ParseRef(s string) (Ref, error) {
 	return Ref{System: parts[0], Kind: parts[1], ID: parts[2]}, nil
 }
 
-// Payload is the small metadata an entity carries — a few descriptive fields, not
-// the underlying system's contents. Stages and other lifecycle facts are
-// conventions on this payload (a "stage" field a trigger matches and an action
-// advances), not a separate primitive.
-type Payload map[string]any
-
-func (p Payload) clone() Payload {
-	if p == nil {
-		return nil
-	}
-	c := make(Payload, len(p))
-	for k, v := range p {
-		c[k] = v
-	}
-	return c
-}
-
-// Entity is a Ref plus its payload — one node of the verse.
+// Entity is a Ref plus its payload — one node of the verse. The payload is the small
+// metadata the entity carries (not the underlying system's contents); stages and other
+// lifecycle facts are conventions on it — a "stage" field a trigger matches and an action
+// advances — rather than separate primitives. See payload.go: it is any tony value, and an
+// object is merely the common case.
 type Entity struct {
 	Ref     Ref
 	Payload Payload

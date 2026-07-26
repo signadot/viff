@@ -197,7 +197,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 				} else {
 					created++
 				}
-				store.Put(entity.Ref{System: source.System, Kind: statusKind, ID: rel}, entity.Payload(meta))
+				store.Put(entity.Ref{System: source.System, Kind: statusKind, ID: rel}, entity.Obj(meta).Payload())
 			}
 			prev[rel] = sig
 		}

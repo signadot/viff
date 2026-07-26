@@ -185,7 +185,10 @@ func safeSeg(s string) string {
 // bindings, so the subject cannot be among them without circularity.
 func payloadBinding(ev entity.Event) launch.Binding {
 	b := launch.Binding{}
-	for k, v := range ev.To {
+	// Fields of an object payload only: a scalar payload (42, true) has no named parts to
+	// bind, so a template's $vars simply find nothing rather than binding the whole value
+	// to some invented name.
+	for k, v := range entity.ToObj(ev.To) {
 		b[k] = fmt.Sprint(v)
 	}
 	return b

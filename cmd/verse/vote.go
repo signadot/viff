@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 )
 
 // voteCmd casts a ballot into a motion's vote log — the participant side of the quorum
@@ -53,7 +54,7 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	ref := "vote:" + motion + ":" + cfg.As
 	resp, err := httpPost("/entity", api.PutEntity{
 		Ref:     ref,
-		Payload: map[string]any{"choice": choice, "by": cfg.As},
+		Payload: entity.Obj{"choice": choice, "by": cfg.As}.Payload(),
 	})
 	if err != nil {
 		return fmt.Errorf("vote: %w", err)

@@ -3,6 +3,8 @@ package entity
 import (
 	"math"
 	"reflect"
+
+	"github.com/signadot/tony-format/go-tony/gomap"
 )
 
 // Pattern is a conjunctive selector over the entity-verse: it picks by System,
@@ -60,19 +62,44 @@ func (p Pattern) Select(store Store) []Ref {
 }
 
 // matchPayload reports whether payload satisfies every Fields entry by exact
-// equality. A nil payload matches only an empty Fields.
+// equality. A payload with no fields to offer — nil, or a scalar/list now that a
+// payload may be any tony value — matches only an empty Fields: a field predicate
+// asks a question that is not false about `42`, it is unanswerable, and the
+// conservative answer for a selector is "does not match".
 func (p Pattern) matchPayload(payload Payload) bool {
+	if len(p.Fields) == 0 {
+		return true
+	}
+	if !IsObj(payload) {
+		return false
+	}
 	for k, want := range p.Fields {
 		// An absent key reads as nil, so a `null` predicate is satisfied by an entity
 		// that simply lacks the field. That is the long-standing behaviour and it is
 		// preserved here deliberately — tony does distinguish absent from null (docd
 		// tombstones with null), so whether a field predicate should too is a real
 		// question, but it is a semantic change and does not belong in this fix.
-		if payload == nil || !valueEqual(payload[k], want) {
+		if !valueEqual(fieldValue(payload, k), want) {
 			return false
 		}
 	}
 	return true
+}
+
+// fieldValue reads one field of an object payload back as a plain Go value, so the
+// comparison below keeps working on the vocabulary it was written for (int64 vs float64
+// vs int, composites via reflect.DeepEqual). An absent field, or one that cannot be
+// decoded, reads as nil — the same answer the map index gave.
+func fieldValue(p Payload, field string) any {
+	f := Get(p, field)
+	if f == nil {
+		return nil
+	}
+	var v any
+	if err := gomap.FromTonyIR(f, &v); err != nil {
+		return nil
+	}
+	return v
 }
 
 // valueEqual reports whether two payload values are equal for matching purposes.

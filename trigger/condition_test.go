@@ -24,7 +24,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 
 	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	store.Put(pr, entity.Payload{"stage": "reviewing"})
+	store.Put(pr, entity.Obj{"stage": "reviewing"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
@@ -42,12 +42,12 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed process carrying the PR as its flow — exactly what mirror.Reflect writes.
-	store.Put(mirror.Ref("rev-1"), entity.Payload{"status": "done", "flow": pr.String()})
+	store.Put(mirror.Ref("rev-1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
 
 	waitStage(t, store, pr, "reviewed")
 
 	// The process entity itself must NOT have been advanced — the firing was about the PR.
-	if e, _, _ := store.Get(mirror.Ref("rev-1")); e.Payload["stage"] != nil {
+	if e, _, _ := store.Get(mirror.Ref("rev-1")); entity.ToObj(e.Payload)["stage"] != nil {
 		t.Fatalf("the action was applied to the matched entity, not the subject: %#v", e.Payload)
 	}
 }
@@ -79,7 +79,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(mirror.Ref("p1"), entity.Payload{"status": "done", "flow": pr.String()})
+	store.Put(mirror.Ref("p1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
 
 	spec := <-specs
 	if spec.Task != "follow up on "+pr.String() {
@@ -98,7 +98,7 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	ev := entity.Event{
 		Ref: entity.Ref{System: "goal", Kind: "done", ID: "ship"},
 		Op:  entity.Set,
-		To:  entity.Payload{"subject": "change:pr:42", "flow": "change:pr:42"},
+		To:  entity.Obj{"subject": "change:pr:42", "flow": "change:pr:42"}.Payload(),
 	}
 	b := bindingFor(ev, ev.Ref)
 	if got := b["subject"]; got != ev.Ref.String() {
@@ -122,12 +122,12 @@ func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddGoal: %v", err)
 	}
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	var latch entity.Payload
 	deadline := time.After(2 * time.Second)
 	for latch == nil {
-		if e, ok, _ := store.Get(goalDoneRef("ship")); ok && e.Payload["goal"] == "ship" {
+		if e, ok, _ := store.Get(goalDoneRef("ship")); ok && entity.ToObj(e.Payload)["goal"] == "ship" {
 			latch = e.Payload
 			break
 		}
@@ -137,7 +137,7 @@ func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-	if latch["flow"] != "change:pr:42" {
+	if entity.Str(latch, "flow") != "change:pr:42" {
 		t.Fatalf("goal:done must carry `flow` for a reacting trigger's subject: %#v", latch)
 	}
 }
@@ -164,7 +164,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 
 	// No `flow` field: the demo:pr:* subject has nothing to match, so nothing fires (and, because
 	// the subject resolves before any gate, no gate is posed either).
-	store.Put(mirror.Ref("p1"), entity.Payload{"status": "done"})
+	store.Put(mirror.Ref("p1"), entity.Obj{"status": "done"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired %d times with an unresolvable subject", f)

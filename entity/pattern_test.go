@@ -23,7 +23,7 @@ func TestMatchPayloadNumericTypes(t *testing.T) {
 		for _, got := range nums {
 			t.Run(want.name+"/"+got.name, func(t *testing.T) {
 				p := Pattern{Fields: map[string]any{"n": want.v}}
-				if !p.matchPayload(Payload{"n": got.v}) {
+				if !p.matchPayload(Obj{"n": got.v}.Payload()) {
 					t.Fatalf("want %v (%T) did not match payload %v (%T)",
 						want.v, want.v, got.v, got.v)
 				}
@@ -35,7 +35,7 @@ func TestMatchPayloadNumericTypes(t *testing.T) {
 func TestMatchPayloadNumericInequality(t *testing.T) {
 	p := Pattern{Fields: map[string]any{"n": int64(2)}}
 	for _, got := range []any{int(3), float64(2.5), int64(-2), "2", true, nil} {
-		if p.matchPayload(Payload{"n": got}) {
+		if p.matchPayload(Obj{"n": got}.Payload()) {
 			t.Errorf("want 2 wrongly matched payload %v (%T)", got, got)
 		}
 	}
@@ -46,10 +46,10 @@ func TestMatchPayloadNumericInequality(t *testing.T) {
 func TestMatchPayloadLargeIntPrecision(t *testing.T) {
 	const big = int64(1) << 53
 	p := Pattern{Fields: map[string]any{"n": big + 1}}
-	if p.matchPayload(Payload{"n": big + 2}) {
+	if p.matchPayload(Obj{"n": big + 2}.Payload()) {
 		t.Error("2^53+1 wrongly matched 2^53+2")
 	}
-	if !p.matchPayload(Payload{"n": big + 1}) {
+	if !p.matchPayload(Obj{"n": big + 1}.Payload()) {
 		t.Error("2^53+1 did not match itself")
 	}
 }
@@ -58,18 +58,18 @@ func TestMatchPayloadLargeIntPrecision(t *testing.T) {
 // maps panics at runtime, so composites must not reach it.
 func TestMatchPayloadComposites(t *testing.T) {
 	p := Pattern{Fields: map[string]any{"labels": map[string]any{"team": "core"}}}
-	if !p.matchPayload(Payload{"labels": map[string]any{"team": "core"}}) {
+	if !p.matchPayload(Obj{"labels": map[string]any{"team": "core"}}.Payload()) {
 		t.Error("equal nested objects did not match")
 	}
-	if p.matchPayload(Payload{"labels": map[string]any{"team": "infra"}}) {
+	if p.matchPayload(Obj{"labels": map[string]any{"team": "infra"}}.Payload()) {
 		t.Error("differing nested objects matched")
 	}
 
 	q := Pattern{Fields: map[string]any{"tags": []any{"a", "b"}}}
-	if !q.matchPayload(Payload{"tags": []any{"a", "b"}}) {
+	if !q.matchPayload(Obj{"tags": []any{"a", "b"}}.Payload()) {
 		t.Error("equal lists did not match")
 	}
-	if q.matchPayload(Payload{"tags": []any{"a"}}) {
+	if q.matchPayload(Obj{"tags": []any{"a"}}.Payload()) {
 		t.Error("differing lists matched")
 	}
 }
@@ -78,18 +78,18 @@ func TestMatchPayloadComposites(t *testing.T) {
 // and a nil payload satisfies only an empty predicate.
 func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 	p := Pattern{Fields: map[string]any{"stage": "open"}}
-	if !p.matchPayload(Payload{"stage": "open", "extra": 1}) {
+	if !p.matchPayload(Obj{"stage": "open", "extra": 1}.Payload()) {
 		t.Error("string equality failed")
 	}
-	if p.matchPayload(Payload{"stage": "closed"}) {
+	if p.matchPayload(Obj{"stage": "closed"}.Payload()) {
 		t.Error("differing strings matched")
 	}
-	if p.matchPayload(Payload{"other": "open"}) {
+	if p.matchPayload(Obj{"other": "open"}.Payload()) {
 		t.Error("absent key matched")
 	}
 	// An absent key reads as nil, so a null predicate is satisfied by its absence.
 	// Pinning the long-standing behaviour, not endorsing it — see matchPayload.
-	if !(Pattern{Fields: map[string]any{"x": nil}}).matchPayload(Payload{"y": 1}) {
+	if !(Pattern{Fields: map[string]any{"x": nil}}).matchPayload(Obj{"y": 1}.Payload()) {
 		t.Error("a null predicate did not match an entity lacking the field")
 	}
 	if p.matchPayload(nil) {

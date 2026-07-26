@@ -49,7 +49,7 @@ func TestStatus(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	srv.Store.Put(entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Payload{"k": "v"})
+	srv.Store.Put(entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{"k": "v"}.Payload())
 
 	m = get()
 	if n, _ := codec.AsInt64(m["triggers"]); n != 1 {

@@ -61,14 +61,14 @@ func TestReflectProjectsOutput(t *testing.T) {
 	ref := Ref("p2")
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "done" {
-			if e.Payload["say"] != "working on it" {
+		if e, ok, _ := store.Get(ref); ok && entity.ToObj(e.Payload)["status"] == "done" {
+			if entity.ToObj(e.Payload)["say"] != "working on it" {
 				t.Fatalf("narration not projected: %+v", e.Payload)
 			}
-			if e.Payload["lastOutput"] != "ok" {
+			if entity.ToObj(e.Payload)["lastOutput"] != "ok" {
 				t.Fatalf("tool output not projected: %+v", e.Payload)
 			}
-			if e.Payload["result"] != d.result {
+			if entity.ToObj(e.Payload)["result"] != d.result {
 				t.Fatalf("final result not projected: %+v", e.Payload)
 			}
 			return
@@ -101,14 +101,14 @@ func TestReflectPublishesDialURL(t *testing.T) {
 	Reflect(store, p.ID, dialer{p, url}, Meta{Policy: "broker"}) // initial Put is synchronous
 
 	got, ok, _ := store.Get(Ref("d1"))
-	if !ok || got.Payload["dialURL"] != url {
+	if !ok || entity.ToObj(got.Payload)["dialURL"] != url {
 		t.Fatalf("dialURL not published: %+v", got.Payload)
 	}
 
 	// a plain handle (no DialURL) publishes no dialURL key.
 	p2 := process.NewProcess("d2", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p2.ID, p2, Meta{Policy: "local"})
-	if g2, _, _ := store.Get(Ref("d2")); g2.Payload["dialURL"] != nil {
+	if g2, _, _ := store.Get(Ref("d2")); entity.ToObj(g2.Payload)["dialURL"] != nil {
 		t.Fatalf("local handle should publish no dialURL: %+v", g2.Payload)
 	}
 }
@@ -136,10 +136,10 @@ func TestReflectProjectsProcessState(t *testing.T) {
 			if ev.Ref != ref {
 				continue
 			}
-			if ev.Op == entity.Set && ev.To["status"] == "running" {
+			if ev.Op == entity.Set && entity.ToObj(ev.To)["status"] == "running" {
 				sawRunning = true
 			}
-			if ev.To != nil && ev.To["status"] == "done" {
+			if ev.To != nil && entity.ToObj(ev.To)["status"] == "done" {
 				sawCompleted = true
 			}
 		case <-deadline:
@@ -152,7 +152,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 
 	// the terminal entity remains, queryable, marked completed
 	got, ok, _ := store.Get(ref)
-	if !ok || got.Payload["status"] != "done" {
+	if !ok || entity.ToObj(got.Payload)["status"] != "done" {
 		t.Fatalf("terminal entity wrong: %+v ok=%v", got, ok)
 	}
 }
@@ -179,7 +179,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 		"trigger": "review",
 		"flow":    "demo:pr:1",
 	} {
-		if got, _ := e.Payload[k].(string); got != want {
+		if got := entity.Str(e.Payload, k); got != want {
 			t.Errorf("payload[%q] = %q; want %q (payload %+v)", k, got, want, e.Payload)
 		}
 	}
@@ -196,10 +196,10 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	if !ok {
 		t.Fatal("process entity not mirrored")
 	}
-	if _, present := e.Payload["chain"]; present {
+	if _, present := entity.ToObj(e.Payload)["chain"]; present {
 		t.Errorf("chain published for a process with none: %+v", e.Payload)
 	}
-	if _, present := e.Payload["trigger"]; present {
+	if _, present := entity.ToObj(e.Payload)["trigger"]; present {
 		t.Errorf("trigger published for a process with none: %+v", e.Payload)
 	}
 }

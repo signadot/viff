@@ -19,8 +19,9 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  payload: .[object(object)]
+  payload: .[tony-base:ir]
   ref: .[string]
 signature:
   name: verse-put-entity

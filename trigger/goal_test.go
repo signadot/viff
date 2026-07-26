@@ -29,7 +29,7 @@ func TestFormulaUnmet(t *testing.T) {
 	}
 
 	// Satisfy the fact → no unmet leaves.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	if un := f.Unmet(store); len(un) != 0 {
 		t.Fatalf("unmet after satisfying = %v, want none", un)
 	}
@@ -71,29 +71,29 @@ func TestGoalDoneLatch(t *testing.T) {
 		t.Fatal("goal latched done before the fact held")
 	}
 	g, _, _ := store.Get(goalRef("ship"))
-	if g.Payload["terminal"] != false {
-		t.Fatalf("terminal = %v, want false", g.Payload["terminal"])
+	if entity.ToObj(g.Payload)["terminal"] != false {
+		t.Fatalf("terminal = %v, want false", entity.ToObj(g.Payload)["terminal"])
 	}
-	if s, _ := g.Payload["status"].(string); s != "blocked" {
+	if s, _ := entity.ToObj(g.Payload)["status"].(string); s != "blocked" {
 		t.Fatalf("status = %q, want blocked", s)
 	}
-	if w, _ := g.Payload["waitingOn"].([]string); len(w) != 1 || w[0] != "fact:ci:status" {
-		t.Fatalf("waitingOn = %v, want [fact:ci:status]", g.Payload["waitingOn"])
+	if w := entity.Strs(g.Payload, "waitingOn"); len(w) != 1 || w[0] != "fact:ci:status" {
+		t.Fatalf("waitingOn = %v, want [fact:ci:status]", entity.ToObj(g.Payload)["waitingOn"])
 	}
 
 	// Satisfy doneWhen → done latch, terminal, owned trigger reaped.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	if !existsWithin(store, goalDoneRef("ship"), 2*time.Second) {
 		t.Fatal("goal did not latch done after doneWhen held")
 	}
 	done, _, _ := store.Get(goalDoneRef("ship"))
-	if done.Payload["goal"] != "ship" || done.Payload["subject"] != "change:pr:42" {
+	if entity.ToObj(done.Payload)["goal"] != "ship" || entity.ToObj(done.Payload)["subject"] != "change:pr:42" {
 		t.Fatalf("done fact = %+v", done.Payload)
 	}
 	// The instance is terminal with status done.
 	waitForStatus(t, store, "ship", "done")
-	if g, _, _ := store.Get(goalRef("ship")); g.Payload["terminal"] != true {
-		t.Fatalf("terminal = %v, want true", g.Payload["terminal"])
+	if g, _, _ := store.Get(goalRef("ship")); entity.ToObj(g.Payload)["terminal"] != true {
+		t.Fatalf("terminal = %v, want true", entity.ToObj(g.Payload)["terminal"])
 	}
 	// The owned trigger is reaped (no orphaned charter).
 	if _, ok := eng.Trigger("ship-review"); ok {
@@ -129,7 +129,7 @@ func TestGoalDeadlineFail(t *testing.T) {
 		t.Fatal("goal did not latch failed after the deadline elapsed")
 	}
 	fail, _, _ := store.Get(goalFailedRef("flaky"))
-	if fail.Payload["reason"] != "deadline" {
+	if entity.ToObj(fail.Payload)["reason"] != "deadline" {
 		t.Fatalf("fail fact = %+v, want reason=deadline", fail.Payload)
 	}
 	waitForStatus(t, store, "flaky", "unachievable")
@@ -144,7 +144,7 @@ func TestGoalDoneWinsDeadline(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	// doneWhen already satisfied at install.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
@@ -174,10 +174,10 @@ func TestGoalTerminalOnce(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, denyResolver{})
 	g := &Goal{Def: GoalDef{Name: "once", Subject: "change:pr:1"}}
-	store.Put(goalRef("once"), entity.Payload{"name": "once", "status": "active", "terminal": false})
+	store.Put(goalRef("once"), entity.Obj{"name": "once", "status": "active", "terminal": false}.Payload())
 
 	eng.commitGoal(g, "done", []entity.Ref{{System: "ci", Kind: "status", ID: "x"}})
-	if inst, _, _ := store.Get(goalRef("once")); inst.Payload["outcome"] != "done" || inst.Payload["terminal"] != true {
+	if inst, _, _ := store.Get(goalRef("once")); entity.ToObj(inst.Payload)["outcome"] != "done" || entity.ToObj(inst.Payload)["terminal"] != true {
 		t.Fatalf("first commit: %+v, want outcome=done terminal=true", inst.Payload)
 	}
 	if _, ok, _ := store.Get(goalDoneRef("once")); !ok {
@@ -186,8 +186,8 @@ func TestGoalTerminalOnce(t *testing.T) {
 
 	// A contradicting second commit must not change the latched outcome or write a fail fact.
 	eng.commitGoal(g, "unachievable", nil)
-	if inst, _, _ := store.Get(goalRef("once")); inst.Payload["outcome"] != "done" {
-		t.Fatalf("terminal-once violated: outcome now %v", inst.Payload["outcome"])
+	if inst, _, _ := store.Get(goalRef("once")); entity.ToObj(inst.Payload)["outcome"] != "done" {
+		t.Fatalf("terminal-once violated: outcome now %v", entity.ToObj(inst.Payload)["outcome"])
 	}
 	if _, ok, _ := store.Get(goalFailedRef("once")); ok {
 		t.Fatal("a frozen-out commit still wrote a fail fact")
@@ -228,7 +228,7 @@ func TestGoalConcurrentLifecycle(t *testing.T) {
 				return
 			}
 			// Drive the rest to done via their (distinct) fact subtree.
-			store.Put(entity.Ref{System: "ci", Kind: name, ID: "build"}, entity.Payload{"state": "green"})
+			store.Put(entity.Ref{System: "ci", Kind: name, ID: "build"}, entity.Obj{"state": "green"}.Payload())
 		}()
 	}
 	wg.Wait()
@@ -250,7 +250,7 @@ func waitForStatus(t *testing.T, s entity.Store, name, want string) {
 	deadline := time.After(2 * time.Second)
 	for {
 		if g, ok, _ := s.Get(goalRef(name)); ok {
-			if got, _ := g.Payload["status"].(string); got == want {
+			if got, _ := entity.ToObj(g.Payload)["status"].(string); got == want {
 				return
 			}
 		}

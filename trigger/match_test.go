@@ -230,7 +230,7 @@ func TestMatchRejectsBadShape(t *testing.T) {
 func TestMatchEntityAliasesFields(t *testing.T) {
 	ev := entity.Event{
 		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
-		Op:  entity.Set, To: entity.Payload{"stage": "open"},
+		Op:  entity.Set, To: entity.Obj{"stage": "open"}.Payload(),
 	}
 	for _, key := range []string{"fields", "entity"} {
 		m := Match{"system": "demo", "kind": "pr", key: map[string]any{"stage": "open"}}
@@ -248,7 +248,7 @@ func TestMatchEntityAliasesFields(t *testing.T) {
 func TestMatchEventDimensions(t *testing.T) {
 	ev := entity.Event{
 		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
-		Op:  entity.Set, To: entity.Payload{"stage": "open"},
+		Op:  entity.Set, To: entity.Obj{"stage": "open"}.Payload(),
 	}
 	yes := []Match{
 		{},
@@ -284,10 +284,10 @@ func TestMatchEventDimensions(t *testing.T) {
 // wildcard that flow addressing will use.
 func TestMatchSelect(t *testing.T) {
 	store := entity.NewMemStore()
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Payload{"stage": "open"})
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Payload{"stage": "reviewed"})
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Payload{"stage": "open"})
-	store.Put(entity.Ref{System: "other", Kind: "pr", ID: "1"}, entity.Payload{"stage": "open"})
+	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
+	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "reviewed"}.Payload())
+	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
+	store.Put(entity.Ref{System: "other", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
 
 	count := func(m Match) int { return len(m.Select(store)) }
 

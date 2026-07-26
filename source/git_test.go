@@ -69,12 +69,12 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	get := func(kind, id string) entity.Payload {
+	get := func(kind, id string) entity.Obj {
 		e, ok, _ := store.Get(entity.Ref{System: source.GitSystem, Kind: kind, ID: id})
 		if !ok {
 			t.Fatalf("missing git:%s:%s", kind, id)
 		}
-		return e.Payload
+		return entity.ToObj(e.Payload)
 	}
 
 	// main exists in BOTH repos, no collision, distinct shas + repo fields.

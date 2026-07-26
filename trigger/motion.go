@@ -205,7 +205,7 @@ func quorumFormula(mid, opt string, need int) *Formula {
 // reopens a channel that has already closed (an `outcome` is present).
 func (e *Engine) openChannel(m *motion) {
 	e.store.Modify(m.channel, func(cur entity.Payload) entity.Payload {
-		if _, done := cur["outcome"]; done {
+		if entity.Get(cur, "outcome") != nil {
 			return cur // already closed — leave it
 		}
 		p := clonePayload(cur)
@@ -233,7 +233,7 @@ func (e *Engine) openChannel(m *motion) {
 		if m.capability != "" {
 			p["capability"] = m.capability
 		}
-		return p
+		return p.Payload()
 	})
 }
 

@@ -73,7 +73,7 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Payload{"stage": "open"})
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "merged")
 
 	tree := onlyTree(t, eng, "demo:pr:1")
@@ -145,7 +145,7 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:2"},
-		entity.Payload{"status": "running", "flow": "demo:pr:2", "chain": "review", "trigger": "review"})
+		entity.Obj{"status": "running", "flow": "demo:pr:2", "chain": "review", "trigger": "review"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:2")
 	root, ok := find(tree.Roots, "review")
@@ -168,7 +168,7 @@ func TestFlowTreeIncludesChainlessProcesses(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := treeEngine(t, store)
 	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "run-abc"},
-		entity.Payload{"status": "running", "flow": "demo:pr:3", "task": "poke at it"})
+		entity.Obj{"status": "running", "flow": "demo:pr:3", "task": "poke at it"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:3")
 	if len(tree.Roots) != 1 {
@@ -186,7 +186,7 @@ func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := treeEngine(t, store)
 	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "gone@demo:pr:4"},
-		entity.Payload{"status": "done", "flow": "demo:pr:4", "chain": "gone", "trigger": "gone"})
+		entity.Obj{"status": "done", "flow": "demo:pr:4", "chain": "gone", "trigger": "gone"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:4")
 	n, ok := find(tree.Roots, "gone")
@@ -205,7 +205,7 @@ func TestFlowTreeAddressing(t *testing.T) {
 	eng := treeEngine(t, store)
 	for _, id := range []string{"1", "2"} {
 		store.Put(entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:" + id},
-			entity.Payload{"status": "done", "flow": "demo:pr:" + id, "chain": "review", "trigger": "review"})
+			entity.Obj{"status": "done", "flow": "demo:pr:" + id, "chain": "review", "trigger": "review"}.Payload())
 	}
 	m, _ := ParseExpr("demo:pr:*")
 	if trees := eng.FlowTrees(m); len(trees) != 2 {

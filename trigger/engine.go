@@ -598,14 +598,14 @@ func (e *Engine) deadlineAt(ref entity.Ref, dur time.Duration) time.Time {
 	want := e.now().Add(dur).Format(time.RFC3339)
 	var eff string
 	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
-		if s, done := cur["deadline_at"].(string); done && s != "" {
+		if s := entity.Str(cur, "deadline_at"); s != "" {
 			eff = s // a concurrent arming won the CAS — honor its instant, not ours
 			return cur
 		}
 		eff = want
 		q := clonePayload(cur)
 		q["deadline_at"] = want
-		return q
+		return q.Payload()
 	})
 	if at, err := time.Parse(time.RFC3339, eff); err == nil {
 		return at
@@ -615,7 +615,7 @@ func (e *Engine) deadlineAt(ref entity.Ref, dur time.Duration) time.Time {
 
 // parseDeadlineAt reads a channel payload's stamped RFC3339 deadline_at, if present.
 func parseDeadlineAt(p entity.Payload) (time.Time, bool) {
-	s, _ := p["deadline_at"].(string)
+	s := entity.Str(p, "deadline_at")
 	if s == "" {
 		return time.Time{}, false
 	}
@@ -646,7 +646,7 @@ func (e *Engine) commitMotion(ref entity.Ref, recheck *Formula, outcome string, 
 		}
 	}
 	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
-		if o, done := cur["outcome"].(string); done {
+		if o := entity.Str(cur, "outcome"); o != "" {
 			eff = o // already latched — terminal-once, honor it
 			return cur
 		}
@@ -670,7 +670,7 @@ func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.R
 		e.tracef("commit %s: read failed: %v", ref.ID, err)
 		return "", true
 	}
-	if o, done := cur.Payload["outcome"].(string); done {
+	if o := entity.Str(cur.Payload, "outcome"); o != "" {
 		return o, false // already committed — terminal-once
 	}
 	pre := append([]entity.Precondition{{Ref: ref, Pattern: map[string]any{"status": "open"}}}, wpre...)
@@ -683,7 +683,7 @@ func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.R
 		// A failed read here is indistinguishable from "no latch yet", and both lead to
 		// the same answer: revoked, re-monitor.
 		if got, ok, _ := e.store.Get(ref); ok {
-			if o, done := got.Payload["outcome"].(string); done {
+			if o := entity.Str(got.Payload, "outcome"); o != "" {
 				return o, false // a concurrent commit latched first — honor it
 			}
 		}
@@ -702,7 +702,7 @@ func closedMotion(cur entity.Payload, outcome string, witness []entity.Ref) enti
 	if ids := refIDs(witness); len(ids) > 0 {
 		p["witness"] = ids
 	}
-	return p
+	return p.Payload()
 }
 
 // witnessPreconditions builds the revoke-guard precondition for an atomic commit: it is
@@ -737,11 +737,12 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: sub}}, true
 }
 
-// clonePayload returns a shallow copy of p (nil → empty), so a Modify can extend the
-// current value without mutating the store's clone.
-func clonePayload(p entity.Payload) entity.Payload {
-	out := entity.Payload{}
-	for k, v := range p {
+// clonePayload reads p back as a mutable object builder (nil, or a non-object payload →
+// empty), so a Modify can extend the current value without mutating the store's copy. The
+// caller converts once, with .Payload(), when it returns.
+func clonePayload(p entity.Payload) entity.Obj {
+	out := entity.Obj{}
+	for k, v := range entity.ToObj(p) {
 		out[k] = v
 	}
 	return out
@@ -855,7 +856,7 @@ func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]str
 				if pattern != nil && !providerMatches(en.Payload, pattern) {
 					continue
 				}
-				driver, _ := en.Payload["driver"].(string)
+				driver := entity.Str(en.Payload, "driver")
 				if driver == "" {
 					driver = en.Ref.ID
 				}
@@ -910,11 +911,9 @@ func matchText(m map[string]any) string {
 // the pattern was authored in, since JSON input is parsed by the tony parser too; an
 // untagged pattern stays a structural merge match.
 func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
-	node, err := gomap.ToTonyIR(map[string]any(attrs))
-	if err != nil {
-		return false
-	}
-	ok, err := tony.Match(node, pattern)
+	// A payload IS a node, so there is nothing to convert — this used to marshal the map
+	// through gomap first. Same call, one fewer representation.
+	ok, err := tony.Match(attrs, pattern)
 	return err == nil && ok
 }
 
@@ -1183,7 +1182,7 @@ func (e *Engine) reap(ev entity.Event) {
 	if ev.Ref.System != mirror.System {
 		return
 	}
-	status, _ := ev.To["status"].(string)
+	status := entity.Str(ev.To, "status")
 	if !process.TerminalStatus(status) {
 		return
 	}
@@ -1208,7 +1207,7 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Event, unsub fun
 			if !ok {
 				return
 			}
-			status, _ := ev.To["status"].(string)
+			status := entity.Str(ev.To, "status")
 			if !process.TerminalStatus(status) {
 				continue
 			}
@@ -1235,13 +1234,13 @@ func (e *Engine) ReconcileOrphans() int {
 	}
 	n := 0
 	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
-		status, _ := ent.Payload["status"].(string)
+		status := entity.Str(ent.Payload, "status")
 		if status == "" || process.TerminalStatus(status) {
 			continue
 		}
 		p := clonePayload(ent.Payload)
 		p["status"] = string(process.Orphaned)
-		e.store.Put(ent.Ref, p)
+		e.store.Put(ent.Ref, p.Payload())
 		n++
 	}
 	return n

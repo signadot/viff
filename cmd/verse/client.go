@@ -489,8 +489,12 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	// A payload typed on the command line names no format of its own, so it is read as
 	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
 	// keeps working whichever the default is.
-	var payload map[string]any
-	if err := codec.Unmarshal([]byte(args[1]), &payload, inFmt()); err != nil {
+	//
+	// Parsed to a NODE rather than a map: a payload is any tony value, so `42`, `true` and
+	// `[a, b]` are payloads too, and decoding into a map would reject them at the CLI even
+	// though the store and the wire both accept them.
+	payload, err := codec.ParseNode([]byte(args[1]), inFmt())
+	if err != nil {
 		return fmt.Errorf("entity put: payload: %w", err)
 	}
 	resp, err := httpPost("/entity", api.PutEntity{Ref: args[0], Payload: payload})

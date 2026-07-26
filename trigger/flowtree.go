@@ -83,7 +83,7 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 	bySubject := map[string][]entity.Entity{}
 	if l, ok := e.store.(entity.Lister); ok {
 		for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
-			subj, _ := ent.Payload["flow"].(string)
+			subj := entity.Str(ent.Payload, "flow")
 			if subj == "" {
 				continue // a process about nothing is in no flow
 			}
@@ -124,7 +124,7 @@ func (e *Engine) rootsFor(ents []entity.Entity) []FlowNode {
 	run := map[string]entity.Entity{}
 	var bare []FlowNode // processes with no chain: no charter action to hang them under
 	for _, ent := range ents {
-		chain, _ := ent.Payload["chain"].(string)
+		chain := entity.Str(ent.Payload, "chain")
 		if chain == "" {
 			bare = append(bare, nodeFrom("", "process", ent))
 			continue
@@ -212,7 +212,7 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 // nodeFrom projects a mirrored process onto a node. The mirror is an index, not a warehouse,
 // so this reads exactly the fields it publishes.
 func nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
-	str := func(k string) string { s, _ := ent.Payload[k].(string); return s }
+	str := func(k string) string { return entity.Str(ent.Payload, k) }
 	n := FlowNode{
 		Chain:      chain,
 		Kind:       kind,

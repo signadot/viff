@@ -56,7 +56,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	ref := mirror.Ref("rev-1")
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "done" {
+		if e, ok, _ := store.Get(ref); ok && entity.ToObj(e.Payload)["status"] == "done" {
 			return
 		}
 		select {
@@ -95,7 +95,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 	store.Put(entity.Ref{System: "local", Kind: "file", ID: "process/processd/daemon.go"},
-		entity.Payload{"path": "process/processd/daemon.go"})
+		entity.Obj{"path": "process/processd/daemon.go"}.Payload())
 
 	select {
 	case id := <-ids:

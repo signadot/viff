@@ -122,9 +122,9 @@ func TestSteerWholeKind(t *testing.T) {
 // subject entity, so it only applies to subjects that exist in the store.
 func TestFlowAddressingByPayload(t *testing.T) {
 	store := entity.NewMemStore()
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Payload{"stage": "open"})
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Payload{"stage": "merged"})
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Payload{"stage": "open"})
+	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
+	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "merged"}.Payload())
+	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
 
 	eng := New(store, process.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
@@ -165,7 +165,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 	// Once it is reaped, the id is free again — a later, genuinely new firing can run.
 	eng.reap(entity.Event{
 		Ref: mirror.Ref("rev-1"), Op: entity.Set,
-		To: entity.Payload{"status": string(process.Done)},
+		To: entity.Obj{"status": string(process.Done)}.Payload(),
 	})
 	if eng.Spawn("rev-1", spec) == nil || spawned != 2 {
 		t.Fatalf("after reap a fresh spawn should run; spawner invoked %d times", spawned)

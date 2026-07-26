@@ -144,7 +144,7 @@ func NewMemStore() *MemStore {
 func (s *MemStore) Put(ref Ref, p Payload) Event {
 	s.mu.Lock()
 	prev, existed := s.ents[ref.String()]
-	next := Entity{Ref: ref, Payload: p.clone()}
+	next := Entity{Ref: ref, Payload: clone(p)}
 	s.ents[ref.String()] = next
 	s.rev++
 	var from Payload
@@ -182,7 +182,7 @@ func (s *MemStore) CommitIf(ref Ref, payload Payload, pre ...Precondition) (bool
 		}
 	}
 	prev, existed := s.ents[ref.String()]
-	next := Entity{Ref: ref, Payload: payload.clone()}
+	next := Entity{Ref: ref, Payload: clone(payload)}
 	s.ents[ref.String()] = next
 	s.rev++
 	var from Payload
@@ -206,15 +206,17 @@ func (s *MemStore) subtreeNodeLocked(ref Ref) (*ir.Node, error) {
 		if !ok {
 			return ir.Null(), nil
 		}
-		return gomap.ToTonyIR(map[string]any(e.Payload))
+		// Cloned: a payload node is parented into whatever document it is placed in, so
+		// handing out the stored node would re-parent the store's own copy.
+		return clone(e.Payload), nil
 	}
-	sub := map[string]any{}
+	sub := map[string]*ir.Node{}
 	for _, e := range s.ents {
 		if e.Ref.System == ref.System && e.Ref.Kind == ref.Kind {
-			sub[e.Ref.ID] = map[string]any(e.Payload)
+			sub[e.Ref.ID] = clone(e.Payload)
 		}
 	}
-	return gomap.ToTonyIR(sub)
+	return ir.FromMap(sub), nil
 }
 
 // Modify atomically read-modify-writes an entity under the store lock, so the whole
@@ -225,10 +227,10 @@ func (s *MemStore) Modify(ref Ref, fn func(Payload) Payload) Event {
 	prev, existed := s.ents[ref.String()]
 	var cur Payload
 	if existed {
-		cur = prev.Payload.clone() // read-only copy for fn
+		cur = clone(prev.Payload) // read-only copy for fn
 	}
 	next := fn(cur)
-	s.ents[ref.String()] = Entity{Ref: ref, Payload: next.clone()}
+	s.ents[ref.String()] = Entity{Ref: ref, Payload: clone(next)}
 	s.rev++
 	var from Payload
 	if existed {

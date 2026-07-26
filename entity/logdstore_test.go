@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +28,7 @@ func asInt(v any) int64 {
 func concurrentIncrement(t *testing.T, store Store) {
 	t.Helper()
 	ref := Ref{System: "demo", Kind: "counter", ID: "1"}
-	store.Put(ref, Payload{})
+	store.Put(ref, Obj{}.Payload())
 	const n = 25
 
 	var wg sync.WaitGroup
@@ -39,10 +38,12 @@ func concurrentIncrement(t *testing.T, store Store) {
 			defer wg.Done()
 			for range n {
 				store.Modify(ref, func(cur Payload) Payload {
-					p := Payload{}
-					maps.Copy(p, cur)
+					p := ToObj(cur)
+					if p == nil {
+						p = Obj{}
+					}
 					p[f] = asInt(p[f]) + 1
-					return p
+					return p.Payload()
 				})
 			}
 		}(field)
@@ -53,10 +54,10 @@ func concurrentIncrement(t *testing.T, store Store) {
 	if !ok {
 		t.Fatal("entity missing after increments")
 	}
-	if a := asInt(e.Payload["a"]); a != n {
+	if a := asInt(ToObj(e.Payload)["a"]); a != n {
 		t.Fatalf("a = %d, want %d (lost update)", a, n)
 	}
-	if b := asInt(e.Payload["b"]); b != n {
+	if b := asInt(ToObj(e.Payload)["b"]); b != n {
 		t.Fatalf("b = %d, want %d (lost update)", b, n)
 	}
 }
@@ -113,13 +114,13 @@ func eventually(t *testing.T, why string, cond func() bool) {
 func TestLogdStore_PutGet(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	s.Put(ref, Payload{"stage": "open", "num": int64(42), "ok": true})
+	s.Put(ref, Obj{"stage": "open", "num": int64(42), "ok": true}.Payload())
 
 	e, ok, _ := s.Get(ref)
 	if !ok {
 		t.Fatal("Get after Put: not found")
 	}
-	if e.Payload["stage"] != "open" || e.Payload["num"] != int64(42) || e.Payload["ok"] != true {
+	if ToObj(e.Payload)["stage"] != "open" || ToObj(e.Payload)["num"] != int64(42) || ToObj(e.Payload)["ok"] != true {
 		t.Fatalf("payload not preserved: %#v", e.Payload)
 	}
 	if _, ok, _ := s.Get(Ref{System: "demo", Kind: "pr", ID: "nope"}); ok {
@@ -132,9 +133,9 @@ func TestLogdStore_PutGet(t *testing.T) {
 func TestLogdStore_QuotedID(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "github", Kind: "pr", ID: "signadot/x#42"}
-	s.Put(ref, Payload{"stage": "review"})
+	s.Put(ref, Obj{"stage": "review"}.Payload())
 	e, ok, _ := s.Get(ref)
-	if !ok || e.Payload["stage"] != "review" {
+	if !ok || ToObj(e.Payload)["stage"] != "review" {
 		t.Fatalf("quoted-id round-trip failed: ok=%v payload=%#v", ok, e.Payload)
 	}
 }
@@ -144,14 +145,14 @@ func TestLogdStore_QuotedID(t *testing.T) {
 func TestLogdStore_PutReplaces(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	s.Put(ref, Payload{"stage": "open", "extra": "x"})
-	s.Put(ref, Payload{"stage": "reviewing"}) // drops "extra"
+	s.Put(ref, Obj{"stage": "open", "extra": "x"}.Payload())
+	s.Put(ref, Obj{"stage": "reviewing"}.Payload()) // drops "extra"
 
 	e, _, _ := s.Get(ref)
-	if e.Payload["stage"] != "reviewing" {
+	if ToObj(e.Payload)["stage"] != "reviewing" {
 		t.Fatalf("stage not updated: %#v", e.Payload)
 	}
-	if _, present := e.Payload["extra"]; present {
+	if _, present := ToObj(e.Payload)["extra"]; present {
 		t.Fatalf("Put did not replace: stale field remains: %#v", e.Payload)
 	}
 }
@@ -163,12 +164,12 @@ func TestLogdStore_Delete(t *testing.T) {
 	if _, ok := s.Delete(ref); ok {
 		t.Fatal("Delete of absent ref reported existed")
 	}
-	s.Put(ref, Payload{"stage": "open"})
+	s.Put(ref, Obj{"stage": "open"}.Payload())
 	ev, ok := s.Delete(ref)
 	if !ok {
 		t.Fatal("Delete of present ref reported absent")
 	}
-	if ev.Op != Delete || ev.From["stage"] != "open" {
+	if ev.Op != Delete || Str(ev.From, "stage") != "open" {
 		t.Fatalf("delete event wrong: %#v", ev)
 	}
 	if _, ok, _ := s.Get(ref); ok {
@@ -181,7 +182,7 @@ func TestLogdStore_Delete(t *testing.T) {
 func TestLogdStore_ScopeIsolation(t *testing.T) {
 	base := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	base.Put(ref, Payload{"stage": "open"})
+	base.Put(ref, Obj{"stage": "open"}.Payload())
 
 	scoped, ok := base.Scope("me").(*LogdStore)
 	if !ok {
@@ -189,22 +190,22 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 	}
 
 	// Reads see baseline through the overlay.
-	if e, ok, _ := scoped.Get(ref); !ok || e.Payload["stage"] != "open" {
+	if e, ok, _ := scoped.Get(ref); !ok || ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("scope did not read baseline through: ok=%v payload=%#v", ok, e.Payload)
 	}
 
 	// A scope write is isolated: the scope sees it, baseline does not.
-	scoped.Put(ref, Payload{"stage": "reviewing"})
-	if e, _, _ := scoped.Get(ref); e.Payload["stage"] != "reviewing" {
+	scoped.Put(ref, Obj{"stage": "reviewing"}.Payload())
+	if e, _, _ := scoped.Get(ref); ToObj(e.Payload)["stage"] != "reviewing" {
 		t.Fatalf("scope write not visible in scope: %#v", e.Payload)
 	}
-	if e, _, _ := base.Get(ref); e.Payload["stage"] != "open" {
+	if e, _, _ := base.Get(ref); ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("scope write leaked into baseline: %#v", e.Payload)
 	}
 
 	// A scope-only entity does not exist in baseline.
 	only := Ref{System: "demo", Kind: "pr", ID: "scope-only"}
-	scoped.Put(only, Payload{"x": "1"})
+	scoped.Put(only, Obj{"x": "1"}.Payload())
 	if _, ok, _ := base.Get(only); ok {
 		t.Fatal("scope-only entity leaked into baseline")
 	}
@@ -217,7 +218,7 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 		t.Fatalf("DeleteScope: %v", err)
 	}
 	fresh := base.Scope("me")
-	if e, _, _ := fresh.Get(ref); e.Payload["stage"] != "open" {
+	if e, _, _ := fresh.Get(ref); ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("after DeleteScope, scope still overlaid: %#v", e.Payload)
 	}
 	if _, ok, _ := fresh.Get(only); ok {
@@ -248,8 +249,8 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 	s := openStore(t)
 	start := s.Rev()
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	s.Put(ref, Payload{"stage": "open"})      // would have been "create"
-	s.Put(ref, Payload{"stage": "reviewing"}) // would have been "update"
+	s.Put(ref, Obj{"stage": "open"}.Payload())      // would have been "create"
+	s.Put(ref, Obj{"stage": "reviewing"}.Payload()) // would have been "update"
 
 	var first []Event
 	eventually(t, "Since to replay both writes", func() bool {
@@ -295,7 +296,7 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 			{System: "demo", Kind: "pr", ID: "3"},
 		}
 		for i, r := range refs {
-			s.Put(r, Payload{"stage": "open", "i": int64(i)})
+			s.Put(r, Obj{"stage": "open", "i": int64(i)}.Payload())
 		}
 		// Let the writes land, so every concurrent replay has the same window to see.
 		eventually(t, "writes to be replayable", func() bool {
@@ -350,8 +351,8 @@ func TestLogdStore_SinceBelowWatermarkResyncs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s1.Put(Ref{System: "demo", Kind: "pr", ID: "1"}, Payload{"stage": "open"})
-	s1.Put(Ref{System: "demo", Kind: "pr", ID: "2"}, Payload{"stage": "open"})
+	s1.Put(Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
+	s1.Put(Ref{System: "demo", Kind: "pr", ID: "2"}, Obj{"stage": "open"}.Payload())
 	eventually(t, "history to land", func() bool { return s1.Rev() >= 2 })
 	s1.Close()
 
@@ -381,7 +382,7 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 		{System: "demo", Kind: "pr", ID: "3"},
 	}
 	for i, r := range refs {
-		s.Put(r, Payload{"stage": "open", "i": int64(i)})
+		s.Put(r, Obj{"stage": "open", "i": int64(i)}.Payload())
 	}
 
 	// Rev advances past the start as the watch observes the writes.

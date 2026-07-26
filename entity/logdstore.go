@@ -236,52 +236,52 @@ func fieldName(f *ir.Node) string {
 	return s
 }
 
-// payloadToNode builds the object node for a payload. An empty payload becomes an
-// empty object (a present entity with no fields), not null (an absent entity). It
-// returns an error only for an unencodable payload (can't happen for JSON-derived
-// data) — the caller must not then overwrite the stored value.
-func payloadToNode(p Payload) (*ir.Node, error) {
-	if len(p) == 0 {
-		return ir.FromMap(map[string]*ir.Node{}), nil
+// payloadToNode is the write face of a payload. A payload IS a node now, so this only
+// settles the absent case: a nil payload becomes an EMPTY OBJECT (a present entity with
+// no fields), never null, which is how an absent entity is spelled. It is cloned because
+// the node is about to be parented into a patch document.
+func payloadToNode(p Payload) *ir.Node {
+	if p == nil {
+		return ir.FromMap(map[string]*ir.Node{})
 	}
-	node, err := gomap.ToTonyIR(map[string]any(p))
-	if err != nil {
-		return nil, err
-	}
-	if node == nil {
-		return ir.FromMap(map[string]*ir.Node{}), nil
-	}
-	return node, nil
+	return clone(p)
 }
 
-// nodeToPayload decodes an object node into a payload, dropping null-valued fields
-// (logd tombstones from a replace) so callers see only present fields.
+// nodeToPayload is the read face. A node is already a payload; the only work left is
+// dropping null-valued FIELDS of an object — logd tombstones from a replace — so callers
+// see only present fields. A scalar payload has no fields and passes through untouched;
+// a null one is an absent entity and reads as nil.
 func nodeToPayload(node *ir.Node) Payload {
-	if node == nil || node.Type != ir.ObjectType {
+	if node == nil || node.Type == ir.NullType {
 		return nil
 	}
-	var m map[string]any
-	if err := gomap.FromTonyIR(node, &m); err != nil {
-		return nil
+	if node.Type != ir.ObjectType {
+		return node
 	}
-	for k, v := range m {
-		if v == nil {
-			delete(m, k)
+	live := map[string]*ir.Node{}
+	for k, v := range ir.ToMap(node) {
+		if v != nil && v.Type != ir.NullType {
+			live[k] = clone(v)
 		}
 	}
-	return Payload(m)
+	return ir.FromMap(live)
 }
 
 // addRemovedNulls makes a Patch replace rather than merge: for every field present
 // in the old value but absent from the new payload, it appends an explicit null so
 // logd tombstones it. This gives Put the whole-value replace semantics MemStore has.
+//
+// It applies only when BOTH sides are objects, which is the only case where a merge could
+// leave a stale field behind. A scalar (or array) new value replaces the old outright —
+// there are no fields to merge into and so nothing to tombstone.
 func addRemovedNulls(node, old *ir.Node, p Payload) {
-	if old == nil || old.Type != ir.ObjectType {
+	if old == nil || old.Type != ir.ObjectType || node == nil || node.Type != ir.ObjectType {
 		return
 	}
+	fields := Fields(p)
 	for _, f := range old.Fields {
 		k := fieldName(f) // old came from Match: keys needing quoting arrive quoted
-		if _, ok := p[k]; !ok {
+		if _, ok := fields[k]; !ok {
 			node.Fields = append(node.Fields, ir.FromString(k))
 			node.Values = append(node.Values, ir.Null())
 		}
@@ -318,15 +318,9 @@ func (s *LogdStore) Put(ref Ref, p Payload) Event {
 	s.mu.Lock()
 	rev := s.rev
 	s.mu.Unlock()
-	echo := Event{Ref: ref, Op: Set, To: p.clone(), Rev: rev}
+	echo := Event{Ref: ref, Op: Set, To: clone(p), Rev: rev}
 
-	node, err := payloadToNode(p)
-	if err != nil {
-		// An unencodable payload must not turn into an empty-object write that nulls
-		// every existing field — leave the stored value untouched (can't happen for
-		// JSON-derived payloads; a guard against silent data loss).
-		return echo
-	}
+	node := payloadToNode(p)
 	path := s.refPath(ref)
 	if old, err := s.sess.Match(ctx, path); err == nil {
 		addRemovedNulls(node, old, p)
@@ -363,10 +357,7 @@ func (s *LogdStore) Modify(ref Ref, fn func(Payload) Payload) Event {
 			cur = nodeToPayload(old)
 		}
 		next = fn(cur)
-		node, perr := payloadToNode(next)
-		if perr != nil {
-			break // unencodable; don't destroy the stored value
-		}
+		node := payloadToNode(next)
 		if old == nil {
 			old = ir.Null()
 		}
@@ -387,7 +378,7 @@ func (s *LogdStore) Modify(ref Ref, fn func(Payload) Payload) Event {
 	s.mu.Lock()
 	rev := s.rev
 	s.mu.Unlock()
-	return Event{Ref: ref, Op: Set, To: next.clone(), Rev: rev}
+	return Event{Ref: ref, Op: Set, To: clone(next), Rev: rev}
 }
 
 // CommitIf implements ConditionalCommitter over docd's cross-path conditional write: it
@@ -399,10 +390,7 @@ func (s *LogdStore) Modify(ref Ref, fn func(Payload) Payload) Event {
 func (s *LogdStore) CommitIf(ref Ref, payload Payload, pre ...Precondition) (bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	node, err := payloadToNode(payload)
-	if err != nil {
-		return false, err // unencodable payload — don't write
-	}
+	node := payloadToNode(payload)
 	// Nest each precondition's pattern at its <system>[.<kind>[.<id>]] under the root, so a
 	// single match at the root subtree checks them all together (docd allows one match path).
 	rootPat := map[string]any{}

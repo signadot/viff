@@ -23,14 +23,23 @@ package api
 
 //go:generate go tool tony-codegen -dir .
 
-import "github.com/signadot/verse/process"
+import (
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/process"
+)
 
 // PutEntity writes a payload to an entity ref (`POST /entity`).
 //
+// Payload is a tony node, not a map: an entity payload is ANY tony value (see
+// entity.Payload), so `verse entity put demo:count:1 42` has to survive the wire as the
+// number it is. A map here would have re-imposed on the wire exactly the object constraint
+// the store just dropped.
+//
 //tony:schemagen=verse-put-entity,notag
 type PutEntity struct {
-	Ref     string         `tony:"field=ref"`
-	Payload map[string]any `tony:"field=payload,omitzero"`
+	Ref     string   `tony:"field=ref"`
+	Payload *ir.Node `tony:"field=payload,omitzero"`
 }
 
 // Resolve answers ONE pending gate, by its id, wherever it lives — an engine gate the

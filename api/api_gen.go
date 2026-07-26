@@ -17,23 +17,20 @@ func (s *PutEntity) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
 	// Field: Ref
 	irMap["ref"] = ir.FromString(s.Ref)
 
-	// Field: Payload
-	if len(s.Payload) > 0 {
-		mapNodes := make(map[string]*ir.Node)
-		for k, v := range s.Payload {
-			node, err := gomap.ToTonyIR(v, opts...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert map value at key %q: %w", k, err)
-			}
-			mapNodes[k] = node
-		}
-		irMap["payload"] = ir.FromMap(mapNodes)
+	// Field: Payload (optional)
+	if s.Payload != nil {
+		irMap["payload"] = s.Payload
 	}
 
 	return ir.FromMap(irMap), nil
@@ -76,18 +73,10 @@ func (s *PutEntity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			s.Ref = fieldNodeUnwrapped.String
 		case "payload":
-			// Field: Payload
-			if fieldNodeUnwrapped.Type == ir.ObjectType {
-				m := make(map[string]interface{})
-				irMap := ir.ToMap(fieldNodeUnwrapped)
-				for k, v := range irMap {
-					var val interface{}
-					if err := gomap.FromTonyIR(v, &val, opts...); err != nil {
-						return fmt.Errorf("failed to convert map value at key %q: %w", k, err)
-					}
-					m[k] = val
-				}
-				s.Payload = m
+			if gomap.GetUnmapComments(opts...) {
+				s.Payload = fieldNode
+			} else {
+				s.Payload = fieldNodeUnwrapped
 			}
 		}
 	}

@@ -119,7 +119,7 @@ func (e *Engine) AddGoal(d GoalDef) error {
 			p["deadline"] = d.Deadline
 		}
 		p["waitingOn"] = waiting
-		return p
+		return p.Payload()
 	})
 	go e.runGoal(ctx, g)
 	return nil
@@ -221,7 +221,7 @@ func (e *Engine) runGoal(ctx context.Context, g *Goal) {
 func (e *Engine) updateGoalStatus(g *Goal, done *Formula) {
 	waiting := waitingLabels(done.Unmet(e.store))
 	e.store.Modify(goalRef(g.Def.Name), func(cur entity.Payload) entity.Payload {
-		if t, _ := cur["terminal"].(bool); t {
+		if b := entity.Get(cur, "terminal"); b != nil && b.Bool {
 			return cur // already latched — leave it (terminal is monotonic)
 		}
 		p := clonePayload(cur)
@@ -231,7 +231,7 @@ func (e *Engine) updateGoalStatus(g *Goal, done *Formula) {
 		} else {
 			p["status"] = "active"
 		}
-		return p
+		return p.Payload()
 	})
 }
 
@@ -251,7 +251,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 		e.tracef("goal %s: commit read failed: %v", g.Def.Name, err)
 		return
 	}
-	if t, _ := cur.Payload["terminal"].(bool); t {
+	if b := entity.Get(cur.Payload, "terminal"); b != nil && b.Bool {
 		return // already terminal
 	}
 	next := clonePayload(cur.Payload)
@@ -266,7 +266,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	committed := true
 	if cc, ok := e.store.(entity.ConditionalCommitter); ok {
 		var err error
-		committed, err = cc.CommitIf(ref, next, entity.Precondition{Ref: ref, Pattern: map[string]any{"terminal": false}})
+		committed, err = cc.CommitIf(ref, next.Payload(), entity.Precondition{Ref: ref, Pattern: map[string]any{"terminal": false}})
 		if err != nil {
 			e.tracef("goal %s: terminal commit error: %v", g.Def.Name, err)
 			return
@@ -274,11 +274,11 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	} else {
 		// Best-effort terminal-once for a store without conditional commit.
 		e.store.Modify(ref, func(p entity.Payload) entity.Payload {
-			if t, _ := p["terminal"].(bool); t {
+			if b := entity.Get(p, "terminal"); b != nil && b.Bool {
 				committed = false
 				return p
 			}
-			return next
+			return next.Payload()
 		})
 	}
 	if !committed {
@@ -293,7 +293,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	// use `$subject` for this: that is the reserved binding for the firing's OWN resolved
 	// subject, which for a goal:done change is the latch entity itself.
 	if outcome == "done" {
-		fact := entity.Payload{"goal": g.Def.Name}
+		fact := entity.Obj{"goal": g.Def.Name}
 		if g.Def.Subject != "" {
 			fact["flow"] = g.Def.Subject
 			fact["subject"] = g.Def.Subject
@@ -301,14 +301,14 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 		if ids := refIDs(witness); len(ids) > 0 {
 			fact["witness"] = ids
 		}
-		e.store.Put(goalDoneRef(g.Def.Name), fact)
+		e.store.Put(goalDoneRef(g.Def.Name), fact.Payload())
 	} else {
-		fact := entity.Payload{"goal": g.Def.Name, "reason": "deadline"}
+		fact := entity.Obj{"goal": g.Def.Name, "reason": "deadline"}
 		if g.Def.Subject != "" {
 			fact["flow"] = g.Def.Subject
 			fact["subject"] = g.Def.Subject
 		}
-		e.store.Put(goalFailedRef(g.Def.Name), fact)
+		e.store.Put(goalFailedRef(g.Def.Name), fact.Payload())
 	}
 	e.tracef("goal %s: %s (witness %d facts) — reaping owned charter", g.Def.Name, outcome, len(witness))
 	e.reapGoalTriggers(g)

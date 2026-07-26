@@ -19,7 +19,7 @@ func prs(store entity.Store, stage string, ids ...string) []entity.Ref {
 	out := make([]entity.Ref, 0, len(ids))
 	for _, id := range ids {
 		ref := entity.Ref{System: "demo", Kind: "pr", ID: id}
-		store.Put(ref, entity.Payload{"stage": stage})
+		store.Put(ref, entity.Obj{"stage": stage}.Payload())
 		out = append(out, ref)
 	}
 	return out
@@ -49,13 +49,13 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	eng.Start(ctx)
 
 	// ONE change, about nothing in particular — the fan-out comes from the Subject.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	for _, ref := range reviewed {
 		waitStage(t, store, ref, "shipped")
 	}
 	// The non-matching PR is untouched: the Subject selected a set, not everything.
-	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "4"}); e.Payload["stage"] != "open" {
+	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "4"}); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("an unselected entity was acted on: %#v", e.Payload)
 	}
 	// Budget metering is per entity acted on, so three members are three.
@@ -94,7 +94,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	seen := map[string]string{} // subject -> task
 	ids := map[string]bool{}
@@ -153,11 +153,11 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	eng.Start(ctx)
 
 	ci := entity.Ref{System: "ci", Kind: "status", ID: "build"}
-	store.Put(ci, entity.Payload{"state": "green"})
+	store.Put(ci, entity.Obj{"state": "green"}.Payload())
 	eventuallyN(t, "2 spawns", func() bool { return spawns.Load() == 2 })
 
 	// Fire again over the same set — same members, same ids, so no new processes.
-	store.Put(ci, entity.Payload{"state": "green", "run": "2"})
+	store.Put(ci, entity.Obj{"state": "green", "run": "2"}.Payload())
 	time.Sleep(300 * time.Millisecond)
 	if n := spawns.Load(); n != 2 {
 		t.Fatalf("a re-fire spawned %d processes; want 2 (idempotent per member)", n)
@@ -189,7 +189,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	time.Sleep(400 * time.Millisecond)
 	if f := eng.Fired(); f != 4 {
@@ -197,7 +197,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 	}
 	shipped := 0
 	for _, id := range ids {
-		if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); e.Payload["stage"] == "shipped" {
+		if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); entity.ToObj(e.Payload)["stage"] == "shipped" {
 			shipped++
 		}
 	}
@@ -224,7 +224,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	time.Sleep(250 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired %d times over an empty subject set", f)
@@ -270,7 +270,7 @@ func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	// All three members advance off one approval.
 	for _, id := range []string{"1", "2", "3"} {
@@ -326,7 +326,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	for _, ref := range open {
 		waitStage(t, store, ref, "shipped")
@@ -356,11 +356,11 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}, "shipped")
 	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-2"}, "shipped")
-	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "feature-9"}); e.Payload["stage"] != "open" {
+	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "feature-9"}); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("the glob overreached beyond its family: %#v", e.Payload)
 	}
 }
@@ -384,7 +384,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Payload{"state": "green"})
+	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	waitStage(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "noted")
 }
 
@@ -394,7 +394,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	store := entity.NewMemStore()
 	other := entity.Ref{System: "other", Kind: "thing", ID: "1"}
-	store.Put(other, entity.Payload{"stage": "x"})
+	store.Put(other, entity.Obj{"stage": "x"}.Payload())
 
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
@@ -413,11 +413,11 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 
 	// A completed process whose flow is NOT a demo:pr — the subject pattern doesn't name it.
 	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
-		entity.Payload{"status": "done", "flow": other.String()})
+		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
 	time.Sleep(50 * time.Millisecond) // give a wrong action time to land, if it were going to
-	if e, _, _ := store.Get(other); e.Payload["stage"] != "x" {
+	if e, _, _ := store.Get(other); entity.ToObj(e.Payload)["stage"] != "x" {
 		t.Fatalf("acted on a flow the subject doesn't name: %s = %#v", other, e.Payload)
 	}
 }

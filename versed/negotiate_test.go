@@ -118,7 +118,7 @@ func TestRequestBodyNegotiation(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("entity not stored: ok=%v err=%v", ok, err)
 	}
-	if e.Payload["stage"] != "open" {
+	if entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Errorf("payload did not decode from tony: %+v", e.Payload)
 	}
 }

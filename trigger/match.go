@@ -391,8 +391,10 @@ func asFields(v any) (map[string]any, bool) {
 		return nil, false
 	case map[string]any:
 		return f, true
-	case entity.Payload:
+	case entity.Obj:
 		return map[string]any(f), true
+	case entity.Payload:
+		return entity.ToObj(f), true
 	}
 	return nil, false
 }

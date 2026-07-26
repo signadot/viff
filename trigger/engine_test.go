@@ -46,7 +46,7 @@ func waitStage(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok, _ := s.Get(ref); ok && e.Payload["stage"] == want {
+		if e, ok, _ := s.Get(ref); ok && entity.ToObj(e.Payload)["stage"] == want {
 			return
 		}
 		select {
@@ -87,7 +87,7 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	eng.Start(ctx)
 
 	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	store.Put(subj, entity.Payload{"stage": "open"}) // ignite
+	store.Put(subj, entity.Obj{"stage": "open"}.Payload()) // ignite
 
 	waitStage(t, store, subj, "deployed")
 
@@ -114,7 +114,7 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	eng.Start(ctx)
 
 	// a process:* change must be ignored by the (non-opted-in) greedy trigger
-	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "p1"}, entity.Payload{"status": "running"})
+	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("greedy fired on a process:* change (fired=%d) — ignition guard failed", f)
@@ -156,7 +156,7 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx) // versed's production path (per-trigger subtree watch)
 
-	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Payload{"phase": "a"}) // ignite
+	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"phase": "a"}.Payload()) // ignite
 
 	// It must settle at the budget, not run forever.
 	time.Sleep(300 * time.Millisecond)
@@ -183,7 +183,7 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Payload{"tick": true}) // ignite
+	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"tick": true}.Payload()) // ignite
 
 	time.Sleep(300 * time.Millisecond)
 	if f := eng.Fired(); f != 1 {

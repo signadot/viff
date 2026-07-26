@@ -1,6 +1,10 @@
 package entity
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+)
 
 func TestParseRefRoundTrip(t *testing.T) {
 	cases := []string{"linear:issue:1090", "github:pr:signadot/hack#12", "process:instance:p1"}
@@ -24,16 +28,16 @@ func TestPutCreateThenUpdate(t *testing.T) {
 	s := NewMemStore()
 	ref := Ref{"linear", "issue", "1090"}
 
-	ev := s.Put(ref, Payload{"stage": "open"})
-	if ev.Op != Set || ev.From != nil || ev.To["stage"] != "open" {
+	ev := s.Put(ref, Obj{"stage": "open"}.Payload())
+	if ev.Op != Set || ev.From != nil || Str(ev.To, "stage") != "open" {
 		t.Fatalf("create event wrong: %+v", ev)
 	}
-	ev = s.Put(ref, Payload{"stage": "reviewed"})
-	if ev.Op != Set || ev.From["stage"] != "open" || ev.To["stage"] != "reviewed" {
+	ev = s.Put(ref, Obj{"stage": "reviewed"}.Payload())
+	if ev.Op != Set || Str(ev.From, "stage") != "open" || Str(ev.To, "stage") != "reviewed" {
 		t.Fatalf("update event wrong: %+v", ev)
 	}
 	got, ok, _ := s.Get(ref)
-	if !ok || got.Payload["stage"] != "reviewed" {
+	if !ok || ToObj(got.Payload)["stage"] != "reviewed" {
 		t.Fatalf("get after update: %+v ok=%v", got, ok)
 	}
 }
@@ -41,11 +45,11 @@ func TestPutCreateThenUpdate(t *testing.T) {
 func TestPutClonesPayload(t *testing.T) {
 	s := NewMemStore()
 	ref := Ref{"x", "y", "z"}
-	p := Payload{"n": 1}
+	p := Obj{"n": 1}.Payload()
 	s.Put(ref, p)
-	p["n"] = 999 // mutate caller's map after Put
+	*ir.Get(p, "n") = *ir.FromInt(999) // mutate the caller's node after Put
 	got, _, _ := s.Get(ref)
-	if got.Payload["n"] != 1 {
+	if ToObj(got.Payload)["n"] != int64(1) {
 		t.Fatalf("store aliased caller payload: %+v", got.Payload)
 	}
 }
@@ -56,9 +60,9 @@ func TestDeleteAndMissing(t *testing.T) {
 	if _, ok := s.Delete(ref); ok {
 		t.Fatal("delete of missing should report false")
 	}
-	s.Put(ref, Payload{"a": 1})
+	s.Put(ref, Obj{"a": 1}.Payload())
 	ev, ok := s.Delete(ref)
-	if !ok || ev.Op != Delete || ev.From["a"] != 1 || ev.To != nil {
+	if !ok || ev.Op != Delete || ToObj(ev.From)["a"] != int64(1) || ev.To != nil {
 		t.Fatalf("delete event wrong: %+v ok=%v", ev, ok)
 	}
 	if _, ok, _ := s.Get(ref); ok {
@@ -72,8 +76,8 @@ func TestObserveDeliversChanges(t *testing.T) {
 	defer unsub()
 
 	ref := Ref{"linear", "issue", "1"}
-	s.Put(ref, Payload{"stage": "open"})
-	s.Put(ref, Payload{"stage": "reviewed"})
+	s.Put(ref, Obj{"stage": "open"}.Payload())
+	s.Put(ref, Obj{"stage": "reviewed"}.Payload())
 	s.Delete(ref)
 
 	want := []Op{Set, Set, Delete}
@@ -107,8 +111,8 @@ func TestRevAndSince(t *testing.T) {
 		t.Fatalf("fresh Rev = %d, want 0", s.Rev())
 	}
 	ref := Ref{"demo", "pr", "1"}
-	e1 := s.Put(ref, Payload{"stage": "open"})     // rev 1
-	e2 := s.Put(ref, Payload{"stage": "reviewed"}) // rev 2
+	e1 := s.Put(ref, Obj{"stage": "open"}.Payload())     // rev 1
+	e2 := s.Put(ref, Obj{"stage": "reviewed"}.Payload()) // rev 2
 	if e1.Rev != 1 || e2.Rev != 2 || s.Rev() != 2 {
 		t.Fatalf("revs wrong: e1=%d e2=%d cur=%d", e1.Rev, e2.Rev, s.Rev())
 	}
@@ -131,7 +135,7 @@ func TestSinceTooOld(t *testing.T) {
 	s.histCap = 3 // retain only the last 3 changes
 	ref := Ref{"demo", "x", "1"}
 	for i := 0; i < 5; i++ { // revs 1..5; only 3..5 retained
-		s.Put(ref, Payload{"n": i})
+		s.Put(ref, Obj{"n": i}.Payload())
 	}
 	if _, ok := s.Since(0); ok {
 		t.Fatal("Since(0) should be too-old (revs 1,2 dropped)")
@@ -148,12 +152,12 @@ func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 
 	ref := Ref{"x", "y", "z"}
 	for i := 0; i < 300; i++ { // overflow the 256 buffer without draining
-		s.Put(ref, Payload{"n": i})
+		s.Put(ref, Obj{"n": i}.Payload())
 	}
 	for i := 0; i < 10; i++ { // free slots, then emit → gap marker flushes
 		<-ch
 	}
-	s.Put(ref, Payload{"n": 999})
+	s.Put(ref, Obj{"n": 999}.Payload())
 
 	sawGap := false
 	for {
@@ -175,11 +179,11 @@ func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 // selection needs no separate construct in v0.
 func TestNamespaceIsAQuery(t *testing.T) {
 	s := NewMemStore()
-	s.Put(Ref{"github", "pr", "1"}, Payload{"env": "prod"})
-	s.Put(Ref{"github", "pr", "2"}, Payload{"env": "staging"})
+	s.Put(Ref{"github", "pr", "1"}, Obj{"env": "prod"}.Payload())
+	s.Put(Ref{"github", "pr", "2"}, Obj{"env": "staging"}.Payload())
 	prodTouching := s.List(func(r Ref) bool {
 		e, _, _ := s.Get(r)
-		return e.Payload["env"] == "prod"
+		return ToObj(e.Payload)["env"] == "prod"
 	})
 	if len(prodTouching) != 1 || prodTouching[0].Ref.ID != "1" {
 		t.Fatalf("prod-touching query wrong: %+v", prodTouching)

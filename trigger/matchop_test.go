@@ -114,7 +114,7 @@ func TestMatchIDOperatorGrammar(t *testing.T) {
 func TestMatchOperatorSelects(t *testing.T) {
 	store := entity.NewMemStore()
 	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-1"} {
-		store.Put(entity.Ref{System: "demo", Kind: "pr", ID: id}, entity.Payload{"stage": "open"})
+		store.Put(entity.Ref{System: "demo", Kind: "pr", ID: id}, entity.Obj{"stage": "open"}.Payload())
 	}
 
 	m := mustMatch(t, `{system: demo, kind: pr, id: !glob "hotfix-*"}`, codec.Tony)
@@ -248,7 +248,7 @@ func TestMatchFieldsStillPlain(t *testing.T) {
 	m := mustMatch(t, `{system: demo, kind: pr, fields: {stage: open, n: 2}}`, codec.Tony)
 	ev := entity.Event{
 		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
-		Op:  entity.Set, To: entity.Payload{"stage": "open", "n": int64(2)},
+		Op:  entity.Set, To: entity.Obj{"stage": "open", "n": int64(2)}.Payload(),
 	}
 	if !m.MatchEvent(ev) {
 		t.Errorf("%#v did not match %+v", map[string]any(m), ev.To)

@@ -72,13 +72,13 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	}}
 
 	// Below threshold: one vote → not satisfied.
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "alice"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "alice"}, entity.Obj{"choice": "approve"}.Payload())
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) satisfied with 1 vote")
 	}
 
 	// At threshold: two votes → satisfied, witness names both.
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "bob"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "bob"}, entity.Obj{"choice": "approve"}.Payload())
 	ok, witness := quorum.Eval(st)
 	if !ok {
 		t.Fatalf("quorum(2) not satisfied with 2 votes")
@@ -102,9 +102,9 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 		Facts: Match{"system": "motion", "kind": "vote", "fields": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Payload{"choice": "approve"})
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Payload{"choice": "reject"})
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "c"}, entity.Payload{"choice": "approve"})
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Obj{"choice": "approve"}.Payload())
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Obj{"choice": "reject"}.Payload())
+	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "c"}, entity.Obj{"choice": "approve"}.Payload())
 	ok, witness := approvals.Eval(st)
 	if !ok || len(witness) != 2 {
 		t.Fatalf("approve-quorum(2) = (%v, %d refs), want (true, 2) — 'reject' must not count", ok, len(witness))
@@ -115,7 +115,7 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
 	st := entity.NewMemStore()
 	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: Match{"system": "motion", "kind": "judgment"}}}
-	st.Put(entity.Ref{System: "motion", Kind: "judgment", ID: "x"}, entity.Payload{"verdict": "ship"})
+	st.Put(entity.Ref{System: "motion", Kind: "judgment", ID: "x"}, entity.Obj{"verdict": "ship"}.Payload())
 	if ok, _ := judged.Eval(st); ok {
 		t.Fatalf("stubbed requirement %q should block, not satisfy", ReqJudgment)
 	}

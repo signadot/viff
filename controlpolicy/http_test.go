@@ -140,7 +140,7 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 
 	// "verse restart": a fresh store with a STALE running entity tagged with the policy.
 	store := entity.NewMemStore()
-	store.Put(mirror.Ref("t1"), entity.Payload{"status": "running", "policy": srv.URL})
+	store.Put(mirror.Ref("t1"), entity.Obj{"status": "running", "policy": srv.URL}.Payload())
 
 	// resume: re-attach and re-mirror (the core of reconcileProcesses).
 	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Policy: srv.URL})
@@ -148,13 +148,13 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _, _ := store.Get(mirror.Ref("t1"))
-		if s, _ := e.Payload["status"].(string); s == string(process.Done) {
+		if s, _ := entity.ToObj(e.Payload)["status"].(string); s == string(process.Done) {
 			return // converged: resume recovered the terminal from the remote
 		}
 		select {
 		case <-deadline:
 			e, _, _ := store.Get(mirror.Ref("t1"))
-			t.Fatalf("entity never converged to completed; status=%v", e.Payload["status"])
+			t.Fatalf("entity never converged to completed; status=%v", entity.ToObj(e.Payload)["status"])
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

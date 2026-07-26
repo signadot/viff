@@ -76,7 +76,7 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 	if m.Policy == "broker" {
 		initial = process.Unclaimed
 	}
-	st := entity.Payload{"status": string(initial)}
+	st := entity.Obj{"status": string(initial)}
 	if m.Subject != "" {
 		st["flow"] = m.Subject
 	}
@@ -102,7 +102,7 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 			st["dialURL"] = u
 		}
 	}
-	store.Put(Ref(id), st)
+	store.Put(Ref(id), st.Payload())
 	go func() {
 		defer unsub()
 		for ev := range ch {
@@ -141,11 +141,11 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 						if r := h.Result(); r != "" { // keep the full final answer, durably
 							st["result"] = r
 						}
-						store.Put(Ref(id), st)
+						store.Put(Ref(id), st.Payload())
 						return // stop projecting; the entity remains, marked terminal
 					}
 				}
-				store.Put(Ref(id), st)
+				store.Put(Ref(id), st.Payload())
 				continue
 			case process.EvVector: // an autonomy slide — project the dial so `entity get` shows it
 				st["vector"] = ev.Mode
@@ -155,7 +155,7 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
 			}
-			store.Put(Ref(id), st) // Store clones the payload; safe to reuse st
+			store.Put(Ref(id), st.Payload()) // Store clones the payload; safe to reuse st
 		}
 	}()
 }

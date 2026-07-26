@@ -172,7 +172,7 @@ func (g *Git) targets(ref entity.Ref) map[string]string {
 }
 
 func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir string) error {
-	desired := map[entity.Ref]entity.Payload{}
+	desired := map[entity.Ref]entity.Obj{}
 
 	// Refs: refs/heads, refs/tags, refs/remotes — git:ref:<repo>/<short> {repo, name, sha, type}.
 	refs, err := gitForEachRef(ctx, dir)
@@ -181,7 +181,7 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 	}
 	for name, r := range refs {
 		desired[entity.Ref{System: GitSystem, Kind: "ref", ID: id + "/" + name}] =
-			entity.Payload{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
+			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
@@ -196,7 +196,7 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 	// commit belongs to its repo; two repos never share one entity.
 	for _, c := range gitRecentCommits(ctx, dir, g.commitDepth) {
 		desired[entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha}] =
-			entity.Payload{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
+			entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
 	}
 
 	g.converge(store, id, desired)
@@ -208,12 +208,12 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 // unchanged is skipped, so re-reflecting a quiet repo fires no triggers. Commits (repo-scoped
 // too) are immutable within their repo — Put once when new, never re-Put, and never tombstoned
 // (they fall out of the bounded tip window but the history record is kept).
-func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]entity.Payload) {
-	current := map[entity.Ref]entity.Payload{} // this repo's entities (all kinds)
+func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]entity.Obj) {
+	current := map[entity.Ref]entity.Obj{} // this repo's entities (all kinds)
 	if l, ok := store.(entity.Lister); ok {
 		for _, e := range l.List(func(r entity.Ref) bool { return r.System == GitSystem }) {
-			if fmt.Sprint(e.Payload["repo"]) == repo {
-				current[e.Ref] = e.Payload
+			if entity.Str(e.Payload, "repo") == repo {
+				current[e.Ref] = entity.ToObj(e.Payload)
 			}
 		}
 	}
@@ -223,7 +223,7 @@ func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]e
 				continue // immutable commit, or unchanged ref/head
 			}
 		}
-		store.Put(ref, p)
+		store.Put(ref, p.Payload())
 	}
 	for ref := range current {
 		if ref.Kind == "commit" {
@@ -255,12 +255,12 @@ func gitForEachRef(ctx context.Context, dir string) (map[string]refInfo, error) 
 }
 
 // gitHead returns the git:head payload, or nil for an unborn repo (no HEAD sha yet).
-func gitHead(ctx context.Context, dir string) entity.Payload {
+func gitHead(ctx context.Context, dir string) entity.Obj {
 	sha, err := gitCmd(ctx, dir, "rev-parse", "HEAD")
 	if err != nil {
 		return nil // no commits yet
 	}
-	p := entity.Payload{"sha": sha}
+	p := entity.Obj{"sha": sha}
 	if branch, err := gitCmd(ctx, dir, "symbolic-ref", "--short", "-q", "HEAD"); err == nil && branch != "" {
 		p["ref"] = branch
 	}
@@ -308,7 +308,7 @@ func nonEmptyLines(s string) []string {
 
 // payloadEqual compares by stringified value, so a store round-trip that shifts numeric
 // types (int↔float) doesn't read as a change.
-func payloadEqual(a, b entity.Payload) bool {
+func payloadEqual(a, b entity.Obj) bool {
 	if len(a) != len(b) {
 		return false
 	}

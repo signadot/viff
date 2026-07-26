@@ -227,18 +227,18 @@ func (s *Server) reconcileProcesses() {
 		return
 	}
 	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
-		status, _ := ent.Payload["status"].(string)
+		status := entity.Str(ent.Payload, "status")
 		if status == "" || process.TerminalStatus(status) {
 			continue
 		}
-		policyRef, _ := ent.Payload["policy"].(string)
-		subject, _ := ent.Payload["flow"].(string)
+		policyRef := entity.Str(ent.Payload, "policy")
+		subject := entity.Str(ent.Payload, "flow")
 		// Reflect REPLACES the entity's payload, so provenance it does not carry is lost on
 		// re-attach. Read the chain back off the entity and hand it straight in: it is the
 		// address of the action that spawned this process, and a resumed process should not
 		// forget where it came from. (Re-deriving its HOOKS from that address is the next
 		// step and is not done here — see docs/flow-shape-kpath-plan.md.)
-		chain, _ := ent.Payload["chain"].(string)
+		chain := entity.Str(ent.Payload, "chain")
 		if policyRef != "" && policyRef != "local" { // remote: the work outlived verse
 			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
@@ -248,12 +248,12 @@ func (s *Server) reconcileProcesses() {
 			}
 		}
 		// local (or unresolvable): the in-process runtime is gone → orphan.
-		p := entity.Payload{}
-		for k, v := range ent.Payload {
-			p[k] = v
+		p := entity.ToObj(ent.Payload)
+		if p == nil {
+			p = entity.Obj{}
 		}
 		p["status"] = string(process.Orphaned)
-		s.Store.Put(ent.Ref, p)
+		s.Store.Put(ent.Ref, p.Payload())
 	}
 }
 
@@ -274,8 +274,11 @@ func (c storeContentReader) ReadContent(path string) (string, bool, error) {
 	if !ok {
 		return "", false, nil
 	}
-	s, ok := e.Payload["content"].(string)
-	return s, ok, nil
+	body := entity.Get(e.Payload, "content")
+	if body == nil {
+		return "", false, nil
+	}
+	return body.String, true, nil
 }
 
 // engFor returns the engine serving a scope for read/manage operations: the baseline
@@ -622,7 +625,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ev := s.scopedStore(r).Put(ref, entity.Payload(body.Payload))
+	ev := s.scopedStore(r).Put(ref, body.Payload)
 	writeOut(w, r, http.StatusOK, eventWire(ev))
 }
 
@@ -1104,8 +1107,9 @@ func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(ents))
 	for _, e := range ents {
 		row := map[string]any{"name": e.Ref.ID}
+		fields := entity.ToObj(e.Payload)
 		for _, k := range []string{"subject", "status", "waitingOn", "deadline", "outcome", "terminal"} {
-			if v, ok := e.Payload[k]; ok {
+			if v, ok := fields[k]; ok {
 				row[k] = v
 			}
 		}

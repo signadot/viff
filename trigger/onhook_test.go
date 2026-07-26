@@ -50,7 +50,7 @@ func waitField(t *testing.T, store entity.Store, ref entity.Ref, key string, wan
 	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {
-		if e, ok, _ := store.Get(ref); ok && e.Payload[key] == want {
+		if e, ok, _ := store.Get(ref); ok && entity.Str(e.Payload, key) == want {
 			return
 		}
 		select {
@@ -87,7 +87,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Payload{"stage": "open"})
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 }
 
@@ -130,7 +130,7 @@ func TestOnDoneChains(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Payload{"stage": "open"})
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "approved")
 
 	// The chain produced three distinct spawn ids, keyed by chain position — and the
@@ -179,9 +179,9 @@ func TestOnFailed(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Payload{"stage": "open"})
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "rejected")
-	if e, _, _ := store.Get(prRef("1")); e.Payload["stage"] == "reviewed" {
+	if e, _, _ := store.Get(prRef("1")); entity.ToObj(e.Payload)["stage"] == "reviewed" {
 		t.Fatal("onDone fired on a failed process")
 	}
 }
@@ -198,7 +198,7 @@ func TestOnHookPerProcess(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	store.Put(prRef("1"), entity.Payload{"stage": "open"})
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	subj := prRef("1").String()
 	eng.spawnHooked("pa", launch.Spec{Subject: subj, Task: "a"},
 		&Action{OnDone: &Action{Set: map[string]any{"a": "1"}}}, "pa")
@@ -269,7 +269,7 @@ func TestAdoptDropsHooks(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	store.Put(prRef("1"), entity.Payload{"stage": "open"})
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("adopted", sup, immediate{}, noExec{})
 	mirror.Reflect(store, "adopted", p, mirror.Meta{Subject: prRef("1").String(), Policy: "local"})
@@ -279,7 +279,7 @@ func TestAdoptDropsHooks(t *testing.T) {
 	// wait for the process to reach terminal; the subject must be untouched (no hook ran).
 	waitField(t, store, mirror.Ref("adopted"), "status", "done")
 	time.Sleep(50 * time.Millisecond) // let any (erroneous) hook application land
-	if e, _, _ := store.Get(prRef("1")); e.Payload["stage"] != "open" {
+	if e, _, _ := store.Get(prRef("1")); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("adopted process's completion mutated the subject: %+v", e.Payload)
 	}
 }

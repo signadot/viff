@@ -21,9 +21,9 @@ func conditionalCommit(t *testing.T, s Store) {
 		t.Fatal("store is not a ConditionalCommitter")
 	}
 	ch := Ref{System: "motion", Kind: "channel", ID: "d1"}
-	s.Put(ch, Payload{"status": "open", "gate": "approvals"})
-	s.Put(Ref{System: "vote", Kind: "d1", ID: "alice"}, Payload{"choice": "approve"})
-	s.Put(Ref{System: "vote", Kind: "d1", ID: "bob"}, Payload{"choice": "approve"})
+	s.Put(ch, Obj{"status": "open", "gate": "approvals"}.Payload())
+	s.Put(Ref{System: "vote", Kind: "d1", ID: "alice"}, Obj{"choice": "approve"}.Payload())
+	s.Put(Ref{System: "vote", Kind: "d1", ID: "bob"}, Obj{"choice": "approve"}.Payload())
 
 	openPre := Precondition{Ref: ch, Pattern: map[string]any{"status": "open"}}
 	witnessPre := Precondition{Ref: Ref{System: "vote", Kind: "d1"}, Pattern: map[string]any{
@@ -31,24 +31,24 @@ func conditionalCommit(t *testing.T, s Store) {
 		"bob":   map[string]any{"choice": "approve"},
 	}}
 
-	committed, err := cc.CommitIf(ch, Payload{"status": "closed", "outcome": "proceed", "gate": "approvals"}, openPre, witnessPre)
+	committed, err := cc.CommitIf(ch, Obj{"status": "closed", "outcome": "proceed", "gate": "approvals"}.Payload(), openPre, witnessPre)
 	if err != nil || !committed {
 		t.Fatalf("commit should succeed: committed=%v err=%v", committed, err)
 	}
 	got, _, _ := s.Get(ch)
-	if got.Payload["outcome"] != "proceed" || got.Payload["gate"] != "approvals" {
+	if ToObj(got.Payload)["outcome"] != "proceed" || ToObj(got.Payload)["gate"] != "approvals" {
 		t.Fatalf("committed payload = %+v, want outcome=proceed gate=approvals (open fields preserved)", got.Payload)
 	}
 
 	// terminal-once: status is now "closed", so the same precondition fails.
-	committed2, err := cc.CommitIf(ch, Payload{"status": "closed", "outcome": "deny"}, openPre, witnessPre)
+	committed2, err := cc.CommitIf(ch, Obj{"status": "closed", "outcome": "deny"}.Payload(), openPre, witnessPre)
 	if err != nil {
 		t.Fatalf("second commit err: %v", err)
 	}
 	if committed2 {
 		t.Fatal("terminal-once violated: a second commit landed after the motion closed")
 	}
-	if got, _, _ := s.Get(ch); got.Payload["outcome"] != "proceed" {
+	if got, _, _ := s.Get(ch); ToObj(got.Payload)["outcome"] != "proceed" {
 		t.Fatalf("outcome changed after the latch: %+v", got.Payload)
 	}
 }
@@ -59,8 +59,8 @@ func conditionalCommitRevoke(t *testing.T, s Store) {
 	t.Helper()
 	cc := s.(ConditionalCommitter)
 	ch := Ref{System: "motion", Kind: "channel", ID: "d2"}
-	s.Put(ch, Payload{"status": "open"})
-	s.Put(Ref{System: "vote", Kind: "d2", ID: "alice"}, Payload{"choice": "approve"})
+	s.Put(ch, Obj{"status": "open"}.Payload())
+	s.Put(Ref{System: "vote", Kind: "d2", ID: "alice"}, Obj{"choice": "approve"}.Payload())
 
 	openPre := Precondition{Ref: ch, Pattern: map[string]any{"status": "open"}}
 	witnessPre := Precondition{Ref: Ref{System: "vote", Kind: "d2"}, Pattern: map[string]any{
@@ -68,14 +68,14 @@ func conditionalCommitRevoke(t *testing.T, s Store) {
 		"bob":   map[string]any{"choice": "approve"}, // bob never voted → precondition fails
 	}}
 
-	committed, err := cc.CommitIf(ch, Payload{"status": "closed", "outcome": "proceed"}, openPre, witnessPre)
+	committed, err := cc.CommitIf(ch, Obj{"status": "closed", "outcome": "proceed"}.Payload(), openPre, witnessPre)
 	if err != nil {
 		t.Fatalf("commit err: %v", err)
 	}
 	if committed {
 		t.Fatal("commit should have been refused: bob's witness ballot is absent")
 	}
-	if got, _, _ := s.Get(ch); got.Payload["status"] != "open" {
+	if got, _, _ := s.Get(ch); ToObj(got.Payload)["status"] != "open" {
 		t.Fatalf("channel must stay open on a refused commit: %+v", got.Payload)
 	}
 }
