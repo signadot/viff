@@ -16,7 +16,7 @@ verse. Nothing has to change anywhere.
 A write mutates an external system. There is no "serve on demand" for a mutation —
 something must actually apply it to the dev's tree. So the read model doesn't extend by
 symmetry; a write is an outbound effect, the same category as "comment on a PR",
-"push a tag", "transition an issue" — the outbound-executor path [sources](sources.md) reserves.
+"push a tag", "transition an issue" — the outbound-executor path [sources](../sources.md) reserves.
 
 ## Constraints that shape the design
 
@@ -39,7 +39,7 @@ symmetry; a write is an outbound effect, the same category as "comment on a PR",
 - A write is a gated, attributable effect. The harness already gates `write_file`
   (ASK by default) and derives it as a `Write` effect on a `File` resource. A federated
   write is an effect on *the dev's* tree — gating/attestation matters more, not less
-  (ties into the permissions/attestation theme in [external processes](external-processes.md)).
+  (ties into the permissions/attestation theme in [external processes](../external-processes.md)).
 
 ## Options
 
@@ -116,4 +116,4 @@ content, which the design has deliberately closed off.
   serve (a `Match` of the mount subtree is the listing) — worth doing alongside, it has
   none of write's hazards.
 - `run_bash` is the hard one (remote execution where the files live) — out of scope
-  here; it belongs with the remote-process work in [external processes](external-processes.md).
+  here; it belongs with the remote-process work in [external processes](../external-processes.md).

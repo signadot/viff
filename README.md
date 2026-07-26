@@ -57,7 +57,8 @@ working tree.
 
 [docs/](docs/README.md) is the index: it pairs each subject — the store, triggers,
 processes, steering, federation — with the tutorial section that walks it and the notes that
-explain it. Start with:
+explain it. Everything under `docs/` describes what runs today; design notes for work that
+is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the
   load-bearing decisions. Read this first.

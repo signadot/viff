@@ -1,5 +1,8 @@
 # verse documentation
 
+Everything here describes what verse does today. Design notes for work that is not built
+live in [roadmap/](roadmap/README.md).
+
 Three docs stand on their own, and the rest are deep-dives on one subject each.
 
 - [Overview](overview.md) — the architecture, the model, and the load-bearing decisions.
@@ -12,7 +15,7 @@ Three docs stand on their own, and the rest are deep-dives on one subject each.
 
 Each subject below pairs the part of the tutorial that walks it with the notes that explain
 it. Walk first if you want to see the thing move; read first if you want to know why it is
-shaped that way.
+shaped that way. Where a subject has unbuilt work, the last row points into the roadmap.
 
 ### Charters and triggers
 
@@ -35,8 +38,7 @@ drive a local agent, a remote one, and a human.
 | walk | [§3 processes](tutorial.md#3-processes) · [§5 human-executed processes](tutorial.md#5-human-executed-processes-dial-in) |
 | read | [The controlPolicy](control-policy.md) — the base-URL contract and the dial-in protocol |
 | | [External processes](external-processes.md) — how the seam was chosen |
-| | [Authority](authority.md) — where a process's permission should come from (not built) |
-| | [expose](expose.md) — named durable surfaces, and the sandbox record behind them (not built) |
+| ahead | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 
 ### Steering
 
@@ -57,8 +59,8 @@ what makes the reactive loop converge.
 |---|---|
 | walk | [§10 what this is and isn't yet](tutorial.md#10-what-this-is-and-isnt-yet) |
 | read | [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain costs |
-| | [Entity values](entity-values.md) — why a payload should be `any`, not `map[string]any` (not built) |
-| | [Named persistent channels](channel-observe.md) — an idea, not a design |
+| | [Entity values](entity-values.md) — why a payload is a tony node rather than a Go map |
+| ahead | [Named persistent channels](roadmap/channel-observe.md) — an idea, not yet a design |
 
 ### Federation: bringing the outside in
 
@@ -72,14 +74,14 @@ the verse that owns it, through a docd controller.
 | | [Content federation](content-federation.md) — why `connect` replaced `--root` |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, GitHub and the rest; webhook as hint, reconcile as truth |
-| | [Write-back](write-back.md) — federating the write path (not built) |
-| | [Scope lifecycle](scope-lifecycle.md) — making a scope first-class (not built) |
+| ahead | [Write-back](roadmap/write-back.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — the write half, and the lifetime of the isolation it happens in |
 
-## Reading a status line
+## What is built, and what isn't
 
-A note that says "not built" above is a design note: it records a decision and its reasoning,
-and nothing in the tree implements it yet. Everything else describes what runs today, and
-says so where a corner of it does not.
+Every doc in this directory describes something that runs, and says so where a corner of it
+does not. Every doc in [roadmap/](roadmap/README.md) describes something that does not exist
+yet. That is the only distinction the two directories carry, and it is checkable: if a note's
+subject has no code, it belongs in the roadmap.
 
 ## Elsewhere
 

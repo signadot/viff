@@ -1,6 +1,6 @@
 # `verse expose`: a named, durable directory surface (reframing `connect`)
 
-Status: design note, not implemented. This reframes [`connect`](connect.md) — it keeps the
+Status: design note, not implemented. This reframes [`connect`](../connect.md) — it keeps the
 federation mechanics (docd content controller, `dir-status`/`dir-content`) and changes what is
 *named*, what *persists*, and what is *automatic*.
 
@@ -66,7 +66,7 @@ For an exposure:
   write crosses the process's gate vector at the boundary before it lands in the exposed tree.
 - `run_bash` — does not federate the same way (it runs commands, not file ops); it still needs
   a process running where the files physically are (the local-proc topology in
-  [deployment and steering](deployment-and-steering.md)). Out of scope here.
+  [deployment and steering](../deployment-and-steering.md)). Out of scope here.
 
 ## Letting an agent "cd" into an exposure
 

@@ -257,7 +257,7 @@ today: pass `--driver scripted` when your task *is* a command — that is exactl
 or slide the vector once it starts (`process vector <id> auto`). A trigger hits the same edge from
 the other side: its gates approve *the firing*, not the actions the spawned agent then chooses,
 and it has no way to say it already decided. Where the permission *should* come from is
-[authority](authority.md).
+[authority](roadmap/authority.md).
 
 An LLM agent asks permission. Its reads run freely, but writing a file, running a shell
 command, and delegating to a sub-agent are gated: the agent blocks until you approve.
@@ -875,7 +875,7 @@ verse disconnect --scope me                          # drop the whole overlay
 Which store you are on matters here. Real copy-on-write scopes require the docd/logd store,
 which is now `up`'s default. On `--store memory`, `--scope` is a passthrough with no
 isolation, and `disconnect --scope` falls back to removing `local:*` entities. Making a scope
-a first-class, listable thing is [still a design note](scope-lifecycle.md).
+a first-class, listable thing is [still a design note](roadmap/scope-lifecycle.md).
 
 ---
 

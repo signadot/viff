@@ -2,7 +2,7 @@
 
 Status: design note, not implemented. This records a gap and a direction; nothing here is
 built yet. The one existing instance to generalize is `connect`'s scope teardown, which
-[tutorial §9](tutorial.md#9-scopes) drives.
+[tutorial §9](../tutorial.md#9-scopes) drives.
 
 ## The gap
 
@@ -10,7 +10,7 @@ A copy-on-write scope is a general store capability. The global `--scope <name>`
 `?scope=<name>` into *every* client request (`urlFor`), and `versed.scopedStore` resolves it to
 `Store.Scope(name)` — writes land in the overlay, reads see baseline layered with the scope
 (`entity.Store.Scope`; real COW on docd, passthrough in memory; see
-[deployment and steering](deployment-and-steering.md)). So any write can create a scope:
+[deployment and steering](../deployment-and-steering.md)). So any write can create a scope:
 
 ```sh
 verse --scope myexperiment entity put demo:pr:1 '{"stage":"open"}'   # overlay "myexperiment" now exists
@@ -93,5 +93,5 @@ auto-created on the first metadata write and auto-deleted on disconnect — the 
 
 The store seam (`Store.Scope` / `ScopeDeleter`) is unchanged; this is a registry + API layer above
 it. `connect`'s effective behavior (nonce scope, auto-drop) is unchanged — it simply stops being
-the sole owner of teardown. See also [connect](connect.md) and
-[deployment and steering](deployment-and-steering.md).
+the sole owner of teardown. See also [connect](../connect.md) and
+[deployment and steering](../deployment-and-steering.md).

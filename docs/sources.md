@@ -1,15 +1,18 @@
 # Sources: reflecting external systems into the verse
 
-Status: the pattern is settled, and local-tree federation is built — though as a
-special case, not via the generic `Source` below. `verse connect` federates the
-working tree under a per-session scope: it *writes* scoped metadata
-(`local:dir-status-<scope>:*`) to docd, and runs a read-only content controller
-(`source/content.go`, a `libctl.Handler` under `RunController`) that serves file bytes
-on demand at `local:dir-content-<scope>:*`. Metadata is a scoped write rather than a
+Status: built as a library, not yet reachable from the CLI. The `Source` interface and its
+`Runner` are in `source/runner.go`, and `source/git.go` is a multi-repo git Source —
+`Reconcile`, `Webhook`, and `InstallHook`/`RemoveHook`, with tests. What is missing is the
+wiring: no command registers a repo or starts a runner, so `NewGit` has no caller outside
+its test. Reading this as a design sketch is the one mistake to avoid; the design landed.
+
+Local-tree federation is built too, but as a special case rather than through the `Source`
+below. `verse connect` federates the working tree under a per-session scope: it *writes*
+scoped metadata (`local:dir-status-<scope>:*`) to docd, and runs a read-only content
+controller (`source/content.go`, a `libctl.Handler` under `RunController`) that serves file
+bytes on demand at `local:dir-content-<scope>:*`. Metadata is a scoped write rather than a
 mounted Handler because docd mounts are not scope-specific; see
-[content federation](content-federation.md). The generic `Source` interface below — a single Handler that
-reflects an external system via Reconcile/Webhook — is the design for the *remote*
-systems (git, GitHub, Linear), which are still ahead.
+[content federation](content-federation.md).
 
 ## What a Source is
 
@@ -155,9 +158,10 @@ verse's store points at docd; triggers and the mirror are unchanged.
 
 ## Next step
 
-With docd tagged and local federation built, the first *generic* Source is unblocked:
-the git Source, read-only (reflection) — a `Handler` serving `git:*` from repo
-plumbing + an installable git hook — with a credential-free end-to-end test (commit →
-hook → Watch/Match → `git:ref:*` changes → a trigger fires). It follows the
-Reconcile/Webhook shape above and mounts under docd like the content controller does.
-Write-back stays deferred to the outbound executor path.
+The git Source exists and reconciles; what it lacks is a way in. It needs a command that
+registers a repo and runs it — `AddRepo` plus a `Runner` under `verse up`, and a route the
+installed hook can POST to — after which the end-to-end path (commit → hook → reconcile →
+`git:ref:*` changes → a trigger fires) is exercisable rather than merely unit-tested.
+
+Write-back stays deferred to the outbound executor path
+([roadmap](roadmap/write-back.md)); a Source only reflects.

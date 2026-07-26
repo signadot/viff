@@ -3,7 +3,7 @@
 Status: design note, not implemented. It concerns the hard authority axis (`process.Grant`)
 and its relationship to the soft gate vector (`process.Vector`) — specifically, that the hard
 axis is fully wired and never produced, which is why restraint currently reaches the user as a
-prompt. [Tutorial §3](tutorial.md#3-processes) states that rough edge from the user's side;
+prompt. [Tutorial §3](../tutorial.md#3-processes) states that rough edge from the user's side;
 this is what should fix it.
 
 ## The complaint
@@ -202,7 +202,7 @@ distributed agent runtime, early as of 2026) keeps a durable event log with snap
 separately, resumes a session from a step rather than replaying it, and — the relevant part —
 treats *suspended while awaiting an approval* as a first-class runtime state rather than a
 blocked thread. That is `park`. Its single-writer session state is the same conclusion as the
-claim-and-report, compare-and-swap model in [external processes](external-processes.md).
+claim-and-report, compare-and-swap model in [external processes](../external-processes.md).
 None of these systems, however, derives authority from the request; they carry a decision made
 elsewhere. The derivation is the part that is ours to design.
 

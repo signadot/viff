@@ -1,8 +1,8 @@
 # Named persistent channels
 
 Status: idea, not designed. It comes out of the flow tree —
-[`verse flow show`](tutorial.md#4-steer-flows), and the chain addressing behind it in
-[completion hooks](completion-hooks.md#addressing-the-chain-is-a-kpath). Once processes hang
+[`verse flow show`](../tutorial.md#4-steer-flows), and the chain addressing behind it in
+[completion hooks](../completion-hooks.md#addressing-the-chain-is-a-kpath). Once processes hang
 off an address, the obvious next relation is what they are saying to each other, and through
 what.
 
