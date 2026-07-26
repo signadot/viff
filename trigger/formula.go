@@ -19,6 +19,8 @@ import (
 // tally, `deadline` is the clock. There is exactly ONE atom carrier — Req — so "a formula's
 // leaves are matches" holds literally; a second carrier would make an atom two things.
 // Boolean composition (and/or) lives inside the leaf match, not as Formula nodes.
+//
+//tony:schemagen=verse-formula,notag,codec=custom
 type Formula struct {
 	Op   FormulaOp    `json:"op" tony:"field=op"`
 	Req  *Requirement `json:"req,omitempty" tony:"field=req,omitzero"`   // Op == OpAtom: the leaf requirement
@@ -294,6 +296,8 @@ func (r *Requirement) compactValue() any {
 // surface, judgment → a judge, fact → a source, …). Only quorum is implemented in this
 // first pass; the others are stubbed so the requirement/producer-binding shape is
 // present from the start.
+//
+//tony:schemagen=verse-requirement,notag,codec=custom
 type Requirement struct {
 	Kind   RequirementKind `json:"kind" tony:"field=kind"`
 	Facts  Match           `json:"facts" tony:"field=facts"`                      // the store facts this requirement reads (a point-in-time Match)

@@ -9,12 +9,10 @@ import (
 	"github.com/signadot/verse/launch"
 )
 
-// A charter must survive a round trip through every dialect. Today the tony spelling goes
-// through gomap's reflection path, so a Formula renders as the verbose {op, req, args}
-// parse node rather than the tagged form — structurally correct, but not yet how a charter
-// is meant to read. Stage 4 gives Formula and Match hand-written codecs that emit
-// `!until [ !quorum 2 ]`; this test is what guards that change, so it asserts the
-// round trip rather than the spelling.
+// A charter must survive a round trip through every dialect. It asserts the round trip
+// rather than the spelling on purpose — the spelling is pinned by
+// TestCharterGrammarSpellings, and keeping the two apart is what let this test guard the
+// move to native tags instead of having to be rewritten by it.
 func TestCharterRoundTrip(t *testing.T) {
 	charters := []Trigger{
 		{
@@ -133,5 +131,111 @@ func TestCharterOmitsUnsetFields(t *testing.T) {
 		if strings.Contains(got, gone) {
 			t.Errorf("unset field %q leaked into the charter:\n%s", gone, got)
 		}
+	}
+}
+
+// Every spelling the charter grammar accepts, decoded to the same AST. The tony forms are
+// native tags; the JSON forms are the tag-as-key emulation that predates them. Both are one
+// grammar with one decoder, which is the point of Stage 4 — not two implementations that
+// have to be kept in step.
+func TestCharterGrammarSpellings(t *testing.T) {
+	cases := []struct {
+		name string
+		doc  string
+		fmt  codec.Format
+		want func(*Formula) bool
+	}{
+		{"tony/quorum-threshold", `!quorum 2`, codec.Tony,
+			func(f *Formula) bool { return f.Req != nil && f.Req.Kind == ReqQuorum && f.Req.N == 2 }},
+		{"tony/quorum-object", `!quorum {n: 2, choice: reject}`, codec.Tony,
+			func(f *Formula) bool { return f.Req.N == 2 && f.Req.Choice == "reject" }},
+		{"tony/fact", `!fact motion:deadline`, codec.Tony,
+			func(f *Formula) bool {
+				return f.Req.Kind == ReqFact && f.Req.Facts.System() == "motion" && f.Req.Facts.Kind() == "deadline"
+			}},
+		{"tony/deadline", `!deadline "4h"`, codec.Tony,
+			func(f *Formula) bool { return f.Req.Kind == ReqDeadline && f.Req.Within == "4h" }},
+		{"tony/until", `!until [!quorum 2, !deadline "4h"]`, codec.Tony,
+			func(f *Formula) bool {
+				return f.Op == OpUntil && len(f.Args) == 2 &&
+					f.Args[0].Req.Kind == ReqQuorum && f.Args[1].Req.Kind == ReqDeadline
+			}},
+		{"tony/address-sugar", `demo:pr:*`, codec.Tony,
+			func(f *Formula) bool {
+				return f.IsMatchAtom() && f.Req.Facts.System() == "demo" && f.Req.Facts.Kind() == "pr"
+			}},
+		{"tony/bare-match", `{system: demo, kind: pr}`, codec.Tony,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.Kind() == "pr" }},
+		{"tony/empty-match", `{}`, codec.Tony,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.IsEmpty() }},
+		{"tony/explicit-match-tag", `!match {system: demo}`, codec.Tony,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" }},
+
+		// The JSON spelling, decoded by the same code path.
+		{"json/tag-keyed-quorum", `{"quorum": 2}`, codec.JSON,
+			func(f *Formula) bool { return f.Req.Kind == ReqQuorum && f.Req.N == 2 }},
+		{"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "motion:deadline"}]}`, codec.JSON,
+			func(f *Formula) bool { return f.Op == OpUntil && len(f.Args) == 2 }},
+		{"json/verbose-node", `{"op": "atom", "req": {"kind": "quorum", "n": 2}}`, codec.JSON,
+			func(f *Formula) bool { return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.N == 2 }},
+		{"json/address-sugar", `"demo:pr:*"`, codec.JSON,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var got Formula
+			if err := codec.Unmarshal([]byte(c.doc), &got, c.fmt); err != nil {
+				t.Fatalf("decoding %s: %v", c.doc, err)
+			}
+			if !c.want(&got) {
+				t.Errorf("%s decoded to %+v (req %+v)", c.doc, got, got.Req)
+			}
+		})
+	}
+}
+
+// A formula written in tony must survive a trip through JSON and back. This is what makes
+// the two dialects one grammar rather than two: codec.Detag renders the tags as the key
+// form, and the decoder reads the key form back into tags.
+func TestFormulaSurvivesDialectRoundTrip(t *testing.T) {
+	orig := &Formula{Op: OpUntil, Args: []*Formula{
+		{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2, Choice: "reject"}},
+		{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}},
+	}}
+	asJSON, err := codec.Marshal(orig, codec.JSON)
+	if err != nil {
+		t.Fatalf("to json: %v", err)
+	}
+	if !strings.Contains(string(asJSON), `"until"`) {
+		t.Fatalf("the tag did not become a key: %s", asJSON)
+	}
+	var back Formula
+	if err := codec.Unmarshal(asJSON, &back, codec.JSON); err != nil {
+		t.Fatalf("from json: %v", err)
+	}
+	asTony, err := codec.Marshal(&back, codec.Tony)
+	if err != nil {
+		t.Fatalf("to tony: %v", err)
+	}
+	for _, want := range []string{"!until", "!quorum", "!deadline"} {
+		if !strings.Contains(string(asTony), want) {
+			t.Errorf("%s did not come back as a tag:\n%s", want, asTony)
+		}
+	}
+	if back.Args[0].Req.Choice != "reject" || back.Args[1].Req.Within != "4h" {
+		t.Errorf("detail lost through the round trip: %+v", back.Args)
+	}
+}
+
+// An unknown tag is an error, not a silently-ignored formula. A typo'd charter must fail at
+// install rather than match nothing — the same discipline Match.Validate enforces.
+func TestUnknownFormulaTagIsRejected(t *testing.T) {
+	var f Formula
+	err := codec.Unmarshal([]byte(`!untl [!quorum 2]`), &f, codec.Tony)
+	if err == nil {
+		t.Fatal("a misspelled operator was accepted")
+	}
+	if !strings.Contains(err.Error(), "untl") {
+		t.Errorf("the error does not name the tag: %v", err)
 	}
 }

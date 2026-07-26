@@ -25,6 +25,8 @@ import (
 // goal's subject — no new steering path.
 
 // GoalDef is the wire form of a goal — fully declarative, installable over the wire.
+//
+//tony:schemagen=verse-goal,notag
 type GoalDef struct {
 	Name     string    `json:"name" tony:"field=name"`
 	Subject  string    `json:"subject,omitempty" tony:"field=subject,omitzero"`   // the entity this goal is about (steering key)

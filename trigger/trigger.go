@@ -28,6 +28,8 @@ import (
 // engine interprets it directly (there is no separate compiled form). When the Condition
 // holds and every Gate resolves to proceed, the Action fires. Gates are conjunctive
 // (all-of); an empty Gates fires with no approval.
+//
+//tony:schemagen=verse-trigger,notag
 type Trigger struct {
 	Name      string    `json:"name" tony:"field=name"`
 	Condition Condition `json:"condition" tony:"field=condition"`
@@ -40,6 +42,8 @@ type Trigger struct {
 // instant When fires — there is no subject before the match — yet neither field owns the
 // other. Two halves of "when X, about Y", in two DIFFERENT grammars: When is temporal,
 // Subject is point-in-time.
+//
+//tony:schemagen=verse-condition,notag,codec=custom
 type Condition struct {
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
 	// one change event; temporal operators relate the verse's evolution instead.
@@ -136,6 +140,8 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 // fire (e.g. a deploy needing both a security and a release-manager approval). When Formula
 // is set the gate is monitored on the store's watch stream (see Monitor) rather than posed
 // to a resolver; Mode is then optional (defaults to a blocking gate).
+//
+//tony:schemagen=verse-trigger-gate,notag
 type Gate struct {
 	Name    string   `json:"name,omitempty" tony:"field=name,omitzero"`
 	Mode    string   `json:"mode,omitempty" tony:"field=mode,omitzero"` // auto | ask | park
@@ -164,6 +170,8 @@ func (g Gate) mode() (process.Mode, error) {
 // Bindings available to templates: each field of the changed payload by name ($stage,
 // $path, …), and $subject — the RESOLVED subject, set last so a payload field cannot
 // shadow it.
+//
+//tony:schemagen=verse-action,notag
 type Action struct {
 	Set   map[string]any `json:"set,omitempty" tony:"field=set,omitzero"`
 	Spawn *launch.Spec   `json:"spawn,omitempty" tony:"field=spawn,omitzero"`

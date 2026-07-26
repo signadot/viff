@@ -1,5 +1,7 @@
 package trigger
 
+//go:generate go tool tony-codegen -dir .
+
 import (
 	"context"
 	"fmt"

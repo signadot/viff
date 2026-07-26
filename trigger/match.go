@@ -33,6 +33,8 @@ import (
 // about — including a reflected process's own subject (its `flow`), so `subject: "demo:pr:*"`
 // on a completion trigger advances the PR that process was about. There is no deferred `$var`
 // form: the pattern IS the reference (see Trigger.resolveSubject).
+//
+//tony:schemagen=verse-match,notag,codec=custom
 type Match map[string]any
 
 // The match dimensions. `entity` is accepted as an alias for `fields` (docs/trigger-model.md
