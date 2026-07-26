@@ -234,8 +234,10 @@ func TestUpstreamOmitzeroStillIgnored(t *testing.T) {
 	}
 	got := string(out)
 	if !strings.Contains(got, `task: ""`) || !strings.Contains(got, "count: 0") {
-		t.Errorf("gomap now honors omitzero on the reflection path — codec.pruneZero may be "+
-			"removable for generated types:\n%s", got)
+		t.Errorf("go-tony now honors omitzero. THIS IS THE TRIGGER TO ADOPT tony-codegen: "+
+			"generated codecs can omit their own empty fields, so codegen stops being an "+
+			"addition on top of pruneZero and becomes a replacement for it. See the note in "+
+			"the Makefile and codec/omitzero.go.\n%s", got)
 	}
 }
 

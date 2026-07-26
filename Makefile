@@ -63,14 +63,20 @@ HOSTPATH ?=
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=true HOSTPATH=… to host-link)
 	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) | kubectl apply -f -
 
-# NOTE: no package currently carries a //go:generate tony-codegen directive, so these are
-# no-ops today. tony-codegen v0.0.87 cannot generate for verse's types — one unsupported
-# field type (map[string]any, []NamedString) takes a whole package out, and there is no way
-# to tell it "this type has its own codec, just call it", so the failure propagates to every
-# referencing type. See tony-format#f69agjyeh12ksa25cnn0 and codec/omitzero.go, which
-# implements `omitzero` over the reflection path instead. The targets and the tool pin stay:
-# the struct tags are already the ones tony-codegen reads, so generation can be switched on
-# per package if those gaps close.
+# NOTE: no package carries a //go:generate tony-codegen directive, so these are no-ops
+# today. That is a deliberate WAIT, not an obstacle: as of go-tony v0.0.88 codegen runs on
+# verse's types perfectly well (v0.0.87 could not — see tony-format#f69agjyeh12ksa25cnn0
+# items 2, 4, 7, 8, all fixed).
+#
+# What it cannot yet do is OMIT. Generated code honors `omitzero` for bool and nothing else
+# (item 10), so switching it on today makes documents strictly worse than the reflection
+# path does — `cursor: 0`, `driver: ""`, `task: ""` on every process instance — because
+# codec/omitzero.go steps aside for any type carrying its own ToTonyIR. Adopting codegen
+# would therefore ADD a build step while keeping pruneZero, and lose the omission.
+#
+# The trigger to revisit is item 10 landing; codec's TestUpstreamOmitzeroStillIgnored fails
+# when it does. Nothing about verse's types needs to change first — the struct tags are
+# already exactly the ones tony-codegen reads.
 #
 # Codegen is deliberately NOT a dependency of `bin`/`dist-linux`: keeping it out of the
 # build path is what lets the Dockerfile just COPY binaries.
