@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -105,6 +106,27 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, h.url("/events?since=0"), nil)
 	resp, err := h.cl.Do(req)
 	if err != nil {
+		close(out)
+		cancel()
+		return out, func() {}
+	}
+	// A rejected subscribe is not an empty one. Subscribe cannot return an error, and the
+	// reader below keeps only "data: " lines, so a 4xx/5xx body would scan to nothing and
+	// close the channel — leaving the mirror to conclude the remote process simply had
+	// nothing to say. Report it on the plane the caller is already reading, the way a
+	// cancel does below.
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		resp.Body.Close()
+		out <- process.Frame{
+			Kind: process.EvStatus,
+			Text: string(process.Failed),
+			Err:  fmt.Sprintf("subscribe %s: %s", h.id, msg),
+		}
 		close(out)
 		cancel()
 		return out, func() {}
