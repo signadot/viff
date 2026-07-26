@@ -24,8 +24,7 @@ package api
 //go:generate go tool tony-codegen -dir .
 
 import (
-	"github.com/signadot/tony-format/go-tony/ir"
-
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
 )
 
@@ -38,8 +37,8 @@ import (
 //
 //tony:schemagen=verse-put-entity,notag
 type PutEntity struct {
-	Ref     string   `tony:"field=ref"`
-	Payload *ir.Node `tony:"field=payload,omitzero"`
+	Ref     string         `tony:"field=ref"`
+	Payload entity.Payload `tony:"field=payload,omitzero"`
 }
 
 // Resolve answers ONE pending gate, by its id, wherever it lives — an engine gate the

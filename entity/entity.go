@@ -14,8 +14,6 @@ package entity
 import (
 	"fmt"
 	"strings"
-
-	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // Ref is a concrete, org-addressable entity: <system, kind, id>, e.g.
@@ -68,11 +66,8 @@ func ParseRef(s string) (Ref, error) {
 //
 //tony:schemagen=verse-entity,notag
 type Entity struct {
-	Ref Ref `tony:"field=ref"`
-	// Spelled *ir.Node rather than the Payload alias: tony-codegen does not resolve a type
-	// alias — in-package it silently becomes an int, across packages a hard error (item 18
-	// on tony-format#f69agjyeh12ksa25cnn0). The alias stays the vocabulary everywhere else.
-	Payload *ir.Node `tony:"field=payload,omitzero"`
+	Ref     Ref     `tony:"field=ref"`
+	Payload Payload `tony:"field=payload,omitzero"`
 }
 
 // Op classifies a change to the verse. It is deliberately two-valued: a change
@@ -113,11 +108,9 @@ func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
 type Event struct {
 	Ref Ref `tony:"field=ref"`
 	Op  Op  `tony:"field=op"`
-	// From and To are payloads, so they are open values; To is null on a Delete. Spelled
-	// *ir.Node rather than the Payload alias for the same reason Entity.Payload is —
-	// tony-codegen does not resolve an alias (item 18).
-	From *ir.Node `tony:"field=from,omitzero"`
-	To   *ir.Node `tony:"field=to,omitzero"`
+	// From and To are payloads, so they are open values; To is null on a Delete.
+	From Payload `tony:"field=from,omitzero"`
+	To   Payload `tony:"field=to,omitzero"`
 	// Rev is the store revision at which this change happened — a monotonic cursor.
 	// A consumer tracks the highest Rev it has processed and catches up by querying
 	// the store from that Rev (Store.Since), so a hold/pause/disconnect costs a
