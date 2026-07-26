@@ -61,6 +61,10 @@ human-executed (dial-in) processes, and federating your local working tree.
   seams, and the load-bearing decisions.
 - **[Tutorial](docs/tutorial.md)** — hands-on, zero to a running, steerable flow (plus
   dial-in processes and local-tree federation).
+- **[Trigger model](docs/trigger-model.md)** — the two grammars a charter is written in
+  (point-in-time `match`, temporal `formula`), and what every field of a rule means.
+- **[Reference](docs/reference.md)** — the command surface, the config layers, and what
+  verse reads and writes.
 - **[controlPolicy](docs/control-policy.md)** — the base-URL contract for running and
   governing a process: local, remote, a dial-in broker, or a human.
 - **[Deployment & steering](docs/deployment-and-steering.md)** — the planes, "steering

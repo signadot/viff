@@ -17,7 +17,9 @@ entity change ──▶ trigger matches ──▶ gate resolves ──▶ action
 ```
 
 This tutorial gets you from zero to a running, steerable, self-driving flow — plus
-federating your local working tree into it.
+federating your local working tree into it. It introduces each idea where you first
+need it; for the model behind them see [the trigger model](trigger-model.md), and for
+the flat command surface see [the reference](reference.md).
 
 ---
 
@@ -41,13 +43,29 @@ By default `up` is **docd-backed**: it brings up logd + docd on a fresh temp dat
 [docd](https://signadot.github.io/tony-format/docd/) — the tony-format document store.
 You don't need to know anything about docd to *play* with verse — `up` stands it up for
 you — but it's where verse's deeper properties come from (COW scopes, conditional +
-coordinated writes, edge-faithful watches, compactions), and §13 draws that out. For a
+coordinated writes, edge-faithful watches, compactions), and §10 draws that out. For a
 zero-dependency run — no daemons, no persistence — add `--store memory`. To use a
 durable dir, `--data <dir>`; to attach to an already-running docd,
 `--docd-addr <addr> --docd-mount-addr <addr>`.
 
+**Two things `up` decides for the whole runtime**, because it hosts the process runtime
+and the clients don't:
+
+- **Which driver runs a process by default.** With LLM creds configured — an `llm` block
+  in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment — the
+  default is a real **llm agent**; with no creds it is **scripted**, which runs a task as
+  a shell command. The creds are read by the *server*, so set them before `up`, not in the
+  client's environment. `verse status` shows an `llm` block with `available` and a masked
+  key. Any single spawn can still say `--driver scripted|llm`.
+- **Where an agent acts** — its **root**. An llm agent reads and writes under a directory
+  you choose with `verse up --root <dir>` (`--root .` for your tree). With no flag, `up`
+  makes an isolated temp dir and prints it at start (`agents rooted at …`, when the llm
+  driver is available), which is why a file an agent writes is *not* in your cwd. To let
+  an agent read a tree *through* the verse instead — no shared filesystem, wherever it
+  runs — use `verse connect` (§8).
+
 Leave it running and open a second terminal for the client commands below; you'll
-install a charter and drive it in §3. (Everywhere below, `verse` means the binary you
+install a charter and drive it in §2. (Everywhere below, `verse` means the binary you
 just built.)
 
 Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default address,
@@ -55,57 +73,21 @@ Prefer `verse` on your `PATH`, or use `./verse`. To point at a non-default addre
 
 ---
 
-## 2. The vocabulary (30 seconds)
+## 2. Install a charter and drive it
 
-- **Entity** — anything the SDLC refers to, named by a `system:kind:id` triple
-  (`demo:pr:1`, `github:pr:signadot/x#42`, `local:dir-status-<scope>:src/main.go`) plus a small
-  payload. The entity-verse is the shared, observable store of these.
-- **Trigger** — one rule of the charter: *when a matching change happens and a gate
-  resolves, an action fires.*
-- **Gate** — whether an action proceeds: `auto` (fire) · `ask` (a human/agent approves)
-  · `park` (hold) — or a **formula** the verse resolves itself (a vote, a deadline). The
-  autonomy dial.
-- **Docket** — everything the verse is currently waiting on a *group* to settle
-  (`verse docket`). It is not a side-channel or a UI queue: each open question is an
-  ordinary entity, `motion:channel:<id>`, so the docket is a *view of the store* — you can
-  `watch` it, `get` one, and write a trigger that reacts to it, exactly as with a PR.
-- **Motion** — one question on the docket, put to a group when the answer isn't one inline
-  click. Ballots accumulate on it (`verse vote`), and when a tally reaches the bar the
-  motion **carries**, its outcome resolving the question. One machinery, two option-sets:
-  a **vote** decides *whether* an action fires (a quorum, with a deadline or a "no"), and a
-  **selection** decides *who* does the work, 1-of-N (§8). Both are the same kind of entity
-  in the same store, differing only in what can win — which is why one `verse docket` shows
-  both and one `verse vote` answers either. (A plain `ask` gate raises no motion — one
-  person answers it directly via `gate approve` / `gate deny`.)
-- **Action** — declared as: `patch` an entity's payload (a state transition) and/or
-  `spawn` a process (a `launch.Spec`) — whose *doer* can itself be a governed motion
-  (§8), not a fixed one.
-- **Process** — a governed unit of work (an agent), hosted by the runtime,
-  observable and steerable. Processes are themselves entities in the verse.
-- **Subject** — the entity a piece of work is *about*: the thing moving through the
-  lifecycle (a PR, a change, a release), named by its ref (e.g. `demo:pr:1`). When a
-  trigger spawns a process, that process is tagged with its subject.
-- **Flow** — a subject's in-flight lifecycle: all the processes spawned for that
-  subject, steerable as a unit. It is a *query* over live processes' subjects, not a stored
-  index, so one address can steer a subject, a kind, or a system (§6).
+A **charter** is one trigger, or a list of them. An **entity** is anything the flow refers
+to — a PR, a build, a release — named by a `system:kind:id` triple and carrying a small
+payload. A **trigger** says: when a matching entity changes and a gate resolves, an action
+fires.
 
-Two planes, and they stay apart: **observation** (`watch`, `get`, `list`) is read;
-**steering** (`gate approve`, `flow pause/cancel`) is control — out-of-band and
-serviced with priority, so a runaway flow can always be stopped in time.
-
----
-
-## 3. Install a charter and drive it
-
-A **charter** is one trigger, or a list of them. Here's a tiny one-rule one; save it as
-`charter.tony`:
+Here's a tiny one-rule charter; save it as `charter.tony`:
 
 ```tony
 - name: review
   condition:
     when: { system: demo, fields: { stage: open } }
   gates:
-  - { name: review, mode: ask }
+  - { name: approval, mode: ask }
   action:
     patch:    { stage: reviewing }
     spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 1" }
@@ -113,19 +95,33 @@ A **charter** is one trigger, or a list of them. Here's a tiny one-rule one; sav
       patch: { stage: reviewed }
 ```
 
-One rule, `review`: on an opened `demo:pr`, ask, then mark *reviewing* and spawn a review
-process; when that process finishes, its `onDone` hook marks the subject *reviewed*. The
-whole chain — the state change, the process it launches, and what happens when the process
-completes — is visible in one trigger. Install it — §4 dissects each field:
+Read it in four parts. `condition` is the cause — `when` matches an opened `demo` PR, and
+because no `subject` is named, the firing is about the entity that changed. `gates` is the
+guard: one gate named `approval`, in `ask` mode, so a human decides. `action` is the
+consequence: mark the subject *reviewing* and spawn a review process. And `onDone` is a
+**completion hook** — when that process finishes, mark the subject *reviewed*. The whole
+chain reads top-to-bottom in one rule. Every field, and the grammars behind them, are in
+[the trigger model](trigger-model.md).
 
 ```sh
 verse trigger add -f charter.tony     # or: cat charter.tony | verse trigger add -f -
+verse triggers                        # what's installed
+verse trigger show review             # one rule, handed back in tony
+verse trigger remove review           # uninstall (add rejects a duplicate name)
 ```
+
+`trigger show` hands the rule back in **[tony](https://signadot.github.io/tony-format/)**,
+the same document language you wrote `charter.tony` in — so installing and inspecting are a
+round trip, not two formats. Tony is JSON's document model made easier to write (unquoted
+keys and strings, optional commas, comments — a charter is a rulebook, and rulebooks want
+annotating) plus one thing the charter grammar leans on: **tags**. A tag names what a value
+*is*, right where the value sits — `!glob "hotfix-*"`, `!quorum 2`, `!until [ … ]` — which
+is what keeps a charter a *structure the engine walks* rather than a string it re-parses.
 
 Save it as `charter.json` or `charter.yaml` instead and the same command reads it: the
 suffix decides, and all three are dialects of one document model rather than three
-supported formats (see [Representation](#representation)). This tutorial is in tony
-because that's the default, not because the rest won't work.
+supported formats (see [Representation](reference.md#representation)). This tutorial is in
+tony because that's the default, not because the rest won't work.
 
 **Terminal A** — watch the `demo` entities change:
 
@@ -141,8 +137,9 @@ verse entity put demo:pr:1 '{stage: open}'
 # op: set
 # ref: demo:pr:1
 # rev: 1
-# to:
+# to: {
 #   stage: open
+# }
 ```
 
 A payload typed on the command line names no file, so it is read in the default format —
@@ -151,31 +148,34 @@ optional in tony, so `{stage: open, id: 7}` and `{stage: open id: 7}` are the sa
 
 The `review` trigger fires but its gate is `ask`, so it blocks:
 
-TODO: the gate field in a gate should be trigger right? it's the trigger's name
 ```sh
 verse gates
-# - gate: review
-#   id: trigger:review:review~1
+# - gate: approval
+#   id: trigger:review:approval~1
 #   mode: ASK
 #   origin: review
-#   reason: "trigger review gate review on demo:pr:1"
+#   reason: "trigger review gate approval on demo:pr:1"
 #   spawns: review@demo:pr:1
 #   subject: demo:pr:1
 #   tool: trigger:review
 #   where: engine
 ```
 
-`subject` is what the gate is *about* and `spawns` is what a "yes" will start — the
-process id is derived from the trigger and the subject, so it is settled before the gate
-is raised even though nothing is running yet. (`where: engine` gates have no `process`
-for that reason; a process gate, §5, has one because its process is already running.)
+Three different names show up there, and they are three different things: `gate` is the
+gate's own name (`approval`), `origin` is the trigger that raised it (`review`), and `tool`
+is what it governs. `subject` is what the gate is *about* and `spawns` is what a "yes" will
+start — the process id is derived from the trigger and the subject, so it is settled before
+the gate is raised even though nothing is running yet. (`where: engine` gates have no
+`process` for that reason; a process gate, §3, has one because its process is already
+running.)
 
 Approve it, using the `id` from `verse gates` (the flag can come after the id — the
 CLI handles that). The id is `trigger:<trigger>:<gate>~n` — a trigger can have
-several named gates, so the gate name is part of the id:
+several named gates, which is why the gate's name is part of it:
 
 ```sh
-verse gate approve trigger:review:review~1
+verse gate approve trigger:review:approval~1
+# approved trigger:review:approval~1
 ```
 
 Now watch it self-drive. In Terminal A you'll see the stage advance **twice**:
@@ -187,7 +187,8 @@ Now watch it self-drive. In Terminal A you'll see the stage advance **twice**:
 ```
 
 Each change is one line — flow form, so a watch stays greppable and one event never
-wraps into the next. (`op` is `set` for created-or-updated: see §4.)
+wraps into the next. (`op` is `set` for created-or-updated; see
+[the trigger model](trigger-model.md).)
 
 The second transition is the point: **you did not drive "reviewing → reviewed" by hand.**
 The review process finishing (its `process:instance` reaching `status=done`) fired the
@@ -196,200 +197,15 @@ follow-up read top-to-bottom in one rule.
 
 ```sh
 verse entity get demo:pr:1
-# payload:
+# payload: {
 #   stage: reviewed
+# }
 # ref: demo:pr:1
 ```
 
 ---
 
-## 4. Anatomy of a trigger
-
-You installed that one-rule charter in §3. Inspect and manage it:
-
-```sh
-verse triggers
-verse trigger show review
-verse trigger remove <name>           # uninstall one (`add` rejects a duplicate name)
-```
-
-`trigger show` hands the rule back in **[tony](https://signadot.github.io/tony-format/)**,
-the same document language you wrote `charter.tony` in — so installing and inspecting are a
-round trip, not two formats. Tony is JSON's document model made easier to write (unquoted
-keys and strings, optional commas, comments — a charter is a rulebook, and rulebooks want
-annotating) plus one thing the rest of this chapter leans on: **tags**. A tag names what a
-value *is*, right where the value sits — `!glob "hotfix-*"`, `!quorum 2`, `!until [ … ]`.
-That is what keeps a charter a *structure the engine walks* rather than a string it
-re-parses, and the fields below are built out of them. Write your charter in JSON or YAML
-if you prefer — going *in*, all three work; see [Representation](#representation) for why
-only tony and YAML come back out.
-
-Now, what each field of a trigger means:
-
-- **`condition`** — the *cause*, in two halves: **`when`** fires the trigger, and
-  **`subject`** says what the firing is *about*. They are two different grammars, and
-  that is the point:
-  - **`when`** is a **match** — a point-in-time predicate over the verse. It ANDs its
-    dimensions: `system` / `kind` / `id` / `op` (`set` for created-or-updated, or
-    `delete`) / a **payload predicate** (`fields`, or `payload` — below); empty dimensions are
-    wildcards, and `{}` matches everything. The address string is sugar for the identity
-    dimensions, so `demo:pr:*` means `{system: demo, kind: pr}` — and since a trailing
-    wildcard *is* an unset dimension, that is what reads back when you `trigger show` it:
-    `demo:pr`. Same match, shorter spelling. *Keep it small* — the "when" is where
-    complexity hides. (Create and update are one `set` — to fire "only the first
-    time," match a state field your action then advances, a latch, rather than an
-    edge. See `docs/change-events.md`.) A `when` may also grow *temporal* operators
-    (`until`, `deadline`, … — the same language a gate formula uses, §8), at which
-    point it is watched over the verse's evolution rather than matched against one
-    change.
-  - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
-    It resolves three ways, all the same match grammar:
-    TODO: if omitted and everything matches, what happens?  perhaps add subject above?
-    - *omitted* — the matched entity (`review`, above);
-    - an **address that names one entity** — `demo:pr:1` is that one entity, and an
-      action's `patch` will *create* it if it doesn't exist, which is how a trigger
-      publishes a fact nothing has written yet;
-    - a **pattern** — a glob (`demo:pr:*` the whole kind, `demo:pr:hotfix-*` a family
-      in it, `demo:*:*` the whole system — the same grammar as `verse flow <addr>`,
-      §6) or a `system`+`kind` selector with an optional payload predicate. A pattern
-      picks what it names, and *which* names depends on the firing: if the change carries
-      its OWN subject — a reflected process's `flow` — the pattern resolves to that one
-      ref (`reviewed`, below, advances the PR its process was about); otherwise it
-      **selects the set** from the store and the action fans out, once per member
-      (`ship-reviewed`, below). A pattern that names nothing the firing is about is a
-      no-op — it never conjures an entity called `*`, nor misfires onto a flow it doesn't
-      name.
-
-    The `id` may also carry an **operator** instead of a plain string, which is the
-    richer matching the plain glob cannot spell:
-
-    ```tony
-    subject: { system: demo, kind: pr, id: !glob "hotfix-*" }        # filepath globbing
-    subject: { system: demo, kind: pr, id: !not "1" }                # everything but one
-    subject: { system: demo, kind: pr, id: !or ["1", !glob "hf-*"] } # composed
-    ```
-
-    In a JSON-shaped charter, write the operator as a single-key object — `{"id":
-    {"glob": "hotfix-*"}}` — the same spelling a formula uses for its tags (§8). The
-    two are one grammar; only tony can write the tag directly.
-
-    The operators are [tony](https://signadot.github.io/tony-format/)'s own, not a verse
-    invention: `!glob`, `!or`, `!and`, `!not` and the rest come from the same vocabulary
-    tony uses for matching, patching and diffing — see [Structured matching, patching and
-    diffing done right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci)
-    for what that vocabulary is and why it is one vocabulary rather than three.
-
-    Two things worth knowing before you reach for it. First, `!glob` is *stricter* than
-    the plain string: it is `filepath.Match`, so `*` does not cross `/` and `?`/`[…]`
-    are metacharacters — `id: "a*"` matches `a/b` and `id: !glob "a*"` does not. That is
-    the point of it (a path-shaped id can be matched a segment at a time), but it means
-    the two spellings are not interchangeable. Second, `system` and `kind` take no
-    operator: they name the subtree verse watches and the set it lists, and a watch path
-    cannot be a predicate. Write the whole segment as `*` for "any", and put the
-    operator on `id`.
-
-    TODO it says payload or fields?
-    **The payload predicate takes operators too**, and it is the same tony match — it is
-    just evaluated against the payload instead of the id:
-
-    ```tony
-    when: { system: demo, kind: pr, fields: { stage: !or [open, merged] } }
-    when: { system: demo, kind: pr, fields: { branch: !glob "hotfix-*" } }
-    ```
-
-    It has **two spellings, one meaning**. `fields` is the object-shaped one — a predicate
-    over a record's fields, which is what almost every charter matches. `payload` is the
-    general one, a predicate on the payload *root*, for the entities whose payload is not a
-    record at all (an entity's payload is any tony value: a count, a flag, a state name, a
-    list):
-
-    ```tony
-    when: { system: demo, kind: count, payload: 100 }              # the payload IS 100
-    when: { system: demo, kind: count, payload: !or [10, 100] }    # an operator at the root
-    when: { system: demo, kind: pr, payload: { stage: open } }     # the object case, spelled generally
-    ```
-
-    Set **one** of them, not both — two predicates on the same value have no stated way to
-    combine. `fields` (and `entity`, its alias in a `subject`) must be an object; a scalar
-    there is an install error pointing you at `payload`, which is what keeps a typo like
-    `fields: "stage=open"` from becoming a predicate that quietly matches nothing.
-
-    Three things about matching a payload are worth knowing before you write one.
-
-    **A `null` in a predicate is a PRESENCE test, not "is null".** A null pattern matches
-    any value, so the only thing it constrains is that the field is there. The three
-    questions have three different spellings:
-
-    ```tony
-    fields: { stage: null }            # stage is PRESENT, whatever its value
-    fields: !not { stage: null }       # stage is ABSENT
-    fields: { stage: !irtype null }    # stage is present AND its value is null
-    ```
-
-    **Numbers are type-exact**: `2` and `2.0` are different values, so a predicate written
-    `{n: 2}` does not match a payload of `{n: 2.0}`. Integer widths do not matter — that is
-    an artifact of whoever wrote the value, not of the value.
-
-    **Operators inside a payload predicate are tony-only.** The id dimension accepts the
-    JSON single-key spelling (`{"id": {"glob": "hotfix-*"}}`) because its keyspace is
-    closed, but a payload is *your* document — a key in it may itself be named `or` — so
-    that sugar cannot be borrowed here without changing what some charter already means.
-    A JSON charter can still write plain equality predicates; an operator over a payload
-    needs tony.
-
-    A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
-    goal* is still about exactly one subject. Broadcast, in other words, is a wider
-    setting of the same selector, not a new mechanism:
-
-    ```tony
-    name: ship-reviewed
-    condition:
-      when:    { system: ci, kind: status }
-      subject: { system: demo, kind: pr, fields: { stage: reviewed } }
-    gates:
-    - { name: ship, mode: ask }
-    action:
-      patch: { stage: shipped }
-    ```
-
-    One CI change fires this once, one `ask` gate is raised for the *firing* (not one
-    per PR), and then every reviewed PR advances. A spawn would give each member its
-    own process, tagged with that member as its subject — so each is its own flow (§6).
-    Re-firing is idempotent per member: a spawn's id is derived from its subject, so a
-    second broadcast reuses it rather than starting a duplicate.
-- **`gates`** — a list of gates, *all* of which must resolve to proceed
-  (conjunctive) before the action fires. Gates are per *firing*, so a broadcast asks
-  once, not once per subject. Each is `{ name: …, mode: auto|ask|park }`. An empty list
-  fires with no approval. Multiple gates model
-  multi-approval — e.g. a deploy needing both a security and a release-manager
-  sign-off is two `ask` gates. A gate can also carry a **`formula`** the verse
-  resolves itself — a vote, a deadline, a threshold; see §8.
-- **`action`** — data, not code, and it needs no target of its own: an action acts on
-  the condition's **subject**.
-  - `patch` writes to the subject's payload (a state transition). It is a **tony patch**,
-    not an assignment: a nested write merges into the subtree it names rather than replacing
-    it, so two triggers writing under one key do not clobber each other, and the mergeop
-    operators apply — `patch: { tmp: !delete null }` removes a key, which is something no
-    amount of setting fields could say. Writing a scalar (`patch: 42`) replaces the whole
-    payload;
-  - `spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
-    `policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed
-    **`provider`** selection of the doer (§8). The spawned process is tagged with the
-    subject, which is what makes it part of that subject's flow (§6).
-  - **completion hooks** — `onDone`, `onFailed`, `onCancelled`, `onOrphaned`: when the
-    `spawn`'s process reaches that terminal status, the hook fires as a full action (its
-    own `patch` / `spawn` / hooks) about the same subject. `onDone` is the success hook; a
-    chain (`review` → `merge` → `approve`) nests its `onDone`s and reads top-to-bottom in
-    one trigger, with the process step visible inline. Each hook can read the finished
-    process's payload via bindings (`$result`, `$status`).
-- **Bindings** in templates: every field of the changed payload is bound by name
-  (`$stage`, `$path`, …), plus `$subject` — the *resolved* subject. So `review $subject`
-  in a spawn's task names the PR the firing is about, even when the entity that fired was
-  a process, not the PR.
-
----
-
-## 5. Processes
+## 3. Processes
 
 A trigger's `spawn` runs a process, but you can run one directly too. `run` prints the
 process id (a `run-…`):
@@ -414,21 +230,14 @@ A direct run is mirrored as a `process:instance` entity like any other process, 
 `verse entity get process:instance:<id>` shows what it produced — the latest `say`, last
 tool output, and full `result` — even after it finishes.
 
-**Which driver runs it.** With LLM creds configured, the default driver is a real **LLM
-agent**; with no creds it falls back to **scripted**, which runs the task as a **shell command**
-— steerable and cancellable like any process (no credentials, so the runtime is demoable
-anywhere, and a scripted process can do real work: `sleep`, `go test`, `git …`). Choose explicitly per spawn with `--driver scripted|llm`.
-The creds live with the **server** — the `up` process hosts the runtime, so it reads *its*
-environment (or `~/.config/verse.tony`), not the `process run` client's; set them before `up`
-(§1). Check with `verse status` — the `llm` block shows `available` and a masked key.
-
-**The two drivers carry different vectors**, and the difference is the whole point of a gate:
-it asks about what you have *not* already authorized.
+**The two drivers carry different vectors** (§1 sets which one is the default), and the
+difference is the whole point of a gate: it asks about what you have *not* already
+authorized.
 
 - **scripted runs ungated** — no gates, everything auto. Its task *is* the shell command, so
   you authorized it by typing it; asking "run a shell command?" after `verse process run
   "go test ./..."` would be asking you to confirm the sentence you just wrote. Spawned from a
-  trigger, the same holds one level up: the trigger's own `gates` (§4) already ran, per firing,
+  trigger, the same holds one level up: the trigger's own gates already ran, per firing,
   before the action fired.
 - **llm asks before effects** — because the agent *chose* them. Approving a command the agent
   thought up is a real decision.
@@ -442,10 +251,10 @@ typed comes back as `⏸ gate "shell" (run_bash) — approve?`. Nothing was deci
 already decided; the prompt only reveals that verse chose to satisfy your command with an agent.
 
 The vector is fixed by the driver and nothing overrides it at spawn (`run` takes only
-`--wait/--attach/--driver`; the `policy` axis of §4 is one of the "later" fields). So today:
-pass `--driver scripted` when your task *is* a command — that is exactly what it is for — or
-slide the vector once it starts (`process vector <id> auto`). A trigger hits the same edge from
-the other side: its `gates` approve *the firing*, not the actions the spawned agent then chooses,
+`--wait/--attach/--driver`; the `policy` axis is one of the launch spec's "later" fields). So
+today: pass `--driver scripted` when your task *is* a command — that is exactly what it is for —
+or slide the vector once it starts (`process vector <id> auto`). A trigger hits the same edge from
+the other side: its gates approve *the firing*, not the actions the spawned agent then chooses,
 and it has no way to say it already decided. Where the permission *should* come from is
 [authority](authority.md).
 
@@ -461,18 +270,13 @@ verse process run --attach 'Write a file hello.txt containing "hi".'
 # → you answer, the write runs (wrote 2 bytes), and the process completes — one stream.
 ```
 
+That is the llm driver's transcript; with no creds configured the same command runs the
+sentence as a shell command and fails, which is the §1 default at work. The file itself lands
+under the agent's root, not your cwd — `--root` again.
+
 That's the autonomy dial at the process level: reads are auto, effects ask. Answer `y` to
 allow or anything else to deny (a denied gate comes back to the agent as an error it re-plans
 around). Piped (non-tty), `attach` just streams without prompting.
-
-TODO fold this under the verse up call explanation, ask for root and then the note is
-when absent it's this hidden tmp dir thing
-
-**Where the file went.** The agent reads and writes under its **root** — an isolated temp dir
-by default (printed at `up` start: `agents rooted at …`), *not* your cwd. So `hello.txt` is at
-`<that root>/hello.txt`. To have agents act in a directory you choose, start the server with
-`verse up --root <dir>` (e.g. `--root .`) — then check `ls <dir>/hello.txt`. (Federating a
-tree so an agent reads *through* the verse, wherever it runs, is `verse connect` — §10.)
 
 You can also resolve out-of-band from anywhere — the gate shows up in **`verse gates`**
 alongside trigger gates (and in `process get <id>`), resolvable by its id — the `~` that
@@ -480,12 +284,11 @@ separates the gate from its process needs no quoting and no escaping, in a shell
 
 ```sh
 verse gates                                       # engine + process gates, unified
-verse gate approve run-…~d1                           # or: process approve run-… run-…~d1
+verse gate approve run-…~d1                       # or: process approve run-… run-…~d1
 ```
 
 Because processes are entities, you can watch the whole fleet's lifecycle through the
 verse:
-
 
 ```sh
 verse watch --system process
@@ -494,7 +297,7 @@ verse watch --system process
 
 ---
 
-## 6. Steer flows
+## 4. Steer flows
 
 Steering is the control plane — out-of-band from observation, honored at a process's
 next boundary, never a store write. Each command acts on a **flow**: the *in-flight*
@@ -517,7 +320,7 @@ verse trigger add -f - <<'TONY'
     spawn: { driver: scripted, task: "sleep 60" }
 TONY
 verse entity put demo:pr:2 '{stage: open}'      # open a change…
-verse gates                                 # …find its review gate, then:
+verse gates                                     # …find its review gate, then:
 verse gate approve <that-id>                    # review runs, the PR reaches `reviewed`, hold fires
 verse flows
 # - demo:pr:1
@@ -546,7 +349,7 @@ verse flow cancel demo:pr:2           # stop its processes (destructive)
 ```sh
 verse flow pause 'demo:pr:*'          # every PR's in-flight work
 verse flow say   'demo:*:*' "hurry"   # everything in the demo system
-verse flows                       # the distinct subjects with live work
+verse flows                           # the distinct subjects with live work
 ```
 
 `verse flows` answers *which subjects are busy*. To see what is happening to **one** — and what
@@ -575,10 +378,15 @@ verse flow show demo:pr:1
 ```
 
 Two roots, because two triggers acted on this PR: `hold` is still running its 60 seconds, and
-`review` finished. Each node is one **action in the charter**, addressed by its `chain` — the
-kpath of that action inside its trigger, which is also the process id it spawns under
-(`review@demo:pr:1`). So the tree is not a second model of the work; it is the charter and the
-runtime read through the same address.
+`review` finished.
+
+Each node is one **action in the charter**, addressed by its `chain` — the **kpath** of that
+action inside its trigger. A kpath is tony's way of addressing a position *inside* a document:
+dotted field names, with brackets for list positions. So `review` is that trigger's action,
+`review.onDone` is its done-hook, and a sequence step's failure hook would be
+`review.seq[2].onFailed`. The same string is the id the action spawns under
+(`review@demo:pr:1`), which is what makes the tree not a second model of the work: it is the
+charter and the runtime read through one address.
 
 Some statuses come from no process at all, because a charter position is not a process.
 `review.onDone` above is `applied`: it fired — that is what set `reviewed` — but it only sets
@@ -589,8 +397,7 @@ completed instead.
 
 The tree is **derived, never stored** — assembled per request from the charter (the shape,
 including what has not run), the mirrored `process:instance` entities (the history, which
-outlives the live registry), and the live registry (what is still steerable). Materializing it
-would be the stored `flows[subject]` index that flow-as-a-query deliberately replaced.
+outlives the live registry), and the live registry (what is still steerable).
 
 A pattern works here too, giving one tree per subject:
 
@@ -630,11 +437,9 @@ stream — cancel/say/pause reach the process directly and are serviced ahead of
 observation. (See `docs/deployment-and-steering.md` for the invariant and the
 engine's priority servicing.)
 
-TODO kpath
-
 ---
 
-## 7. Human-executed processes (dial-in)
+## 5. Human-executed processes (dial-in)
 
 Most processes are run by an agent driver — but a process can be run by a **human**, or by
 any external, firewalled worker, who **dials in** to do the work. verse hosts the process
@@ -694,14 +499,14 @@ verse process do complete "$ID" "LGTM — one nit on the token TTL" --as human:s
 ```
 
 The process is now `done`, with your result on its `process:instance` entity — so a
-completion trigger reacts to it exactly as if an agent had finished (§3–4). A *human* did the
+completion trigger reacts to it exactly as if an agent had finished (§2). A *human* did the
 work; the flow moves on.
 
 So a process has **two vantages**, and every verb works whether it runs locally or behind a
 broker:
 
 - **operator** (from outside — drive/watch): `list` · `get` · `attach` · `cancel` · `say` ·
-  `resolve`
+  `approve`/`deny`
 - **executor** (from inside — the worker leg): `do complete|fail|note|gate`, plus `inbox` to
   see the control queued for the worker.
 
@@ -711,9 +516,9 @@ and steers, done by a person — observed and governed through the one verse. (S
 
 ---
 
-## 8. Gates the group decides — *whether*, and *who*
+## 6. Gates the group decides — *whether*, and *who*
 
-In §4 a gate was `auto` · `ask` · `park` — one answerer, one click, deciding *whether* an
+So far a gate was `auto` · `ask` · `park` — one answerer, one click, deciding *whether* an
 action proceeds. But a gate is really just **a question the charter poses**, and some
 questions aren't one person's to answer in one click: a merge that needs *two* reviewers;
 a doer *chosen* from several. verse resolves those the same way — it puts the open
@@ -727,6 +532,10 @@ Both are answered the same three ways — `auto` (verse picks by a rule), by **o
 or by the **group** — over the one votable, attributable surface (`verse docket` /
 `verse vote`). (A one-click `ask` still lives in `verse gates` / `gate approve`; a *motion*
 is what an answer that accumulates over time needs.)
+
+A motion is an ordinary entity, `motion:channel:<id>`, so the docket is a *view of the
+store* — you can `watch` it, `get` one, and write a trigger that reacts to it, exactly as
+with a PR. It is not a side-channel or a UI queue.
 
 ### Whether: a vote
 
@@ -770,8 +579,9 @@ verse vote ec9856c1 approve --as bob     # 2 of 2 → carries
 verse docket
 # ec9856c1  whether closed  options=[proceed=approve(2)]  outcome=proceed tally=2  subject=change:pr:42
 verse entity get change:pr:42
-# payload:
+# payload: {
 #   stage: merged
+# }
 # ref: change:pr:42
 ```
 
@@ -815,16 +625,18 @@ to `deny` (action skipped). The deadline is per-motion and durable (a restart re
 the right side can be a `fact` — `!fact ci:status:green` waits for CI, a tag, a posted
 review.
 
-TODO and/or has landed AFAIK
-(That's the whole formula language: a leaf is a requirement — `!quorum`, `!fact`,
-`!deadline` — and operators compose them (`!until` today; `and`/`or` coming). The tags
-*are* the grammar. In JSON, which has no tags, each one spells as a single-key object —
+That is the whole **formula** language: a leaf is a requirement — `!quorum`, `!fact`,
+`!deadline` — and operators compose them. `!until` is the operator that exists today;
+temporal `and`/`or` are still to come. (Don't confuse those with the `!and`/`!or` you can
+already write inside a **match** — those compose predicates about the verse *right now*,
+and they work; these would compose requirements over *time*.) The tags *are* the grammar.
+In JSON, which has no tags, each one spells as a single-key object —
 `{"until": [{"quorum": 2}, {"deadline": "4h"}]}` — and means exactly the same thing; the
-charter you write in one dialect reads back in either.)
+charter you write in one dialect reads back in either.
 
 ### Who: a selection
 
-The second question hides in every `spawn`: **who** does it. In §4–5 a spawn named a fixed
+The second question hides in every `spawn`: **who** does it. So far a spawn named a fixed
 `driver`. That's a motion too — over a different option set. Name the eligible doers and
 how to choose, instead of one driver:
 
@@ -894,7 +706,7 @@ Two questions — *whether* and *who* — one votable, attributable machinery.
 
 ---
 
-## 9. Goals — give a flow a destination
+## 7. Goals — give a flow a destination
 
 Everything so far pushes the world *forward*: a change fires a trigger, a gate decides
 whether and who, a process runs, its completion fires the next trigger. Nothing yet says
@@ -905,7 +717,7 @@ watches for success or failure, and holds a live status.
 
 A goal is three things: a **`doneWhen`** predicate (the target), an optional **`deadline`**
 (a fail-latch), and a bundle of **owned triggers** (the doing). `doneWhen` is the very
-formula language you gate with (§8) — but here it's a *target*, not a gate:
+formula language you gate with (§6) — but here it's a *target*, not a gate:
 
 ```sh
 verse goal add ship --subject change:pr:42 \
@@ -954,7 +766,7 @@ verse entity get goal:done:ship
 
 When `doneWhen` holds, the goal **latches** — once, and it stays latched (retract the fact
 and the goal does not un-finish). Two outcomes are first-class: **done**, and
-**unachievable** — the deadline is the fail side, exactly like §8's deny-quorum ("no is a
+**unachievable** — the deadline is the fail side, exactly like §6's deny-quorum ("no is a
 real outcome"). Let a deadline pass with the target still unmet and the goal latches
 `goal:failed` with `status=unachievable`.
 
@@ -973,7 +785,7 @@ way everything else composes:
 ```
 
 And because a goal's owned triggers spawn processes tracked as **flows**, a goal *is a flow
-with a destination* — steer it with the very same verbs (§6), keyed by the goal:
+with a destination* — steer it with the very same verbs (§4), keyed by the goal:
 
 ```sh
 verse goal pause  ship          # freeze its in-flight work
@@ -987,11 +799,11 @@ record — `verse goal add -f ship.tony` — which carries `triggers: [ … ]` a
 finished goal leaves no orphaned charter.
 
 *(v0: `doneWhen` is a single fact/quorum atom; multi-condition targets, an optional plan that
-generates the owned triggers, and scope-isolated reap are next — §13.)*
+generates the owned triggers, and scope-isolated reap are next — §10.)*
 
 ---
 
-## 10. Federate your local working tree
+## 8. Federate your local working tree
 
 `verse connect` federates your working tree into the verse under a private,
 per-session **scope**, and wires a validator to every file — the local-dev loop. It
@@ -1008,8 +820,7 @@ is its own process (a second terminal); leave it running. In one command it:
 It all lives in a nonce scope, isolated from baseline and from other devs; on exit
 `connect` drops it.
 
-In terminal A, start the daemon. Configure LLM creds first (a `~/.config/verse.tony`
-`llm` block, or `PORTKEY_*`/`OPENAI_MODEL` in the environment) so the validators can run
+In terminal A, start the daemon. Configure LLM creds first (§1) so the validators can run
 as real agents:
 
 ```sh
@@ -1048,7 +859,7 @@ validate large files from a partial view.)
 
 ---
 
-## 11. Scopes
+## 9. Scopes
 
 Every client command takes `--scope <name>` (baseline by default). A scope is a
 **copy-on-write overlay**: reads see the scope layered on the shared baseline, and
@@ -1072,176 +883,12 @@ just `local:*` files) via logd's `DeleteScope`.
 
 ---
 
-## 12. Command reference
-
-```
-verse
-  up   [--root <dir>]                        start the monolith (engine + store + proc)
-       [--llm]                               make `llm` the default driver (per-spawn --driver still wins)
-       [--store memory]                      opt out of docd (no daemons, no persistence)
-       [--data <dir>]                        bring logd+docd up on <dir> (default: fresh temp dir)
-       [--docd-addr host:port]               attach to a running docd (client face) …
-       [--docd-mount-addr host:port]         … and its controller/MOUNT face
-       [--o-bin path]                        the o binary to spawn daemons (default: go run pinned cmd/o)
-       [--policy <url>]                      run processes on a remote controlPolicy base URL …
-       [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
-                                             publishes each process's dialURL from it) …
-       [--broker-addr host:port]             … the sibling port serving this verse's broker face
-                                             (/broker/<nonce>); all default off (local in-process
-                                             supervisor). See docs/control-policy.md.
-  status                                     engine/store snapshot
-  down                                       stop the verse on --addr (it reaps its spawned daemons)
-
-  watch  [--system --kind --since <rev>]     stream store changes (cursored)
-
-  Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
-
-  entities [--system <s>] [--kind <k>]       the store
-  entity (e)  get <ref> · put <ref> <payload>
-  gates                                      pending decisions across the fleet
-  gate    approve <id> [--say <text>] · deny <id> [--say <text>]
-          approve: y, yes · deny: n, no · --say: -s
-  triggers                                   the installed charter
-  trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
-  processes (ps)                             every process, whatever runs it
-  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors policy; mirrored)
-          get <id> · attach <id> · inbox <id>            operator vantage (any backend):
-          cancel <id> · say <id> <text…>
-          approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
-          do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
-          do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
-  flows                                      the distinct subjects with live work
-  flow    show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
-          <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
-          demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
-  goals                                      status / waitingOn / outcome, per goal
-  goal    add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
-          add --file <f> (full record incl. owned triggers) · remove <name>
-          pause|resume|cancel <name> · say <name> <text…>
-
-  docket                                     list open motions (votes + provider selections)
-  vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
-  providers                                  list the provider registry (provider:<capability>:<id>)
-
-  connect [path] [--task <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +
-          [--interval <dur>]                  content controller + a validator per file
-  disconnect                                  drop the --scope overlay (else remove local:* entities)
-
-  global:  --addr <host:port>   --scope <name>
-           --ofmt, -o <tony|yaml>  output format (default tony; verse renders no json)
-           --ifmt, -i <tony|json|yaml>  input format for stdin / extensionless files
-           --color auto|always|never   colorize (auto = a terminal only)
-```
-
-Flags may appear before or after positionals (`gate approve <id> --say ok` works).
-
-### Configuration
-
-Defaults are resolved through layers, each overriding the one before:
-
-1. `/etc/verse.{tony,json,yaml}` — system base
-2. `~/.config/verse.{tony,json,yaml}` — per-user; it **patches** the system file (a merge,
-   so you set only the keys you want to change; everything else falls through)
-3. environment variables
-4. CLI flags
-
-**A config layer's format comes from its file name** — `.tony`, `.json`, `.yaml` or `.yml`
-— and the two layers need not agree: `/etc/verse.json` patched by `~/.config/verse.tony`
-merges fine, because both are parsed to the same tree before the merge. A config file
-cannot declare its own format, so its name declares it. Two files for one layer is an error
-rather than a silent precedence rule. `VERSE_CONFIG=<file>` replaces both layers outright.
-
-A missing file is simply an absent layer. Example `~/.config/verse.tony`:
-
-```tony
-addr:  "localhost:9797"
-scope: "me"
-llm: {
-  model:      "gpt-4o"
-  apiKey:     "pk-…"
-  virtualKey: "vk-…"
-}
-```
-
-### Representation
-
-verse **reads** tony, JSON and YAML, and **writes** tony and YAML. The asymmetry is
-deliberate, and it is worth thirty seconds up front:
-
-```sh
-verse triggers             # tony (the default)
-verse triggers -o yaml     # yaml
-verse triggers -o json     # refused — see below
-curl -s localhost:9797/status                              # tony
-curl -s -H 'Accept: application/yaml' localhost:9797/status # yaml
-```
-
-**Write your input in JSON if you like.** A `.json` charter, an `application/json` body,
-a JSON payload typed on the command line: all fine, all unchanged. Valid JSON is valid
-[tony](https://signadot.github.io/tony-format/), so verse simply parses it — there is no
-conversion step and nothing to configure.
-
-**What verse will not do is hand JSON back.** `-o json`, `VERSE_FORMAT=json` and
-`Accept: application/json` are refused, the last with a 406. The reason is tags. A formula
-is built from them (§8) — `!quorum 2`, `!until [...]` — and JSON has no tag syntax, so
-rendering one means rewriting it as a single-key object: `{"quorum": 2}`. That is
-unambiguous where the surrounding keys are a closed set, and NOT unambiguous inside a
-match's `fields`, where a payload key may itself be named `or`. A rendering that is
-faithful for most of the model and quietly wrong for the rest is worse than one honestly
-not offered.
-
-Reading is unaffected by all of this, including the single-key spelling: a charter that
-writes `{"quorum": 2}` loads exactly like one that writes `!quorum 2`. That is how you
-reach an operator from JSON, and it is why JSON stays a first-class way to write a charter
-even though it is no longer a way to read one back.
-
-With one exception, for the same reason the rendering is refused: the single-key spelling
-is only unambiguous where the keyspace is closed, so it is *not* applied inside a payload
-predicate, where a key may itself be named `or`. Plain equality predicates work in JSON;
-an operator over a payload needs tony (§4).
-
-Output is colorized on a terminal and plain when piped, so `verse triggers | o v` keeps
-working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
-off.
-
-The **file suffix decides** what a file is read as, so `verse trigger add -f charter.json`
-and `-f charter.tony` both work regardless of the default. For input that names no format —
-stdin, an extensionless file, a payload typed on the command line — `--ifmt` decides, then
-the config default.
-
-To change the default: `format.default` in the config file, or `VERSE_FORMAT`. `format.output`
-(CLI stdout) and `format.wire` (HTTP bodies) override it separately, because wanting tony on
-the wire and yaml on stdout is a reasonable thing to want. All three name a format to WRITE,
-so all three refuse `json`.
-
-```tony
-format:
-  default: tony
-  output:  yaml   # …but render CLI output as yaml
-```
-
-`addr` and `scope` are read by every command (they say which verse to talk to). The `llm`
-block, however, is read by the **server** (`verse up`) — it hosts the process runtime, so
-that's whose config/environment the agent driver reads for its model + creds; setting it for
-a `process run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
-`PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `PORTKEY_BASE_URL` (which override the file).
-Precedence for any value is, low → high:
-`/etc/verse.tony` → `~/.config/verse.tony` → environment → CLI flag.
-
-**The driver is chosen per spawn.** A trigger's `spawn.driver`, `connect --driver`, and
-`process run --driver` each select `scripted` or `llm`; an empty driver uses the default
-(`scripted`, or `llm` when `up --llm` is set). Requesting `llm` with no configured creds
-fails **that** process (status `error`, with a message telling you to set the creds) —
-the engine keeps running.
-
----
-
-## 13. What this is (and isn't) yet
+## 10. What this is (and isn't) yet
 
 - **Store** defaults to **[docd](https://signadot.github.io/tony-format/docd/)**
   (durable, observable, controller-federated). You never have to touch docd to *use*
   verse — `up` brings it up for you — but it is where verse's deeper properties come
-  from, and they're hard to see spelled out anywhere else: **COW scopes** (§11),
+  from, and they're hard to see spelled out anywhere else: **COW scopes** (§9),
   **conditional + coordinated writes** (atomic CAS, so two writers advancing one entity
   can't lose each other's fields — see `PatchIf` below), **edge-faithful watches** (the
   change stream *is* each writer's applied patch, so no reader reconstructs, reorders,
@@ -1292,7 +939,7 @@ the engine keeps running.
   hosts them behind a broker a firewalled worker (or a human) dials *in* to — verse drives
   all three through the identical handle, and `verse processes` / `process get`/`attach`/`cancel`/
   `say`/`approve`|`deny` work across all of them. A human or external worker executes via `verse process
-  do` (§7). Left to do: inbox long-poll. See `docs/control-policy.md`.
+  do` (§5). Left to do: inbox long-poll. See `docs/control-policy.md`.
 - **Governed decisions** — one machinery answers two questions. *Whether* an action fires
   is a gate whose **formula** the verse resolves itself: a quorum **vote** (with a
   deny-quorum for "no"), a **deadline** against the clock, or an external **fact** (CI
@@ -1300,13 +947,13 @@ the engine keeps running.
   doer, chosen from an inline set or a `provider:*` registry filtered by a match. Both
   raise one **motion**: options accumulate ballots, the first to its threshold
   wins, and the winner commits terminal-once (with a live retract guard), observed via
-  `verse docket` / `verse vote` (§8). Left to do: richer disciplines (ranked/weighted
+  `verse docket` / `verse vote` (§6). Left to do: richer disciplines (ranked/weighted
   votes, review panels), secret ballots via scopes.
 - **Goals** — an explicit *target* over the reactive substrate: a goal owns a bundle of
   triggers (the doing), a `doneWhen` formula, and a deadline; it latches `goal:done` /
   `goal:failed` (success *and* "unachievable" are both first-class), holds a live status
   with a `waitingOn` list, and steers as a flow — yet drives by *owning charter*, not by
-  reconciling (§9). Left to do: temporal `doneWhen` (eventually/always/sequence), an
+  reconciling (§7). Left to do: temporal `doneWhen` (eventually/always/sequence), an
   optional plan that generates the owned triggers, and `DeleteScope`-based reap of a goal's
   owned charter.
 
