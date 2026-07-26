@@ -5,7 +5,7 @@ package trigger
 import (
 	"context"
 	"fmt"
-	"io"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
@@ -43,8 +44,13 @@ type Engine struct {
 	resolver process.Resolver // answers trigger ASK/PARK gates
 	spawn    Spawner          // optional: how actions spawn processes
 	triggers []Trigger
-	log      io.Writer
-	clock    func() time.Time // the system clock (injectable for tests); nil = time.Now
+	// logger carries both the running dispatch commentary (Debug) and anything an
+	// operator has to act on (Warn). One channel with levels, rather than a verbose
+	// io.Writer that defaulted to io.Discard and that nothing ever wired up — which meant
+	// a charter that could not do what it said reported itself into a void. slog.Default
+	// puts Warn on stderr, alongside the logd/docd records already landing there.
+	logger *slog.Logger
+	clock  func() time.Time // the system clock (injectable for tests); nil = time.Now
 
 	mu       sync.Mutex
 	fired    int
@@ -87,7 +93,7 @@ type Engine struct {
 // New builds an engine over store, using resolver for trigger gates.
 func New(store entity.Store, resolver process.Resolver) *Engine {
 	return &Engine{
-		store: store, resolver: resolver, log: io.Discard,
+		store: store, resolver: resolver, logger: slog.Default(),
 		control: make(chan func(), 64),
 		stopped: make(chan struct{}),
 		live:    map[string]flowProc{},
@@ -97,8 +103,11 @@ func New(store entity.Store, resolver process.Resolver) *Engine {
 
 func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 func (e *Engine) SetMaxFires(n int)    { e.maxFires = n }
-func (e *Engine) SetLog(w io.Writer)   { e.log = w }
-func (e *Engine) Store() entity.Store  { return e.store }
+
+// SetLogger redirects engine logging. Debug carries dispatch detail (off by default),
+// Warn carries misconfiguration an operator must act on.
+func (e *Engine) SetLogger(l *slog.Logger) { e.logger = l }
+func (e *Engine) Store() entity.Store      { return e.store }
 
 // Fired reports how many times a trigger has fired (the trace/budget counter).
 func (e *Engine) Fired() int {
@@ -738,6 +747,15 @@ func refIDs(refs []entity.Ref) []string {
 func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string, bool) {
 	options, drivers := e.eligibleProviders(p)
 	if len(options) == 0 {
+		// A motion needs options, so there is no question to pose and nothing reaches the
+		// docket. That is indistinguishable from "the trigger never matched" unless we say
+		// so HERE: the firing matched, its gates passed, and then it produced no process,
+		// no motion, and no error. Every other exit from this function traces; this one is
+		// the likeliest to be hit (a capability whose registry is empty, or a match that
+		// excludes everyone) and was the only one silent.
+		e.logger.Warn("provider selection has no eligible doer; no motion opened and nothing spawned",
+			"subject", subject.String(), "capability", p.Capability,
+			"select", p.Select, "why", e.whyNoEligible(p))
 		return "", false
 	}
 	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subject, p))}
@@ -825,6 +843,44 @@ func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]str
 		}
 	}
 	return options, drivers
+}
+
+// whyNoEligible explains an empty eligible set in terms of what to go fix. The three
+// causes need different answers — register a doer, loosen the match, or write a provider
+// into the spec — and "no eligible doer" tells you which one to try only by accident.
+func (e *Engine) whyNoEligible(p *launch.Provider) string {
+	if p == nil {
+		return "the spawn declares no provider"
+	}
+	if p.Capability == "" {
+		return "the spawn's provider lists no eligible doers and names no capability"
+	}
+	lister, ok := e.store.(entity.Lister)
+	if !ok {
+		return fmt.Sprintf("capability %q cannot be resolved: this store cannot list entities", p.Capability)
+	}
+	// Registered-but-excluded and not-registered-at-all look the same from the caller and
+	// are fixed in opposite places, so count the registry before the match is applied.
+	registered := len(lister.List(func(r entity.Ref) bool {
+		return r.System == "provider" && r.Kind == p.Capability
+	}))
+	if registered == 0 {
+		return fmt.Sprintf("no provider:%s:* is registered (register one, e.g. "+
+			"`verse entity put provider:%s:<id> '{driver: llm}'`)", p.Capability, p.Capability)
+	}
+	return fmt.Sprintf("all %d registered provider:%s:* were excluded by match %s",
+		registered, p.Capability, matchText(p.Match))
+}
+
+// matchText renders a match pattern the way the charter that declared it is written, so
+// the operator can compare the message against their own file rather than translate Go's
+// map formatting back into tony.
+func matchText(m map[string]any) string {
+	b, err := codec.Marshal(m, codec.Tony)
+	if err != nil {
+		return fmt.Sprintf("%v", m)
+	}
+	return strings.Join(strings.Fields(string(b)), " ")
 }
 
 // providerMatches reports whether a provider's attributes satisfy an eligibility pattern,
@@ -1064,8 +1120,13 @@ func (e *Engine) ReconcileOrphans() int {
 	return n
 }
 
+// tracef is the engine's running commentary on what it is doing — every dispatch, gate
+// and flow decision. It is Debug, so it costs nothing until someone turns it on.
 func (e *Engine) tracef(format string, a ...any) {
-	fmt.Fprintf(e.log, format+"\n", a...)
+	if e.logger == nil || !e.logger.Enabled(context.Background(), slog.LevelDebug) {
+		return // the Sprintf is the expensive part; skip it when nobody is listening
+	}
+	e.logger.Debug(fmt.Sprintf(format, a...))
 }
 
 func proceedWord(ok bool) string {

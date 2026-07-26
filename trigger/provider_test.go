@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -124,5 +125,41 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
 	if _, stamped := ch.Payload["deadline_at"]; !stamped {
 		t.Fatalf("select channel missing deadline_at: %+v", ch.Payload)
+	}
+}
+
+// An empty eligible set opens no motion and spawns nothing, so from outside the firing is
+// indistinguishable from a trigger that never matched. The three causes are fixed in three
+// different places, so the message has to say which one it is — that is the whole reason
+// this path speaks at all.
+func TestWhyNoEligibleNamesTheFix(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, nil)
+
+	// Nothing registered: the answer is "go register a doer".
+	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}}
+	got := eng.whyNoEligible(p)
+	if !strings.Contains(got, "no provider:review:* is registered") {
+		t.Errorf("empty registry: %q", got)
+	}
+	if !strings.Contains(got, "verse entity put provider:review:") {
+		t.Errorf("empty registry should show how to register one: %q", got)
+	}
+
+	// Registered but excluded: the answer is "loosen the match", the opposite fix — and
+	// the match is echoed in tony, as the charter spells it, not as Go prints a map.
+	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "cheapo"},
+		entity.Payload{"driver": "scripted", "tier": "basic"})
+	got = eng.whyNoEligible(p)
+	if !strings.Contains(got, "all 1 registered") {
+		t.Errorf("excluded: %q", got)
+	}
+	if !strings.Contains(got, "tier: premium") {
+		t.Errorf("excluded should echo the match in tony: %q", got)
+	}
+
+	// Neither form declared: the spec itself is incomplete.
+	if got := eng.whyNoEligible(&launch.Provider{Select: "vote"}); !strings.Contains(got, "no eligible doers") {
+		t.Errorf("empty provider: %q", got)
 	}
 }
