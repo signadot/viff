@@ -108,6 +108,16 @@ test: ## go test ./...
 test-long: ## go test ./... including the long, timeout-waiting tests (GOTEST_LONG=1)
 	GOTEST_LONG=1 $(GO) test ./...
 
+# verse renders through package codec; a stray encoding/json is how that quietly stops
+# being true. It does not fail loudly — it produces the wrong dialect, or fails to parse one
+# and looks like an empty stream. Both happened during the migration.
+.PHONY: check-json
+check-json: ## fail if non-test code imports encoding/json outside the allowlist
+	@./scripts/check-json.sh
+
+.PHONY: check
+check: check-generate check-json ## every static check (what CI should run before the tests)
+
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a free port)
 	@./smoke.sh

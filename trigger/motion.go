@@ -2,11 +2,14 @@ package trigger
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 )
@@ -81,15 +84,44 @@ func motionChannelID(seed string) string {
 }
 
 // providerSpecSeed derives the select-axis id seed from the subject + eligibility spec
-// (inline set, capability, match), so a re-fire reuses the channel. json.Marshal sorts map
-// keys, so the hash is stable.
+// (inline set, capability, match), so a re-fire reuses the same channel.
+//
+// The seed is the spec rendered in tony wire form, with its key order fixed HERE by
+// FromKeyVals rather than left to a map's iteration. That is what makes it stable.
+//
+// ir.Node.Hash() would read as the obvious choice and is NOT usable: it builds a
+// maphash.Hash with no seed, and maphash's zero value takes a fresh random seed per
+// instance — so the same node hashes differently on two successive calls in one process.
+// Filed as tony-format#f69agjyeh12ksa25cnn0 item 16. TestProviderSpecSeedIsStable is the
+// guard; it fails immediately if any of this stops being deterministic.
+//
+// NOTE: this changed the channel ids. They are derived, not stored, so nothing needs
+// migrating — but a motion already open when a verse is upgraded gets a NEW channel on its
+// next re-fire, leaving the old vote log orphaned. Acceptable for a prototype; it belongs
+// in release notes, not in someone's afternoon.
 func providerSpecSeed(subject entity.Ref, p *launch.Provider) string {
-	spec, _ := json.Marshal(struct {
-		E []string       `json:"e"`
-		C string         `json:"c"`
-		M map[string]any `json:"m"`
-	}{p.Eligible, p.Capability, p.Match})
-	return "select/" + subject.String() + "/" + string(spec)
+	match, err := gomap.ToTonyIR(p.Match)
+	if err != nil || match == nil {
+		match = ir.Null()
+	}
+	spec := ir.FromKeyVals([]ir.KeyVal{
+		{Key: ir.FromString("e"), Val: stringsNode(p.Eligible)},
+		{Key: ir.FromString("c"), Val: ir.FromString(p.Capability)},
+		{Key: ir.FromString("m"), Val: match},
+	})
+	rendered, err := codec.NodeBytesWire(spec, codec.Tony)
+	if err != nil {
+		rendered = []byte(p.Capability) // degraded but stable; a bad spec will not spawn anyway
+	}
+	return "select/" + subject.String() + "/" + string(rendered)
+}
+
+func stringsNode(ss []string) *ir.Node {
+	vals := make([]*ir.Node, 0, len(ss))
+	for _, s := range ss {
+		vals = append(vals, ir.FromString(s))
+	}
+	return ir.FromSlice(vals)
 }
 
 // compileFormula builds a whether-axis motion from a gate's Formula. The formula is bound

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -449,7 +448,7 @@ func streamEvents(cc *cli.Context, id string) error {
 			Tool    string `tony:"field=tool"`
 			Process string `tony:"field=process"`
 		}
-		_ = json.Unmarshal([]byte(data), &ev)
+		_ = codec.Unmarshal([]byte(data), &ev, in)
 		// The process reached a terminal status — the stream won't emit more, so detach
 		// (else attach would hang waiting on a closed-but-not-EOF stream).
 		if ev.Kind == "status" && isTerminalStatus(ev.Text) {

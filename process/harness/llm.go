@@ -14,6 +14,12 @@ import (
 	"github.com/signadot/verse/process"
 )
 
+// THIS FILE IS THE ONE PLACE VERSE STILL SPEAKS JSON, deliberately. The schema below is
+// OpenAI's, not verse's: it is what the remote endpoint accepts and returns, so it is not
+// ours to re-render. The json: tags and encoding/json calls here are correct and must stay —
+// a sweep that "finishes the tony migration" by converting them would break every model
+// call. Everything verse itself defines lives in codec.
+//
 // OpenAI-compatible Chat Completions wire types. Served here through the Portkey
 // gateway, but the shape is the ubiquitous OpenAI standard — point PORTKEY_BASE_URL
 // at any compatible endpoint to swap providers without touching the loop.

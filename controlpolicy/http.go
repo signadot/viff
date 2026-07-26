@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -33,7 +32,7 @@ type httpPolicy struct {
 // the process:instance entity). content is not forwarded — a remote runtime resolves
 // files its own way; federating a remote read_file is a later concern.
 func (p *httpPolicy) Spawn(id, task, driver string, _ process.ContentReader) process.ProcHandle {
-	body, _ := json.Marshal(map[string]string{"id": id, "task": task, "driver": driver})
+	body, _ := codec.Marshal(map[string]string{"id": id, "task": task, "driver": driver}, codec.JSON)
 	if resp, err := p.cl.Post(p.base+"/processes", "application/json", bytes.NewReader(body)); err != nil {
 		return failedHandle{err.Error()}
 	} else {
@@ -152,7 +151,7 @@ func (h *remoteHandle) Steer(instr, by string) {
 }
 
 func (h *remoteHandle) SetVector(v *process.Vector, by string) {
-	b, _ := json.Marshal(map[string]any{"vector": v, "by": by})
+	b, _ := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.JSON)
 	req, _ := http.NewRequest(http.MethodPut, h.url("/vector"), bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if resp, err := h.cl.Do(req); err == nil {
@@ -197,7 +196,7 @@ func decodeResp(resp *http.Response, v any) error {
 func (h *remoteHandle) post(path string, body any) {
 	var r io.Reader
 	if body != nil {
-		b, _ := json.Marshal(body)
+		b, _ := codec.Marshal(body, codec.JSON)
 		r = bytes.NewReader(b)
 	}
 	if resp, err := h.cl.Post(h.url(path), "application/json", r); err == nil {

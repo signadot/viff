@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -172,9 +171,16 @@ func httpDelete(path string, q url.Values) (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 
-// decodeClose decodes a response into v, reading it in the format the response declared.
+// decodeClose decodes a response into v, reading it in the format the response declared,
+// and closes the body.
 func decodeClose(resp *http.Response, v any) {
 	defer resp.Body.Close()
+	decodeBody(resp, v)
+}
+
+// decodeBody decodes a response into v without closing it, for callers already deferring
+// their own Close.
+func decodeBody(resp *http.Response, v any) {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return
@@ -215,7 +221,7 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 		Epoch   int64 `json:"epoch" tony:"field=epoch"`
 		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&c)
+	decodeBody(resp, &c)
 	return c.Epoch, c.CCursor, nil
 }
 
@@ -249,7 +255,7 @@ func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error
 	var box struct {
 		Items []inboxItem `json:"items" tony:"field=items"`
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&box)
+	decodeBody(resp, &box)
 	max := since
 	for _, it := range box.Items {
 		if it.Cursor > max {

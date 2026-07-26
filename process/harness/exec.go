@@ -3,7 +3,6 @@ package harness
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -239,6 +239,6 @@ func safePath(root, p string) (string, error) {
 }
 
 func compactArgs(m map[string]any) string {
-	b, _ := json.Marshal(m)
+	b, _ := codec.MarshalWire(m, codec.Tony)
 	return truncate(string(b), 200)
 }
