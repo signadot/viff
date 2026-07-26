@@ -327,11 +327,26 @@ The shape can land before the grammar. In order, each step green + smoke-tested:
    fan-out needs.
 5. **Grow the leaf.** ◐ Swap `Match`'s map backing for a real tony match; the richer leaf
    (globs, references) flows into `When`/gate formulas, `Subject` selectors, and flow
-   addressing alike — the temporal `Formula` layer above is unchanged. **Landed for `id` and
-   `op`**, which are only ever filters: they take `!glob`/`!or`/`!not`/… in tony and the
-   tag-keyed spelling in JSON, evaluated by `tony.Match`. **Not** for `system`/`kind`, which
-   become a docd watch path (`Formula.Subtrees`) and the store's `List` prefilter, nor inside
-   `fields`, which is equality-only and refuses a tag rather than flattening it.
+   addressing alike — the temporal `Formula` layer above is unchanged. **Landed for every
+   dimension a filter can live on**: `id` and `op` first, then the **payload predicate** —
+   `fields` takes operators (`{stage: !or [open, merged]}`), and `payload` is the same
+   predicate on the payload ROOT, for an entity whose payload is not a record
+   (`payload: !or [10, 100]`). All evaluated by `tony.Match`.
+
+   Two consequences of taking tony's semantics rather than keeping a second comparison
+   alongside them: numbers are **type-exact** (`{n: 2}` does not match `{n: 2.0}`), and a
+   `null` in a predicate is a **presence** test — `{x: null}` means "x is there", `!not {x:
+   null}` means "x is absent", `{x: !irtype null}` means "x is present and null". The old
+   equality matcher read an absent key as nil, so `{x: null}` used to mean the opposite of
+   what it means now.
+
+   Still **not** for `system`/`kind`, and that is structural rather than unfinished: they
+   become a docd watch path (`Formula.Subtrees`) and the store's `List` prefilter, and an
+   operator has no path. Write the whole segment as `*` and put the operator on `id`.
+
+   The one thing a payload predicate cannot borrow is the JSON tag-keyed spelling: `fields`
+   is the author's own document, where a key may itself be named `or`, so an operator over a
+   payload can only be written in tony.
 
 Steps 1–2 are the scaffolding refactor; 3–5 are the model filling in, each expressible in the
 grammar already named.

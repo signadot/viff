@@ -390,7 +390,13 @@ match).
   docd watch path, `witnessPreconditions` into a precondition path, and `Select` into the
   store's `List` prefilter. An operator has no path. Doing these needs either a full scan or
   expansion of the operator into N literal subtrees — a real design question, not a port.
-- inside `fields`. The predicate is still equality-only (`entity.Pattern`), so a tag would be
+- ~~inside `fields`~~ — **since landed.** What follows was true while the predicate was
+  `map[string]any` compared by `entity.Pattern`'s own equality; the predicate is a
+  `tony.Match` against the payload node now, so an operator is the thing being evaluated
+  rather than a shape to refuse. The JSON caveat below still holds and is the one part of
+  this that did not go away.
+
+  The predicate is still equality-only (`entity.Pattern`), so a tag would be
   flattened into a plain value; it is now REFUSED with a message instead. `fields` is also the
   one place the JSON tag-keyed spelling cannot be borrowed, since a payload key may itself be
   named `or` — which is what makes this the part that has to wait for the whole leaf rather
