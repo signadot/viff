@@ -156,9 +156,16 @@ verse gate list
 #   mode: ASK
 #   origin: review
 #   reason: "trigger review gate review on demo:pr:1"
+#   spawns: review-demo:pr:1
+#   subject: demo:pr:1
 #   tool: trigger:review
 #   where: engine
 ```
+
+`subject` is what the gate is *about* and `spawns` is what a "yes" will start — the
+process id is derived from the trigger and the subject, so it is settled before the gate
+is raised even though nothing is running yet. (`where: engine` gates have no `process`
+for that reason; a process gate, §5, has one because its process is already running.)
 
 Approve it, using the `id` from `gate list` (the flag can come after the id — the
 CLI handles that). The id is `trigger:<trigger>:<gate>#n` — a trigger can have

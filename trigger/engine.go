@@ -376,22 +376,42 @@ func (e *Engine) reserveN(n int) int {
 // showing only the first would understate what a single "yes" sets in motion. Beyond a few
 // it summarises rather than filling the terminal with refs.
 func subjectLabel(subjects []entity.Ref) string {
-	switch len(subjects) {
-	case 0:
+	parts := make([]string, len(subjects))
+	for i, s := range subjects {
+		parts[i] = s.String()
+	}
+	return summarize(parts)
+}
+
+// spawnLabel names the processes a firing WILL start if its gates pass. spawnID is a pure
+// function of the trigger name and the subject, both settled before the gate is raised, so
+// this is the very id the spawn will use — not a guess and not a second scheme. apply()
+// calls the same function, and a test pins the two together so they cannot drift apart.
+//
+// Empty when the action has no spawn: a set-only trigger starts no process, and inventing
+// an id for one would be worse than saying nothing. Note the id is what the process WILL
+// be called — the gate may be denied, or a provider selection may fail to resolve a doer,
+// and then nothing by that name is ever created.
+func spawnLabel(t Trigger, subjects []entity.Ref) string {
+	if t.Action.Spawn == nil {
 		return ""
-	case 1:
-		return subjects[0].String()
 	}
+	parts := make([]string, len(subjects))
+	for i, s := range subjects {
+		parts[i] = spawnID(t.Name, s)
+	}
+	return summarize(parts)
+}
+
+// summarize renders a firing's set of refs/ids for a human: all of them while that is
+// still readable, then a count. The cutoff exists so a broadcast over a hundred PRs does
+// not fill the terminal, while a fan-out of two or three still reads exactly.
+func summarize(parts []string) string {
 	const show = 3
-	parts := make([]string, 0, show)
-	for _, s := range subjects[:min(len(subjects), show)] {
-		parts = append(parts, s.String())
+	if len(parts) <= show {
+		return strings.Join(parts, ", ")
 	}
-	label := strings.Join(parts, ", ")
-	if len(subjects) > show {
-		label += fmt.Sprintf(" (+%d more)", len(subjects)-show)
-	}
-	return label
+	return strings.Join(parts[:show], ", ") + fmt.Sprintf(" (+%d more)", len(parts)-show)
 }
 
 func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
@@ -439,11 +459,12 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		d := process.GateQuestion{
 			ID: id, Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, ev.Ref),
-			// What the approver is actually deciding about. Gates are per FIRING, so a
-			// broadcast has many subjects and no single one is THE subject; name the whole
-			// set rather than picking one, since "ship all 12 reviewed PRs" and "ship this
-			// PR" are very different things to be asked.
+			// What the approver is actually deciding about, and what saying yes starts.
+			// Gates are per FIRING, so a broadcast has many subjects and no single one is
+			// THE subject; name the whole set rather than picking one, since "ship all 12
+			// reviewed PRs" and "ship this PR" are very different things to be asked.
 			Subject: subjectLabel(subjects),
+			Spawns:  spawnLabel(t, subjects),
 		}
 		wg.Add(1)
 		go func(d process.GateQuestion, gname string) {

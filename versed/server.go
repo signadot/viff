@@ -638,11 +638,19 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 		out = append(out, rec)
 	}
 	for _, p := range s.Reg.Pending() {
-		add(map[string]any{
+		rec := map[string]any{
 			"id": p.Question.ID, "origin": p.Question.Origin, "gate": p.Question.Gate,
 			"mode": p.Question.Mode.String(), "reason": p.Question.Reason, "tool": p.Tool,
 			"where": "engine",
-		}, p.Question.Subject)
+		}
+		// Deliberately NOT "process". An engine gate is raised before the spawn, so this
+		// names a process that does not exist yet and will not exist at all if the gate is
+		// denied. Reusing the key a process gate uses for a process that IS running would
+		// make one field mean two things, and the reader could not tell which.
+		if p.Question.Spawns != "" {
+			rec["spawns"] = p.Question.Spawns
+		}
+		add(rec, p.Question.Subject)
 	}
 	for _, snap := range s.processSnapshots(s.scopedStore(r)) {
 		subject := ""

@@ -32,6 +32,13 @@ type GateQuestion struct {
 	// that is the thing an answerer needs. Empty when the question is not about an entity
 	// (a bare `process run` has no subject).
 	Subject string
+	// Spawns names the process(es) a "yes" will start, for a gate raised BEFORE the spawn.
+	// The id is derived from the trigger and subject, so it is settled by the time the
+	// question is posed and can be published with it — which is what lets an approver
+	// (or a script) line a gate up with the work it authorises, ahead of that work
+	// existing. Empty when the action starts nothing, and note these are ids-to-be: a
+	// denied gate, or a provider selection that resolves to no doer, creates none of them.
+	Spawns string
 }
 
 // Evaluate returns the most restrictive matching gate's mode (Park > Ask >

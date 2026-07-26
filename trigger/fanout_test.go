@@ -448,3 +448,35 @@ func TestSubjectLabelNamesTheWholeFiring(t *testing.T) {
 		})
 	}
 }
+
+// The whole value of publishing a spawn id on the gate is that it is the SAME id the
+// spawn will use — an approver lining a gate up with the work it authorises. Two call
+// sites compute it (the gate in fire(), the spawn in apply()), so nothing but a test
+// stops them drifting into two schemes that merely look alike.
+func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
+	refs := []entity.Ref{
+		{System: "demo", Kind: "pr", ID: "1"},
+		{System: "demo", Kind: "pr", ID: "path/with/slashes"}, // safeSeg rewrites → hashed
+	}
+	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Driver: "scripted"}}}
+
+	for _, ref := range refs {
+		announced := spawnLabel(trig, []entity.Ref{ref})
+		if want := spawnID(trig.Name, ref); announced != want {
+			t.Errorf("gate announced %q but apply will spawn %q", announced, want)
+		}
+	}
+
+	// A set-only action starts nothing, and must not invent an id for a process that will
+	// never exist.
+	if got := spawnLabel(Trigger{Name: "reviewed"}, refs); got != "" {
+		t.Errorf("a set-only trigger announced a spawn: %q", got)
+	}
+
+	// Fan-out: one gate, one id per member — each the id that member's spawn will use.
+	got := spawnLabel(trig, refs)
+	want := spawnID("review", refs[0]) + ", " + spawnID("review", refs[1])
+	if got != want {
+		t.Errorf("fan-out label = %q, want %q", got, want)
+	}
+}
