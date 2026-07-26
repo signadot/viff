@@ -842,6 +842,7 @@ verse
   global:  --addr <host:port>   --scope <name>
            -o <tony|json|yaml>     output format (default tony)
            --ifmt <tony|json|yaml> input format for stdin / extensionless files
+           --color auto|always|never   colorize (auto = a terminal only)
 ```
 
 Flags may appear before or after positionals (`gate resolve <id> --approve` works).
@@ -885,6 +886,10 @@ verse trigger list -o json     # JSON — for `| jq`
 curl -s localhost:9797/status                              # tony
 curl -s -H 'Accept: application/json' localhost:9797/status # JSON
 ```
+
+Output is colorized on a terminal and plain when piped, so `verse trigger list | o v` and
+`| jq` keep working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1`
+turns it off.
 
 The **file suffix decides** what a file is read as, so `verse trigger add -f charter.json`
 and `-f charter.tony` both work regardless of the default. For input that names no format —

@@ -133,6 +133,9 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		// shape in tony's syntax — is not what -o tony means.
 		node = codec.StripLayout(node)
 	}
+	if colorize(cc.Out) {
+		return codec.EncodeNodeColor(cc.Out, node, out)
+	}
 	if err := codec.EncodeNode(cc.Out, node, out); err != nil {
 		return err
 	}

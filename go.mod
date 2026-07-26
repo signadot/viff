@@ -3,6 +3,7 @@ module github.com/signadot/verse
 go 1.25.1
 
 require (
+	github.com/fatih/color v1.19.0
 	github.com/scott-cotton/cli v0.2.3
 	github.com/signadot/tony-format/go-tony v0.0.89
 )
@@ -10,7 +11,6 @@ require (
 require (
 	github.com/evanphx/json-patch v0.5.2 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/fatih/color v1.19.0 // indirect
 	github.com/go-air/gini v1.0.4 // indirect
 	github.com/google/gops v0.3.28 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect

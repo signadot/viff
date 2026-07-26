@@ -210,6 +210,22 @@ func EncodeNode(w io.Writer, n *ir.Node, f Format) error { return encodeNode(w, 
 // EncodeNodeWire writes a node to w in f, compact and single-line.
 func EncodeNodeWire(w io.Writer, n *ir.Node, f Format) error { return encodeNode(w, n, f, true) }
 
+// EncodeNodeColor writes a node to w in f with ANSI colour, the way `o view` renders.
+//
+// Colour is a property of the DESTINATION, not of the document, so this is a separate
+// entry point rather than a flag on the others: only a caller that knows it is writing to
+// a terminal should reach for it. Piped output must stay clean — `verse … | jq` and
+// `verse … | o v` both break on escape codes.
+func EncodeNodeColor(w io.Writer, n *ir.Node, f Format) error {
+	if n == nil {
+		n = ir.Null()
+	}
+	if f == JSON {
+		n = Detag(n)
+	}
+	return encode.Encode(n, w, encode.EncodeFormat(f), encode.EncodeColors(encode.NewColors()))
+}
+
 func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 	if n == nil {
 		n = ir.Null()

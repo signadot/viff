@@ -6,8 +6,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
+	"github.com/fatih/color"
 	"github.com/scott-cotton/cli"
 
 	"github.com/signadot/verse/codec"
@@ -23,6 +26,7 @@ type globals struct {
 	Addr  string `cli:"name=addr desc='verse server address'"`
 	O     string `cli:"name=o desc='output format: tony | json | yaml'"`
 	IFmt  string `cli:"name=ifmt desc='input format for stdin and extensionless files (a file suffix wins)'"`
+	Color string `cli:"name=color desc='colorize output: auto (a terminal only) | always | never'"`
 	Scope string `cli:"name=scope desc='operate in a copy-on-write scope (real isolation on --store docd; passthrough in-memory)'"`
 }
 
@@ -47,6 +51,40 @@ func outFmt() (codec.Format, error) {
 		return f, nil
 	}
 	return appCfg.Format.ResolveOutput(), nil
+}
+
+// colorize reports whether output should carry ANSI colour.
+//
+// Colour is a property of the DESTINATION. `verse trigger list` into a terminal wants it;
+// `verse trigger list | o v` and `| jq` are broken by it, and so is anything reading the
+// output as a document. So the default is auto — a character device on stdout and nothing
+// saying otherwise.
+//
+// NO_COLOR is honored because it is the convention users already have
+// (https://no-color.org); --color overrides both directions for the cases auto cannot see,
+// like a pager that does want escapes.
+//
+// The palette go-tony uses comes from fatih/color, which keeps its OWN global
+// terminal-detection switch. Auto therefore needs nothing from us — that library already
+// suppresses escapes on a pipe. Only `--color always` has to reach in and turn it off,
+// because overriding auto-detection is the entire point of asking for it.
+func colorize(w io.Writer) bool {
+	switch strings.ToLower(g.Color) {
+	case "always", "yes", "force":
+		color.NoColor = false
+		return true
+	case "never", "no", "none":
+		return false
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
 // inFmt is the format for input that does not name its own — stdin, an extensionless file,
