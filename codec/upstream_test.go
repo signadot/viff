@@ -50,22 +50,21 @@ func TestUpstreamJSONParsesAsTony(t *testing.T) {
 	}
 }
 
-// Empty input parses to (nil, nil) — a nil node AND a nil error, which reads as success.
+// Blank input — byte-empty or whitespace-only — parses to (nil, nil): a nil node AND a nil
+// error, which reads as success rather than as "no document".
 //
-// But WHITESPACE-only input does not: a document of spaces is a parse error ("extraneous
-// indent"), because leading whitespace is significant in a YAML-family format and there
-// is no document for it to be significant to. Those two facts together are why ParseNode
-// trims before parsing: "empty" from a network body or a here-doc is rarely byte-empty,
-// and an empty request body should not be an indentation complaint.
-func TestUpstreamEmptyInputIsNilNilButBlankErrors(t *testing.T) {
-	n, err := parse.Parse(nil, parse.ParseTony())
-	if err != nil || n != nil {
-		t.Errorf("parse(empty) = (%v, %v), want (nil, nil) — the contract changed", n, err)
-	}
-
-	for _, in := range []string{"   ", "\n\t\n", "  \n  "} {
-		if _, err := parse.Parse([]byte(in), parse.ParseTony()); err == nil {
-			t.Logf("parse(%q) no longer errors — ParseNode's trim is now belt-and-braces", in)
+// Before v0.0.88 a document of spaces was instead a parse error ("extraneous indent"),
+// because indentation is significant in a YAML-family format and there was no document for
+// it to be significant to. That is fixed; ParseNode's trim is now belt-and-braces rather
+// than load-bearing, and is kept because the (nil, nil) half still needs absorbing.
+func TestUpstreamBlankInputIsNilNil(t *testing.T) {
+	for _, in := range []string{"", "   ", "\n\t\n", "  \n  "} {
+		n, err := parse.Parse([]byte(in), parse.ParseTony())
+		if err != nil {
+			t.Errorf("parse(%q) errored: %v — blank input is meant to be (nil, nil)", in, err)
+		}
+		if n != nil {
+			t.Errorf("parse(%q) returned a node — the (nil, nil) contract changed", in)
 		}
 	}
 
@@ -140,12 +139,12 @@ type dispHost struct {
 	ValText dispText  `tony:"field=valText"`
 }
 
-// On the REFLECTION path, gomap checks for a ToTonyIR method only inside its pointer
-// branch (gomap/to.go). So a hand-written codec on a type used as a VALUE field is
-// skipped and the field is walked structurally instead — silently, with plausible-looking
-// output. encoding.TextMarshaler is checked for values too, which is why process.Mode can
-// rely on it.
-func TestUpstreamReflectionDispatchesOnPointersOnly(t *testing.T) {
+// A hand-written codec is reached however the value is held — value or pointer, struct or
+// named map. Before v0.0.88 gomap checked for the method only inside its pointer branch, so
+// a codec on a value field was skipped silently and the field walked structurally instead;
+// that is what forced verse's charter types to be hand-written all the way up. Now the
+// dispatch is uniform, which is what lets a generated type hold a hand-written one.
+func TestUpstreamReflectionDispatchIsUniform(t *testing.T) {
 	dispCalls, dispFormats = nil, nil
 	h := &dispHost{PtrLeaf: &dispLeaf{}, ValMap: dispMap{"a": 1}}
 	out, err := gomap.ToTony(h, gomap.EncodeFormat(format.TonyFormat))
@@ -154,16 +153,10 @@ func TestUpstreamReflectionDispatchesOnPointersOnly(t *testing.T) {
 	}
 	got := string(out)
 
-	if strings.Contains(got, "valLeaf: LEAF") {
-		t.Error("a VALUE struct field dispatched to ToTonyIR — reflection dispatch widened; " +
-			"verse's hand-written/codegen split can be simplified")
-	}
-	if !strings.Contains(got, "ptrLeaf: LEAF") {
-		t.Error("a POINTER struct field did not dispatch to ToTonyIR")
-	}
-	if strings.Contains(got, "valMap: MAP") {
-		t.Error("a VALUE named-map field dispatched to ToTonyIR — trigger.Match could then " +
-			"be reached from generated code")
+	for _, want := range []string{"valLeaf: LEAF", "ptrLeaf: LEAF", "valMap: MAP"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no dispatch for %q — a hand-written codec is being skipped: %s", want, got)
+		}
 	}
 	if !strings.Contains(got, "valText: TEXT") {
 		t.Error("a VALUE field's MarshalText was not honored — process.Mode depends on it")
@@ -218,5 +211,48 @@ func TestUpstreamCodegenDropsNestedOpts(t *testing.T) {
 	if !strings.Contains(string(src), "s.ToTonyIR(opts...)") {
 		t.Errorf("upstream generated code no longer self-calls with opts...; "+
 			"the option-passing model has changed (%s)", gen)
+	}
+}
+
+// `omitzero` is very nearly a no-op upstream: the generator consults it only for
+// reflect.Bool, and the reflection path reads only `field=`. The guards on slices, maps and
+// pointers are unconditional — present whether or not the field carries the tag — which is
+// what makes it look like the tag works.
+//
+// codec/omitzero.go exists solely because of this. When this test starts failing, upstream
+// honors the tag and pruneZero can be deleted for any type that has a generated codec.
+// Filed as tony-format#f69agjyeh12ksa25cnn0 item 10.
+func TestUpstreamOmitzeroStillIgnored(t *testing.T) {
+	type probe struct {
+		ID    string `tony:"field=id"`
+		Task  string `tony:"field=task,omitzero"`
+		Count int    `tony:"field=count,omitzero"`
+	}
+	out, err := gomap.ToTony(&probe{ID: "x"}, gomap.EncodeFormat(format.TonyFormat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.Contains(got, `task: ""`) || !strings.Contains(got, "count: 0") {
+		t.Errorf("gomap now honors omitzero on the reflection path — codec.pruneZero may be "+
+			"removable for generated types:\n%s", got)
+	}
+}
+
+// The other half of the same defect, and the sharper one: `omit` is honored by codegen but
+// ignored by reflection, so whether a field marked for exclusion reaches the wire depends on
+// whether its type happened to be generated. No verse type relies on `omit` — this pin is
+// here so that stays a deliberate choice rather than a lucky one.
+func TestUpstreamOmitStillIgnoredByReflection(t *testing.T) {
+	type probe struct {
+		ID     string `tony:"field=id"`
+		Secret string `tony:"field=secret,omit"`
+	}
+	out, err := gomap.ToTony(&probe{ID: "x", Secret: "shh"}, gomap.EncodeFormat(format.TonyFormat))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "secret") {
+		t.Logf("reflection now honors `omit` — verse types may rely on it:\n%s", out)
 	}
 }

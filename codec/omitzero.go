@@ -122,11 +122,23 @@ func hasOwnCodec(t reflect.Type) bool {
 	return ok
 }
 
-// isEmpty reports whether a value should be omitted. It follows tony-codegen's reading of
-// omitzero rather than Go's reflect.Value.IsZero: an empty-but-non-nil slice or map is
-// omitted too, because generated code guards those with `if len(...) > 0`. Matching the
-// generator matters — these tags are its tags, and the two must not disagree about what a
-// document looks like.
+// isEmpty reports whether a value should be omitted: an empty string, a zero number, a
+// false bool, an empty slice or map, a nil pointer. That is what the tag reads like it
+// should mean.
+//
+// It is NOT what tony-codegen does. The generator consults omitzero in exactly one branch
+// of its kind switch — reflect.Bool — and emits every other scalar unconditionally; the
+// guards it puts on slices, maps and pointers are unconditional too, present whether or not
+// the field carries the tag. So `omitzero` is very nearly a no-op upstream, on both paths.
+// (The unconditional collection guards are what misled an earlier reading of this: they make
+// a tagged slice field look like the tag is working.) Filed as
+// tony-format#f69agjyeh12ksa25cnn0 item 10.
+//
+// This is therefore a superset of upstream's behaviour, not a match for it. The one place
+// they could disagree is a field with NO omitzero tag whose value is an empty collection:
+// upstream drops it regardless, this keeps it. That is the better answer — an explicitly
+// empty list is a thing a caller may mean — and it only applies to types without their own
+// codec, since pruneZero skips any type that has one.
 func isEmpty(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Slice, reflect.Map, reflect.Array, reflect.String:
