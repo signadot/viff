@@ -55,10 +55,21 @@ import (
 //     written. Integer WIDTHS still agree — int/int32/int64/uint are one tony integer. What
 //     is gone is int-vs-float, which is now a difference in the value rather than in who
 //     decoded it (entity.TestMatchPayloadIntAndFloatAreDistinct).
-//  2. ABSENT IS NOT NULL. `fields: {stage: null}` requires the key to be present and null,
-//     where it used to be satisfied by an entity that merely lacked the field. tony
-//     distinguishes the two — docd tombstones with null — and inheriting that beats keeping a
-//     second comparison that flattens it (entity.TestMatchPayloadScalarsAndAbsence).
+//
+//  2. ABSENT IS NOT NULL, and a null in a predicate is a PRESENCE test. `{stage: null}` now
+//     means "stage is there, whatever its value" — a null pattern matches any value in tony,
+//     so the only thing it constrains is that the field exists. It used to mean the
+//     opposite: an absent key read as nil, so `{stage: null}` was how you spelled "has NO
+//     stage". Three questions, three spellings, pinned in
+//     entity.TestNullPresenceAbsenceIdioms:
+//
+//     fields: {stage: null}            stage is PRESENT, any value
+//     fields: !not {stage: null}       stage is ABSENT
+//     fields: {stage: !irtype null}    stage is present AND null
+//
+//     tony distinguishes absent from null — docd tombstones with null, so the difference
+//     records whether a field was cleared or never written — and inheriting that beats
+//     keeping a second comparison that flattens all three into one.
 //
 // THE PREDICATE HAS THREE SPELLINGS, one meaning. `payload` is the general form — a tony
 // match against the payload whatever shape it is — and `fields`/`entity` are its

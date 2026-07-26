@@ -1,6 +1,10 @@
 package entity
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/signadot/tony-format/go-tony/parse"
+)
 
 // A predicate and the payload it is matched against may be written by different hands in
 // different Go types, and an INTEGER means the same number however it was spelled — the Go
@@ -127,25 +131,77 @@ func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 	if p.matchPayload(Obj{"other": "open"}.Payload()) {
 		t.Error("absent key matched")
 	}
-	// ABSENT IS NOT NULL. A `null` predicate requires the key to be PRESENT and null; an
-	// entity that simply lacks the field does not satisfy it.
+	// A `null` value in a predicate is a PRESENCE test: the key must be there, and its value
+	// may be anything. It is not "the value is null" — a null pattern matches any value in
+	// tony, so the only thing it constrains is that the field exists.
 	//
-	// This reverses the long-standing behaviour, and the reversal is the point: tony
-	// distinguishes absent from null — docd tombstones with null, so the difference carries
-	// real information about whether a field was cleared or never written — and a payload
-	// predicate is now a tony match, so it inherits that distinction instead of flattening
-	// it. The old reading made `{x: null}` a way to spell "has no x", which is a different
-	// question wearing the same syntax.
-	if (Pattern{Predicate: Obj{"x": nil}.Payload()}).matchPayload(Obj{"y": 1}.Payload()) {
-		t.Error("a null predicate matched an entity that merely LACKS the field")
+	// This reverses the old reading, where an absent key read as nil and `{x: null}` was
+	// therefore a way to spell "has NO x" — the exact opposite of what it means now. tony
+	// distinguishes absent from null (docd tombstones with null, so the difference records
+	// whether a field was cleared or never written), and a payload predicate is a tony match
+	// now, so it inherits that rather than flattening it.
+	//
+	// The three questions and their spellings are TestNullPresenceAbsenceIdioms below.
+	present := Pattern{Predicate: Obj{"x": nil}.Payload()}
+	if present.matchPayload(Obj{"y": 1}.Payload()) {
+		t.Error("a null predicate matched an entity that LACKS the field")
 	}
-	if !(Pattern{Predicate: Obj{"x": nil}.Payload()}).matchPayload(Obj{"x": nil}.Payload()) {
-		t.Error("a null predicate did not match a field that is present and null")
+	if !present.matchPayload(Obj{"x": nil}.Payload()) {
+		t.Error("a null predicate did not match a field present and null")
+	}
+	if !present.matchPayload(Obj{"x": "anything"}.Payload()) {
+		t.Error("a null predicate is a presence test — it must match any value")
 	}
 	if p.matchPayload(nil) {
 		t.Error("nil payload matched a non-empty predicate")
 	}
 	if !(Pattern{}).matchPayload(nil) {
 		t.Error("nil payload did not match an empty predicate")
+	}
+}
+
+// Presence, absence, and null-valued are three different questions, and each has its own
+// spelling. Getting them confused is easy — the first two look like the same syntax negated,
+// and the third looks like the first — so they are pinned together, in one place, with the
+// distinction stated rather than implied.
+//
+//	{x: null}            x is PRESENT, whatever its value
+//	!not {x: null}       x is ABSENT
+//	{x: !irtype null}    x is present AND its value is null
+func TestNullPresenceAbsenceIdioms(t *testing.T) {
+	pred := func(src string) Pattern {
+		n, err := parse.Parse([]byte(src), parse.ParseTony())
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		return Pattern{Predicate: n}
+	}
+	var (
+		hasX     = Obj{"x": "open"}.Payload() // present, non-null
+		nullX    = Obj{"x": nil}.Payload()    // present, null
+		withoutX = Obj{"y": 1}.Payload()      // absent
+	)
+	cases := []struct {
+		name                          string
+		src                           string
+		wantHas, wantNull, wantAbsent bool
+	}{
+		{"presence", `{x: null}`, true, true, false},
+		{"absence", `!not {x: null}`, false, false, true},
+		{"null-valued", `{x: !irtype null}`, false, true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := pred(c.src)
+			if got := p.matchPayload(hasX); got != c.wantHas {
+				t.Errorf("%s vs present-non-null = %v, want %v", c.src, got, c.wantHas)
+			}
+			if got := p.matchPayload(nullX); got != c.wantNull {
+				t.Errorf("%s vs present-null = %v, want %v", c.src, got, c.wantNull)
+			}
+			if got := p.matchPayload(withoutX); got != c.wantAbsent {
+				t.Errorf("%s vs absent = %v, want %v", c.src, got, c.wantAbsent)
+			}
+		})
 	}
 }

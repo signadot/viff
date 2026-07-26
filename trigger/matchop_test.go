@@ -369,3 +369,41 @@ func TestSetOnAScalarPayloadReplacesIt(t *testing.T) {
 		}
 	}
 }
+
+// The three null idioms have to survive PARSE AND VALIDATE, not just the matcher: `!not
+// {stage: null}` is a tagged object, and `fields` requires an object, so the object check
+// has to see through the tag. entity.TestNullPresenceAbsenceIdioms pins the semantics; this
+// pins that a charter can actually say them.
+func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
+	ev := func(p entity.Obj) entity.Event {
+		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+			Op: entity.Set, To: p.Payload()}
+	}
+	var (
+		absent  = entity.Obj{"other": 1}
+		present = entity.Obj{"stage": "open"}
+		isNull  = entity.Obj{"stage": nil}
+	)
+	cases := []struct {
+		src                                 string
+		wantAbsent, wantPresent, wantIsNull bool
+	}{
+		{`{system: demo, fields: {stage: null}}`, false, true, true},
+		{`{system: demo, fields: !not {stage: null}}`, true, false, false},
+		{`{system: demo, fields: {stage: !irtype null}}`, false, false, true},
+		// and the general spelling carries them identically
+		{`{system: demo, payload: !not {stage: null}}`, true, false, false},
+	}
+	for _, c := range cases {
+		m := mustMatch(t, c.src, codec.Tony)
+		if got := m.MatchEvent(ev(absent)); got != c.wantAbsent {
+			t.Errorf("%s vs absent = %v, want %v", c.src, got, c.wantAbsent)
+		}
+		if got := m.MatchEvent(ev(present)); got != c.wantPresent {
+			t.Errorf("%s vs present = %v, want %v", c.src, got, c.wantPresent)
+		}
+		if got := m.MatchEvent(ev(isNull)); got != c.wantIsNull {
+			t.Errorf("%s vs null-valued = %v, want %v", c.src, got, c.wantIsNull)
+		}
+	}
+}
