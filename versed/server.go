@@ -624,21 +624,37 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 // per-process gates (an agent blocked on write/shell/delegate), which live in each process's
 // own registry and otherwise show only under `process get`. Both are resolvable by id.
 func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
+	// A gate asks a person to decide something, so the listing has to say what is at
+	// stake. `origin` names who asked and `gate` names which rule; neither answers "about
+	// what?", which was only ever recoverable by reading it back out of the `reason` prose.
+	// An engine gate carries its subject on the question; a process gate's is the flow the
+	// process belongs to, which the engine indexes by process id. Both are omitted when
+	// genuinely absent rather than shown empty — a bare `process run` is about nothing.
 	out := make([]map[string]any, 0)
+	add := func(rec map[string]any, subject string) {
+		if subject != "" {
+			rec["subject"] = subject
+		}
+		out = append(out, rec)
+	}
 	for _, p := range s.Reg.Pending() {
-		out = append(out, map[string]any{
+		add(map[string]any{
 			"id": p.Question.ID, "origin": p.Question.Origin, "gate": p.Question.Gate,
 			"mode": p.Question.Mode.String(), "reason": p.Question.Reason, "tool": p.Tool,
 			"where": "engine",
-		})
+		}, p.Question.Subject)
 	}
 	for _, snap := range s.processSnapshots(s.scopedStore(r)) {
+		subject := ""
+		if s.Eng != nil {
+			subject = s.Eng.SubjectOf(snap.ID)
+		}
 		for _, pg := range snap.Pending {
-			out = append(out, map[string]any{
+			add(map[string]any{
 				"id": pg.ID, "origin": pg.Origin, "gate": pg.Gate,
 				"mode": pg.Mode, "reason": pg.Reason, "tool": pg.Tool,
 				"process": snap.ID, "where": "process",
-			})
+			}, subject)
 		}
 	}
 	writeOut(w, r, http.StatusOK, out)

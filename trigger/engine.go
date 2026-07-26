@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -370,6 +371,29 @@ func (e *Engine) reserveN(n int) int {
 // a long approval then cannot slide it (and, under fan-out, cannot change the member set
 // between asking and acting), and a firing that resolves to nothing never troubles an
 // approver. Gates are per FIRING, not per subject — a broadcast raises one approval.
+// subjectLabel names what a firing is about, for a human being asked to approve it. A
+// broadcast resolves to many subjects and the gate is raised once for the whole firing, so
+// showing only the first would understate what a single "yes" sets in motion. Beyond a few
+// it summarises rather than filling the terminal with refs.
+func subjectLabel(subjects []entity.Ref) string {
+	switch len(subjects) {
+	case 0:
+		return ""
+	case 1:
+		return subjects[0].String()
+	}
+	const show = 3
+	parts := make([]string, 0, show)
+	for _, s := range subjects[:min(len(subjects), show)] {
+		parts = append(parts, s.String())
+	}
+	label := strings.Join(parts, ", ")
+	if len(subjects) > show {
+		label += fmt.Sprintf(" (+%d more)", len(subjects)-show)
+	}
+	return label
+}
+
 func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 	subjects := t.resolveSubject(ev, e.store)
 	if len(subjects) == 0 {
@@ -415,6 +439,11 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		d := process.GateQuestion{
 			ID: id, Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, ev.Ref),
+			// What the approver is actually deciding about. Gates are per FIRING, so a
+			// broadcast has many subjects and no single one is THE subject; name the whole
+			// set rather than picking one, since "ship all 12 reviewed PRs" and "ship this
+			// PR" are very different things to be asked.
+			Subject: subjectLabel(subjects),
 		}
 		wg.Add(1)
 		go func(d process.GateQuestion, gname string) {
@@ -865,6 +894,16 @@ func (e *Engine) reapOnDone(fp flowProc) {
 // registry, not a maintained index. Terminal processes are reaped, so a subject drops off
 // once its work finishes; the handles behind it are this engine's live processes (control
 // targets), not a durable membership view.
+// SubjectOf returns the subject a live process is about, or "" if the engine does not know
+// it — a process spawned directly by `process run` genuinely has none, and one that has
+// already been reaped is no longer live. A flow is a query over these subjects, so this is
+// that query at its narrowest setting: one process.
+func (e *Engine) SubjectOf(id string) string {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	return e.live[id].subject
+}
+
 func (e *Engine) Flows() []string {
 	e.liveMu.Lock()
 	seen := make(map[string]bool, len(e.live))

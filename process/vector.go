@@ -27,6 +27,11 @@ type GateQuestion struct {
 	Mode   Mode
 	Gate   string // name of the deciding gate, or "" for the default
 	Reason string
+	// Subject is the entity the question is ABOUT — the PR, the change, the release.
+	// Origin says who asked and Gate says which rule; neither says what is at stake, and
+	// that is the thing an answerer needs. Empty when the question is not about an entity
+	// (a bare `process run` has no subject).
+	Subject string
 }
 
 // Evaluate returns the most restrictive matching gate's mode (Park > Ask >

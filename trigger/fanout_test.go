@@ -421,3 +421,30 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 		t.Fatalf("acted on a flow the subject doesn't name: %s = %#v", other, e.Payload)
 	}
 }
+
+// A gate is raised once per FIRING, so under fan-out one "yes" moves every selected
+// subject. The label has to say that: showing only the first subject would let someone
+// approve "ship demo:pr:1" and actually ship twelve PRs.
+func TestSubjectLabelNamesTheWholeFiring(t *testing.T) {
+	ref := func(id string) entity.Ref { return entity.Ref{System: "demo", Kind: "pr", ID: id} }
+
+	cases := []struct {
+		name string
+		in   []entity.Ref
+		want string
+	}{
+		{"none", nil, ""},
+		{"one", []entity.Ref{ref("1")}, "demo:pr:1"},
+		{"a few, all named", []entity.Ref{ref("1"), ref("2")}, "demo:pr:1, demo:pr:2"},
+		{"at the cutoff", []entity.Ref{ref("1"), ref("2"), ref("3")}, "demo:pr:1, demo:pr:2, demo:pr:3"},
+		{"beyond it, counted", []entity.Ref{ref("1"), ref("2"), ref("3"), ref("4"), ref("5")},
+			"demo:pr:1, demo:pr:2, demo:pr:3 (+2 more)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := subjectLabel(c.in); got != c.want {
+				t.Errorf("subjectLabel = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
