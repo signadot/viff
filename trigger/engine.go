@@ -98,6 +98,12 @@ type Engine struct {
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
 	subtree bool
 	bgctx   context.Context
+
+	// shapes fingerprints each installed sequence by its carrier's chain, so a running
+	// sequence can tell that the charter moved under it. Recorded at install (see
+	// recordShapes) because hashing an action mutates its nodes.
+	shapeMu sync.Mutex
+	shapes  map[string]string
 }
 
 // New builds an engine over store, using resolver for trigger gates.
@@ -108,6 +114,7 @@ func New(store entity.Store, resolver process.Resolver) *Engine {
 		stopped: make(chan struct{}),
 		live:    map[string]flowProc{},
 		goals:   map[string]*Goal{},
+		shapes:  map[string]string{},
 	}
 }
 
@@ -1029,6 +1036,16 @@ func (e *Engine) retireHandle(id string, h process.ProcHandle) (flowProc, bool) 
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
 // completed process:instance payload, so the hook's templates can read $status/$flow/$result.
 func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) {
+	subject, serr := entity.ParseRef(fp.subject)
+	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
+	// already says what follows, which is why an element may not carry its own onDone. Only
+	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so
+	// the element's own onFailed/onCancelled can run and the sequence stops there (fail-stop).
+	if status == process.Done && serr == nil {
+		if e.resumeSeq(fp.chain, subject, ev) {
+			return
+		}
+	}
 	if fp.hooks == nil {
 		return
 	}
@@ -1036,10 +1053,10 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	if hook == nil {
 		return
 	}
-	subj, err := entity.ParseRef(fp.subject)
-	if err != nil {
+	if serr != nil {
 		return
 	}
+	subj := subject
 	// Descend the chain by the hook's FIELD name, not by the status: `review.onDone` is the
 	// kpath of the action that is about to run, so the id it spawns under is its address in
 	// the charter. (An empty field cannot happen — hookFor already returned non-nil only for
@@ -1260,4 +1277,30 @@ func proceedWord(ok bool) string {
 		return "proceed"
 	}
 	return "deny"
+}
+
+// patchEntity applies a tony patch to an entity's payload, atomically.
+//
+// Via Modify (compare-and-swap) so two triggers advancing the same entity cannot lose each
+// other's writes — and now at DEPTH, since a patch merges subtrees where the old field
+// overlay replaced whichever top-level key it touched. The error is captured out of the
+// closure because Modify's fn cannot fail; fn may run more than once under retry, so the last
+// run's verdict is the one that stands.
+func (e *Engine) patchEntity(ref entity.Ref, patch entity.Payload) error {
+	var perr error
+	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
+		// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a nil
+		// doc, and null is what "nothing there yet" means in tony anyway. This is what keeps
+		// a named subject's patch CREATING the entity, as the old `set` did.
+		if cur == nil {
+			cur = ir.Null()
+		}
+		out, err := tony.Patch(cur, patch)
+		if err != nil {
+			perr = err
+			return cur // leave it exactly as it was
+		}
+		return out
+	})
+	return perr
 }

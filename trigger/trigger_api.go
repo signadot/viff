@@ -31,6 +31,9 @@ func (e *Engine) AddTrigger(t Trigger) error {
 	if err := t.Action.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	if err := t.Action.noNestedSeq(false); err != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
 	for _, g := range t.Gates {
 		if _, err := g.mode(); err != nil {
 			return err
@@ -45,6 +48,7 @@ func (e *Engine) AddTrigger(t Trigger) error {
 	}
 	e.triggers = append(e.triggers, t)
 	e.trigMu.Unlock()
+	e.recordShapes(t)
 	// In subtree (scoped) mode the engine runs no root loop: give this trigger its own
 	// subtree watch. In baseline mode the dispatch loop already sees every change.
 	if e.subtree {
@@ -68,6 +72,9 @@ func (e *Engine) RemoveTrigger(name string) bool {
 		nt = append(nt, t)
 	}
 	e.triggers = nt
+	if found {
+		e.forgetShapes(name)
+	}
 	return found
 }
 

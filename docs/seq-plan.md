@@ -1,6 +1,6 @@
 # Plan: `seq` — sequence along the chain, parallel across triggers
 
-*Status: design, not implemented. It closes the note in
+*Status: **built**, with one decision reversed by building it — see "what changed" below. It closes the note in
 `docs/workflow-representation-improvement.md`, and it depends on the chain work already landed
 in `docs/flow-shape-kpath-plan.md`.*
 
@@ -223,10 +223,23 @@ its own between elements, and idempotence has nowhere to stand.
 The live half is a prefix query over the chains in the registry — `MatchesPrefix` from go-tony
 v0.0.92, which is what that bump bought.
 
-**What this does and does not prevent.** It prevents a *second, overlapping* run. It does not
-prevent a *later* one: once the sequence completes (`done` latches), a re-fire starts it again,
-exactly as a re-fired trigger has always re-acted. Preventing that is the `when`'s job — match a
-state field the action advances (the latch the tutorial teaches), not the engine's.
+**What this does and does not prevent — REVISED IN BUILDING.** The plan said this prevents a
+*second, overlapping* run only, and that a completed sequence may simply run again, with
+repeat-suppression left to the `when` (match a state field the action advances — the latch the
+tutorial teaches). That cannot stand, and the reason is specific to sequences:
+
+**a sequence's own progress writes are real changes to its subject, so they re-fire the very
+trigger that made them** — and dispatch is asynchronous, so by the time an early bookkeeping
+event is processed the sequence may already have finished. At that moment "a completed sequence
+may run again" means "runs twice, always". The first end-to-end test spawned
+`[seq.0, seq.1, seq.0, seq.1]` for a single firing.
+
+Suppressing the self-wake is not open to us: the bookkeeping write is exactly what the join
+waits on, so it MUST dispatch. So the predicate covers the third window too — any progress
+recorded for the current shape settles the sequence — and re-running becomes **explicit**:
+clear the facts (`patch: {verse: {review: !delete null}}`, newly sayable) or change the
+sequence, which changes its hash. The cost is real and worth stating: a trigger meant to run
+its sequence again per event (`when` on a CI status, say) now needs that clearing step.
 
 Rule 7 is what keeps this a predicate rather than a search: with at most one `seq` per chain,
 the node is a unique ancestor of every live chain, so "which sequence is this process in" has
