@@ -61,7 +61,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	ref := Ref("p2")
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "completed" {
+		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "done" {
 			if e.Payload["say"] != "working on it" {
 				t.Fatalf("narration not projected: %+v", e.Payload)
 			}
@@ -139,7 +139,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 			if ev.Op == entity.Set && ev.To["status"] == "running" {
 				sawRunning = true
 			}
-			if ev.To != nil && ev.To["status"] == "completed" {
+			if ev.To != nil && ev.To["status"] == "done" {
 				sawCompleted = true
 			}
 		case <-deadline:
@@ -152,7 +152,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 
 	// the terminal entity remains, queryable, marked completed
 	got, ok, _ := store.Get(ref)
-	if !ok || got.Payload["status"] != "completed" {
+	if !ok || got.Payload["status"] != "done" {
 		t.Fatalf("terminal entity wrong: %+v ok=%v", got, ok)
 	}
 }

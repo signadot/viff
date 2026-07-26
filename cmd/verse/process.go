@@ -202,7 +202,7 @@ func procDoVerb(verb string) *cli.Command {
 			id, rest := args[0], strings.Join(args[1:], " ")
 			switch verb {
 			case "complete":
-				return execReport(cc, cfg.As, id, []map[string]any{{"kind": "status", "text": "completed"}}, rest)
+				return execReport(cc, cfg.As, id, []map[string]any{{"kind": "status", "text": "done"}}, rest)
 			case "fail":
 				return execReport(cc, cfg.As, id, []map[string]any{{"kind": "status", "text": "failed"}}, rest)
 			default: // note
@@ -499,7 +499,7 @@ func streamEvents(cc *cli.Context, id string) error {
 // runtime (completed | cancelled | "driver error") and the broker (failed) vocabularies.
 func isTerminalStatus(text string) bool {
 	switch text {
-	case "completed", "cancelled", "failed", "orphaned":
+	case "done", "cancelled", "failed", "orphaned":
 		return true
 	}
 	return strings.Contains(text, "error")

@@ -36,6 +36,13 @@ type flowProc struct {
 	id      string
 	subject string // the resolved subject this process is about — a flow is a query over these
 	h       process.ProcHandle
+	// hooks is the spawning action, carried so the engine can fire its completion hook (onX)
+	// when THIS process reaches a terminal status — scoped to this process, not every process
+	// about the subject. nil for Adopt (a resumed process has no charter action to hook).
+	hooks *Action
+	// chain is this spawn's position in a hook chain (the trigger name at the top, then
+	// name:done, name:done:done, …), so a hook's own spawn gets a distinct deterministic id.
+	chain string
 }
 
 // Engine runs the ECA loop over an entity-verse.
@@ -150,6 +157,17 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	for _, t := range trigs {
 		if err := e.watchTriggerSubtree(t); err != nil {
 			e.tracef("subtree watch for %q: %v", t.Name, err)
+		}
+	}
+	// Watch the process:instance mirror subtree directly, independent of any charter trigger:
+	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
+	// where no root dispatch loop runs. Store-driven means race-free for a fast process (unlike
+	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
+	if sw, ok := e.store.(entity.SubtreeWatcher); ok {
+		if ch, unsub, err := sw.WatchSubtree(mirror.System, "instance"); err == nil {
+			go e.reapLoop(ctx, ch, unsub)
+		} else {
+			e.tracef("mirror subtree watch: %v", err)
 		}
 	}
 }
@@ -900,6 +918,13 @@ func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
 // The Spawner owns build/mirror/run; the process's state appears in the verse and
 // its acts write entities, closing the loop. Requires a Spawner.
 func (e *Engine) Spawn(id string, spec launch.Spec) process.ProcHandle {
+	return e.spawnHooked(id, spec, nil, "")
+}
+
+// spawnHooked is Spawn with completion hooks: hooks is the spawning action (its onX fire when
+// this process ends), chain is this spawn's position in a hook chain (for deterministic nested
+// ids). Public Spawn passes nil/"" — an ordinary spawn with no chaining.
+func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) process.ProcHandle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
 		return nil
@@ -919,7 +944,7 @@ func (e *Engine) Spawn(id string, spec launch.Spec) process.ProcHandle {
 	e.tracef("spawn process %s (driver=%s): %s", id, spec.Driver, spec.Task)
 	h := e.spawn(id, spec)
 	if h != nil && spec.Subject != "" {
-		e.track(flowProc{id: id, subject: spec.Subject, h: h})
+		e.track(flowProc{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain})
 	}
 	return h
 }
@@ -955,16 +980,75 @@ func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
 func (e *Engine) reapOnDone(fp flowProc) {
 	ch, unsub := fp.h.Subscribe()
 	defer unsub()
+	var status string
 	for ev := range ch {
 		if ev.Kind == process.EvStatus && process.TerminalStatus(ev.Text) {
+			status = ev.Text
 			break
 		}
 	}
+	// Retire whether or not we saw a terminal status (a closed bus means the process is gone).
+	// Apply the completion hook only when we both observed a terminal status AND won the retire
+	// (retireHandle is atomic, so the store-driven reapLoop/reap and this can't double-fire).
+	got, ok := e.retireHandle(fp.id, fp.h)
+	if ok && status != "" {
+		e.applyHook(got, process.Status(status), e.procEvent(fp.id))
+	}
+}
+
+// retire atomically removes a live process by id, returning its flowProc. Whoever retires it
+// first (the store-driven reapLoop/reap, or the bus-driven reapOnDone) is the one that applies
+// its completion hook — the once-guard for exactly-once hook application.
+func (e *Engine) retire(id string) (flowProc, bool) {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
-	if cur, ok := e.live[fp.id]; ok && cur.h == fp.h {
-		delete(e.live, fp.id) // same id, same handle — not a successor that reused the id
+	fp, ok := e.live[id]
+	if ok {
+		delete(e.live, id)
 	}
+	return fp, ok
+}
+
+// retireHandle is retire scoped to a specific handle: it removes the entry only if the tracked
+// handle still matches (not a successor that reused the id). The reapOnDone path uses it.
+func (e *Engine) retireHandle(id string, h process.ProcHandle) (flowProc, bool) {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	if fp, ok := e.live[id]; ok && fp.h == h {
+		delete(e.live, id)
+		return fp, true
+	}
+	return flowProc{}, false
+}
+
+// applyHook fires the completion hook for a terminated process's status (if any), scoped to
+// exactly that process: the hook (a full Action) runs about the process's own subject. The chain
+// name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
+// completed process:instance payload, so the hook's templates can read $status/$flow/$result.
+func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) {
+	if fp.hooks == nil {
+		return
+	}
+	hook := fp.hooks.hookFor(status)
+	if hook == nil {
+		return
+	}
+	subj, err := entity.ParseRef(fp.subject)
+	if err != nil {
+		return
+	}
+	hook.apply(fp.chain+":"+string(status), ev, []entity.Ref{subj}, e)
+}
+
+// procEvent synthesizes the store event for a completed process from its mirror entity — the
+// bus-driven reapOnDone path has no entity.Event, so it reads the final process:instance payload
+// to give the hook the same bindings the store-driven path has.
+func (e *Engine) procEvent(id string) entity.Event {
+	ev := entity.Event{Ref: mirror.Ref(id)}
+	if ent, ok, _ := e.store.Get(mirror.Ref(id)); ok {
+		ev.To = ent.Payload
+	}
+	return ev
 }
 
 // Flows lists the distinct subjects with in-flight processes — a QUERY over the live
@@ -1087,9 +1171,36 @@ func (e *Engine) reap(ev entity.Event) {
 	if !process.TerminalStatus(status) {
 		return
 	}
-	e.liveMu.Lock()
-	delete(e.live, ev.Ref.ID)
-	e.liveMu.Unlock()
+	if fp, ok := e.retire(ev.Ref.ID); ok {
+		e.applyHook(fp, process.Status(status), ev)
+	}
+}
+
+// reapLoop is the store-driven completion path for scoped (subtree) mode: it watches the
+// process:instance mirror subtree and, on each terminal status, retires the process and fires its
+// completion hook. Opened in ObserveScoped BEFORE any spawn (WatchSubtree replays then edges), so
+// it is race-free for a fast process — the property reapOnDone's live-from-now bus lacks. The
+// atomic retire makes it and the reapOnDone backstop exactly-once. Replayed old terminals are
+// harmless: retire finds no live entry for a process this engine never tracked.
+func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Event, unsub func()) {
+	defer unsub()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			status, _ := ev.To["status"].(string)
+			if !process.TerminalStatus(status) {
+				continue
+			}
+			if fp, ok := e.retire(ev.Ref.ID); ok {
+				e.applyHook(fp, process.Status(status), ev)
+			}
+		}
+	}
 }
 
 // ReconcileOrphans retires process:instance entities that a previous run left

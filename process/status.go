@@ -3,8 +3,8 @@ package process
 // Status is a hosted process's lifecycle state — one vocabulary across every
 // controlPolicy (local, remote, broker) and the entity mirror, replacing the
 // per-layer strings that used to disagree ("error" vs "failed" vs "driver
-// error"). The completion pattern keys off exactly one value (Completed), so the
-// terminal states stay distinct rather than collapsing into a single "done".
+// error"). The completion pattern keys off exactly one value (Done), so the
+// terminal states stay distinct rather than collapsing into one end state.
 type Status string
 
 const (
@@ -14,9 +14,9 @@ const (
 	Unclaimed Status = "unclaimed"
 	// Running: an executor is working the process.
 	Running Status = "running"
-	// Completed: finished its work successfully — the ONLY status a completion
-	// trigger (matching process:instance status=completed) reacts to.
-	Completed Status = "completed"
+	// Done: finished its work successfully — the ONLY status a completion trigger
+	// (matching process:instance status=done) or a spawn's onDone hook reacts to.
+	Done Status = "done"
 	// Cancelled: stopped by an operator (destructive), not by finishing.
 	Cancelled Status = "cancelled"
 	// Failed: ran but did not succeed — a driver/agent error or an executor-reported
@@ -32,7 +32,7 @@ const (
 // and Running are the two live states; everything else is terminal.
 func (s Status) Terminal() bool {
 	switch s {
-	case Completed, Cancelled, Failed, Orphaned:
+	case Done, Cancelled, Failed, Orphaned:
 		return true
 	}
 	return false

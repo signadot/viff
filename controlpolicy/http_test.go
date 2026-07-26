@@ -63,7 +63,7 @@ loop:
 			if ev.Kind == process.EvExec {
 				sawExec = true
 			}
-			if ev.Kind == process.EvStatus && ev.Text == "completed" {
+			if ev.Kind == process.EvStatus && ev.Text == "done" {
 				completed = true
 				break loop
 			}
@@ -148,7 +148,7 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _, _ := store.Get(mirror.Ref("t1"))
-		if s, _ := e.Payload["status"].(string); s == string(process.Completed) {
+		if s, _ := e.Payload["status"].(string); s == string(process.Done) {
 			return // converged: resume recovered the terminal from the remote
 		}
 		select {

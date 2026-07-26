@@ -114,7 +114,7 @@ where to resume.
 | `decision` | `id, gate, mode, proceed, by, reason` | clears `pending`; records the resolution |
 | `child` | `child, status` | flow-tracking (sub-process spawn/join) |
 | `vector` | `by` | records an autonomy slide (the new vector is observable) |
-| `status` | `text: running\|paused\|resumed\|completed\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (**CAS-once**) |
+| `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (**CAS-once**) |
 
 That table *is* the durable contract — it is today's `mirror.Reflect`, plus `claim`/`vector`,
 minus the live-only `gap` marker (unneeded; see resync below).
@@ -134,7 +134,7 @@ So: **resync-to-snapshot is the universal safety net** whenever a cursor can't b
 verse restarts, policy restarts, slow consumers, compaction. No `gap` marker, because verse
 always pulls *from its cursor* rather than trusting a live tail.
 
-The **terminal** is a `status` event (`completed|failed|cancelled` + `result`) verse
+The **terminal** is a `status` event (`done|failed|cancelled` + `result`) verse
 CAS-writes once; `?since=<terminal cursor>` replays it and closes. A finished process's
 `/events` is a finite, replayable record — a verse that restarts *after* completion still
 learns the outcome.

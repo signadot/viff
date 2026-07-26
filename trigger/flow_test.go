@@ -44,7 +44,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	// unpaused, so still-running well past that proves the hold.
 	ref := mirror.Ref("work-1")
 	time.Sleep(150 * time.Millisecond)
-	if e, _, _ := store.Get(ref); e.Payload["status"] == "completed" {
+	if e, _, _ := store.Get(ref); e.Payload["status"] == "done" {
 		t.Fatal("flow completed while paused — PauseFlow did not hold")
 	}
 
@@ -53,7 +53,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	}
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "completed" {
+		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "done" {
 			return
 		}
 		select {
@@ -108,7 +108,7 @@ func TestReapVsCancelFlowNoRace(t *testing.T) {
 	}
 	terminal := entity.Event{
 		Ref: mirror.Ref("b"), Op: entity.Delete,
-		To: entity.Payload{"status": string(process.Completed), "flow": subj},
+		To: entity.Payload{"status": string(process.Done), "flow": subj},
 	}
 
 	var wg sync.WaitGroup
@@ -167,7 +167,7 @@ func TestDoNoDeadlockAfterCancel(t *testing.T) {
 func TestReconcileOrphans(t *testing.T) {
 	store := entity.NewMemStore()
 	store.Put(mirror.Ref("old-running"), entity.Payload{"status": string(process.Running), "flow": "demo:pr:1"})
-	store.Put(mirror.Ref("old-done"), entity.Payload{"status": string(process.Completed), "flow": "demo:pr:2"})
+	store.Put(mirror.Ref("old-done"), entity.Payload{"status": string(process.Done), "flow": "demo:pr:2"})
 
 	eng := New(store, process.AutoResolver{})
 	if n := eng.ReconcileOrphans(); n != 1 {
@@ -176,7 +176,7 @@ func TestReconcileOrphans(t *testing.T) {
 	if e, _, _ := store.Get(mirror.Ref("old-running")); e.Payload["status"] != string(process.Orphaned) {
 		t.Fatalf("running process not orphaned: %+v", e.Payload)
 	}
-	if e, _, _ := store.Get(mirror.Ref("old-done")); e.Payload["status"] != string(process.Completed) {
+	if e, _, _ := store.Get(mirror.Ref("old-done")); e.Payload["status"] != string(process.Done) {
 		t.Fatalf("completed process wrongly touched: %+v", e.Payload)
 	}
 }

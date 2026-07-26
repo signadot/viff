@@ -99,7 +99,7 @@ Two things fall out of the table:
   control plane transport-neutral.
 - **Keep the durable contract record-oriented; make pty/stdin attached-only.** Exit code
   is a poor terminal for an agent or a human (they want a status + a result payload), so
-  the terminal is `{status: completed|failed|cancelled, code?: int, result: text}` —
+  the terminal is `{status: done|failed|cancelled, code?: int, result: text}` —
   never collapsed to an int. `stdout`/`stderr` become an appended, channel-tagged
   **output stream** in the journal (durable); a **pty** is a live capability of an
   attachment, not part of the record.

@@ -56,7 +56,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	ref := mirror.Ref("rev-1")
 	deadline := time.After(2 * time.Second)
 	for {
-		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "completed" {
+		if e, ok, _ := store.Get(ref); ok && e.Payload["status"] == "done" {
 			return
 		}
 		select {

@@ -165,7 +165,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 	// Once it is reaped, the id is free again — a later, genuinely new firing can run.
 	eng.reap(entity.Event{
 		Ref: mirror.Ref("rev-1"), Op: entity.Set,
-		To: entity.Payload{"status": string(process.Completed)},
+		To: entity.Payload{"status": string(process.Done)},
 	})
 	if eng.Spawn("rev-1", spec) == nil || spawned != 2 {
 		t.Fatalf("after reap a fresh spawn should run; spawner invoked %d times", spawned)

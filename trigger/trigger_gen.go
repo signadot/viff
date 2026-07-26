@@ -437,6 +437,42 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["spawn"] = node
 	}
 
+	// Field: OnDone (optional)
+	if s.OnDone != nil {
+		node, err = s.OnDone.ToTonyIR()
+		if err != nil {
+			return nil, err
+		}
+		irMap["onDone"] = node
+	}
+
+	// Field: OnFailed (optional)
+	if s.OnFailed != nil {
+		node, err = s.OnFailed.ToTonyIR()
+		if err != nil {
+			return nil, err
+		}
+		irMap["onFailed"] = node
+	}
+
+	// Field: OnCancelled (optional)
+	if s.OnCancelled != nil {
+		node, err = s.OnCancelled.ToTonyIR()
+		if err != nil {
+			return nil, err
+		}
+		irMap["onCancelled"] = node
+	}
+
+	// Field: OnOrphaned (optional)
+	if s.OnOrphaned != nil {
+		node, err = s.OnOrphaned.ToTonyIR()
+		if err != nil {
+			return nil, err
+		}
+		irMap["onOrphaned"] = node
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -488,6 +524,30 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			// Field: Spawn
 			s.Spawn = &launch.Spec{}
 			if err := s.Spawn.FromTonyIR(fieldNode); err != nil {
+				return err
+			}
+		case "onDone":
+			// Field: OnDone
+			s.OnDone = &Action{}
+			if err := s.OnDone.FromTonyIR(fieldNode); err != nil {
+				return err
+			}
+		case "onFailed":
+			// Field: OnFailed
+			s.OnFailed = &Action{}
+			if err := s.OnFailed.FromTonyIR(fieldNode); err != nil {
+				return err
+			}
+		case "onCancelled":
+			// Field: OnCancelled
+			s.OnCancelled = &Action{}
+			if err := s.OnCancelled.FromTonyIR(fieldNode); err != nil {
+				return err
+			}
+		case "onOrphaned":
+			// Field: OnOrphaned
+			s.OnOrphaned = &Action{}
+			if err := s.OnOrphaned.FromTonyIR(fieldNode); err != nil {
 				return err
 			}
 		}
