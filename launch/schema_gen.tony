@@ -16,10 +16,10 @@ context:
 define:
   driver: .[string]
   environment: .[string]
+  grant: .[string]
   policy: .[string]
   provider: .[nullable(verse-launch-provider)]
   resolver: .[string]
-  scope: .[string]
   subject: .[string]
   task: .[string]
 signature:

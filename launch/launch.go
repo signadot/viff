@@ -5,7 +5,7 @@
 // reflected as an entity (triggers-as-data). Nothing here depends on the process
 // substrate; it is pure data + binding.
 //
-// Every field is a *reference* to something named elsewhere (a policy, a scope, an
+// Every field is a *reference* to something named elsewhere (a policy, a grant, an
 // environment) rather than the thing inlined — the same index-not-warehouse
 // discipline as the rest of the verse: the spec points at native semantics; the
 // runtime that builds the process resolves the references against its own
@@ -15,8 +15,14 @@
 //	Task        → the prompt/task the driver is seeded with
 //	Policy      → the gate vector (the autonomy dial) — soft, slidable
 //	Resolver    → how ASK gates are answered (human/auto/scm/…)
-//	Scope       → the Grant (hard authority) — what it may do at all
+//	Grant       → hard authority — what it may do at all
 //	Environment → the sandbox/workspace floor — unbypassable
+//
+// The authority axis is the GRANT, not the "scope": "scope" is taken everywhere else in
+// verse for the entity-store isolation overlay (entity.Store.Scope, config.Scope, --scope,
+// VERSE_SCOPE, connect's nonce), and this field is the one place it meant authority. The
+// word the type (process.Grant) and the delegation check (Grant.Subset) already use is the
+// right one. See docs/expose.md.
 package launch
 
 //go:generate go tool tony-codegen -dir .
@@ -37,7 +43,7 @@ type Spec struct {
 	Task        string `tony:"field=task,omitzero"`
 	Policy      string `tony:"field=policy,omitzero"`
 	Resolver    string `tony:"field=resolver,omitzero"`
-	Scope       string `tony:"field=scope,omitzero"`
+	Grant       string `tony:"field=grant,omitzero"`
 	Environment string `tony:"field=environment,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The
 	// engine tracks a flow's processes by subject so it can be steered/cancelled as
@@ -52,7 +58,7 @@ type Spec struct {
 }
 
 // Provider declares the who-axis as a governed 1-of-N selection: the eligible doers (a
-// hard set, like Scope) and the surface that selects among them (the soft who-dial, like
+// hard set, like Grant) and the surface that selects among them (the soft who-dial, like
 // Policy). Absent = today's fixed Driver.
 //
 // Eligibility takes one of two forms: an inline `Eligible` list of doer ids (simple), or
@@ -100,7 +106,7 @@ func (s Spec) Bind(b Binding) Spec {
 		Task:        expand(s.Task, b),
 		Policy:      expand(s.Policy, b),
 		Resolver:    expand(s.Resolver, b),
-		Scope:       expand(s.Scope, b),
+		Grant:       expand(s.Grant, b),
 		Environment: expand(s.Environment, b),
 		Subject:     expand(s.Subject, b),
 		Provider:    s.Provider.bind(b),
