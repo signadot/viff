@@ -148,3 +148,34 @@ type Route struct {
 type Routes struct {
 	Routes []Route `tony:"field=routes"`
 }
+
+// Steered is the result of steering a flow or a goal: pause, resume, cancel, or say.
+//
+// ONE type with a verb field rather than four types keyed by verb. The routes used to answer
+// `{subject, paused: 2}`, `{subject, resumed: 2}`, `{subject, cancelled: 2}`, `{subject,
+// said: 2}` — four shapes for one operation, where the key was doing double duty as the name
+// of what happened and the count of it. A reader had to know which endpoint produced a
+// document to know what its second key meant.
+//
+// Carrying the verb makes the answer self-describing: piped, logged, or read back later it
+// says what was done without reference to the route that did it. And a consumer parses one
+// shape for all eight routes instead of eight.
+//
+// Affected is a count for both, because a goal steer IS a flow steer — Engine.PauseGoal and
+// friends delegate to the flow methods over the goal's own processes.
+//
+//tony:schemagen=verse-steered,notag
+type Steered struct {
+	// Subject and Goal are the two ways the same operation is addressed: a flow by the
+	// entity address (or pattern) its processes are about, a goal by name. Exactly one is
+	// set — they are kept as distinct fields rather than collapsed into a `target` because
+	// "subject" is a first-class word in this model and a synonym would cost more than the
+	// uniformity it buys.
+	Subject string `tony:"field=subject,omitzero"`
+	Goal    string `tony:"field=goal,omitzero"`
+	// Verb is what was done: pause | resume | cancel | say.
+	Verb string `tony:"field=verb"`
+	// Affected is how many live processes it reached. Zero is a normal answer — an address
+	// that names no running work is not an error, it is a flow that has finished.
+	Affected int `tony:"field=affected"`
+}

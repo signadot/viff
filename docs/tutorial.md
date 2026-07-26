@@ -588,14 +588,20 @@ A pattern works here too, giving one tree per subject:
 verse flow show 'demo:pr:*'
 ```
 
-Each command reports how many processes it reached, and echoes the address it reached them
-by, so you can see what a wildcard actually selected:
+Each command reports how many processes it reached, echoes the address it reached them by so
+you can see what a wildcard actually selected, and names the verb — so the answer says what
+was done without reference to the command that did it:
 
 ```sh
 verse flow pause demo:pr:2
-# paused: 1
+# affected: 1
 # subject: demo:pr:2
+# verb: pause
 ```
+
+All eight steer routes (four flow verbs, four goal verbs) answer in that one shape. A goal
+reports `goal:` instead of `subject:`, since it is addressed by name rather than by an entity
+address.
 
 They fan out to the addressed processes and land at each one's next boundary, so a flow can
 be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting. Because a

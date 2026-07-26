@@ -84,3 +84,13 @@ define:
   id: .[string]
 signature:
   name: verse-spawned
+---
+context:
+- tony-format/context
+define:
+  affected: .[int]
+  goal: .[string]
+  subject: .[string]
+  verb: .[string]
+signature:
+  name: verse-steered

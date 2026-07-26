@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -198,6 +199,42 @@ func TestEntitySignaturesAreGeneratedNotCurated(t *testing.T) {
 	for _, n := range []string{"verse-entity", "verse-event"} {
 		if _, ok, _ := schema.Get(n); !ok {
 			t.Errorf("%s is not published at all", n)
+		}
+	}
+}
+
+// All eight steer routes answer in ONE shape carrying the verb, rather than four shapes whose
+// key names what happened. The key used to do double duty — `paused: 2` was both the name of
+// the act and the count of it — so a reader had to know which endpoint produced a document to
+// know what its second key meant.
+func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
+	srv := New(ScriptedBuilder)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, c := range []struct{ path, body, wantVerb string }{
+		{"/flow/pause", `{subject: "demo:pr:*"}`, "pause"},
+		{"/flow/resume", `{subject: "demo:pr:*"}`, "resume"},
+		{"/flow/cancel", `{subject: "demo:pr:*"}`, "cancel"},
+		{"/flow/say", `{subject: "demo:pr:*", text: "hi"}`, "say"},
+	} {
+		resp, err := http.Post(ts.URL+c.path, "application/tony", strings.NewReader(c.body))
+		if err != nil {
+			t.Fatalf("post %s: %v", c.path, err)
+		}
+		var got api.Steered
+		if err := codec.Decode(resp.Body, &got, codec.Tony); err != nil {
+			t.Fatalf("decode %s: %v", c.path, err)
+		}
+		resp.Body.Close()
+		if got.Verb != c.wantVerb {
+			t.Errorf("%s verb = %q, want %q", c.path, got.Verb, c.wantVerb)
+		}
+		if got.Subject != "demo:pr:*" {
+			t.Errorf("%s subject = %q, want the address it was asked about", c.path, got.Subject)
+		}
+		if got.Goal != "" {
+			t.Errorf("%s set goal on a flow steer: %q", c.path, got.Goal)
 		}
 	}
 }

@@ -96,7 +96,7 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 }
 
 // Steering by a set address reaches every selected process and reports the count — the
-// {"paused": n} contract the tutorial documents.
+// {subject, verb, affected} contract the tutorial documents (api.Steered).
 func TestSteerWholeKind(t *testing.T) {
 	eng := New(entity.NewMemStore(), process.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")

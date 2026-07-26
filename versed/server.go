@@ -365,16 +365,16 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", "")
 	rt.handle("POST /goals", s.addGoal, "verse-goal", "")
 	rt.handle("DELETE /goals/{name}", s.removeGoal, "", "")
-	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", "")
-	rt.handle("POST /goal/resume", s.goalResume, "verse-goal-steer", "")
-	rt.handle("POST /goal/cancel", s.goalCancel, "verse-goal-steer", "")
-	rt.handle("POST /goal/say", s.goalSay, "verse-goal-steer", "")
+	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", "verse-steered")
+	rt.handle("POST /goal/resume", s.goalResume, "verse-goal-steer", "verse-steered")
+	rt.handle("POST /goal/cancel", s.goalCancel, "verse-goal-steer", "verse-steered")
+	rt.handle("POST /goal/say", s.goalSay, "verse-goal-steer", "verse-steered")
 	rt.handle("POST /scope/delete", s.deleteScope, "", "")
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", "")
-	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", "")
-	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", "")
-	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", "")
-	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", "")
+	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", "verse-steered")
+	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", "verse-steered")
+	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", "verse-steered")
+	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", "verse-steered")
 	// process runtime (proc) — mounted; serves /processes[/{id}[/…]]. versed intercepts the
 	// two READ routes to union the local runtime with the active policy's own processes
 	// (e.g. a broker's), stamping each with its policy; everything else (spawn, events,
@@ -1155,20 +1155,20 @@ func (s *Server) removeGoal(w http.ResponseWriter, r *http.Request) {
 // goalPause/Resume/Cancel/Say steer a goal by delegating to its flow (a goal is a flow with a
 // destination) — the same control surface, keyed by the goal name.
 func (s *Server) goalPause(w http.ResponseWriter, r *http.Request) {
-	s.goalSteer(w, r, func(name string) map[string]any {
-		return map[string]any{"goal": name, "paused": s.Eng.PauseGoal(name)}
+	s.goalSteer(w, r, func(name string) api.Steered {
+		return api.Steered{Goal: name, Verb: "pause", Affected: s.Eng.PauseGoal(name)}
 	})
 }
 
 func (s *Server) goalResume(w http.ResponseWriter, r *http.Request) {
-	s.goalSteer(w, r, func(name string) map[string]any {
-		return map[string]any{"goal": name, "resumed": s.Eng.ResumeGoal(name)}
+	s.goalSteer(w, r, func(name string) api.Steered {
+		return api.Steered{Goal: name, Verb: "resume", Affected: s.Eng.ResumeGoal(name)}
 	})
 }
 
 func (s *Server) goalCancel(w http.ResponseWriter, r *http.Request) {
-	s.goalSteer(w, r, func(name string) map[string]any {
-		return map[string]any{"goal": name, "cancelled": s.Eng.CancelGoal(name)}
+	s.goalSteer(w, r, func(name string) api.Steered {
+		return api.Steered{Goal: name, Verb: "cancel", Affected: s.Eng.CancelGoal(name)}
 	})
 }
 
@@ -1182,10 +1182,11 @@ func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 	if by == "" {
 		by = "human:cli"
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"goal": body.Name, "said": s.Eng.SteerGoal(body.Name, body.Text, by)})
+	writeOut(w, r, http.StatusOK, api.Steered{Goal: body.Name, Verb: "say",
+		Affected: s.Eng.SteerGoal(body.Name, body.Text, by)})
 }
 
-func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) map[string]any) {
+func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) api.Steered) {
 	var body api.GoalSteer
 	if err := codec.Read(r, &body); err != nil || body.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
@@ -1257,7 +1258,7 @@ func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "paused": s.Eng.PauseFlow(m)})
+	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "pause", Affected: s.Eng.PauseFlow(m)})
 }
 
 func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
@@ -1266,7 +1267,7 @@ func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "resumed": s.Eng.ResumeFlow(m)})
+	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "resume", Affected: s.Eng.ResumeFlow(m)})
 }
 
 func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
@@ -1275,7 +1276,7 @@ func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "cancelled": s.Eng.CancelFlow(m)})
+	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "cancel", Affected: s.Eng.CancelFlow(m)})
 }
 
 func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
@@ -1292,7 +1293,7 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 	if by == "" {
 		by = "human:cli"
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "said": s.Eng.SteerFlow(m, b.Text, by)})
+	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "say", Affected: s.Eng.SteerFlow(m, b.Text, by)})
 }
 
 func eventWire(ev entity.Event) map[string]any {

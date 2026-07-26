@@ -311,7 +311,7 @@ live   map[string]flowProc   // by process id — reap is a delete, dedupe is a 
 - `Flows()` — distinct subjects over `live`, sorted.
 - `matchFlow(m Match) []flowProc` — parse each live subject with `entity.ParseRef` and
   `m.MatchEvent`-style match it. `PauseFlow`/`ResumeFlow`/`CancelFlow`/`SteerFlow` take a
-  `Match` and act on the matched set, returning the count (the `{"paused": 1}` shape the
+  `Match` and act on the matched set, returning the count (now the `{subject, verb, affected}` shape the
   tutorial documents).
 - `goalSubject` (`goal.go:337`) → a literal-ref Match, so goal steering is unchanged.
 
