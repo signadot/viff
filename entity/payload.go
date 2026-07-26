@@ -17,6 +17,11 @@ import (
 // named type is the shape item 8 of tony-format#f69agjyeh12ksa25cnn0 is about). Since an
 // alias cannot carry methods, the accessors below are functions.
 //
+// A schemagen'd struct field may spell it `Payload` as of go-tony v0.0.95, which taught the
+// resolver to see through an alias (item 18). Before that those fields had to spell
+// `*ir.Node` directly, so the vocabulary was absent from exactly the declarations a reader
+// of the schema looks at.
+//
 // Nothing here is an *object* predicate. Field-shaped features — a trigger's `fields`
 // match, `$var` bindings — read fields through Get/Str, which answer empty for a payload
 // that has no fields, so a scalar payload simply does not match rather than erroring.

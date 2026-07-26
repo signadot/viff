@@ -6,15 +6,31 @@
 # is a human's claim about it. A curated signature can drift from the code; a generated one
 # cannot. That difference is worth surfacing rather than hiding behind a uniform document.
 #
+# These describe I/O SHAPES, which is what tony-codegen generates and what this endpoint
+# publishes. A tony schema can also validate, through an `accept:` clause, and none of these
+# carry one — generated or curated. That is not a gap to close here: codegen's business is
+# marshalling and unmarshalling, and an acceptance criterion is a separate thing to author
+# deliberately if a consumer ever needs one.
+#
+# It does mean a wrong `define` is wrong as DOCUMENTATION rather than as enforcement —
+# nothing is rejected because of it. Which is exactly why it is worth correcting: describing
+# the wire is the whole value of publishing these.
+#
 # Remove an entry as soon as codegen can produce it, and the endpoint will serve the
 # generated one instead. That has already happened once: verse-entity and verse-event were
 # curated because the schema mapper did not consult TextMarshaler and called entity.Ref an
 # int; go-tony v0.0.93 fixed it, so they are generated now and their entries are gone.
 
-# trigger.Match — the charter's selector grammar. codec=custom, so codegen emits an empty
-# `define`, which would publish the most-authored type in the system as having no shape at
-# all. Described here as what it is: an object of match dimensions, each of which may be a
-# literal or a tony match operator, which is why the values are open.
+# THE CHARTER GRAMMAR — four types with hand-written codecs (`codec=custom`), which is the
+# declaration that the wire shape is NOT the Go shape. codegen derives from the Go shape
+# regardless, so what it produces for them is either empty (a named map: trigger.Match) or,
+# worse, a confident description of fields the codec never emits (a struct: Formula,
+# Requirement). Both are corrected here.
+#
+# trigger.Match — the selector grammar, and the most-authored type in the system. On the wire
+# it is EITHER an address string ("demo:pr:*") OR the object of dimensions below; the codec
+# emits the string form whenever the match carries only system/kind/id. The dimension values
+# are open because each may be a literal or a tony match operator (`id: !glob "hotfix-*"`).
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
@@ -28,3 +44,36 @@ define:
   entity: .[object(tony-base:ir)]
 signature:
   name: verse-match
+---
+# trigger.Formula — the temporal layer. It emits a TAG, not an object: `!quorum 2`,
+# `!until [...]`, `!and [...]`, `!or [...]`, `!not ...`, or a bare match atom when the formula
+# is a single point-in-time match. codegen published it as `{args, op, req}` — the Go struct
+# behind the codec, a shape that never appears on the wire. Empty is the honest `define` here:
+# the form is a tagged union over the operator vocabulary, and the operators are tony's own
+# (docs/trigger-model.md), not a set this signature can usefully restate.
+context:
+- tony-format/context
+define: {}
+signature:
+  name: verse-formula
+---
+# trigger.Requirement — the payload of a formula's tag, e.g. the `2` in `!quorum 2` together
+# with the facts it counts. Same correction as Formula: codegen described its Go fields
+# (kind, n, choice, within, facts) and the codec emits none of them under those names.
+context:
+- tony-format/context
+define: {}
+signature:
+  name: verse-requirement
+---
+# trigger.Condition — the one custom-codec type whose FIELD NAMES codegen got right; only the
+# types were wrong. It emits `{when: <formula>, subject: <match>}`, so `when` points at the
+# formula signature (it already did) and `subject` at the match signature, where codegen said
+# `.[object(object)]` — an object of objects, which a `subject: demo:pr:*` string is not.
+context:
+- tony-format/context
+define:
+  when: .[nullable(verse-formula)]
+  subject: !verse-match null
+signature:
+  name: verse-condition
