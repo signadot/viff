@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/scott-cotton/cli"
+	"github.com/signadot/verse/api"
 )
 
 func flowCmd() *cli.Command {
@@ -69,7 +70,7 @@ func (cfg *flowPauseConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpPost("/flow/pause", map[string]any{"subject": subject})
+	resp, err := httpPost("/flow/pause", api.FlowSteer{Subject: subject})
 	if err != nil {
 		return fmt.Errorf("flow pause: %w", err)
 	}
@@ -89,7 +90,7 @@ func (cfg *flowResumeConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpPost("/flow/resume", map[string]any{"subject": subject})
+	resp, err := httpPost("/flow/resume", api.FlowSteer{Subject: subject})
 	if err != nil {
 		return fmt.Errorf("flow resume: %w", err)
 	}
@@ -109,7 +110,7 @@ func (cfg *flowCancelConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpPost("/flow/cancel", map[string]any{"subject": subject})
+	resp, err := httpPost("/flow/cancel", api.FlowSteer{Subject: subject})
 	if err != nil {
 		return fmt.Errorf("flow cancel: %w", err)
 	}
@@ -132,9 +133,7 @@ func (cfg *flowSayConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("%w: flow say wants a subject and text", cli.ErrUsage)
 	}
-	resp, err := httpPost("/flow/say", map[string]any{
-		"subject": args[0], "text": strings.Join(args[1:], " "),
-	})
+	resp, err := httpPost("/flow/say", api.FlowSteer{Subject: args[0], Text: strings.Join(args[1:], " ")})
 	if err != nil {
 		return fmt.Errorf("flow say: %w", err)
 	}

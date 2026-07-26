@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/controlpolicy"
@@ -611,10 +612,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Ref     string         `tony:"field=ref"`
-		Payload map[string]any `tony:"field=payload"`
-	}
+	var body api.PutEntity
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -677,11 +675,7 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID      string   `tony:"field=id"`
-		Approve bool     `tony:"field=approve"`
-		Say     []string `tony:"field=say"`
-	}
+	var body api.Resolve
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -796,11 +790,7 @@ type processLister interface {
 // is a process:instance entity — observable, and its completion can drive triggers) — the
 // consistency the "processes are entities" model wants.
 func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID     string `tony:"field=id"`
-		Task   string `tony:"field=task"`
-		Driver string `tony:"field=driver"`
-	}
+	var body api.Spawn
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -822,7 +812,7 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	}
 	h := s.policy.Spawn(id, body.Task, body.Driver, nil)
 	mirror.Reflect(store, id, h, mirror.Meta{Policy: s.policy.Ref()})
-	writeOut(w, r, http.StatusOK, map[string]any{"id": id})
+	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
 // listProcesses is the unified process list: the local runtime plus, when the policy is a
@@ -1007,24 +997,22 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 	case "cancel":
 		h.Cancel("")
 	case "say":
-		var body struct {
-			Instruction string `tony:"field=instruction"`
-			By          string `tony:"field=by"`
-		}
+		var body api.Say
 		_ = codec.Read(r, &body)
 		h.Steer(body.Instruction, body.By)
 	case "vector":
 		// slide autonomy on a running (brokered/remote) process: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
-		var body struct {
-			Vector process.Vector `tony:"field=vector"`
-			By     string         `tony:"field=by"`
-		}
+		var body api.SetVector
 		if err := codec.Read(r, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		h.SetVector(&body.Vector, body.By)
+		if body.Vector == nil {
+			http.Error(w, "vector required", http.StatusBadRequest)
+			return
+		}
+		h.SetVector(body.Vector, body.By)
 	case "resolve":
 		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
 		rh, ok := h.(interface {
@@ -1034,13 +1022,16 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 			http.Error(w, "policy does not support gate resolution", http.StatusNotImplemented)
 			return
 		}
-		var body struct {
-			DecisionID string `tony:"field=decisionId"`
-			Proceed    bool   `tony:"field=proceed"`
-			Say        string `tony:"field=say"`
-		}
+		// Same body as `POST /gate/resolve` (api.Resolve): one gate, named by id,
+		// answered yes or no. This route differs only in WHERE the answer goes — relayed
+		// to a remote worker's inbox rather than resolved in-process — which is not a
+		// reason for a second vocabulary, and having had one is how `decisionId`/`proceed`
+		// drifted away from `id`/`approve` unnoticed.
+		var body api.Resolve
 		_ = codec.Read(r, &body)
-		if !rh.Resolve(body.DecisionID, body.Proceed, body.Say) {
+		// The relay interface still carries a single steer string; a multi-part say is
+		// joined rather than dropped. Widening it is part of the broker/processd pass.
+		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n")) {
 			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 			return
 		}
@@ -1169,11 +1160,7 @@ func (s *Server) goalCancel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name string `tony:"field=name"`
-		Text string `tony:"field=text"`
-		By   string `tony:"field=by"`
-	}
+	var body api.GoalSteer
 	if err := codec.Read(r, &body); err != nil || body.Name == "" || body.Text == "" {
 		http.Error(w, "name and text required", http.StatusBadRequest)
 		return
@@ -1186,9 +1173,7 @@ func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) map[string]any) {
-	var body struct {
-		Name string `tony:"field=name"`
-	}
+	var body api.GoalSteer
 	if err := codec.Read(r, &body); err != nil || body.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
@@ -1237,13 +1222,8 @@ func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
 // "demo:pr:1" names one subject, "demo:pr:*" the whole kind. A flow is a query over live
 // processes' subjects, so one field serves both, and a plain ref stays valid (no client
 // breaks). Returns false having already written the error response.
-func flowAddress(w http.ResponseWriter, r *http.Request, extra any) (trigger.Match, bool) {
-	body := struct {
-		Subject string `tony:"field=subject"`
-		Text    string `tony:"field=text"`
-		By      string `tony:"field=by"`
-	}{}
-	if err := codec.Read(r, &body); err != nil || body.Subject == "" {
+func flowAddress(w http.ResponseWriter, r *http.Request, body *api.FlowSteer) (trigger.Match, bool) {
+	if err := codec.Read(r, body); err != nil || body.Subject == "" {
 		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
 		return nil, false
 	}
@@ -1252,24 +1232,14 @@ func flowAddress(w http.ResponseWriter, r *http.Request, extra any) (trigger.Mat
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil, false
 	}
-	if p, ok := extra.(*flowSteerBody); ok {
-		*p = flowSteerBody{Subject: body.Subject, Text: body.Text, By: body.By}
-	}
 	return m, true
-}
-
-// flowSteerBody carries the say-specific fields back out of flowAddress.
-type flowSteerBody struct {
-	Subject string
-	Text    string
-	By      string
 }
 
 // flowPause/flowResume hold the addressed processes at their next boundary — serviced with
 // priority over observation by the engine's control plane (see
 // docs/deployment-and-steering.md).
 func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
-	var b flowSteerBody
+	var b api.FlowSteer
 	m, ok := flowAddress(w, r, &b)
 	if !ok {
 		return
@@ -1278,7 +1248,7 @@ func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
-	var b flowSteerBody
+	var b api.FlowSteer
 	m, ok := flowAddress(w, r, &b)
 	if !ok {
 		return
@@ -1287,7 +1257,7 @@ func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
-	var b flowSteerBody
+	var b api.FlowSteer
 	m, ok := flowAddress(w, r, &b)
 	if !ok {
 		return
@@ -1296,7 +1266,7 @@ func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
-	var b flowSteerBody
+	var b api.FlowSteer
 	m, ok := flowAddress(w, r, &b)
 	if !ok {
 		return

@@ -7,6 +7,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
@@ -50,9 +51,9 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("vote: --as <who> is required (a ballot names its voter)")
 	}
 	ref := "vote:" + motion + ":" + cfg.As
-	resp, err := httpPost("/entity", map[string]any{
-		"ref":     ref,
-		"payload": map[string]any{"choice": choice, "by": cfg.As},
+	resp, err := httpPost("/entity", api.PutEntity{
+		Ref:     ref,
+		Payload: map[string]any{"choice": choice, "by": cfg.As},
 	})
 	if err != nil {
 		return fmt.Errorf("vote: %w", err)

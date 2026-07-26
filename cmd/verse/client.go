@@ -14,6 +14,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
@@ -419,9 +420,9 @@ func (cfg *gateResolveConfig) run(cc *cli.Context, args []string) error {
 	if cfg.Approve == cfg.Deny {
 		return fmt.Errorf("%w: pass exactly one of --approve / --deny", cli.ErrUsage)
 	}
-	body := map[string]any{"id": args[0], "approve": cfg.Approve}
+	body := api.Resolve{ID: args[0], Approve: cfg.Approve}
 	if cfg.Say != "" {
-		body["say"] = []string{cfg.Say}
+		body.Say = []string{cfg.Say}
 	}
 	resp, err := httpPost("/gate/resolve", body)
 	if err != nil {
@@ -492,7 +493,7 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	if err := codec.Unmarshal([]byte(args[1]), &payload, inFmt()); err != nil {
 		return fmt.Errorf("entity put: payload: %w", err)
 	}
-	resp, err := httpPost("/entity", map[string]any{"ref": args[0], "payload": payload})
+	resp, err := httpPost("/entity", api.PutEntity{Ref: args[0], Payload: payload})
 	if err != nil {
 		return fmt.Errorf("entity put: %w", err)
 	}

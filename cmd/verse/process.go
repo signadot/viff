@@ -13,6 +13,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
@@ -289,7 +290,7 @@ func (cfg *procResolveConfig) run(cc *cli.Context, args []string) error {
 	}
 	pid, did := args[0], args[1]
 	return noContent(cc, "process resolve", "/processes/"+pid+"/resolve",
-		map[string]any{"decisionId": did, "proceed": cfg.Approve}, did)
+		api.Resolve{ID: did, Approve: cfg.Approve}, did)
 }
 
 // ── run ──────────────────────────────────────────────────────────────────────
@@ -322,13 +323,11 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: process run wants a task", cli.ErrUsage)
 	}
 	task := strings.Join(args, " ")
-	resp, err := httpPost("/processes", map[string]any{"task": task, "driver": cfg.Driver})
+	resp, err := httpPost("/processes", api.Spawn{Task: task, Driver: cfg.Driver})
 	if err != nil {
 		return fmt.Errorf("process run: %w", err)
 	}
-	var sp struct {
-		ID string `tony:"field=id"`
-	}
+	var sp api.Spawned
 	decodeClose(resp, &sp)
 	if sp.ID == "" {
 		return fmt.Errorf("process run: no id returned")
@@ -524,7 +523,7 @@ func promptGate(cc *cli.Context, in *bufio.Reader, gate, tool string) bool {
 // resolveProcessGate answers a process's pending decision by id.
 func resolveProcessGate(pid, decisionID string, approve bool) error {
 	resp, err := httpPost("/processes/"+pid+"/resolve",
-		map[string]any{"decisionId": decisionID, "proceed": approve})
+		api.Resolve{ID: decisionID, Approve: approve})
 	if err != nil {
 		return err
 	}
@@ -572,7 +571,7 @@ func (cfg *procSayConfig) run(cc *cli.Context, args []string) error {
 	}
 	id, text := args[0], strings.Join(args[1:], " ")
 	return noContent(cc, "process say", "/processes/"+id+"/say",
-		map[string]any{"instruction": text}, id)
+		api.Say{Instruction: text}, id)
 }
 
 // ── vector (slide autonomy on a running process — the re-vector surface) ──────
@@ -621,7 +620,7 @@ func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
 	default:
 		return fmt.Errorf("%w: process vector wants a mode (auto|ask|park) or --file", cli.ErrUsage)
 	}
-	resp, err := httpPut("/processes/"+id+"/vector", map[string]any{"vector": vec, "by": cfg.As})
+	resp, err := httpPut("/processes/"+id+"/vector", api.SetVector{Vector: &vec, By: cfg.As})
 	if err != nil {
 		return fmt.Errorf("process vector: %w", err)
 	}

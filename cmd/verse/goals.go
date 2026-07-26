@@ -9,6 +9,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
@@ -159,7 +160,7 @@ func goalSteerCmd(name, synopsis, path string) *cli.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := httpPost(path, map[string]any{"name": gname})
+			resp, err := httpPost(path, api.GoalSteer{Name: gname})
 			if err != nil {
 				return fmt.Errorf("goals %s: %w", name, err)
 			}
@@ -193,7 +194,7 @@ func (cfg *goalsSayConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("%w: goals say wants a name and text", cli.ErrUsage)
 	}
-	resp, err := httpPost("/goal/say", map[string]any{"name": args[0], "text": strings.Join(args[1:], " ")})
+	resp, err := httpPost("/goal/say", api.GoalSteer{Name: args[0], Text: strings.Join(args[1:], " ")})
 	if err != nil {
 		return fmt.Errorf("goals say: %w", err)
 	}
