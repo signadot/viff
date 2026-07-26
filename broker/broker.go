@@ -9,11 +9,11 @@
 package broker
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"sync"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -426,8 +426,10 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "process is terminal", http.StatusGone)
 		return
 	}
-	var body struct{ Identity string }
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	var body struct {
+		Identity string `json:"identity" tony:"field=identity"`
+	}
+	_ = codec.Read(r, &body)
 	ps.mu.Lock()
 	if ps.claimBy != "" && ps.claimBy != body.Identity {
 		ps.mu.Unlock()
@@ -449,7 +451,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	if firstClaim {
 		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Running)})
 	}
-	writeJSON(w, resp)
+	writeOut(w, r, resp)
 }
 
 // inbox: control directed at the worker, with cursor > since. The caller's epoch must be
@@ -478,7 +480,7 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	}
 	status, terminal := ps.status, ps.terminal
 	ps.mu.Unlock()
-	writeJSON(w, map[string]any{"items": out, "status": status, "terminal": terminal})
+	writeOut(w, r, map[string]any{"items": out, "status": status, "terminal": terminal})
 }
 
 // report: the worker appends events (say / exec / status …); each is sequenced onto the
@@ -496,7 +498,7 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status, result, ok := ps.terminalState(); ok {
-		writeJSON(w, map[string]any{"rCursor": ps.cursorNow(), "status": status, "result": result, "terminal": true})
+		writeOut(w, r, map[string]any{"rCursor": ps.cursorNow(), "status": status, "result": result, "terminal": true})
 		return
 	}
 	var body struct {
@@ -504,7 +506,7 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		Result string          `json:"result,omitempty" tony:"field=result,omitzero"`
 		Epoch  int64           `json:"epoch,omitempty" tony:"field=epoch,omitzero"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -528,10 +530,9 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		ps.result = body.Result
 		ps.mu.Unlock()
 	}
-	writeJSON(w, map[string]any{"rCursor": ps.cursorNow()})
+	writeOut(w, r, map[string]any{"rCursor": ps.cursorNow()})
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
+func writeOut(w http.ResponseWriter, r *http.Request, v any) {
+	codec.Write(w, r, http.StatusOK, v)
 }

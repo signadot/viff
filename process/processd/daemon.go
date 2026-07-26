@@ -11,7 +11,6 @@ package processd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -151,14 +151,18 @@ func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentRea
 }
 
 func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Id, Task, Driver string }
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	var body struct {
+		Id     string `json:"id" tony:"field=id"`
+		Task   string `json:"task" tony:"field=task"`
+		Driver string `json:"driver" tony:"field=driver"`
+	}
+	_ = codec.Read(r, &body)
 	id := body.Id // a controlPolicy client (the engine) passes its own id so it matches
 	if id == "" { // the process:instance entity; an ad-hoc `process run` gets a fresh one
 		id = fmt.Sprintf("p%d", d.seq.Add(1))
 	}
 	h := d.spawnHosted(id, body.Task, body.Driver, nil) // ad-hoc `process run`: local filesystem
-	writeJSON(w, http.StatusCreated, map[string]any{"id": h.proc.ID})
+	writeOut(w, r, http.StatusCreated, map[string]any{"id": h.proc.ID})
 }
 
 // Count returns the number of hosted processes (live and completed-but-unreaped).
@@ -169,7 +173,7 @@ func (d *Daemon) Count() int {
 }
 
 func (d *Daemon) list(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, d.Snapshots())
+	writeOut(w, r, http.StatusOK, d.Snapshots())
 }
 
 // Snapshots returns every hosted process in the shape the process API returns — for versed
@@ -201,7 +205,7 @@ func (d *Daemon) get(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.snapshot())
+	writeOut(w, r, http.StatusOK, h.snapshot())
 }
 
 func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
@@ -210,14 +214,11 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	fl, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
 
 	var ch <-chan process.Frame
 	var unsub func()
@@ -233,17 +234,17 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 		// ?since path doesn't need this: its ring replay already carries the real terminal.)
 		ch, unsub = h.proc.Subscribe()
 		for _, p := range h.reg.Pending() {
-			writeSSE(w, process.Frame{
+			_ = sse.Send(process.Frame{
 				Kind: process.EvPending, ID: p.Question.ID, Tool: p.Tool,
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 			})
 		}
 		if st := h.snapshot().Status; st.Terminal() {
-			writeSSE(w, process.Frame{Kind: process.EvStatus, Text: string(st), Process: h.proc.ID})
+			_ = sse.Send(process.Frame{Kind: process.EvStatus, Text: string(st), Process: h.proc.ID})
 		}
 	}
 	defer unsub()
-	fl.Flush()
+	sse.Flush()
 
 	for {
 		select {
@@ -251,8 +252,7 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			writeSSE(w, ev)
-			fl.Flush()
+			_ = sse.Send(ev)
 		case <-r.Context().Done():
 			return
 		}
@@ -276,12 +276,12 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		DecisionID string   `json:"decisionId"`
-		Proceed    bool     `json:"proceed"`
-		ChildMode  string   `json:"childMode"`
-		Say        []string `json:"say"` // words to say on resolution (a gate that informs)
+		DecisionID string   `json:"decisionId" tony:"field=decisionId"`
+		Proceed    bool     `json:"proceed" tony:"field=proceed"`
+		ChildMode  string   `json:"childMode" tony:"field=childMode"`
+		Say        []string `json:"say" tony:"field=say"` // words to say on resolution (a gate that informs)
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -303,10 +303,10 @@ func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Instruction string `json:"instruction"`
-		By          string `json:"by"`
+		Instruction string `json:"instruction" tony:"field=instruction"`
+		By          string `json:"by" tony:"field=by"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Instruction == "" {
+	if err := codec.Read(r, &body); err != nil || body.Instruction == "" {
 		http.Error(w, "instruction required", http.StatusBadRequest)
 		return
 	}
@@ -345,10 +345,10 @@ func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Vector process.Vector `json:"vector"`
-		By     string         `json:"by"`
+		Vector process.Vector `json:"vector" tony:"field=vector"`
+		By     string         `json:"by" tony:"field=by"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -367,13 +367,6 @@ func parseChildMode(s string) process.ChildMode {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeSSE(w io.Writer, ev process.Frame) {
-	b, _ := json.Marshal(ev)
-	fmt.Fprintf(w, "data: %s\n\n", b)
+func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {
+	codec.Write(w, r, code, v)
 }

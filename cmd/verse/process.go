@@ -116,7 +116,10 @@ func (cfg *procDoGateConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("process do gate: %w", err)
 	}
-	var snap struct{ DialURL, Policy string }
+	var snap struct {
+		DialURL string `tony:"field=dialURL"`
+		Policy  string `tony:"field=policy"`
+	}
 	decodeClose(r, &snap)
 	if snap.DialURL == "" {
 		return fmt.Errorf("process do gate: %s is not a brokered process (policy %q)", id, snap.Policy)
@@ -222,7 +225,10 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 	if err != nil {
 		return fmt.Errorf("process do: %w", err)
 	}
-	var snap struct{ DialURL, Policy string }
+	var snap struct {
+		DialURL string `tony:"field=dialURL"`
+		Policy  string `tony:"field=policy"`
+	}
 	decodeClose(r, &snap)
 	if snap.DialURL == "" {
 		return fmt.Errorf("process do: %s is not a brokered process (policy %q) — no broker to dial in to", id, snap.Policy)
@@ -319,7 +325,9 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("process run: %w", err)
 	}
-	var sp struct{ ID string }
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
 	decodeClose(resp, &sp)
 	if sp.ID == "" {
 		return fmt.Errorf("process run: no id returned")
@@ -336,7 +344,10 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		var snap struct{ Status, Result string }
+		var snap struct {
+			Status string `tony:"field=status"`
+			Result string `tony:"field=result"`
+		}
 		r, err := httpGet("/processes/"+sp.ID, nil)
 		if err != nil {
 			return fmt.Errorf("process run --wait: %w", err)
@@ -419,8 +430,9 @@ func streamEvents(cc *cli.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	in := streamFmt(resp)
 	interactive := isTTY()
-	in := bufio.NewReader(os.Stdin)
+	stdin := bufio.NewReader(os.Stdin)
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for sc.Scan() {
@@ -428,8 +440,15 @@ func streamEvents(cc *cli.Context, id string) error {
 		if !ok {
 			continue
 		}
-		fmt.Fprintln(cc.Out, compactFrame(data, out))
-		var ev struct{ Kind, Text, ID, Gate, Tool, Process string }
+		fmt.Fprintln(cc.Out, compactFrame(data, in, out))
+		var ev struct {
+			Kind    string `tony:"field=kind"`
+			Text    string `tony:"field=text"`
+			ID      string `tony:"field=id"`
+			Gate    string `tony:"field=gate"`
+			Tool    string `tony:"field=tool"`
+			Process string `tony:"field=process"`
+		}
 		_ = json.Unmarshal([]byte(data), &ev)
 		// The process reached a terminal status — the stream won't emit more, so detach
 		// (else attach would hang waiting on a closed-but-not-EOF stream).
@@ -442,7 +461,7 @@ func streamEvents(cc *cli.Context, id string) error {
 			if pid == "" {
 				pid, _, _ = strings.Cut(ev.ID, "#")
 			}
-			approve := promptGate(cc, in, ev.Gate, ev.Tool)
+			approve := promptGate(cc, stdin, ev.Gate, ev.Tool)
 			if err := resolveProcessGate(pid, ev.ID, approve); err != nil {
 				fmt.Fprintf(cc.Err, "  resolve %s: %v\n", ev.ID, err)
 			} else if approve {

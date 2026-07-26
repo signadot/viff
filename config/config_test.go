@@ -181,8 +181,8 @@ func TestFormatFallbackAndBadValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Format.ResolveDefault(); got != DefaultFormat {
-		t.Errorf("unset default = %v, want the baseline %v", got, DefaultFormat)
+	if got := c.Format.ResolveDefault(); got != codec.Baseline {
+		t.Errorf("unset default = %v, want the baseline %v", got, codec.Baseline)
 	}
 
 	t.Setenv("VERSE_FORMAT", "tny")
@@ -194,7 +194,7 @@ func TestFormatFallbackAndBadValue(t *testing.T) {
 		t.Errorf("error does not name the variable: %v", err)
 	}
 	// Still usable: Load's contract is that it always returns a config.
-	if got := c.Format.ResolveDefault(); got != DefaultFormat {
+	if got := c.Format.ResolveDefault(); got != codec.Baseline {
 		t.Errorf("after a bad value, default = %v, want the baseline", got)
 	}
 }

@@ -73,8 +73,8 @@ func providersCmd() *cli.Command {
 				return fmt.Errorf("providers: %w", err)
 			}
 			var ents []struct {
-				Ref     string         `json:"ref"`
-				Payload map[string]any `json:"payload"`
+				Ref     string         `json:"ref" tony:"field=ref"`
+				Payload map[string]any `json:"payload" tony:"field=payload"`
 			}
 			decodeClose(resp, &ents)
 			if len(ents) == 0 {
@@ -109,8 +109,8 @@ func docketCmd() *cli.Command {
 				return fmt.Errorf("docket: %w", err)
 			}
 			var ents []struct {
-				Ref     string         `json:"ref"`
-				Payload map[string]any `json:"payload"`
+				Ref     string         `json:"ref" tony:"field=ref"`
+				Payload map[string]any `json:"payload" tony:"field=payload"`
 			}
 			decodeClose(resp, &ents)
 			if len(ents) == 0 {

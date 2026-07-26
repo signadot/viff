@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/scott-cotton/cli"
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
 )
@@ -28,6 +29,16 @@ func urlFor(path string, q url.Values) string {
 		}
 		q.Set("scope", g.Scope)
 	}
+	// Ask for the output format on every request, as a query parameter rather than an
+	// Accept header. An SSE response must answer Accept: text/event-stream, so the header
+	// cannot say anything about what is INSIDE the frames — the parameter is the one lever
+	// that works the same on a streaming and a non-streaming route.
+	if out, err := outFmt(); err == nil {
+		if q == nil {
+			q = url.Values{}
+		}
+		q.Set(codec.FormatParam, out.String())
+	}
 	u := "http://" + g.Addr + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -39,9 +50,53 @@ func httpGet(path string, q url.Values) (*http.Response, error) {
 	return http.Get(urlFor(path, q))
 }
 
+// httpPost sends a document in the input format and asks for the output format back.
+//
+// Asking matters even though the client re-renders anyway: it is what lets the server send
+// tony once it can, so the round trip stops being lossy — a tagged charter survives as tags
+// rather than being flattened to the JSON key form on the way out and back.
 func httpPost(path string, body any) (*http.Response, error) {
-	b, _ := json.Marshal(body)
-	return http.Post(urlFor(path, nil), "application/json", bytes.NewReader(b))
+	f := inFmt()
+	b, err := codec.Marshal(body, f)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, urlFor(path, nil), bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	setFormatHeaders(req, f)
+	return http.DefaultClient.Do(req)
+}
+
+// httpPostNode posts an already-built document. It exists so a command that has parsed a
+// file does not have to render it back to bytes in some intermediate format on the way out
+// — a tagged charter goes to the server AS tags, rather than being flattened through JSON
+// and rebuilt from the key form at the far end.
+func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
+	f := inFmt()
+	b, err := codec.NodeBytes(node, f)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, urlFor(path, nil), bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	setFormatHeaders(req, f)
+	return http.DefaultClient.Do(req)
+}
+
+// setFormatHeaders declares what is being sent and what is wanted back. The Accept lists
+// JSON as a fallback so a server that cannot produce the preferred format still answers
+// with something this client can read, rather than failing the negotiation.
+func setFormatHeaders(req *http.Request, in codec.Format) {
+	req.Header.Set("Content-Type", codec.MediaType(in))
+	out, err := outFmt()
+	if err != nil {
+		out = codec.JSON
+	}
+	req.Header.Set("Accept", codec.MediaType(out)+", "+codec.MediaJSON+";q=0.5")
 }
 
 // printBody renders a response in the format the operator asked for with -o.
@@ -96,12 +151,16 @@ func respFmt(resp *http.Response) codec.Format {
 }
 
 func httpPut(path string, body any) (*http.Response, error) {
-	b, _ := json.Marshal(body)
+	f := inFmt()
+	b, err := codec.Marshal(body, f)
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequest(http.MethodPut, urlFor(path, nil), bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	setFormatHeaders(req, f)
 	return http.DefaultClient.Do(req)
 }
 
@@ -113,16 +172,30 @@ func httpDelete(path string, q url.Values) (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 
+// decodeClose decodes a response into v, reading it in the format the response declared.
 func decodeClose(resp *http.Response, v any) {
 	defer resp.Body.Close()
-	_ = json.NewDecoder(resp.Body).Decode(v)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	_ = codec.Unmarshal(data, v, respFmt(resp))
 }
 
-// httpPostURL posts JSON to an ABSOLUTE url — used for a process's broker face (its
-// dialURL), which lives on a sibling port, not the operator API at g.Addr.
+// httpPostURL posts to an ABSOLUTE url — used for a process's broker face (its dialURL),
+// which lives on a sibling port, not the operator API at g.Addr.
 func httpPostURL(u string, body any) (*http.Response, error) {
-	b, _ := json.Marshal(body)
-	return http.Post(u, "application/json", bytes.NewReader(b))
+	f := inFmt()
+	b, err := codec.Marshal(body, f)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	setFormatHeaders(req, f)
+	return http.DefaultClient.Do(req)
 }
 
 // brokerClaim claims a process at its broker face as identity, returning the epoch (the
@@ -139,8 +212,8 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 		return 0, 0, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var c struct {
-		Epoch   int64 `json:"epoch"`
-		CCursor int64 `json:"cCursor"`
+		Epoch   int64 `json:"epoch" tony:"field=epoch"`
+		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&c)
 	return c.Epoch, c.CCursor, nil
@@ -153,10 +226,10 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 // an integer). Naming the type here makes the cursor an int64 whatever decoded it. Fields
 // the broker sends but no executor reads are simply ignored.
 type inboxItem struct {
-	Cursor   int64  `json:"cursor"`
-	Kind     string `json:"kind"`     // spec | say | cancel | pause | resume | vector | resolve
-	Decision string `json:"decision"` // resolve: the decision id being answered
-	Proceed  bool   `json:"proceed"`  // resolve: approve (true) or deny (false)
+	Cursor   int64  `json:"cursor" tony:"field=cursor"`
+	Kind     string `json:"kind" tony:"field=kind"`         // spec | say | cancel | pause | resume | vector | resolve
+	Decision string `json:"decision" tony:"field=decision"` // resolve: the decision id being answered
+	Proceed  bool   `json:"proceed" tony:"field=proceed"`   // resolve: approve (true) or deny (false)
 }
 
 // brokerInbox pulls the worker inbox at base for id — items with cursor > since, carrying
@@ -174,7 +247,7 @@ func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error
 		return nil, since, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var box struct {
-		Items []inboxItem `json:"items"`
+		Items []inboxItem `json:"items" tony:"field=items"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&box)
 	max := since
@@ -189,8 +262,22 @@ func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error
 // compactFrame re-renders one SSE frame in the requested format, on a single line so the
 // stream stays one-record-per-line. A frame it cannot parse passes through unchanged —
 // on a live stream, showing a surprising line beats swallowing it.
-func compactFrame(s string, out codec.Format) string {
-	return codec.Recompact(s, codec.JSON, out)
+func compactFrame(s string, in, out codec.Format) string {
+	if in == out {
+		return s // already what was asked for; re-rendering would only risk mangling it
+	}
+	return codec.Recompact(s, in, out)
+}
+
+// streamFmt reads the format an SSE stream declares its FRAMES are in. Content-Type is
+// spoken for by text/event-stream, so the server says it in a header of its own; a stream
+// that does not say is read as JSON, which is what verse sent before it could say.
+func streamFmt(resp *http.Response) codec.Format {
+	if f, err := codec.Parse(resp.Header.Get(codec.HeaderFormat)); err == nil &&
+		resp.Header.Get(codec.HeaderFormat) != "" {
+		return f
+	}
+	return codec.JSON
 }
 
 // ── watch ────────────────────────────────────────────────────────────────────
@@ -234,11 +321,12 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("watch: %w (is `verse up` running on %s?)", err, g.Addr)
 	}
 	defer resp.Body.Close()
+	in := streamFmt(resp)
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for sc.Scan() {
 		if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-			fmt.Fprintln(cc.Out, compactFrame(data, out))
+			fmt.Fprintln(cc.Out, compactFrame(data, in, out))
 		}
 	}
 	return nil

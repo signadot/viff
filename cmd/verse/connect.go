@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/system/libctl"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/source"
@@ -248,8 +248,11 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 		},
 		Action: trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
 	}
-	body, _ := json.Marshal(def)
-	resp, err := httpPost("/triggers", json.RawMessage(body)) // urlFor folds ?scope=<scope>
+	node, err := codec.ToNode(def)
+	if err != nil {
+		return fmt.Errorf("connect: install trigger: %w", err)
+	}
+	resp, err := httpPostNode("/triggers", node) // urlFor folds ?scope=<scope>
 	if err != nil {
 		return fmt.Errorf("connect: install trigger: %w", err)
 	}
@@ -288,9 +291,9 @@ func docdAddrs() (client, mount string, err error) {
 	}
 	var st struct {
 		Docd struct {
-			Client string `json:"client"`
-			Mount  string `json:"mount"`
-		} `json:"docd"`
+			Client string `json:"client" tony:"field=client"`
+			Mount  string `json:"mount" tony:"field=mount"`
+		} `json:"docd" tony:"field=docd"`
 	}
 	decodeClose(resp, &st)
 	if st.Docd.Client == "" {
@@ -332,7 +335,7 @@ func removeLocalEntities(cc *cli.Context) error {
 		return fmt.Errorf("disconnect: %w", err)
 	}
 	var ents []struct {
-		Ref string `json:"ref"`
+		Ref string `json:"ref" tony:"field=ref"`
 	}
 	decodeClose(resp, &ents)
 	for _, e := range ents {

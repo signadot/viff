@@ -14,6 +14,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/controlpolicy"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
@@ -58,6 +59,12 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if _, err := cfg.Parse(cc, args); err != nil {
 		return err
 	}
+
+	// The SERVER's default response format, from config/env (VERSE_WIRE_FORMAT, then
+	// VERSE_FORMAT). Set once here, which is the only place it is safe to: a request
+	// handler reads it concurrently, and unlike the client's -o there is no per-invocation
+	// flag to be stale against.
+	codec.SetDefault(appCfg.Format.ResolveWire())
 
 	// Working directory an llm agent acts in: --root, else an isolated temp dir. A
 	// federated read_file goes through the verse; --root is the non-federated fallback.

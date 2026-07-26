@@ -12,7 +12,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/signadot/verse/broker"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/controlpolicy"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -496,9 +496,9 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 // live — the cursor model surfaced at the wire.
 func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
-	fl, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
 	q := r.URL.Query()
@@ -507,9 +507,6 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	match := func(ev entity.Event) bool {
 		return (sys == "" || ev.Ref.System == sys) && (kind == "" || ev.Ref.Kind == kind)
 	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
 
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
 	// captured live rather than lost in the gap. The catch-up and the live stream
@@ -521,14 +518,14 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	if evs, ok := store.Since(since); ok {
 		for _, ev := range evs {
 			if match(ev) {
-				writeSSE(w, eventWire(ev))
+				_ = sse.Send(eventWire(ev))
 			}
 			if ev.Rev > last {
 				last = ev.Rev
 			}
 		}
 	}
-	fl.Flush()
+	sse.Flush()
 
 	for {
 		select {
@@ -542,8 +539,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 				continue // already delivered by the catch-up (overlap window)
 			}
 			if ev.Gap > 0 || match(ev) {
-				writeSSE(w, eventWire(ev))
-				fl.Flush()
+				_ = sse.Send(eventWire(ev))
 			}
 			if ev.Rev > last {
 				last = ev.Rev
@@ -567,7 +563,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	for _, e := range ents {
 		out = append(out, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeOut(w, r, http.StatusOK, out)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
@@ -589,7 +585,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
+	writeOut(w, r, http.StatusOK, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
 }
 
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
@@ -603,15 +599,15 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, eventWire(ev))
+	writeOut(w, r, http.StatusOK, eventWire(ev))
 }
 
 func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ref     string         `json:"ref"`
-		Payload map[string]any `json:"payload"`
+		Ref     string         `json:"ref" tony:"field=ref"`
+		Payload map[string]any `json:"payload" tony:"field=payload"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -621,7 +617,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ev := s.scopedStore(r).Put(ref, entity.Payload(body.Payload))
-	writeJSON(w, http.StatusOK, eventWire(ev))
+	writeOut(w, r, http.StatusOK, eventWire(ev))
 }
 
 // listGates is the unified pending-gate view: engine (trigger) gates from the registry AND
@@ -645,16 +641,16 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeOut(w, r, http.StatusOK, out)
 }
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID      string   `json:"id"`
-		Approve bool     `json:"approve"`
-		Say     []string `json:"say"`
+		ID      string   `json:"id" tony:"field=id"`
+		Approve bool     `json:"approve" tony:"field=approve"`
+		Say     []string `json:"say" tony:"field=say"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -685,10 +681,10 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 	eng := s.engFor(r.URL.Query().Get("scope"))
 	if eng == nil {
-		writeJSON(w, http.StatusOK, []trigger.Trigger{})
+		writeOut(w, r, http.StatusOK, []trigger.Trigger{})
 		return
 	}
-	writeJSON(w, http.StatusOK, eng.Triggers())
+	writeOut(w, r, http.StatusOK, eng.Triggers())
 }
 
 // status is a one-shot summary of the running verse: the store's revision and the
@@ -723,7 +719,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	if len(listen) > 0 {
 		out["listen"] = listen
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeOut(w, r, http.StatusOK, out)
 }
 
 // policyStatus describes the run policy along its two independent legs, so the two are not
@@ -768,8 +764,12 @@ type processLister interface {
 // is a process:instance entity — observable, and its completion can drive triggers) — the
 // consistency the "processes are entities" model wants.
 func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
-	var body struct{ ID, Task, Driver string }
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var body struct {
+		ID     string `json:"id" tony:"field=id"`
+		Task   string `json:"task" tony:"field=task"`
+		Driver string `json:"driver" tony:"field=driver"`
+	}
+	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -790,14 +790,14 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	}
 	h := s.policy.Spawn(id, body.Task, body.Driver, nil)
 	mirror.Reflect(store, id, h, "", s.policy.Ref())
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+	writeOut(w, r, http.StatusOK, map[string]any{"id": id})
 }
 
 // listProcesses is the unified process list: the local runtime plus, when the policy is a
 // broker (or any policy with its own registry), its processes — each stamped with its policy
 // so a client sees whether a process is local or brokered (and, for a broker, its dialURL).
 func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.processSnapshots(s.scopedStore(r)))
+	writeOut(w, r, http.StatusOK, s.processSnapshots(s.scopedStore(r)))
 }
 
 // processSnapshots is the unified process list for one store view (baseline, or a ?scope
@@ -891,13 +891,13 @@ func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if inst, ok := s.Procd.SnapshotOf(id); ok {
 		inst.Policy = "local"
-		writeJSON(w, http.StatusOK, inst)
+		writeOut(w, r, http.StatusOK, inst)
 		return
 	}
 	if l, ok := s.policy.(processLister); ok {
 		if inst, ok := l.ProcessSnapshot(id); ok {
 			inst.Policy = s.policy.Ref()
-			writeJSON(w, http.StatusOK, inst)
+			writeOut(w, r, http.StatusOK, inst)
 			return
 		}
 	}
@@ -919,7 +919,7 @@ func (s *Server) processInbox(w http.ResponseWriter, r *http.Request) {
 			items = got
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeOut(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 // processEvents bridges `attach` across backends: a locally-hosted process streams from the
@@ -936,28 +936,21 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 		http.NotFound(w, r)
 		return
 	}
-	fl, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
 	ch, unsub := h.Subscribe()
 	defer unsub()
-	fl.Flush()
+	sse.Flush()
 	for {
 		select {
 		case ev, ok := <-ch:
 			if !ok {
 				return
 			}
-			b, _ := json.Marshal(ev)
-			w.Write([]byte("data: "))
-			w.Write(b)
-			w.Write([]byte("\n\n"))
-			fl.Flush()
+			_ = sse.Send(ev)
 		case <-r.Context().Done():
 			return
 		}
@@ -982,17 +975,20 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 	case "cancel":
 		h.Cancel("")
 	case "say":
-		var body struct{ Instruction, By string }
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		var body struct {
+			Instruction string `json:"instruction" tony:"field=instruction"`
+			By          string `json:"by" tony:"field=by"`
+		}
+		_ = codec.Read(r, &body)
 		h.Steer(body.Instruction, body.By)
 	case "vector":
 		// slide autonomy on a running (brokered/remote) process: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
 		var body struct {
-			Vector process.Vector `json:"vector"`
-			By     string         `json:"by"`
+			Vector process.Vector `json:"vector" tony:"field=vector"`
+			By     string         `json:"by" tony:"field=by"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := codec.Read(r, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -1007,11 +1003,11 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 			return
 		}
 		var body struct {
-			DecisionID string `json:"decisionId"`
-			Proceed    bool   `json:"proceed"`
-			Say        string `json:"say"`
+			DecisionID string `json:"decisionId" tony:"field=decisionId"`
+			Proceed    bool   `json:"proceed" tony:"field=proceed"`
+			Say        string `json:"say" tony:"field=say"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = codec.Read(r, &body)
 		if !rh.Resolve(body.DecisionID, body.Proceed, body.Say) {
 			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 			return
@@ -1022,7 +1018,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 
 func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
 	var d trigger.Trigger
-	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+	if err := codec.Read(r, &d); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1059,7 +1055,7 @@ func (s *Server) getTrigger(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, d)
+	writeOut(w, r, http.StatusOK, d)
 }
 
 func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
@@ -1078,7 +1074,7 @@ func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
 	lister, ok := s.Store.(entity.Lister)
 	if !ok {
-		writeJSON(w, http.StatusOK, []map[string]any{})
+		writeOut(w, r, http.StatusOK, []map[string]any{})
 		return
 	}
 	ents := lister.List(func(ref entity.Ref) bool { return ref.System == "goal" && ref.Kind == "instance" })
@@ -1092,12 +1088,12 @@ func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, row)
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeOut(w, r, http.StatusOK, out)
 }
 
 func (s *Server) addGoal(w http.ResponseWriter, r *http.Request) {
 	var d trigger.GoalDef
-	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+	if err := codec.Read(r, &d); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1142,11 +1138,11 @@ func (s *Server) goalCancel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
-		Text string `json:"text"`
-		By   string `json:"by"`
+		Name string `json:"name" tony:"field=name"`
+		Text string `json:"text" tony:"field=text"`
+		By   string `json:"by" tony:"field=by"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" || body.Text == "" {
+	if err := codec.Read(r, &body); err != nil || body.Name == "" || body.Text == "" {
 		http.Error(w, "name and text required", http.StatusBadRequest)
 		return
 	}
@@ -1154,18 +1150,18 @@ func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 	if by == "" {
 		by = "human:cli"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"goal": body.Name, "said": s.Eng.SteerGoal(body.Name, body.Text, by)})
+	writeOut(w, r, http.StatusOK, map[string]any{"goal": body.Name, "said": s.Eng.SteerGoal(body.Name, body.Text, by)})
 }
 
 func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) map[string]any) {
 	var body struct {
-		Name string `json:"name"`
+		Name string `json:"name" tony:"field=name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+	if err := codec.Read(r, &body); err != nil || body.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, http.StatusOK, act(body.Name))
+	writeOut(w, r, http.StatusOK, act(body.Name))
 }
 
 // ── flow: engine steering (control plane) ────────────────────────────────────
@@ -1173,10 +1169,10 @@ func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name
 func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 	eng := s.engFor(r.URL.Query().Get("scope"))
 	if eng == nil {
-		writeJSON(w, http.StatusOK, []string{})
+		writeOut(w, r, http.StatusOK, []string{})
 		return
 	}
-	writeJSON(w, http.StatusOK, eng.Flows())
+	writeOut(w, r, http.StatusOK, eng.Flows())
 }
 
 // flowAddress decodes the steering body's `subject` — an entity ADDRESS, not just a ref:
@@ -1185,11 +1181,11 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 // breaks). Returns false having already written the error response.
 func flowAddress(w http.ResponseWriter, r *http.Request, extra any) (trigger.Match, bool) {
 	body := struct {
-		Subject string `json:"subject"`
-		Text    string `json:"text"`
-		By      string `json:"by"`
+		Subject string `json:"subject" tony:"field=subject"`
+		Text    string `json:"text" tony:"field=text"`
+		By      string `json:"by" tony:"field=by"`
 	}{}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Subject == "" {
+	if err := codec.Read(r, &body); err != nil || body.Subject == "" {
 		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
 		return nil, false
 	}
@@ -1220,7 +1216,7 @@ func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "paused": s.Eng.PauseFlow(m)})
+	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "paused": s.Eng.PauseFlow(m)})
 }
 
 func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
@@ -1229,7 +1225,7 @@ func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "resumed": s.Eng.ResumeFlow(m)})
+	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "resumed": s.Eng.ResumeFlow(m)})
 }
 
 func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
@@ -1238,7 +1234,7 @@ func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "cancelled": s.Eng.CancelFlow(m)})
+	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "cancelled": s.Eng.CancelFlow(m)})
 }
 
 func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
@@ -1255,7 +1251,7 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 	if by == "" {
 		by = "human:cli"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"subject": b.Subject, "said": s.Eng.SteerFlow(m, b.Text, by)})
+	writeOut(w, r, http.StatusOK, map[string]any{"subject": b.Subject, "said": s.Eng.SteerFlow(m, b.Text, by)})
 }
 
 func eventWire(ev entity.Event) map[string]any {
@@ -1272,15 +1268,8 @@ func eventWire(ev entity.Event) map[string]any {
 	return m
 }
 
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeSSE(w http.ResponseWriter, v any) {
-	b, _ := json.Marshal(v)
-	_, _ = w.Write([]byte("data: "))
-	_, _ = w.Write(b)
-	_, _ = w.Write([]byte("\n\n"))
+// writeOut renders a response in the format the request asked for. It takes the request
+// because that is where the answer lives — ?format=, then Accept, then the process default.
+func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {
+	codec.Write(w, r, code, v)
 }

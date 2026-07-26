@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -144,13 +143,7 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	for _, def := range defs {
-		// The server still speaks JSON; Stage 5 negotiates. Rendering each definition
-		// back out here is what lets a tony charter be installed against it today.
-		body, err := codec.NodeBytes(def, codec.JSON)
-		if err != nil {
-			return fmt.Errorf("trigger add: %w", err)
-		}
-		resp, err := httpPost("/triggers", json.RawMessage(body))
+		resp, err := httpPostNode("/triggers", def)
 		if err != nil {
 			return fmt.Errorf("trigger add: %w", err)
 		}

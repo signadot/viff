@@ -42,24 +42,38 @@ const (
 	JSON = format.JSONFormat
 )
 
-// defaultFormat is the format used when nothing more specific applies. Its zero value is
-// Tony (format.TonyFormat is 0), so a process that never calls SetDefault is tony — which
-// is the destination, not the starting point: until the flip, servers set it explicitly.
+// Baseline is verse's representation when nothing overrides it — no config, no env, no
+// flag, no header.
 //
-// Atomic because HTTP handlers read it concurrently. It is intended to be written ONCE,
-// at startup, from config+env.
+// It is JSON today and becomes tony at the flip. That is deliberately ONE line, here, in
+// the package that owns format decisions: everything else about tony support lands before
+// it, so the user-visible change is a single revertible edit and `VERSE_FORMAT=json` keeps
+// working either way.
+var Baseline = JSON
+
+// defaultFormat holds Format+1 so that zero means UNSET — format.TonyFormat is 0, so a
+// plain value could not distinguish "nobody called SetDefault" from "somebody chose tony",
+// and every test that never touches it would silently get tony.
 //
-// SERVERS ONLY. A CLI command must not rely on it: config is loaded while the command
-// tree is being built, but the cli library parses flags inside Run, so a global written
-// before the tree exists is stale by the time -o is known. Client code resolves its
-// format per invocation and passes it explicitly.
+// Atomic because HTTP handlers read it concurrently. Written ONCE, at startup, from
+// config+env.
+//
+// SERVERS ONLY. A CLI command must not rely on it: config is loaded while the command tree
+// is being built, but the cli library parses flags inside Run, so a global written before
+// the tree exists is stale by the time -o is known. Client code resolves its format per
+// invocation and passes it explicitly.
 var defaultFormat atomic.Int32
 
 // SetDefault sets the process-wide default format.
-func SetDefault(f Format) { defaultFormat.Store(int32(f)) }
+func SetDefault(f Format) { defaultFormat.Store(int32(f) + 1) }
 
-// Default reports the process-wide default format.
-func Default() Format { return Format(defaultFormat.Load()) }
+// Default reports the process-wide default format, or the Baseline if none was set.
+func Default() Format {
+	if v := defaultFormat.Load(); v != 0 {
+		return Format(v - 1)
+	}
+	return Baseline
+}
 
 // Parse resolves a format name — "tony"/"t", "json"/"j", "yaml"/"y". An empty name is the
 // configured default, so an unset flag falls through rather than erroring.

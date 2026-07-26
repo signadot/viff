@@ -157,7 +157,7 @@ func (h *remoteHandle) Result() string {
 	}
 	defer resp.Body.Close()
 	var snap struct {
-		Result string `json:"result"`
+		Result string `json:"result" tony:"field=result"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&snap)
 	return snap.Result

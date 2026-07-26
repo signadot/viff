@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/scott-cotton/cli"
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
 )
@@ -66,24 +66,18 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 	// Full-record mode: -f FILE (or "-" for stdin) carries a complete GoalDef, including
 	// owned triggers. Inline mode: build a GoalDef from a name positional + flags (no owned
 	// triggers — install those via `verse trigger add` or the file form).
-	var body any
+	var node *ir.Node
 	if cfg.File != "" {
 		// The file's suffix names its dialect; stdin uses --ifmt or the configured default.
 		data, srcFmt, err := codec.ReadSource(cc.In, cfg.File, inFmt())
 		if err != nil {
 			return fmt.Errorf("goals add: %w", err)
 		}
-		// The server still speaks JSON; Stage 5 negotiates. Re-rendering here is what lets
-		// a tony goal file be installed against it today.
-		node, err := codec.ParseNode(data, srcFmt)
+		n, err := codec.ParseNode(data, srcFmt)
 		if err != nil {
 			return fmt.Errorf("goals add: %w", err)
 		}
-		raw, err := codec.NodeBytes(node, codec.JSON)
-		if err != nil {
-			return fmt.Errorf("goals add: %w", err)
-		}
-		body = json.RawMessage(raw)
+		node = n
 	} else {
 		name, err := oneArg(cfg.Command, cc, args, "goals add wants a name (or -f <file>)")
 		if err != nil {
@@ -92,29 +86,28 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 		if cfg.DoneWhen == "" {
 			return fmt.Errorf("%w: goals add wants --done-when <formula> (or a -f <file>)", cli.ErrUsage)
 		}
-		// --done-when is a formula typed on the command line, so it names no format of
-		// its own: it is read as --ifmt / the configured default. Once that default is
-		// tony this is where `--done-when '!until [ !quorum 2, !deadline 4h ]'` starts
-		// working; today it is the JSON spelling of the same formula.
+		// --done-when is a formula typed on the command line, so it names no format of its
+		// own: it is read as --ifmt / the configured default. It stays a DOCUMENT from here
+		// to the server — which is what makes
+		// `--done-when '!until [ !quorum 2, !deadline "4h" ]'` work, tags and all.
 		doneWhen, err := codec.ParseNode([]byte(cfg.DoneWhen), inFmt())
 		if err != nil {
 			return fmt.Errorf("goals add: --done-when: %w", err)
 		}
-		doneWhenJSON, err := codec.NodeBytes(doneWhen, codec.JSON)
-		if err != nil {
-			return fmt.Errorf("goals add: --done-when: %w", err)
+		kvs := []ir.KeyVal{
+			{Key: ir.FromString("name"), Val: ir.FromString(name)},
+			{Key: ir.FromString("doneWhen"), Val: doneWhen},
 		}
-		m := map[string]any{"name": name, "doneWhen": json.RawMessage(doneWhenJSON)}
 		if cfg.Subject != "" {
-			m["subject"] = cfg.Subject
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString("subject"), Val: ir.FromString(cfg.Subject)})
 		}
 		if cfg.Deadline != "" {
-			m["deadline"] = cfg.Deadline
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString("deadline"), Val: ir.FromString(cfg.Deadline)})
 		}
-		body = m
+		node = ir.FromKeyVals(kvs)
 	}
 
-	resp, err := httpPost("/goals", body)
+	resp, err := httpPostNode("/goals", node)
 	if err != nil {
 		return fmt.Errorf("goals add: %w", err)
 	}

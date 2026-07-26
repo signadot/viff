@@ -55,13 +55,6 @@ type Config struct {
 	LLM    LLMConfig    `tony:"field=llm,omitzero"`
 }
 
-// DefaultFormat is verse's representation when nothing overrides it.
-//
-// It is JSON today and becomes tony at the flip. That is deliberately ONE line: everything
-// else about tony support lands before it, so the user-visible change is a single edit that
-// can be reverted, and `VERSE_FORMAT=json` keeps working afterwards either way.
-var DefaultFormat = codec.JSON
-
 // FormatConfig selects the representation. Three knobs rather than one because wanting tony
 // on the wire and JSON on stdout — to pipe into jq — is an entirely reasonable thing to
 // want, and a single knob makes you give up both.
@@ -87,7 +80,7 @@ func (f FormatConfig) ResolveDefault() codec.Format {
 	if f.Default != nil {
 		return *f.Default
 	}
-	return DefaultFormat
+	return codec.Baseline
 }
 
 // ResolveOutput is the format for CLI output, falling back to the default.
