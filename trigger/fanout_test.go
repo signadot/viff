@@ -40,7 +40,7 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
 			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
 		},
-		Action: Action{Set: map[string]any{"stage": "shipped"}},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
 			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
 		},
-		Action: Action{Set: map[string]any{"stage": "shipped"}},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
 			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
 		},
-		Action: Action{Set: map[string]any{"stage": "shipped"}},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
 			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
 		},
 		Gates:  []Gate{{Name: "ship", Mode: "ask"}},
-		Action: Action{Set: map[string]any{"stage": "shipped"}},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-all",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:*"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
+		"action":{"patch":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -346,7 +346,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-hotfixes",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:hotfix-*"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
+		"action":{"patch":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -374,7 +374,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"record",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit:record:latest"},
-		"action":{"set":{"stage":"noted"}}}`), &tr, codec.JSON); err != nil {
+		"action":{"patch":{"stage":"noted"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -403,7 +403,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"), // acts on demo:pr flows only
 		},
-		Action: Action{Set: map[string]any{"stage": "reviewed"}},
+		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

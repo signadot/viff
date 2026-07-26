@@ -1,8 +1,11 @@
 # Plan: `patch` replaces `set` — the write half of the tony vocabulary
 
-*Status: design, not implemented. It is a prerequisite for the reserved progress root in
-`docs/seq-plan.md`, and the write-side counterpart of the predicate unification in the
-`payload`/`fields` commit.*
+*Status: **built**, except the two things noted at the end — `verse entity patch` (the CLI verb)
+and the `set`-was-renamed reject, which needs a custom Action codec since the decoder drops
+unknown keys before validation sees them. The scalar precondition rides the seq work.
+
+It was a prerequisite for the reserved progress root in `docs/seq-plan.md`, and is the
+write-side counterpart of the predicate unification in the `payload`/`fields` commit.*
 
 ## Context
 

@@ -61,7 +61,7 @@ func waitStage(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 // setStage is an action that advances the subject's stage — standing in for "a
 // process did its work and reported back" without needing a real driver.
 func setStage(stage string) Action {
-	return Action{Set: map[string]any{"stage": stage}}
+	return Action{Patch: entity.Obj{"stage": stage}.Payload()}
 }
 
 // The emergent chain turns and *terminates*: an injected pr change flows open →
@@ -144,12 +144,12 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	eng.AddTrigger(Trigger{
 		Name:      "ping",
 		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "a"}})},
-		Action:    Action{Set: map[string]any{"phase": "b"}},
+		Action:    Action{Patch: entity.Obj{"phase": "b"}.Payload()},
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "pong",
 		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "b"}})},
-		Action:    Action{Set: map[string]any{"phase": "a"}},
+		Action:    Action{Patch: entity.Obj{"phase": "a"}.Payload()},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -176,7 +176,7 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	eng.AddTrigger(Trigger{
 		Name:      "spin",
 		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop"})}, // any change re-matches
-		Action:    Action{Set: map[string]any{"tick": true}},                           // writes the SAME value back
+		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()},                           // writes the SAME value back
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

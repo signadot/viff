@@ -697,17 +697,9 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Set
-	if len(s.Set) > 0 {
-		mapNodes := make(map[string]*ir.Node)
-		for k, v := range s.Set {
-			node, err = gomap.ToTonyIR(v, opts...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert map value at key %q: %w", k, err)
-			}
-			mapNodes[k] = node
-		}
-		irMap["set"] = ir.FromMap(mapNodes)
+	// Field: Patch (optional)
+	if s.Patch != nil {
+		irMap["patch"] = s.Patch
 	}
 
 	// Field: Spawn (optional)
@@ -788,19 +780,11 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "set":
-			// Field: Set
-			if fieldNodeUnwrapped.Type == ir.ObjectType {
-				m := make(map[string]interface{})
-				irMap := ir.ToMap(fieldNodeUnwrapped)
-				for k, v := range irMap {
-					var val interface{}
-					if err := gomap.FromTonyIR(v, &val, opts...); err != nil {
-						return fmt.Errorf("failed to convert map value at key %q: %w", k, err)
-					}
-					m[k] = val
-				}
-				s.Set = m
+		case "patch":
+			if gomap.GetUnmapComments(opts...) {
+				s.Patch = fieldNode
+			} else {
+				s.Patch = fieldNodeUnwrapped
 			}
 		case "spawn":
 			// Field: Spawn

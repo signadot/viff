@@ -142,7 +142,7 @@ v trigger add -f - >/dev/null <<'JSON' || die "trigger add failed"
 [ { "name": "smoke-advance",
     "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
     "gates":     [],
-    "action":    { "set": { "stage": "reviewed" } } } ]
+    "action":    { "patch": { "stage": "reviewed" } } } ]
 JSON
 ok "charter installed"
 # putting a matching entity fires the trigger, which advances the matched subject.
@@ -174,7 +174,7 @@ cat >"$tmp/charter.tony" <<'TONY'
         stage: queued
   gates: []
   action:
-    set:
+    patch:
       stage: reviewed
 TONY
 v trigger add -f "$tmp/charter.tony" >/dev/null || die "tony charter add failed"
@@ -205,7 +205,7 @@ v trigger add -f - >/dev/null <<'JSON' || die "operator charter add failed"
     "condition": { "when":    { "system": "demo", "kind": "note", "fields": { "seen": true } },
                    "subject": { "system": "demo", "kind": "task", "id": { "glob": "hotfix-*" } } },
     "gates":     [],
-    "action":    { "set": { "stage": "escalated" } } } ]
+    "action":    { "patch": { "stage": "escalated" } } } ]
 JSON
 has "$(v trigger show smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
 ok "installed; the sugar renders back as a tag"

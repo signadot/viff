@@ -46,7 +46,7 @@ axes stay clean only if exactly one of them lives in the chain.
       onFailed: { set: { stage: rejected } }
     - set: { stage: reviewed }
     onDone:
-      set: { stage: ready }
+      patch: { stage: ready }
 ```
 
 ```go
