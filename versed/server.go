@@ -247,8 +247,8 @@ func (s *Server) reconcileProcesses() {
 		// Reflect REPLACES the entity's payload, so provenance it does not carry is lost on
 		// re-attach. Read the chain back off the entity and hand it straight in: it is the
 		// address of the action that spawned this process, and a resumed process should not
-		// forget where it came from. (Re-deriving its HOOKS from that address is the next
-		// step and is not done here — see docs/flow-shape-kpath-plan.md.)
+		// forget where it came from. AdoptChain re-derives its hooks from that address —
+		// see docs/completion-hooks.md.
 		chain := entity.Str(ent.Payload, "chain")
 		if policyRef != "" && policyRef != "local" { // remote: the work outlived verse
 			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {

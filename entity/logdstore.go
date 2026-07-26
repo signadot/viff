@@ -43,7 +43,7 @@ const DefaultRoot = "verse"
 // Holding mounts on a sibling root removes both: "verse" is not a field-prefix of
 // "versemnt", so no watch is ever an ancestor of a mount and nothing overlaps. One root
 // watch, no subtree enumeration, Since untouched. See entity/composedwatch_test.go and
-// docs/trigger-model-plan.md.
+// docs/trigger-model.md.
 //
 // This is a PATH-RENDERING split only: the entity namespace is unchanged, so a mounted
 // slice is still addressed as the ordinary ref local:dir-content-<scope>:<path>.

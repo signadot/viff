@@ -28,7 +28,7 @@ import (
 //	    done:  true      latched when step reaches steps
 //
 // One reserved name rather than a family of flat keys, because the payload is the AUTHOR's
-// document — `flow` on a process entity is the same kind of reservation. See docs/seq-plan.md.
+// document — `flow` on a process entity is the same kind of reservation. See docs/trigger-model.md.
 
 // VerseRoot is the reserved payload key the engine publishes its own bookkeeping under. It is
 // the one name a charter may not use for its own data.

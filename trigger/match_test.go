@@ -347,7 +347,7 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 	if len(overlap) != 1 || overlap[0] != "op" {
 		t.Fatalf("match keys overlap formula tags at %v; want exactly [op].\n"+
 			"Either rename the new tag/dimension, or extend the ordered classification in "+
-			"Formula.UnmarshalJSON to disambiguate it (see docs/trigger-model-plan.md step 2).", overlap)
+			"Formula.UnmarshalJSON to disambiguate it (see docs/trigger-model.md).", overlap)
 	}
 }
 
