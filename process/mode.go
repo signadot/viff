@@ -6,6 +6,8 @@
 // trigger/gateway attempts left behind — those are rebuilt top-down elsewhere.
 package process
 
+//go:generate go tool tony-codegen -dir .
+
 import (
 	"fmt"
 	"strings"

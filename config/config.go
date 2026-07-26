@@ -16,6 +16,8 @@
 // only at the parse/merge boundary; the rest of verse consumes the typed Config.
 package config
 
+//go:generate go tool tony-codegen -dir .
+
 import (
 	"errors"
 	"fmt"
@@ -25,6 +27,7 @@ import (
 	"strings"
 
 	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/format"
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -43,8 +46,9 @@ const EnvConfigPath = "VERSE_CONFIG"
 
 // Config is the resolved configuration (file layers + env). CLI flags override these
 // afterward, in the commands.
+//
+//tony:schemagen=verse-config,notag
 type Config struct {
-	_      struct{}     `tony:"schemagen=verse-config,notag"`
 	Addr   string       `tony:"field=addr,omitzero"`
 	Scope  string       `tony:"field=scope,omitzero"`
 	Format FormatConfig `tony:"field=format,omitzero"`
@@ -66,11 +70,16 @@ var DefaultFormat = codec.JSON
 // cannot distinguish "set to tony" from "not set". Typing them as codec.Format rather than
 // string also means a typo in verse.tony is a load error rather than a silent fallback to
 // the default, which is the entire point of having written it down.
+//
+//tony:schemagen=verse-format,notag
 type FormatConfig struct {
-	_       struct{}      `tony:"schemagen=verse-format,notag"`
-	Default *codec.Format `tony:"field=default,omitzero"` // everything not separately set
-	Output  *codec.Format `tony:"field=output,omitzero"`  // CLI stdout
-	Wire    *codec.Format `tony:"field=wire,omitzero"`    // HTTP bodies
+	// Spelled format.Format, not codec.Format: they are the SAME type (codec.Format is
+	// an alias) but tony-codegen cannot resolve an alias across a package boundary
+	// (tony-format#f69agjyeh12ksa25cnn0 item 14). Everything else keeps saying
+	// codec.Format — this is spelling, not semantics.
+	Default *format.Format `tony:"field=default,omitzero"` // everything not separately set
+	Output  *format.Format `tony:"field=output,omitzero"`  // CLI stdout
+	Wire    *format.Format `tony:"field=wire,omitzero"`    // HTTP bodies
 }
 
 // ResolveDefault is the format for everything not separately overridden.
@@ -99,12 +108,13 @@ func (f FormatConfig) ResolveWire() codec.Format {
 
 // LLMConfig configures the llm process driver. When creds are absent the driver is
 // unavailable and an llm spawn fails (that spawn, not the engine).
+//
+//tony:schemagen=verse-llm,notag
 type LLMConfig struct {
-	_          struct{} `tony:"schemagen=verse-llm,notag"`
-	BaseURL    string   `tony:"field=baseURL,omitzero"`
-	APIKey     string   `tony:"field=apiKey,omitzero"`
-	VirtualKey string   `tony:"field=virtualKey,omitzero"`
-	Model      string   `tony:"field=model,omitzero"`
+	BaseURL    string `tony:"field=baseURL,omitzero"`
+	APIKey     string `tony:"field=apiKey,omitzero"`
+	VirtualKey string `tony:"field=virtualKey,omitzero"`
+	Model      string `tony:"field=model,omitzero"`
 }
 
 // Available reports whether the llm driver can be built — an API key is configured.

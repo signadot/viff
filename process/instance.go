@@ -6,6 +6,8 @@ package process
 // is uniform regardless of where the process runs. It is the runtime view; the
 // durable entity projection (the mirror's process:instance:<id>) is a separate
 // index that adds read-plane previews.
+//
+//tony:schemagen=verse-instance,notag
 type Instance struct {
 	ID      string        `json:"id" tony:"field=id"`
 	Task    string        `json:"task,omitempty" tony:"field=task,omitzero"`
@@ -22,6 +24,8 @@ type Instance struct {
 // PendingGate is one open gate on a process: a raised GateQuestion awaiting a
 // resolution, in the snapshot's shape. A broker fills only what the worker
 // reported (id + gate); the local runtime carries the full question.
+//
+//tony:schemagen=verse-pending-gate,notag
 type PendingGate struct {
 	ID     string `json:"id" tony:"field=id"`
 	Origin string `json:"origin,omitempty" tony:"field=origin,omitzero"`

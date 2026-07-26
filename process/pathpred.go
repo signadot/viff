@@ -11,6 +11,8 @@ import (
 // selects which gate applies to the files an action is about to touch. (Named
 // PathPred here, not Subject, to avoid colliding with the flow subject a launch
 // is about — launch.Spec.Subject.)
+//
+//tony:schemagen=verse-path-pred,notag
 type PathPred struct {
 	Name string `tony:"field=name,omitzero"` // pattern or identifier
 	Type string `tony:"field=type,omitzero"` // glob | extension | directory | any

@@ -3,6 +3,8 @@ package process
 // Frame is one structured entry on a Process's read plane. It is a plain document
 // so a daemon can stream it over SSE. The loop emits loop-level events; a driver's
 // own narration is a separate concern (wired at the edge, not here).
+//
+//tony:schemagen=verse-frame,notag
 type Frame struct {
 	Kind    string `json:"kind" tony:"field=kind"`
 	Process string `json:"process" tony:"field=process"`

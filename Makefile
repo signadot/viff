@@ -63,20 +63,17 @@ HOSTPATH ?=
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=true HOSTPATH=… to host-link)
 	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) | kubectl apply -f -
 
-# NOTE: no package carries a //go:generate tony-codegen directive, so these are no-ops
-# today — but nothing blocks it any more. Every defect that did is fixed as of go-tony
-# v0.0.89 (tony-format#f69agjyeh12ksa25cnn0 items 1-4, 6-8, 10, 11).
+# config, launch and process carry //go:generate tony-codegen directives; their <pkg>_gen.go
+# and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.
 #
-# What changed with v0.0.89 is the CASE for codegen, not the ability. gomap's reflection
-# path now honors omitzero/omit itself, so verse's ~130-line pruning pass is gone and
-# reflection alone produces correct documents. Codegen is therefore no longer needed for
-# correctness; what it still offers is schema_gen.tony artifacts (validation, docs, docd
-# registration) and no reflection at run time, against the cost of committed generated
-# files and a staleness check. That is a live choice rather than a blocked one.
+# Why generated rather than reflected, now that gomap's reflection path is correct on its
+# own (go-tony v0.0.89): an unsupported field type becomes a `make generate` failure that CI
+# catches, instead of a marshal error on a live request. That matters most for exactly these
+# types, which carry the HTTP wire once it switches over.
 #
-# The struct tags are already exactly the ones tony-codegen reads, so adopting it changes
-# no type declaration — only the charter grammar in package trigger stays hand-written, via
-# codec=custom.
+# Package trigger is deliberately absent: its charter grammar (Formula, Match, Requirement,
+# Condition) gets hand-written codecs for the tony tag surface, and codegen picks those up
+# via codec=custom — so it joins once those exist, not before.
 #
 # Codegen is deliberately NOT a dependency of `bin`/`dist-linux`: keeping it out of the
 # build path is what lets the Dockerfile just COPY binaries.
@@ -84,10 +81,21 @@ deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=tr
 generate: ## regenerate tony codegen (currently a no-op — see the note above)
 	$(GO) generate ./...
 
+# Scoped to the generated artifacts on purpose: a bare `git diff --exit-code` fails on any
+# unrelated edit in the tree, which makes the target useless anywhere but a clean CI
+# checkout — and a check you cannot run locally is a check that fails for the first time in
+# CI. The second clause catches a NEW generated file that was never committed, which a diff
+# alone would not see.
+GEN_FILES := '*_gen.go' '*schema_gen.tony'
 .PHONY: check-generate
-check-generate: ## fail if the generated files are stale (CI)
+check-generate: ## fail if the generated files are stale or uncommitted
 	$(GO) generate ./...
-	git diff --exit-code
+	@git diff --exit-code -- $(GEN_FILES) || \
+	  { echo "generated files are stale — run 'make generate' and commit the result"; exit 1; }
+	@test -z "$$(git ls-files --others --exclude-standard -- $(GEN_FILES))" || \
+	  { echo "generated files are not committed:"; \
+	    git ls-files --others --exclude-standard -- $(GEN_FILES); exit 1; }
+	@echo "generated files are current"
 
 .PHONY: test
 test: ## go test ./...

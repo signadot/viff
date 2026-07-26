@@ -11,8 +11,13 @@ import "strings"
 // every other verse document. Renaming them is a breaking change to
 // `verse process vector --file`, and it ships with the default-format flip rather than
 // drifting in ahead of it.
+//
+//tony:schemagen=verse-gate,notag
 type Gate struct {
-	Name  string    `tony:"field=name,omitzero"`
+	Name string `tony:"field=name,omitzero"`
+	// omitzero is correct intent but currently inert on a struct-valued field: generated
+	// code emits `match: {}` on a gate with no predicate (tony-format item 12). The tag
+	// stays — it starts working the moment that lands. See TestCodegenStillEmitsEmptyStructFields.
 	Match GateMatch `tony:"field=match,omitzero"`
 	Mode  Mode      `tony:"field=mode"`
 }
@@ -21,6 +26,8 @@ type Gate struct {
 // (AND); empty dimensions are wildcards. It spans self-report (Tools), the
 // derived typed capability (Verbs, Resources), the file-path convenience
 // (Paths, à la 42), and git-repo state (Branches, OnPush).
+//
+//tony:schemagen=verse-gate-match,notag
 type GateMatch struct {
 	Tools     []string       `tony:"field=tools,omitzero"`     // glob(s) on ToolUse.Name (self-reported)
 	Verbs     []Verb         `tony:"field=verbs,omitzero"`     // match if any derived effect has one of these verbs
@@ -31,6 +38,8 @@ type GateMatch struct {
 }
 
 // ResourcePred matches a derived effect's resource.
+//
+//tony:schemagen=verse-resource-pred,notag
 type ResourcePred struct {
 	Kind    ResourceKind `tony:"field=kind,omitzero"`
 	Pattern string       `tony:"field=pattern,omitzero"` // glob on Resource.Ref ("" = any ref of the kind)

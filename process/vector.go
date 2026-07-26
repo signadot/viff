@@ -9,6 +9,8 @@ import (
 // Vector is the ordered gate vector evaluated at each boundary. It is data, not
 // structure (model invariant #2): a Supervisor can swap it on a running
 // process without restart, which is how autonomy slides.
+//
+//tony:schemagen=verse-vector,notag
 type Vector struct {
 	Gates   []Gate `json:"gates,omitempty" tony:"field=gates,omitzero"`
 	Default Mode   `json:"default" tony:"field=default"` // mode when no gate matches (a permissive baseline; hard scope/deny is a separate layer)

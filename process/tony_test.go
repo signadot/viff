@@ -129,3 +129,22 @@ func TestScalarVocabulariesAreText(t *testing.T) {
 		}
 	}
 }
+
+// A struct-valued field carrying `omitzero` is still emitted by generated code when empty.
+// The scalar and collection kinds were fixed in go-tony v0.0.89; this one was not
+// (tony-format#f69agjyeh12ksa25cnn0 item 12), and it shows up as `match: {}` on a gate with
+// no predicate — a default gate — in documents people author by hand.
+//
+// Accepted deliberately when codegen was adopted: nothing has to be undone when it lands,
+// the `{}` simply stops appearing. THIS TEST FAILING IS THAT MOMENT — delete it and the
+// note beside Gate.Match.
+func TestCodegenStillEmitsEmptyStructFields(t *testing.T) {
+	b, err := codec.Marshal(Vector{Default: Auto, Gates: []Gate{{Name: "default", Mode: Auto}}}, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "match: {}") {
+		t.Logf("`match: {}` is gone — go-tony now honors omitzero on struct-valued fields.\n"+
+			"Remove this test and the note on Gate.Match.\n%s", b)
+	}
+}

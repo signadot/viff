@@ -19,6 +19,8 @@
 //	Environment → the sandbox/workspace floor — unbypassable
 package launch
 
+//go:generate go tool tony-codegen -dir .
+
 import (
 	"sort"
 	"strings"
@@ -28,6 +30,8 @@ import (
 // contain $vars (e.g. "$subject") that Bind expands against a concrete event,
 // turning a generic action into a specific launch. All fields are optional; a
 // runtime supplies defaults for any left blank.
+//
+//tony:schemagen=verse-launch-spec,notag
 type Spec struct {
 	Driver      string `json:"driver,omitempty" tony:"field=driver,omitzero"`
 	Task        string `json:"task,omitempty" tony:"field=task,omitzero"`
@@ -55,6 +59,8 @@ type Spec struct {
 // the registry form `Capability` (+ optional `Where`) which selects the `provider:<cap>:*`
 // entities whose attributes match — attribute-rich, discoverable doers resolved at fire
 // time. A matched provider entity carries the `driver` bound into the spawn.
+//
+//tony:schemagen=verse-launch-provider,notag
 type Provider struct {
 	Eligible   []string       `json:"eligible,omitempty" tony:"field=eligible,omitzero"`     // inline doer ids (option == driver)
 	Capability string         `json:"capability,omitempty" tony:"field=capability,omitzero"` // registry: select provider:<capability>:*
