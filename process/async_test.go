@@ -33,7 +33,7 @@ func TestCallAgentAsyncSpawnAndJoin(t *testing.T) {
 	})
 
 	out, err := p.Run(context.Background())
-	if err != nil || out.Reason != "completed" {
+	if err != nil || out.Reason != "done" {
 		t.Fatalf("run: reason=%q err=%v", out.Reason, err)
 	}
 	joined := false
@@ -69,7 +69,7 @@ func TestCallAgentAsyncScopeDenied(t *testing.T) {
 	})
 
 	out, err := p.Run(context.Background())
-	if err != nil || out.Reason != "completed" {
+	if err != nil || out.Reason != "done" {
 		t.Fatalf("run: reason=%q err=%v", out.Reason, err)
 	}
 	if spawned {

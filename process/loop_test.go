@@ -59,7 +59,7 @@ func TestDefersUnwindLIFOAtRoot(t *testing.T) {
 	p := NewProcess("t", NewSupervisor(autoVec(), AutoResolver{}), d, e)
 
 	out, err := p.Run(context.Background())
-	if err != nil || out.Reason != "completed" {
+	if err != nil || out.Reason != "done" {
 		t.Fatalf("run: reason=%q err=%v", out.Reason, err)
 	}
 	want := []string{"setupA", "setupB", "teardownB", "teardownA"}

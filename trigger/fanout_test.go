@@ -399,7 +399,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "completed"}}),
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"), // acts on demo:pr flows only
 		},
 		Action: Action{Set: map[string]any{"stage": "reviewed"}},
@@ -412,7 +412,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 
 	// A completed process whose flow is NOT a demo:pr — the subject pattern doesn't name it.
 	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
-		entity.Payload{"status": "completed", "flow": other.String()})
+		entity.Payload{"status": "done", "flow": other.String()})
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
 	time.Sleep(50 * time.Millisecond) // give a wrong action time to land, if it were going to

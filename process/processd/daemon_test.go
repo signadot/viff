@@ -124,7 +124,7 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 		}
 		decodeResp(t, g, &snap)
 		g.Body.Close()
-		if snap.Status == "completed" {
+		if snap.Status == "done" {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)

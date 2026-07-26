@@ -28,7 +28,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "completed"}}),
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Set: map[string]any{"stage": "reviewed"}},
@@ -41,7 +41,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed process carrying the PR as its flow — exactly what mirror.Reflect writes.
-	store.Put(mirror.Ref("rev-1"), entity.Payload{"status": "completed", "flow": pr.String()})
+	store.Put(mirror.Ref("rev-1"), entity.Payload{"status": "done", "flow": pr.String()})
 
 	waitStage(t, store, pr, "reviewed")
 
@@ -67,7 +67,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "completed"}}),
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Spawn: &launch.Spec{Task: "follow up on $subject"}},
@@ -78,7 +78,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(mirror.Ref("p1"), entity.Payload{"status": "completed", "flow": pr.String()})
+	store.Put(mirror.Ref("p1"), entity.Payload{"status": "done", "flow": pr.String()})
 
 	spec := <-specs
 	if spec.Task != "follow up on "+pr.String() {
@@ -163,7 +163,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 
 	// No `flow` field: the demo:pr:* subject has nothing to match, so nothing fires (and, because
 	// the subject resolves before any gate, no gate is posed either).
-	store.Put(mirror.Ref("p1"), entity.Payload{"status": "completed"})
+	store.Put(mirror.Ref("p1"), entity.Payload{"status": "done"})
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired %d times with an unresolvable subject", f)
@@ -304,7 +304,7 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 // rather than exposing the internal parse node; the subject round-trips as its dimensions.
 func TestConditionJSONRoundTrip(t *testing.T) {
 	const in = `{"name":"reviewed","condition":{"when":{"system":"process","kind":"instance",` +
-		`"fields":{"status":"completed"}},"subject":"demo:pr:*"},"action":{"set":{"stage":"reviewed"}}}`
+		`"fields":{"status":"done"}},"subject":"demo:pr:*"},"action":{"set":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := json.Unmarshal([]byte(in), &tr); err != nil {
 		t.Fatalf("unmarshal: %v", err)

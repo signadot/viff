@@ -276,7 +276,7 @@ func (p *Process) Run(ctx context.Context) (Outcome, error) {
 				prev = StepResult{} // a completion (or steer) was folded; let the driver react
 				continue
 			}
-			return p.teardown(ctx, Completed), nil // normal return → unwind
+			return p.teardown(ctx, Done), nil // normal return → unwind
 		}
 		if p.repo != nil {
 			tu.Repo = p.repo()

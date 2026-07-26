@@ -49,12 +49,12 @@ func TestBrokerDialInLoop(t *testing.T) {
 
 	// report → the worker's utterances/lifecycle land on verse's read plane (carrying epoch).
 	postJSON(t, cl, srv.URL+"/processes/t1/report",
-		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"say","text":"looking"},{"kind":"status","text":"completed"}],"result":"looks good"}`, nil)
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"say","text":"looking"},{"kind":"status","text":"done"}],"result":"looks good"}`, nil)
 
 	// Read until both worker reports arrive (the claim also emitted a running transition).
 	seen := map[string]bool{}
 	deadline := time.After(2 * time.Second)
-	for !seen["say:looking"] || !seen["status:completed"] {
+	for !seen["say:looking"] || !seen["status:done"] {
 		select {
 		case ev := <-ch:
 			seen[ev.Kind+":"+ev.Text] = true
@@ -111,7 +111,7 @@ func TestTerminalOnce(t *testing.T) {
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
 
 	postJSON(t, cl, srv.URL+"/processes/p/report",
-		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"completed"}],"result":"first"}`, nil)
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"done"}],"result":"first"}`, nil)
 
 	var second struct {
 		Status   string `tony:"field=status"`
@@ -120,7 +120,7 @@ func TestTerminalOnce(t *testing.T) {
 	}
 	postJSON(t, cl, srv.URL+"/processes/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"second"}`, &second)
-	if !second.Terminal || second.Status != "completed" || second.Result != "first" {
+	if !second.Terminal || second.Status != "done" || second.Result != "first" {
 		t.Fatalf("post-terminal report should echo the frozen terminal, got %+v", second)
 	}
 	if h.Result() != "first" {
@@ -171,7 +171,7 @@ loop:
 		Status string `tony:"field=status"`
 	}
 	postJSON(t, cl, srv.URL+"/processes/p/report",
-		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"completed"}],"result":"done"}`, &late)
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"done"}],"result":"done"}`, &late)
 	if late.Status != "cancelled" {
 		t.Fatalf("late completion status=%q, want the latched cancelled", late.Status)
 	}
