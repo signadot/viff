@@ -3,11 +3,13 @@
 *Status: **the machinery has landed**, without `seq`. Chains are kpaths that descend by hook
 field (`review`, `review.onDone`, `review.onDone.onFailed`), ids are `<chain>@<subject>` with the
 disambiguating hash behind `+`, trigger names are validated as bare kpath fields at install, and
-`mirror.Reflect` publishes `chain` + `trigger` (carried through `launch.Spec.Chain`, and preserved
-across a re-attach in `reconcileProcesses`). **Not yet built:** the flow-tree API response (§5),
-hook rehydration on resume (§4), and everything that depends on `seq` — which is deliberately
-deferred, so today every chain segment is a `.field` and the id needs no separate rendering. The
-two-rendering design below is what the id form must become when `seq` adds `[n]` segments.*
+`mirror.Reflect` publishes `chain` + `trigger` + `task` (carried through `launch.Spec.Chain`, and
+preserved across a re-attach in `reconcileProcesses`). The flow tree (§5) has landed too:
+`GET /flow/tree?subject=<addr>` behind `verse flow show <addr>`, with `pending`/`skipped`/`applied`
+for positions no process reports. **Not yet built:** hook rehydration on resume (§4), and
+everything that depends on `seq` — which is deliberately deferred, so today every chain segment is
+a `.field` and the id needs no separate rendering. The two-rendering design below is what the id
+form must become when `seq` adds `[n]` segments.*
 
 ## Context
 

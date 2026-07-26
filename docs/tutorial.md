@@ -485,6 +485,43 @@ verse flow say   'demo:*:*' "hurry"   # everything in the demo system
 verse flow list                       # the distinct subjects with live work
 ```
 
+`flow list` answers *which subjects are busy*. To see what is happening to **one** — and what
+comes next — ask for its shape:
+
+```sh
+verse flow show demo:pr:1
+# - subject: demo:pr:1
+#   roots:
+#   - chain: review           kind: root     status: done      task: "review demo:pr:1"
+#     children:
+#     - chain: review.onDone  kind: onDone   status: done      task: "merge demo:pr:1"
+#       children:
+#       - chain: review.onDone.onDone    kind: onDone    status: applied
+#       - chain: review.onDone.onFailed  kind: onFailed  status: skipped
+```
+
+Each node is one **action in the charter**, addressed by its `chain` — the kpath of that
+action inside its trigger, which is also the process id it spawns under
+(`review.onDone@demo:pr:1`). So the tree is not a second model of the work; it is the charter
+and the runtime read through the same address.
+
+Three of those statuses come from no process at all. A branch the charter declares but nothing
+has reached is `pending` while it may still fire, and `skipped` once its parent has ended on a
+different status — the `onFailed` above will never run, because the review completed. A hook
+that fired but only `set` fields is `applied`: it left no process to observe, so the tree says
+what the engine's own rule implies rather than pretending something is still coming.
+
+The tree is **derived, never stored** — assembled per request from the charter (the shape,
+including what has not run), the mirrored `process:instance` entities (the history, which
+outlives the live registry), and the live registry (what is still steerable). Materializing it
+would be the stored `flows[subject]` index that flow-as-a-query deliberately replaced.
+
+A pattern works here too, giving one tree per subject:
+
+```sh
+verse flow show 'demo:pr:*'
+```
+
 Each command reports how many processes it reached, and echoes the address it reached them
 by, so you can see what a wildcard actually selected:
 
@@ -983,7 +1020,7 @@ verse
                 cancel <id> · say <id> <text…> · resolve <id> <decision> --approve|--deny
                 do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
                 do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
-  flow    list · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
+  flow    list · show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
   goals   list · add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]

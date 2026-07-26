@@ -40,6 +40,10 @@ type Meta struct {
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
 	// "review.onDone". Empty for a process with no trigger behind it (`verse process run`).
 	Chain string
+	// Task is what the process was asked to do, already bound. Small, and the process's
+	// identity to a reader — so it belongs on the index next to what the process produced,
+	// not only on the read plane that outlives nothing.
+	Task string
 }
 
 // TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
@@ -86,6 +90,9 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 	if m.Chain != "" {
 		st["chain"] = m.Chain
 		st["trigger"] = TriggerOf(m.Chain)
+	}
+	if m.Task != "" {
+		st["task"] = m.Task
 	}
 	// A dial-in policy (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→

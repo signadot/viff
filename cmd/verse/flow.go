@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/scott-cotton/cli"
@@ -12,6 +13,7 @@ func flowCmd() *cli.Command {
 		WithSynopsis("flow — steer live processes by the subject they are about (control plane)").
 		WithSubs(
 			flowListCmd(),
+			flowShowCmd(),
 			flowPauseCmd(),
 			flowResumeCmd(),
 			flowCancelCmd(),
@@ -28,6 +30,30 @@ func flowListCmd() *cli.Command {
 			}
 			return printBody(cc, resp)
 		})
+}
+
+type flowShowConfig struct{ *cli.Command }
+
+// flow show renders a subject's work as a shape rather than a list: which trigger acted on
+// it, what that spawned, and the completion branches hanging off it — including branches the
+// charter declares but nothing has reached yet. `flow list` answers "which subjects are
+// busy"; this answers "what is happening to this one, and what comes next".
+func flowShowCmd() *cli.Command {
+	cfg := &flowShowConfig{}
+	return cli.NewCommandAt(&cfg.Command, "show").
+		WithSynopsis("show a subject's flow as a tree: show <subject|demo:pr:*>").WithRun(cfg.run)
+}
+
+func (cfg *flowShowConfig) run(cc *cli.Context, args []string) error {
+	subject, err := oneArg(cfg.Command, cc, args, "flow show wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
+	if err != nil {
+		return err
+	}
+	resp, err := httpGet("/flow/tree", url.Values{"subject": {subject}})
+	if err != nil {
+		return fmt.Errorf("flow show: %w", err)
+	}
+	return printBody(cc, resp)
 }
 
 type flowPauseConfig struct{ *cli.Command }

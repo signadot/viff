@@ -32,7 +32,7 @@ func startHookProc(store entity.Store, id string, spec launch.Spec) *process.Pro
 	} else {
 		p = process.NewProcess(id, sup, immediate{}, noExec{})
 	}
-	mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local", Chain: spec.Chain})
+	mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local", Chain: spec.Chain, Task: spec.Task})
 	go p.Run(context.Background())
 	return p
 }

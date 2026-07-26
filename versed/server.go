@@ -209,7 +209,7 @@ func mintNonce() string {
 func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
 	return func(id string, spec launch.Spec) process.ProcHandle {
 		h := s.policy.Spawn(id, spec.Task, spec.Driver, content)
-		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Policy: s.policy.Ref(), Chain: spec.Chain})
+		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Policy: s.policy.Ref(), Chain: spec.Chain, Task: spec.Task})
 		return h
 	}
 }
@@ -342,6 +342,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /entity", s.getEntity)
 	mux.HandleFunc("GET /gates", s.listGates)
 	mux.HandleFunc("GET /flows", s.listFlows)
+	mux.HandleFunc("GET /flow/tree", s.flowTree)
 	mux.HandleFunc("GET /triggers", s.listTriggers)
 	mux.HandleFunc("GET /triggers/{name}", s.getTrigger)
 	mux.HandleFunc("GET /goals", s.listGoals)
@@ -1204,6 +1205,32 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, eng.Flows())
+}
+
+// flowTree renders a subject's work as a SHAPE — the trigger that acted on it, the process
+// that ran, and the completion hooks branching off it, including the ones that have not run
+// yet. A read, so the address rides the query string rather than a body (steering is POST).
+//
+// It is derived per request from the charter, the mirror and the live registry (see
+// trigger.FlowTrees). Nothing about the tree is stored: a materialized one would be the
+// flows[subject] index that a flow-as-a-query deliberately replaced.
+func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		writeOut(w, r, http.StatusOK, []trigger.FlowTree{})
+		return
+	}
+	addr := r.URL.Query().Get("subject")
+	if addr == "" {
+		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
+		return
+	}
+	m, err := trigger.ParseExpr(addr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeOut(w, r, http.StatusOK, eng.FlowTrees(m))
 }
 
 // flowAddress decodes the steering body's `subject` — an entity ADDRESS, not just a ref:
