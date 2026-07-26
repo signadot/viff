@@ -3,6 +3,7 @@ package versed
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -138,5 +139,62 @@ func TestSchemaRefusesJSON(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotAcceptable {
 		t.Errorf("Accept: application/json = %s, want 406", resp.Status)
+	}
+}
+
+// Every signature a published signature REFERENCES must itself be published.
+//
+// This is the invariant that a dangling cross-package reference violates, and one was live
+// until go-tony v0.0.93: `verse-action` referred to `launch:spec` while the signature it
+// meant is named `verse-launch-spec`, so anything resolving the published schema followed a
+// name that did not exist. Nothing failed — a schema nobody resolves cannot fail — which is
+// exactly why it needs a test rather than a reader.
+func TestEverySignatureReferenceResolves(t *testing.T) {
+	names, err := schema.Names()
+	if err != nil {
+		t.Fatalf("names: %v", err)
+	}
+	known := map[string]bool{}
+	for _, n := range names {
+		known[n] = true
+	}
+	// A reference is `verse-<name>`, optionally qualified by the context alias of the
+	// package that defines it (`launch:verse-launch-spec`). tony-base refs are external.
+	ref := regexp.MustCompile(`(?:[a-z0-9-]+:)?(verse-[a-z0-9-]+)`)
+	for _, n := range names {
+		doc, _, err := schema.Get(n)
+		if err != nil {
+			t.Fatalf("get %s: %v", n, err)
+		}
+		body, err := codec.Marshal(doc, codec.Tony)
+		if err != nil {
+			t.Fatalf("render %s: %v", n, err)
+		}
+		for _, m := range ref.FindAllStringSubmatch(string(body), -1) {
+			if !known[m[1]] {
+				t.Errorf("signature %q references %q, which is not published", n, m[1])
+			}
+		}
+	}
+}
+
+// The upgrade that retired two curated entries: entity.Entity and Event are GENERATED now,
+// because go-tony v0.0.93 consults TextMarshaler when typing a struct field, so `ref` is
+// described as the string its generated code has always emitted rather than as an int.
+func TestEntitySignaturesAreGeneratedNotCurated(t *testing.T) {
+	cur, err := schema.Curated()
+	if err != nil {
+		t.Fatalf("curated: %v", err)
+	}
+	for _, n := range cur {
+		if n == "verse-entity" || n == "verse-event" {
+			t.Errorf("%s is curated again — if codegen regressed, say so here rather than "+
+				"letting a hand-written signature quietly stand in for a generated one", n)
+		}
+	}
+	for _, n := range []string{"verse-entity", "verse-event"} {
+		if _, ok, _ := schema.Get(n); !ok {
+			t.Errorf("%s is not published at all", n)
+		}
 	}
 }

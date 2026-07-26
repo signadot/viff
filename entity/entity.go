@@ -9,6 +9,8 @@
 // "observe another process" is just "observe an entity."
 package entity
 
+//go:generate go tool tony-codegen -dir .
+
 import (
 	"fmt"
 	"strings"
@@ -57,18 +59,14 @@ func ParseRef(s string) (Ref, error) {
 // advances — rather than separate primitives. See payload.go: it is any tony value, and an
 // object is merely the common case.
 //
-// NOT schemagen'd, deliberately, and this is the reason so it is not re-attempted blindly:
-// tony-codegen cannot describe Ref. Its generated CODE is right — it finds MarshalText and
-// emits ir.FromString, so an Entity marshals as `{ref: demo:pr:1, payload: …}` — but its
-// generated SIGNATURE says `ref: .[int]`, because the schema type mapper never consults
-// TextMarshaler (gomap/codegen/type_mapping.go handles reflect.Struct by looking for a
-// schema name and falling back). Code and signature disagree, and only the signature is
-// wrong, so nothing fails to compile and nothing misbehaves at runtime — a published schema
-// would simply lie about the one identifier every surface shares. A curated signature is the
-// answer until codegen consults the marshaller; see the schema endpoint.
+// Describable as of go-tony v0.0.93, which taught the schema type mapper to consult
+// TextMarshaler: `ref` now generates as .[string], agreeing with the generated code that has
+// always emitted one. Before that the signature said .[int] while the code emitted a string —
+// nothing failed to compile and nothing misbehaved, so the only casualty would have been a
+// published schema lying about the one identifier every surface shares. It was hand-written
+// in schema/curated.tony until then.
 //
-// The field tags and Ref.MarshalText below are kept: they are correct, they are what makes
-// the wire shape right when a response type finally is one, and they cost nothing dormant.
+//tony:schemagen=verse-entity,notag
 type Entity struct {
 	Ref Ref `tony:"field=ref"`
 	// Spelled *ir.Node rather than the Payload alias: tony-codegen does not resolve a type
@@ -90,21 +88,41 @@ const (
 	Delete Op = "delete" // the entity was removed (a tombstone)
 )
 
+// MarshalText / UnmarshalText spell an Op as its text, which is what it already is.
+//
+// They exist for the reason process.Verb's do: tony-codegen resolves a named scalar through
+// its TextMarshaler, and without one the generated code does not compile — at v0.0.93 it
+// emits ir.FromString(s.Op) with no conversion from the named type (earlier it was an int64
+// conversion and a .[int] schema). TextMarshaler is the hook both gomap paths honor, so it
+// is how a scalar vocabulary declares its wire form.
+//
+// Deliberately permissive on the way in: an unknown op decodes rather than erroring, so a
+// new op from a newer peer is not a decode failure. Validation belongs where an op is
+// interpreted.
+func (o Op) MarshalText() ([]byte, error) { return []byte(o), nil }
+
+func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
+
 // Event is one observed change in the entity-verse — the unit triggers match on.
 // To carries the change's payload (what was set); it is nil on Delete. From is a
 // best-effort prior payload — MemStore and Delete populate it, the logd store leaves
 // it nil on Set — so it is informational, never matched on. There is no "pure
 // signal" event: anything worth triggering on is a state change, so it stays
 // durable, replayable, and uniform.
+//
+//tony:schemagen=verse-event,notag
 type Event struct {
-	Ref  Ref
-	Op   Op
-	From Payload
-	To   Payload
+	Ref Ref `tony:"field=ref"`
+	Op  Op  `tony:"field=op"`
+	// From and To are payloads, so they are open values; To is null on a Delete. Spelled
+	// *ir.Node rather than the Payload alias for the same reason Entity.Payload is —
+	// tony-codegen does not resolve an alias (item 18).
+	From *ir.Node `tony:"field=from,omitzero"`
+	To   *ir.Node `tony:"field=to,omitzero"`
 	// Rev is the store revision at which this change happened — a monotonic cursor.
 	// A consumer tracks the highest Rev it has processed and catches up by querying
 	// the store from that Rev (Store.Since), so a hold/pause/disconnect costs a
 	// cursor, not a growing buffer. 0 on non-store signals (e.g. a gap marker).
-	Rev int64
-	Gap int // >0: this many events were dropped before this one (a slow observer)
+	Rev int64 `tony:"field=rev"`
+	Gap int   `tony:"field=gap,omitzero"` // >0: this many events dropped before this one (a slow observer)
 }

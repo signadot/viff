@@ -8,7 +8,7 @@ define:
   onFailed: .[nullable(verse-action)]
   onOrphaned: .[nullable(verse-action)]
   set: .[object(object)]
-  spawn: .[nullable(launch:spec)]
+  spawn: .[nullable(launch:verse-launch-spec)]
 signature:
   name: verse-action
 ---

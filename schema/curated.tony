@@ -7,36 +7,10 @@
 # cannot. That difference is worth surfacing rather than hiding behind a uniform document.
 #
 # Remove an entry as soon as codegen can produce it, and the endpoint will serve the
-# generated one instead.
+# generated one instead. That has already happened once: verse-entity and verse-event were
+# curated because the schema mapper did not consult TextMarshaler and called entity.Ref an
+# int; go-tony v0.0.93 fixed it, so they are generated now and their entries are gone.
 
-# entity.Entity — codegen's generated CODE is right (it finds Ref.MarshalText and emits a
-# string) but its generated SIGNATURE says `ref: .[int]`, because the schema type mapper
-# never consults TextMarshaler. Publishing that would misdescribe the one identifier every
-# surface shares, so the signature is written by hand to match what the code actually emits.
-context:
-- tony-format/context
-- tony-base: github.com/signadot/tony-format/go-tony/schema
-define:
-  ref: .[string]
-  payload: .[tony-base:ir]
-signature:
-  name: verse-entity
----
-# entity.Event — one observed change. Same Ref problem as above. `from` and `to` are
-# payloads, so they are open values; `to` is null on a delete.
-context:
-- tony-format/context
-- tony-base: github.com/signadot/tony-format/go-tony/schema
-define:
-  ref: .[string]
-  op: .[string]
-  from: .[tony-base:ir]
-  to: .[tony-base:ir]
-  rev: .[int]
-  gap: .[int]
-signature:
-  name: verse-event
----
 # trigger.Match — the charter's selector grammar. codec=custom, so codegen emits an empty
 # `define`, which would publish the most-authored type in the system as having no shape at
 # all. Described here as what it is: an object of match dimensions, each of which may be a

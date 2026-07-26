@@ -50,7 +50,7 @@ context:
 - tony-format/context
 define:
   match: !verse-gate-match null
-  mode: .[int]
+  mode: .[string]
   name: .[string]
 signature:
   name: verse-gate
@@ -86,7 +86,7 @@ signature:
 context:
 - tony-format/context
 define:
-  default: .[int]
+  default: .[string]
   gates: .[array(verse-gate)]
 signature:
   name: verse-vector

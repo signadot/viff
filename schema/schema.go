@@ -22,6 +22,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/trigger"
@@ -54,7 +55,7 @@ func load() {
 
 	// Generated first, so a curated entry for a type codegen has since learned to describe
 	// is overridden by the real thing rather than shadowing it.
-	for _, src := range [][]byte{api.Schema, trigger.Schema, process.Schema, config.Schema, launch.Schema} {
+	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, process.Schema, config.Schema, launch.Schema} {
 		if err := index(src, false); err != nil {
 			loadErr = err
 			return
