@@ -501,7 +501,14 @@ type scriptDriver struct {
 	done    bool
 }
 
-func (d *scriptDriver) Next(_ context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
+func (d *scriptDriver) Next(_ context.Context, prev process.StepResult) (process.ToolUse, bool, error) {
+	// A non-zero exit ends the process as FAILED. The llm driver can afford to read a
+	// failure as just another step result and re-plan around it; a scripted process has
+	// no one to do the re-planning, so a failure nothing reports is a failure that reads
+	// as success — and a trigger's onDone fires on a command that never worked.
+	if prev.Err != nil {
+		return process.ToolUse{}, false, prev.Err
+	}
 	if d.done || strings.TrimSpace(d.command) == "" {
 		return process.ToolUse{}, false, nil
 	}
@@ -529,7 +536,15 @@ func (e *shellExec) Execute(ctx context.Context, tu process.ToolUse) (process.St
 	if res == "" {
 		res = "(ok)"
 	}
-	return process.StepResult{Use: tu, Output: res}, nil, nil
+	// The failure rides in the StepResult rather than as an Execute error, because Run
+	// discards the result on an error return and the command's output is the whole point
+	// of a failure. A cancel is not a failure: the kill that ends `sleep` surfaces here as
+	// an error too, and Run's boundary check reaches ctx.Err() first — but say so here, so
+	// the driver's cancel and failure paths do not depend on that ordering.
+	if ctx.Err() != nil {
+		err = nil
+	}
+	return process.StepResult{Use: tu, Output: res, Err: err}, nil, nil
 }
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
