@@ -186,11 +186,12 @@ type Action struct {
 	// side keeps `fields` beside `payload` because requiring an object there is what makes
 	// `fields: "stage=open"` an install error; nothing here needs that guard — `patch: 42`
 	// is a legitimate whole-value replace.) See docs/patch-plan.md.
-	// Spelled *ir.Node rather than its alias entity.Payload — which is what it IS — because
-	// tony-codegen resolves field types syntactically and cannot follow an alias
-	// ("Payload is not a named type"). entity/payload.go anticipated half of this.
-	Patch *ir.Node     `tony:"field=patch,omitzero"`
-	Spawn *launch.Spec `tony:"field=spawn,omitzero"`
+	// Spelled entity.Payload, which is what it IS. That was impossible until go-tony
+	// v0.0.95: the resolver could not follow an alias ("Payload is not a named type"), so
+	// every schemagen'd field had to say *ir.Node and the domain vocabulary was absent from
+	// exactly the declarations a reader of the schema reads. Fixed, so the name is back.
+	Patch entity.Payload `tony:"field=patch,omitzero"`
+	Spawn *launch.Spec   `tony:"field=spawn,omitzero"`
 
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a

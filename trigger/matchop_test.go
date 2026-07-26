@@ -330,14 +330,22 @@ func TestMatchRefusesTwoPayloadSpellings(t *testing.T) {
 	}
 }
 
-// `set` against a non-object payload REPLACES it. This became reachable only once a payload
-// could be a scalar, so it is pinned here rather than left to be discovered: a trigger that
-// matches `payload: 42` and sets a field turns the entity into a record, and the 42 is gone.
+// A patch against a non-object payload REPLACES it today: a trigger matching `payload: 42`
+// and patching a field turns the entity into a record, and the 42 is gone. tony.Patch does
+// this silently, and it is reachable only because a payload can be a scalar at all.
 //
-// The alternative — refusing to advance a subject because of the shape of its current value
-// — would strand a flow with no way to say so. This is the same whole-value replace Put has
-// always done, but it is surprising enough to deserve a test that states it out loud.
-func TestSetOnAScalarPayloadReplacesIt(t *testing.T) {
+// THIS PINS CURRENT BEHAVIOUR, NOT THE INTENDED ONE. docs/patch-plan.md settles the scalar
+// case the other way — fail loudly, via a conditional write whose precondition is that the
+// payload is object-shaped, so a scalar sitting where a flow's subject lives fails the commit
+// instead of being overwritten. The framing there is invariant checking rather than a policy
+// compromise, and it is right: an earlier version of this comment argued that refusing would
+// "strand a flow with no way to say so", which mistakes a failed write that says exactly what
+// is wrong for silence.
+//
+// The precondition rides the seq work and is not built, so the behaviour below is what
+// happens. When it lands, this test inverts — it should assert the commit FAILS — and that is
+// the signal that the plan's decision has arrived, not a regression.
+func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
