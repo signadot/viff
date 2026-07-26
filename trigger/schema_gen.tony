@@ -49,6 +49,28 @@ signature:
 context:
 - tony-format/context
 define:
+  chain: .[string]
+  children: .[array(verse-flow-node)]
+  gate: .[string]
+  id: .[string]
+  kind: .[string]
+  lastAction: .[string]
+  status: .[string]
+  task: .[string]
+signature:
+  name: verse-flow-node
+---
+context:
+- tony-format/context
+define:
+  roots: .[array(verse-flow-node)]
+  subject: .[string]
+signature:
+  name: verse-flow-tree
+---
+context:
+- tony-format/context
+define:
   formula: .[nullable(verse-formula)]
   mode: .[string]
   name: .[string]

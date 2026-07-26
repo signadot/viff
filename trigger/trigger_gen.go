@@ -12,6 +12,288 @@ import (
 	"github.com/signadot/verse/launch"
 )
 
+// ToTonyIR converts FlowNode to a Tony IR node.
+func (s *FlowNode) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Chain
+	if s.Chain != "" {
+		irMap["chain"] = ir.FromString(s.Chain)
+	}
+
+	// Field: Kind
+	irMap["kind"] = ir.FromString(s.Kind)
+
+	// Field: ID
+	if s.ID != "" {
+		irMap["id"] = ir.FromString(s.ID)
+	}
+
+	// Field: Task
+	if s.Task != "" {
+		irMap["task"] = ir.FromString(s.Task)
+	}
+
+	// Field: Status
+	irMap["status"] = ir.FromString(s.Status)
+
+	// Field: Gate
+	if s.Gate != "" {
+		irMap["gate"] = ir.FromString(s.Gate)
+	}
+
+	// Field: LastAction
+	if s.LastAction != "" {
+		irMap["lastAction"] = ir.FromString(s.LastAction)
+	}
+
+	// Field: Children
+	if len(s.Children) > 0 {
+		slice := make([]*ir.Node, len(s.Children))
+		for i, v := range s.Children {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["children"] = ir.FromSlice(slice)
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates FlowNode from a Tony IR node.
+func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for FlowNode, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "chain":
+			// Field: Chain
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "chain", fieldNodeUnwrapped.Type)
+			}
+			s.Chain = fieldNodeUnwrapped.String
+		case "kind":
+			// Field: Kind
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
+			}
+			s.Kind = fieldNodeUnwrapped.String
+		case "id":
+			// Field: ID
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "id", fieldNodeUnwrapped.Type)
+			}
+			s.ID = fieldNodeUnwrapped.String
+		case "task":
+			// Field: Task
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+			}
+			s.Task = fieldNodeUnwrapped.String
+		case "status":
+			// Field: Status
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "status", fieldNodeUnwrapped.Type)
+			}
+			s.Status = fieldNodeUnwrapped.String
+		case "gate":
+			// Field: Gate
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "gate", fieldNodeUnwrapped.Type)
+			}
+			s.Gate = fieldNodeUnwrapped.String
+		case "lastAction":
+			// Field: LastAction
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "lastAction", fieldNodeUnwrapped.Type)
+			}
+			s.LastAction = fieldNodeUnwrapped.String
+		case "children":
+			// Field: Children
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]FlowNode, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := FlowNode{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Children = slice
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts FlowNode to Tony format bytes.
+func (s *FlowNode) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates FlowNode.
+func (s *FlowNode) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts FlowTree to a Tony IR node.
+func (s *FlowTree) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Subject
+	irMap["subject"] = ir.FromString(s.Subject)
+
+	// Field: Roots
+	if len(s.Roots) > 0 {
+		slice := make([]*ir.Node, len(s.Roots))
+		for i, v := range s.Roots {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["roots"] = ir.FromSlice(slice)
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates FlowTree from a Tony IR node.
+func (s *FlowTree) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for FlowTree, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "subject":
+			// Field: Subject
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
+			}
+			s.Subject = fieldNodeUnwrapped.String
+		case "roots":
+			// Field: Roots
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]FlowNode, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := FlowNode{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Roots = slice
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts FlowTree to Tony format bytes.
+func (s *FlowTree) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates FlowTree.
+func (s *FlowTree) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // ToTonyIR converts GoalDef to a Tony IR node.
 func (s *GoalDef) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {

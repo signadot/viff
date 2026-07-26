@@ -32,6 +32,14 @@ import (
 
 // FlowNode is one position in a subject's flow: an action in some trigger, and the process
 // it did or did not spawn.
+//
+// It stays in `trigger` rather than moving to `api`: `api` is for types that exist only as
+// wire shapes and need one symbol on both sides, and this is a domain type the engine
+// produces (Engine.FlowTrees). `flow show` decodes nothing — printBody re-renders the
+// document — so no shared symbol is needed. Being a response type means it must be
+// DESCRIBED, not relocated.
+//
+//tony:schemagen=verse-flow-node,notag
 type FlowNode struct {
 	// Chain is the action's kpath inside its trigger — "review", "review.onDone". Empty for
 	// a process with no trigger behind it (`verse process run`, or an adopted process whose
@@ -69,6 +77,8 @@ const (
 )
 
 // FlowTree is one subject's flow: every root that acted on it, with its branches.
+//
+//tony:schemagen=verse-flow-tree,notag
 type FlowTree struct {
 	Subject string     `tony:"field=subject"`
 	Roots   []FlowNode `tony:"field=roots,omitzero"`
