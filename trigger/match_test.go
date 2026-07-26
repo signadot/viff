@@ -1,10 +1,13 @@
 package trigger
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/signadot/verse/entity"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
 )
 
 // A Match round-trips without losing meaning: whatever the authored form, re-reading the
@@ -18,30 +21,44 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		`{}`,
 	} {
 		var m Match
-		if err := json.Unmarshal([]byte(in), &m); err != nil {
+		if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 			t.Fatalf("unmarshal %s: %v", in, err)
 		}
-		out, err := json.Marshal(m)
+		out, err := codec.Marshal(m, codec.JSON)
 		if err != nil {
 			t.Fatalf("marshal %s: %v", in, err)
 		}
 		var back Match
-		if err := json.Unmarshal(out, &back); err != nil {
+		if err := codec.Unmarshal(out, &back, codec.JSON); err != nil {
 			t.Fatalf("re-unmarshal %s → %s: %v", in, out, err)
 		}
-		if len(back) != len(m) {
-			t.Fatalf("round-trip changed shape: %s → %s", in, out)
+		// MEANING, not shape. A match naming only system/kind/id marshals to the address
+		// string, and `id: "*"` is the same thing as an unset id — a wildcard — so
+		// {"system":"demo","kind":"pr","id":"*"} comes back as demo:pr:* and re-parses with
+		// the id dropped. The dimensions the matcher applies are what has to survive.
+		if back.System() != m.System() || back.Kind() != m.Kind() {
+			t.Fatalf("round-trip lost system/kind: %s → %s", in, out)
 		}
-		for k, v := range m {
-			if fmtAny(back[k]) != fmtAny(v) {
-				t.Fatalf("round-trip lost %q: %s → %s", k, in, out)
-			}
+		if wildcard(back.ID()) != wildcard(m.ID()) {
+			t.Fatalf("round-trip changed the id dimension: %s → %s (%q vs %q)",
+				in, out, m.ID(), back.ID())
+		}
+		if fmtAny(back.Fields()) != fmtAny(m.Fields()) {
+			t.Fatalf("round-trip lost fields: %s → %s", in, out)
 		}
 	}
 }
 
+// wildcard normalises the two spellings of "any id": unset and "*".
+func wildcard(id string) string {
+	if id == "*" {
+		return ""
+	}
+	return id
+}
+
 func fmtAny(v any) string {
-	b, _ := json.Marshal(v)
+	b, _ := codec.Marshal(v, codec.JSON)
 	return string(b)
 }
 
@@ -82,7 +99,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
 			var m Match
-			if err := json.Unmarshal([]byte(in), &m); err != nil {
+			if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
 			if fmtAny(m) != fmtAny(want) {
@@ -94,7 +111,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 	// fail at install rather than silently matching nothing (or, for a subject, creating "*").
 	for _, bad := range []string{`""`, `"demo::1"`, `":pr:1"`, `"$flow"`, `"demo:pr:$id"`} {
 		var m Match
-		if err := json.Unmarshal([]byte(bad), &m); err == nil {
+		if err := codec.Unmarshal([]byte(bad), &m, codec.JSON); err == nil {
 			t.Errorf("accepted %s (parsed as %#v)", bad, m)
 		}
 	}
@@ -105,7 +122,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 // the verse. It must now constrain exactly the address it names.
 func TestStringFormWhenConstrains(t *testing.T) {
 	var m Match
-	if err := json.Unmarshal([]byte(`"demo:pr:1"`), &m); err != nil {
+	if err := codec.Unmarshal([]byte(`"demo:pr:1"`), &m, codec.JSON); err != nil {
 		t.Fatal(err)
 	}
 	named := entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set}
@@ -128,7 +145,7 @@ func TestMatchNames(t *testing.T) {
 	}
 	for in, want := range yes {
 		var m Match
-		if err := json.Unmarshal([]byte(in), &m); err != nil {
+		if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 			t.Fatal(err)
 		}
 		got, ok := m.Names()
@@ -145,7 +162,7 @@ func TestMatchNames(t *testing.T) {
 	}
 	for _, in := range no {
 		var m Match
-		if err := json.Unmarshal([]byte(in), &m); err != nil {
+		if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 			t.Fatal(err)
 		}
 		if got, ok := m.Names(); ok {
@@ -199,7 +216,7 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
 			var m Match
-			if err := json.Unmarshal([]byte(in), &m); err == nil {
+			if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err == nil {
 				t.Fatalf("accepted %s (parsed as %#v) — a bad match must not parse", in, m)
 			}
 		})
@@ -339,14 +356,26 @@ func TestRequirementFactsWireUnchanged(t *testing.T) {
 	}
 	for _, in := range cases {
 		var f Formula
-		if err := json.Unmarshal([]byte(in), &f); err != nil {
+		if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err != nil {
 			t.Fatalf("unmarshal %s: %v", in, err)
 		}
-		out, err := json.Marshal(&f)
+		out, err := codec.MarshalWire(&f, codec.JSON)
 		if err != nil {
 			t.Fatalf("marshal %s: %v", in, err)
 		}
-		if string(out) != in {
+		// Compared as DOCUMENTS, not bytes. What must not drift is the compact tag-keyed
+		// SHAPE — {"quorum":2}, never the internal {"op":…,"req":…} parse node. Object key
+		// order is not part of that contract and asserting it byte-for-byte would pin an
+		// encoder detail as if it were the wire format.
+		want, err := codec.ParseNode([]byte(in), codec.JSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := codec.ParseNode(out, codec.JSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !sameDoc(want, got) {
 			t.Errorf("compact form drifted: %s → %s", in, out)
 		}
 	}
@@ -361,5 +390,41 @@ func TestFactSelFromRefIsAMatch(t *testing.T) {
 	}
 	if m := factSelFromRef("ci"); m.System() != "ci" || m.Kind() != "" {
 		t.Fatalf("factSelFromRef(\"ci\") = %#v", m)
+	}
+}
+
+// sameDoc compares two documents ignoring object key order, which no wire format
+// guarantees and no reader depends on.
+func sameDoc(a, b *ir.Node) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Type != b.Type || a.Tag != b.Tag {
+		return false
+	}
+	switch a.Type {
+	case ir.ObjectType:
+		if len(a.Fields) != len(b.Fields) {
+			return false
+		}
+		for i, k := range a.Fields {
+			other := ir.Get(b, k.String)
+			if other == nil || !sameDoc(a.Values[i], other) {
+				return false
+			}
+		}
+		return true
+	case ir.ArrayType:
+		if len(a.Values) != len(b.Values) {
+			return false
+		}
+		for i := range a.Values {
+			if !sameDoc(a.Values[i], b.Values[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return a.DeepEqual(b)
 	}
 }

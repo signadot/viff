@@ -16,10 +16,9 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #     ours to re-render.
 #   codec/codec.go         — json.Number, in AsInt64. codec is where formats live.
 #
-# PENDING removal. These are the charter grammar's pre-tony JSON codecs. They are dead in
-# production — every path goes through codec, which uses the tony codecs and Detag — but
-# four test files still exercise the grammar through them. Delete them with those tests.
-allow='process/harness/llm.go|codec/codec.go|trigger/formula.go|trigger/match.go'
+# That is the whole list, and it should stay that way. The charter grammar's pre-tony JSON
+# codecs were the last non-test holdout and are gone; every path renders through codec.
+allow='process/harness/llm.go|codec/codec.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

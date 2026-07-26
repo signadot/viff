@@ -1,7 +1,6 @@
 package trigger
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -55,32 +54,6 @@ const (
 var matchKeys = map[string]bool{
 	mKeySystem: true, mKeyKind: true, mKeyID: true,
 	mKeyOp: true, mKeyFields: true, mKeyEntity: true,
-}
-
-// UnmarshalJSON accepts the object form, or a STRING as sugar for an address: "demo:pr:1"
-// parses to the system/kind/id dimensions and "demo:pr:*" to the whole kind — the same grammar
-// the CLI's `flow <addr>` uses (ParseExpr). There is no deferred `$var` form.
-func (m *Match) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		parsed, err := ParseExpr(s)
-		if err != nil {
-			return err
-		}
-		*m = parsed
-		return nil
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("match: want an object or a \"system:kind:id\"/\"$var\" string: %w", err)
-	}
-	*m = Match(raw)
-	return m.Validate()
-}
-
-// MarshalJSON emits the object form (`trigger show`).
-func (m Match) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]any(m))
 }
 
 // Validate reports whether the match carries only known dimensions of the right shape. It is

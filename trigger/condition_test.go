@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
+
+	"github.com/signadot/verse/codec"
 )
 
 // The COMPLETION PATTERN, which is what the Condition restructure exists to make readable:
@@ -231,7 +232,7 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 // ignition-guard/budget behaviour that relied on it is unchanged.
 func TestEmptyWhenMatchesEverything(t *testing.T) {
 	var f Formula
-	if err := json.Unmarshal([]byte(`{}`), &f); err != nil {
+	if err := codec.Unmarshal([]byte(`{}`), &f, codec.JSON); err != nil {
 		t.Fatalf("unmarshal {}: %v", err)
 	}
 	if !f.IsMatchAtom() {
@@ -249,7 +250,7 @@ func TestEmptyWhenMatchesEverything(t *testing.T) {
 func TestWhenWithOpDimensionIsAMatchNotAVerboseNode(t *testing.T) {
 	const in = `{"system":"local","kind":"dir-status-abc","op":"set"}`
 	var f Formula
-	if err := json.Unmarshal([]byte(in), &f); err != nil {
+	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err != nil {
 		t.Fatalf("unmarshal %s: %v", in, err)
 	}
 	if f.Op != OpAtom || !f.IsMatchAtom() {
@@ -270,7 +271,7 @@ func TestWhenWithOpDimensionIsAMatchNotAVerboseNode(t *testing.T) {
 // match just because it carries an `op` key.
 func TestVerboseFormulaNodeStillParses(t *testing.T) {
 	var f Formula
-	if err := json.Unmarshal([]byte(`{"op":"atom","req":{"kind":"quorum","n":2}}`), &f); err != nil {
+	if err := codec.Unmarshal([]byte(`{"op":"atom","req":{"kind":"quorum","n":2}}`), &f, codec.JSON); err != nil {
 		t.Fatalf("verbose node: %v", err)
 	}
 	if f.Op != OpAtom || f.Req == nil || f.Req.Kind != ReqQuorum || f.Req.N != 2 {
@@ -286,7 +287,7 @@ func TestMixedMatchAndTagObjectRejected(t *testing.T) {
 		`{"kind":"pr","until":[{"quorum":2}]}`,
 	} {
 		var f Formula
-		if err := json.Unmarshal([]byte(in), &f); err == nil {
+		if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err == nil {
 			t.Fatalf("accepted the ambiguous object %s (as %+v)", in, f)
 		}
 	}
@@ -295,7 +296,7 @@ func TestMixedMatchAndTagObjectRejected(t *testing.T) {
 // An unknown single tag must error rather than be accepted as some requirement kind.
 func TestUnknownFormulaTagRejected(t *testing.T) {
 	var f Formula
-	if err := json.Unmarshal([]byte(`{"whenever":2}`), &f); err == nil {
+	if err := codec.Unmarshal([]byte(`{"whenever":2}`), &f, codec.JSON); err == nil {
 		t.Fatalf("accepted an unknown tag as %+v", f)
 	}
 }
@@ -306,7 +307,7 @@ func TestConditionJSONRoundTrip(t *testing.T) {
 	const in = `{"name":"reviewed","condition":{"when":{"system":"process","kind":"instance",` +
 		`"fields":{"status":"completed"}},"subject":"demo:pr:*"},"action":{"set":{"stage":"reviewed"}}}`
 	var tr Trigger
-	if err := json.Unmarshal([]byte(in), &tr); err != nil {
+	if err := codec.Unmarshal([]byte(in), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := tr.Condition.validate(); err != nil {
@@ -316,13 +317,13 @@ func TestConditionJSONRoundTrip(t *testing.T) {
 	if !tr.Condition.Subject.Selects() {
 		t.Fatalf("subject did not parse as a selector: %#v", tr.Condition.Subject)
 	}
-	out, err := json.Marshal(&tr)
+	out, err := codec.Marshal(&tr, codec.JSON)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	// `when` must emit the bare match object — no internal parse node ({"op":…,"req":…}) leaks.
 	var got map[string]any
-	if err := json.Unmarshal(out, &got); err != nil {
+	if err := codec.Unmarshal(out, &got, codec.JSON); err != nil {
 		t.Fatalf("re-decode: %v", err)
 	}
 	cond := got["condition"].(map[string]any)
@@ -331,7 +332,7 @@ func TestConditionJSONRoundTrip(t *testing.T) {
 	}
 	// Re-reading the output yields the same condition.
 	var tr2 Trigger
-	if err := json.Unmarshal(out, &tr2); err != nil {
+	if err := codec.Unmarshal(out, &tr2, codec.JSON); err != nil {
 		t.Fatalf("re-unmarshal: %v", err)
 	}
 	if !reflect.DeepEqual(tr.Condition, tr2.Condition) {

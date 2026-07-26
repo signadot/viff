@@ -78,9 +78,10 @@ func TestCharterRoundTrip(t *testing.T) {
 	}
 }
 
-// The JSON path is the oracle: it is what verse serves today, so codec's JSON rendering
-// must name the same fields encoding/json does. If these diverge, the migration would
-// silently rename fields on the wire.
+// The `json:` struct tags are no longer a wire format — nothing in verse serves through
+// encoding/json — but they are still THERE, and two tag sets that disagree about a field
+// name is the bug class hardest to see. This checks they agree, which is the only reason
+// the json: tags are worth keeping until they are swept.
 func TestCharterJSONFieldNamesMatchOracle(t *testing.T) {
 	tr := Trigger{
 		Name: "x",

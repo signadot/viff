@@ -79,8 +79,9 @@ func TestTonyOmitsUnsetFields(t *testing.T) {
 	}
 }
 
-// The tony and JSON renderings must carry the same field names, so a reader moving
-// between dialects sees one vocabulary. This is what makes the JSON path a usable oracle.
+// The tony and JSON renderings must carry the same field names, so a reader moving between
+// dialects sees one vocabulary. encoding/json is no longer a wire format here; what this
+// guards is the two TAG SETS agreeing, for as long as both exist.
 func TestTonyAndJSONAgreeOnFieldNames(t *testing.T) {
 	inst := Instance{ID: "run-1", Task: "review", Status: Running, Cursor: 4}
 

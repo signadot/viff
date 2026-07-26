@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
+
+	"github.com/signadot/verse/codec"
 )
 
 // prs seeds n demo:pr entities at a stage, returning their refs.
@@ -313,9 +314,9 @@ func TestGlobSubjectFansOut(t *testing.T) {
 
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"ship-all",
+	if err := codec.Unmarshal([]byte(`{"name":"ship-all",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:*"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		"action":{"set":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -343,9 +344,9 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"ship-hotfixes",
+	if err := codec.Unmarshal([]byte(`{"name":"ship-hotfixes",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:hotfix-*"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		"action":{"set":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -371,9 +372,9 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"record",
+	if err := codec.Unmarshal([]byte(`{"name":"record",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit:record:latest"},
-		"action":{"set":{"stage":"noted"}}}`), &tr); err != nil {
+		"action":{"set":{"stage":"noted"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {

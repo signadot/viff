@@ -1,9 +1,7 @@
 package trigger
 
 import (
-	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/signadot/verse/entity"
@@ -39,124 +37,6 @@ const (
 	OpAlways     FormulaOp = "always"     // stub
 	OpSequence   FormulaOp = "sequence"   // stub
 )
-
-// UnmarshalJSON parses the charter's compact, tag-keyed surface into the AST — the single
-// object key IS the tag (an operator or a requirement kind), so a gate author writes
-//
-//	{"quorum": 2}                                       an atom (quorum threshold 2)
-//	{"quorum": {"choice":"reject","n":2}}               a reject-quorum
-//	{"fact": "motion:deadline"}                       a fact atom (system:kind selector)
-//	{"until": [ {"quorum":2}, {"fact":"motion:deadline"} ]}   an operator over sub-formulas
-//
-// rather than the internal parse node ({"op":"atom","req":{"kind":"quorum","n":2}}). The
-// verbose {op,req,args} form is still accepted (compatibility). This mirrors tony's tags —
-// in a tony charter it reads `!until [ !quorum 2, … ]`.
-func (f *Formula) UnmarshalJSON(data []byte) error {
-	// A bare string is the match atom's address sugar: `when: "demo:pr:*"`.
-	var str string
-	if err := json.Unmarshal(data, &str); err == nil {
-		m, perr := ParseExpr(str)
-		if perr != nil {
-			return perr
-		}
-		*f = *matchFormula(m)
-		return nil
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("formula: want an object, or a ref string: %w", err)
-	}
-	keys := make([]string, 0, len(raw))
-	for k := range raw {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	// ORDERED CLASSIFICATION. The order matters: `op` is both a match dimension and the
-	// verbose node's discriminator (the one overlap, asserted in
-	// TestMatchKeysDisjointFromFormulaTags), so match keys are tested FIRST. Branching on
-	// `op` alone — as this once did — silently decoded a match carrying `op: "set"` as
-	// Formula{Op:"set"}, which matches nothing.
-	switch {
-	case len(raw) == 0: // {} — an empty match: everything
-		*f = *matchFormula(Match{})
-		return nil
-
-	case hasMatchKey(keys): // a bare match object
-		var m Match
-		if err := json.Unmarshal(data, &m); err != nil {
-			return err
-		}
-		*f = *matchFormula(m)
-		return nil
-
-	case isVerboseNode(keys, raw): // {op, req, args} — the internal parse node
-		type alias Formula // no UnmarshalJSON → parse the raw node; children still use ours
-		var v alias
-		if err := json.Unmarshal(data, &v); err != nil {
-			return err
-		}
-		*f = Formula(v)
-		return nil
-
-	case len(raw) == 1:
-		tag := keys[0]
-		switch op := FormulaOp(tag); op {
-		case OpUntil, OpEventually, OpAlways, OpSequence:
-			args, err := unmarshalFormulaList(raw[tag])
-			if err != nil {
-				return fmt.Errorf("formula %q: %w", tag, err)
-			}
-			*f = Formula{Op: op, Args: args}
-			return nil
-		}
-		if !isRequirementKind(tag) {
-			return fmt.Errorf("formula: unknown tag %q (want a match object, an operator "+
-				"(until/eventually/always/sequence), or a requirement (match/quorum/fact/deadline))", tag)
-		}
-		req, err := requirementFromValue(RequirementKind(tag), raw[tag])
-		if err != nil {
-			return err
-		}
-		*f = Formula{Op: OpAtom, Req: req}
-		return nil
-	}
-	return fmt.Errorf("formula: want a single tag (e.g. {\"quorum\":2}), a match object, or "+
-		"{op,req,args}; got keys %v", keys)
-}
-
-// hasMatchKey reports whether these object keys name a MATCH rather than a formula tag: at
-// least one match dimension other than the ambiguous `op`. Every other key must then also be
-// a match dimension — Match.Validate rejects the object otherwise, so a mixed
-// {"system":…,"quorum":…} fails loudly instead of being resolved one way in silence.
-func hasMatchKey(keys []string) bool {
-	for _, k := range keys {
-		if k != mKeyOp && matchKeys[k] {
-			return true
-		}
-	}
-	return false
-}
-
-// isVerboseNode reports whether these keys are the internal {op,req,args} parse node: only
-// those keys, and `op` holding a known FormulaOp. Requiring a valid op is what keeps a match
-// whose only dimension is `op` (e.g. {"op":"set"}) out of this branch.
-func isVerboseNode(keys []string, raw map[string]json.RawMessage) bool {
-	for _, k := range keys {
-		if k != "op" && k != "req" && k != "args" {
-			return false
-		}
-	}
-	var op string
-	if err := json.Unmarshal(raw["op"], &op); err != nil {
-		return false
-	}
-	switch FormulaOp(op) {
-	case OpAtom, OpUntil, OpEventually, OpAlways, OpSequence:
-		return true
-	}
-	return false
-}
 
 // isRequirementKind reports whether a tag names a leaf requirement.
 func isRequirementKind(tag string) bool {
@@ -194,60 +74,6 @@ func (f *Formula) IsMatchAtom() bool {
 	return f != nil && f.Op == OpAtom && f.Req != nil && f.Req.Kind == ReqMatch
 }
 
-// MarshalJSON emits the compact tag-keyed form, so `trigger show` and stored charters read
-// the way they were authored rather than as the internal parse node.
-func (f Formula) MarshalJSON() ([]byte, error) {
-	if f.Op == OpAtom {
-		if f.Req == nil {
-			return []byte("null"), nil
-		}
-		// A match atom emits its match UNWRAPPED, so a `when` reads back the way it was
-		// authored ({"system":"demo",…}) rather than as {"match":{…}}.
-		if f.Req.Kind == ReqMatch {
-			return json.Marshal(f.Req.Facts)
-		}
-		return json.Marshal(map[string]any{string(f.Req.Kind): f.Req.compactValue()})
-	}
-	return json.Marshal(map[string]any{string(f.Op): f.Args})
-}
-
-// unmarshalFormulaList parses an operator's operands: a list of sub-formulas, or a single
-// sub-formula (accepted as a one-element list).
-func unmarshalFormulaList(val json.RawMessage) ([]*Formula, error) {
-	var args []*Formula
-	if err := json.Unmarshal(val, &args); err == nil {
-		return args, nil
-	}
-	var one Formula
-	if err := json.Unmarshal(val, &one); err != nil {
-		return nil, fmt.Errorf("expected sub-formula(s): %w", err)
-	}
-	return []*Formula{&one}, nil
-}
-
-// requirementFromValue parses the compact value after a requirement tag: a number is the
-// quorum threshold ({"quorum":2}); a string is a "system:kind" fact selector
-// ({"fact":"motion:deadline"}); an object carries the full fields.
-func requirementFromValue(kind RequirementKind, val json.RawMessage) (*Requirement, error) {
-	var n int
-	if json.Unmarshal(val, &n) == nil {
-		return &Requirement{Kind: kind, N: n}, nil
-	}
-	var s string
-	if json.Unmarshal(val, &s) == nil {
-		if kind == ReqDeadline {
-			return &Requirement{Kind: kind, Within: s}, nil // {"deadline":"4h"}
-		}
-		return &Requirement{Kind: kind, Facts: factSelFromRef(s)}, nil
-	}
-	var r Requirement
-	if err := json.Unmarshal(val, &r); err != nil {
-		return nil, fmt.Errorf(`requirement %q: want a threshold, a "system:kind", or an object: %w`, kind, err)
-	}
-	r.Kind = kind
-	return &r, nil
-}
-
 // factSelFromRef parses "system:kind" (or "system") into a fact-selecting Match.
 func factSelFromRef(s string) Match {
 	parts := strings.SplitN(s, ":", 2)
@@ -256,39 +82,6 @@ func factSelFromRef(s string) Match {
 		fs[mKeyKind] = parts[1]
 	}
 	return fs
-}
-
-// compactValue renders a requirement as its compact form: a bare threshold when only N is
-// set, a "system:kind" string when it is only a fact selector, else an object.
-func (r *Requirement) compactValue() any {
-	if r.Kind == ReqDeadline {
-		return r.Within
-	}
-	if r.Kind == ReqMatch {
-		return r.Facts
-	}
-	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || len(r.Facts.Fields()) > 0
-	switch {
-	case r.Choice == "" && !factsSet:
-		return r.N
-	case r.N == 0 && r.Choice == "" && len(r.Facts.Fields()) == 0:
-		if r.Facts.Kind() != "" {
-			return r.Facts.System() + ":" + r.Facts.Kind()
-		}
-		return r.Facts.System()
-	default:
-		m := map[string]any{}
-		if r.N != 0 {
-			m["n"] = r.N
-		}
-		if r.Choice != "" {
-			m["choice"] = r.Choice
-		}
-		if factsSet {
-			m["facts"] = r.Facts
-		}
-		return m
-	}
 }
 
 // Requirement is a leaf of a Formula: a named, verse-native requirement a producer
