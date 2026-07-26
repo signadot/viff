@@ -78,7 +78,7 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 	var kid int
 	p.SetSpawn(func(parent *process.Process, mode process.ChildMode, req *process.CallAgentRequest) (*process.Process, error) {
 		kid++
-		childID := fmt.Sprintf("%s.%s#%d", parent.ID, req.Agent, kid)
+		childID := fmt.Sprintf("%s.%s%s%d", parent.ID, req.Agent, process.GateSep, kid)
 		childDriver := &llmDriver{client: cfg.Client, tools: toolDefs(), prompt: req.Prompt, log: cfg.Log}
 		childExec := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
 		child, err := parent.NewChild(childID, mode, req, childDriver, childExec)

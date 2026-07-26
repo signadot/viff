@@ -523,7 +523,7 @@ func (p *Process) record(tu ToolUse, res Resolution) {
 
 func (p *Process) nextID() string {
 	p.idc++
-	return fmt.Sprintf("%s#%d", p.ID, p.idc)
+	return fmt.Sprintf("%s%s%d", p.ID, GateSep, p.idc)
 }
 
 func (p *Process) logf(format string, a ...any) {

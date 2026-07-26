@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -150,5 +151,33 @@ func TestResolverSubstitution(t *testing.T) {
 	in <- false
 	if r := <-done; r.Proceed || r.By != "human:scott" {
 		t.Fatalf("human deny: proceed=%v by=%q", r.Proceed, r.By)
+	}
+}
+
+// A gate id must split back into the id of whatever posed it, on GateSep and nowhere else
+// — that split is how versed routes a `gate resolve` to the owning process, and how the CLI
+// tells a gate id from the process id it belongs to. Nothing else pins it: producer
+// (Supervisor.Check) and splitters (versed, cmd/verse) live in three packages, so a
+// delimiter changed in one and not the others compiles, passes every other test, and fails
+// only at resolve time with "unknown or already-answered decision".
+func TestGateIDSplitsOnGateSepToItsOwner(t *testing.T) {
+	const origin = "review-demo:pr:1" // a real spawnID shape: hyphens and colons, no GateSep
+	sup := NewSupervisor(&Vector{Default: Auto}, AutoResolver{Who: "agent"})
+	sup.SetOrigin(origin)
+
+	res, err := sup.Check(context.Background(), ToolUse{Name: "x"})
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	id := res.Question.ID
+	owner, rest, ok := strings.Cut(id, GateSep)
+	if !ok {
+		t.Fatalf("gate id %q carries no GateSep %q — a resolve cannot find its owner", id, GateSep)
+	}
+	if owner != origin {
+		t.Errorf("owner = %q, want %q — resolve would route %q to the wrong process", owner, origin, id)
+	}
+	if strings.Contains(rest, GateSep) {
+		t.Errorf("gate id %q has a second GateSep in %q — the split is ambiguous", id, rest)
 	}
 }

@@ -39,12 +39,16 @@ func urlFor(path string, q url.Values) string {
 		q.Set(codec.FormatParam, out.String())
 	}
 	// Build the URL rather than concatenating it, so the path gets ESCAPED. Ids reach here
-	// from the command line, and a gate id carries a "#" — concatenated, that starts a URL
-	// fragment, which silently truncates the path (`/processes/run-x#d1/events` requests
-	// `/processes/run-x`) and takes the query string with it, since the "?" would land
-	// inside the fragment. The request then succeeds against the WRONG route, with no
-	// scope and no format. url.URL.String() escapes it to %23 and the server 404s, which
-	// is what a bad id should do.
+	// straight from the command line, so they may contain anything a shell will pass along.
+	// A "#" is the one that punishes concatenation: it starts a URL fragment, which silently
+	// truncates the path (`/processes/run-x#d1/events` requests `/processes/run-x`) and takes
+	// the query string with it, since the "?" would land inside the fragment. The request
+	// then succeeds against the WRONG route, with no scope and no format. url.URL.String()
+	// escapes it to %23 and the server 404s, which is what a bad id should do.
+	//
+	// Gate ids no longer carry one — they delimit with process.GateSep, which is unreserved
+	// and reaches the route as itself — so this is now a guard against a hostile id rather
+	// than the everyday path. It stays because the everyday path is not the dangerous one.
 	u := url.URL{Scheme: "http", Host: g.Addr, Path: path}
 	if len(q) > 0 {
 		u.RawQuery = q.Encode()

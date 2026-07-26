@@ -481,7 +481,7 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		}
 		e.mu.Lock()
 		e.dc++
-		id := fmt.Sprintf("trigger:%s:%s#%d", t.Name, gname, e.dc)
+		id := fmt.Sprintf("trigger:%s:%s%s%d", t.Name, gname, process.GateSep, e.dc)
 		e.mu.Unlock()
 		d := process.GateQuestion{
 			ID: id, Origin: t.Name, Mode: m, Gate: gname,

@@ -171,8 +171,10 @@ func (cfg *procDoGateConfig) run(cc *cli.Context, args []string) error {
 	return fmt.Errorf("process do gate: %s not resolved in time", decision)
 }
 
-// shortID is a short random suffix that keeps generated decision ids unique (and free of
-// shell-hostile characters like #).
+// shortID is a short random suffix that keeps generated decision ids unique. Hex, so the id
+// stays free of anything the surfaces it crosses read as punctuation — a URL's "#" or "?",
+// a shell's globs, and process.GateSep, which would make a resolve split the id in the
+// wrong place.
 func shortID() string {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
@@ -415,7 +417,7 @@ func (cfg *procAttachConfig) run(cc *cli.Context, args []string) error {
 	// `gate list` prints gate ids, so reaching for one here is the natural mistake — and
 	// the id it wants is right there in the same record, under `process`. Say so, rather
 	// than making a 404 stand in for the explanation.
-	if pid, _, ok := strings.Cut(id, "#"); ok {
+	if pid, _, ok := strings.Cut(id, process.GateSep); ok {
 		return fmt.Errorf("process attach takes a process id, but %q is a gate id — did you mean %q?", id, pid)
 	}
 	return streamEvents(cc, id)
@@ -480,7 +482,7 @@ func streamEvents(cc *cli.Context, id string) error {
 		if interactive && ev.Kind == "pending" {
 			pid := ev.Process
 			if pid == "" {
-				pid, _, _ = strings.Cut(ev.ID, "#")
+				pid, _, _ = strings.Cut(ev.ID, process.GateSep)
 			}
 			approve := promptGate(cc, stdin, ev.Gate, ev.Tool)
 			if err := resolveProcessGate(pid, ev.ID, approve); err != nil {

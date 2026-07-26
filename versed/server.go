@@ -679,10 +679,10 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := process.Resolution{Proceed: body.Approve, By: "human:cli", Steer: body.Say}
-	// A process gate's id is <process-id>#dN; route it to that process. An engine gate id
-	// (trigger:…#N) whose owner isn't a process falls through to the registry.
+	// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
+	// (trigger:…~N) whose owner isn't a process falls through to the registry.
 	owner := body.ID
-	if i := strings.IndexByte(owner, '#'); i >= 0 {
+	if i := strings.Index(owner, process.GateSep); i >= 0 {
 		owner = owner[:i]
 	}
 	if s.isProcess(owner) {

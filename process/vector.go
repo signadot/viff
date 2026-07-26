@@ -16,6 +16,18 @@ type Vector struct {
 	Default Mode   `tony:"field=default"` // mode when no gate matches (a permissive baseline; hard scope/deny is a separate layer)
 }
 
+// GateSep separates a GateQuestion's id from the id of whatever posed it — a process
+// (`run-33c7~1`) or a trigger gate (`trigger:review:review~1`). Splitting on it is how a
+// resolve request finds the owner to route to, so it must be a character an owner id can
+// never contain (see safeSeg in the trigger package, which strips it out of subject-derived
+// ids) and one that survives the surfaces an id crosses on the way back in:
+//
+//   - a URL path — '~' is RFC 3986 *unreserved*, so no conformant client percent-encodes it,
+//     and it lands in /processes/{id} as itself rather than opening a fragment the way '#' did
+//   - an argv word — no shell expands or splits on a '~' that is not word-initial
+//   - a tony/YAML scalar — '~' is only meaningful as a whole-value null, not inside a token
+const GateSep = "~"
+
 // GateQuestion is what evaluating the vector against an action poses: the mode the
 // gates determine (auto/ask/park), which gate was decisive, and why. It is the
 // *question*, not the answer — when it blocks it is handed to a Resolver, which
@@ -109,7 +121,7 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	d := s.vec.Load().Evaluate(tu)
 	s.dc++
 	d.Origin = s.origin
-	d.ID = fmt.Sprintf("%s#d%d", s.origin, s.dc)
+	d.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
 	if !d.Mode.Blocks() {
 		return Resolution{Proceed: true, By: "auto", Question: d}, nil
 	}

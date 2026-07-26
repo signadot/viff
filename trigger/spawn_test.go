@@ -140,6 +140,24 @@ func TestSpawnIDDistinguishesRefs(t *testing.T) {
 	}
 }
 
+// A spawnID becomes the OWNER half of every gate id its process poses, so it must never
+// contain process.GateSep — an owner carrying one would make `gate resolve` cut the id at
+// the wrong place and route the answer to a process that does not exist. A ref is arbitrary
+// user data (a branch, a path, a title), so the guard belongs in safeSeg rather than in a
+// convention nobody enforces. The hash still keeps the rewritten ids distinct.
+func TestSpawnIDNeverContainsGateSep(t *testing.T) {
+	dirty := entity.Ref{System: "local", Kind: "file", ID: "a" + process.GateSep + "b"}
+	id := spawnID("r", dirty)
+	if strings.Contains(id, process.GateSep) {
+		t.Errorf("spawnID(%s) = %q contains GateSep %q — a gate id built on it would split "+
+			"inside the owner", dirty, id, process.GateSep)
+	}
+	// and the rewrite stays lossless in the way that matters: a_b must not collide with a~b
+	if other := spawnID("r", entity.Ref{System: "local", Kind: "file", ID: "a_b"}); id == other {
+		t.Errorf("GateSep rewrite collided with a literal underscore: both %q", id)
+	}
+}
+
 // With no Spawner configured, Spawn is a no-op that returns nil (traced), not a panic.
 func TestSpawnWithoutSpawner(t *testing.T) {
 	eng := New(entity.NewMemStore(), process.AutoResolver{})

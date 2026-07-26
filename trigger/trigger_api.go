@@ -100,12 +100,18 @@ func spawnID(name string, ref entity.Ref) string {
 
 // safeSeg makes s usable as a single URL path segment: a process id routes through
 // /processes/{id}, which matches one segment, so characters that break a path
-// (slashes, fragment/query, whitespace) become '_'. It is lossy — see spawnID, which
-// disambiguates with a hash when a rewrite occurs.
+// (slashes, fragment/query, whitespace) become '_'. It also strips process.GateSep,
+// which does not break a path but delimits a gate id from its owner — an owner id
+// carrying one would make `resolve` split it in the wrong place and route the answer
+// to a process that does not exist. It is lossy — see spawnID, which disambiguates
+// with a hash when a rewrite occurs.
 func safeSeg(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
 		case '/', '\\', '#', '?', '%', ' ', '\t', '\n':
+			return '_'
+		}
+		if strings.ContainsRune(process.GateSep, r) {
 			return '_'
 		}
 		return r
