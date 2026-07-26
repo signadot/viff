@@ -490,26 +490,38 @@ comes next — ask for its shape:
 
 ```sh
 verse flow show demo:pr:1
-# - subject: demo:pr:1
-#   roots:
-#   - chain: review           kind: root     status: done      task: "review demo:pr:1"
+# - roots:
+#   - chain: hold
+#     id: hold@demo:pr:1
+#     kind: root
+#     lastAction: run_bash
+#     status: running
+#     task: "sleep 60"
+#   - chain: review
 #     children:
-#     - chain: review.onDone  kind: onDone   status: done      task: "merge demo:pr:1"
-#       children:
-#       - chain: review.onDone.onDone    kind: onDone    status: applied
-#       - chain: review.onDone.onFailed  kind: onFailed  status: skipped
+#     - chain: review.onDone
+#       kind: onDone
+#       status: applied
+#     id: review@demo:pr:1
+#     kind: root
+#     lastAction: run_bash
+#     status: done
+#     task: "echo reviewing demo:pr:1; sleep 1"
+#   subject: demo:pr:1
 ```
 
-Each node is one **action in the charter**, addressed by its `chain` — the kpath of that
-action inside its trigger, which is also the process id it spawns under
-(`review.onDone@demo:pr:1`). So the tree is not a second model of the work; it is the charter
-and the runtime read through the same address.
+Two roots, because two triggers acted on this PR: `hold` is still running its 60 seconds, and
+`review` finished. Each node is one **action in the charter**, addressed by its `chain` — the
+kpath of that action inside its trigger, which is also the process id it spawns under
+(`review@demo:pr:1`). So the tree is not a second model of the work; it is the charter and the
+runtime read through the same address.
 
-Three of those statuses come from no process at all. A branch the charter declares but nothing
-has reached is `pending` while it may still fire, and `skipped` once its parent has ended on a
-different status — the `onFailed` above will never run, because the review completed. A hook
-that fired but only `set` fields is `applied`: it left no process to observe, so the tree says
-what the engine's own rule implies rather than pretending something is still coming.
+Some statuses come from no process at all, because a charter position is not a process.
+`review.onDone` above is `applied`: it fired — that is what set `reviewed` — but it only sets
+fields, so it left no process to observe. A branch nothing has reached yet is `pending` while
+it may still fire, and `skipped` once its parent has ENDED on a status that branch does not
+answer to: give `review` an `onFailed` and it reads `skipped` here, because the review
+completed instead.
 
 The tree is **derived, never stored** — assembled per request from the charter (the shape,
 including what has not run), the mirrored `process:instance` entities (the history, which
