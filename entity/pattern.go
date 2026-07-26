@@ -20,11 +20,15 @@ type Pattern struct {
 	// it. Create and update are not distinguished (see Op) — express "only the
 	// first time" as a state latch, not an edge.
 	Op Op
-	// Fields is the payload predicate: a tony match evaluated at the PAYLOAD ROOT, nil when
-	// unset. It is a match rather than a map of equalities, which is what lets a predicate
-	// carry operators (`{id: !glob "hotfix-*"}`) and lets a non-object payload be matched at
-	// all (`42` against `42`). tony.Match owns the semantics; this type only carries it.
-	Fields *ir.Node
+	// Predicate is the payload predicate: a tony match evaluated at the PAYLOAD ROOT, nil
+	// when unset. It is a match rather than a map of equalities, which is what lets it carry
+	// operators (`{stage: !glob "op*"}`) and match a payload that is not an object at all
+	// (`42` against `42`). tony.Match owns the semantics; this type only carries it.
+	//
+	// It is not called Fields because it is not field-shaped: `fields` is one SPELLING of it
+	// in the charter grammar, and naming the carrier after the sugar is how the general case
+	// stays invisible.
+	Predicate *ir.Node
 }
 
 // MatchEvent reports whether an observed change satisfies every non-empty
@@ -76,12 +80,12 @@ func (p Pattern) Select(store Store) []Ref {
 // selector that cannot answer must not select. The charter that carries it failed validation
 // at install; this is the belt to that suspenders.
 func (p Pattern) matchPayload(payload Payload) bool {
-	if p.Fields == nil {
+	if p.Predicate == nil {
 		return true
 	}
 	if payload == nil {
 		return false // nothing to match against — a deleted entity, or an absent one
 	}
-	ok, err := tony.Match(payload, p.Fields)
+	ok, err := tony.Match(payload, p.Predicate)
 	return err == nil && ok
 }

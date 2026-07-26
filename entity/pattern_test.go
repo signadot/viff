@@ -32,7 +32,7 @@ func TestMatchPayloadIntegerWidthsAgree(t *testing.T) {
 	for _, want := range ints {
 		for _, got := range ints {
 			t.Run(want.name+"/"+got.name, func(t *testing.T) {
-				p := Pattern{Fields: Obj{"n": want.v}.Payload()}
+				p := Pattern{Predicate: Obj{"n": want.v}.Payload()}
 				if !p.matchPayload(Obj{"n": got.v}.Payload()) {
 					t.Fatalf("want %v (%T) did not match payload %v (%T)",
 						want.v, want.v, got.v, got.v)
@@ -43,7 +43,7 @@ func TestMatchPayloadIntegerWidthsAgree(t *testing.T) {
 	for _, want := range floats {
 		for _, got := range floats {
 			t.Run(want.name+"/"+got.name, func(t *testing.T) {
-				p := Pattern{Fields: Obj{"n": want.v}.Payload()}
+				p := Pattern{Predicate: Obj{"n": want.v}.Payload()}
 				if !p.matchPayload(Obj{"n": got.v}.Payload()) {
 					t.Fatalf("want %v (%T) did not match payload %v (%T)",
 						want.v, want.v, got.v, got.v)
@@ -62,18 +62,18 @@ func TestMatchPayloadIntegerWidthsAgree(t *testing.T) {
 // so a float can only appear where someone wrote a fractional number or handed a float to
 // entity.Val. Treating those as the integer would be guessing at intent.
 func TestMatchPayloadIntAndFloatAreDistinct(t *testing.T) {
-	p := Pattern{Fields: Obj{"n": 2}.Payload()}
+	p := Pattern{Predicate: Obj{"n": 2}.Payload()}
 	if p.matchPayload(Obj{"n": 2.0}.Payload()) {
 		t.Error("integer predicate 2 matched a float payload 2.0")
 	}
-	q := Pattern{Fields: Obj{"n": 2.0}.Payload()}
+	q := Pattern{Predicate: Obj{"n": 2.0}.Payload()}
 	if q.matchPayload(Obj{"n": 2}.Payload()) {
 		t.Error("float predicate 2.0 matched an integer payload 2")
 	}
 }
 
 func TestMatchPayloadNumericInequality(t *testing.T) {
-	p := Pattern{Fields: Obj{"n": int64(2)}.Payload()}
+	p := Pattern{Predicate: Obj{"n": int64(2)}.Payload()}
 	for _, got := range []any{int(3), float64(2.5), int64(-2), "2", true, nil} {
 		if p.matchPayload(Obj{"n": got}.Payload()) {
 			t.Errorf("want 2 wrongly matched payload %v (%T)", got, got)
@@ -85,7 +85,7 @@ func TestMatchPayloadNumericInequality(t *testing.T) {
 // float64, so comparing them as floats would report a match.
 func TestMatchPayloadLargeIntPrecision(t *testing.T) {
 	const big = int64(1) << 53
-	p := Pattern{Fields: Obj{"n": big + 1}.Payload()}
+	p := Pattern{Predicate: Obj{"n": big + 1}.Payload()}
 	if p.matchPayload(Obj{"n": big + 2}.Payload()) {
 		t.Error("2^53+1 wrongly matched 2^53+2")
 	}
@@ -97,7 +97,7 @@ func TestMatchPayloadLargeIntPrecision(t *testing.T) {
 // A field predicate may name a nested object or list. `==` on two interfaces holding
 // maps panics at runtime, so composites must not reach it.
 func TestMatchPayloadComposites(t *testing.T) {
-	p := Pattern{Fields: Obj{"labels": map[string]any{"team": "core"}}.Payload()}
+	p := Pattern{Predicate: Obj{"labels": map[string]any{"team": "core"}}.Payload()}
 	if !p.matchPayload(Obj{"labels": map[string]any{"team": "core"}}.Payload()) {
 		t.Error("equal nested objects did not match")
 	}
@@ -105,7 +105,7 @@ func TestMatchPayloadComposites(t *testing.T) {
 		t.Error("differing nested objects matched")
 	}
 
-	q := Pattern{Fields: Obj{"tags": []any{"a", "b"}}.Payload()}
+	q := Pattern{Predicate: Obj{"tags": []any{"a", "b"}}.Payload()}
 	if !q.matchPayload(Obj{"tags": []any{"a", "b"}}.Payload()) {
 		t.Error("equal lists did not match")
 	}
@@ -117,7 +117,7 @@ func TestMatchPayloadComposites(t *testing.T) {
 // The pre-existing behaviour: scalars compare by value, a missing key never matches,
 // and a nil payload satisfies only an empty predicate.
 func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
-	p := Pattern{Fields: Obj{"stage": "open"}.Payload()}
+	p := Pattern{Predicate: Obj{"stage": "open"}.Payload()}
 	if !p.matchPayload(Obj{"stage": "open", "extra": 1}.Payload()) {
 		t.Error("string equality failed")
 	}
@@ -136,10 +136,10 @@ func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 	// predicate is now a tony match, so it inherits that distinction instead of flattening
 	// it. The old reading made `{x: null}` a way to spell "has no x", which is a different
 	// question wearing the same syntax.
-	if (Pattern{Fields: Obj{"x": nil}.Payload()}).matchPayload(Obj{"y": 1}.Payload()) {
+	if (Pattern{Predicate: Obj{"x": nil}.Payload()}).matchPayload(Obj{"y": 1}.Payload()) {
 		t.Error("a null predicate matched an entity that merely LACKS the field")
 	}
-	if !(Pattern{Fields: Obj{"x": nil}.Payload()}).matchPayload(Obj{"x": nil}.Payload()) {
+	if !(Pattern{Predicate: Obj{"x": nil}.Payload()}).matchPayload(Obj{"x": nil}.Payload()) {
 		t.Error("a null predicate did not match a field that is present and null")
 	}
 	if p.matchPayload(nil) {

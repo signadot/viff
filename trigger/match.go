@@ -3,9 +3,11 @@ package trigger
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/verse/entity"
@@ -58,13 +60,25 @@ import (
 //     distinguishes the two — docd tombstones with null — and inheriting that beats keeping a
 //     second comparison that flattens it (entity.TestMatchPayloadScalarsAndAbsence).
 //
-// One capability is reachable by the matcher but has no spelling yet: a predicate on the
-// payload ROOT (`42` matching the payload 42). `fields` and `entity` stay object-only,
-// because their names promise fields and the check is what keeps `fields: "stage=open"` an
-// install error rather than a predicate that matches almost nothing. A root predicate wants
-// its own dimension name; that is a small, separate change.
+// THE PREDICATE HAS THREE SPELLINGS, one meaning. `payload` is the general form — a tony
+// match against the payload whatever shape it is — and `fields`/`entity` are its
+// object-shaped spellings, kept because a record is what almost every charter matches and
+// because those names read better over one. Only one may be set: two would be two predicates
+// on the same value with no stated way to combine them.
 //
-//	{"system": "demo", "kind": "pr", "fields": {"stage": "open"}}   an entity predicate
+// The split is on purpose rather than a loosening of `fields`. Those two names promise
+// fields, and requiring an object under them is what keeps `fields: "stage=open"` an
+// install-time error instead of a predicate that quietly matches almost nothing. `payload`
+// promises nothing, so it can carry what a payload may now actually be:
+//
+//	payload: 42                    the payload IS 42
+//	payload: !or [1, 2]            an operator at the root
+//	payload: !glob "hotfix-*"      a scalar predicate
+//	payload: {stage: open}         the object case, spelled generally
+//	fields:  {stage: open}         the same, spelled for a record
+//
+//	{"system": "demo", "kind": "pr", "fields": {"stage": "open"}}   a field predicate
+//	{"system": "demo", "kind": "count", "payload": 42}              a root predicate
 //	{"system": "demo", "kind": "pr", "id": "1"}                     one entity
 //	{"system": "demo", "kind": "pr", "id": "*"}                     the whole kind
 //	{"system": "demo", "kind": "pr", "id": "hotfix-*"}              an id glob
@@ -82,13 +96,20 @@ type Match map[string]any
 // The match dimensions. `entity` is accepted as an alias for `fields` (docs/trigger-model.md
 // spells a Subject's payload predicate `entity:`).
 const (
-	mKeySystem = "system"
-	mKeyKind   = "kind"
-	mKeyID     = "id"
-	mKeyOp     = "op"
-	mKeyFields = "fields"
-	mKeyEntity = "entity" // alias for fields
+	mKeySystem  = "system"
+	mKeyKind    = "kind"
+	mKeyID      = "id"
+	mKeyOp      = "op"
+	mKeyFields  = "fields"
+	mKeyEntity  = "entity"  // alias for fields, the spelling a Subject uses
+	mKeyPayload = "payload" // the same predicate, unrestricted: any tony value, not only fields
 )
+
+// payloadKeys are the three spellings of the ONE payload predicate, in resolution order.
+// `payload` is the general form — a tony match against the payload whatever shape it is —
+// and `fields`/`entity` are the object-shaped spellings kept because that is what almost
+// every charter writes and because their names read better over a record.
+var payloadKeys = []string{mKeyPayload, mKeyFields, mKeyEntity}
 
 // matchKeys is the closed set of dimensions a Match may carry. Its disjointness from the
 // formula tag names is load-bearing and asserted in match_test.go: once `when` is a Formula
@@ -96,7 +117,7 @@ const (
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
 	mKeySystem: true, mKeyKind: true, mKeyID: true,
-	mKeyOp: true, mKeyFields: true, mKeyEntity: true,
+	mKeyOp: true, mKeyFields: true, mKeyEntity: true, mKeyPayload: true,
 }
 
 // Validate reports whether the match carries only known dimensions of the right shape. It is
@@ -149,11 +170,14 @@ func (m Match) Validate() error {
 			return fmt.Errorf("match: %q: %w", k, err)
 		}
 	}
-	for _, k := range []string{mKeyFields, mKeyEntity} {
+	for _, k := range payloadKeys {
 		if v, present := m[k]; present {
 			n, ok := fieldsNode(v)
 			if !ok {
 				return fmt.Errorf("match: %q must be a payload predicate, got %T", k, v)
+			}
+			if k == mKeyPayload {
+				continue // the general form: any tony value, which is the point of it
 			}
 			// Field-shaped, still: `fields` and `entity` name a predicate OVER FIELDS, and
 			// their own names say so. A payload predicate may now carry operators, but it
@@ -166,15 +190,24 @@ func (m Match) Validate() error {
 			// fields. See the note on Match.
 			if n.Type != ir.ObjectType {
 				return fmt.Errorf("match: %q must be an object of field predicates, got %s "+
-					"— a predicate on the payload ROOT (a scalar, a list) has no spelling on "+
-					"this dimension yet", k, n.Type)
+					"— write %q to match the payload ROOT (a scalar, a list, or an operator "+
+					"over one)", k, n.Type, mKeyPayload)
 			}
 		}
 	}
-	if _, both := m[mKeyFields]; both {
-		if _, alias := m[mKeyEntity]; alias {
-			return fmt.Errorf("match: set either %q or its alias %q, not both", mKeyFields, mKeyEntity)
+	// One predicate, one spelling. Two would be two predicates on the same value with no
+	// stated way to combine them, and picking one silently is how a charter comes to mean
+	// something its author did not write.
+	var spelled []string
+	for _, k := range payloadKeys {
+		if _, present := m[k]; present {
+			spelled = append(spelled, strconv.Quote(k))
 		}
+	}
+	if len(spelled) > 1 {
+		return fmt.Errorf("match: set only one payload predicate, got %s — %q is the general "+
+			"form and %q/%q are its object-shaped spellings",
+			strings.Join(spelled, " and "), mKeyPayload, mKeyFields, mKeyEntity)
 	}
 	// Only `id` globs. A "*" inside system or kind would silently match nothing (they are
 	// compared exactly), and silently matching nothing is the failure this Validate exists to
@@ -212,16 +245,17 @@ func (m Match) hasDim(key string) bool { return m.str(key) != "" || m.dim(key) !
 // unset. It is a NODE, not a map of equalities: that is what carries an operator
 // (`fields: {stage: !glob "review*"}`) through to tony.Match, and what lets a predicate be a
 // scalar so a scalar payload can be matched.
-func (m Match) Fields() *ir.Node {
-	if f, ok := fieldsNode(m[mKeyFields]); ok {
-		return f
+func (m Match) Predicate() *ir.Node {
+	for _, k := range payloadKeys {
+		if n, ok := fieldsNode(m[k]); ok {
+			return n
+		}
 	}
-	f, _ := fieldsNode(m[mKeyEntity])
-	return f
+	return nil
 }
 
-// HasFields reports whether a payload predicate is set at all.
-func (m Match) HasFields() bool { return m.Fields() != nil }
+// HasPredicate reports whether a payload predicate is set at all, in any spelling.
+func (m Match) HasPredicate() bool { return m.Predicate() != nil }
 
 // FieldString reads a LITERAL string out of the payload predicate — "which choice does this
 // quorum count", for a facts match the engine built itself as {choice: approve}.
@@ -230,7 +264,7 @@ func (m Match) HasFields() bool { return m.Fields() != nil }
 // honest answer once a predicate may carry operators: there is no single value behind
 // `{choice: !glob "appr*"}` to recover, and inventing one would be worse than reporting none.
 func (m Match) FieldString(key string) string {
-	f := m.Fields()
+	f := m.Predicate()
 	if f == nil || f.Type != ir.ObjectType {
 		return ""
 	}
@@ -322,10 +356,10 @@ func (m Match) pattern() (entity.Pattern, error) {
 		return entity.Pattern{}, err
 	}
 	return entity.Pattern{
-		System: m.System(),
-		Kind:   m.Kind(),
-		Op:     entity.Op(m.str(mKeyOp)),
-		Fields: m.Fields(),
+		System:    m.System(),
+		Kind:      m.Kind(),
+		Op:        entity.Op(m.str(mKeyOp)),
+		Predicate: m.Predicate(),
 	}, nil
 }
 
@@ -471,7 +505,15 @@ func fieldsNode(v any) (*ir.Node, bool) {
 	case map[string]any:
 		return present(entity.Obj(f).Payload())
 	}
-	return nil, false
+	// Any other Go value: a predicate may be a scalar or a list now, so a caller building a
+	// Match in Go (the engine's own quorumFormula, a test) can write `payload: 42` and mean
+	// it. Conversion failure is reported rather than swallowed — a value tony cannot
+	// represent is not a predicate that matches nothing, it is a mistake to name at install.
+	n, err := gomap.ToTonyIR(v)
+	if err != nil {
+		return nil, false
+	}
+	return present(n)
 }
 
 // present reports a node as set only when it really is one. A NIL MAP held in an interface

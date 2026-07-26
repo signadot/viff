@@ -56,9 +56,10 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: ir.FromString(v)})
 		}
 	}
-	for _, k := range []string{mKeyFields, mKeyEntity} {
+	for _, k := range payloadKeys {
 		// The predicate goes back out as the node it is, operators and all — the same
-		// faithful-rendering rule the id/op dimensions follow above.
+		// faithful-rendering rule the id/op dimensions follow above. Only one of the three
+		// spellings can be set (Validate), so this emits the one the author wrote.
 		if node, ok := fieldsNode(m[k]); ok {
 			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: node})
 		}
@@ -74,11 +75,8 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 // string can carry those), when the match is empty, or when a segment contains a ":" that
 // would make the result ambiguous to ParseExpr.
 func (m Match) address() (string, bool) {
-	if _, ok := fieldsNode(m[mKeyFields]); ok {
-		return "", false
-	}
-	if _, ok := fieldsNode(m[mKeyEntity]); ok {
-		return "", false
+	if m.HasPredicate() {
+		return "", false // no address spelling carries a payload predicate
 	}
 	if m.hasDim(mKeyOp) {
 		return "", false
@@ -177,7 +175,7 @@ func matchFromObject(node *ir.Node) (Match, error) {
 			}
 			out[k] = val.String
 
-		case mKeyFields, mKeyEntity:
+		case mKeyPayload, mKeyFields, mKeyEntity:
 			// Kept as the NODE, not decoded to a map: a payload predicate is a tony match
 			// evaluated at the payload root, so any operator it carries has to survive to
 			// tony.Match. Decoding to map[string]any would drop the tag and silently turn
@@ -291,11 +289,11 @@ func (r *Requirement) valueNode(opts ...gomap.MapOption) (*ir.Node, error) {
 	case r.Kind == ReqMatch:
 		return r.Facts.ToTonyIR(opts...)
 	}
-	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || r.Facts.HasFields()
+	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || r.Facts.HasPredicate()
 	switch {
 	case r.Choice == "" && !factsSet:
 		return ir.FromInt(int64(r.N)), nil
-	case r.N == 0 && r.Choice == "" && !r.Facts.HasFields():
+	case r.N == 0 && r.Choice == "" && !r.Facts.HasPredicate():
 		if r.Facts.Kind() != "" {
 			return ir.FromString(r.Facts.System() + ":" + r.Facts.Kind()), nil
 		}

@@ -255,6 +255,14 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 			// Atomic read-modify-write: carry the subject's current payload and overlay Set.
 			// Via Modify (compare-and-swap) so two triggers advancing the same entity can't
 			// lose each other's fields.
+			//
+			// A NON-OBJECT payload is REPLACED, not merged into: `set` writes fields, and a
+			// scalar has none to carry forward, so an entity whose payload is 42 becomes the
+			// record the action describes and the 42 is gone. That is the same whole-value
+			// replace Put has always done, and the alternative — refusing to advance a
+			// subject because of the shape of its current value — would strand a flow with
+			// no way to say so. Worth knowing before matching a scalar payload with a
+			// trigger that also sets fields on it.
 			e.Store().Modify(subj, func(cur entity.Payload) entity.Payload {
 				p := clonePayload(cur)
 				for k, v := range a.Set {

@@ -49,6 +49,7 @@ define:
   kind: .[string]
   id: .[tony-base:ir]
   op: .[tony-base:ir]
+  payload: .[tony-base:ir]
   fields: .[object(tony-base:ir)]
   entity: .[object(tony-base:ir)]
 signature:

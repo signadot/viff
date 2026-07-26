@@ -1107,14 +1107,14 @@ func (e *Engine) matchFlow(m Match) []flowProc {
 	}
 	e.liveMu.Unlock()
 
-	hasFields := m.HasFields()
+	hasPredicate := m.HasPredicate()
 	out := make([]flowProc, 0, len(all))
 	for _, fp := range all {
 		ref, err := entity.ParseRef(fp.subject)
 		if err != nil || !m.MatchRef(ref) {
 			continue
 		}
-		if hasFields {
+		if hasPredicate {
 			// Unreadable is treated as non-matching: a field predicate that cannot be
 			// evaluated must not select the flow. Skipping is the conservative answer.
 			ent, ok, _ := e.store.Get(ref)

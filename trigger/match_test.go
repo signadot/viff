@@ -46,7 +46,7 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 			t.Fatalf("round-trip changed the id dimension: %s → %s (%q vs %q)",
 				in, out, m.ID(), back.ID())
 		}
-		if !sameFields(back.Fields(), m.Fields()) {
+		if !sameFields(back.Predicate(), m.Predicate()) {
 			t.Fatalf("round-trip lost fields: %s → %s", in, out)
 		}
 	}

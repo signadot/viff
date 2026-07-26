@@ -1,8 +1,11 @@
 package trigger
 
 import (
+	"context"
+	"github.com/signadot/verse/process"
 	"strings"
 	"testing"
+	"time"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -250,7 +253,7 @@ func TestMatchFieldsAcceptsOperators(t *testing.T) {
 	// predicate on a key that happens to be spelled like one. That is the ambiguity, and
 	// reading it as data is the only reading that cannot silently change a charter.
 	m := mustMatch(t, `{fields: {or: [open, merged]}}`, codec.Tony)
-	f := m.Fields()
+	f := m.Predicate()
 	if ir.Get(f, "or") == nil {
 		t.Errorf("a payload key named \"or\" was eaten: %#v", f)
 	}
@@ -266,5 +269,103 @@ func TestMatchFieldsStillPlain(t *testing.T) {
 	}
 	if !m.MatchEvent(ev) {
 		t.Errorf("%#v did not match %+v", map[string]any(m), ev.To)
+	}
+}
+
+// `payload` matches the payload ROOT, whatever shape it is. This is the dimension `fields`
+// could not be: its name promises fields, and the object check on it is what keeps a typo
+// like `fields: "stage=open"` an install error. `payload` promises nothing, so it can carry
+// the scalar, the list and the operator-over-one that a payload may now actually be.
+func TestMatchPayloadRootPredicate(t *testing.T) {
+	ev := func(v any) entity.Event {
+		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "count", ID: "1"},
+			Op: entity.Set, To: entity.Val(v)}
+	}
+	cases := []struct {
+		src   string
+		match any
+		miss  any
+	}{
+		{`{system: demo, payload: 42}`, 42, 43},
+		{`{payload: true}`, true, false},
+		{`{payload: open}`, "open", "closed"},
+		{`{payload: !or [1, 2]}`, 2, 3},
+		{`{payload: !glob "hotfix-*"}`, "hotfix-9", "main"},
+		// The object form still works here — `payload` is the general spelling, not a
+		// different predicate.
+		{`{payload: {stage: open}}`, map[string]any{"stage": "open"}, map[string]any{"stage": "closed"}},
+	}
+	for _, c := range cases {
+		m := mustMatch(t, c.src, codec.Tony)
+		if !m.MatchEvent(ev(c.match)) {
+			t.Errorf("%s did not match %v", c.src, c.match)
+		}
+		if m.MatchEvent(ev(c.miss)) {
+			t.Errorf("%s wrongly matched %v", c.src, c.miss)
+		}
+	}
+}
+
+// A scalar under `fields` is still an install error, and the error names the dimension that
+// does accept one. Losing that guard was the reason `payload` exists as its own key rather
+// than as a loosening of `fields`.
+func TestMatchFieldsStillRefusesANonObject(t *testing.T) {
+	got := matchErr(t, `{system: demo, fields: "stage=open"}`, codec.Tony)
+	if !strings.Contains(got, "payload") {
+		t.Errorf("the error should point at the dimension that accepts a root predicate: %q", got)
+	}
+}
+
+// One predicate, one spelling. Two would be two predicates on the same value with no stated
+// way to combine them.
+func TestMatchRefusesTwoPayloadSpellings(t *testing.T) {
+	for _, src := range []string{
+		`{payload: 42, fields: {stage: open}}`,
+		`{fields: {stage: open}, entity: {stage: open}}`,
+		`{payload: 42, entity: {stage: open}}`,
+	} {
+		if got := matchErr(t, src, codec.Tony); !strings.Contains(got, "only one payload predicate") {
+			t.Errorf("%s: got %q", src, got)
+		}
+	}
+}
+
+// `set` against a non-object payload REPLACES it. This became reachable only once a payload
+// could be a scalar, so it is pinned here rather than left to be discovered: a trigger that
+// matches `payload: 42` and sets a field turns the entity into a record, and the 42 is gone.
+//
+// The alternative — refusing to advance a subject because of the shape of its current value
+// — would strand a flow with no way to say so. This is the same whole-value replace Put has
+// always done, but it is surprising enough to deserve a test that states it out loud.
+func TestSetOnAScalarPayloadReplacesIt(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	if err := eng.AddTrigger(Trigger{
+		Name:      "milestone",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "count", "payload": int64(100)})},
+		Action:    Action{Set: map[string]any{"note": "milestone"}},
+	}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	ref := entity.Ref{System: "demo", Kind: "count", ID: "1"}
+	store.Put(ref, entity.Val(100))
+	deadline := time.After(3 * time.Second)
+	for {
+		got, ok, _ := store.Get(ref)
+		if ok && entity.Str(got.Payload, "note") == "milestone" {
+			if entity.IsObj(got.Payload) {
+				return // the scalar became the record — replaced, as documented
+			}
+			t.Fatalf("payload is not the record the action described: %+v", got.Payload)
+		}
+		select {
+		case <-deadline:
+			t.Fatal("trigger never fired on a scalar payload")
+		case <-time.After(5 * time.Millisecond):
+		}
 	}
 }
