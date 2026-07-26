@@ -37,7 +37,7 @@ store, not through a scheduler.
   `action`. See `docs/trigger-model.md`.
 - **Gate** — `auto` (fire) · `ask` (a human/agent must approve) · `park` (hold). This is the
   autonomy dial, expressed per action.
-- **Action** — *data, not code*: `set` fields on an entity (a state transition) and/or
+- **Action** — *data, not code*: `patch` an entity's payload (a state transition) and/or
   `spawn` a process (a `launch.Spec`). It acts on the condition's `subject` — it carries no
   target of its own; template bindings (`$subject`, and every field of the changed payload)
   parameterize it.
