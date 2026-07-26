@@ -70,7 +70,7 @@ func TestScopeOverHTTP(t *testing.T) {
 			return "", false
 		}
 		var out struct {
-			Payload map[string]any `json:"payload" tony:"field=payload"`
+			Payload map[string]any `tony:"field=payload"`
 		}
 		decodeResp(t, resp, &out)
 		s, _ := out.Payload["stage"].(string)

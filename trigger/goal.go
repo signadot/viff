@@ -28,11 +28,11 @@ import (
 //
 //tony:schemagen=verse-goal,notag
 type GoalDef struct {
-	Name     string    `json:"name" tony:"field=name"`
-	Subject  string    `json:"subject,omitempty" tony:"field=subject,omitzero"`   // the entity this goal is about (steering key)
-	DoneWhen *Formula  `json:"doneWhen" tony:"field=doneWhen"`                    // success predicate (a fact/quorum atom in v1)
-	Deadline string    `json:"deadline,omitempty" tony:"field=deadline,omitzero"` // v1 fail-latch: elapsed with doneWhen unmet ⇒ unachievable
-	Triggers []Trigger `json:"triggers,omitempty" tony:"field=triggers,omitzero"` // the OWNED charter that does the doing
+	Name     string    `tony:"field=name"`
+	Subject  string    `tony:"field=subject,omitzero"`  // the entity this goal is about (steering key)
+	DoneWhen *Formula  `tony:"field=doneWhen"`          // success predicate (a fact/quorum atom in v1)
+	Deadline string    `tony:"field=deadline,omitzero"` // v1 fail-latch: elapsed with doneWhen unmet ⇒ unachievable
+	Triggers []Trigger `tony:"field=triggers,omitzero"` // the OWNED charter that does the doing
 	// Plan (an optional generation-SOURCE that compiles to Triggers) is deferred; the
 	// record is shaped to accept it without a breaking change.
 }

@@ -291,9 +291,9 @@ func docdAddrs() (client, mount string, err error) {
 	}
 	var st struct {
 		Docd struct {
-			Client string `json:"client" tony:"field=client"`
-			Mount  string `json:"mount" tony:"field=mount"`
-		} `json:"docd" tony:"field=docd"`
+			Client string `tony:"field=client"`
+			Mount  string `tony:"field=mount"`
+		} `tony:"field=docd"`
 	}
 	decodeClose(resp, &st)
 	if st.Docd.Client == "" {
@@ -335,7 +335,7 @@ func removeLocalEntities(cc *cli.Context) error {
 		return fmt.Errorf("disconnect: %w", err)
 	}
 	var ents []struct {
-		Ref string `json:"ref" tony:"field=ref"`
+		Ref string `tony:"field=ref"`
 	}
 	decodeClose(resp, &ents)
 	for _, e := range ents {

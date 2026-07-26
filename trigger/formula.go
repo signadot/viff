@@ -20,9 +20,9 @@ import (
 //
 //tony:schemagen=verse-formula,notag,codec=custom
 type Formula struct {
-	Op   FormulaOp    `json:"op" tony:"field=op"`
-	Req  *Requirement `json:"req,omitempty" tony:"field=req,omitzero"`   // Op == OpAtom: the leaf requirement
-	Args []*Formula   `json:"args,omitempty" tony:"field=args,omitzero"` // operands for temporal operators
+	Op   FormulaOp    `tony:"field=op"`
+	Req  *Requirement `tony:"field=req,omitzero"`  // Op == OpAtom: the leaf requirement
+	Args []*Formula   `tony:"field=args,omitzero"` // operands for temporal operators
 }
 
 // FormulaOp tags the parse node. OpAtom is a leaf requirement; the rest are temporal
@@ -92,11 +92,11 @@ func factSelFromRef(s string) Match {
 //
 //tony:schemagen=verse-requirement,notag,codec=custom
 type Requirement struct {
-	Kind   RequirementKind `json:"kind" tony:"field=kind"`
-	Facts  Match           `json:"facts" tony:"field=facts"`                      // the store facts this requirement reads (a point-in-time Match)
-	N      int             `json:"n,omitempty" tony:"field=n,omitzero"`           // quorum threshold: satisfied when ≥ N ballots match
-	Choice string          `json:"choice,omitempty" tony:"field=choice,omitzero"` // which ballot a quorum counts (default "approve"; "reject" = a deny-quorum)
-	Within string          `json:"within,omitempty" tony:"field=within,omitzero"` // deadline duration (e.g. "4h") — a time derivation, not a store fact
+	Kind   RequirementKind `tony:"field=kind"`
+	Facts  Match           `tony:"field=facts"`           // the store facts this requirement reads (a point-in-time Match)
+	N      int             `tony:"field=n,omitzero"`      // quorum threshold: satisfied when ≥ N ballots match
+	Choice string          `tony:"field=choice,omitzero"` // which ballot a quorum counts (default "approve"; "reject" = a deny-quorum)
+	Within string          `tony:"field=within,omitzero"` // deadline duration (e.g. "4h") — a time derivation, not a store fact
 }
 
 // RequirementKind is the verse-native requirement vocabulary. The concrete surface that

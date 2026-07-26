@@ -2,13 +2,11 @@ package process
 
 import (
 	"encoding"
-	"encoding/json"
 	"testing"
 )
 
-// Mode's vocabulary must be one vocabulary, whatever encoding asks for it. The text form
-// is the primitive (tony's gomap honors encoding.TextMarshaler on both its reflection and
-// generated paths); the JSON form delegates to it.
+// Mode's vocabulary must be one vocabulary, whatever encoding asks for it — the text form
+// is it, and gomap honors encoding.TextMarshaler on both its reflection and generated paths.
 var (
 	_ encoding.TextMarshaler   = Auto
 	_ encoding.TextUnmarshaler = (*Mode)(nil)
@@ -50,28 +48,6 @@ func TestModeUnmarshalTextAccepts(t *testing.T) {
 		var got Mode
 		if err := got.UnmarshalText([]byte(in)); err == nil {
 			t.Errorf("UnmarshalText(%q) accepted, want an error", in)
-		}
-	}
-}
-
-// The JSON surface is unchanged by the move to text: a quoted lowercase name out, a name
-// or a number in.
-func TestModeJSONSurfaceUnchanged(t *testing.T) {
-	b, err := json.Marshal(Ask)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != `"ask"` {
-		t.Errorf("json.Marshal(Ask) = %s, want \"ask\"", b)
-	}
-	for _, in := range []string{`"park"`, `"PARK"`, `2`} {
-		var got Mode
-		if err := json.Unmarshal([]byte(in), &got); err != nil {
-			t.Errorf("json.Unmarshal(%s): %v", in, err)
-			continue
-		}
-		if got != Park {
-			t.Errorf("json.Unmarshal(%s) = %v, want Park", in, got)
 		}
 	}
 }

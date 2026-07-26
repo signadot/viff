@@ -1,7 +1,6 @@
 package process
 
 import (
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -76,38 +75,6 @@ func TestTonyOmitsUnsetFields(t *testing.T) {
 	got := strings.TrimSpace(string(b))
 	if got != "id: run-1\nstatus: running" {
 		t.Errorf("unset fields leaked into the document:\n%s", got)
-	}
-}
-
-// The tony and JSON renderings must carry the same field names, so a reader moving between
-// dialects sees one vocabulary. encoding/json is no longer a wire format here; what this
-// guards is the two TAG SETS agreeing, for as long as both exist.
-func TestTonyAndJSONAgreeOnFieldNames(t *testing.T) {
-	inst := Instance{ID: "run-1", Task: "review", Status: Running, Cursor: 4}
-
-	viaCodec, err := codec.Marshal(inst, codec.JSON)
-	if err != nil {
-		t.Fatal(err)
-	}
-	viaEncodingJSON, err := json.Marshal(inst)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var a, b map[string]any
-	if err := json.Unmarshal(viaCodec, &a); err != nil {
-		t.Fatalf("codec JSON is not valid JSON: %v (%s)", err, viaCodec)
-	}
-	if err := json.Unmarshal(viaEncodingJSON, &b); err != nil {
-		t.Fatal(err)
-	}
-	if len(a) != len(b) {
-		t.Errorf("different field sets:\n codec: %s\n stdlib: %s", viaCodec, viaEncodingJSON)
-	}
-	for k := range b {
-		if _, ok := a[k]; !ok {
-			t.Errorf("codec JSON is missing field %q\n codec: %s\n stdlib: %s", k, viaCodec, viaEncodingJSON)
-		}
 	}
 }
 

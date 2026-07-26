@@ -12,8 +12,8 @@ import (
 //
 //tony:schemagen=verse-vector,notag
 type Vector struct {
-	Gates   []Gate `json:"gates,omitempty" tony:"field=gates,omitzero"`
-	Default Mode   `json:"default" tony:"field=default"` // mode when no gate matches (a permissive baseline; hard scope/deny is a separate layer)
+	Gates   []Gate `tony:"field=gates,omitzero"`
+	Default Mode   `tony:"field=default"` // mode when no gate matches (a permissive baseline; hard scope/deny is a separate layer)
 }
 
 // GateQuestion is what evaluating the vector against an action poses: the mode the

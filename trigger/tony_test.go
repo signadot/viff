@@ -1,7 +1,6 @@
 package trigger
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -74,45 +73,6 @@ func TestCharterRoundTrip(t *testing.T) {
 						got.Action.Spawn.Driver, want.Action.Spawn.Driver, b)
 				}
 			})
-		}
-	}
-}
-
-// The `json:` struct tags are no longer a wire format — nothing in verse serves through
-// encoding/json — but they are still THERE, and two tag sets that disagree about a field
-// name is the bug class hardest to see. This checks they agree, which is the only reason
-// the json: tags are worth keeping until they are swept.
-func TestCharterJSONFieldNamesMatchOracle(t *testing.T) {
-	tr := Trigger{
-		Name: "x",
-		Condition: Condition{
-			When:    MatchWhen(Match{"system": "demo"}),
-			Subject: Match{"system": "demo", "kind": "pr"},
-		},
-		Gates:  []Gate{{Name: "g", Mode: "ask"}},
-		Action: Action{Set: map[string]any{"stage": "s"}},
-	}
-
-	viaCodec, err := codec.Marshal(tr, codec.JSON)
-	if err != nil {
-		t.Fatal(err)
-	}
-	viaOracle, err := json.Marshal(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var a, b map[string]any
-	if err := json.Unmarshal(viaCodec, &a); err != nil {
-		t.Fatalf("codec JSON is not valid JSON: %v (%s)", err, viaCodec)
-	}
-	if err := json.Unmarshal(viaOracle, &b); err != nil {
-		t.Fatal(err)
-	}
-	for k := range b {
-		if _, ok := a[k]; !ok {
-			t.Errorf("codec JSON is missing top-level field %q\n codec:  %s\n oracle: %s",
-				k, viaCodec, viaOracle)
 		}
 	}
 }

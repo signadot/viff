@@ -604,8 +604,8 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Ref     string         `json:"ref" tony:"field=ref"`
-		Payload map[string]any `json:"payload" tony:"field=payload"`
+		Ref     string         `tony:"field=ref"`
+		Payload map[string]any `tony:"field=payload"`
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -646,9 +646,9 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID      string   `json:"id" tony:"field=id"`
-		Approve bool     `json:"approve" tony:"field=approve"`
-		Say     []string `json:"say" tony:"field=say"`
+		ID      string   `tony:"field=id"`
+		Approve bool     `tony:"field=approve"`
+		Say     []string `tony:"field=say"`
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -765,9 +765,9 @@ type processLister interface {
 // consistency the "processes are entities" model wants.
 func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID     string `json:"id" tony:"field=id"`
-		Task   string `json:"task" tony:"field=task"`
-		Driver string `json:"driver" tony:"field=driver"`
+		ID     string `tony:"field=id"`
+		Task   string `tony:"field=task"`
+		Driver string `tony:"field=driver"`
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -976,8 +976,8 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		h.Cancel("")
 	case "say":
 		var body struct {
-			Instruction string `json:"instruction" tony:"field=instruction"`
-			By          string `json:"by" tony:"field=by"`
+			Instruction string `tony:"field=instruction"`
+			By          string `tony:"field=by"`
 		}
 		_ = codec.Read(r, &body)
 		h.Steer(body.Instruction, body.By)
@@ -985,8 +985,8 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		// slide autonomy on a running (brokered/remote) process: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
 		var body struct {
-			Vector process.Vector `json:"vector" tony:"field=vector"`
-			By     string         `json:"by" tony:"field=by"`
+			Vector process.Vector `tony:"field=vector"`
+			By     string         `tony:"field=by"`
 		}
 		if err := codec.Read(r, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1003,9 +1003,9 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 			return
 		}
 		var body struct {
-			DecisionID string `json:"decisionId" tony:"field=decisionId"`
-			Proceed    bool   `json:"proceed" tony:"field=proceed"`
-			Say        string `json:"say" tony:"field=say"`
+			DecisionID string `tony:"field=decisionId"`
+			Proceed    bool   `tony:"field=proceed"`
+			Say        string `tony:"field=say"`
 		}
 		_ = codec.Read(r, &body)
 		if !rh.Resolve(body.DecisionID, body.Proceed, body.Say) {
@@ -1138,9 +1138,9 @@ func (s *Server) goalCancel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name" tony:"field=name"`
-		Text string `json:"text" tony:"field=text"`
-		By   string `json:"by" tony:"field=by"`
+		Name string `tony:"field=name"`
+		Text string `tony:"field=text"`
+		By   string `tony:"field=by"`
 	}
 	if err := codec.Read(r, &body); err != nil || body.Name == "" || body.Text == "" {
 		http.Error(w, "name and text required", http.StatusBadRequest)
@@ -1155,7 +1155,7 @@ func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) map[string]any) {
 	var body struct {
-		Name string `json:"name" tony:"field=name"`
+		Name string `tony:"field=name"`
 	}
 	if err := codec.Read(r, &body); err != nil || body.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
@@ -1181,9 +1181,9 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 // breaks). Returns false having already written the error response.
 func flowAddress(w http.ResponseWriter, r *http.Request, extra any) (trigger.Match, bool) {
 	body := struct {
-		Subject string `json:"subject" tony:"field=subject"`
-		Text    string `json:"text" tony:"field=text"`
-		By      string `json:"by" tony:"field=by"`
+		Subject string `tony:"field=subject"`
+		Text    string `tony:"field=text"`
+		By      string `tony:"field=by"`
 	}{}
 	if err := codec.Read(r, &body); err != nil || body.Subject == "" {
 		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)

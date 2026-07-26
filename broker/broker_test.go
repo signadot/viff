@@ -36,8 +36,8 @@ func TestBrokerDialInLoop(t *testing.T) {
 			Task   string `tony:"field=task"`
 			Driver string `tony:"field=driver"`
 		} `tony:"field=spec"`
-		Epoch   int64 `json:"epoch" tony:"field=epoch"`
-		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
+		Epoch   int64 `tony:"field=epoch"`
+		CCursor int64 `tony:"field=cCursor"`
 	}
 	postJSON(t, cl, srv.URL+"/processes/t1/claim", `{"identity":"human:scott"}`, &claim)
 	if claim.Spec.Task != "review PR #42" {
@@ -74,8 +74,8 @@ func TestBrokerDialInLoop(t *testing.T) {
 	// completed one above.
 	h2 := b.Spawn("t2", "watch", "human", nil)
 	var claim2 struct {
-		Epoch   int64 `json:"epoch" tony:"field=epoch"`
-		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
+		Epoch   int64 `tony:"field=epoch"`
+		CCursor int64 `tony:"field=cCursor"`
 	}
 	postJSON(t, cl, srv.URL+"/processes/t2/claim", `{"identity":"human:scott"}`, &claim2)
 	h2.Cancel("stop")

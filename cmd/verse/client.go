@@ -221,8 +221,8 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 		return 0, 0, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var c struct {
-		Epoch   int64 `json:"epoch" tony:"field=epoch"`
-		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
+		Epoch   int64 `tony:"field=epoch"`
+		CCursor int64 `tony:"field=cCursor"`
 	}
 	decodeBody(resp, &c)
 	return c.Epoch, c.CCursor, nil
@@ -235,10 +235,10 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 // an integer). Naming the type here makes the cursor an int64 whatever decoded it. Fields
 // the broker sends but no executor reads are simply ignored.
 type inboxItem struct {
-	Cursor   int64  `json:"cursor" tony:"field=cursor"`
-	Kind     string `json:"kind" tony:"field=kind"`         // spec | say | cancel | pause | resume | vector | resolve
-	Decision string `json:"decision" tony:"field=decision"` // resolve: the decision id being answered
-	Proceed  bool   `json:"proceed" tony:"field=proceed"`   // resolve: approve (true) or deny (false)
+	Cursor   int64  `tony:"field=cursor"`
+	Kind     string `tony:"field=kind"`     // spec | say | cancel | pause | resume | vector | resolve
+	Decision string `tony:"field=decision"` // resolve: the decision id being answered
+	Proceed  bool   `tony:"field=proceed"`  // resolve: approve (true) or deny (false)
 }
 
 // brokerInbox pulls the worker inbox at base for id — items with cursor > since, carrying
@@ -256,7 +256,7 @@ func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error
 		return nil, since, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var box struct {
-		Items []inboxItem `json:"items" tony:"field=items"`
+		Items []inboxItem `tony:"field=items"`
 	}
 	decodeBody(resp, &box)
 	max := since
