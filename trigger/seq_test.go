@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -198,14 +199,67 @@ func TestSeqFailStops(t *testing.T) {
 	}
 }
 
-// Re-fire idempotence is a predicate on the sequence NODE, not per element. The half that
-// matters is the one no registry can answer: BETWEEN elements nothing is live, and that is
-// where a re-fire is most likely to land.
-func TestSeqReFireDoesNotRestart(t *testing.T) {
+// Overlap is prevented by an atomic CLAIM, not by a predicate over facts. That distinction is
+// what this pins: the claim is taken in the store, so two firings racing through
+// `go e.fire(...)` cannot both win it — and it covers the window BETWEEN elements, where no
+// process is live and a registry-based check had nothing to say.
+func TestSeqClaimExcludesOverlap(t *testing.T) {
 	store := entity.NewMemStore()
 	eng, _ := seqEngine(t, store)
 	ref := prRef("1")
 
+	if !eng.claimRun("review", ref) {
+		t.Fatal("first claim lost; nothing else holds it")
+	}
+	if eng.claimRun("review", ref) {
+		t.Error("a second claim on a held run won — overlap is possible")
+	}
+	// a different subject is a different run
+	if !eng.claimRun("review", prRef("2")) {
+		t.Error("a claim on another subject was refused")
+	}
+	eng.releaseRun("review", ref)
+	if !eng.claimRun("review", ref) {
+		t.Error("the claim was not released when the run ended")
+	}
+}
+
+// The claim lives in the `process` system, which the engine holds out of the default match
+// set — so taking one cannot wake the trigger that took it. Machinery must not be reactive
+// fuel; this is the same guard reflected processes already ride.
+func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	eng.Start(ctx) // root dispatch, so a bare `{}` match is installable at all
+	if err := eng.AddTrigger(Trigger{
+		Name:      "watchall",
+		Condition: Condition{When: MatchWhen(Match{})}, // matches everything it is ALLOWED to
+		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	eng.claimRun("review", prRef("1"))
+	time.Sleep(150 * time.Millisecond) // give a dispatch, if one were coming, time to arrive
+	// the claim entity exists…
+	if _, ok, _ := store.Get(mirror.ClaimRef(spawnID("review", prRef("1")))); !ok {
+		t.Fatal("claim not written")
+	}
+	// …and nothing reacted to it: the claim carries no `seen` field
+	e, _, _ := store.Get(mirror.ClaimRef(spawnID("review", prRef("1"))))
+	if entity.Get(e.Payload, "seen") != nil {
+		t.Error("a trigger fired on a claim write; machinery ignited on its own machinery")
+	}
+}
+
+// Repeating is a separate question from overlapping, and now a separate mechanism: `done`
+// says a sequence at this shape already finished. Editing the sequence changes the shape and
+// frees it.
+func TestSeqDoneIsARepeatPolicy(t *testing.T) {
+	store := entity.NewMemStore()
+	eng, _ := seqEngine(t, store)
+	ref := prRef("1")
 	tr := Trigger{
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
@@ -217,29 +271,21 @@ func TestSeqReFireDoesNotRestart(t *testing.T) {
 	if err := eng.AddTrigger(tr); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
+	shape := seqShapeHash(tr.Action.Seq)
 
-	// Mid-sequence with NOTHING live: step recorded, done absent — the gap a live-registry
-	// check cannot see.
+	if eng.seqDone("review", ref, shape) {
+		t.Error("an untouched subject reads as already done")
+	}
 	if err := eng.patchEntity(ref, entity.Obj{
-		"stage": "open",
-		VerseRoot: entity.Obj{"review": entity.Obj{
-			seqStep: 1, seqSteps: 2, seqShape: seqShapeHash(tr.Action.Seq),
-		}},
+		VerseRoot: entity.Obj{"review": entity.Obj{seqStep: 2, seqDone: true, seqShape: shape}},
 	}.Payload()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if !eng.seqSettled("review", ref, seqShapeHash(tr.Action.Seq)) {
-		t.Fatal("a sequence with a step recorded reads as unsettled — the between-elements hole")
+	if !eng.seqDone("review", ref, shape) {
+		t.Error("a completed sequence does not read as done")
 	}
-
-	// once done latches, it is no longer in flight: a later firing is a fresh run
-	if err := eng.patchEntity(ref, entity.Obj{
-		VerseRoot: entity.Obj{"review": entity.Obj{seqDone: true}},
-	}.Payload()); err != nil {
-		t.Fatalf("latch: %v", err)
-	}
-	if eng.seqSettled("review", ref, "a-different-shape") {
-		t.Error("a run recorded under a DIFFERENT shape still settles this one; a charter edit should free it")
+	if eng.seqDone("review", ref, "a-different-shape") {
+		t.Error("a completed run still settles a DIFFERENT sequence; an edit should free it")
 	}
 }
 

@@ -44,13 +44,25 @@ const (
 
 // startSeq begins carrier's sequence about subj, unless one is already running for it.
 func (e *Engine) startSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref) {
+	// CLAIM FIRST, then decide — not the other way round, and not because it reads better.
+	// Checking `done` before claiming leaves a window: a firing reads "not done", the run
+	// already in progress finishes and RELEASES, and the reader then wins a free claim and
+	// starts a second run. That interleaving is not hypothetical; it reproduced about one run
+	// in three.
+	//
+	// The rule it teaches: every predicate guarding a decision must be evaluated UNDER the
+	// exclusive thing, or the exclusion guards nothing.
+	if !e.claimRun(chain, subj) {
+		e.tracef("seq %s: another run holds the claim for %s", chain, subj)
+		return
+	}
+	// From here the decision is exclusive. `done` is a POLICY about repeating; the claim is a
+	// MECHANISM for exclusion. They answer different questions, and fusing them is what forced
+	// the policy to be maximally strict back when the mechanism could not be trusted.
 	shape := e.shapeOf(chain)
-	if e.seqSettled(chain, subj, shape) {
-		// A re-fire while the sequence is mid-flight is a NO-OP, not a second run. Note what
-		// this does not do: once the sequence has finished, a re-fire starts it again, exactly
-		// as a re-fired trigger has always re-acted — preventing THAT is the `when`'s job (match
-		// a state field the action advances), not the engine's.
-		e.tracef("seq %s: already run for %s (in flight, or finished); not restarting", chain, subj)
+	if e.seqDone(chain, subj, shape) {
+		e.tracef("seq %s: already completed for %s at this shape; not re-running", chain, subj)
+		e.releaseRun(chain, subj)
 		return
 	}
 	e.publishSeq(chain, subj, entity.Obj{
@@ -77,6 +89,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event
 			// last element that really completed, so the facts do not claim progress that did
 			// not happen.
 			e.tracef("seq %s: element %d failed (%v); sequence stops", chain, i, err)
+			e.releaseRun(chain, subj)
 			return
 		}
 		if h != nil {
@@ -96,6 +109,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event
 // sequence gains an element.
 func (e *Engine) finishSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref) {
 	e.publishSeq(chain, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
+	e.releaseRun(chain, subj)
 	if carrier.OnDone != nil {
 		carrier.OnDone.apply(chain+"."+"onDone", ev, []entity.Ref{subj}, e)
 	}
@@ -111,11 +125,13 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 	t, ok := e.triggerNamed(mirror.TriggerOf(chain))
 	if !ok {
 		e.tracef("seq %s: trigger gone; sequence cannot continue", chain)
+		e.releaseRun(carrierChain, subj)
 		return true // it WAS a sequence element; there is just nothing left to advance into
 	}
 	carrier, ok := navigate(t, carrierChain)
 	if !ok {
 		e.tracef("seq %s: carrier %s no longer resolves; sequence stops", chain, carrierChain)
+		e.releaseRun(carrierChain, subj)
 		return true
 	}
 	// The charter may have moved under a running sequence — an inserted element shifts every
@@ -124,6 +140,7 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 	if want := e.shapeOf(carrierChain); !e.shapeMatches(carrierChain, subj, want) {
 		e.tracef("seq %s: the trigger's sequence changed while it was running; stopping rather "+
 			"than running whatever now sits at element %d", carrierChain, idx+1)
+		e.releaseRun(carrierChain, subj)
 		return true
 	}
 	e.publishSeq(carrierChain, subj, entity.Obj{seqStep: idx + 1})
@@ -131,52 +148,25 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 	return true
 }
 
-// seqSettled reports whether this sequence has already run for this subject — either it is
-// still going, or it finished. A firing that finds it settled does nothing.
+// seqDone reports whether this sequence has ALREADY COMPLETED for this subject at this
+// shape. It is a repeat policy and nothing else: overlap is the claim's job (claimRun), and
+// separating the two is what let each shrink to something defensible.
 //
-// It is asked of the sequence NODE rather than of any one element, and it has three parts
-// because each covers a window the others cannot:
+// It no longer consults the live registry or the step count, because the claim covers both
+// windows — including the one between elements, where nothing is live and the registry had
+// nothing to say. What is left is the question the registry could never answer: should a
+// sequence that finished run again?
 //
-//   - the LIVE registry, while an element's process is alive;
-//   - the `step` fact, BETWEEN elements — where nothing is live at all, which is where a
-//     re-fire is most likely to land;
-//   - the `done` fact, AFTER the sequence finished.
-//
-// The last one is not what docs/seq-plan.md predicted. The plan said a completed sequence may
-// simply run again, leaving repeat-suppression to the `when` (match a state field the action
-// advances — the latch the tutorial teaches). Building it showed why that cannot stand: a
-// sequence's own progress writes are real changes to the subject, so they re-fire the very
-// trigger that made them, and dispatch is asynchronous — by the time an early bookkeeping
-// event is processed, the sequence may already have finished, at which point "may run again"
-// means "runs twice, always". Latching on `done` is what makes a non-latched charter behave.
-//
-// Re-running is therefore EXPLICIT: clear the facts (`patch: {verse: {review: !delete null}}`,
-// newly sayable) or change the sequence, which changes its shape hash. See the note in
-// docs/seq-plan.md.
-func (e *Engine) seqSettled(chain string, subj entity.Ref, shape string) bool {
-	// live: any process whose chain lies under this node's `seq`
-	prefix := chain + "." + seqField
-	e.liveMu.Lock()
-	for _, fp := range e.live {
-		if fp.subject == subj.String() && chainUnder(prefix, fp.chain) {
-			e.liveMu.Unlock()
-			return true
-		}
-	}
-	e.liveMu.Unlock()
-
-	// between elements, or after the end: any progress recorded for THIS shape settles it.
-	// Scoped to the shape so that editing the sequence frees it to run again — the same
-	// signal that stops a live sequence from walking into a charter that moved under it.
+// Scoped to the shape, so editing the sequence frees it — the same signal that stops a live
+// sequence walking into a charter that moved under it.
+func (e *Engine) seqDone(chain string, subj entity.Ref, shape string) bool {
 	p := e.seqFacts(chain, subj)
 	if p == nil {
 		return false
 	}
-	if entity.Get(p, seqStep) == nil {
+	if d := entity.Get(p, seqDone); d == nil || !d.Bool {
 		return false
 	}
-	// A DIFFERENT shape means the charter changed since that run: this is a new sequence
-	// that happens to share a name, so what the old one recorded does not settle it.
 	if got := entity.Str(p, seqShape); got != "" && got != shape {
 		return false
 	}
@@ -314,4 +304,46 @@ func chainUnder(prefix, target string) bool {
 		return false
 	}
 	return p.MatchesPrefix(t)
+}
+
+// ── claiming a run ───────────────────────────────────────────────────────────
+
+// claimRun takes the exclusive claim on a sequence for a subject, atomically. It reports
+// whether this caller won it.
+//
+// The claim is what makes overlap impossible rather than unlikely. Engine.dispatch ends in
+// `go e.fire(...)`, so two firings genuinely race, and the check they used to race on lived in
+// a Go map — which settles nothing across two goroutines that both read "absent", and which a
+// restart forgets entirely. A create-only CommitIf settles it in the store: exactly one create
+// wins, and the loser does nothing.
+//
+// It is held for the WHOLE sequence, not per element, which is what closes the gap between
+// elements where no process is live and the registry therefore had nothing to say.
+func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
+	ref := mirror.ClaimRef(spawnID(chainID(chain), subj))
+	payload := entity.Obj{"flow": subj.String(), "chain": chain}.Payload()
+	cc, ok := e.store.(entity.ConditionalCommitter)
+	if !ok {
+		// Best-effort on a store without conditional commit: check, then write. The window
+		// between them is exactly what the capability exists to close, so say so rather than
+		// pretend the guarantee holds.
+		if _, exists, _ := e.store.Get(ref); exists {
+			return false
+		}
+		e.tracef("seq %s: store cannot commit conditionally; claim is best-effort", chain)
+		e.store.Put(ref, payload)
+		return true
+	}
+	won, err := cc.CommitIf(ref, payload, entity.Precondition{Ref: ref, Pattern: entity.Absent()})
+	if err != nil {
+		e.tracef("seq %s: claiming %s failed: %v", chain, ref, err)
+		return false
+	}
+	return won
+}
+
+// releaseRun drops the claim when a sequence ends, however it ends. A claim that outlives its
+// run would block the next one forever, so every exit path releases.
+func (e *Engine) releaseRun(chain string, subj entity.Ref) {
+	e.store.Delete(mirror.ClaimRef(spawnID(chainID(chain), subj)))
 }

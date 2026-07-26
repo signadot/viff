@@ -223,23 +223,30 @@ its own between elements, and idempotence has nowhere to stand.
 The live half is a prefix query over the chains in the registry — `MatchesPrefix` from go-tony
 v0.0.92, which is what that bump bought.
 
-**What this does and does not prevent — REVISED IN BUILDING.** The plan said this prevents a
-*second, overlapping* run only, and that a completed sequence may simply run again, with
-repeat-suppression left to the `when` (match a state field the action advances — the latch the
-tutorial teaches). That cannot stand, and the reason is specific to sequences:
+**What this does and does not prevent — REVISED TWICE IN BUILDING.**
 
-**a sequence's own progress writes are real changes to its subject, so they re-fire the very
-trigger that made them** — and dispatch is asynchronous, so by the time an early bookkeeping
-event is processed the sequence may already have finished. At that moment "a completed sequence
-may run again" means "runs twice, always". The first end-to-end test spawned
-`[seq.0, seq.1, seq.0, seq.1]` for a single firing.
+The plan said this prevents a *second, overlapping* run only, leaving repeat-suppression to
+the `when`. Building it showed that could not stand: a sequence's progress writes are real
+changes to its subject, so they re-fire the trigger that made them, and dispatch is async — by
+the time an early bookkeeping event is processed the sequence may already have finished. The
+first end-to-end run spawned `[seq.0, seq.1, seq.0, seq.1]` for one firing.
 
-Suppressing the self-wake is not open to us: the bookkeeping write is exactly what the join
-waits on, so it MUST dispatch. So the predicate covers the third window too — any progress
-recorded for the current shape settles the sequence — and re-running becomes **explicit**:
-clear the facts (`patch: {verse: {review: !delete null}}`, newly sayable) or change the
-sequence, which changes its hash. The cost is real and worth stating: a trigger meant to run
-its sequence again per event (`when` on a CI status, say) now needs that clearing step.
+So it became two mechanisms doing two jobs, which is what the sketch of disciplines argued for:
+
+- **overlap** is excluded by an atomic **claim** — a create-only `CommitIf` at
+  `process:claim:<chain>@<subject>`. The store settles the race that `go e.fire(...)` creates,
+  and the claim is held across the WHOLE sequence, which covers the window between elements
+  where nothing is live. It lives in the `process` system so the ignition guard keeps a claim
+  from waking the trigger that took it.
+- **repeating** is a policy: `done`, scoped to the shape, so editing the sequence frees it.
+
+And one ordering that is not a detail: **claim first, then decide.** Checking `done` before
+claiming leaves a window in which a firing reads "not done", the running sequence finishes and
+releases, and the reader then wins a free claim — a second run, reproducing about one time in
+three. Every predicate guarding the decision has to be evaluated under the exclusive thing.
+
+Known limitation: a claim outlives a crash. A restart already abandons the sequences it would
+guard (hooks are dropped on `Adopt`), so startup reconcile should clear claims — not built.
 
 Rule 7 is what keeps this a predicate rather than a search: with at most one `seq` per chain,
 the node is a unique ancestor of every live chain, so "which sequence is this process in" has
