@@ -25,7 +25,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		proc = process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, proc, spec.Subject, "local")
+		mirror.Reflect(store, id, proc, mirror.Meta{Subject: spec.Subject, Policy: "local"})
 		return proc // the test starts Run after arranging the pause
 	})
 
@@ -73,7 +73,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		p := process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, p, spec.Subject, "local")
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local"})
 		go p.Run(context.Background())
 		return p
 	})

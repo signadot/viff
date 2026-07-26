@@ -49,6 +49,12 @@ type Spec struct {
 	// engine tracks a flow's processes by subject so it can be steered/cancelled as
 	// a unit. Usually the concrete matched ref, not a template.
 	Subject string `tony:"field=subject,omitzero"`
+	// Chain is the kpath of the ACTION that spawned this, inside its trigger: "review" for
+	// the trigger's own spawn, "review.onDone" for its completion hook. Engine-owned like
+	// Subject — a charter that writes it is overwritten — and carried here only because the
+	// Spawner is what calls mirror.Reflect, which owns the process entity's payload. It is
+	// what lets a process say where in its trigger's action tree it came from.
+	Chain string `tony:"field=chain,omitzero"`
 	// Provider, when set, makes the who-axis (Driver) a GOVERNED SELECTION rather than a
 	// fixed authoring-time value: the engine selects one of Eligible via the Select
 	// surface, reifies it as a motion, and binds the winner into Driver before spawn

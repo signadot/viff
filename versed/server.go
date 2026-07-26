@@ -209,7 +209,7 @@ func mintNonce() string {
 func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
 	return func(id string, spec launch.Spec) process.ProcHandle {
 		h := s.policy.Spawn(id, spec.Task, spec.Driver, content)
-		mirror.Reflect(st, id, h, spec.Subject, s.policy.Ref())
+		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Policy: s.policy.Ref(), Chain: spec.Chain})
 		return h
 	}
 }
@@ -232,10 +232,17 @@ func (s *Server) reconcileProcesses() {
 		}
 		policyRef, _ := ent.Payload["policy"].(string)
 		subject, _ := ent.Payload["flow"].(string)
+		// Reflect REPLACES the entity's payload, so provenance it does not carry is lost on
+		// re-attach. Read the chain back off the entity and hand it straight in: it is the
+		// address of the action that spawned this process, and a resumed process should not
+		// forget where it came from. (Re-deriving its HOOKS from that address is the next
+		// step and is not done here — see docs/flow-shape-kpath-plan.md.)
+		chain, _ := ent.Payload["chain"].(string)
 		if policyRef != "" && policyRef != "local" { // remote: the work outlived verse
 			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {
-				mirror.Reflect(s.Store, ent.Ref.ID, h, subject, policyRef) // re-attach: observe
-				s.Eng.Adopt(subject, ent.Ref.ID, h)                        // re-track: steerable
+				// re-attach: observe
+				mirror.Reflect(s.Store, ent.Ref.ID, h, mirror.Meta{Subject: subject, Policy: policyRef, Chain: chain})
+				s.Eng.Adopt(subject, ent.Ref.ID, h) // re-track: steerable
 				continue
 			}
 		}
@@ -813,7 +820,7 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		store = s.Store.Scope(scope)
 	}
 	h := s.policy.Spawn(id, body.Task, body.Driver, nil)
-	mirror.Reflect(store, id, h, "", s.policy.Ref())
+	mirror.Reflect(store, id, h, mirror.Meta{Policy: s.policy.Ref()})
 	writeOut(w, r, http.StatusOK, map[string]any{"id": id})
 }
 

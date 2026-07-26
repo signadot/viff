@@ -9,6 +9,8 @@
 package mirror
 
 import (
+	"strings"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
 )
@@ -24,6 +26,31 @@ const System = "process"
 // Ref is the entity that mirrors process id.
 func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: "instance", ID: id} }
 
+// Meta is the provenance Reflect publishes alongside a process's own state: where it runs
+// and what it is about. Grouped rather than passed as four positional strings, which is
+// both unreadable at the call site and easy to transpose.
+type Meta struct {
+	// Subject is the flow this process belongs to. It is carried on the entity as "flow"
+	// so a completion trigger can advance that subject when the process finishes, and does
+	// not collide with the $subject binding (the matched ref).
+	Subject string
+	// Policy is the controlPolicy hosting it — "local", "broker", or a remote URL — so a
+	// restart can decide resume-or-orphan.
+	Policy string
+	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
+	// "review.onDone". Empty for a process with no trigger behind it (`verse process run`).
+	Chain string
+}
+
+// TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
+// a kpath into that trigger's Action, so the root is everything up to the first descent.
+func TriggerOf(chain string) string {
+	if i := strings.IndexAny(chain, ".[{("); i >= 0 {
+		return chain[:i]
+	}
+	return chain
+}
+
 // Reflect subscribes to p's read plane and mirrors its state into store as a
 // process:instance:<id> entity, until p reaches a terminal status. It projects
 // significant transitions (pending gate, last action, status) plus a bounded view
@@ -35,24 +62,30 @@ func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: "instan
 // ephemeral read plane is gone. Projection is one-way: an entity is a view, never a
 // handle (control still goes through the process API).
 //
-// subject, if non-empty, is the flow this process belongs to; it is carried on the
-// entity as "flow" so a completion trigger can advance that subject when the
-// process finishes. It does not collide with the $subject binding (the matched ref).
-func Reflect(store entity.Store, id string, h process.ProcHandle, subject, policy string) {
+// The provenance a process carries beyond its own state is Meta.
+func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 	ch, unsub := h.Subscribe()
 	// A brokered process starts in the pre-running `unclaimed` state — it is hosted on
 	// the broker awaiting an executor; the claim emits an EvStatus{running} that moves it
 	// on. Local/remote processes execute immediately, so they start `running`.
 	initial := process.Running
-	if policy == "broker" {
+	if m.Policy == "broker" {
 		initial = process.Unclaimed
 	}
 	st := entity.Payload{"status": string(initial)}
-	if subject != "" {
-		st["flow"] = subject
+	if m.Subject != "" {
+		st["flow"] = m.Subject
 	}
-	if policy != "" { // which controlPolicy runs this — so a restart can resume-or-orphan
-		st["policy"] = policy
+	if m.Policy != "" { // which controlPolicy runs this — so a restart can resume-or-orphan
+		st["policy"] = m.Policy
+	}
+	// Where this process came from in the charter. `chain` is the spawning action's kpath
+	// inside its trigger (review, review.onDone, …) and `trigger` is its root segment,
+	// published separately because a payload predicate is equality-only: "every process of
+	// the review trigger" is then `fields: {trigger: review}` rather than a glob over ids.
+	if m.Chain != "" {
+		st["chain"] = m.Chain
+		st["trigger"] = TriggerOf(m.Chain)
 	}
 	// A dial-in policy (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→

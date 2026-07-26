@@ -32,7 +32,7 @@ func startHookProc(store entity.Store, id string, spec launch.Spec) *process.Pro
 	} else {
 		p = process.NewProcess(id, sup, immediate{}, noExec{})
 	}
-	mirror.Reflect(store, id, p, spec.Subject, "local")
+	mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local", Chain: spec.Chain})
 	go p.Run(context.Background())
 	return p
 }
@@ -133,13 +133,15 @@ func TestOnDoneChains(t *testing.T) {
 	store.Put(prRef("1"), entity.Payload{"stage": "open"})
 	waitField(t, store, prRef("1"), "stage", "approved")
 
-	// The chain produced three distinct spawn ids, keyed by chain position.
+	// The chain produced three distinct spawn ids, keyed by chain position — and the
+	// position is a KPATH into the trigger's action tree, so each id names the action that
+	// spawned it: the trigger itself, its onDone, and that hook's own onDone.
 	mu.Lock()
 	defer mu.Unlock()
 	want := map[string]bool{
-		"review-demo:pr:1":           false,
-		"review:done-demo:pr:1":      false,
-		"review:done:done-demo:pr:1": false,
+		"review@demo:pr:1":               false,
+		"review.onDone@demo:pr:1":        false,
+		"review.onDone.onDone@demo:pr:1": false,
 	}
 	for _, id := range ids {
 		if _, ok := want[id]; ok {
@@ -270,7 +272,7 @@ func TestAdoptDropsHooks(t *testing.T) {
 	store.Put(prRef("1"), entity.Payload{"stage": "open"})
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("adopted", sup, immediate{}, noExec{})
-	mirror.Reflect(store, "adopted", p, prRef("1").String(), "local")
+	mirror.Reflect(store, "adopted", p, mirror.Meta{Subject: prRef("1").String(), Policy: "local"})
 	eng.Adopt(prRef("1").String(), "adopted", p)
 	go p.Run(ctx)
 

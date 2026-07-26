@@ -1,5 +1,14 @@
 # Plan: kpath as the shape of a process flow
 
+*Status: **the machinery has landed**, without `seq`. Chains are kpaths that descend by hook
+field (`review`, `review.onDone`, `review.onDone.onFailed`), ids are `<chain>@<subject>` with the
+disambiguating hash behind `+`, trigger names are validated as bare kpath fields at install, and
+`mirror.Reflect` publishes `chain` + `trigger` (carried through `launch.Spec.Chain`, and preserved
+across a re-attach in `reconcileProcesses`). **Not yet built:** the flow-tree API response (§5),
+hook rehydration on resume (§4), and everything that depends on `seq` — which is deliberately
+deferred, so today every chain segment is a `.field` and the id needs no separate rendering. The
+two-rendering design below is what the id form must become when `seq` adds `[n]` segments.*
+
 ## Context
 
 A trigger that spawns, and whose spawn carries completion hooks, makes a *tree* of processes
@@ -86,6 +95,10 @@ objects.)
   as `chain`. This is what the tree, the charter lookup, and any structural query use. It never
   crosses a shell.
 - **Id form — dotted, shell-safe**, `review.seq.2.onDone@demo:pr:1`. Brackets flatten to `.`.
+
+**Not needed until `seq` lands.** With hooks alone every segment is a `.field`, which is already
+shell-safe, so the canonical kpath and the id chain are the *same string* — the split below is the
+design the id must adopt the moment a list segment appears, not machinery to build now.
 
 The flattening is lossless *because the schema types the segments*: `Action`'s field set is
 closed (`set`, `spawn`, `seq`, `par`, `onDone`, `onFailed`, `onCancelled`, `onOrphaned`), so a

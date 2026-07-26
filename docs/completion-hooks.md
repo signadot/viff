@@ -129,6 +129,8 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
     if fp.hooks == nil { return }
     hook := fp.hooks.hookFor(status); if hook == nil { return }
     subj, err := entity.ParseRef(fp.subject); if err != nil { return }
+    // as landed; the chain is now a kpath and descends by hook FIELD — see §4 and
+    // docs/flow-shape-kpath-plan.md: hook.apply(fp.chain+"."+hookField(status), …)
     hook.apply(fp.chain+":"+string(status), ev, []entity.Ref{subj}, e) // recurses via apply→spawnHooked
 }
 ```
@@ -156,17 +158,23 @@ passes the spawning action as the hooks carrier: `e.spawnHooked(spawnID(name, su
 
 ### 4. spawnID under recursion — deterministic, collision-free
 
-Child chain name = `parentChain + ":" + status`. `safeSeg` (trigger_api.go) does **not** rewrite `:`,
-so no hash suffix and ids stay deterministic per (chain, subject):
+*(Landed as described, then reshaped: the chain is now a **kpath** and the id joins it to the
+subject with `@`. See docs/flow-shape-kpath-plan.md for why — the `-` join could not be decoded
+back, since trigger names spend `-` too.)*
+
+Child chain = `parentChain + "." + hookField(status)` — the hook's FIELD name, so the chain is
+the address of the action inside the trigger rather than a private scheme:
 
 | level | chain | spawnID for `demo:pr:1` |
 |---|---|---|
-| top `review` | `review` | `review-demo:pr:1` |
-| `onDone`→merge | `review:done` | `review:done-demo:pr:1` |
-| nested `onDone`→approve | `review:done:done` | `review:done:done-demo:pr:1` |
-| `onFailed` sibling | `review:failed` | `review:failed-demo:pr:1` |
+| top `review` | `review` | `review@demo:pr:1` |
+| `onDone`→merge | `review.onDone` | `review.onDone@demo:pr:1` |
+| nested `onDone`→approve | `review.onDone.onDone` | `review.onDone.onDone@demo:pr:1` |
+| `onFailed` sibling | `review.onFailed` | `review.onFailed@demo:pr:1` |
 
-Deterministic → idempotent re-fire (Spawn dedups by id).
+Deterministic → idempotent re-fire (Spawn dedups by id). The chain is also published on the
+process entity (`chain`, plus its root as `trigger`), so "every process of this trigger" is a
+payload predicate rather than a glob over ids.
 
 ### 5. Validation — `trigger/trigger.go`, `trigger/trigger_api.go`
 
@@ -217,7 +225,7 @@ action:
 ## Tests — `trigger/onhook_test.go` (MemStore + custom Spawner + `ObserveScoped`)
 
 1. `onDone` fires on completion (one trigger: review→reviewed).
-2. Recursion (review→merge→approve; assert distinct spawnIDs `review:done…`).
+2. Recursion (review→merge→approve; assert distinct spawnIDs `review.onDone…`).
 3. `onFailed` applies on a driver error; `onDone` does not.
 4. Per-process scoping (two spawns, same subject, different hooks — each applies to its own process).
 5. Fast-process race: an immediate driver under `ObserveScoped` — store watcher still applies (race-free); plus a slow driver for the backstop path.

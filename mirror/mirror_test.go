@@ -55,7 +55,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	d := &sayer{result: "here is the summary you asked for"}
 	p := process.NewProcess("p2", sup, d, noopExec{})
 	d.emit = p.Emit // narration onto the read plane, as harness.Build wires it
-	Reflect(store, p.ID, p, "", "local")
+	Reflect(store, p.ID, p, Meta{Policy: "local"})
 	go func() { p.Run(context.Background()) }()
 
 	ref := Ref("p2")
@@ -98,7 +98,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("d1", sup, &steps{n: 1}, noopExec{})
 	const url = "http://verse.test:9090/broker/abc123"
-	Reflect(store, p.ID, dialer{p, url}, "", "broker") // initial Put is synchronous
+	Reflect(store, p.ID, dialer{p, url}, Meta{Policy: "broker"}) // initial Put is synchronous
 
 	got, ok, _ := store.Get(Ref("d1"))
 	if !ok || got.Payload["dialURL"] != url {
@@ -107,7 +107,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 
 	// a plain handle (no DialURL) publishes no dialURL key.
 	p2 := process.NewProcess("d2", sup, &steps{n: 1}, noopExec{})
-	Reflect(store, p2.ID, p2, "", "local")
+	Reflect(store, p2.ID, p2, Meta{Policy: "local"})
 	if g2, _, _ := store.Get(Ref("d2")); g2.Payload["dialURL"] != nil {
 		t.Fatalf("local handle should publish no dialURL: %+v", g2.Payload)
 	}
@@ -123,7 +123,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("p1", sup, &steps{n: 2}, noopExec{})
-	Reflect(store, p.ID, p, "", "local")
+	Reflect(store, p.ID, p, Meta{Policy: "local"})
 
 	go func() { p.Run(context.Background()) }()
 
@@ -154,5 +154,52 @@ func TestReflectProjectsProcessState(t *testing.T) {
 	got, ok, _ := store.Get(ref)
 	if !ok || got.Payload["status"] != "done" {
 		t.Fatalf("terminal entity wrong: %+v ok=%v", got, ok)
+	}
+}
+
+// Provenance is published with the process, not derived from its id by a reader: `chain`
+// is the kpath of the action that spawned it and `trigger` is that chain's root, so
+// "every process of the review trigger" is a payload predicate — which is all a `fields`
+// match can express — rather than a glob over ids.
+func TestReflectPublishesChainAndTrigger(t *testing.T) {
+	store := entity.NewMemStore()
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	p := process.NewProcess("p-chain", sup, &sayer{}, noopExec{})
+	Reflect(store, p.ID, p, Meta{
+		Subject: "demo:pr:1",
+		Policy:  "local",
+		Chain:   "review.onDone",
+	})
+	e, ok, _ := store.Get(Ref("p-chain")) // the initial Put is synchronous
+	if !ok {
+		t.Fatal("process entity not mirrored")
+	}
+	for k, want := range map[string]string{
+		"chain":   "review.onDone",
+		"trigger": "review",
+		"flow":    "demo:pr:1",
+	} {
+		if got, _ := e.Payload[k].(string); got != want {
+			t.Errorf("payload[%q] = %q; want %q (payload %+v)", k, got, want, e.Payload)
+		}
+	}
+}
+
+// A process with no trigger behind it (`verse process run`) carries no chain, and must not
+// be given an empty one — an empty `trigger` field would match a predicate looking for it.
+func TestReflectOmitsChainWhenAbsent(t *testing.T) {
+	store := entity.NewMemStore()
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	p := process.NewProcess("p-bare", sup, &sayer{}, noopExec{})
+	Reflect(store, p.ID, p, Meta{Policy: "local"})
+	e, ok, _ := store.Get(Ref("p-bare"))
+	if !ok {
+		t.Fatal("process entity not mirrored")
+	}
+	if _, present := e.Payload["chain"]; present {
+		t.Errorf("chain published for a process with none: %+v", e.Payload)
+	}
+	if _, present := e.Payload["trigger"]; present {
+		t.Errorf("trigger published for a process with none: %+v", e.Payload)
 	}
 }

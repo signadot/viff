@@ -95,7 +95,7 @@ Every event carries a **per-process, gapless, monotonic cursor** (a plain seq as
 the policy — it need not be a global logd commit) and a timestamp:
 
 ```json
-{ "cursor": 42, "process": "review-demo:pr:1", "at": "…",
+{ "cursor": 42, "process": "review@demo:pr:1", "at": "…",
   "kind": "exec", "tool": "run_tests", "text": "2 failed" }
 ```
 

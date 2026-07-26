@@ -36,7 +36,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		got = spec
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		p := process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, p, "", "local") // the Spawner now owns mirror + run
+		mirror.Reflect(store, id, p, mirror.Meta{Policy: "local"}) // the Spawner now owns mirror + run
 		go p.Run(context.Background())
 		return p
 	})
@@ -79,7 +79,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		ids <- id
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		p := process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, p, spec.Subject, "local")
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local"})
 		go p.Run(context.Background())
 		return p
 	})
@@ -102,9 +102,10 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		if strings.ContainsAny(id, `/\#?% `) {
 			t.Fatalf("spawn id is not a safe URL segment: %q", id)
 		}
-		// Readable prefix from the full ref (slashes sanitized), plus a hash suffix
-		// (the ref had rewritten characters, so it is disambiguated).
-		if !strings.HasPrefix(id, "validate-local:file:process_processd_daemon.go-") {
+		// Chain, then the subject boundary, then the full ref (slashes sanitized), plus a
+		// hash suffix behind its own marker (the ref had rewritten characters, so it is
+		// disambiguated).
+		if !strings.HasPrefix(id, "validate@local:file:process_processd_daemon.go+") {
 			t.Fatalf("unexpected sanitized id: %q", id)
 		}
 		// and it is routable/findable in the verse under that id (mirror is async)

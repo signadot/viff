@@ -143,7 +143,7 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	store.Put(mirror.Ref("t1"), entity.Payload{"status": "running", "policy": srv.URL})
 
 	// resume: re-attach and re-mirror (the core of reconcileProcesses).
-	mirror.Reflect(store, "t1", pol.Attach("t1"), "", srv.URL)
+	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Policy: srv.URL})
 
 	deadline := time.After(5 * time.Second)
 	for {

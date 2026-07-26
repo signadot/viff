@@ -40,8 +40,11 @@ type flowProc struct {
 	// when THIS process reaches a terminal status — scoped to this process, not every process
 	// about the subject. nil for Adopt (a resumed process has no charter action to hook).
 	hooks *Action
-	// chain is this spawn's position in a hook chain (the trigger name at the top, then
-	// name:done, name:done:done, …), so a hook's own spawn gets a distinct deterministic id.
+	// chain is this spawn's position in its trigger's action tree, as a KPATH: the trigger
+	// name at the top, then review.onDone, review.onDone.onFailed, … So it is not a private
+	// naming scheme but the address of the spawning Action inside the charter — which is
+	// what makes a hook's spawn id distinct and deterministic, and what a reader (or, later,
+	// a resume) can navigate back to the action that owns it.
 	chain string
 }
 
@@ -1038,7 +1041,19 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	if err != nil {
 		return
 	}
-	hook.apply(fp.chain+":"+string(status), ev, []entity.Ref{subj}, e)
+	// Descend the chain by the hook's FIELD name, not by the status: `review.onDone` is the
+	// kpath of the action that is about to run, so the id it spawns under is its address in
+	// the charter. (An empty field cannot happen — hookFor already returned non-nil only for
+	// a terminal status — but a chain is a wire-visible id, so do not build a malformed one.)
+	seg := hookField(status)
+	if seg == "" {
+		return
+	}
+	// Appended directly rather than via kpath.Join, which reads its PREFIX as a single
+	// segment and so quotes a multi-segment chain: Join("review.onDone", "onFailed") is
+	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
+	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
+	hook.apply(fp.chain+"."+seg, ev, []entity.Ref{subj}, e)
 }
 
 // procEvent synthesizes the store event for a completed process from its mirror entity — the

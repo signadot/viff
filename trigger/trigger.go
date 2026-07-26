@@ -203,6 +203,24 @@ func (a *Action) hookFor(s process.Status) *Action {
 	return nil
 }
 
+// hookField is hookFor's other half: the NAME of the field a terminal status fires, which
+// is the segment a chain kpath descends by. `review` + status done → `review.onDone`, which
+// is the address of that hook inside the trigger — so a chain reads back as a lookup into
+// the charter rather than as a private naming scheme. Empty for a non-terminal status.
+func hookField(s process.Status) string {
+	switch s {
+	case process.Done:
+		return "onDone"
+	case process.Failed:
+		return "onFailed"
+	case process.Cancelled:
+		return "onCancelled"
+	case process.Orphaned:
+		return "onOrphaned"
+	}
+	return ""
+}
+
 // hasHooks reports whether any completion hook is set — used to require a spawn for them.
 func (a *Action) hasHooks() bool {
 	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil
@@ -227,10 +245,10 @@ func (a Action) validate() error {
 }
 
 // apply runs the action once per resolved subject: apply the Set (a state transition on
-// that subject) then spawn (if any). name is the firing trigger's name, used to derive the
-// spawned process id. Writing entities advances state — which wakes the next trigger,
-// closing the loop.
-func (a Action) apply(name string, ev entity.Event, subjects []entity.Ref, e *Engine) {
+// that subject) then spawn (if any). chain is this action's kpath inside its trigger (the
+// trigger name at the top, `review.onDone` for a hook), used to derive the spawned process
+// id. Writing entities advances state — which wakes the next trigger, closing the loop.
+func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine) {
 	for _, subj := range subjects {
 		b := bindingFor(ev, subj)
 		if a.Set != nil {
@@ -262,12 +280,17 @@ func (a Action) apply(name string, ev entity.Event, subjects []entity.Ref, e *En
 			}
 			spec.Driver = driver
 		}
+		// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the
+		// process entity's payload and re-Puts it on every event, so a field the engine
+		// wrote afterwards would be clobbered. Engine-owned, like Subject above — a charter
+		// that sets either is overwritten here.
+		spec.Chain = chain
 		// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject
 		// is idempotent (and, under fan-out, each member gets its own deterministic id). The
 		// action carries its own completion hooks (onX): they ride the spawned process's
-		// flowProc and fire when it reaches a terminal status. name is the chain position, so
-		// a hook's own spawn gets a distinct, deterministic id (see engine.applyHook).
+		// flowProc and fire when it reaches a terminal status. chain is this action's kpath,
+		// so a hook's own spawn gets a distinct, deterministic id (see engine.applyHook).
 		a := a
-		e.spawnHooked(spawnID(name, subj), spec, &a, name)
+		e.spawnHooked(spawnID(chain, subj), spec, &a, chain)
 	}
 }

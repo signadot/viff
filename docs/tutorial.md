@@ -152,7 +152,7 @@ verse gate list
 #   mode: ASK
 #   origin: review
 #   reason: "trigger review gate review on demo:pr:1"
-#   spawns: review-demo:pr:1
+#   spawns: review@demo:pr:1
 #   subject: demo:pr:1
 #   tool: trigger:review
 #   where: engine
