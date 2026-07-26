@@ -1,6 +1,6 @@
 # Plan: `seq` — sequence along the chain, parallel across triggers
 
-*Status: design, not implemented. It closes the note in
+*Status: **built**, with one decision reversed by building it — see "what changed" below. It closes the note in
 `docs/workflow-representation-improvement.md`, and it depends on the chain work already landed
 in `docs/flow-shape-kpath-plan.md`.*
 
@@ -223,10 +223,34 @@ its own between elements, and idempotence has nowhere to stand.
 The live half is a prefix query over the chains in the registry — `MatchesPrefix` from go-tony
 v0.0.92, which is what that bump bought.
 
-**What this does and does not prevent.** It prevents a *second, overlapping* run. It does not
-prevent a *later* one: once the sequence completes (`done` latches), a re-fire starts it again,
-exactly as a re-fired trigger has always re-acted. Preventing that is the `when`'s job — match a
-state field the action advances (the latch the tutorial teaches), not the engine's.
+**What this does and does not prevent — REVISED TWICE IN BUILDING.**
+
+The plan said this prevents a *second, overlapping* run only, leaving repeat-suppression to
+the `when`. Building it showed that could not stand: a sequence's progress writes are real
+changes to its subject, so they re-fire the trigger that made them, and dispatch is async — by
+the time an early bookkeeping event is processed the sequence may already have finished. The
+first end-to-end run spawned `[seq.0, seq.1, seq.0, seq.1]` for one firing.
+
+So it became two mechanisms doing two jobs, which is what the sketch of disciplines argued for:
+
+- **overlap** is excluded by an atomic **claim** — a create-only `CommitIf` at
+  `process:claim:<chain>@<subject>`. The store settles the race that `go e.fire(...)` creates,
+  and the claim is held across the WHOLE sequence, which covers the window between elements
+  where nothing is live. It lives in the `process` system so the ignition guard keeps a claim
+  from waking the trigger that took it.
+- **repeating** is a policy: `done`, scoped to the shape, so editing the sequence frees it.
+
+And one ordering that is not a detail: **claim first, then decide.** Checking `done` before
+claiming leaves a window in which a firing reads "not done", the running sequence finishes and
+releases, and the reader then wins a free claim — a second run, reproducing about one time in
+three. Every predicate guarding the decision has to be evaluated under the exclusive thing.
+
+Startup reconcile clears every claim, which is what makes a durable lease safe: a claim is
+exactly as durable as the run it guards, and no more. A restart already abandons that run —
+a resumed process is re-adopted without its hooks, so nothing will ever advance the sequence —
+so a surviving claim would block it forever with no live process to explain why. Residue:
+scoped engines hold claims in their own scope stores, which reconcile does not walk; that is
+the same gap as scoped resume, and worth closing with it.
 
 Rule 7 is what keeps this a predicate rather than a search: with at most one `seq` per chain,
 the node is a unique ancestor of every live chain, so "which sequence is this process in" has

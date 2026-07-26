@@ -260,8 +260,9 @@ func TestOnHookTonyRoundTrip(t *testing.T) {
 	}
 }
 
-// Adopt (the resume path) carries no hooks: a completion after adoption fires nothing. Guards
-// the documented resume limitation so a future rehydration change is noticed here.
+// Adopt with NO chain still carries no hooks, and correctly so: there is no address to look
+// an action up by. It is the entry point for a process that answers to no charter (`process
+// run`), and the one for a charter-spawned process is AdoptChain, below.
 func TestAdoptDropsHooks(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
@@ -281,5 +282,54 @@ func TestAdoptDropsHooks(t *testing.T) {
 	time.Sleep(50 * time.Millisecond) // let any (erroneous) hook application land
 	if e, _, _ := store.Get(prRef("1")); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("adopted process's completion mutated the subject: %+v", e.Payload)
+	}
+}
+
+// Resume rehydrates a process's hooks from its CHAIN. This is what a chain being a lookup key
+// into the charter buys: before it, a completion after a restart silently ended a chain,
+// because Adopt tracked the process with no hooks at all.
+func TestAdoptChainRehydratesHooks(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{When: prWhen("never")}, // installed for its shape, not to fire
+		Action: Action{
+			Spawn:  &launch.Spec{Task: "review"},
+			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
+		},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+
+	// A process that outlived a restart: mirrored and adopted BEFORE it runs, because the
+	// point is that adoption re-attaches the hooks a completion will look for. (Built here
+	// rather than with startHookProc, which starts the process itself — adopting a process
+	// that may already have finished would test nothing.)
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	p := process.NewProcess("review@demo:pr:1", sup, immediate{}, noExec{})
+	mirror.Reflect(store, p.ID, p, mirror.Meta{Subject: prRef("1").String(), Policy: "local", Chain: "review"})
+	eng.AdoptChain(prRef("1").String(), p.ID, "review", p)
+	go p.Run(context.Background())
+
+	waitField(t, store, prRef("1"), "stage", "reviewed")
+}
+
+// Rehydration fails softly, and the failures are ordinary: a trigger removed while its
+// process ran, or a chain the charter no longer has. The process is still adopted — steerable
+// and reaped — there is simply no action left to run.
+func TestAdoptChainSurvivesAMissingCharter(t *testing.T) {
+	store := entity.NewMemStore()
+	eng := New(store, process.AutoResolver{})
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	p := process.NewProcess("gone@demo:pr:1", sup, immediate{}, noExec{})
+	eng.AdoptChain(prRef("1").String(), p.ID, "gone.onDone", p)
+	if got := eng.SubjectOf("gone@demo:pr:1"); got != prRef("1").String() {
+		t.Errorf("process not adopted when its chain did not resolve: subject = %q", got)
 	}
 }

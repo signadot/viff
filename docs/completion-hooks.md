@@ -248,12 +248,16 @@ Isolated stores only (`entity.NewMemStore()` / spare-port docd). **Never** the d
 
 ## Known limitations / risks
 
-- **Resume drops hooks.** `reconcileProcesses`→`Adopt` re-tracks with `hooks:nil`, so a process that
-  completes after a restart fires no hook. Future mitigation (out of scope): persist hooks on the
-  `process:instance` entity at spawn and rehydrate on reconcile.
-- **`onOrphaned` is effectively inert** until the above lands — `orphaned` is written only by startup
-  reconcile on a fresh engine (empty `live` / nil-hook Adopt), so no tracked flowProc exists within
-  the spawning run. `onDone` / `onFailed` / `onCancelled` all work within a run.
+- ~~**Resume drops hooks.**~~ **Fixed**, and not the way this predicted. It guessed at persisting
+  the hooks themselves; what landed instead persists the process's CHAIN — the kpath of the action
+  that spawned it — and `AdoptChain` navigates the installed charter to find the action again. The
+  hooks were never the thing to store, only the address. See docs/flow-shape-kpath-plan.md.
+- **`onOrphaned` is still inert, for a different reason now.** Rehydration did not fix it, because
+  orphaning and adopting are the two ALTERNATIVES in reconcile: a process that can be re-attached is
+  adopted (and never marked orphaned), and one that cannot is orphaned (and never tracked). So no
+  tracked process is ever marked `orphaned`, whatever its hooks. Making it fire would mean tracking a
+  process whose runtime is gone — i.e. with no handle — which is a different change. `onDone` /
+  `onFailed` / `onCancelled` all work within a run.
 - **Non-`SubtreeWatcher` store in scoped mode** degrades to the racy `reapOnDone` backstop —
   acceptable; matches today's behavior. MemStore and LogdStore both implement it.
 - **No track, no hook**: if the Spawner returns nil or provider selection doesn't resolve

@@ -169,3 +169,13 @@ func preview(s string) string {
 	}
 	return s[:max] + "…"
 }
+
+// ClaimKind is the kind a run CLAIM lives under: process:claim:<chain>@<subject>. It shares
+// the process system deliberately — the engine keeps that system out of the default trigger
+// match set, so writing a claim cannot wake the very trigger that took it. A claim is
+// machinery, and the ignition guard is where machinery belongs.
+const ClaimKind = "claim"
+
+// ClaimRef is the entity a run is claimed at. The id is the spawn id, so the claim and the
+// process it guards share one address — there is nothing to keep in step.
+func ClaimRef(id string) entity.Ref { return entity.Ref{System: System, Kind: ClaimKind, ID: id} }

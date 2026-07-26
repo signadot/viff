@@ -98,6 +98,12 @@ type Engine struct {
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
 	subtree bool
 	bgctx   context.Context
+
+	// shapes fingerprints each installed sequence by its carrier's chain, so a running
+	// sequence can tell that the charter moved under it. Recorded at install (see
+	// recordShapes) because hashing an action mutates its nodes.
+	shapeMu sync.Mutex
+	shapes  map[string]string
 }
 
 // New builds an engine over store, using resolver for trigger gates.
@@ -108,6 +114,7 @@ func New(store entity.Store, resolver process.Resolver) *Engine {
 		stopped: make(chan struct{}),
 		live:    map[string]flowProc{},
 		goals:   map[string]*Goal{},
+		shapes:  map[string]string{},
 	}
 }
 
@@ -673,7 +680,7 @@ func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.R
 	if o := entity.Str(cur.Payload, "outcome"); o != "" {
 		return o, false // already committed — terminal-once
 	}
-	pre := append([]entity.Precondition{{Ref: ref, Pattern: map[string]any{"status": "open"}}}, wpre...)
+	pre := append([]entity.Precondition{{Ref: ref, Pattern: entity.Obj{"status": "open"}.Payload()}}, wpre...)
 	committed, err := cc.CommitIf(ref, closedMotion(cur.Payload, outcome, witness), pre...)
 	if err != nil {
 		e.tracef("commit %s: conditional commit error: %v", ref.ID, err)
@@ -734,7 +741,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if len(sub) == 0 {
 		return nil, false
 	}
-	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: sub}}, true
+	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: entity.Obj(sub).Payload()}}, true
 }
 
 // clonePayload reads p back as a mutable object builder (nil, or a non-object payload →
@@ -966,10 +973,40 @@ func (e *Engine) track(fp flowProc) {
 // cancel/say/pause) and reaped from the flow when it ends — not merely observed. subject
 // "" is a no-op.
 func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
+	e.AdoptChain(subject, id, "", h)
+}
+
+// AdoptChain is Adopt for a process that came from the charter: chain is the kpath of the
+// action that spawned it, read back off its process entity. The engine navigates to that
+// action and re-attaches its completion hooks, so a resumed process finishes the way it
+// would have — its onDone fires, and a sequence it belongs to advances.
+//
+// This is what a chain being a LOOKUP KEY into the charter is for. Before it, resume tracked
+// a process with no hooks at all, which meant a completion after a restart silently ended a
+// chain: docs/completion-hooks.md records that as a limitation, and it is why `onOrphaned`
+// never fires (the only orphan is written by this very reconcile, on a fresh engine).
+//
+// Rehydration is best-effort by nature, and the failures are ordinary rather than alarming:
+// a trigger removed while its process ran, or a charter edited so the chain no longer
+// resolves. Both mean there is no action left to run, which is the correct outcome — the
+// process is still adopted, so it stays steerable and is still reaped.
+func (e *Engine) AdoptChain(subject, id, chain string, h process.ProcHandle) {
 	if h == nil || subject == "" {
 		return
 	}
-	e.track(flowProc{id: id, subject: subject, h: h})
+	fp := flowProc{id: id, subject: subject, h: h, chain: chain}
+	if chain != "" {
+		if t, ok := e.triggerNamed(mirror.TriggerOf(chain)); ok {
+			if act, ok := navigate(t, chain); ok {
+				fp.hooks = act
+			} else {
+				e.tracef("adopt %s: chain %s no longer resolves; no hooks rehydrated", id, chain)
+			}
+		} else {
+			e.tracef("adopt %s: trigger %s is gone; no hooks rehydrated", id, mirror.TriggerOf(chain))
+		}
+	}
+	e.track(fp)
 }
 
 // reapOnDone retires a process from its flow's tracking once it reaches a terminal
@@ -1029,6 +1066,16 @@ func (e *Engine) retireHandle(id string, h process.ProcHandle) (flowProc, bool) 
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
 // completed process:instance payload, so the hook's templates can read $status/$flow/$result.
 func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) {
+	subject, serr := entity.ParseRef(fp.subject)
+	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
+	// already says what follows, which is why an element may not carry its own onDone. Only
+	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so
+	// the element's own onFailed/onCancelled can run and the sequence stops there (fail-stop).
+	if status == process.Done && serr == nil {
+		if e.resumeSeq(fp.chain, subject, ev) {
+			return
+		}
+	}
 	if fp.hooks == nil {
 		return
 	}
@@ -1036,10 +1083,10 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	if hook == nil {
 		return
 	}
-	subj, err := entity.ParseRef(fp.subject)
-	if err != nil {
+	if serr != nil {
 		return
 	}
+	subj := subject
 	// Descend the chain by the hook's FIELD name, not by the status: `review.onDone` is the
 	// kpath of the action that is about to run, so the id it spawns under is its address in
 	// the charter. (An empty field cannot happen — hookFor already returned non-nil only for
@@ -1260,4 +1307,30 @@ func proceedWord(ok bool) string {
 		return "proceed"
 	}
 	return "deny"
+}
+
+// patchEntity applies a tony patch to an entity's payload, atomically.
+//
+// Via Modify (compare-and-swap) so two triggers advancing the same entity cannot lose each
+// other's writes — and now at DEPTH, since a patch merges subtrees where the old field
+// overlay replaced whichever top-level key it touched. The error is captured out of the
+// closure because Modify's fn cannot fail; fn may run more than once under retry, so the last
+// run's verdict is the one that stands.
+func (e *Engine) patchEntity(ref entity.Ref, patch entity.Payload) error {
+	var perr error
+	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
+		// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a nil
+		// doc, and null is what "nothing there yet" means in tony anyway. This is what keeps
+		// a named subject's patch CREATING the entity, as the old `set` did.
+		if cur == nil {
+			cur = ir.Null()
+		}
+		out, err := tony.Patch(cur, patch)
+		if err != nil {
+			perr = err
+			return cur // leave it exactly as it was
+		}
+		return out
+	})
+	return perr
 }

@@ -18,9 +18,6 @@ package trigger
 import (
 	"fmt"
 
-	tony "github.com/signadot/tony-format/go-tony"
-	"github.com/signadot/tony-format/go-tony/ir"
-
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
@@ -193,6 +190,18 @@ type Action struct {
 	Patch entity.Payload `tony:"field=patch,omitzero"`
 	Spawn *launch.Spec   `tony:"field=spawn,omitzero"`
 
+	// Seq runs its elements IN ORDER, each starting when the previous one completes. It is
+	// the only construct the model needed for sequencing, because parallelism already has
+	// one: independent triggers matching the same condition. The two axes stay orthogonal in
+	// the id space — breadth is distinct roots sharing a subject, depth is extension of one
+	// chain — which is why there is no `par`. See docs/seq-plan.md.
+	//
+	// The sequence owns the DONE slot of each element: an element may carry onFailed /
+	// onCancelled / onOrphaned as off-ramps (firing one ends the sequence), but not onDone,
+	// because the list already says what comes next. This action's own onDone fires after the
+	// WHOLE sequence, so a sequence is a unit with its own completion and nesting composes.
+	Seq []Action `tony:"field=seq,omitzero"`
+
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
@@ -247,8 +256,27 @@ func (a *Action) hasHooks() bool {
 // hook needs a process to complete, so any onX requires a spawn; each hook is itself an action
 // and is validated recursively.
 func (a Action) validate() error {
-	if a.hasHooks() && a.Spawn == nil {
-		return fmt.Errorf("action.onX requires a spawn — a completion hook needs a process to complete")
+	// A hook needs something that can COMPLETE. That used to mean a spawn; a sequence
+	// completes too, when its last element does.
+	if a.hasHooks() && a.Spawn == nil && len(a.Seq) == 0 {
+		return fmt.Errorf("action.onX requires a spawn or a seq — a completion hook needs " +
+			"something that finishes")
+	}
+	if len(a.Seq) > 0 && a.Spawn != nil {
+		return fmt.Errorf("action has both `spawn` and `seq`: which one the sequence waits " +
+			"for would be a coin flip. Put the spawn in the sequence as its first element")
+	}
+	for i, el := range a.Seq {
+		// The sequence owns each element's done slot — the list already says what comes
+		// next, so a second answer in the same place is a contradiction, not a composition.
+		if el.OnDone != nil {
+			return fmt.Errorf("seq[%d] carries onDone: a sequence already says what follows "+
+				"an element. Use the next element, or this action's own onDone to run after "+
+				"the WHOLE sequence", i)
+		}
+		if err := el.validate(); err != nil {
+			return fmt.Errorf("seq[%d]: %w", i, err)
+		}
 	}
 	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
 		if h == nil {
@@ -261,73 +289,96 @@ func (a Action) validate() error {
 	return nil
 }
 
+// noNestedSeq rejects a second `seq` anywhere below one. Stated over CHAINS rather than over
+// elements — "no chain may contain two seq segments" — because an element's onFailed holding
+// a sequence nests just as much as an element holding one directly, only further away.
+//
+// It is what keeps re-fire idempotence a PREDICATE rather than a search: with at most one seq
+// per chain, "the sequence this live process belongs to" is a unique ancestor rather than a
+// stack of them (docs/seq-plan.md).
+func (a Action) noNestedSeq(inSeq bool) error {
+	if len(a.Seq) > 0 {
+		if inSeq {
+			return fmt.Errorf("a sequence inside a sequence: no chain may carry two `seq` " +
+				"segments, because then which sequence a running process belongs to has more " +
+				"than one answer")
+		}
+		inSeq = true
+	}
+	for _, el := range a.Seq {
+		if err := el.noNestedSeq(inSeq); err != nil {
+			return err
+		}
+	}
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+		if h == nil {
+			continue
+		}
+		if err := h.noNestedSeq(inSeq); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // apply runs the action once per resolved subject: apply the Set (a state transition on
 // that subject) then spawn (if any). chain is this action's kpath inside its trigger (the
 // trigger name at the top, `review.onDone` for a hook), used to derive the spawned process
 // id. Writing entities advances state — which wakes the next trigger, closing the loop.
 func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine) {
 	for _, subj := range subjects {
-		b := bindingFor(ev, subj)
-		if a.Patch != nil {
-			// Atomic read-modify-write: tony.Patch the subject's current payload. Via Modify
-			// (compare-and-swap) so two triggers advancing the same entity cannot lose each
-			// other's writes — and now at DEPTH, since a patch merges subtrees where the old
-			// overlay replaced whichever top-level key it touched.
-			//
-			// The error is captured out of the closure because Modify's fn cannot fail (it
-			// may run more than once under retry; the last run's verdict is the one that
-			// stands). A failed patch must not be swallowed: see below.
-			var perr error
-			e.Store().Modify(subj, func(cur entity.Payload) entity.Payload {
-				// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a
-				// nil doc, and null is what "nothing there yet" means in tony anyway. This is
-				// what keeps a named subject's patch CREATING the entity, as `set` did.
-				if cur == nil {
-					cur = ir.Null()
-				}
-				out, err := tony.Patch(cur, a.Patch)
-				if err != nil {
-					perr = err
-					return cur // leave it exactly as it was
-				}
-				return out
-			})
-			if perr != nil {
-				// Fail the firing for this subject rather than continuing into the spawn: a
-				// process started about a state the trigger FAILED to establish is worse than
-				// no process at all, and it would be the harder failure to read afterwards.
-				e.tracef("trigger %s: patch on %s failed (%v); not spawning", chain, subj, perr)
-				continue
-			}
+		h, err := a.applyOne(chain, ev, subj, e)
+		if err != nil {
+			continue // already traced; this subject does not advance
 		}
-		if a.Spawn == nil {
-			continue
+		// A sequence starts once the carrier's own write has landed. It cannot also have
+		// spawned (validate rejects spawn+seq), so there is nothing in flight to race.
+		if len(a.Seq) > 0 && h == nil {
+			e.startSeq(chain, a, ev, subj)
 		}
-		spec := a.Spawn.Bind(b)
-		// The subject is the engine's to set, not the charter's: a process is about exactly
-		// one subject, and which one is the Condition's answer.
-		spec.Subject = subj.String()
-		// who-axis: if the spawn declares a governed provider selection, resolve it and bind
-		// the chosen doer into Driver before spawn — no live swap (reassign = cancel+respawn).
-		// Orthogonal to the controlPolicy that then transports Driver.
-		if spec.Provider != nil {
-			driver, ok := e.selectProvider(spec.Provider, subj)
-			if !ok {
-				continue // no eligible doer / selection did not resolve — do not spawn
-			}
-			spec.Driver = driver
-		}
-		// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the
-		// process entity's payload and re-Puts it on every event, so a field the engine
-		// wrote afterwards would be clobbered. Engine-owned, like Subject above — a charter
-		// that sets either is overwritten here.
-		spec.Chain = chain
-		// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject
-		// is idempotent (and, under fan-out, each member gets its own deterministic id). The
-		// action carries its own completion hooks (onX): they ride the spawned process's
-		// flowProc and fire when it reaches a terminal status. chain is this action's kpath,
-		// so a hook's own spawn gets a distinct, deterministic id (see engine.applyHook).
-		a := a
-		e.spawnHooked(spawnID(chain, subj), spec, &a, chain)
 	}
+}
+
+// applyOne is apply for exactly one subject: the write, then the spawn. It returns the
+// spawned process (nil when the action starts none) and the write's error, which is what lets
+// a sequence tell "this element is running" from "this element is already finished" — the
+// distinction advanceSeq turns on.
+func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.ProcHandle, error) {
+	if a.Patch != nil {
+		if err := e.patchEntity(subj, a.Patch); err != nil {
+			// Fail the firing rather than continuing into the spawn: a process started about
+			// a state the trigger FAILED to establish is worse than no process at all, and it
+			// would be the harder failure to read afterwards.
+			e.tracef("trigger %s: patch on %s failed (%v); not spawning", chain, subj, err)
+			return nil, err
+		}
+	}
+	if a.Spawn == nil {
+		return nil, nil
+	}
+	spec := a.Spawn.Bind(bindingFor(ev, subj))
+	// The subject is the engine's to set, not the charter's: a process is about exactly
+	// one subject, and which one is the Condition's answer.
+	spec.Subject = subj.String()
+	// who-axis: if the spawn declares a governed provider selection, resolve it and bind
+	// the chosen doer into Driver before spawn — no live swap (reassign = cancel+respawn).
+	// Orthogonal to the controlPolicy that then transports Driver.
+	if spec.Provider != nil {
+		driver, ok := e.selectProvider(spec.Provider, subj)
+		if !ok {
+			return nil, nil // no eligible doer / selection did not resolve — do not spawn
+		}
+		spec.Driver = driver
+	}
+	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the process
+	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
+	// would be clobbered. Engine-owned, like Subject above.
+	spec.Chain = chain
+	// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject is
+	// idempotent (and, under fan-out, each member gets its own deterministic id). The action
+	// carries its own completion hooks (onX): they ride the spawned process's flowProc and
+	// fire when it reaches a terminal status. chain is this action's kpath, so a hook's own
+	// spawn — or a sequence's next element — gets a distinct, deterministic id.
+	hooks := a
+	return e.spawnHooked(spawnID(chainID(chain), subj), spec, &hooks, chain), nil
 }

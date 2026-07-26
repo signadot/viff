@@ -230,7 +230,14 @@ func (s *Server) reconcileProcesses() {
 	if !ok {
 		return
 	}
+	var resumed []resumedRun
 	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+		if ent.Ref.Kind == mirror.ClaimKind {
+			// A run claim, not a process. It is cleared below rather than here, and it is
+			// named explicitly so it is not merely skipped by accident (a claim carries no
+			// `status`, so it would fall through the check that follows).
+			continue
+		}
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || process.TerminalStatus(status) {
 			continue
@@ -247,7 +254,10 @@ func (s *Server) reconcileProcesses() {
 			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
 				mirror.Reflect(s.Store, ent.Ref.ID, h, mirror.Meta{Subject: subject, Policy: policyRef, Chain: chain})
-				s.Eng.Adopt(subject, ent.Ref.ID, h) // re-track: steerable
+				// re-track: steerable, AND its hooks rehydrated from the chain, so the
+				// chain or sequence it belongs to carries on rather than ending silently.
+				s.Eng.AdoptChain(subject, ent.Ref.ID, chain, h)
+				resumed = append(resumed, resumedRun{subject: subject, chain: chain})
 				continue
 			}
 		}
@@ -259,6 +269,57 @@ func (s *Server) reconcileProcesses() {
 		p["status"] = string(process.Orphaned)
 		s.Store.Put(ent.Ref, p.Payload())
 	}
+	s.reconcileClaims(l, resumed)
+}
+
+// resumedRun is a process that survived the restart, and the chain it came from — enough to
+// tell whether the sequence a claim guards is still alive.
+type resumedRun struct{ subject, chain string }
+
+// reconcileClaims drops run claims whose run did not survive the restart.
+//
+// A claim is an exclusive lease on a sequence, released when the sequence ends. Nothing
+// releases one across a restart, so the question is whether the run it guards survived.
+//
+// It survives when its process was re-adopted WITH its hooks — that process will complete,
+// and its completion advances the sequence. Then the claim must stay: dropping it would let a
+// concurrent firing start a second run alongside the one still going.
+//
+// It does not survive when the process was orphaned (a local runtime cannot outlive verse) or
+// when nothing was resumed at all. Then no completion is coming, and a surviving claim would
+// block that sequence forever with no live process to explain why.
+//
+// So a claim is exactly as durable as the run it guards — which is what makes a durable lease
+// safe rather than a liability, and is only decidable now that resume rehydrates hooks.
+//
+// Scoped engines hold their claims in their own scope stores; those are created lazily and
+// are not walked here. A scoped sequence therefore keeps a stale claim across a restart —
+// worth fixing when scoped resume is, since both are the same gap.
+func (s *Server) reconcileClaims(l entity.Lister, resumed []resumedRun) {
+	for _, ent := range l.List(func(r entity.Ref) bool {
+		return r.System == mirror.System && r.Kind == mirror.ClaimKind
+	}) {
+		if claimIsLive(ent, resumed) {
+			continue
+		}
+		s.Store.Delete(ent.Ref)
+	}
+}
+
+// claimIsLive reports whether any resumed process belongs to the sequence this claim holds:
+// same subject, and a chain at or below the claim's own.
+func claimIsLive(claim entity.Entity, resumed []resumedRun) bool {
+	subject := entity.Str(claim.Payload, "flow")
+	chain := entity.Str(claim.Payload, "chain")
+	if subject == "" || chain == "" {
+		return false
+	}
+	for _, r := range resumed {
+		if r.subject == subject && trigger.ChainUnder(chain, r.chain) {
+			return true
+		}
+	}
+	return false
 }
 
 // storeContentReader resolves a federated file's content by fetching its

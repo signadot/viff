@@ -121,14 +121,14 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 
 	trees := make([]FlowTree, 0, len(subjects))
 	for _, s := range subjects {
-		trees = append(trees, FlowTree{Subject: s, Roots: e.rootsFor(bySubject[s])})
+		trees = append(trees, FlowTree{Subject: s, Roots: e.rootsFor(s, bySubject[s])})
 	}
 	return trees
 }
 
 // rootsFor builds one subject's roots from its mirrored processes, then extends each root
 // with the charter shape it has not reached yet.
-func (e *Engine) rootsFor(ents []entity.Entity) []FlowNode {
+func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
 	// Index the run processes by chain. A chain is unique per (trigger, subject) by
 	// construction — spawnID derives from exactly that pair — so this cannot collide.
 	run := map[string]entity.Entity{}
@@ -163,7 +163,12 @@ func (e *Engine) rootsFor(ents []entity.Entity) []FlowNode {
 			out = append(out, e.node(name, "root", run, nil, ""))
 			continue
 		}
-		out = append(out, e.node(name, "root", run, &t.Action, ""))
+		root := e.node(name, "root", run, &t.Action, "")
+		// A carrier spawns nothing itself, so its own status can only come from the sequence
+		// it holds — otherwise a finished sequence would render under a root marked `pending`,
+		// which is the tree lying about the one thing it is for.
+		applySeqProgress(&root, e.seqProgressFor(subject, name))
+		out = append(out, root)
 	}
 	sort.Slice(bare, func(i, j int) bool { return bare[i].ID < bare[j].ID })
 	return append(out, bare...)
@@ -196,6 +201,24 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 	}
 	if act == nil {
 		return n
+	}
+	// Sequence elements come first and IN INDEX ORDER — a sequence's whole content is its
+	// order, so rendering it any other way (alphabetically, say) would hide the one thing it
+	// says. They precede the hooks because they run before them: the carrier's onDone is
+	// what happens AFTER the sequence.
+	stopped := false
+	for i := range act.Seq {
+		child := seqChain(chain, i)
+		el := e.node(child, "seq", run, &act.Seq[i], n.Status)
+		if stopped && el.ID == "" {
+			// Everything after an element that ended badly is unreachable, not merely
+			// waiting — the sequence is fail-stop.
+			el.Status = StatusSkipped
+		}
+		if st := el.Status; process.TerminalStatus(st) && st != string(process.Done) {
+			stopped = true
+		}
+		n.Children = append(n.Children, el)
 	}
 	if !didRun && act.Spawn != nil {
 		// An unrun node's task can only come from the charter, and it is the declared
@@ -249,4 +272,65 @@ func (e *Engine) triggerNamed(name string) (Trigger, bool) {
 		}
 	}
 	return Trigger{}, false
+}
+
+// seqProgress is what the subject's own payload says about a sequence: how far it got, and
+// whether it finished. The processes alone cannot answer this — an element that only patches
+// leaves no process behind, so without the facts it would render as never having run.
+type seqProgress struct {
+	step int
+	done bool
+	has  bool
+}
+
+// seqProgressFor reads verse.<trigger> off the subject.
+func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
+	ref, err := entity.ParseRef(subject)
+	if err != nil {
+		return seqProgress{}
+	}
+	ent, ok, err := e.store.Get(ref)
+	if err != nil || !ok {
+		return seqProgress{}
+	}
+	p := entity.Get(entity.Get(ent.Payload, VerseRoot), trigger)
+	if p == nil {
+		return seqProgress{}
+	}
+	out := seqProgress{has: true}
+	if s := entity.Get(p, seqStep); s != nil && s.Int64 != nil {
+		out.step = int(*s.Int64)
+	}
+	if d := entity.Get(p, seqDone); d != nil {
+		out.done = d.Bool
+	}
+	return out
+}
+
+// applySeqProgress corrects the statuses only the facts can know: a carrier's own state, and
+// elements that completed without leaving a process.
+func applySeqProgress(carrier *FlowNode, p seqProgress) {
+	if !p.has {
+		return
+	}
+	if carrier.ID == "" { // the carrier itself never spawns
+		switch {
+		case p.done:
+			carrier.Status = string(process.Done)
+		default:
+			carrier.Status = string(process.Running)
+		}
+	}
+	seen := 0
+	for i := range carrier.Children {
+		c := &carrier.Children[i]
+		if c.Kind != "seq" {
+			continue
+		}
+		if c.ID == "" && c.Status == StatusPending && seen < p.step {
+			// It is behind the step count and left no process: it ran and only wrote.
+			c.Status = StatusApplied
+		}
+		seen++
+	}
 }

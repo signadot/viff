@@ -711,6 +711,19 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["spawn"] = node
 	}
 
+	// Field: Seq
+	if len(s.Seq) > 0 {
+		slice := make([]*ir.Node, len(s.Seq))
+		for i, v := range s.Seq {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["seq"] = ir.FromSlice(slice)
+	}
+
 	// Field: OnDone (optional)
 	if s.OnDone != nil {
 		node, err = s.OnDone.ToTonyIR(opts...)
@@ -791,6 +804,19 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Spawn = &launch.Spec{}
 			if err := s.Spawn.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
+			}
+		case "seq":
+			// Field: Seq
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]Action, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := Action{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Seq = slice
 			}
 		case "onDone":
 			// Field: OnDone

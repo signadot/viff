@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	tony "github.com/signadot/tony-format/go-tony"
-	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
@@ -97,9 +96,40 @@ type SubtreeWatcher interface {
 // otherwise it is one entity's payload. It is the building block of a ConditionalCommitter's
 // atomic compare-and-swap, evaluated against the store state as of the commit.
 type Precondition struct {
-	Ref     Ref
-	Pattern map[string]any
+	Ref Ref
+	// Pattern is a tony match against whatever stands at Ref — a payload, a whole kind
+	// subtree, or NOTHING. It is a node rather than a map of equalities for the same reason
+	// entity.Pattern.Predicate is: an object-shaped field can only ask "does it look like
+	// this", which leaves the two most useful questions unaskable.
+	//
+	// An absent ref reads as tony null (see subtreeNodeLocked), so:
+	//
+	//	Absent()                 nothing is there — a CREATE-only commit
+	//	Obj{...}.Payload()       it looks like this (the old spelling)
+	//	!not {…}, !glob, …       anything else tony.Match can say
+	//
+	// Create-only is the one that matters: it makes a deterministic id a CLAIM, so two
+	// racing firings resolve to exactly one winner in the store rather than in a mutex that
+	// does not survive a restart.
+	Pattern Payload
 }
+
+// IsAbsent reports whether a precondition pattern is the absence question.
+//
+// It has to be askable structurally, not just evaluated, because THE TWO SUBSTRATES SPELL
+// ABSENCE DIFFERENTLY. Absence is a property of a PATH, not of a value: the in-memory store
+// evaluates a precondition against the node at its ref, where a missing entity reads as tony
+// null; docd nests every precondition into one root-document match, where a missing entity is
+// a missing KEY and no null is there to match. So the same question needs `!irtype null` in
+// one and a negated path in the other (see LogdStore.CommitIf).
+func IsAbsent(p Payload) bool {
+	return p != nil && p.Type == ir.NullType && p.Tag == "!irtype"
+}
+
+// Absent is the precondition pattern for "nothing is there". A missing entity reads as tony
+// null, and a null PATTERN would match any value (it is the presence test) — so asking about
+// the value's type is what distinguishes absent from merely present.
+func Absent() Payload { return ir.Null().WithTag("!irtype") }
 
 // ConditionalCommitter is an optional capability: write a payload to one ref iff EVERY
 // Precondition still holds — atomically, together with the write, in a single step (docd's
@@ -169,11 +199,7 @@ func (s *MemStore) CommitIf(ref Ref, payload Payload, pre ...Precondition) (bool
 		if err != nil {
 			return false, err
 		}
-		pat, err := gomap.ToTonyIR(p.Pattern)
-		if err != nil {
-			return false, err
-		}
-		ok, err := tony.Match(node, pat)
+		ok, err := tony.Match(node, p.Pattern)
 		if err != nil {
 			return false, err
 		}
