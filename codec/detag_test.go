@@ -144,3 +144,44 @@ func TestDetagNotAppliedToYAML(t *testing.T) {
 		t.Errorf("YAML output lost the tag: %q", out)
 	}
 }
+
+// A document's layout hints describe how it was WRITTEN, not what it means, so they must
+// not survive a change of dialect: a JSON response asked for as tony should come back as
+// block tony, not as JSON's shape in tony's syntax.
+func TestStripLayout(t *testing.T) {
+	jsonDoc := []byte(`[{"name":"x","when":{"kind":"pr"}}]`)
+	n, err := ParseNode(jsonDoc, JSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Kept: rendering back as tony preserves the brackets the source had.
+	kept, err := NodeBytes(n, Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(kept), "[") {
+		t.Errorf("layout hints were not preserved when they should be: %s", kept)
+	}
+
+	// Stripped: the block form.
+	stripped, err := NodeBytes(StripLayout(n), Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stripped), "[") || strings.Contains(string(stripped), "{") {
+		t.Errorf("StripLayout left the source's brackets: %s", stripped)
+	}
+	if !strings.Contains(string(stripped), "- name: x") {
+		t.Errorf("expected a block list: %s", stripped)
+	}
+
+	// The input is untouched — the same node may be rendered more than once.
+	again, err := NodeBytes(n, Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(kept) {
+		t.Errorf("StripLayout mutated its input:\n first: %s\nsecond: %s", kept, again)
+	}
+}

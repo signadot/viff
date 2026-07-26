@@ -44,12 +44,16 @@ func httpPost(path string, body any) (*http.Response, error) {
 	return http.Post(urlFor(path, nil), "application/json", bytes.NewReader(b))
 }
 
-// printBody pretty-prints a JSON response. (-o tony-format is a TODO — it needs the go-tony
-// formatters; for now this is indented JSON.) A 4xx/5xx is surfaced as an ERROR carrying the
-// server's message — which is usually plain text (http.Error), so decoding it as JSON fails
-// and it would otherwise be swallowed entirely, leaving a rejected command looking like it
-// succeeded. Callers that handle a specific status (404, 201, 204) check it before calling
-// this, so they are unaffected.
+// printBody renders a response in the format the operator asked for with -o.
+//
+// It goes through the IR rather than through map[string]any, which is what makes the
+// server's FIELD ORDER survive: decoding to a map and re-encoding sorts keys, so the old
+// path silently alphabetised every response.
+//
+// A 4xx/5xx is surfaced as an ERROR carrying the server's message — which is usually plain
+// text (http.Error), so parsing it as a document fails and it would otherwise be swallowed
+// entirely, leaving a rejected command looking like it succeeded. Callers that handle a
+// specific status (404, 201, 204) check it before calling this, so they are unaffected.
 func printBody(cc *cli.Context, resp *http.Response) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -60,12 +64,35 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		}
 		return errors.New(msg)
 	}
-	var v any
-	if json.Unmarshal(body, &v) == nil {
-		b, _ := json.MarshalIndent(v, "", "  ")
-		fmt.Fprintln(cc.Out, string(b))
+	out, err := outFmt()
+	if err != nil {
+		return err
+	}
+	in := respFmt(resp)
+	node, err := codec.ParseNode(body, in)
+	if err != nil {
+		return fmt.Errorf("decoding the response: %w", err)
+	}
+	if in != out {
+		// The response's layout (brackets, block literals) describes how the SERVER wrote
+		// it, not the value. Asking for tony and getting `[ { name: x } ]` back — JSON's
+		// shape in tony's syntax — is not what -o tony means.
+		node = codec.StripLayout(node)
+	}
+	if err := codec.EncodeNode(cc.Out, node, out); err != nil {
+		return err
 	}
 	return nil
+}
+
+// respFmt reads the format a response declares. The server speaks JSON until it learns to
+// negotiate; an unlabelled body is read as JSON rather than as the configured default,
+// because what came back is a fact about the server, not a preference of ours.
+func respFmt(resp *http.Response) codec.Format {
+	if f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type")); ok {
+		return f
+	}
+	return codec.JSON
 }
 
 func httpPut(path string, body any) (*http.Response, error) {
@@ -159,13 +186,11 @@ func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error
 	return box.Items, max, nil
 }
 
-func compactJSON(s string) string {
-	var v any
-	if json.Unmarshal([]byte(s), &v) != nil {
-		return s
-	}
-	b, _ := json.Marshal(v)
-	return string(b)
+// compactFrame re-renders one SSE frame in the requested format, on a single line so the
+// stream stays one-record-per-line. A frame it cannot parse passes through unchanged —
+// on a live stream, showing a surprising line beats swallowing it.
+func compactFrame(s string, out codec.Format) string {
+	return codec.Recompact(s, codec.JSON, out)
 }
 
 // ── watch ────────────────────────────────────────────────────────────────────
@@ -200,6 +225,10 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if cfg.Kind != "" {
 		q.Set("kind", cfg.Kind)
 	}
+	out, err := outFmt()
+	if err != nil {
+		return err
+	}
 	resp, err := httpGet("/watch", q)
 	if err != nil {
 		return fmt.Errorf("watch: %w (is `verse up` running on %s?)", err, g.Addr)
@@ -209,7 +238,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for sc.Scan() {
 		if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-			fmt.Fprintln(cc.Out, compactJSON(data))
+			fmt.Fprintln(cc.Out, compactFrame(data, out))
 		}
 	}
 	return nil

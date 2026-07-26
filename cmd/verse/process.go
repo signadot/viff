@@ -415,6 +415,10 @@ func streamEvents(cc *cli.Context, id string) error {
 		return fmt.Errorf("process attach: %w", err)
 	}
 	defer resp.Body.Close()
+	out, err := outFmt()
+	if err != nil {
+		return err
+	}
 	interactive := isTTY()
 	in := bufio.NewReader(os.Stdin)
 	sc := bufio.NewScanner(resp.Body)
@@ -424,7 +428,7 @@ func streamEvents(cc *cli.Context, id string) error {
 		if !ok {
 			continue
 		}
-		fmt.Fprintln(cc.Out, compactJSON(data))
+		fmt.Fprintln(cc.Out, compactFrame(data, out))
 		var ev struct{ Kind, Text, ID, Gate, Tool, Process string }
 		_ = json.Unmarshal([]byte(data), &ev)
 		// The process reached a terminal status — the stream won't emit more, so detach

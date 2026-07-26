@@ -35,15 +35,18 @@ var g = &globals{Addr: defaultAddr}
 // Run — so a package global written before the tree exists is stale by the time -o is
 // known. Reading the flag at use time is the only way it can win.
 //
-// A malformed name falls back rather than aborting the command; the flag is a display
-// preference, not a correctness input, and codec.Parse has already rejected it for anyone
-// who cares. (config.Load reports a malformed VERSE_FORMAT at startup, which is where a
-// typo actually gets seen.)
-func outFmt() codec.Format {
-	if f, err := codec.Parse(g.O); err == nil && g.O != "" {
-		return f
+// A malformed -o is an ERROR, not a quiet fall back to the default. `-o tny` printing
+// perfectly good JSON is indistinguishable from `-o tony` not being implemented, which is
+// precisely the state this flag spent its whole life in.
+func outFmt() (codec.Format, error) {
+	if g.O != "" {
+		f, err := codec.Parse(g.O)
+		if err != nil {
+			return f, fmt.Errorf("%w: -o: %v", cli.ErrUsage, err)
+		}
+		return f, nil
 	}
-	return appCfg.Format.ResolveOutput()
+	return appCfg.Format.ResolveOutput(), nil
 }
 
 // inFmt is the format for input that does not name its own — stdin, an extensionless file,
