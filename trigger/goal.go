@@ -266,7 +266,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	committed := true
 	if cc, ok := e.store.(entity.ConditionalCommitter); ok {
 		var err error
-		committed, err = cc.CommitIf(ref, next.Payload(), entity.Precondition{Ref: ref, Pattern: map[string]any{"terminal": false}})
+		committed, err = cc.CommitIf(ref, next.Payload(), entity.Precondition{Ref: ref, Pattern: entity.Obj{"terminal": false}.Payload()})
 		if err != nil {
 			e.tracef("goal %s: terminal commit error: %v", g.Def.Name, err)
 			return

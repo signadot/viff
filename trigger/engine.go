@@ -680,7 +680,7 @@ func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.R
 	if o := entity.Str(cur.Payload, "outcome"); o != "" {
 		return o, false // already committed — terminal-once
 	}
-	pre := append([]entity.Precondition{{Ref: ref, Pattern: map[string]any{"status": "open"}}}, wpre...)
+	pre := append([]entity.Precondition{{Ref: ref, Pattern: entity.Obj{"status": "open"}.Payload()}}, wpre...)
 	committed, err := cc.CommitIf(ref, closedMotion(cur.Payload, outcome, witness), pre...)
 	if err != nil {
 		e.tracef("commit %s: conditional commit error: %v", ref.ID, err)
@@ -741,7 +741,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if len(sub) == 0 {
 		return nil, false
 	}
-	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: sub}}, true
+	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: entity.Obj(sub).Payload()}}, true
 }
 
 // clonePayload reads p back as a mutable object builder (nil, or a non-object payload →

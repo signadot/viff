@@ -10,7 +10,6 @@ import (
 	"time"
 
 	tony "github.com/signadot/tony-format/go-tony"
-	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/system/libctl"
 	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
@@ -393,19 +392,12 @@ func (s *LogdStore) CommitIf(ref Ref, payload Payload, pre ...Precondition) (boo
 	node := payloadToNode(payload)
 	// Nest each precondition's pattern at its <system>[.<kind>[.<id>]] under the root, so a
 	// single match at the root subtree checks them all together (docd allows one match path).
-	rootPat := map[string]any{}
-	for _, p := range pre {
-		nestPattern(rootPat, p.Ref, p.Pattern)
-	}
-	patNode, err := gomap.ToTonyIR(rootPat)
-	if err != nil {
-		return false, err
-	}
+	patNode := rootPattern(pre)
 	path := s.refPath(ref)
 	if old, err := s.sess.Match(ctx, path); err == nil {
 		addRemovedNulls(node, old, payload) // faithful whole-value set, like Put/Modify
 	}
-	err = s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: patNode})
+	err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: patNode})
 	if errors.Is(err, libctl.ErrMatchFailed) {
 		return false, nil // a precondition did not hold — a revoke, or already committed
 	}
@@ -419,23 +411,79 @@ func (s *LogdStore) CommitIf(ref Ref, payload Payload, pre ...Precondition) (boo
 // nested shape docd's root document has (<root>.<system>.<kind>.<id>). Raw segment names are
 // used because those are the field names docd stores; seg-quoting is only for kpath request
 // strings, not the stored fields.
-func nestPattern(m map[string]any, ref Ref, pattern map[string]any) {
-	kindLvl := childMap(m, ref.System)
-	if ref.ID == "" {
-		kindLvl[ref.Kind] = pattern
-		return
+// rootPattern folds every precondition into ONE match against the root document, which is
+// what keeps the check atomic with the write (docd allows a single match path).
+//
+// Presence preconditions nest into a single tree, as they always have. An ABSENCE
+// precondition cannot: there is no key at its path to carry a pattern, so it becomes its own
+// negated branch — "the document does not have run.claim.<id>" — and the branches are ANDed.
+func rootPattern(pre []Precondition) *ir.Node {
+	var branches []*ir.Node
+	present, any := patTree{}, false
+	for _, p := range pre {
+		if IsAbsent(p.Pattern) {
+			branches = append(branches, absentPath(p.Ref))
+			continue
+		}
+		nestPattern(present, p.Ref, p.Pattern)
+		any = true
 	}
-	childMap(kindLvl, ref.Kind)[ref.ID] = pattern
+	if any {
+		branches = append(branches, present.node())
+	}
+	switch len(branches) {
+	case 0:
+		return ir.FromMap(map[string]*ir.Node{})
+	case 1:
+		return branches[0]
+	default:
+		return ir.FromSlice(branches).WithTag("!and")
+	}
 }
 
-// childMap returns m[k] as a map, creating it if absent.
-func childMap(m map[string]any, k string) map[string]any {
-	if c, ok := m[k].(map[string]any); ok {
+// absentPath renders "nothing stands at ref" as a negated presence at ref's path.
+func absentPath(ref Ref) *ir.Node {
+	t := patTree{}
+	nestPattern(t, ref, ir.Null())
+	return t.node().WithTag("!not")
+}
+
+func nestPattern(root patTree, ref Ref, pattern Payload) {
+	sys := root.child(ref.System)
+	if ref.ID == "" {
+		sys[ref.Kind] = pattern
+		return
+	}
+	sys.child(ref.Kind)[ref.ID] = pattern
+}
+
+// patTree is the nesting under construction: branches are patTrees, LEAVES ARE NODES. It is
+// not a map[string]any converted at the end, because that conversion is what used to flatten
+// a pattern — an Absent(), a scalar, an operator — into something gomap could represent, i.e.
+// into nothing. Keeping leaves as nodes is the whole point of the widening.
+type patTree map[string]any
+
+func (t patTree) child(k string) patTree {
+	if c, ok := t[k].(patTree); ok {
 		return c
 	}
-	c := map[string]any{}
-	m[k] = c
+	c := patTree{}
+	t[k] = c
 	return c
+}
+
+// node renders the tree, leaving node leaves exactly as they were given.
+func (t patTree) node() *ir.Node {
+	m := make(map[string]*ir.Node, len(t))
+	for k, v := range t {
+		switch x := v.(type) {
+		case patTree:
+			m[k] = x.node()
+		case *ir.Node:
+			m[k] = x
+		}
+	}
+	return ir.FromMap(m)
 }
 
 // Delete tombstones an entity (a null patch) and reports whether it existed.
