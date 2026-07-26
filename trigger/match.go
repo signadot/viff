@@ -5,6 +5,9 @@ import (
 	"sort"
 	"strings"
 
+	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/verse/entity"
 )
 
@@ -20,6 +23,13 @@ import (
 // Today it is map-backed and interpreted through the existing typed matcher
 // (entity.Pattern); tomorrow it becomes a real tony match. Callers only ever go through the
 // methods below, so that swap does not reach them.
+//
+// The swap has STARTED, at the one dimension where it is free: `id` and `op` may carry a
+// tony match instead of a string — `id: !glob "hotfix-*"`, or `{"id": {"glob": "hotfix-*"}}`
+// in a JSON-shaped charter — and are then evaluated by tony.Match. `system` and `kind`
+// cannot, and that is structural rather than unfinished: those two become a docd WATCH PATH
+// (Formula.Subtrees, engine.witnessPreconditions) and the store's List prefilter (Select), and
+// an operator has no path. `id` is only ever a filter, which is exactly why it goes first.
 //
 //	{"system": "demo", "kind": "pr", "fields": {"stage": "open"}}   an entity predicate
 //	{"system": "demo", "kind": "pr", "id": "1"}                     one entity
@@ -76,10 +86,34 @@ func (m Match) Validate() error {
 			strings.Join(unknown, ", "), strings.Join(known, ", "))
 	}
 	for _, k := range []string{mKeySystem, mKeyKind, mKeyID, mKeyOp} {
-		if v, present := m[k]; present {
-			if _, ok := v.(string); !ok {
-				return fmt.Errorf("match: %q must be a string, got %T", k, v)
-			}
+		v, present := m[k]
+		if !present {
+			continue
+		}
+		if _, ok := v.(string); ok {
+			continue
+		}
+		n, ok := v.(*ir.Node)
+		if !ok {
+			return fmt.Errorf("match: %q must be a string, got %T", k, v)
+		}
+		// An operator on system or kind has nowhere to run: those two name the subtree a
+		// formula watches and the set the store lists, and a watch path cannot be a
+		// predicate. Saying so beats letting it match nothing.
+		if k == mKeySystem || k == mKeyKind {
+			return fmt.Errorf("match: %q cannot take an operator (%s) — it names the subtree "+
+				"to watch and the set to list, which must be a literal; write the whole "+
+				"segment as \"*\" to match any, and put the operator on %q",
+				k, tagText(n), mKeyID)
+		}
+		// Both halves of "fails at install rather than by matching nothing forever after":
+		// every tag must NAME an operator (tony would skip an unknown one), and the
+		// operator must ACCEPT a string operand — `!glob 5` is refused by the probe.
+		if err := checkOps(n); err != nil {
+			return fmt.Errorf("match: %q: %w", k, err)
+		}
+		if _, err := tony.Match(ir.FromString(""), n); err != nil {
+			return fmt.Errorf("match: %q: %w", k, err)
 		}
 	}
 	for _, k := range []string{mKeyFields, mKeyEntity} {
@@ -107,9 +141,24 @@ func (m Match) Validate() error {
 }
 
 // System / Kind / ID are the match's const dimensions ("" = unset/wildcard).
+//
+// ID is "" for an id carrying an OPERATOR too, which reads correctly everywhere it is
+// consulted: an operator is a selection over what exists, never a name, so `Names` must
+// decline it and `Selects` must not depend on it. The one place "" would be wrong — the id
+// filter itself — goes through matchDim, which looks at the node first.
 func (m Match) System() string { return m.str(mKeySystem) }
 func (m Match) Kind() string   { return m.str(mKeyKind) }
 func (m Match) ID() string     { return m.str(mKeyID) }
+
+// dim returns the tony match a dimension carries, or nil when it is a plain string or
+// absent. It is the ONE place the two spellings of a dimension are told apart.
+func (m Match) dim(key string) *ir.Node {
+	n, _ := m[key].(*ir.Node)
+	return n
+}
+
+// hasDim reports whether a dimension constrains anything, in either spelling.
+func (m Match) hasDim(key string) bool { return m.str(key) != "" || m.dim(key) != nil }
 
 // Fields is the payload predicate (key==value equality), nil when unset.
 func (m Match) Fields() map[string]any {
@@ -129,6 +178,15 @@ func (m Match) Names() (entity.Ref, bool) {
 	r := entity.Ref{System: m.System(), Kind: m.Kind(), ID: m.ID()}
 	if r.System == "" || r.Kind == "" || r.ID == "" {
 		return entity.Ref{}, false
+	}
+	// An operator on any segment is a selection, whatever the other two say. This cannot
+	// fire today (ID() is "" for an operator, so the check above already caught it) and is
+	// kept because the consequence of getting it wrong is not a failed match but a CREATED
+	// entity — an action's `set` on a named subject brings it into being.
+	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
+		if m.dim(k) != nil {
+			return entity.Ref{}, false
+		}
 	}
 	if strings.ContainsRune(r.System+r.Kind+r.ID, '*') {
 		return entity.Ref{}, false
@@ -155,7 +213,10 @@ func (m Match) MatchEvent(ev entity.Event) bool {
 	if err != nil {
 		return false
 	}
-	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID)
+	// `op` is applied twice when it is a plain string — once by the pattern, once here —
+	// which is the same answer either way. The second call is what an operator-valued `op`
+	// needs, since pattern() cannot carry one.
+	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID) && m.matchDim(mKeyOp, string(ev.Op))
 }
 
 // Select returns the refs of every stored entity the match picks — the SET face, used to
@@ -169,7 +230,7 @@ func (m Match) Select(store entity.Store) []entity.Ref {
 		return nil
 	}
 	refs := p.Select(store)
-	if m.ID() != "" {
+	if m.hasDim(mKeyID) {
 		kept := refs[:0]
 		for _, r := range refs {
 			if m.matchID(r.ID) {
@@ -196,16 +257,98 @@ func (m Match) pattern() (entity.Pattern, error) {
 	}, nil
 }
 
-// matchID applies the `id` dimension: unset is a wildcard, otherwise a glob — so "*" alone is
-// the whole kind and "hotfix-*" a family within it. The id is ONE address segment, so there is
-// no separator to be significant here; path-shaped globs ("demo:pr:1/**", where "/" bounds
-// what "*" may cross) are a reference question and arrive with the tony leaf.
-func (m Match) matchID(id string) bool {
-	want := m.ID()
+// matchID applies the `id` dimension. See matchDim; kept as its own name because the id is
+// the dimension callers reason about.
+func (m Match) matchID(id string) bool { return m.matchDim(mKeyID, id) }
+
+// matchDim applies one const dimension to one string, in whichever spelling it was written.
+//
+// A tony match wins when there is one, and it is the RICHER grammar: `!glob` is
+// filepath.Match, so "*" does not cross "/" and "?"/"[…]" are metacharacters — which is the
+// path-shaped globbing this type always said would arrive with the tony leaf.
+//
+// A plain string keeps the older, smaller grammar: for `id`, a "*"-glob where "*" crosses
+// anything (globMatch); for everything else, equality. Those are not the same rule, and
+// they are not meant to be — an existing charter's `id: "a*"` must keep matching "a/b",
+// while `id: !glob "a*"` means the stricter thing the author asked for.
+func (m Match) matchDim(key, s string) bool {
+	if n := m.dim(key); n != nil {
+		ok, err := tony.Match(ir.FromString(s), n)
+		return err == nil && ok
+	}
+	want := m.str(key)
 	if want == "" {
 		return true
 	}
-	return globMatch(want, id)
+	if key == mKeyID {
+		return globMatch(want, s)
+	}
+	return want == s
+}
+
+// ── the tag chain ────────────────────────────────────────────────────────────
+//
+// A tony tag is a DOT-SEPARATED CHAIN, not one name: `!or.bracket` is two tags on one node,
+// decomposed with ir.TagArgs (head, args, rest). Everything below walks the chain rather
+// than comparing Tag as a string, because `n.Tag == "!glob"` is true of only one of the
+// several ways a parser may legitimately spell the same document.
+
+// layoutTags are attached by the PARSER to record how the source was written — whether a
+// collection was bracketed, whether a string was a block literal. They are not something an
+// author wrote, so nothing here may read them as an operator.
+var layoutTags = map[string]bool{"!bracket": true, "!literal": true}
+
+// semTags returns the tags an AUTHOR wrote, in chain order, each "!"-prefixed.
+func semTags(tag string) []string {
+	var out []string
+	for tag != "" {
+		head, _, rest := ir.TagArgs(tag)
+		if !layoutTags[head] {
+			out = append(out, head)
+		}
+		tag = rest
+	}
+	return out
+}
+
+// isLayoutTag reports whether a tag chain carries nothing an author wrote.
+func isLayoutTag(tag string) bool { return len(semTags(tag)) == 0 }
+
+// checkOps reports the first tag in a match that names no operator.
+//
+// It exists because tony will NOT report one: mergeop.SplitChild walks the chain looking for
+// a registered tag and quietly skips the rest, so `!gloob "hotfix-*"` matches by plain
+// equality and a charter typo becomes a trigger that never fires. Checking here is what
+// turns that back into an install-time error.
+func checkOps(n *ir.Node) error {
+	if n == nil {
+		return nil
+	}
+	for _, t := range semTags(n.Tag) {
+		name, _, _ := ir.TagArgs(t)
+		if mergeop.Lookup(strings.TrimPrefix(name, "!")) == nil {
+			return fmt.Errorf("unknown operator %q (tony ignores a tag it does not know, so "+
+				"this would match by plain equality instead of failing)", name)
+		}
+	}
+	for _, v := range n.Values {
+		if err := checkOps(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// tagText renders a node's operator for an error message — "!glob" — falling back to the
+// node's type when it carries no tag an author wrote.
+func tagText(n *ir.Node) string {
+	if n == nil {
+		return "null"
+	}
+	if ts := semTags(n.Tag); len(ts) > 0 {
+		return strings.Join(ts, ".")
+	}
+	return n.Type.String()
 }
 
 // globMatch reports whether s satisfies a "*"-glob, where "*" matches any run of characters

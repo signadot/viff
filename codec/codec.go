@@ -1,21 +1,39 @@
 // Package codec is the one place in verse that knows about serialization formats.
 //
-// verse speaks three dialects of one data model: tony, JSON and YAML are all parsed to
-// and encoded from go-tony's ir.Node, so a document's *format* is a rendering choice, not
-// a change of meaning. Everything that reads or writes a document — the HTTP wire, the
-// CLI, charter files, config — goes through here rather than importing parse/encode/
-// gomap directly, so that choice is made in one vocabulary and can be overridden in one
-// place.
+// Everything that reads or writes a document — the HTTP wire, the CLI, charter files,
+// config — goes through here rather than importing parse/encode/gomap directly, so that
+// choice is made in one vocabulary and can be overridden in one place.
 //
-// Two things about go-tony shape this package, both pinned by upstream_test.go:
+// THE READ SIDE AND THE WRITE SIDE ARE NOT SYMMETRIC, and that asymmetry is the design:
+//
+//	read:   tony, JSON (as tony), YAML
+//	write:  tony, YAML
+//
+// JSON is an INPUT DECLARATION, never a rendering. A .json file, an
+// `application/json` body and `-i json` all keep working — valid JSON is valid tony
+// (pinned by TestUpstreamJSONParsesAsTony), so they are simply parsed by the tony parser
+// and mean the same thing they always did. What is gone is asking verse to *emit* JSON:
+// `-o json`, `VERSE_FORMAT=json` and `Accept: application/json` are refused, each with a
+// sentence saying so.
+//
+// The reason is tags. verse's own grammar — charters, matches, formulas — is tagged, and
+// JSON has no tag syntax. Rendering a tagged document as JSON therefore means rewriting
+// it into a tag-keyed object (`!or [a, b]` → `{"or": ["a","b"]}`), which is unambiguous
+// only where the surrounding keyspace is closed. Inside a match's `fields` — an open user
+// document, where a payload key may legitimately BE "or" — it is not: the JSON rendering
+// re-reads as something else. A format that can express three quarters of the model is
+// worse than one that is honestly not offered, because the quarter it mangles it mangles
+// silently. Users still write JSON; they just get tony back.
+//
+// Two facts about go-tony shape the rest, both pinned by upstream_test.go:
 //
 //   - There is NO format auto-detection. parse.Parse defaults to tony and the dialect is
 //     always an explicit option. So every entry point here takes a Format, and callers get
 //     it from a file suffix, a media type, a flag, or the configured default — never from
 //     sniffing the bytes.
-//   - JSON cannot carry tags AT ALL, and go-tony does not silently drop them: encoding a
-//     tagged node as JSON is a hard error. Detag (detag.go) bridges that, once, over a
-//     whole document.
+//   - Encoding a tagged node as JSON is a hard ERROR upstream, not a silent drop. That is
+//     the backstop under encodeNode's own refusal: even if a JSON format reached the
+//     encoder some other way, a charter could not quietly lose its meaning on the way out.
 package codec
 
 import (
@@ -39,16 +57,30 @@ type Format = format.Format
 const (
 	Tony = format.TonyFormat
 	YAML = format.YAMLFormat
+
+	// JSON names JSON SYNTAX ON INPUT — a .json suffix, an application/json body, `-i
+	// json`. It is not a rendering: readAs parses it with the tony parser, and encoding
+	// with it is an error (see encodeNode). Callers resolving a format to WRITE in use
+	// ParseOutput, which never yields it.
 	JSON = format.JSONFormat
 )
+
+// Writable reports whether f is a format verse renders. It is the one predicate behind
+// every refusal, so "what can verse emit" has a single answer to change.
+func Writable(f Format) bool { return f != JSON }
+
+// ErrNotWritable explains the refusal, in the terms the person hitting it needs: what to
+// ask for instead, and the reassurance that their INPUT is unaffected.
+const ErrNotWritable = "verse does not render json (tony and yaml are the output formats); " +
+	"json input is still accepted everywhere, since valid json is valid tony"
 
 // Baseline is verse's representation when nothing overrides it — no config, no env, no
 // flag, no header.
 //
-// It is tony. Everything else about tony support landed before this line did, so the flip
-// itself was a single edit — and it stays a single edit to revert. `VERSE_FORMAT=json`,
-// `-o json` and `Accept: application/json` all still work, and CI runs the end-to-end smoke
-// BOTH ways so the JSON path cannot quietly rot.
+// It is tony, and it is now the only rendering a fresh install can produce (YAML being the
+// other, if asked). The JSON rendering that this line used to be able to fall back to is
+// gone — see the package doc — so reverting the flip means choosing YAML or restoring the
+// JSON encoder, not flipping one constant.
 var Baseline = Tony
 
 // defaultFormat holds Format+1 so that zero means UNSET — format.TonyFormat is 0, so a
@@ -75,8 +107,12 @@ func Default() Format {
 	return Baseline
 }
 
-// Parse resolves a format name — "tony"/"t", "json"/"j", "yaml"/"y". An empty name is the
-// configured default, so an unset flag falls through rather than erroring.
+// Parse resolves the name of a format to READ — "tony"/"t", "json"/"j", "yaml"/"y". An
+// empty name is the configured default, so an unset flag falls through rather than
+// erroring.
+//
+// "json" is accepted here and nowhere on the write side: it declares what the bytes look
+// like, which is a fact about them, not a request for a rendering.
 func Parse(s string) (Format, error) {
 	if s == "" {
 		return Default(), nil
@@ -84,6 +120,24 @@ func Parse(s string) (Format, error) {
 	f, err := format.ParseFormat(s)
 	if err != nil {
 		return Default(), fmt.Errorf("unknown format %q (want tony, json or yaml)", s)
+	}
+	return f, nil
+}
+
+// ParseOutput resolves the name of a format to WRITE. It is Parse plus the one refusal:
+// "json" names a dialect verse reads but does not render.
+//
+// Every knob that picks an output format goes through here — `-o`, VERSE_FORMAT,
+// VERSE_OUTPUT_FORMAT, VERSE_WIRE_FORMAT, `?format=` on a response — so the refusal
+// happens where a person can still act on it, rather than deep inside the encoder with a
+// half-written body.
+func ParseOutput(s string) (Format, error) {
+	f, err := Parse(s)
+	if err != nil {
+		return f, err
+	}
+	if !Writable(f) {
+		return Default(), fmt.Errorf("%s", ErrNotWritable)
 	}
 	return f, nil
 }
@@ -177,13 +231,37 @@ func ParseNodeOrNil(data []byte, f Format) (*ir.Node, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, nil
 	}
-	return parse.Parse(data, parse.ParseFormat(f))
+	return parse.Parse(data, parse.ParseFormat(readAs(f)))
 }
 
 // ParseNodes parses a multi-document stream (`---` separated) — the idiomatic tony
 // spelling of "several charters in one file".
 func ParseNodes(data []byte, f Format) ([]*ir.Node, error) {
-	return parse.ParseMulti(data, parse.ParseFormat(f))
+	return parse.ParseMulti(data, parse.ParseFormat(readAs(f)))
+}
+
+// readAs is the parser a declared format is READ with. It is the identity except for
+// JSON, which is read by the tony parser — because valid JSON is valid tony (pinned by
+// TestUpstreamJSONParsesAsTony), so there is nothing the JSON parser can do here that the
+// tony parser cannot.
+//
+// This is not a shortcut. Going through one parser means one grammar, and a document
+// declared JSON gains the two things the JSON dialect withholds:
+//
+//   - TAGS. `{"id": !glob "hotfix-*"}` is not JSON, but it is what a JSON-shaped charter
+//     has to write to reach an operator. We are no longer checking that input IS JSON —
+//     only that it is tony, which JSON already is.
+//   - LEADING WHITESPACE. `  {"a": 1}` is rejected by go-tony's JSON parser
+//     ("imbalanced document: trailing material") and accepted by its tony parser. An
+//     indented body from a shell heredoc is not a thing verse should refuse.
+//
+// YAML keeps its own parser: a YAML document is NOT tony (nor the reverse), so the same
+// argument does not run.
+func readAs(f Format) Format {
+	if f == JSON {
+		return Tony
+	}
+	return f
 }
 
 // NodeBytes renders a node in f, human-readable.
@@ -220,8 +298,8 @@ func EncodeNodeColor(w io.Writer, n *ir.Node, f Format) error {
 	if n == nil {
 		n = ir.Null()
 	}
-	if f == JSON {
-		n = Detag(n)
+	if !Writable(f) {
+		return fmt.Errorf("%s", ErrNotWritable)
 	}
 	return encode.Encode(n, w, encode.EncodeFormat(f), encode.EncodeColors(encode.NewColors()))
 }
@@ -230,11 +308,13 @@ func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 	if n == nil {
 		n = ir.Null()
 	}
-	// JSON has no tag syntax and go-tony refuses to guess: it returns an error rather
-	// than dropping one. Rewriting to the tag-keyed form here is what lets a tagged
-	// document — a charter — still be rendered as JSON.
-	if f == JSON {
-		n = Detag(n)
+	// THE LAST GATE. Every knob that names an output format refuses json before it gets
+	// here (ParseOutput, Negotiate), so reaching this line means a format arrived by a
+	// path nobody audited — a config file decoded straight to format.Format, a Go caller
+	// passing the constant. Refusing here rather than encoding means such a path cannot
+	// quietly produce a document whose tags have been flattened into ordinary keys.
+	if !Writable(f) {
+		return fmt.Errorf("%s", ErrNotWritable)
 	}
 	opts := []encode.EncodeOption{encode.EncodeFormat(f)}
 	if wire {

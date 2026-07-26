@@ -317,13 +317,13 @@ func TestConditionJSONRoundTrip(t *testing.T) {
 	if !tr.Condition.Subject.Selects() {
 		t.Fatalf("subject did not parse as a selector: %#v", tr.Condition.Subject)
 	}
-	out, err := codec.Marshal(&tr, codec.JSON)
+	out, err := codec.Marshal(&tr, codec.Tony)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// `when` must emit the bare match object — no internal parse node ({"op":…,"req":…}) leaks.
+	// `when` must emit the bare match object — no internal parse node ({op: …, req: …}) leaks.
 	var got map[string]any
-	if err := codec.Unmarshal(out, &got, codec.JSON); err != nil {
+	if err := codec.Unmarshal(out, &got, codec.Tony); err != nil {
 		t.Fatalf("re-decode: %v", err)
 	}
 	cond := got["condition"].(map[string]any)

@@ -33,7 +33,13 @@ func NewSSE(w http.ResponseWriter, r *http.Request) (*SSE, error) {
 	if !ok {
 		return nil, fmt.Errorf("streaming unsupported")
 	}
-	f := ResponseFormat(r)
+	// A stream's frames carry the same rendering an ordinary response body would, so a
+	// format verse cannot write is refused here too — before any header goes out, while
+	// the caller can still turn it into a status.
+	f, err := ResponseFormat(r)
+	if err != nil {
+		return nil, err
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")

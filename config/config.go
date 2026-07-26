@@ -75,6 +75,24 @@ type FormatConfig struct {
 	Wire    *format.Format `tony:"field=wire,omitzero"`    // HTTP bodies
 }
 
+// validate rejects a format the file layer set to something verse cannot render.
+//
+// The env path gets this from codec.ParseOutput, but a config FILE decodes straight into
+// *format.Format through go-tony's own text unmarshaler, which knows nothing of verse's
+// rules — so `format: {output: json}` would otherwise sit there until the first response
+// failed to encode. Named at load, it is a line number in a config file instead.
+func (f FormatConfig) validate() error {
+	for _, k := range []struct {
+		field string
+		v     *format.Format
+	}{{"default", f.Default}, {"output", f.Output}, {"wire", f.Wire}} {
+		if k.v != nil && !codec.Writable(*k.v) {
+			return fmt.Errorf("format.%s: %s", k.field, codec.ErrNotWritable)
+		}
+	}
+	return nil
+}
+
 // ResolveDefault is the format for everything not separately overridden.
 func (f FormatConfig) ResolveDefault() codec.Format {
 	if f.Default != nil {
@@ -217,6 +235,9 @@ func Load() (*Config, error) {
 	if envErr != nil {
 		return c, fmt.Errorf("config: %w", envErr)
 	}
+	if err := c.Format.validate(); err != nil {
+		return c, fmt.Errorf("config: %w", err)
+	}
 	return c, nil
 }
 
@@ -280,7 +301,11 @@ func readNode(path string) (*ir.Node, error) {
 
 // applyEnv overlays environment variables on top of the file config. A malformed format
 // name is reported rather than silently ignored — writing VERSE_FORMAT=tny and quietly
-// getting JSON is worse than being told.
+// getting something else is worse than being told.
+//
+// All three knobs name a format to WRITE in (Default is what Output and Wire fall back
+// to), so all three go through codec.ParseOutput and all three refuse "json". Reading
+// JSON needs no setting at all — it is parsed as tony wherever it turns up.
 func (c *Config) applyEnv() error {
 	c.Addr = envOr("VERSE_ADDR", c.Addr)
 	c.Scope = envOr("VERSE_SCOPE", c.Scope)
@@ -302,7 +327,7 @@ func (c *Config) applyEnv() error {
 		if v == "" {
 			continue
 		}
-		f, err := codec.Parse(v)
+		f, err := codec.ParseOutput(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", e.name, err))
 			continue

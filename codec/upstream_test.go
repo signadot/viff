@@ -1,9 +1,6 @@
 package codec
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,6 +31,26 @@ func TestUpstreamJSONParsesAsTony(t *testing.T) {
 		`{"nested":{"x":[1,2,3]},"b":true,"z":null}`,
 		`"bare string"`,
 		`42`,
+
+		// The corpus below is what licenses readAs: parsing JSON with the tony parser is
+		// only safe if the two agree on every JSON document, not just the easy ones. Each
+		// line is a place a YAML-family parser could plausibly diverge from a JSON one.
+		`{"s":"a\"b\\c\nd\te\/f"}`,                  // escapes, including the optional \/
+		`{"s":"é中😀"}`,                               // non-ASCII
+		`{"a":1e10,"b":-0.5,"c":1.2E-3,"d":0,"e":-0}`, // exponents and signed zero
+		`{"f":1.0}`,                                 // a float that looks like an int
+		`{}`, `[]`, `{"a":{},"b":[]}`,               // empty containers
+		`{"a":1,"a":2}`,                             // duplicate keys
+		// tony-significant characters, quoted: none of these may start a comment, a block
+		// scalar, a list item or a mapping.
+		`{"s":"# not a comment","t":"!glob","u":"a: b","v":"- item","w":"|","x":">","y":"k:v"}`,
+		`{"a b":1,"!or":2,"a:b":3,"":4,"#c":5,"-x":6}`, // keys that look like syntax
+		"{\n  \"a\": 1,\n  \"b\": {\n    \"c\": [1, 2]\n  }\n}", // pretty-printed
+		"{\n\t\"a\": 1,\n\t\"b\": [\n\t\t{\"c\": true}\n\t]\n}", // tab-indented
+		`{"a":{"b":{"c":{"d":[{"e":null}]}}}}`,                  // deep nesting
+		`null`, `true`, `false`, `-3`, `1.5e2`,                  // top-level scalars
+		`[1,"two",null,true,{"a":[]},[[]]]`,                     // mixed array
+		`{"n":"42","b":"true","z":"null"}`,                      // scalars that are strings
 	} {
 		asTony, err := parse.Parse([]byte(in), parse.ParseTony())
 		if err != nil {
@@ -81,15 +98,18 @@ func TestUpstreamBlankInputIsNilNil(t *testing.T) {
 	}
 }
 
-// Encoding a tagged node as JSON is a HARD ERROR, not a silent drop. This is the reason
-// Detag exists, and the reason every generated verse wire type carries `notag`: a stray
-// tag would not degrade a JSON response, it would fail it.
+// Encoding a tagged node as JSON is a HARD ERROR, not a silent drop.
+//
+// verse no longer renders JSON at all, so this is now a BACKSTOP rather than a load-bearing
+// fact: encodeNode refuses first. It is kept because the two failures differ in what they
+// cost — verse's refusal is a sentence about formats, upstream's is the guarantee that no
+// path anywhere can turn `!quorum 2` into a plain 2 on the way out.
 func TestUpstreamJSONRejectsTags(t *testing.T) {
 	n := ir.FromInt(2).WithTag("!quorum")
 	var sb strings.Builder
 	err := encode.Encode(n, &sb, encode.EncodeFormat(format.JSONFormat))
 	if err == nil {
-		t.Fatalf("encoding a tagged node as JSON succeeded (%q) — Detag may be unnecessary", sb.String())
+		t.Fatalf("encoding a tagged node as JSON succeeded (%q) — tags can now be lost silently", sb.String())
 	}
 
 	// YAML, by contrast, does carry tags.
@@ -177,71 +197,6 @@ func TestUpstreamReflectionDispatchIsUniform(t *testing.T) {
 		if f != format.JSONFormat {
 			t.Errorf("options did not carry the JSON target to a dispatched method (got %v)", f)
 		}
-	}
-}
-
-// Why codec.Detag exists, pinned to the one fact that keeps it necessary.
-//
-// Detag rewrites `!tag value` into `{tag: value}` in a pass over the FINISHED document,
-// because JSON cannot carry tags and a type cannot render itself differently per format.
-// The obvious alternative — let each type emit the right shape itself — needs the type to
-// know which format it is being rendered to.
-//
-// Through v0.0.89 that was impossible for a second, cruder reason: codegen emitted nested
-// field calls as `s.Field.ToTonyIR()`, dropping the options entirely. v0.0.90 fixed that,
-// and the options now reach nested calls in both directions. But the format still cannot
-// be READ from them: gomap.EncodeFormat folds it into an encode.EncodeOption, whose target
-// EncState.format is unexported with no accessor. The value arrives and is unreachable.
-//
-// So the blocker moved rather than lifted, and this pin moved with it. v0.0.90 added
-// GetMapComments — the read-an-option-back pattern — so the missing piece is now a
-// specific, small upstream ask: GetEncodeFormat(opts ...MapOption) format.Format. When
-// that lands, this test fails, and making the trigger types format-aware becomes possible.
-func TestNestedCodecStillCannotSeeTheTargetFormat(t *testing.T) {
-	// Half one, which v0.0.90 fixed: the option now reaches nested calls, and lands on an
-	// EncState. It is applied here to show the value genuinely arrives — what it cannot do
-	// is come back out.
-	encOpts := gomap.ToEncodeOptions(gomap.EncodeFormat(format.JSONFormat))
-	if len(encOpts) == 0 {
-		t.Fatal("EncodeFormat produced no encode option")
-	}
-	es := &encode.EncState{}
-	for _, o := range encOpts {
-		o(es)
-	}
-	// Half two, which it did not: nothing can read it back. Asserted against gomap's own
-	// source, so it tracks upstream rather than a fixture of ours — the same approach the
-	// nested-opts pin used before v0.0.90 closed that gap.
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}",
-		"github.com/signadot/tony-format/go-tony").Output()
-	if err != nil {
-		t.Skipf("cannot locate the go-tony module: %v", err)
-	}
-	dir := strings.TrimSpace(string(out))
-
-	src, err := os.ReadFile(filepath.Join(dir, "gomap", "options.go"))
-	if err != nil {
-		t.Skipf("cannot read gomap/options.go: %v", err)
-	}
-	// The read-an-option-back pattern exists (v0.0.90 added it for comments), so a format
-	// getter would be a small addition rather than a design change. If this vanishes, the
-	// option model changed and the reasoning below needs redoing.
-	if !strings.Contains(string(src), "func GetMapComments(") {
-		t.Errorf("gomap no longer exposes GetMapComments; the option-accessor model changed")
-	}
-	if strings.Contains(string(src), "func GetEncodeFormat(") {
-		t.Errorf("gomap now exposes GetEncodeFormat: a nested codec CAN determine its " +
-			"target format, so codec.Detag can be retired in favour of making each type " +
-			"format-aware — revisit codec/detag.go and the hand-written codecs in trigger")
-	}
-
-	// And the reason a getter is needed at all: the field it would read is unexported.
-	enc, err := os.ReadFile(filepath.Join(dir, "encode", "encode.go"))
-	if err != nil {
-		t.Skipf("cannot read encode/encode.go: %v", err)
-	}
-	if strings.Contains(string(enc), "\tFormat ") || strings.Contains(string(enc), ") Format()") {
-		t.Errorf("EncState now exposes its format directly; Detag's justification is gone")
 	}
 }
 

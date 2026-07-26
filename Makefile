@@ -126,9 +126,9 @@ smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a 
 # Running the suite only one way would let the other rot silently — and the JSON path is what
 # every existing client and `curl | jq` still uses. This is the target CI should call.
 .PHONY: smoke-all
-smoke-all: ## smoke under both representations (tony default, then VERSE_FORMAT=json)
+smoke-all: ## smoke under both renderings (tony default, then VERSE_OUTPUT_FORMAT=yaml)
 	@./smoke.sh
-	@VERSE_FORMAT=json ./smoke.sh
+	@VERSE_OUTPUT_FORMAT=yaml ./smoke.sh
 
 .PHONY: clean
 clean: ## remove dist/

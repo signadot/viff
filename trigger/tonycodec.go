@@ -24,6 +24,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/mergeop"
 )
 
 // ── Match ────────────────────────────────────────────────────────────────────
@@ -45,6 +46,12 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// {fields, id, kind, system} reads worse than the order people write.
 	var kvs []ir.KeyVal
 	for _, k := range []string{mKeySystem, mKeyKind, mKeyID, mKeyOp} {
+		// An operator goes back out as a tag, which is how it was written in tony and the
+		// only faithful spelling — the tag-keyed input form is sugar, not a rendering.
+		if n := m.dim(k); n != nil {
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: n})
+			continue
+		}
 		if v := m.str(k); v != "" {
 			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: ir.FromString(v)})
 		}
@@ -77,8 +84,16 @@ func (m Match) address() (string, bool) {
 	if _, ok := asFields(m[mKeyEntity]); ok {
 		return "", false
 	}
-	if m.str(mKeyOp) != "" {
+	if m.hasDim(mKeyOp) {
 		return "", false
+	}
+	// An operator has no address spelling. Rendering one as the string form would drop it
+	// — `{id: !glob "a/*"}` becoming "demo:pr" — which is the widest possible match wearing
+	// the narrowest one's clothes.
+	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
+		if m.dim(k) != nil {
+			return "", false
+		}
 	}
 	sys, kind, id := m.System(), m.Kind(), m.ID()
 	if sys == "" && kind == "" && id == "" {
@@ -126,14 +141,145 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		*m = parsed
 		return nil
 	case ir.ObjectType:
-		raw := map[string]any{}
-		if err := gomap.FromTonyIR(node, &raw); err != nil {
-			return fmt.Errorf("match: %w", err)
+		parsed, err := matchFromObject(node)
+		if err != nil {
+			return err
 		}
-		*m = Match(raw)
+		*m = parsed
 		return m.Validate()
 	}
 	return fmt.Errorf("match: want an object or a \"system:kind:id\" string, got %v", node.Type)
+}
+
+// matchFromObject reads the object form dimension by dimension, rather than flattening the
+// whole node with gomap.
+//
+// The difference is TAGS. gomap decodes into map[string]any, which has nowhere to put one,
+// so `{stage: !or [open, merged]}` used to arrive as the list ["open","merged"] — silently a
+// different predicate. Reading each dimension in its own terms means a tag either lands
+// somewhere that can hold it or is reported, never dropped.
+func matchFromObject(node *ir.Node) (Match, error) {
+	out := Match{}
+	for i, key := range node.Fields {
+		k := key.String
+		val := unwrap(node.Values[i])
+		switch k {
+		case mKeySystem, mKeyKind, mKeyID, mKeyOp:
+			// A dimension is a closed grammar — a string, or an operator over one — so an
+			// object here is unambiguously the tag-keyed spelling of an operator and can
+			// be desugared without asking what the surrounding keys mean.
+			n, err := opNode(val)
+			if err != nil {
+				return nil, fmt.Errorf("match %q: %w", k, err)
+			}
+			if n != nil {
+				out[k] = n
+				continue
+			}
+			if val.Type != ir.StringType {
+				return nil, fmt.Errorf("match: %q must be a string, got %v", k, val.Type)
+			}
+			out[k] = val.String
+
+		case mKeyFields, mKeyEntity:
+			if err := rejectTags(val, k); err != nil {
+				return nil, err
+			}
+			f := map[string]any{}
+			if err := gomap.FromTonyIR(val, &f); err != nil {
+				return nil, fmt.Errorf("match %q: %w", k, err)
+			}
+			out[k] = f
+
+		default:
+			// Unknown: decode it so Validate can name it, rather than dropping it here
+			// and reporting a match that constrains less than it says.
+			var v any
+			if err := gomap.FromTonyIR(val, &v); err != nil {
+				return nil, fmt.Errorf("match %q: %w", k, err)
+			}
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+// opNode converts a dimension's value into a tony match if it carries an operator, in
+// either spelling — `!glob "hotfix-*"` or `{glob: "hotfix-*"}` — and returns nil for a
+// plain value. The two are one grammar: JSON has no tag syntax, so the tag-keyed object is
+// the only way a JSON-shaped charter reaches an operator, exactly as it is for a formula
+// (Formula.fromTagKeyed).
+//
+// Recursive, so operands are desugared too: {"or": ["a", {"glob": "b-*"}]} becomes
+// !or [a, !glob "b-*"]. Inside a dimension there are no object VALUES to be confused with,
+// which is what makes this unambiguous here and impossible inside `fields`.
+func opNode(n *ir.Node) (*ir.Node, error) {
+	if n == nil {
+		return nil, nil
+	}
+	// A LAYOUT tag is not an operator. The parser attaches !bracket to anything written in
+	// flow style, which is every JSON object — so treating a tag as an operator without
+	// looking would make `{"glob": …}` a tagged node that no mergeop ever sees, and the
+	// sugar would decode to itself.
+	if !isLayoutTag(n.Tag) {
+		return desugar(n), nil
+	}
+	if n.Type != ir.ObjectType {
+		return nil, nil
+	}
+	if len(n.Fields) != 1 {
+		return nil, fmt.Errorf("want a string or a single-key operator object, got %d keys",
+			len(n.Fields))
+	}
+	name := n.Fields[0].String
+	if mergeop.Lookup(name) == nil {
+		return nil, fmt.Errorf("unknown operator %q (write %q as a plain string, or use a "+
+			"known operator such as glob/or/not)", name, name)
+	}
+	return desugar(unwrap(n.Values[0])).WithTag("!" + name), nil
+}
+
+// desugar rewrites the tag-keyed spelling into tags throughout a subtree.
+func desugar(n *ir.Node) *ir.Node {
+	if n == nil {
+		return nil
+	}
+	if n.Type == ir.ObjectType && len(n.Fields) == 1 && isLayoutTag(n.Tag) {
+		if name := n.Fields[0].String; mergeop.Lookup(name) != nil {
+			return desugar(unwrap(n.Values[0])).WithTag("!" + name)
+		}
+	}
+	out := n.Clone()
+	for i, v := range out.Values {
+		out.Values[i] = desugar(unwrap(v))
+	}
+	return out
+}
+
+// rejectTags refuses an operator anywhere inside a payload predicate, and says what to do
+// instead.
+//
+// `fields` is an OPEN document — the user's own entity payload — so it has no closed
+// keyspace to lean on: `{"or": [...]}` there is indistinguishable from a payload whose key
+// is literally "or". More immediately, the predicate is still equality-only (entity.Pattern),
+// so a tag would be flattened into a plain value and quietly mean something else. Refusing
+// is what turns that into a sentence rather than a trigger that never fires.
+func rejectTags(n *ir.Node, key string) error {
+	if n == nil {
+		return nil
+	}
+	if n.Tag != "" && !isLayoutTag(n.Tag) {
+		return fmt.Errorf("match %q: operator %s at %s: a payload predicate is equality-only "+
+			"— operators are supported on %q and %q, and inside %q they arrive with the tony "+
+			"match leaf (docs/trigger-model-plan.md step 5)",
+			key, n.Tag, n.Path(), mKeyID, mKeyOp, key)
+	}
+	for _, v := range n.Values {
+		if err := rejectTags(unwrap(v), key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ── Formula ──────────────────────────────────────────────────────────────────
@@ -202,13 +348,14 @@ func (r *Requirement) valueNode(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromKeyVals(kvs), nil
 }
 
-// FromTonyIR reads the tagged form, and also the two untagged shapes that came from JSON:
-// the single-key tag-as-key object, and the verbose {op, req, args} parse node.
+// FromTonyIR reads the tagged form, and also the two untagged shapes a JSON-shaped charter
+// writes: the single-key tag-as-key object, and the verbose {op, req, args} parse node.
 //
 // The tagged path needs no keyspace analysis at all — a tag lives in a different namespace
-// from a field name, so `!quorum` cannot be confused with a match dimension. The ordered
-// classification the JSON decoder needs (see hasMatchKey/isVerboseNode) applies only to the
-// untagged shapes, which is why it stayed over there.
+// from a field name, so `!quorum` cannot be confused with a match dimension. The untagged
+// shapes have no such separation and are classified by their KEYS instead (fromVerbose,
+// then fromTagKeyed, then a match), which is why the disjointness asserted by
+// TestMatchKeysDisjointFromFormulaTags is load-bearing rather than tidy.
 func (f *Formula) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	node = unwrap(node)
 	if node == nil || node.Type == ir.NullType {

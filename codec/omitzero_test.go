@@ -128,7 +128,7 @@ func TestOwnCodecOutputIsNotSecondGuessed(t *testing.T) {
 // it was omitted for.
 func TestOmitZeroRoundTrips(t *testing.T) {
 	in := optional{ID: "x", Task: "review"}
-	for _, f := range []Format{Tony, JSON, YAML} {
+	for _, f := range []Format{Tony, YAML} {
 		b, err := Marshal(in, f)
 		if err != nil {
 			t.Fatalf("%v: %v", f, err)

@@ -369,13 +369,36 @@ change twice → one process per member); budget metering by entity count.
 
 ---
 
-## Step 5 — Grow the leaf (sketch)
+## Step 5 — Grow the leaf (partly landed)
 
 `Match`'s map backing becomes a real tony match, using `tony.Match` over an `ir.Node` — the
-pattern `providerMatches` (`engine.go:720`) already established for provider attributes. The
+pattern `providerMatches` (`engine.go`) already established for provider attributes. The
 richer leaf (globs, references, `!and`/`!or`, nested payload matches) then flows into `When`,
 gates, `Subject`, and flow addressing at once, because they all bottom out in `Match`. The
 temporal `Formula` layer above is unchanged. Settle the `fields:` vs `entity:` spelling here.
+
+**Landed: `id` and `op`.** Both may carry a tony match — `id: !glob "hotfix-*"` in tony,
+`{"id": {"glob": "hotfix-*"}}` in JSON — evaluated by `tony.Match` in `Match.matchDim`. They
+were free because they are only ever FILTERS. Two guards came with them: `Names()` refuses an
+operator (a named subject is one an action's `set` may create), and `address()` refuses to
+render one (a string address has no operator spelling, so rendering would silently widen the
+match).
+
+**Deliberately not landed:**
+
+- `system`/`kind`. They are structural, not filters: `Formula.Subtrees` turns them into a
+  docd watch path, `witnessPreconditions` into a precondition path, and `Select` into the
+  store's `List` prefilter. An operator has no path. Doing these needs either a full scan or
+  expansion of the operator into N literal subtrees — a real design question, not a port.
+- inside `fields`. The predicate is still equality-only (`entity.Pattern`), so a tag would be
+  flattened into a plain value; it is now REFUSED with a message instead. `fields` is also the
+  one place the JSON tag-keyed spelling cannot be borrowed, since a payload key may itself be
+  named `or` — which is what makes this the part that has to wait for the whole leaf rather
+  than being sugar-able like the dimensions.
+
+Note on validation: tony does NOT report an unknown tag — `mergeop.SplitChild` skips one and
+the node matches by plain equality — so `checkOps` (match.go) walks the tag chain itself and
+`!gloob` fails at install. Pinned by `TestUpstreamIgnoresUnknownTags`.
 
 ---
 

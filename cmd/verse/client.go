@@ -98,15 +98,18 @@ func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
 }
 
 // setFormatHeaders declares what is being sent and what is wanted back. The Accept lists
-// JSON as a fallback so a server that cannot produce the preferred format still answers
+// tony as a fallback so a server that cannot produce the preferred format still answers
 // with something this client can read, rather than failing the negotiation.
+//
+// It used to name JSON there. Doing that now would ask for the one rendering verse
+// refuses, and earn a 406 in exactly the situation the fallback exists to survive.
 func setFormatHeaders(req *http.Request, in codec.Format) {
 	req.Header.Set("Content-Type", codec.MediaType(in))
 	out, err := outFmt()
 	if err != nil {
-		out = codec.JSON
+		out = codec.Tony
 	}
-	req.Header.Set("Accept", codec.MediaType(out)+", "+codec.MediaJSON+";q=0.5")
+	req.Header.Set("Accept", codec.MediaType(out)+", "+codec.MediaTony+";q=0.5")
 }
 
 // printBody renders a response in the format the operator asked for with -o.
@@ -153,14 +156,17 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 	return nil
 }
 
-// respFmt reads the format a response declares. The server speaks JSON until it learns to
-// negotiate; an unlabelled body is read as JSON rather than as the configured default,
-// because what came back is a fact about the server, not a preference of ours.
+// respFmt reads the format a response declares — a fact about the server, not a
+// preference of ours, which is why it is read off the reply rather than assumed.
+//
+// An UNLABELLED body is read as tony, and that covers the old JSON-speaking server too:
+// JSON is parsed by the tony parser (codec.readAs), so the one guess that used to be
+// necessary here is no longer a guess about anything.
 func respFmt(resp *http.Response) codec.Format {
 	if f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type")); ok {
 		return f
 	}
-	return codec.JSON
+	return codec.Tony
 }
 
 func httpPut(path string, body any) (*http.Response, error) {
@@ -291,13 +297,14 @@ func compactFrame(s string, in, out codec.Format) string {
 
 // streamFmt reads the format an SSE stream declares its FRAMES are in. Content-Type is
 // spoken for by text/event-stream, so the server says it in a header of its own; a stream
-// that does not say is read as JSON, which is what verse sent before it could say.
+// that does not say is read as tony, which also reads the JSON frames verse sent before it
+// could say (valid JSON is valid tony).
 func streamFmt(resp *http.Response) codec.Format {
 	if f, err := codec.Parse(resp.Header.Get(codec.HeaderFormat)); err == nil &&
 		resp.Header.Get(codec.HeaderFormat) != "" {
 		return f
 	}
-	return codec.JSON
+	return codec.Tony
 }
 
 // ── watch ────────────────────────────────────────────────────────────────────

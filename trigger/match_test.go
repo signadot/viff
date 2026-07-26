@@ -13,6 +13,8 @@ import (
 // A Match round-trips without losing meaning: whatever the authored form, re-reading the
 // marshalled output yields the same dimensions. A string address becomes the object form it
 // parses to, so `trigger show` displays the system/kind/id the matcher will actually apply.
+//
+// Authored in JSON, rendered in tony — which is the shape of every real round trip now.
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
 		`"demo:pr:1"`,
@@ -24,12 +26,12 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 			t.Fatalf("unmarshal %s: %v", in, err)
 		}
-		out, err := codec.Marshal(m, codec.JSON)
+		out, err := codec.Marshal(m, codec.Tony)
 		if err != nil {
 			t.Fatalf("marshal %s: %v", in, err)
 		}
 		var back Match
-		if err := codec.Unmarshal(out, &back, codec.JSON); err != nil {
+		if err := codec.Unmarshal(out, &back, codec.Tony); err != nil {
 			t.Fatalf("re-unmarshal %s → %s: %v", in, out, err)
 		}
 		// MEANING, not shape. A match naming only system/kind/id marshals to the address
@@ -344,39 +346,48 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 }
 
 // Requirement.Facts is now a Match, so a formula's leaf and a trigger's subject share one
-// grammar. The compact wire form must be unchanged by that retype — `verse docket` output
-// and `goals add --done-when` inputs are user-visible.
+// grammar. The COMPACT form must be unchanged by that retype — `verse docket` output and
+// `goals add --done-when` inputs are user-visible.
+//
+// Each case is written twice: the tag-keyed spelling a JSON-shaped charter must use, and
+// the tagged spelling verse renders. Both have to read as the same formula, and rendering
+// has to give back the tagged one — which is the whole of "one grammar, two syntaxes" now
+// that only one of them is also a rendering.
 func TestRequirementFactsWireUnchanged(t *testing.T) {
-	cases := []string{
-		`{"quorum":2}`,
-		`{"fact":"ci:status"}`,
-		`{"quorum":{"choice":"reject","n":2}}`,
-		`{"deadline":"4h"}`,
-		`{"until":[{"quorum":2},{"deadline":"4h"}]}`,
+	cases := []struct{ keyed, tagged string }{
+		{`{"quorum":2}`, `!quorum 2`},
+		{`{"fact":"ci:status"}`, `!fact "ci:status"`},
+		{`{"quorum":{"choice":"reject","n":2}}`, `!quorum {choice: reject, n: 2}`},
+		{`{"deadline":"4h"}`, `!deadline "4h"`},
+		{`{"until":[{"quorum":2},{"deadline":"4h"}]}`, `!until [!quorum 2, !deadline "4h"]`},
 	}
-	for _, in := range cases {
-		var f Formula
-		if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err != nil {
-			t.Fatalf("unmarshal %s: %v", in, err)
+	for _, c := range cases {
+		var fromKeyed, fromTagged Formula
+		if err := codec.Unmarshal([]byte(c.keyed), &fromKeyed, codec.JSON); err != nil {
+			t.Fatalf("unmarshal %s: %v", c.keyed, err)
 		}
-		out, err := codec.MarshalWire(&f, codec.JSON)
+		if err := codec.Unmarshal([]byte(c.tagged), &fromTagged, codec.Tony); err != nil {
+			t.Fatalf("unmarshal %s: %v", c.tagged, err)
+		}
+
+		out, err := codec.MarshalWire(&fromKeyed, codec.Tony)
 		if err != nil {
-			t.Fatalf("marshal %s: %v", in, err)
+			t.Fatalf("marshal %s: %v", c.keyed, err)
 		}
-		// Compared as DOCUMENTS, not bytes. What must not drift is the compact tag-keyed
-		// SHAPE — {"quorum":2}, never the internal {"op":…,"req":…} parse node. Object key
-		// order is not part of that contract and asserting it byte-for-byte would pin an
-		// encoder detail as if it were the wire format.
-		want, err := codec.ParseNode([]byte(in), codec.JSON)
+		// Compared as DOCUMENTS, not bytes. What must not drift is the compact SHAPE —
+		// `!quorum 2`, never the internal {op: …, req: …} parse node. Object key order is
+		// not part of that contract and asserting it byte-for-byte would pin an encoder
+		// detail as if it were the wire format.
+		want, err := codec.ParseNode([]byte(c.tagged), codec.Tony)
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := codec.ParseNode(out, codec.JSON)
+		got, err := codec.ParseNode(out, codec.Tony)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !sameDoc(want, got) {
-			t.Errorf("compact form drifted: %s → %s", in, out)
+			t.Errorf("compact form drifted: %s → %s, want %s", c.keyed, out, c.tagged)
 		}
 	}
 }

@@ -40,11 +40,13 @@ var g = &globals{Addr: defaultAddr}
 // known. Reading the flag at use time is the only way it can win.
 //
 // A malformed -o is an ERROR, not a quiet fall back to the default. `-o tny` printing
-// perfectly good JSON is indistinguishable from `-o tony` not being implemented, which is
-// precisely the state this flag spent its whole life in.
+// perfectly good tony is indistinguishable from `-o tony` not being implemented, which is
+// precisely the state this flag spent its whole life in. `-o json` is refused for the same
+// reason: verse reads JSON but does not write it, and answering in another format under
+// the operator's nose is the failure this flag exists to prevent.
 func outFmt() (codec.Format, error) {
 	if g.O != "" {
-		f, err := codec.Parse(g.O)
+		f, err := codec.ParseOutput(g.O)
 		if err != nil {
 			return f, fmt.Errorf("%w: -o: %v", cli.ErrUsage, err)
 		}

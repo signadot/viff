@@ -5,12 +5,20 @@ the named leaf, `Trigger.Matches []entity.Pattern` is now `Condition{When, Subje
 `action.setRef`/charter-set `spawn.subject` are gone. Flow-as-a-query (step 4) and set-valued
 `Subject` with fan-out (step 3) have landed too: `flows[subject]` is gone, replaced by a
 subject-`Match` over live processes (so `flow pause demo:pr:*` works), and a `Subject` naming
-a `system:kind` set fans the action out one member at a time. Still to come: the tony match
-leaf (step 5), and evaluating a *temporal* `When` (which needs a long-lived monitor rather
-than per-change dispatch, and is rejected at install with an error saying so) — so a
-set-valued `Subject` and a temporal `When` are rejected at install for now, with an error
-that says why. The implementation plan is `trigger-model-plan.md`. The substrate this leans
-on — per-entity change events — is `change-events.md`.*
+a `system:kind` set fans the action out one member at a time. The tony match leaf (step 5)
+has landed for `id` and `op` — they take `!glob`/`!or`/`!not`/… — and is still to come for
+`system`/`kind` and for `fields`. Also to come: evaluating a *temporal* `When` (which needs a
+long-lived monitor rather than per-change dispatch, and is rejected at install with an error
+saying so) — so a set-valued `Subject` and a temporal `When` are rejected at install for now,
+with an error that says why. The implementation plan is `trigger-model-plan.md`. The substrate
+this leans on — per-entity change events — is `change-events.md`.*
+
+*The match vocabulary itself is [tony](https://signadot.github.io/tony-format/)'s, not
+verse's: the same operators serve matching, patching and diffing there, which is the argument
+made in [Structured matching, patching and diffing done
+right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci).
+Growing the leaf is therefore mostly a matter of letting that vocabulary through, not of
+inventing one.*
 
 ## Two layers: point-in-time matches, temporal formulas
 
@@ -68,8 +76,9 @@ type Condition struct {
 
 // Match is a POINT-IN-TIME selector over the entity-verse — the atom, and the leaf of every
 // Formula. Today it is a plain map (system/kind/op/fields, interpreted by the existing typed
-// matcher); it will become a real tony match. This type is the SINGLE place that swap
-// happens. Subject and flow-addressing are bare Matches — no temporal operators.
+// matcher) EXCEPT at `id` and `op`, which may already carry a real tony match. This type is
+// the SINGLE place the rest of that swap happens. Subject and flow-addressing are bare
+// Matches — no temporal operators.
 type Match map[string]any
 
 // Formula is the TEMPORAL grammar: matches composed with operators over the verse's
@@ -316,9 +325,13 @@ The shape can land before the grammar. In order, each step green + smoke-tested:
    subject-`Match` query over it; `flow <cmd> <address>` where `*` is a per-segment wildcard,
    and a payload predicate works too. Spawn is now idempotent per id, which is what step 3's
    fan-out needs.
-5. **Grow the leaf.** Swap `Match`'s map backing for a real tony match; the richer leaf
+5. **Grow the leaf.** ◐ Swap `Match`'s map backing for a real tony match; the richer leaf
    (globs, references) flows into `When`/gate formulas, `Subject` selectors, and flow
-   addressing alike — the temporal `Formula` layer above is unchanged.
+   addressing alike — the temporal `Formula` layer above is unchanged. **Landed for `id` and
+   `op`**, which are only ever filters: they take `!glob`/`!or`/`!not`/… in tony and the
+   tag-keyed spelling in JSON, evaluated by `tony.Match`. **Not** for `system`/`kind`, which
+   become a docd watch path (`Formula.Subtrees`) and the store's `List` prefilter, nor inside
+   `fields`, which is equality-only and refuses a tag rather than flattening it.
 
 Steps 1–2 are the scaffolding refactor; 3–5 are the model filling in, each expressible in the
 grammar already named.

@@ -144,7 +144,7 @@ func TestExplicitConfigPath(t *testing.T) {
 
 func TestFormatConfig(t *testing.T) {
 	etcDir := t.TempDir()
-	write(t, filepath.Join(etcDir, "verse.tony"), "format:\n  default: yaml\n  output: json\n")
+	write(t, filepath.Join(etcDir, "verse.tony"), "format:\n  default: yaml\n  output: tony\n")
 	withLayers(t, filepath.Join(etcDir, "verse"), t.TempDir())
 
 	c, err := Load()
@@ -154,8 +154,8 @@ func TestFormatConfig(t *testing.T) {
 	if got := c.Format.ResolveDefault(); got != codec.YAML {
 		t.Errorf("default = %v, want yaml", got)
 	}
-	if got := c.Format.ResolveOutput(); got != codec.JSON {
-		t.Errorf("output = %v, want json (explicitly set)", got)
+	if got := c.Format.ResolveOutput(); got != codec.Tony {
+		t.Errorf("output = %v, want tony (explicitly set)", got)
 	}
 	if got := c.Format.ResolveWire(); got != codec.YAML {
 		t.Errorf("wire = %v, want yaml (falls back to default)", got)
@@ -170,6 +170,37 @@ func TestFormatConfig(t *testing.T) {
 	if got := c.Format.ResolveWire(); got != codec.Tony {
 		t.Errorf("wire = %v, want tony (env overrides the file)", got)
 	}
+}
+
+// json names a rendering verse does not produce, and it is refused at BOTH doors — the
+// env var and the config file. The file half is the one that needs saying: it decodes
+// straight into go-tony's own format type, which knows nothing of verse's rules, so
+// without FormatConfig.validate the setting would sit there until a response failed to
+// encode with no line number attached.
+func TestFormatConfigRefusesJSONOutput(t *testing.T) {
+	t.Run("env", func(t *testing.T) {
+		withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+		t.Setenv("VERSE_FORMAT", "json")
+		_, err := Load()
+		if err == nil {
+			t.Fatal("VERSE_FORMAT=json was accepted")
+		}
+		if !strings.Contains(err.Error(), "VERSE_FORMAT") {
+			t.Errorf("error does not name the variable: %v", err)
+		}
+	})
+	t.Run("file", func(t *testing.T) {
+		etcDir := t.TempDir()
+		write(t, filepath.Join(etcDir, "verse.tony"), "format:\n  output: json\n")
+		withLayers(t, filepath.Join(etcDir, "verse"), t.TempDir())
+		_, err := Load()
+		if err == nil {
+			t.Fatal("format.output: json was accepted from a config file")
+		}
+		if !strings.Contains(err.Error(), "format.output") {
+			t.Errorf("error does not name the setting: %v", err)
+		}
+	})
 }
 
 // An unset format falls through to the baseline, and a malformed one is reported rather

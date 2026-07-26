@@ -22,7 +22,8 @@ import (
 // FormatParam is the query parameter that names a format, on any route.
 const FormatParam = "format"
 
-// RequestFormat is the format a request BODY is written in.
+// RequestFormat is the format a request BODY is written in. JSON is fine here — it says
+// what the bytes are, and verse reads them.
 func RequestFormat(r *http.Request) Format {
 	if f, ok := paramFormat(r); ok {
 		return f
@@ -33,15 +34,30 @@ func RequestFormat(r *http.Request) Format {
 	return Default()
 }
 
-// ResponseFormat is the format a response body should be written in.
-func ResponseFormat(r *http.Request) Format {
-	if f, ok := paramFormat(r); ok {
-		return f
+// ResponseFormat is the format a response body should be written in, or an error naming
+// the rendering the client asked for and verse does not produce — `?format=json` or
+// `Accept: application/json`. Callers turn that into a 406; nothing else in the package
+// can, because only the caller knows whether a status line has already gone out.
+func ResponseFormat(r *http.Request) (Format, error) {
+	// An unwritable ?format= is refused, while an UNPARSEABLE one is still ignored. The
+	// difference is what the sender can be told: "tny" is a typo whose best guess is
+	// obvious, "json" is a specific thing verse will not do and should hear about.
+	if v := r.URL.Query().Get(FormatParam); v != "" {
+		if f, err := Parse(v); err == nil {
+			if !Writable(f) {
+				return Default(), fmt.Errorf("?%s=%s: %s", FormatParam, v, ErrNotWritable)
+			}
+			return f, nil
+		}
 	}
 	if a := r.Header.Get("Accept"); a != "" {
-		return Negotiate(a, Default())
+		f, ok := Negotiate(a, Default())
+		if !ok {
+			return Default(), fmt.Errorf("Accept: %s: %s", a, ErrNotWritable)
+		}
+		return f, nil
 	}
-	return Default()
+	return Default(), nil
 }
 
 // paramFormat reads ?format=. An unparseable value is ignored rather than failing the
@@ -74,8 +90,16 @@ func Write(w http.ResponseWriter, r *http.Request, code int, v any) {
 }
 
 // WriteNode writes an already-built document.
+//
+// A client that demanded a rendering verse does not produce gets 406 rather than the
+// document in some other format: it asked a specific question, and answering a different
+// one under its content type is how a JSON client ends up parsing tony.
 func WriteNode(w http.ResponseWriter, r *http.Request, code int, n *ir.Node) {
-	f := ResponseFormat(r)
+	f, err := ResponseFormat(r)
+	if err != nil {
+		HTTPError(w, r, http.StatusNotAcceptable, err.Error())
+		return
+	}
 	body, err := NodeBytes(n, f)
 	if err != nil {
 		HTTPError(w, r, http.StatusInternalServerError, "encoding the response: "+err.Error())

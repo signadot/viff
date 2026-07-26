@@ -16,7 +16,9 @@ type sample struct {
 	Extra map[string]any `tony:"field=extra"`
 }
 
-// One value, three dialects, same meaning. This is the whole premise of the package.
+// One value, every RENDERING, same meaning. This is the whole premise of the package —
+// and the list is the two verse writes, JSON having become read-only (see the package
+// doc). Its read side is covered by TestJSONInputIsReadAsTony.
 func TestRoundTripEveryFormat(t *testing.T) {
 	in := sample{
 		Name:  "ship-it",
@@ -24,7 +26,7 @@ func TestRoundTripEveryFormat(t *testing.T) {
 		Tags:  []string{"a", "b"},
 		Extra: map[string]any{"nested": map[string]any{"x": int64(1)}},
 	}
-	for _, f := range []Format{Tony, JSON, YAML} {
+	for _, f := range []Format{Tony, YAML} {
 		t.Run(f.String(), func(t *testing.T) {
 			b, err := Marshal(in, f)
 			if err != nil {
@@ -45,7 +47,7 @@ func TestRoundTripEveryFormat(t *testing.T) {
 // newline-delimited stream stays one record.
 func TestMarshalWireIsSingleLine(t *testing.T) {
 	in := sample{Name: "x", N: 1, Tags: []string{"a", "b"}, Extra: map[string]any{"k": "v"}}
-	for _, f := range []Format{Tony, JSON} {
+	for _, f := range []Format{Tony} {
 		b, err := MarshalWire(in, f)
 		if err != nil {
 			t.Fatalf("%v: %v", f, err)
@@ -70,6 +72,48 @@ func TestAsInt64(t *testing.T) {
 	for _, v := range []any{2.5, "2", true, nil, []any{2}} {
 		if got, ok := AsInt64(v); ok {
 			t.Errorf("AsInt64(%v (%T)) = (%d, true), want false", v, v, got)
+		}
+	}
+}
+
+// Input declared JSON is read by the TONY parser. The two agree on every JSON document
+// (TestUpstreamJSONParsesAsTony), so what this buys is the two things the JSON dialect
+// withholds — and what it must not cost is any JSON document changing meaning.
+func TestJSONInputIsReadAsTony(t *testing.T) {
+	// Leading whitespace: a hard error from go-tony's JSON parser, fine as tony. A body
+	// indented into a heredoc is not something to refuse.
+	for _, in := range []string{`  {"a": 1}`, "\n{\"a\": 1}\n", "\t{\"a\": 1}"} {
+		n, err := ParseNode([]byte(in), JSON)
+		if err != nil {
+			t.Errorf("ParseNode(%q, JSON) = %v — JSON input goes through the tony parser", in, err)
+			continue
+		}
+		if got := ir.Get(n, "a"); got == nil {
+			t.Errorf("ParseNode(%q, JSON) lost the field", in)
+		}
+	}
+
+	// Tags reach a JSON-shaped document. This is how a .json charter writes an operator:
+	// there is no JSON syntax for one, and dropping it silently is the failure mode this
+	// whole change exists to remove.
+	n, err := ParseNode([]byte(`{"id": !glob "hotfix-*"}`), JSON)
+	if err != nil {
+		t.Fatalf("a tag in a JSON-declared document: %v", err)
+	}
+	if got := ir.Get(n, "id"); got == nil || got.Tag != "!glob" {
+		t.Errorf("tag did not survive: %v", got)
+	}
+
+	// And the meaning of ordinary JSON is unchanged, whichever way it is declared.
+	for _, in := range []string{`{"stage":"open","n":2}`, `[1,{"a":null}]`, `"s"`} {
+		asJSON, err1 := ParseNode([]byte(in), JSON)
+		asTony, err2 := ParseNode([]byte(in), Tony)
+		if err1 != nil || err2 != nil {
+			t.Errorf("parse %s: %v / %v", in, err1, err2)
+			continue
+		}
+		if !asJSON.DeepEqual(asTony) {
+			t.Errorf("%s means something different declared JSON vs tony", in)
 		}
 	}
 }
@@ -168,26 +212,70 @@ func TestNegotiate(t *testing.T) {
 	cases := []struct {
 		accept string
 		want   Format
+		ok     bool
 	}{
-		{"", Tony},                                               // absent → fallback
-		{"*/*", Tony},                                            // no preference → fallback
-		{"application/json", JSON},                               // explicit
-		{"application/yaml", YAML},                               // explicit
-		{"text/plain", Tony},                                     // nothing we can produce → fallback
-		{"application/json, application/tony", JSON},             // equal q → first wins
-		{"application/json;q=0.5, application/tony", Tony},       // q beats order
-		{"application/tony;q=0.2, application/json;q=0.9", JSON}, // q beats order, reversed
-		{"application/json;q=0, application/yaml", YAML},         // q=0 is a refusal
-		{"application/*, application/json;q=0.1", Tony},          // type/* → fallback, outranks q=0.1
+		{"", Tony, true},                                       // absent → fallback
+		{"*/*", Tony, true},                                    // no preference → fallback
+		{"application/tony", Tony, true},                       // explicit
+		{"application/yaml", YAML, true},                       // explicit
+		{"text/plain", Tony, true},                             // unknown to verse → fallback
+		{"application/yaml, application/tony", YAML, true},     // equal q → first wins
+		{"application/yaml;q=0.5, application/tony", Tony, true},   // q beats order
+		{"application/tony;q=0.2, application/yaml;q=0.9", YAML, true}, // reversed
+		{"application/tony;q=0, application/yaml", YAML, true},  // q=0 is a refusal
+
+		// json is a type verse KNOWS and will not render. Naming it alone is the 406
+		// case; naming it alongside something writable is just a preference verse can
+		// satisfy, which is the whole point of q-values.
+		{"application/json", Tony, false},
+		{"application/json, text/plain", Tony, false},
+		{"application/json, application/tony", Tony, true},
+		{"application/tony;q=0.5, application/json;q=0.9", Tony, true},
+		{"application/json, */*", Tony, true}, // */* accepts what verse has
 	}
 	for _, c := range cases {
-		if got := Negotiate(c.accept, Tony); got != c.want {
-			t.Errorf("Negotiate(%q) = %v, want %v", c.accept, got, c.want)
+		got, ok := Negotiate(c.accept, Tony)
+		if got != c.want || ok != c.ok {
+			t.Errorf("Negotiate(%q) = (%v, %v), want (%v, %v)", c.accept, got, ok, c.want, c.ok)
 		}
 	}
 	// The fallback really is the fallback.
-	if got := Negotiate("*/*", JSON); got != JSON {
-		t.Errorf("Negotiate(*/*, json) = %v, want json", got)
+	if got, ok := Negotiate("*/*", YAML); got != YAML || !ok {
+		t.Errorf("Negotiate(*/*, yaml) = (%v, %v), want (yaml, true)", got, ok)
+	}
+}
+
+// The refusals, at every knob that names an output format. Each one has to happen where
+// the person who set it can still act on it — a flag, an env var, a header — rather than
+// as a mangled document.
+func TestJSONIsNotAnOutputFormat(t *testing.T) {
+	if _, err := ParseOutput("json"); err == nil {
+		t.Error("ParseOutput(json) succeeded — -o json and VERSE_FORMAT=json rest on this")
+	}
+	if _, err := ParseOutput("j"); err == nil {
+		t.Error("ParseOutput(j) succeeded — the short spelling has to refuse too")
+	}
+	for _, name := range []string{"tony", "yaml", ""} {
+		if _, err := ParseOutput(name); err != nil {
+			t.Errorf("ParseOutput(%q) = %v, want it accepted", name, err)
+		}
+	}
+	// Parse — the READ side — still takes it. A .json file and an application/json body
+	// keep working; that is the promise this whole change is made against.
+	if f, err := Parse("json"); err != nil || f != JSON {
+		t.Errorf("Parse(json) = (%v, %v), want json accepted for reading", f, err)
+	}
+
+	// And the encoder refuses on its own, for a format that arrived by some path that
+	// never consulted ParseOutput.
+	if _, err := NodeBytes(ir.FromString("x"), JSON); err == nil {
+		t.Error("NodeBytes(..., JSON) succeeded — the last gate is open")
+	}
+	if _, err := Marshal(map[string]any{"a": 1}, JSON); err == nil {
+		t.Error("Marshal(..., JSON) succeeded — the last gate is open")
+	}
+	if err := EncodeNodeColor(&strings.Builder{}, ir.FromString("x"), JSON); err == nil {
+		t.Error("EncodeNodeColor(..., JSON) succeeded — the last gate is open")
 	}
 }
 

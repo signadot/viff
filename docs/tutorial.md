@@ -249,6 +249,39 @@ Now, what each field of a trigger means:
       no-op — it never conjures an entity called `*`, nor misfires onto a flow it doesn't
       name.
 
+    The `id` may also carry an **operator** instead of a plain string, which is the
+    richer matching the plain glob cannot spell:
+
+    ```tony
+    subject: { system: demo, kind: pr, id: !glob "hotfix-*" }        # filepath globbing
+    subject: { system: demo, kind: pr, id: !not "1" }                # everything but one
+    subject: { system: demo, kind: pr, id: !or ["1", !glob "hf-*"] } # composed
+    ```
+
+    In a JSON-shaped charter, write the operator as a single-key object — `{"id":
+    {"glob": "hotfix-*"}}` — the same spelling a formula uses for its tags (§8). The
+    two are one grammar; only tony can write the tag directly.
+
+    The operators are [tony](https://signadot.github.io/tony-format/)'s own, not a verse
+    invention: `!glob`, `!or`, `!and`, `!not` and the rest come from the same vocabulary
+    tony uses for matching, patching and diffing — see [Structured matching, patching and
+    diffing done right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci)
+    for what that vocabulary is and why it is one vocabulary rather than three.
+
+    Two things worth knowing before you reach for it. First, `!glob` is *stricter* than
+    the plain string: it is `filepath.Match`, so `*` does not cross `/` and `?`/`[…]`
+    are metacharacters — `id: "a*"` matches `a/b` and `id: !glob "a*"` does not. That is
+    the point of it (a path-shaped id can be matched a segment at a time), but it means
+    the two spellings are not interchangeable. Second, `system` and `kind` take no
+    operator: they name the subtree verse watches and the set it lists, and a watch path
+    cannot be a predicate. Write the whole segment as `*` for "any", and put the
+    operator on `id`.
+
+    Inside `fields` there are no operators yet — a payload predicate is equality-only —
+    and writing one is an **error** rather than a silent flattening. (`fields` is your
+    own document, so it has no closed keyspace to borrow the JSON spelling from: a
+    payload key may itself be named `or`.)
+
     A firing can therefore act on 0, 1, or N entities — but every *process, flow, and
     goal* is still about exactly one subject. Broadcast, in other words, is a wider
     setting of the same selector, not a new mechanism:
@@ -999,39 +1032,54 @@ llm: {
 
 ### Representation
 
-verse reads and writes [tony](https://github.com/signadot/tony-format) by default, and JSON
-and YAML are dialects of the same documents rather than separate support:
+verse **reads** tony, JSON and YAML, and **writes** tony and YAML. The asymmetry is
+deliberate, and it is worth thirty seconds up front:
 
 ```sh
-verse trigger list             # tony
-verse trigger list -o json     # JSON — for `| jq`
+verse trigger list             # tony (the default)
+verse trigger list -o yaml     # yaml
+verse trigger list -o json     # refused — see below
 curl -s localhost:9797/status                              # tony
-curl -s -H 'Accept: application/json' localhost:9797/status # JSON
+curl -s -H 'Accept: application/yaml' localhost:9797/status # yaml
 ```
 
-Output is colorized on a terminal and plain when piped, so `verse trigger list | o v` and
-`| jq` keep working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1`
-turns it off.
+**Write your input in JSON if you like.** A `.json` charter, an `application/json` body,
+a JSON payload typed on the command line: all fine, all unchanged. Valid JSON is valid
+[tony](https://signadot.github.io/tony-format/), so verse simply parses it — there is no
+conversion step and nothing to configure.
+
+**What verse will not do is hand JSON back.** `-o json`, `VERSE_FORMAT=json` and
+`Accept: application/json` are refused, the last with a 406. The reason is tags. A formula
+is built from them (§8) — `!quorum 2`, `!until [...]` — and JSON has no tag syntax, so
+rendering one means rewriting it as a single-key object: `{"quorum": 2}`. That is
+unambiguous where the surrounding keys are a closed set, and NOT unambiguous inside a
+match's `fields`, where a payload key may itself be named `or`. A rendering that is
+faithful for most of the model and quietly wrong for the rest is worse than one honestly
+not offered.
+
+Reading is unaffected by all of this, including the single-key spelling: a charter that
+writes `{"quorum": 2}` loads exactly like one that writes `!quorum 2`. That is how you
+reach an operator from JSON, and it is why JSON stays a first-class way to write a charter
+even though it is no longer a way to read one back.
+
+Output is colorized on a terminal and plain when piped, so `verse trigger list | o v` keeps
+working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
+off.
 
 The **file suffix decides** what a file is read as, so `verse trigger add -f charter.json`
 and `-f charter.tony` both work regardless of the default. For input that names no format —
 stdin, an extensionless file, a payload typed on the command line — `--ifmt` decides, then
 the config default.
 
-**Tags are the one place the dialects differ in shape.** A formula is built from them
-(§8), and JSON has no such thing, so a tag renders there as a single-key object: what
-tony writes `!quorum 2`, JSON writes `{"quorum": 2}`. Reading is symmetric — a charter
-written either way loads either way — so this costs you nothing but is worth knowing
-before you diff two dialects of the same charter and find them differently shaped.
-
 To change the default: `format.default` in the config file, or `VERSE_FORMAT`. `format.output`
 (CLI stdout) and `format.wire` (HTTP bodies) override it separately, because wanting tony on
-the wire and JSON on stdout — to pipe into `jq` — is a reasonable thing to want.
+the wire and yaml on stdout is a reasonable thing to want. All three name a format to WRITE,
+so all three refuse `json`.
 
 ```tony
 format:
   default: tony
-  output:  json   # …but render CLI output as JSON
+  output:  yaml   # …but render CLI output as yaml
 ```
 
 `addr` and `scope` are read by every command (they say which verse to talk to). The `llm`

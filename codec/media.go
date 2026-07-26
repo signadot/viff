@@ -28,6 +28,10 @@ const (
 )
 
 // mediaAliases are accepted on input. Emitting is always via MediaType.
+//
+// application/json is here, and stays here: a request that labels its BODY as JSON is
+// stating a fact about bytes verse can read. It is Negotiate — the response side — that
+// will not hand JSON back.
 var mediaAliases = map[string]Format{
 	MediaTony:                       Tony,
 	"application/x-tony":            Tony,
@@ -68,18 +72,25 @@ func FormatForMedia(ct string) (Format, bool) {
 }
 
 // Negotiate picks a format from an Accept header, honoring q-values and falling back
-// when the header is absent, is */*, or names nothing verse can produce.
+// when the header is absent, is */*, or names nothing verse can produce. ok is false when
+// the client named ONLY things verse cannot render — the 406 case; see ResponseFormat.
 //
 // q-values matter because the natural thing for a client to send is a preference rather
 // than a demand — "tony, or JSON if you must" is `application/tony, application/json;q=0.5`,
 // and taking the textually-first entry would get that backwards as often as not.
-func Negotiate(accept string, fallback Format) Format {
+//
+// An unwritable type (application/json) is dropped from the candidates rather than
+// resolved to something else. That is what makes the q=0.5 example above still work — the
+// client gets its first choice — while `Accept: application/json` alone gets an honest
+// refusal instead of a tony body under a JSON content type.
+func Negotiate(accept string, fallback Format) (Format, bool) {
 	type pref struct {
 		f Format
 		q float64
 		i int
 	}
 	var prefs []pref
+	var refused bool
 	for i, part := range strings.Split(accept, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -108,10 +119,20 @@ func Negotiate(accept string, fallback Format) Format {
 				continue
 			}
 		}
+		if !Writable(f) {
+			// A type verse knows and will not render. Remembered, not merely skipped:
+			// asking for json is a different mistake from asking for text/html, and only
+			// the first one deserves an explanation.
+			refused = true
+			continue
+		}
 		prefs = append(prefs, pref{f: f, q: q, i: i})
 	}
 	if len(prefs) == 0 {
-		return fallback
+		// Nothing acceptable. If the client named json, that is why — say so. Anything
+		// else (a header full of types verse never heard of) keeps the old lenient
+		// behaviour: serve the fallback rather than argue.
+		return fallback, !refused
 	}
 	// Highest q wins; ties go to the order the client wrote them.
 	sort.SliceStable(prefs, func(a, b int) bool {
@@ -120,5 +141,5 @@ func Negotiate(accept string, fallback Format) Format {
 		}
 		return prefs[a].i < prefs[b].i
 	})
-	return prefs[0].f
+	return prefs[0].f, true
 }

@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestCharterRoundTrip(t *testing.T) {
 	}
 
 	for _, want := range charters {
-		for _, f := range []codec.Format{codec.Tony, codec.JSON, codec.YAML} {
+		for _, f := range []codec.Format{codec.Tony, codec.YAML} {
 			t.Run(want.Name+"/"+f.String(), func(t *testing.T) {
 				b, err := codec.Marshal(want, f)
 				if err != nil {
@@ -155,26 +156,44 @@ func TestCharterGrammarSpellings(t *testing.T) {
 	}
 }
 
-// A formula written in tony must survive a trip through JSON and back. This is what makes
-// the two dialects one grammar rather than two: codec.Detag renders the tags as the key
-// form, and the decoder reads the key form back into tags.
-func TestFormulaSurvivesDialectRoundTrip(t *testing.T) {
-	orig := &Formula{Op: OpUntil, Args: []*Formula{
-		{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2, Choice: "reject"}},
-		{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}},
-	}}
-	asJSON, err := codec.Marshal(orig, codec.JSON)
-	if err != nil {
-		t.Fatalf("to json: %v", err)
-	}
-	if !strings.Contains(string(asJSON), `"until"`) {
-		t.Fatalf("the tag did not become a key: %s", asJSON)
-	}
-	var back Formula
-	if err := codec.Unmarshal(asJSON, &back, codec.JSON); err != nil {
+// A formula WRITTEN IN JSON is the same formula written in tony. That is the direction
+// that still matters: verse no longer renders JSON, but people still write it, and the
+// tag-keyed spelling (`{"until": [...]}`) is the only way a JSON-shaped charter can reach
+// an operator — JSON has no tag syntax.
+//
+// The keyspace discipline this rests on is asserted separately by
+// TestMatchKeysDisjointFromFormulaTags: a single-key object is read as an operator only
+// because no match dimension shares a name with one.
+func TestFormulaReadsTheJSONKeyForm(t *testing.T) {
+	const asJSON = `{"until": [{"quorum": {"n": 2, "choice": "reject"}}, {"deadline": "4h"}]}`
+
+	var got Formula
+	if err := codec.Unmarshal([]byte(asJSON), &got, codec.JSON); err != nil {
 		t.Fatalf("from json: %v", err)
 	}
-	asTony, err := codec.Marshal(&back, codec.Tony)
+	if got.Op != OpUntil || len(got.Args) != 2 {
+		t.Fatalf("the key form did not read as an operator: %+v", got)
+	}
+	if got.Args[0].Req.Choice != "reject" || got.Args[0].Req.N != 2 {
+		t.Errorf("quorum detail lost: %+v", got.Args[0].Req)
+	}
+	if got.Args[1].Req.Within != "4h" {
+		t.Errorf("deadline detail lost: %+v", got.Args[1].Req)
+	}
+
+	// And it is the same value the tony spelling gives, which is what "one grammar in two
+	// syntaxes" has to mean.
+	var fromTony Formula
+	if err := codec.Unmarshal([]byte(`!until [!quorum {n: 2, choice: reject}, !deadline "4h"]`),
+		&fromTony, codec.Tony); err != nil {
+		t.Fatalf("from tony: %v", err)
+	}
+	if !reflect.DeepEqual(got, fromTony) {
+		t.Errorf("the two spellings differ:\n json: %+v\n tony: %+v", got, fromTony)
+	}
+
+	// Rendering goes out as tags, in both formats verse writes.
+	asTony, err := codec.Marshal(&got, codec.Tony)
 	if err != nil {
 		t.Fatalf("to tony: %v", err)
 	}
@@ -182,9 +201,6 @@ func TestFormulaSurvivesDialectRoundTrip(t *testing.T) {
 		if !strings.Contains(string(asTony), want) {
 			t.Errorf("%s did not come back as a tag:\n%s", want, asTony)
 		}
-	}
-	if back.Args[0].Req.Choice != "reject" || back.Args[1].Req.Within != "4h" {
-		t.Errorf("detail lost through the round trip: %+v", back.Args)
 	}
 }
 

@@ -25,9 +25,13 @@ note() { printf '  \033[33m~\033[0m %s\n' "$*"; }
 die()  { printf '  \033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 has()  { printf '%s' "$1" | grep -qF -- "$2"; }
 # haskv asserts a document carries key: value, in WHICHEVER dialect it is written —
-# `"stage": "open"` and `stage: open` both match. The suite runs under both defaults
-# (see the double-run at the end), so a shape-dependent assertion would only ever be
-# testing whichever one happened to be configured.
+# `"stage": "open"` and `stage: open` both match. The suite runs under both renderings
+# (make smoke-all: the tony default, then VERSE_OUTPUT_FORMAT=yaml), so a shape-dependent
+# assertion would only ever be testing whichever one happened to be configured.
+#
+# The second pass varies the OUTPUT format only. Input is a different question: JSON is
+# read as tony, but YAML is a genuinely separate dialect, so a `VERSE_FORMAT=yaml` pass
+# would be asserting that JSON payloads fail — which is not a property worth protecting.
 haskv() { printf '%s' "$1" | grep -qE "\"?$2\"?[[:space:]]*:[[:space:]]*\"?$3\"?"; }
 
 # ── a free TCP port (avoids clobbering a dev server) ─────────────────────────
@@ -88,21 +92,29 @@ v entity put demo:pr:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
 haskv "$(v entity get demo:pr:1)" stage open || die "entity get did not roundtrip"
 ok "demo:pr:1 = {stage:open}"
 
-# ── the representation: tony by default, every dialect on request ────────────
-# The flip changed the DEFAULT, not the capability. Both directions are asserted here
-# rather than left to the double-run, because a default that silently stopped being
-# overridable would still pass a suite run only one way.
+# ── the representation: verse READS three dialects and WRITES two ────────────
+# The asymmetry is the design (see package codec): JSON input is parsed as tony, because
+# valid JSON is valid tony, but nothing renders JSON — a tagged charter has no faithful
+# JSON spelling. Both halves are asserted here rather than left to the double-run, because
+# a refusal that quietly became a fallback would still pass a suite run only one way.
 step "representation (-o / negotiation)"
 haskv "$(v entity get demo:pr:1 -o tony)" stage open || die "-o tony did not render"
-has "$(v entity get demo:pr:1 -o json)" '"stage": "open"' || die "-o json did not render JSON"
 has "$(v entity get demo:pr:1 -o yaml)" 'stage: open' || die "-o yaml did not render"
 v entity get demo:pr:1 -o tny >/dev/null 2>&1 && die "a bad -o value was accepted"
-ok "-o tony | json | yaml render; a bad value is rejected"
-# curl straight at the API: no Accept header at all gets the configured default, and
-# asking for JSON gets JSON — the negotiation, not the client's re-rendering.
-has "$(curl -s -H 'Accept: application/json' "http://$ADDR/entity?ref=demo:pr:1")" '"stage": "open"' \
-	|| die "Accept: application/json did not negotiate"
-ok "the wire negotiates (Accept honored)"
+v entity get demo:pr:1 -o json >/dev/null 2>&1 && die "-o json was accepted"
+has "$(v entity get demo:pr:1 -o json 2>&1 || true)" 'does not render json' \
+	|| die "-o json failed without explaining itself"
+ok "-o tony | yaml render; a bad value and json are rejected"
+# curl straight at the API: no Accept header at all gets the configured default...
+haskv "$(curl -s "http://$ADDR/entity?ref=demo:pr:1")" stage open || die "the wire did not answer"
+# ...demanding JSON is 406, not tony wearing a JSON label...
+code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
+	"http://$ADDR/entity?ref=demo:pr:1")
+[ "$code" = "406" ] || die "Accept: application/json returned $code, want 406"
+# ...and listing it as one preference among several is satisfiable, so it is satisfied.
+haskv "$(curl -s -H 'Accept: application/json, application/tony;q=0.5' \
+	"http://$ADDR/entity?ref=demo:pr:1")" stage open || die "a mixed Accept did not negotiate"
+ok "the wire negotiates (Accept honored, json refused with 406)"
 
 # ── scope: copy-on-write isolation (docd overlays) ───────────────────────────
 # Note: a scope created here is not torn down — there is no general scope teardown yet, only
@@ -123,6 +135,9 @@ ok "baseline entity readable from the scope (read-through)"
 
 # ── reactive core: a non-gated trigger auto-advances its subject ─────────────
 step "trigger add + drive (reactive core)"
+# The charter below is written in JSON — still accepted, and this is the check that says
+# so. It arrives on stdin with no name, so nothing declares a dialect: it parses because
+# JSON *is* tony, not because anything sniffed it.
 v trigger add -f - >/dev/null <<'JSON' || die "trigger add failed"
 [ { "name": "smoke-advance",
     "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
@@ -147,6 +162,7 @@ ok "demo:pr:2 auto-advanced open → reviewed"
 # The JSON case above pipes on stdin (no name, so the configured default applies); this one
 # is a named .tony file, which must be read as tony whatever the default is. It also uses a
 # block list rather than [ ... ], which the old "starts with [" sniff could not have seen.
+# Between them they are the promise: author in either syntax, get one grammar.
 step "trigger add reads a .tony charter (suffix dispatch)"
 cat >"$tmp/charter.tony" <<'TONY'
 - name: smoke-advance-tony
@@ -177,12 +193,44 @@ done
 [ -n "$advanced" ] || die "the tony-authored trigger did not fire"
 ok "a tony-authored trigger fires identically to its JSON twin"
 
+# ── an operator on the subject id, written in the JSON spelling ──────────────
+# `id` may carry a tony match rather than a string, and JSON reaches it through the
+# single-key form — {"glob": …} for !glob. Installing it exercises the whole path the unit
+# tests cover in pieces: sugar → tag → Validate → the engine's selection.
+step "trigger subject with an id operator (JSON spelling)"
+# demo:task, not demo:pr: the charters above match every demo:pr, and a subject the fan-out
+# was supposed to exclude would then be indistinguishable from one they had already moved.
+v trigger add -f - >/dev/null <<'JSON' || die "operator charter add failed"
+[ { "name": "smoke-hotfix-only",
+    "condition": { "when":    { "system": "demo", "kind": "note", "fields": { "seen": true } },
+                   "subject": { "system": "demo", "kind": "task", "id": { "glob": "hotfix-*" } } },
+    "gates":     [],
+    "action":    { "set": { "stage": "escalated" } } } ]
+JSON
+has "$(v trigger show smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
+ok "installed; the sugar renders back as a tag"
+# two candidates, one matching the glob and one not — the fan-out must pick exactly one.
+v entity put demo:task:hotfix-9 '{"stage":"open"}' >/dev/null || die "entity put failed"
+v entity put demo:task:feature-9 '{"stage":"open"}' >/dev/null || die "entity put failed"
+v entity put demo:note:1 '{"seen":true}' >/dev/null || die "entity put failed"
+escalated=
+for _ in $(seq 1 100); do
+	if haskv "$(v entity get demo:task:hotfix-9 2>/dev/null || true)" stage escalated; then
+		escalated=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$escalated" ] || die "the glob subject did not select demo:task:hotfix-9"
+haskv "$(v entity get demo:task:feature-9)" stage open || die "the glob subject escalated a task it excludes"
+ok "!glob subject selected hotfix-9 and left feature-9 alone"
+
 # ── process runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
 # live process to exercise the control surfaces against (and observe the slide on).
 step "process run + control surfaces"
 v process run --driver scripted "sleep 30" >/dev/null || die "process run failed"
-ID=$(v process list -o json | awk -F'"' '/"id"/ {print $4; exit}')
+ID=$(v process list -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no process id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v process get "$ID")" "$ID" || die "process get missing the id"

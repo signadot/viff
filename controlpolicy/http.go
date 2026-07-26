@@ -33,8 +33,8 @@ type httpPolicy struct {
 // the process:instance entity). content is not forwarded — a remote runtime resolves
 // files its own way; federating a remote read_file is a later concern.
 func (p *httpPolicy) Spawn(id, task, driver string, _ process.ContentReader) process.ProcHandle {
-	body, _ := codec.Marshal(map[string]string{"id": id, "task": task, "driver": driver}, codec.JSON)
-	if resp, err := p.cl.Post(p.base+"/processes", "application/json", bytes.NewReader(body)); err != nil {
+	body, _ := codec.Marshal(map[string]string{"id": id, "task": task, "driver": driver}, codec.Tony)
+	if resp, err := p.cl.Post(p.base+"/processes", codec.MediaType(codec.Tony), bytes.NewReader(body)); err != nil {
 		return failedHandle{err.Error()}
 	} else {
 		resp.Body.Close()
@@ -136,7 +136,7 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 	// frame fail to parse the moment the remote's default changed, and because an
 	// unparseable frame is skipped rather than reported, the symptom was a stream that
 	// simply never delivered anything.
-	frameFmt := codec.JSON
+	frameFmt := codec.Tony
 	if f, err := codec.Parse(resp.Header.Get(codec.HeaderFormat)); err == nil &&
 		resp.Header.Get(codec.HeaderFormat) != "" {
 		frameFmt = f
@@ -173,9 +173,9 @@ func (h *remoteHandle) Steer(instr, by string) {
 }
 
 func (h *remoteHandle) SetVector(v *process.Vector, by string) {
-	b, _ := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.JSON)
+	b, _ := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.Tony)
 	req, _ := http.NewRequest(http.MethodPut, h.url("/vector"), bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
 	if resp, err := h.cl.Do(req); err == nil {
 		resp.Body.Close()
 	}
@@ -199,10 +199,10 @@ func (h *remoteHandle) url(suffix string) string { return h.base + "/processes/"
 
 // decodeResp reads a response in the format it DECLARES.
 //
-// Requests here still send labelled JSON, which a negotiating server reads happily. What
-// cannot be assumed is the REPLY: the remote renders in its own configured default, so
-// hard-coding a decoder here breaks the moment the two ends differ — which is exactly what
-// happened when the default moved.
+// Requests here send labelled tony, which is also what the remote renders. What still
+// cannot be assumed is the REPLY: hard-coding a decoder breaks the moment the two ends
+// differ — which is exactly what happened when the default moved. An unlabelled body
+// falls back to tony, which reads a JSON one too.
 func decodeResp(resp *http.Response, v any) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -210,7 +210,7 @@ func decodeResp(resp *http.Response, v any) error {
 	}
 	f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type"))
 	if !ok {
-		f = codec.JSON
+		f = codec.Tony
 	}
 	return codec.Unmarshal(body, v, f)
 }
@@ -218,10 +218,10 @@ func decodeResp(resp *http.Response, v any) error {
 func (h *remoteHandle) post(path string, body any) {
 	var r io.Reader
 	if body != nil {
-		b, _ := codec.Marshal(body, codec.JSON)
+		b, _ := codec.Marshal(body, codec.Tony)
 		r = bytes.NewReader(b)
 	}
-	if resp, err := h.cl.Post(h.url(path), "application/json", r); err == nil {
+	if resp, err := h.cl.Post(h.url(path), codec.MediaType(codec.Tony), r); err == nil {
 		resp.Body.Close()
 	}
 }

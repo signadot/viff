@@ -903,8 +903,9 @@ func matchText(m map[string]any) string {
 
 // providerMatches reports whether a provider's attributes satisfy an eligibility pattern,
 // evaluated as a tony (RFC-7396 merge) match — the attributes are converted to a tony
-// node and matched against the pattern. Full tag-ops (!and/!or/!glob/…) arrive when the
-// pattern is sourced as tony text; for now a JSON pattern is a structural merge match.
+// node and matched against the pattern. Tag-ops (!and/!or/!glob/…) work whatever dialect
+// the pattern was authored in, since JSON input is parsed by the tony parser too; an
+// untagged pattern stays a structural merge match.
 func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
 	node, err := gomap.ToTonyIR(map[string]any(attrs))
 	if err != nil {

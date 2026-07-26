@@ -47,7 +47,7 @@ func TestTonyRoundTrip(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		for _, f := range []codec.Format{codec.Tony, codec.JSON, codec.YAML} {
+		for _, f := range []codec.Format{codec.Tony, codec.YAML} {
 			t.Run(c.name+"/"+f.String(), func(t *testing.T) {
 				b, err := codec.Marshal(c.v, f)
 				if err != nil {

@@ -17,7 +17,7 @@ func TestEncodeNodeColorRendersTheSameDocument(t *testing.T) {
 		{Key: ir.FromString("ref"), Val: ir.FromString("demo:pr:1")},
 		{Key: ir.FromString("n"), Val: ir.FromInt(2)},
 	})
-	for _, f := range []Format{Tony, JSON, YAML} {
+	for _, f := range []Format{Tony, YAML} {
 		plain, err := NodeBytes(doc, f)
 		if err != nil {
 			t.Fatalf("%v plain: %v", f, err)
@@ -33,16 +33,14 @@ func TestEncodeNodeColorRendersTheSameDocument(t *testing.T) {
 	}
 }
 
-// A tagged document still renders as JSON through the colored path — Detag has to run
-// there too, or `-o json --color always` would fail where `-o json` succeeds.
-func TestEncodeNodeColorDetagsForJSON(t *testing.T) {
+// The colored path refuses JSON exactly as the plain one does. It is a separate entry
+// point with its own encode call, so it needs its own gate — `-o json --color always`
+// must not succeed where `-o json` fails.
+func TestEncodeNodeColorRefusesJSON(t *testing.T) {
 	doc := ir.FromInt(2).WithTag("!quorum")
 	var buf bytes.Buffer
-	if err := EncodeNodeColor(&buf, doc, JSON); err != nil {
-		t.Fatalf("a tagged document failed to render as colored JSON: %v", err)
-	}
-	if !strings.Contains(stripANSI(buf.String()), `"quorum"`) {
-		t.Errorf("the tag was not rewritten: %q", buf.String())
+	if err := EncodeNodeColor(&buf, doc, JSON); err == nil {
+		t.Errorf("colored JSON rendered %q — the color path has its own gate to close", buf.String())
 	}
 }
 

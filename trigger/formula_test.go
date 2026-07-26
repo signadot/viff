@@ -40,19 +40,20 @@ func TestFormulaCompactUnmarshal(t *testing.T) {
 	}
 }
 
-// A formula marshals back to the compact form and re-parses to the same AST.
+// A formula marshals back to the compact form and re-parses to the same AST — authored in
+// the JSON key form, rendered as tags.
 func TestFormulaCompactRoundTrip(t *testing.T) {
 	const in = `{"until":[{"quorum":2},{"quorum":{"choice":"reject","n":2}}]}`
 	var f Formula
 	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err != nil {
 		t.Fatal(err)
 	}
-	out, err := codec.Marshal(&f, codec.JSON)
+	out, err := codec.Marshal(&f, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var g Formula
-	if err := codec.Unmarshal(out, &g, codec.JSON); err != nil {
+	if err := codec.Unmarshal(out, &g, codec.Tony); err != nil {
 		t.Fatalf("re-parse of %s: %v", out, err)
 	}
 	if g.Op != OpUntil || len(g.Args) != 2 || g.Args[0].Req.N != 2 || g.Args[1].Req.Choice != "reject" {
