@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/codec"
 )
 
 // ── HTTP helpers (all client commands connect to g.Addr) ─────────────────────
@@ -326,11 +328,14 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("%w: entity put wants a ref and a payload (JSON for now; tony-format TODO)", cli.ErrUsage)
+		return fmt.Errorf("%w: entity put wants a ref and a payload", cli.ErrUsage)
 	}
+	// A payload typed on the command line names no format of its own, so it is read as
+	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
+	// keeps working whichever the default is.
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(args[1]), &payload); err != nil {
-		return fmt.Errorf("entity put: payload must be JSON: %w", err)
+	if err := codec.Unmarshal([]byte(args[1]), &payload, inFmt()); err != nil {
+		return fmt.Errorf("entity put: payload: %w", err)
 	}
 	resp, err := httpPost("/entity", map[string]any{"ref": args[0], "payload": payload})
 	if err != nil {

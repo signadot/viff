@@ -122,6 +122,40 @@ done
 [ -n "$advanced" ] || die "trigger did not advance demo:pr:2 open → reviewed"
 ok "demo:pr:2 auto-advanced open → reviewed"
 
+# ── the same charter, written in tony: the FILE SUFFIX picks the dialect ─────
+# The JSON case above pipes on stdin (no name, so the configured default applies); this one
+# is a named .tony file, which must be read as tony whatever the default is. It also uses a
+# block list rather than [ ... ], which the old "starts with [" sniff could not have seen.
+step "trigger add reads a .tony charter (suffix dispatch)"
+cat >"$tmp/charter.tony" <<'TONY'
+- name: smoke-advance-tony
+  condition:
+    when:
+      system: demo
+      kind: pr
+      fields:
+        stage: queued
+  gates: []
+  action:
+    set:
+      stage: reviewed
+TONY
+v trigger add -f "$tmp/charter.tony" >/dev/null || die "tony charter add failed"
+has "$(v trigger list)" 'smoke-advance-tony' || die "the tony charter did not install"
+ok "installed a .tony charter (block list, suffix-dispatched)"
+
+v entity put demo:pr:3 '{"stage":"queued"}' >/dev/null || die "entity put failed"
+advanced=
+for _ in $(seq 1 100); do
+	if has "$(v entity get demo:pr:3 2>/dev/null || true)" '"stage": "reviewed"'; then
+		advanced=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$advanced" ] || die "the tony-authored trigger did not fire"
+ok "a tony-authored trigger fires identically to its JSON twin"
+
 # ── process runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
 # live process to exercise the control surfaces against (and observe the slide on).

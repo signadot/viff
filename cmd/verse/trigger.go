@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/scott-cotton/cli"
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
 )
 
 func triggerCmd() *cli.Command {
@@ -92,7 +94,7 @@ func triggerAddCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add trigger(s) from JSON: add -f <file> (- = stdin) | [file] | stdin; one Def or an array").
+		WithSynopsis("add trigger(s): add -f <file> (- = stdin) | [file] | stdin; one trigger, a list, or `---`-separated documents. Format follows the file suffix (.tony/.json/.yaml)").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -108,27 +110,47 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 	if src == "" && len(args) >= 1 {
 		src = args[0]
 	}
-	var data []byte
-	if src == "" || src == "-" {
-		if data, err = io.ReadAll(cc.In); err != nil {
-			return fmt.Errorf("trigger add: reading stdin: %w", err)
-		}
-	} else if data, err = os.ReadFile(src); err != nil {
+	// The file's suffix names its dialect; stdin and an extensionless file use --ifmt or
+	// the configured default.
+	data, srcFmt, err := codec.ReadSource(cc.In, src, inFmt())
+	if err != nil {
 		return fmt.Errorf("trigger add: %w", err)
 	}
 
-	// Accept a single Def object or an array of them (a charter file).
-	var raws []json.RawMessage
-	if strings.HasPrefix(strings.TrimSpace(string(data)), "[") {
-		if err := json.Unmarshal(data, &raws); err != nil {
-			return fmt.Errorf("trigger add: %w", err)
+	// A charter file may hold one trigger, a list of them, or several documents separated
+	// by `---`. Shape comes from the parsed document, not from a leading character: tony
+	// writes a list either as `[a, b]` or as a block `- a`, so the old "starts with [" test
+	// would read a perfectly good block list as a single trigger.
+	docs, err := codec.ParseNodes(data, srcFmt)
+	if err != nil {
+		return fmt.Errorf("trigger add: %w", err)
+	}
+	var defs []*ir.Node
+	for _, doc := range docs {
+		doc = codec.Unwrap(doc)
+		if doc == nil || doc.Type == ir.NullType {
+			continue // a trailing `---`, or an empty document
 		}
-	} else {
-		raws = []json.RawMessage{json.RawMessage(data)}
+		if doc.Type == ir.ArrayType {
+			for _, elem := range doc.Values {
+				defs = append(defs, elem)
+			}
+			continue
+		}
+		defs = append(defs, doc)
+	}
+	if len(defs) == 0 {
+		return fmt.Errorf("trigger add: no trigger found in the input")
 	}
 
-	for _, raw := range raws {
-		resp, err := httpPost("/triggers", raw)
+	for _, def := range defs {
+		// The server still speaks JSON; Stage 5 negotiates. Rendering each definition
+		// back out here is what lets a tony charter be installed against it today.
+		body, err := codec.NodeBytes(def, codec.JSON)
+		if err != nil {
+			return fmt.Errorf("trigger add: %w", err)
+		}
+		resp, err := httpPost("/triggers", json.RawMessage(body))
 		if err != nil {
 			return fmt.Errorf("trigger add: %w", err)
 		}
@@ -139,6 +161,6 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 		}
 		resp.Body.Close()
 	}
-	fmt.Fprintf(cc.Out, "installed %d trigger(s)\n", len(raws))
+	fmt.Fprintf(cc.Out, "installed %d trigger(s)\n", len(defs))
 	return nil
 }

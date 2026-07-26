@@ -10,6 +10,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 )
 
@@ -20,11 +21,39 @@ const defaultAddr = "localhost:9797"
 // (parseable before or after positionals).
 type globals struct {
 	Addr  string `cli:"name=addr desc='verse server address'"`
-	O     string `cli:"name=o desc='output format (tony-format formats; TODO — currently JSON)'"`
+	O     string `cli:"name=o desc='output format: tony | json | yaml'"`
+	IFmt  string `cli:"name=ifmt desc='input format for stdin and extensionless files (a file suffix wins)'"`
 	Scope string `cli:"name=scope desc='operate in a copy-on-write scope (real isolation on --store docd; passthrough in-memory)'"`
 }
 
-var g = &globals{Addr: defaultAddr, O: "text"}
+var g = &globals{Addr: defaultAddr}
+
+// outFmt and inFmt resolve the formats for THIS invocation.
+//
+// They are functions, not a codec.SetDefault at startup, and that is load-bearing: config
+// is loaded while the command tree is being built, but the cli library parses flags inside
+// Run — so a package global written before the tree exists is stale by the time -o is
+// known. Reading the flag at use time is the only way it can win.
+//
+// A malformed name falls back rather than aborting the command; the flag is a display
+// preference, not a correctness input, and codec.Parse has already rejected it for anyone
+// who cares. (config.Load reports a malformed VERSE_FORMAT at startup, which is where a
+// typo actually gets seen.)
+func outFmt() codec.Format {
+	if f, err := codec.Parse(g.O); err == nil && g.O != "" {
+		return f
+	}
+	return appCfg.Format.ResolveOutput()
+}
+
+// inFmt is the format for input that does not name its own — stdin, an extensionless file,
+// a payload typed on the command line. A file suffix always wins over it; see codec.ForPath.
+func inFmt() codec.Format {
+	if f, err := codec.Parse(g.IFmt); err == nil && g.IFmt != "" {
+		return f
+	}
+	return appCfg.Format.ResolveDefault()
+}
 
 // appCfg is the layered file+env configuration (see package config), loaded in
 // rootCmd. CLI flags override it via the flag defaults set below. (Named appCfg, not

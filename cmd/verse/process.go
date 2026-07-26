@@ -14,6 +14,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -562,11 +563,9 @@ func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
 	var vec process.Vector
 	switch {
 	case cfg.File != "":
-		b, err := os.ReadFile(cfg.File)
-		if err != nil {
-			return fmt.Errorf("process vector: read %s: %w", cfg.File, err)
-		}
-		if err := json.Unmarshal(b, &vec); err != nil {
+		// The file's suffix names its dialect; an extensionless file uses --ifmt or the
+		// configured default.
+		if err := codec.ReadFile(cfg.File, &vec); err != nil {
 			return fmt.Errorf("process vector: %s is not a valid vector: %w", cfg.File, err)
 		}
 	case len(args) >= 2:

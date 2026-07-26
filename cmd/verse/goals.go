@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/codec"
 )
 
 func goalsCmd() *cli.Command {
@@ -67,15 +68,22 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 	// triggers — install those via `verse trigger add` or the file form).
 	var body any
 	if cfg.File != "" {
-		var data []byte
-		if cfg.File == "-" {
-			if data, err = io.ReadAll(cc.In); err != nil {
-				return fmt.Errorf("goals add: reading stdin: %w", err)
-			}
-		} else if data, err = os.ReadFile(cfg.File); err != nil {
+		// The file's suffix names its dialect; stdin uses --ifmt or the configured default.
+		data, srcFmt, err := codec.ReadSource(cc.In, cfg.File, inFmt())
+		if err != nil {
 			return fmt.Errorf("goals add: %w", err)
 		}
-		body = json.RawMessage(data)
+		// The server still speaks JSON; Stage 5 negotiates. Re-rendering here is what lets
+		// a tony goal file be installed against it today.
+		node, err := codec.ParseNode(data, srcFmt)
+		if err != nil {
+			return fmt.Errorf("goals add: %w", err)
+		}
+		raw, err := codec.NodeBytes(node, codec.JSON)
+		if err != nil {
+			return fmt.Errorf("goals add: %w", err)
+		}
+		body = json.RawMessage(raw)
 	} else {
 		name, err := oneArg(cfg.Command, cc, args, "goals add wants a name (or -f <file>)")
 		if err != nil {
@@ -84,7 +92,19 @@ func (cfg *goalsAddConfig) run(cc *cli.Context, args []string) error {
 		if cfg.DoneWhen == "" {
 			return fmt.Errorf("%w: goals add wants --done-when <formula> (or a -f <file>)", cli.ErrUsage)
 		}
-		m := map[string]any{"name": name, "doneWhen": json.RawMessage(cfg.DoneWhen)}
+		// --done-when is a formula typed on the command line, so it names no format of
+		// its own: it is read as --ifmt / the configured default. Once that default is
+		// tony this is where `--done-when '!until [ !quorum 2, !deadline 4h ]'` starts
+		// working; today it is the JSON spelling of the same formula.
+		doneWhen, err := codec.ParseNode([]byte(cfg.DoneWhen), inFmt())
+		if err != nil {
+			return fmt.Errorf("goals add: --done-when: %w", err)
+		}
+		doneWhenJSON, err := codec.NodeBytes(doneWhen, codec.JSON)
+		if err != nil {
+			return fmt.Errorf("goals add: --done-when: %w", err)
+		}
+		m := map[string]any{"name": name, "doneWhen": json.RawMessage(doneWhenJSON)}
 		if cfg.Subject != "" {
 			m["subject"] = cfg.Subject
 		}
