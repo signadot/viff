@@ -383,7 +383,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /processes", s.listProcesses, "", "verse-instance")
 	rt.handle("POST /processes", s.spawnProcess, "verse-spawn", "verse-spawned")
 	rt.handle("GET /processes/{id}", s.getProcess, "", "verse-instance")
-	rt.handle("GET /processes/{id}/inbox", s.processInbox, "", "")
+	rt.handle("GET /processes/{id}/inbox", s.processInbox, "", "verse-inbox-item")
 	rt.handle("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.processEvents(w, r, ph)
 	}, "", "verse-frame")
@@ -941,19 +941,23 @@ func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 // inboxReader is a policy (a broker) that can surface a process's queued worker control for
 // operator observability, unfenced. localPolicy doesn't implement it (no dial-in worker).
 type inboxReader interface {
-	ProcessInbox(id string) ([]map[string]any, bool)
+	ProcessInbox(id string) ([]api.InboxItem, bool)
 }
 
 // processInbox is an operator peek at the control queued for a brokered process's worker —
 // unfenced, so it doesn't disturb a live worker. A local process has no worker inbox → empty.
 func (s *Server) processInbox(w http.ResponseWriter, r *http.Request) {
-	items := []map[string]any{}
+	items := []api.InboxItem{}
 	if ir, ok := s.policy.(inboxReader); ok {
 		if got, ok := ir.ProcessInbox(r.PathValue("id")); ok {
 			items = got
 		}
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"items": items})
+	// The bare list, not {items: [...]}. Every other collection this server serves is a
+	// bare array — triggers, gates, goals, flows, processes, flow trees — and the wrapper
+	// here was a JSON habit rather than a decision. Nothing decoded it structurally:
+	// `verse process inbox` re-renders the document.
+	writeOut(w, r, http.StatusOK, items)
 }
 
 // processEvents bridges `attach` across backends: a locally-hosted process streams from the

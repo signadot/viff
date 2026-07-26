@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
@@ -101,7 +102,7 @@ type procState struct {
 	claimBy  string
 	epoch    int64                      // claim generation; the fencing token (0 = unclaimed)
 	log      []process.Frame            // merged event log (worker reports + control-effects)
-	inbox    []inboxItem                // control directed at the worker
+	inbox    []api.InboxItem            // control directed at the worker
 	subs     map[int]chan process.Frame // verse-side ProcHandle subscribers
 	nextSub  int
 	logCur   int64
@@ -110,20 +111,6 @@ type procState struct {
 	result   string
 	status   process.Status // latched terminal status
 	terminal bool
-}
-
-// inboxItem is one control instruction directed at the worker, cursored so a reconnecting
-// worker resumes with ?since=<cursor>.
-type inboxItem struct {
-	Cursor   int64           `tony:"field=cursor"`
-	Kind     string          `tony:"field=kind"` // spec | say | cancel | pause | resume | vector | resolve
-	Task     string          `tony:"field=task,omitzero"`
-	Driver   string          `tony:"field=driver,omitzero"`
-	Text     string          `tony:"field=text,omitzero"`
-	By       string          `tony:"field=by,omitzero"`
-	Decision string          `tony:"field=decision,omitzero"` // resolve: the decision id being answered
-	Proceed  bool            `tony:"field=proceed,omitzero"`  // resolve: approve (true) or deny (false)
-	Vector   *process.Vector `tony:"field=vector,omitzero"`   // vector: the new gate vector to slide to
 }
 
 // emit appends an event to the merged log (stamping the next cursor) and broadcasts it to
@@ -153,7 +140,7 @@ func (ps *procState) emit(e process.Frame) {
 	}
 }
 
-func (ps *procState) enqueue(it inboxItem) {
+func (ps *procState) enqueue(it api.InboxItem) {
 	ps.mu.Lock()
 	ps.inboxCur++
 	it.Cursor = ps.inboxCur
@@ -260,25 +247,17 @@ func (b *Broker) ProcessSnapshot(id string) (process.Instance, bool) {
 // ProcessInbox returns the control items queued for a process's worker, WITHOUT the epoch
 // fence — an operator observability peek ("what control is waiting for this worker?"), not
 // the worker's own consuming pull. It does not disturb a live worker's cursor.
-func (b *Broker) ProcessInbox(id string) ([]map[string]any, bool) {
+func (b *Broker) ProcessInbox(id string) ([]api.InboxItem, bool) {
 	ps := b.get(id)
 	if ps == nil {
 		return nil, false
 	}
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	out := make([]map[string]any, 0, len(ps.inbox))
-	for _, it := range ps.inbox {
-		m := map[string]any{"cursor": it.Cursor, "kind": it.Kind, "text": it.Text, "by": it.By}
-		if it.Kind == "resolve" {
-			m["decision"], m["proceed"] = it.Decision, it.Proceed
-		}
-		if it.Kind == "vector" {
-			m["vector"] = it.Vector
-		}
-		out = append(out, m)
-	}
-	return out, true
+	// Returned as the items they are. This used to rebuild each one as a map, field by
+	// field and kind by kind — a third spelling of a type the broker itself declares, which
+	// quietly decided which fields an operator could see.
+	return append(make([]api.InboxItem, 0, len(ps.inbox)), ps.inbox...), true
 }
 
 // handle is the verse-side ProcHandle: the read plane replays+streams the merged log; the
@@ -318,7 +297,7 @@ func (h *handle) Subscribe() (<-chan process.Frame, func()) {
 	}
 }
 
-func (h *handle) enqueue(it inboxItem) {
+func (h *handle) enqueue(it api.InboxItem) {
 	if ps := h.b.get(h.id); ps != nil {
 		ps.enqueue(it)
 	}
@@ -329,8 +308,8 @@ func (h *handle) enqueue(it inboxItem) {
 // processd) have no separate worker-facing address.
 func (h *handle) DialURL() string { return h.b.dialURL() }
 
-func (h *handle) Pause()  { h.enqueue(inboxItem{Kind: "pause"}) }
-func (h *handle) Resume() { h.enqueue(inboxItem{Kind: "resume"}) }
+func (h *handle) Pause()  { h.enqueue(api.InboxItem{Kind: "pause"}) }
+func (h *handle) Resume() { h.enqueue(api.InboxItem{Kind: "resume"}) }
 
 // Cancel is verse-authoritative (Fork-1(b)): verse latches the process terminal
 // immediately — a dial-in worker may be unresponsive, which is often why we cancel — and
@@ -341,14 +320,14 @@ func (h *handle) Cancel(reason string) {
 	if ps == nil {
 		return
 	}
-	ps.enqueue(inboxItem{Kind: "cancel", Text: reason}) // relay to a live worker
+	ps.enqueue(api.InboxItem{Kind: "cancel", Text: reason}) // relay to a live worker
 	if ps.latchTerminal(process.Cancelled, "") {
 		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Cancelled)})
 	}
 }
 func (h *handle) Steer(instr, by string) {
-	h.enqueue(inboxItem{Kind: "say", Text: instr, By: by}) // relay to the worker
-	if ps := h.b.get(h.id); ps != nil {                    // operator-authored: verse observes it too
+	h.enqueue(api.InboxItem{Kind: "say", Text: instr, By: by}) // relay to the worker
+	if ps := h.b.get(h.id); ps != nil {                        // operator-authored: verse observes it too
 		ps.emit(process.Frame{Kind: process.EvSay, Text: instr, By: by})
 	}
 }
@@ -358,7 +337,7 @@ func (h *handle) Steer(instr, by string) {
 // records an EvVector on the read plane immediately (the new default mode) rather than waiting
 // on the worker to echo it back.
 func (h *handle) SetVector(v *process.Vector, by string) {
-	h.enqueue(inboxItem{Kind: "vector", Vector: v, By: by})
+	h.enqueue(api.InboxItem{Kind: "vector", Vector: v, By: by})
 	if ps := h.b.get(h.id); ps != nil {
 		ps.emit(process.Frame{Kind: process.EvVector, Mode: v.Default.String(), By: by})
 	}
@@ -383,7 +362,7 @@ func (h *handle) Resolve(decision string, proceed bool, say string) bool {
 	if !open {
 		return false
 	}
-	ps.enqueue(inboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say})
+	ps.enqueue(api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say})
 	ps.emit(process.Frame{Kind: process.EvDecision, ID: decision, Proceed: proceed})
 	return true
 }
@@ -472,7 +451,7 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	}
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	ps.mu.Lock()
-	out := make([]inboxItem, 0)
+	out := make([]api.InboxItem, 0)
 	for _, it := range ps.inbox {
 		if it.Cursor > since {
 			out = append(out, it)

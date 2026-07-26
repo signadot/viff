@@ -1,7 +1,6 @@
 package broker_test
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
@@ -279,13 +279,13 @@ func TestGateLoop(t *testing.T) {
 	if !ok {
 		t.Fatal("no inbox")
 	}
-	var got map[string]any
-	for _, it := range inbox {
-		if it["kind"] == "resolve" && it["decision"] == "deploy-1" {
-			got = it
+	var got *api.InboxItem
+	for i, it := range inbox {
+		if it.Kind == "resolve" && it.Decision == "deploy-1" {
+			got = &inbox[i]
 		}
 	}
-	if got == nil || got["proceed"] != true {
+	if got == nil || !got.Proceed {
 		t.Fatalf("worker inbox missing the approved resolve: %+v", inbox)
 	}
 	if snap, _ := b.ProcessSnapshot("p"); len(snap.Pending) != 0 {
@@ -307,24 +307,21 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 	if !ok {
 		t.Fatal("no inbox")
 	}
-	var got map[string]any
-	for _, it := range inbox {
-		if it["kind"] == "vector" {
-			got = it
+	var got *api.InboxItem
+	for i, it := range inbox {
+		if it.Kind == "vector" {
+			got = &inbox[i]
 		}
 	}
 	if got == nil {
 		t.Fatalf("worker inbox missing the vector item: %+v", inbox)
 	}
-	// The vector rode the item (not dropped). ProcessInbox marshals via the struct, so the
-	// nested vector reads as its JSON shape: {"default":"ask"}.
-	vec, _ := got["vector"].(*process.Vector)
-	if vec == nil || vec.Default != process.Ask {
-		// tolerate map-shaped decode if a caller round-trips through JSON
-		raw, _ := json.Marshal(got["vector"])
-		if !strings.Contains(string(raw), `"default":"ask"`) {
-			t.Fatalf("vector item did not carry default=ask: vec=%+v raw=%s", vec, raw)
-		}
+	// The vector rode the item, and it is just the vector. This used to type-assert out of a
+	// map[string]any and fall back to marshalling JSON and matching a substring, because
+	// ProcessInbox rebuilt each item as a map and the nested vector's Go type depended on
+	// who had decoded it. A typed item needs neither.
+	if got.Vector == nil || got.Vector.Default != process.Ask {
+		t.Fatalf("vector item did not carry default=ask: %+v", got.Vector)
 	}
 }
 

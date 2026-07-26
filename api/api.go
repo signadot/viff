@@ -179,3 +179,30 @@ type Steered struct {
 	// that names no running work is not an error, it is a flow that has finished.
 	Affected int `tony:"field=affected"`
 }
+
+// InboxItem is one control instruction queued for a process's worker — the broker's
+// dial-in leg. It is cursored so a reconnecting worker resumes with ?since=<cursor>.
+//
+// It lives here because it was spelled THREE times: the broker's own queue element, a
+// map[string]any re-spelling of that element in ProcessInbox, and a partial copy in the CLI
+// carrying the four fields an executor acts on. Three spellings of one message, none of
+// which a compiler could compare — the same defect this package was created to remove for
+// request bodies, surviving on the response side because nobody looked.
+//
+// The subset the CLI used to declare is not lost by naming the whole thing: a field an
+// executor does not read simply arrives and is ignored.
+//
+//tony:schemagen=verse-inbox-item,notag
+type InboxItem struct {
+	Cursor int64  `tony:"field=cursor"`
+	Kind   string `tony:"field=kind"` // spec | say | cancel | pause | resume | vector | resolve
+	Task   string `tony:"field=task,omitzero"`
+	Driver string `tony:"field=driver,omitzero"`
+	Text   string `tony:"field=text,omitzero"`
+	By     string `tony:"field=by,omitzero"`
+	// Decision and Proceed answer a gate the worker raised: which one, and yes or no.
+	Decision string `tony:"field=decision,omitzero"`
+	Proceed  bool   `tony:"field=proceed,omitzero"`
+	// Vector slides the worker's autonomy dial mid-run.
+	Vector *process.Vector `tony:"field=vector,omitzero"`
+}

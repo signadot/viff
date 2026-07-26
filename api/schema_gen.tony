@@ -19,6 +19,22 @@ signature:
 ---
 context:
 - tony-format/context
+- process: github.com/signadot/verse/process
+define:
+  by: .[string]
+  cursor: .[int]
+  decision: .[string]
+  driver: .[string]
+  kind: .[string]
+  proceed: .[bool]
+  task: .[string]
+  text: .[string]
+  vector: .[nullable(process:verse-vector)]
+signature:
+  name: verse-inbox-item
+---
+context:
+- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   payload: .[tony-base:ir]

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
 )
@@ -241,22 +242,18 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 		t.Fatalf("inbox: %v", err)
 	}
 	defer ir.Body.Close()
-	var box struct {
-		Items []struct {
-			Kind string `tony:"field=kind"`
-			Text string `tony:"field=text"`
-			By   string `tony:"field=by"`
-		} `tony:"field=items"`
-	}
-	decodeResp(t, ir, &box)
+	// A bare list, not {items: [...]}: the operator inbox answers like every other
+	// collection this server serves.
+	var items []api.InboxItem
+	decodeResp(t, ir, &items)
 	var sawSay bool
-	for _, it := range box.Items {
+	for _, it := range items {
 		if it.Kind == "say" && it.Text == "focus on auth" && it.By == "op" {
 			sawSay = true
 		}
 	}
 	if !sawSay {
-		t.Fatalf("inbox missing the routed say: %+v", box.Items)
+		t.Fatalf("inbox missing the routed say: %+v", items)
 	}
 
 	// cancel routes to the broker too: the process latches terminal (verse-authoritative).
