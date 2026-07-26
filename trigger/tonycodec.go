@@ -57,15 +57,11 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		}
 	}
 	for _, k := range []string{mKeyFields, mKeyEntity} {
-		f, ok := asFields(m[k])
-		if !ok {
-			continue
+		// The predicate goes back out as the node it is, operators and all — the same
+		// faithful-rendering rule the id/op dimensions follow above.
+		if node, ok := fieldsNode(m[k]); ok {
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: node})
 		}
-		node, err := gomap.ToTonyIR(f)
-		if err != nil {
-			return nil, fmt.Errorf("match %q: %w", k, err)
-		}
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: node})
 	}
 	if len(kvs) == 0 {
 		return ir.FromKeyVals(nil), nil // {} — the empty match, which matches everything
@@ -78,10 +74,10 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 // string can carry those), when the match is empty, or when a segment contains a ":" that
 // would make the result ambiguous to ParseExpr.
 func (m Match) address() (string, bool) {
-	if _, ok := asFields(m[mKeyFields]); ok {
+	if _, ok := fieldsNode(m[mKeyFields]); ok {
 		return "", false
 	}
-	if _, ok := asFields(m[mKeyEntity]); ok {
+	if _, ok := fieldsNode(m[mKeyEntity]); ok {
 		return "", false
 	}
 	if m.hasDim(mKeyOp) {
@@ -182,14 +178,14 @@ func matchFromObject(node *ir.Node) (Match, error) {
 			out[k] = val.String
 
 		case mKeyFields, mKeyEntity:
-			if err := rejectTags(val, k); err != nil {
-				return nil, err
-			}
-			f := map[string]any{}
-			if err := gomap.FromTonyIR(val, &f); err != nil {
-				return nil, fmt.Errorf("match %q: %w", k, err)
-			}
-			out[k] = f
+			// Kept as the NODE, not decoded to a map: a payload predicate is a tony match
+			// evaluated at the payload root, so any operator it carries has to survive to
+			// tony.Match. Decoding to map[string]any would drop the tag and silently turn
+			// `{stage: !glob "review*"}` into a predicate that matches nothing.
+			//
+			// Tags used to be rejected here, with an error saying a payload predicate is
+			// equality-only. That is no longer true, which is the point of the change.
+			out[k] = val
 
 		default:
 			// Unknown: decode it so Validate can name it, rather than dropping it here
@@ -256,32 +252,6 @@ func desugar(n *ir.Node) *ir.Node {
 	return out
 }
 
-// rejectTags refuses an operator anywhere inside a payload predicate, and says what to do
-// instead.
-//
-// `fields` is an OPEN document — the user's own entity payload — so it has no closed
-// keyspace to lean on: `{"or": [...]}` there is indistinguishable from a payload whose key
-// is literally "or". More immediately, the predicate is still equality-only (entity.Pattern),
-// so a tag would be flattened into a plain value and quietly mean something else. Refusing
-// is what turns that into a sentence rather than a trigger that never fires.
-func rejectTags(n *ir.Node, key string) error {
-	if n == nil {
-		return nil
-	}
-	if n.Tag != "" && !isLayoutTag(n.Tag) {
-		return fmt.Errorf("match %q: operator %s at %s: a payload predicate is equality-only "+
-			"— operators are supported on %q and %q, and inside %q they arrive with the tony "+
-			"match leaf (docs/trigger-model-plan.md step 5)",
-			key, n.Tag, n.Path(), mKeyID, mKeyOp, key)
-	}
-	for _, v := range n.Values {
-		if err := rejectTags(unwrap(v), key); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // ── Formula ──────────────────────────────────────────────────────────────────
 
 // ToTonyIR emits the tagged form: an operator tags its operand list, a requirement tags its
@@ -321,11 +291,11 @@ func (r *Requirement) valueNode(opts ...gomap.MapOption) (*ir.Node, error) {
 	case r.Kind == ReqMatch:
 		return r.Facts.ToTonyIR(opts...)
 	}
-	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || len(r.Facts.Fields()) > 0
+	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || r.Facts.HasFields()
 	switch {
 	case r.Choice == "" && !factsSet:
 		return ir.FromInt(int64(r.N)), nil
-	case r.N == 0 && r.Choice == "" && len(r.Facts.Fields()) == 0:
+	case r.N == 0 && r.Choice == "" && !r.Facts.HasFields():
 		if r.Facts.Kind() != "" {
 			return ir.FromString(r.Facts.System() + ":" + r.Facts.Kind()), nil
 		}

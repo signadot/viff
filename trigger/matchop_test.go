@@ -213,22 +213,36 @@ func TestUpstreamIgnoresUnknownTags(t *testing.T) {
 	}
 }
 
-// An operator inside `fields` is REFUSED rather than flattened.
+// An operator inside `fields` WORKS. This test used to assert the opposite.
 //
-// This is the diagnostic that motivated the whole change: before it, `{stage: !or [open,
-// merged]}` decoded to the list ["open","merged"] and the trigger simply never fired,
-// because a payload predicate is equality-only. `fields` is an open user document, so it
-// cannot borrow the tag-keyed spelling either — a payload key may itself be named "or".
-func TestMatchFieldsRefusesOperators(t *testing.T) {
-	for _, src := range []string{
-		`{system: demo, fields: {stage: !or [open, merged]}}`,
-		`{fields: {stage: !glob "op*"}}`,
-		`{fields: {labels: {urgent: !not false}}}`, // nested, not just at the top
-		`{entity: {stage: !or [open, merged]}}`,    // the alias too
-	} {
-		got := matchErr(t, src, codec.Tony)
-		if !strings.Contains(got, "equality-only") {
-			t.Errorf("%s: got %q", src, got)
+// The old rule was that a payload predicate is equality-only, and an operator was refused
+// with a diagnostic saying so — because `{stage: !or [open, merged]}` would otherwise decode
+// to the list ["open","merged"] and the trigger would simply never fire. Refusing it was the
+// right answer while the predicate was a map of Go values. It is a tony match at the payload
+// root now, so the operator is not something to reject, it is the thing being evaluated.
+func TestMatchFieldsAcceptsOperators(t *testing.T) {
+	ev := func(p entity.Obj) entity.Event {
+		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: p.Payload()}
+	}
+	cases := []struct {
+		src   string
+		match entity.Obj
+		miss  entity.Obj
+	}{
+		{`{system: demo, fields: {stage: !or [open, merged]}}`,
+			entity.Obj{"stage": "merged"}, entity.Obj{"stage": "closed"}},
+		{`{fields: {stage: !glob "op*"}}`,
+			entity.Obj{"stage": "open"}, entity.Obj{"stage": "closed"}},
+		{`{entity: {stage: !or [open, merged]}}`, // the alias too
+			entity.Obj{"stage": "open"}, entity.Obj{"stage": "closed"}},
+	}
+	for _, c := range cases {
+		m := mustMatch(t, c.src, codec.Tony)
+		if !m.MatchEvent(ev(c.match)) {
+			t.Errorf("%s did not match %v", c.src, c.match)
+		}
+		if m.MatchEvent(ev(c.miss)) {
+			t.Errorf("%s wrongly matched %v", c.src, c.miss)
 		}
 	}
 
@@ -237,7 +251,7 @@ func TestMatchFieldsRefusesOperators(t *testing.T) {
 	// reading it as data is the only reading that cannot silently change a charter.
 	m := mustMatch(t, `{fields: {or: [open, merged]}}`, codec.Tony)
 	f := m.Fields()
-	if _, ok := f["or"]; !ok {
+	if ir.Get(f, "or") == nil {
 		t.Errorf("a payload key named \"or\" was eaten: %#v", f)
 	}
 }

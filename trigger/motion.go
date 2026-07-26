@@ -186,7 +186,7 @@ func optionFromFormula(id string, f *Formula) motionOption {
 		o.need = 1 // a fact/presence atom is a quorum of one
 	}
 	if f != nil && f.Op == OpAtom && f.Req != nil {
-		o.choice, _ = f.Req.Facts.Fields()["choice"].(string)
+		o.choice = f.Req.Facts.FieldString("choice")
 	}
 	return o
 }

@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -45,7 +46,7 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 			t.Fatalf("round-trip changed the id dimension: %s → %s (%q vs %q)",
 				in, out, m.ID(), back.ID())
 		}
-		if fmtAny(back.Fields()) != fmtAny(m.Fields()) {
+		if !sameFields(back.Fields(), m.Fields()) {
 			t.Fatalf("round-trip lost fields: %s → %s", in, out)
 		}
 	}
@@ -59,9 +60,14 @@ func wildcard(id string) string {
 	return id
 }
 
-func fmtAny(v any) string {
-	b, _ := codec.Marshal(v, codec.JSON)
-	return string(b)
+// sameFields compares two payload predicates. They are nodes, so they are compared as
+// nodes: marshalling them to text would go through codec.Marshal, which panics on a typed
+// nil *ir.Node — and "no predicate" is exactly the case a round-trip test must handle.
+func sameFields(a, b *ir.Node) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.DeepEqual(b)
 }
 
 // mm parses an address into a Match — the test spelling of the string sugar.
@@ -104,7 +110,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 			if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
-			if fmtAny(m) != fmtAny(want) {
+			if !reflect.DeepEqual(map[string]any(m), map[string]any(want)) {
 				t.Fatalf("%s parsed to %#v, want %#v", in, m, want)
 			}
 		})
@@ -237,8 +243,8 @@ func TestMatchEntityAliasesFields(t *testing.T) {
 		if !m.MatchEvent(ev) {
 			t.Fatalf("%q spelling did not match", key)
 		}
-		if got := m.Fields()["stage"]; got != "open" {
-			t.Fatalf("%q spelling: Fields() = %#v", key, m.Fields())
+		if got := m.FieldString("stage"); got != "open" {
+			t.Fatalf("%q spelling: FieldString(stage) = %q", key, got)
 		}
 	}
 }

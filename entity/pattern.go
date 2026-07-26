@@ -1,10 +1,8 @@
 package entity
 
 import (
-	"math"
-	"reflect"
-
-	"github.com/signadot/tony-format/go-tony/gomap"
+	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // Pattern is a conjunctive selector over the entity-verse: it picks by System,
@@ -21,8 +19,12 @@ type Pattern struct {
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
 	// it. Create and update are not distinguished (see Op) — express "only the
 	// first time" as a state latch, not an edge.
-	Op     Op
-	Fields map[string]any
+	Op Op
+	// Fields is the payload predicate: a tony match evaluated at the PAYLOAD ROOT, nil when
+	// unset. It is a match rather than a map of equalities, which is what lets a predicate
+	// carry operators (`{id: !glob "hotfix-*"}`) and lets a non-object payload be matched at
+	// all (`42` against `42`). tony.Match owns the semantics; this type only carries it.
+	Fields *ir.Node
 }
 
 // MatchEvent reports whether an observed change satisfies every non-empty
@@ -61,133 +63,25 @@ func (p Pattern) Select(store Store) []Ref {
 	return out
 }
 
-// matchPayload reports whether payload satisfies every Fields entry by exact
-// equality. A payload with no fields to offer — nil, or a scalar/list now that a
-// payload may be any tony value — matches only an empty Fields: a field predicate
-// asks a question that is not false about `42`, it is unanswerable, and the
-// conservative answer for a selector is "does not match".
+// matchPayload evaluates the payload predicate against the payload, as a tony match at its
+// root. No predicate matches everything, including a payload that is absent.
+//
+// Everything else is tony.Match's semantics, deliberately, since a payload is a tony value
+// and a predicate is a tony match — having a second, nearly-identical comparison here is how
+// the two drift. Notably: extra payload fields are ignored (it stays a subset match), a
+// scalar payload cannot satisfy a field-shaped predicate, and a scalar predicate CAN match a
+// scalar payload, which a map of field equalities could not express at all.
+//
+// An unevaluable predicate (a malformed operator) is a non-match rather than an error: a
+// selector that cannot answer must not select. The charter that carries it failed validation
+// at install; this is the belt to that suspenders.
 func (p Pattern) matchPayload(payload Payload) bool {
-	if len(p.Fields) == 0 {
+	if p.Fields == nil {
 		return true
 	}
-	if !IsObj(payload) {
-		return false
+	if payload == nil {
+		return false // nothing to match against — a deleted entity, or an absent one
 	}
-	for k, want := range p.Fields {
-		// An absent key reads as nil, so a `null` predicate is satisfied by an entity
-		// that simply lacks the field. That is the long-standing behaviour and it is
-		// preserved here deliberately — tony does distinguish absent from null (docd
-		// tombstones with null), so whether a field predicate should too is a real
-		// question, but it is a semantic change and does not belong in this fix.
-		if !valueEqual(fieldValue(payload, k), want) {
-			return false
-		}
-	}
-	return true
-}
-
-// fieldValue reads one field of an object payload back as a plain Go value, so the
-// comparison below keeps working on the vocabulary it was written for (int64 vs float64
-// vs int, composites via reflect.DeepEqual). An absent field, or one that cannot be
-// decoded, reads as nil — the same answer the map index gave.
-func fieldValue(p Payload, field string) any {
-	f := Get(p, field)
-	if f == nil {
-		return nil
-	}
-	var v any
-	if err := gomap.FromTonyIR(f, &v); err != nil {
-		return nil
-	}
-	return v
-}
-
-// valueEqual reports whether two payload values are equal for matching purposes.
-// It is deliberately not `==`, for two reasons.
-//
-// NUMBERS ARRIVE WITH DIFFERENT GO TYPES depending on who decoded them. tony decodes
-// an integer to int64 and a fractional number to float64; encoding/json decodes every
-// number to float64; a Go caller writing a literal gets an untyped constant that
-// defaults to int. So a charter's `fields: {n: 2}` and a payload's `2` can be int64,
-// float64 or int and still be the same number — which is the only thing a field
-// predicate means by "2". Compare numerically, across types.
-//
-// `==` ON TWO INTERFACES HOLDING MAPS OR SLICES PANICS at run time. A field predicate
-// may legitimately name a nested object or a list, so composites must never reach the
-// operator; they go to reflect.DeepEqual instead.
-func valueEqual(got, want any) bool {
-	if eq, both := numEqual(got, want); both {
-		return eq
-	}
-	return reflect.DeepEqual(got, want)
-}
-
-// numEqual compares two values as numbers. both reports whether they ARE both numbers;
-// when it is false the eq result is meaningless and the caller falls back to a
-// structural comparison. Two integers are compared as integers, not as float64 — past
-// 2^53 the float conversion is lossy, and reporting 2^53+1 equal to 2^53+2 is exactly
-// the kind of silent wrong answer this function exists to avoid.
-func numEqual(got, want any) (eq, both bool) {
-	gi, gInt := asInt64(got)
-	wi, wInt := asInt64(want)
-	if gInt && wInt {
-		return gi == wi, true
-	}
-	gf, gNum := asFloat64(got)
-	wf, wNum := asFloat64(want)
-	if gNum && wNum {
-		return gf == wf, true
-	}
-	return false, false
-}
-
-// asInt64 reports v as an integer. A uint64 above math.MaxInt64 is not representable,
-// so it is reported as a non-integer and falls through to the float comparison.
-func asInt64(v any) (int64, bool) {
-	switch n := v.(type) {
-	case int:
-		return int64(n), true
-	case int8:
-		return int64(n), true
-	case int16:
-		return int64(n), true
-	case int32:
-		return int64(n), true
-	case int64:
-		return n, true
-	case uint:
-		if uint64(n) > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(n), true
-	case uint8:
-		return int64(n), true
-	case uint16:
-		return int64(n), true
-	case uint32:
-		return int64(n), true
-	case uint64:
-		if n > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(n), true
-	}
-	return 0, false
-}
-
-// asFloat64 reports v as a floating-point number, including the integer types (so an
-// int64 and a float64 holding the same value compare equal).
-func asFloat64(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float32:
-		return float64(n), true
-	case float64:
-		return n, true
-	case uint64:
-		return float64(n), true
-	}
-	if i, ok := asInt64(v); ok {
-		return float64(i), true
-	}
-	return 0, false
+	ok, err := tony.Match(payload, p.Fields)
+	return err == nil && ok
 }

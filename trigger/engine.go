@@ -719,7 +719,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if system == "" || kind == "" {
 		return nil, false
 	}
-	choice, _ := fs.Fields()["choice"].(string)
+	choice := fs.FieldString("choice")
 	sub := map[string]any{}
 	for _, w := range witness {
 		if w.System != system || w.Kind != kind {
@@ -1107,14 +1107,14 @@ func (e *Engine) matchFlow(m Match) []flowProc {
 	}
 	e.liveMu.Unlock()
 
-	fields := m.Fields()
+	hasFields := m.HasFields()
 	out := make([]flowProc, 0, len(all))
 	for _, fp := range all {
 		ref, err := entity.ParseRef(fp.subject)
 		if err != nil || !m.MatchRef(ref) {
 			continue
 		}
-		if len(fields) > 0 {
+		if hasFields {
 			// Unreadable is treated as non-matching: a field predicate that cannot be
 			// evaluated must not select the flow. Skipping is the conservative answer.
 			ent, ok, _ := e.store.Get(ref)

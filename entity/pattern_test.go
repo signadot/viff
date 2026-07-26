@@ -2,13 +2,18 @@ package entity
 
 import "testing"
 
-// A field predicate and the payload it is matched against are decoded by different
-// paths, and those paths disagree about the Go type of a number: encoding/json makes
-// every number a float64, tony makes an integer an int64, and a Go caller writing a
-// literal gets an untyped constant that defaults to int. All three mean the same
-// number, so the match must not care which one it got.
-func TestMatchPayloadNumericTypes(t *testing.T) {
-	nums := []struct {
+// A predicate and the payload it is matched against may be written by different hands in
+// different Go types, and an INTEGER means the same number however it was spelled — the Go
+// width is an artifact of the writer, not of the value. All of these normalize to one tony
+// integer, so they must agree.
+//
+// This used to be a 6x6 cross-product including the float types, because a payload was a Go
+// value and its type depended on who decoded it (encoding/json's float64, a literal's int).
+// A payload is a tony node now, parsed by the same parser whatever dialect it arrived in, so
+// that variance is gone — and with it the reason to compare across int and float. See
+// TestMatchPayloadIntAndFloatAreDistinct for what replaced it.
+func TestMatchPayloadIntegerWidthsAgree(t *testing.T) {
+	ints := []struct {
 		name string
 		v    any
 	}{
@@ -16,13 +21,29 @@ func TestMatchPayloadNumericTypes(t *testing.T) {
 		{"int32", int32(2)},
 		{"int64", int64(2)},
 		{"uint", uint(2)},
-		{"float32", float32(2)},
-		{"float64", float64(2)},
 	}
-	for _, want := range nums {
-		for _, got := range nums {
+	floats := []struct {
+		name string
+		v    any
+	}{
+		{"float32", float32(2.5)},
+		{"float64", float64(2.5)},
+	}
+	for _, want := range ints {
+		for _, got := range ints {
 			t.Run(want.name+"/"+got.name, func(t *testing.T) {
-				p := Pattern{Fields: map[string]any{"n": want.v}}
+				p := Pattern{Fields: Obj{"n": want.v}.Payload()}
+				if !p.matchPayload(Obj{"n": got.v}.Payload()) {
+					t.Fatalf("want %v (%T) did not match payload %v (%T)",
+						want.v, want.v, got.v, got.v)
+				}
+			})
+		}
+	}
+	for _, want := range floats {
+		for _, got := range floats {
+			t.Run(want.name+"/"+got.name, func(t *testing.T) {
+				p := Pattern{Fields: Obj{"n": want.v}.Payload()}
 				if !p.matchPayload(Obj{"n": got.v}.Payload()) {
 					t.Fatalf("want %v (%T) did not match payload %v (%T)",
 						want.v, want.v, got.v, got.v)
@@ -32,8 +53,27 @@ func TestMatchPayloadNumericTypes(t *testing.T) {
 	}
 }
 
+// 2 and 2.0 are DIFFERENT VALUES, which is tony's position and now verse's. A payload
+// predicate is a tony match, so it takes tony's semantics rather than keeping a second,
+// nearly-identical numeric comparison of its own — having two was how they would drift.
+//
+// The old behaviour matched them, deliberately, because a number's Go type was an accident
+// of its decoder. It no longer is: `2` parses as an integer from tony, JSON or YAML alike,
+// so a float can only appear where someone wrote a fractional number or handed a float to
+// entity.Val. Treating those as the integer would be guessing at intent.
+func TestMatchPayloadIntAndFloatAreDistinct(t *testing.T) {
+	p := Pattern{Fields: Obj{"n": 2}.Payload()}
+	if p.matchPayload(Obj{"n": 2.0}.Payload()) {
+		t.Error("integer predicate 2 matched a float payload 2.0")
+	}
+	q := Pattern{Fields: Obj{"n": 2.0}.Payload()}
+	if q.matchPayload(Obj{"n": 2}.Payload()) {
+		t.Error("float predicate 2.0 matched an integer payload 2")
+	}
+}
+
 func TestMatchPayloadNumericInequality(t *testing.T) {
-	p := Pattern{Fields: map[string]any{"n": int64(2)}}
+	p := Pattern{Fields: Obj{"n": int64(2)}.Payload()}
 	for _, got := range []any{int(3), float64(2.5), int64(-2), "2", true, nil} {
 		if p.matchPayload(Obj{"n": got}.Payload()) {
 			t.Errorf("want 2 wrongly matched payload %v (%T)", got, got)
@@ -45,7 +85,7 @@ func TestMatchPayloadNumericInequality(t *testing.T) {
 // float64, so comparing them as floats would report a match.
 func TestMatchPayloadLargeIntPrecision(t *testing.T) {
 	const big = int64(1) << 53
-	p := Pattern{Fields: map[string]any{"n": big + 1}}
+	p := Pattern{Fields: Obj{"n": big + 1}.Payload()}
 	if p.matchPayload(Obj{"n": big + 2}.Payload()) {
 		t.Error("2^53+1 wrongly matched 2^53+2")
 	}
@@ -57,7 +97,7 @@ func TestMatchPayloadLargeIntPrecision(t *testing.T) {
 // A field predicate may name a nested object or list. `==` on two interfaces holding
 // maps panics at runtime, so composites must not reach it.
 func TestMatchPayloadComposites(t *testing.T) {
-	p := Pattern{Fields: map[string]any{"labels": map[string]any{"team": "core"}}}
+	p := Pattern{Fields: Obj{"labels": map[string]any{"team": "core"}}.Payload()}
 	if !p.matchPayload(Obj{"labels": map[string]any{"team": "core"}}.Payload()) {
 		t.Error("equal nested objects did not match")
 	}
@@ -65,7 +105,7 @@ func TestMatchPayloadComposites(t *testing.T) {
 		t.Error("differing nested objects matched")
 	}
 
-	q := Pattern{Fields: map[string]any{"tags": []any{"a", "b"}}}
+	q := Pattern{Fields: Obj{"tags": []any{"a", "b"}}.Payload()}
 	if !q.matchPayload(Obj{"tags": []any{"a", "b"}}.Payload()) {
 		t.Error("equal lists did not match")
 	}
@@ -77,7 +117,7 @@ func TestMatchPayloadComposites(t *testing.T) {
 // The pre-existing behaviour: scalars compare by value, a missing key never matches,
 // and a nil payload satisfies only an empty predicate.
 func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
-	p := Pattern{Fields: map[string]any{"stage": "open"}}
+	p := Pattern{Fields: Obj{"stage": "open"}.Payload()}
 	if !p.matchPayload(Obj{"stage": "open", "extra": 1}.Payload()) {
 		t.Error("string equality failed")
 	}
@@ -87,10 +127,20 @@ func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 	if p.matchPayload(Obj{"other": "open"}.Payload()) {
 		t.Error("absent key matched")
 	}
-	// An absent key reads as nil, so a null predicate is satisfied by its absence.
-	// Pinning the long-standing behaviour, not endorsing it — see matchPayload.
-	if !(Pattern{Fields: map[string]any{"x": nil}}).matchPayload(Obj{"y": 1}.Payload()) {
-		t.Error("a null predicate did not match an entity lacking the field")
+	// ABSENT IS NOT NULL. A `null` predicate requires the key to be PRESENT and null; an
+	// entity that simply lacks the field does not satisfy it.
+	//
+	// This reverses the long-standing behaviour, and the reversal is the point: tony
+	// distinguishes absent from null — docd tombstones with null, so the difference carries
+	// real information about whether a field was cleared or never written — and a payload
+	// predicate is now a tony match, so it inherits that distinction instead of flattening
+	// it. The old reading made `{x: null}` a way to spell "has no x", which is a different
+	// question wearing the same syntax.
+	if (Pattern{Fields: Obj{"x": nil}.Payload()}).matchPayload(Obj{"y": 1}.Payload()) {
+		t.Error("a null predicate matched an entity that merely LACKS the field")
+	}
+	if !(Pattern{Fields: Obj{"x": nil}.Payload()}).matchPayload(Obj{"x": nil}.Payload()) {
+		t.Error("a null predicate did not match a field that is present and null")
 	}
 	if p.matchPayload(nil) {
 		t.Error("nil payload matched a non-empty predicate")
