@@ -297,9 +297,10 @@ process's payload via bindings (`$result`, `$status`). `onDone` is the completio
 inlined; the two-rule `reviewed` form above remains the tool for fan-out / cross-subject /
 cross-author closes.
 
-(`onOrphaned` is currently inert: a resumed process is re-adopted without its hooks, so
-`orphaned` — written only at startup reconcile — never finds a tracked process. `done` / `failed`
-/ `cancelled` all fire within a run. See docs/completion-hooks.md.)
+(`onOrphaned` is inert: orphaning and adopting are alternatives in startup reconcile — a process
+that can be re-attached is adopted and never marked orphaned, one that cannot is orphaned and never
+tracked — so no tracked process ever reaches that status. Resume now DOES rehydrate hooks, from the
+process's chain, so `done` / `failed` / `cancelled` survive a restart. See docs/completion-hooks.md.)
 
 ## Migration
 

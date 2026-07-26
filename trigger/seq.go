@@ -290,6 +290,10 @@ func seqShapeHash(seq []Action) string {
 	return fmt.Sprintf("%08x", h.Sum32())
 }
 
+// ChainUnder is chainUnder, exported for the resume path: reconcile has to ask whether a
+// resumed process's chain lies under a claim's, and the answer is segment-wise.
+func ChainUnder(prefix, target string) bool { return chainUnder(prefix, target) }
+
 // chainUnder reports whether target lies at or below prefix, comparing SEGMENTS rather than
 // characters — so `review.seq` does not match a trigger named `review.sequel` (which cannot
 // exist today, since a trigger name may not contain a dot, but the check should not depend on

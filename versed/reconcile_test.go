@@ -48,3 +48,58 @@ func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 		t.Error("claim survived alongside the orphaned process it guarded")
 	}
 }
+
+// A claim is kept when the run it guards was RESUMED — its process re-adopted with hooks, so
+// a completion is still coming and the sequence will advance. Dropping it would let a
+// concurrent firing start a second run alongside the one still going.
+//
+// Note what "resumed" means here, because the claim inherits it exactly: controlpolicy
+// Attach returns a handle unconditionally, with no reachability check, so a remote-hosted
+// process is re-adopted whether or not the remote is still there. The process stays
+// `running` on that belief, and now its claim stays too. The optimism is pre-existing; this
+// test pins that the claim follows the process rather than diverging from it.
+func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
+	srv := New(ScriptedBuilder)
+	live := mirror.Ref("review.seq.1@demo:pr:1")
+	srv.Store.Put(live, entity.Obj{
+		"status": string(process.Running),
+		"policy": "http://elsewhere.invalid", // remote → re-attached, believed alive
+		"flow":   "demo:pr:1",
+		"chain":  "review.seq[1]",
+	}.Payload())
+	claim := mirror.ClaimRef("review@demo:pr:1")
+	srv.Store.Put(claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
+
+	srv.reconcileProcesses()
+
+	if _, ok, _ := srv.Store.Get(claim); !ok {
+		t.Error("claim dropped though its sequence's process was re-adopted and will complete")
+	}
+	e, _, _ := srv.Store.Get(live)
+	if got := entity.Str(e.Payload, "status"); got != string(process.Running) {
+		t.Errorf("re-adopted process status = %q; want it left running", got)
+	}
+}
+
+// claimIsLive is the decision itself, tested directly: same subject and a chain at or below
+// the claim's own means the sequence is still running.
+func TestClaimIsLive(t *testing.T) {
+	claim := entity.Entity{Payload: entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload()}
+	cases := []struct {
+		name string
+		res  []resumedRun
+		want bool
+	}{
+		{"an element of this sequence", []resumedRun{{"demo:pr:1", "review.seq[1]"}}, true},
+		{"the carrier itself", []resumedRun{{"demo:pr:1", "review"}}, true},
+		{"another subject", []resumedRun{{"demo:pr:2", "review.seq[1]"}}, false},
+		{"another trigger", []resumedRun{{"demo:pr:1", "audit.seq[0]"}}, false},
+		{"a hook outside the sequence", []resumedRun{{"demo:pr:1", "other.onDone"}}, false},
+		{"nothing resumed", nil, false},
+	}
+	for _, c := range cases {
+		if got := claimIsLive(claim, c.res); got != c.want {
+			t.Errorf("%s: claimIsLive = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
