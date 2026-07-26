@@ -412,6 +412,12 @@ func (cfg *procAttachConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	// `gate list` prints gate ids, so reaching for one here is the natural mistake — and
+	// the id it wants is right there in the same record, under `process`. Say so, rather
+	// than making a 404 stand in for the explanation.
+	if pid, _, ok := strings.Cut(id, "#"); ok {
+		return fmt.Errorf("process attach takes a process id, but %q is a gate id — did you mean %q?", id, pid)
+	}
 	return streamEvents(cc, id)
 }
 
@@ -425,6 +431,22 @@ func streamEvents(cc *cli.Context, id string) error {
 		return fmt.Errorf("process attach: %w", err)
 	}
 	defer resp.Body.Close()
+	// Every non-streaming route checks its status (printBody does it centrally); this one
+	// did not, and a stream is exactly where the omission hides. The reader below keeps
+	// only "data: " lines, so a 404 — or any body that is not an event stream — scans to
+	// zero output and returns nil: a process that does not exist looks identical to one
+	// with nothing to say, and attach exits 0 having told you nothing.
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return fmt.Errorf("process attach %s: %s", id, msg)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		return fmt.Errorf("process attach %s: not an event stream (Content-Type %q)", id, ct)
+	}
 	out, err := outFmt()
 	if err != nil {
 		return err

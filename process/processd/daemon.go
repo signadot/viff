@@ -152,9 +152,9 @@ func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentRea
 
 func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Id     string `json:"id" tony:"field=id"`
-		Task   string `json:"task" tony:"field=task"`
-		Driver string `json:"driver" tony:"field=driver"`
+		Id     string `tony:"field=id"`
+		Task   string `tony:"field=task"`
+		Driver string `tony:"field=driver"`
 	}
 	_ = codec.Read(r, &body)
 	id := body.Id // a controlPolicy client (the engine) passes its own id so it matches
@@ -276,10 +276,10 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		DecisionID string   `json:"decisionId" tony:"field=decisionId"`
-		Proceed    bool     `json:"proceed" tony:"field=proceed"`
-		ChildMode  string   `json:"childMode" tony:"field=childMode"`
-		Say        []string `json:"say" tony:"field=say"` // words to say on resolution (a gate that informs)
+		DecisionID string   `tony:"field=decisionId"`
+		Proceed    bool     `tony:"field=proceed"`
+		ChildMode  string   `tony:"field=childMode"`
+		Say        []string `tony:"field=say"` // words to say on resolution (a gate that informs)
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -303,8 +303,8 @@ func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Instruction string `json:"instruction" tony:"field=instruction"`
-		By          string `json:"by" tony:"field=by"`
+		Instruction string `tony:"field=instruction"`
+		By          string `tony:"field=by"`
 	}
 	if err := codec.Read(r, &body); err != nil || body.Instruction == "" {
 		http.Error(w, "instruction required", http.StatusBadRequest)
@@ -345,8 +345,8 @@ func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Vector process.Vector `json:"vector" tony:"field=vector"`
-		By     string         `json:"by" tony:"field=by"`
+		Vector process.Vector `tony:"field=vector"`
+		By     string         `tony:"field=by"`
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

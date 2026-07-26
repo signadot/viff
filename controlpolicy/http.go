@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -109,6 +110,27 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 		cancel()
 		return out, func() {}
 	}
+	// A rejected subscribe is not an empty one. Subscribe cannot return an error, and the
+	// reader below keeps only "data: " lines, so a 4xx/5xx body would scan to nothing and
+	// close the channel — leaving the mirror to conclude the remote process simply had
+	// nothing to say. Report it on the plane the caller is already reading, the way a
+	// cancel does below.
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		resp.Body.Close()
+		out <- process.Frame{
+			Kind: process.EvStatus,
+			Text: string(process.Failed),
+			Err:  fmt.Sprintf("subscribe %s: %s", h.id, msg),
+		}
+		close(out)
+		cancel()
+		return out, func() {}
+	}
 	// Frames come in whatever format the stream declares — Content-Type is spoken for by
 	// text/event-stream, so the format rides its own header. Assuming JSON here made every
 	// frame fail to parse the moment the remote's default changed, and because an
@@ -167,7 +189,7 @@ func (h *remoteHandle) Result() string {
 	}
 	defer resp.Body.Close()
 	var snap struct {
-		Result string `json:"result" tony:"field=result"`
+		Result string `tony:"field=result"`
 	}
 	_ = decodeResp(resp, &snap)
 	return snap.Result

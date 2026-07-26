@@ -38,11 +38,18 @@ func urlFor(path string, q url.Values) string {
 		}
 		q.Set(codec.FormatParam, out.String())
 	}
-	u := "http://" + g.Addr + path
+	// Build the URL rather than concatenating it, so the path gets ESCAPED. Ids reach here
+	// from the command line, and a gate id carries a "#" — concatenated, that starts a URL
+	// fragment, which silently truncates the path (`/processes/run-x#d1/events` requests
+	// `/processes/run-x`) and takes the query string with it, since the "?" would land
+	// inside the fragment. The request then succeeds against the WRONG route, with no
+	// scope and no format. url.URL.String() escapes it to %23 and the server 404s, which
+	// is what a bad id should do.
+	u := url.URL{Scheme: "http", Host: g.Addr, Path: path}
 	if len(q) > 0 {
-		u += "?" + q.Encode()
+		u.RawQuery = q.Encode()
 	}
-	return u
+	return u.String()
 }
 
 func httpGet(path string, q url.Values) (*http.Response, error) {
@@ -221,8 +228,8 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 		return 0, 0, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var c struct {
-		Epoch   int64 `json:"epoch" tony:"field=epoch"`
-		CCursor int64 `json:"cCursor" tony:"field=cCursor"`
+		Epoch   int64 `tony:"field=epoch"`
+		CCursor int64 `tony:"field=cCursor"`
 	}
 	decodeBody(resp, &c)
 	return c.Epoch, c.CCursor, nil
@@ -235,10 +242,10 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 // an integer). Naming the type here makes the cursor an int64 whatever decoded it. Fields
 // the broker sends but no executor reads are simply ignored.
 type inboxItem struct {
-	Cursor   int64  `json:"cursor" tony:"field=cursor"`
-	Kind     string `json:"kind" tony:"field=kind"`         // spec | say | cancel | pause | resume | vector | resolve
-	Decision string `json:"decision" tony:"field=decision"` // resolve: the decision id being answered
-	Proceed  bool   `json:"proceed" tony:"field=proceed"`   // resolve: approve (true) or deny (false)
+	Cursor   int64  `tony:"field=cursor"`
+	Kind     string `tony:"field=kind"`     // spec | say | cancel | pause | resume | vector | resolve
+	Decision string `tony:"field=decision"` // resolve: the decision id being answered
+	Proceed  bool   `tony:"field=proceed"`  // resolve: approve (true) or deny (false)
 }
 
 // brokerInbox pulls the worker inbox at base for id — items with cursor > since, carrying
@@ -256,7 +263,7 @@ func brokerInbox(base, id string, since, epoch int64) ([]inboxItem, int64, error
 		return nil, since, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var box struct {
-		Items []inboxItem `json:"items" tony:"field=items"`
+		Items []inboxItem `tony:"field=items"`
 	}
 	decodeBody(resp, &box)
 	max := since
@@ -330,6 +337,17 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("watch: %w (is `verse up` running on %s?)", err, g.Addr)
 	}
 	defer resp.Body.Close()
+	// A rejected watch must not read as a quiet verse. The loop below keeps only "data: "
+	// lines, so an error body scans to nothing and watch blocks-then-exits 0 exactly as if
+	// the store had no changes to report.
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return fmt.Errorf("watch: %s", msg)
+	}
 	in := streamFmt(resp)
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)

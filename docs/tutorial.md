@@ -92,22 +92,20 @@ serviced with priority, so a runaway flow can always be stopped in time.
 
 ## 3. Install a charter and drive it
 
-A **charter** is JSON — one trigger, or an array of them. Here's a tiny one-rule one; save
-it as `charter.json`:
+A **charter** is one trigger, or a list of them. Here's a tiny one-rule one; save it as
+`charter.tony`:
 
-```json
-[
-  {
-    "name": "review",
-    "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
-    "gates":     [ { "name": "review", "mode": "ask" } ],
-    "action": {
-      "set":    { "stage": "reviewing" },
-      "spawn":  { "driver": "scripted", "task": "echo reviewing $subject; sleep 1" },
-      "onDone": { "set": { "stage": "reviewed" } }
-    }
-  }
-]
+```tony
+- name: review
+  condition:
+    when: { system: demo, fields: { stage: open } }
+  gates:
+  - { name: review, mode: ask }
+  action:
+    set:    { stage: reviewing }
+    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 1" }
+    onDone:
+      set: { stage: reviewed }
 ```
 
 One rule, `review`: on an opened `demo:pr`, ask, then mark *reviewing* and spawn a review
@@ -116,8 +114,13 @@ whole chain — the state change, the process it launches, and what happens when
 completes — is visible in one trigger. Install it — §4 dissects each field:
 
 ```sh
-verse trigger add -f charter.json     # or: cat charter.json | verse trigger add -f -
+verse trigger add -f charter.tony     # or: cat charter.tony | verse trigger add -f -
 ```
+
+Save it as `charter.json` or `charter.yaml` instead and the same command reads it: the
+suffix decides, and all three are dialects of one document model rather than three
+supported formats (see [Representation](#representation)). This tutorial is in tony
+because that's the default, not because the rest won't work.
 
 **Terminal A** — watch the `demo` entities change:
 
@@ -128,15 +131,29 @@ verse watch --system demo
 **Terminal B** — open a change and drive it:
 
 ```sh
-verse entity put demo:pr:1 '{"stage":"open"}'
+verse entity put demo:pr:1 '{stage: open}'
+# op: set
+# ref: demo:pr:1
+# rev: 1
+# to:
+#   stage: open
 ```
+
+A payload typed on the command line names no file, so it is read in the default format —
+tony here, which is why `{stage: open}` needs no quotes around either half. Commas are
+optional in tony, so `{stage: open, id: 7}` and `{stage: open id: 7}` are the same thing.
 
 The `review` trigger fires but its gate is `ask`, so it blocks:
 
 ```sh
 verse gate list
-# [ { "id": "trigger:review:review#1", "gate": "review", "mode": "ASK",
-#     "origin": "review", "reason": "trigger review gate review on demo:pr:1", ... } ]
+# - gate: review
+#   id: "trigger:review:review#1"
+#   mode: ASK
+#   origin: review
+#   reason: "trigger review gate review on demo:pr:1"
+#   tool: trigger:review
+#   where: engine
 ```
 
 Approve it, using the `id` from `gate list` (the flag can come after the id — the
@@ -150,10 +167,13 @@ verse gate resolve trigger:review:review#1 --approve
 Now watch it self-drive. In Terminal A you'll see the stage advance **twice**:
 
 ```
-{"op":"create","ref":"demo:pr:1","rev":1,"to":{"stage":"open"}}
-{"op":"update","ref":"demo:pr:1","rev":2,"to":{"stage":"reviewing"}}   ← review action
-{"op":"update","ref":"demo:pr:1","rev":N,"to":{"stage":"reviewed"}}    ← review's onDone, after the process finished
+{op: set ref: demo:pr:1 rev: 1 to: {stage: open}}
+{from: {stage: open} op: set ref: demo:pr:1 rev: 2 to: {stage: reviewing}}       ← review action
+{from: {stage: reviewing} op: set ref: demo:pr:1 rev: N to: {stage: reviewed}}   ← review's onDone, after the process finished
 ```
+
+Each change is one line — flow form, so a watch stays greppable and one event never
+wraps into the next. (`op` is `set` for created-or-updated: see §4.)
 
 The second transition is the point: **you did not drive "reviewing → reviewed" by hand.**
 The review process finishing (its `process:instance` reaching `status=done`) fired the
@@ -169,7 +189,10 @@ follow-up read top-to-bottom in one rule.
 > [the trigger model](trigger-model.md).
 
 ```sh
-verse entity get demo:pr:1     # → { "stage": "reviewed" }
+verse entity get demo:pr:1
+# payload:
+#   stage: reviewed
+# ref: demo:pr:1
 ```
 
 ---
@@ -193,7 +216,9 @@ Now, what each field of a trigger means:
     dimensions: `system` / `kind` / `id` / `op` (`set` for created-or-updated, or
     `delete`) / `fields` (key=value in the changed payload); empty dimensions are
     wildcards, and `{}` matches everything. The address string is sugar for the identity
-    dimensions, so `"demo:pr:*"` means `{"system":"demo","kind":"pr"}`. *Keep it small* — the "when" is where
+    dimensions, so `demo:pr:*` means `{system: demo, kind: pr}` — and since a trailing
+    wildcard *is* an unset dimension, that is what reads back when you `trigger show` it:
+    `demo:pr`. Same match, shorter spelling. *Keep it small* — the "when" is where
     complexity hides. (Create and update are one `set` — to fire "only the first
     time," match a state field your action then advances, a latch, rather than an
     edge. See `docs/change-events.md`.) A `when` may also grow *temporal* operators
@@ -203,11 +228,11 @@ Now, what each field of a trigger means:
   - **`subject`** is the entity the firing acts on, named at the instant `when` fires.
     It resolves three ways, all the same match grammar:
     - *omitted* — the matched entity (`review`, above);
-    - an **address that names one entity** — `"demo:pr:1"` is that one entity, and an
+    - an **address that names one entity** — `demo:pr:1` is that one entity, and an
       action's `set` will *create* it if it doesn't exist, which is how a trigger
       publishes a fact nothing has written yet;
-    - a **pattern** — a glob (`"demo:pr:*"` the whole kind, `"demo:pr:hotfix-*"` a family
-      in it, `"demo:*:*"` the whole system — the same grammar as `verse flow <addr>`,
+    - a **pattern** — a glob (`demo:pr:*` the whole kind, `demo:pr:hotfix-*` a family
+      in it, `demo:*:*` the whole system — the same grammar as `verse flow <addr>`,
       §6) or a `system`+`kind` selector with an optional payload predicate. A pattern
       picks what it names, and *which* names depends on the firing: if the change carries
       its OWN subject — a reflected process's `flow` — the pattern resolves to that one
@@ -221,13 +246,15 @@ Now, what each field of a trigger means:
     goal* is still about exactly one subject. Broadcast, in other words, is a wider
     setting of the same selector, not a new mechanism:
 
-    ```json
-    { "name": "ship-reviewed",
-      "condition": { "when":    { "system": "ci", "kind": "status" },
-                     "subject": { "system": "demo", "kind": "pr",
-                                  "fields": { "stage": "reviewed" } } },
-      "gates":     [ { "name": "ship", "mode": "ask" } ],
-      "action":    { "set": { "stage": "shipped" } } }
+    ```tony
+    name: ship-reviewed
+    condition:
+      when:    { system: ci, kind: status }
+      subject: { system: demo, kind: pr, fields: { stage: reviewed } }
+    gates:
+    - { name: ship, mode: ask }
+    action:
+      set: { stage: shipped }
     ```
 
     One CI change fires this once, one `ask` gate is raised for the *firing* (not one
@@ -237,8 +264,8 @@ Now, what each field of a trigger means:
     second broadcast reuses it rather than starting a duplicate.
 - **`gates`** — a list of gates, *all* of which must resolve to proceed
   (conjunctive) before the action fires. Gates are per *firing*, so a broadcast asks
-  once, not once per subject. Each is `{ "name": …, "mode":
-  auto|ask|park }`. An empty list fires with no approval. Multiple gates model
+  once, not once per subject. Each is `{ name: …, mode: auto|ask|park }`. An empty list
+  fires with no approval. Multiple gates model
   multi-approval — e.g. a deploy needing both a security and a release-manager
   sign-off is two `ask` gates. A gate can also carry a **`formula`** the verse
   resolves itself — a vote, a deadline, a threshold; see §8.
@@ -264,11 +291,13 @@ Now, what each field of a trigger means:
 close can be written as a *separate* trigger — worth understanding, because it exposes the mechanic
 `onDone` hides and is the right tool when a completion should fan out or cross subjects:
 
-```json
-{ "name": "reviewed",
-  "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "done" } },
-                 "subject": "demo:pr:*" },
-  "action": { "set": { "stage": "reviewed" } } }
+```tony
+name: reviewed
+condition:
+  when:    { system: process, kind: instance, fields: { status: done } }
+  subject: demo:pr:*
+action:
+  set: { stage: reviewed }
 ```
 
 `reviewed` fires on a `process:instance` change but acts on the PR — so its `subject` is a *pattern*
@@ -302,7 +331,7 @@ verse process list
 verse process get <id>        # snapshot: status, say, lastOutput, result, pending gates
 verse process say <id> "also mention the dial"        # say to the agent mid-run (re-prompt)
 verse process vector <id> ask --as human:scott        # slide autonomy (auto|ask|park); --as attributes the slide
-verse process vector <id> --file vector.json          # …or install a full gate vector
+verse process vector <id> --file vector.tony          # …or install a full gate vector
 verse process cancel <id>
 ```
 
@@ -379,16 +408,23 @@ durable flow to steer: add a `hold` trigger — once a PR reaches `reviewed`, it
 process about that PR — then drive a change through review to trip it:
 
 ```sh
-verse trigger add -f - <<'JSON'
-[ { "name": "hold",
-    "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "reviewed" } } },
-    "action":    { "spawn": { "driver": "scripted", "task": "sleep 60" } } } ]
-JSON
-verse entity put demo:pr:2 '{"stage":"open"}'   # open a change…
+verse trigger add -f - <<'TONY'
+- name: hold
+  condition:
+    when: { system: demo, kind: pr, fields: { stage: reviewed } }
+  action:
+    spawn: { driver: scripted, task: "sleep 60" }
+TONY
+verse entity put demo:pr:2 '{stage: open}'      # open a change…
 verse gate list                                 # …find its review gate, then:
 verse gate resolve <that-id> --approve          # review runs, the PR reaches `reviewed`, hold fires
-verse flow list                                 # demo:pr:2 — a live 60s flow to steer
+verse flow list
+# - demo:pr:1
+# - demo:pr:2                                   ← a live 60s flow to steer
 ```
+
+That heredoc is stdin, which names no format the way a `.tony` file does, so it too is
+read in the default — `--ifmt json` if you'd rather paste JSON.
 
 The hold process's own completion re-sets the PR to `reviewed` — but that write changes nothing,
 and the engine reacts to real changes, not re-writes, so `hold` fires exactly **once**. No loop,
@@ -412,8 +448,14 @@ verse flow say   'demo:*:*' "hurry"   # everything in the demo system
 verse flow list                       # the distinct subjects with live work
 ```
 
-Each command reports how many processes it reached, so `{"paused": 2}` tells you the address
-selected two.
+Each command reports how many processes it reached, and echoes the address it reached them
+by, so you can see what a wildcard actually selected:
+
+```sh
+verse flow pause demo:pr:2
+# paused: 1
+# subject: demo:pr:2
+```
 
 They fan out to the addressed processes and land at each one's next boundary, so a flow can
 be held, redirected, or stopped mid-flight — while every *other* flow keeps reacting. Because a
@@ -455,8 +497,11 @@ type that URL; verse resolves it for you):
 ```sh
 ID=$(verse process run "review the auth change")
 verse process list
-# { "id": "run-…", "policy": "broker",
-#   "dialURL": "http://localhost:9090/broker/<nonce>", "status": "running" }
+# - dialURL: "http://localhost:9090/broker/<nonce>"
+#   id: run-…
+#   policy: broker
+#   status: running
+#   task: "review the auth change"
 ```
 
 You are the executor. Do the work with `verse process do` — every action takes `--as
@@ -530,16 +575,24 @@ is what an answer that accumulates over time needs.)
 Say a merge needs **two reviewers**. Give the gate a **formula** instead of a mode — the
 verse watches and resolves it itself:
 
-```json
-{ "name": "merge",
-  "condition": { "when": { "system": "change", "fields": { "stage": "ready" } } },
-  "gates":     [ { "name": "approvals", "formula": { "quorum": 2 } } ],
-  "action":    { "set": { "stage": "merged" } } }
+```tony
+- name: merge
+  condition:
+    when: { system: change, fields: { stage: ready } }
+  gates:
+  - { name: approvals, formula: !quorum 2 }
+  action:
+    set: { stage: merged }
 ```
 
+`!quorum` is a **tag** — tony's way of naming what a value *is*, right where the value
+sits. The formula language below is built out of them, which is why a charter can say
+`!until [ !quorum 2, !deadline "4h" ]` on one line and still be a structure the engine
+walks, not a string it has to re-parse.
+
 ```sh
-verse trigger add -f merge.json
-verse entity put change:pr:42 '{"stage":"ready"}'
+verse trigger add -f merge.tony
+verse entity put change:pr:42 '{stage: ready}'
 ```
 
 The trigger fired, but the action is waiting — not on a person, on a **tally**. The open
@@ -547,18 +600,21 @@ question is now a motion on the docket, where ballots land and the count is watc
 
 ```sh
 verse docket
-# a1b2c3  whether open  options=[proceed(2)]  subject=change:pr:42
+# ec9856c1  whether open  options=[proceed=approve(2)]  subject=change:pr:42
 ```
 
 The **options** are what can win — here just `proceed`, at a bar of 2. Cast ballots (each
 names its voter, since a motion must be settled attributably):
 
 ```sh
-verse vote a1b2c3 approve --as alice     # 1 of 2 — still open
-verse vote a1b2c3 approve --as bob       # 2 of 2 → carries
+verse vote ec9856c1 approve --as alice   # 1 of 2 — still open
+verse vote ec9856c1 approve --as bob     # 2 of 2 → carries
 verse docket
-# a1b2c3  whether closed  options=[proceed(2)]  outcome=proceed tally=2  subject=change:pr:42
-verse entity get change:pr:42            # → { "stage": "merged" }
+# ec9856c1  whether closed  options=[proceed=approve(2)]  outcome=proceed tally=2  subject=change:pr:42
+verse entity get change:pr:42
+# payload:
+#   stage: merged
+# ref: change:pr:42
 ```
 
 Each `verse vote` writes a ballot into the motion's log; verse *watches the log* and
@@ -569,8 +625,8 @@ group carries it.
 **Saying no.** A vote you can only win isn't a vote. Give the motion a *second* option —
 read `until` as *approvals, unless the rejections get there first*:
 
-```json
-"formula": { "until": [ {"quorum": 2}, {"quorum": {"choice":"reject","n":2}} ] }
+```tony
+formula: !until [ !quorum 2, !quorum { choice: reject, n: 2 } ]
 ```
 
 Now the motion has two options, `proceed` and `deny`, and the first to *its* bar wins.
@@ -580,24 +636,32 @@ the absence of "yes."
 **A deadline.** Votes stall, and you don't want a motion open forever. Make the second
 option a **deadline** — the clock is what satisfies it:
 
-```json
-"formula": { "until": [ {"quorum": 2}, {"deadline": "4h"} ] }
+```tony
+formula: !until [ !quorum 2, !deadline "4h" ]
 ```
+
+**Quote the duration.** A tony literal may not start with a digit, and commas between
+flow elements are optional — so `!deadline 4h` reads as the number `4` beside a separate
+literal `h`, which is a perfectly well-formed document that does not mean what you wrote.
+verse rejects a numeric deadline and tells you to quote it, because a deadline has no
+threshold for a bare number to be; nothing earlier in the pipeline can catch it.
 
 ```sh
 verse docket
-# a1b2c3  whether open  options=[proceed(2)]  closes=2026-07-23T08:15:36  subject=change:pr:42
+# ec9856c1  whether open  options=[proceed=approve(2)]  closes=2026-07-23T08:15:36  subject=change:pr:42
 ```
 
 Two approvals first ⇒ `proceed`; the clock first ⇒ the deadline **defaults** the motion
 to `deny` (action skipped). The deadline is per-motion and durable (a restart re-reads
 `closes` and honors the elapsed wall time). For a real external signal instead of a clock,
-the right side can be a `fact` — `{"fact": "ci:status:green"}` waits for CI, a tag, a
-posted review.
+the right side can be a `fact` — `!fact ci:status:green` waits for CI, a tag, a posted
+review.
 
-(The compact `{"quorum": 2}` / `{"until": […]}` form is a small formula language: a leaf is
-a requirement — `quorum`, `fact`, `deadline` — and operators compose them (`until` today;
-`and`/`or` coming). It's tony's tags in JSON; a tony charter reads `!until [ !quorum 2, … ]`.)
+(That's the whole formula language: a leaf is a requirement — `!quorum`, `!fact`,
+`!deadline` — and operators compose them (`!until` today; `and`/`or` coming). The tags
+*are* the grammar. In JSON, which has no tags, each one spells as a single-key object —
+`{"until": [{"quorum": 2}, {"deadline": "4h"}]}` — and means exactly the same thing; the
+charter you write in one dialect reads back in either.)
 
 ### Who: a selection
 
@@ -605,11 +669,14 @@ The second question hides in every `spawn`: **who** does it. In §4–5 a spawn 
 `driver`. That's a motion too — over a different option set. Name the eligible doers and
 how to choose, instead of one driver:
 
-```json
-{ "name": "review",
-  "condition": { "when": { "system": "change", "fields": { "stage": "open" } } },
-  "action": { "spawn": { "task": "review $subject",
-    "provider": { "eligible": ["gpt", "claude"], "select": "vote", "need": 2 } } } }
+```tony
+- name: review
+  condition:
+    when: { system: change, fields: { stage: open } }
+  action:
+    spawn:
+      task: "review $subject"
+      provider: { eligible: [gpt, claude], select: vote, need: 2 }
 ```
 
 `select` is **the same dial, on the *who* axis**: `auto` (a rule picks the first eligible),
@@ -639,20 +706,19 @@ doer reaches the bar in time, the motion closes with no pick and nothing spawns.
 **what they are**:
 
 ```sh
-verse entity put provider:review:claude '{"driver":"llm","tier":"premium"}'
-verse entity put provider:review:gpt    '{"driver":"llm","tier":"premium"}'
-verse entity put provider:review:cheapo '{"driver":"scripted","tier":"basic"}'
+verse entity put provider:review:claude '{driver: llm, tier: premium}'
+verse entity put provider:review:gpt    '{driver: llm, tier: premium}'
+verse entity put provider:review:cheapo '{driver: scripted, tier: basic}'
 verse providers
-# review  claude  driver=llm      tier=premium
-# review  gpt     driver=llm      tier=premium
-# review  cheapo  driver=scripted tier=basic
+# review     claude         driver=llm tier=premium
+# review     gpt            driver=llm tier=premium
+# review     cheapo         driver=scripted tier=basic
 ```
 
 Now the action selects by **capability + a match over attributes**, not by name:
 
-```json
-"provider": { "capability": "review", "match": { "tier": "premium" },
-              "select": "vote", "need": 2 }
+```tony
+provider: { capability: review, match: { tier: premium }, select: vote, need: 2 }
 ```
 
 ```sh
@@ -684,12 +750,23 @@ formula language you gate with (§8) — but here it's a *target*, not a gate:
 
 ```sh
 verse goals add ship --subject change:pr:42 \
-  --done-when '{"fact":"ci:status"}' --deadline 4h
+  --done-when '!fact ci:status' --deadline 4h
 ```
+
+`--done-when` takes a formula in the input format, so it's the same `!fact` / `!quorum` /
+`!until` grammar as a charter's gate — one language, whether it's gating an action or
+naming a target. (`--deadline` is an ordinary flag, not tony, so `4h` is fine unquoted
+there.)
 
 ```sh
 verse goals list
-# ship  status=blocked  waitingOn=[fact:ci:status]  deadline=…  subject=change:pr:42
+# - deadline: "4h"
+#   name: ship
+#   status: blocked
+#   subject: change:pr:42
+#   terminal: false
+#   waitingOn:
+#   - fact:ci:status
 ```
 
 The goal is `blocked` — it names what it is **waiting on** (the unmet leaves of `doneWhen`),
@@ -697,9 +774,23 @@ recomputed live as the world changes. It has spawned nothing; it is watching. Ma
 target true — however that happens, a trigger, a source, or a person:
 
 ```sh
-verse entity put ci:status:build '{"state":"green"}'
+verse entity put ci:status:build '{state: green}'
+verse goals list
+# - deadline: "4h"
+#   name: ship
+#   outcome: done
+#   status: done
+#   subject: change:pr:42
+#   terminal: true
+#   waitingOn: []
 verse entity get goal:done:ship
-# { "goal": "ship", "subject": "change:pr:42", "witness": ["ci:status:build"] }
+# payload:
+#   flow: change:pr:42
+#   goal: ship
+#   subject: change:pr:42
+#   witness:
+#   - ci:status:build
+# ref: goal:done:ship
 ```
 
 When `doneWhen` holds, the goal **latches** — once, and it stays latched (retract the fact
@@ -713,10 +804,13 @@ is just an entity. So a goal *recognizes*; it never *advances* anything itself. 
 the finish to carry a subject onward, a **trigger** reacts to the latch — the same emergent
 way everything else composes:
 
-```json
-{ "name": "on-ship",
-  "condition": { "when": { "system": "goal", "kind": "done" }, "subject": "change:pr:*" },
-  "action":    { "set": { "stage": "shipped" } } }
+```tony
+- name: on-ship
+  condition:
+    when:    { system: goal, kind: done }
+    subject: change:pr:*
+  action:
+    set: { stage: shipped }
 ```
 
 And because a goal's owned triggers spawn processes tracked as **flows**, a goal *is a flow
@@ -729,7 +823,7 @@ verse goals cancel ship          # stop it
 ```
 
 To ship the owned triggers *with* the goal instead of hand-authoring them, hand `add` a full
-record — `verse goals add -f ship.json` — whose JSON carries `triggers: [ … ]` alongside
+record — `verse goals add -f ship.tony` — which carries `triggers: [ … ]` alongside
 `doneWhen`. On a terminal, done or unachievable, the goal reaps its owned triggers, so a
 finished goal leaves no orphaned charter.
 
@@ -805,8 +899,8 @@ isolated:
 ```sh
 verse connect . --scope me
 verse watch --scope me
-verse entity put demo:x:1 '{"k":"v"}' --scope me   # in the scope only
-verse entity get demo:x:1                           # baseline: not there
+verse entity put demo:x:1 '{k: v}' --scope me      # in the scope only
+verse entity get demo:x:1                          # baseline: not there
 verse disconnect --scope me                          # drop the whole overlay
 ```
 
@@ -840,7 +934,7 @@ verse
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--system --kind --since <rev>]     stream store changes (cursored)
-  entity (e)  get <ref> · put <ref> <json> · list [--system --kind]
+  entity (e)  get <ref> · put <ref> <payload> · list [--system --kind]
 
   gate    list · resolve <id> --approve|--deny [--say <text>]
   docket                                     list open motions (votes + provider selections)
@@ -919,6 +1013,12 @@ The **file suffix decides** what a file is read as, so `verse trigger add -f cha
 and `-f charter.tony` both work regardless of the default. For input that names no format —
 stdin, an extensionless file, a payload typed on the command line — `--ifmt` decides, then
 the config default.
+
+**Tags are the one place the dialects differ in shape.** A formula is built from them
+(§8), and JSON has no such thing, so a tag renders there as a single-key object: what
+tony writes `!quorum 2`, JSON writes `{"quorum": 2}`. Reading is symmetric — a charter
+written either way loads either way — so this costs you nothing but is worth knowing
+before you diff two dialects of the same charter and find them differently shaped.
 
 To change the default: `format.default` in the config file, or `VERSE_FORMAT`. `format.output`
 (CLI stdout) and `format.wire` (HTTP bodies) override it separately, because wanting tony on

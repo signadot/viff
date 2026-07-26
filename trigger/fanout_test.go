@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
+
+	"github.com/signadot/verse/codec"
 )
 
 // prs seeds n demo:pr entities at a stage, returning their refs.
@@ -313,9 +314,9 @@ func TestGlobSubjectFansOut(t *testing.T) {
 
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"ship-all",
+	if err := codec.Unmarshal([]byte(`{"name":"ship-all",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:*"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		"action":{"set":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -343,9 +344,9 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"ship-hotfixes",
+	if err := codec.Unmarshal([]byte(`{"name":"ship-hotfixes",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:hotfix-*"},
-		"action":{"set":{"stage":"shipped"}}}`), &tr); err != nil {
+		"action":{"set":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -371,9 +372,9 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
-	if err := json.Unmarshal([]byte(`{"name":"record",
+	if err := codec.Unmarshal([]byte(`{"name":"record",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit:record:latest"},
-		"action":{"set":{"stage":"noted"}}}`), &tr); err != nil {
+		"action":{"set":{"stage":"noted"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -418,5 +419,32 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	time.Sleep(50 * time.Millisecond) // give a wrong action time to land, if it were going to
 	if e, _, _ := store.Get(other); e.Payload["stage"] != "x" {
 		t.Fatalf("acted on a flow the subject doesn't name: %s = %#v", other, e.Payload)
+	}
+}
+
+// A gate is raised once per FIRING, so under fan-out one "yes" moves every selected
+// subject. The label has to say that: showing only the first subject would let someone
+// approve "ship demo:pr:1" and actually ship twelve PRs.
+func TestSubjectLabelNamesTheWholeFiring(t *testing.T) {
+	ref := func(id string) entity.Ref { return entity.Ref{System: "demo", Kind: "pr", ID: id} }
+
+	cases := []struct {
+		name string
+		in   []entity.Ref
+		want string
+	}{
+		{"none", nil, ""},
+		{"one", []entity.Ref{ref("1")}, "demo:pr:1"},
+		{"a few, all named", []entity.Ref{ref("1"), ref("2")}, "demo:pr:1, demo:pr:2"},
+		{"at the cutoff", []entity.Ref{ref("1"), ref("2"), ref("3")}, "demo:pr:1, demo:pr:2, demo:pr:3"},
+		{"beyond it, counted", []entity.Ref{ref("1"), ref("2"), ref("3"), ref("4"), ref("5")},
+			"demo:pr:1, demo:pr:2, demo:pr:3 (+2 more)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := subjectLabel(c.in); got != c.want {
+				t.Errorf("subjectLabel = %q, want %q", got, c.want)
+			}
+		})
 	}
 }

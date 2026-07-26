@@ -13,14 +13,14 @@ import (
 // fact-read). The match grammar is deliberately tiny (system/kind/op/field
 // equality); a richer tony match is the eventual destination.
 type Pattern struct {
-	System string `json:"system,omitempty"`
-	Kind   string `json:"kind,omitempty"`
+	System string
+	Kind   string
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
 	// it. Create and update are not distinguished (see Op) — express "only the
 	// first time" as a state latch, not an edge.
-	Op     Op             `json:"op,omitempty"`
-	Fields map[string]any `json:"fields,omitempty"`
+	Op     Op
+	Fields map[string]any
 }
 
 // MatchEvent reports whether an observed change satisfies every non-empty

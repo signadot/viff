@@ -370,6 +370,17 @@ func requirementFromNode(kind RequirementKind, node *ir.Node) (*Requirement, err
 	}
 	switch node.Type {
 	case ir.NumberType:
+		// A deadline has no threshold, so a number here is always a mistake — and almost
+		// always the same one: an unquoted duration. A tony literal may not start with a
+		// digit and commas are optional, so `!deadline 4h` reads as the number 4 followed
+		// by a separate literal "h" — correctly, but not at all as meant, and the 4 lands
+		// right here. Left to fall through it would set N and leave Within empty, which
+		// is a deadline that silently isn't one. This is the only place it can be caught:
+		// the document is well-formed, so nothing upstream of us has anything to report.
+		if kind == ReqDeadline {
+			return nil, fmt.Errorf("requirement %q: a deadline takes a duration, not a number "+
+				"(quote it: !deadline \"4h\")", kind)
+		}
 		n, err := nodeInt(node)
 		if err != nil {
 			return nil, fmt.Errorf("requirement %q: %w", kind, err)

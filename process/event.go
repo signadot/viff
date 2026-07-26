@@ -6,20 +6,20 @@ package process
 //
 //tony:schemagen=verse-frame,notag
 type Frame struct {
-	Kind    string `json:"kind" tony:"field=kind"`
-	Process string `json:"process" tony:"field=process"`
-	Cursor  int64  `json:"cursor,omitempty" tony:"field=cursor,omitzero"` // per-process monotonic; resume with ?since=<cursor>
+	Kind    string `tony:"field=kind"`
+	Process string `tony:"field=process"`
+	Cursor  int64  `tony:"field=cursor,omitzero"` // per-process monotonic; resume with ?since=<cursor>
 
-	ID      string `json:"id,omitempty" tony:"field=id,omitzero"` // decision id, for resolve-by-id
-	Seq     int    `json:"seq,omitempty" tony:"field=seq,omitzero"`
-	Tool    string `json:"tool,omitempty" tony:"field=tool,omitzero"`
-	Gate    string `json:"gate,omitempty" tony:"field=gate,omitzero"`
-	Mode    string `json:"mode,omitempty" tony:"field=mode,omitzero"`
-	By      string `json:"by,omitempty" tony:"field=by,omitzero"`
-	Proceed bool   `json:"proceed,omitempty" tony:"field=proceed,omitzero"`
-	Text    string `json:"text,omitempty" tony:"field=text,omitzero"` // reason / detail / result
-	Err     string `json:"err,omitempty" tony:"field=err,omitzero"`
-	Dropped int    `json:"dropped,omitempty" tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
+	ID      string `tony:"field=id,omitzero"` // decision id, for resolve-by-id
+	Seq     int    `tony:"field=seq,omitzero"`
+	Tool    string `tony:"field=tool,omitzero"`
+	Gate    string `tony:"field=gate,omitzero"`
+	Mode    string `tony:"field=mode,omitzero"`
+	By      string `tony:"field=by,omitzero"`
+	Proceed bool   `tony:"field=proceed,omitzero"`
+	Text    string `tony:"field=text,omitzero"` // reason / detail / result
+	Err     string `tony:"field=err,omitzero"`
+	Dropped int    `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
 // Event kinds.

@@ -1,10 +1,11 @@
 package trigger
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/signadot/verse/entity"
+
+	"github.com/signadot/verse/codec"
 )
 
 // The charter's compact tag-keyed surface parses into the AST: the object key is the tag
@@ -30,7 +31,7 @@ func TestFormulaCompactUnmarshal(t *testing.T) {
 	}
 	for _, c := range cases {
 		var f Formula
-		if err := json.Unmarshal([]byte(c.in), &f); err != nil {
+		if err := codec.Unmarshal([]byte(c.in), &f, codec.JSON); err != nil {
 			t.Fatalf("%s: %v", c.in, err)
 		}
 		if !c.check(&f) {
@@ -43,15 +44,15 @@ func TestFormulaCompactUnmarshal(t *testing.T) {
 func TestFormulaCompactRoundTrip(t *testing.T) {
 	const in = `{"until":[{"quorum":2},{"quorum":{"choice":"reject","n":2}}]}`
 	var f Formula
-	if err := json.Unmarshal([]byte(in), &f); err != nil {
+	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err != nil {
 		t.Fatal(err)
 	}
-	out, err := json.Marshal(&f)
+	out, err := codec.Marshal(&f, codec.JSON)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var g Formula
-	if err := json.Unmarshal(out, &g); err != nil {
+	if err := codec.Unmarshal(out, &g, codec.JSON); err != nil {
 		t.Fatalf("re-parse of %s: %v", out, err)
 	}
 	if g.Op != OpUntil || len(g.Args) != 2 || g.Args[0].Req.N != 2 || g.Args[1].Req.Choice != "reject" {

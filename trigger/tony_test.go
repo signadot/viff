@@ -1,7 +1,6 @@
 package trigger
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -74,44 +73,6 @@ func TestCharterRoundTrip(t *testing.T) {
 						got.Action.Spawn.Driver, want.Action.Spawn.Driver, b)
 				}
 			})
-		}
-	}
-}
-
-// The JSON path is the oracle: it is what verse serves today, so codec's JSON rendering
-// must name the same fields encoding/json does. If these diverge, the migration would
-// silently rename fields on the wire.
-func TestCharterJSONFieldNamesMatchOracle(t *testing.T) {
-	tr := Trigger{
-		Name: "x",
-		Condition: Condition{
-			When:    MatchWhen(Match{"system": "demo"}),
-			Subject: Match{"system": "demo", "kind": "pr"},
-		},
-		Gates:  []Gate{{Name: "g", Mode: "ask"}},
-		Action: Action{Set: map[string]any{"stage": "s"}},
-	}
-
-	viaCodec, err := codec.Marshal(tr, codec.JSON)
-	if err != nil {
-		t.Fatal(err)
-	}
-	viaOracle, err := json.Marshal(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var a, b map[string]any
-	if err := json.Unmarshal(viaCodec, &a); err != nil {
-		t.Fatalf("codec JSON is not valid JSON: %v (%s)", err, viaCodec)
-	}
-	if err := json.Unmarshal(viaOracle, &b); err != nil {
-		t.Fatal(err)
-	}
-	for k := range b {
-		if _, ok := a[k]; !ok {
-			t.Errorf("codec JSON is missing top-level field %q\n codec:  %s\n oracle: %s",
-				k, viaCodec, viaOracle)
 		}
 	}
 }
@@ -229,6 +190,33 @@ func TestFormulaSurvivesDialectRoundTrip(t *testing.T) {
 
 // An unknown tag is an error, not a silently-ignored formula. A typo'd charter must fail at
 // install rather than match nothing — the same discipline Match.Validate enforces.
+// An unquoted duration is the easy mistake to make, and it is a quiet one: a tony literal
+// may not start with a digit and commas are optional, so `!deadline 4h` reads as the
+// number 4 beside a separate "h" rather than as the string "4h". That is the correct
+// reading, which is the problem — the document is well-formed, so the parser has nothing
+// to say and we are the last line. Taking the 4 as a threshold would leave the deadline
+// empty, and a gate whose deadline silently isn't one waits forever.
+func TestNumericDeadlineIsRejected(t *testing.T) {
+	for _, src := range []string{`!deadline 4`, `!until [!quorum 2, !deadline 4]`} {
+		var f Formula
+		err := codec.Unmarshal([]byte(src), &f, codec.Tony)
+		if err == nil {
+			t.Fatalf("%s: a numeric deadline was accepted", src)
+		}
+		if !strings.Contains(err.Error(), `"4h"`) {
+			t.Errorf("%s: the error does not show the fix: %v", src, err)
+		}
+	}
+	// The quoted spelling is the one that works, and it must keep working.
+	var f Formula
+	if err := codec.Unmarshal([]byte(`!deadline "4h"`), &f, codec.Tony); err != nil {
+		t.Fatalf(`!deadline "4h": %v`, err)
+	}
+	if got := f.Req.Within; got != "4h" {
+		t.Errorf("Within = %q, want %q", got, "4h")
+	}
+}
+
 func TestUnknownFormulaTagIsRejected(t *testing.T) {
 	var f Formula
 	err := codec.Unmarshal([]byte(`!untl [!quorum 2]`), &f, codec.Tony)

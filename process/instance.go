@@ -9,16 +9,16 @@ package process
 //
 //tony:schemagen=verse-instance,notag
 type Instance struct {
-	ID      string        `json:"id" tony:"field=id"`
-	Task    string        `json:"task,omitempty" tony:"field=task,omitzero"`
-	Driver  string        `json:"driver,omitempty" tony:"field=driver,omitzero"`
-	Status  Status        `json:"status" tony:"field=status"`
-	Policy  string        `json:"policy,omitempty" tony:"field=policy,omitzero"`   // which controlPolicy hosts it (local|<ref>|broker)
-	Cursor  int64         `json:"cursor,omitempty" tony:"field=cursor,omitzero"`   // resume the event stream with ?since=<cursor>
-	Result  string        `json:"result,omitempty" tony:"field=result,omitzero"`   // the driver's final answer, once completed
-	Err     string        `json:"err,omitempty" tony:"field=err,omitzero"`         // failure detail (e.g. "driver error: …")
-	DialURL string        `json:"dialURL,omitempty" tony:"field=dialURL,omitzero"` // broker: where a worker dials in to execute
-	Pending []PendingGate `json:"pending,omitempty" tony:"field=pending,omitzero"` // open gates awaiting resolution
+	ID      string        `tony:"field=id"`
+	Task    string        `tony:"field=task,omitzero"`
+	Driver  string        `tony:"field=driver,omitzero"`
+	Status  Status        `tony:"field=status"`
+	Policy  string        `tony:"field=policy,omitzero"`  // which controlPolicy hosts it (local|<ref>|broker)
+	Cursor  int64         `tony:"field=cursor,omitzero"`  // resume the event stream with ?since=<cursor>
+	Result  string        `tony:"field=result,omitzero"`  // the driver's final answer, once completed
+	Err     string        `tony:"field=err,omitzero"`     // failure detail (e.g. "driver error: …")
+	DialURL string        `tony:"field=dialURL,omitzero"` // broker: where a worker dials in to execute
+	Pending []PendingGate `tony:"field=pending,omitzero"` // open gates awaiting resolution
 }
 
 // PendingGate is one open gate on a process: a raised GateQuestion awaiting a
@@ -27,10 +27,10 @@ type Instance struct {
 //
 //tony:schemagen=verse-pending-gate,notag
 type PendingGate struct {
-	ID     string `json:"id" tony:"field=id"`
-	Origin string `json:"origin,omitempty" tony:"field=origin,omitzero"`
-	Gate   string `json:"gate,omitempty" tony:"field=gate,omitzero"`
-	Tool   string `json:"tool,omitempty" tony:"field=tool,omitzero"`
-	Mode   string `json:"mode,omitempty" tony:"field=mode,omitzero"`
-	Reason string `json:"reason,omitempty" tony:"field=reason,omitzero"`
+	ID     string `tony:"field=id"`
+	Origin string `tony:"field=origin,omitzero"`
+	Gate   string `tony:"field=gate,omitzero"`
+	Tool   string `tony:"field=tool,omitzero"`
+	Mode   string `tony:"field=mode,omitzero"`
+	Reason string `tony:"field=reason,omitzero"`
 }

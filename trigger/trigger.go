@@ -31,10 +31,10 @@ import (
 //
 //tony:schemagen=verse-trigger,notag
 type Trigger struct {
-	Name      string    `json:"name" tony:"field=name"`
-	Condition Condition `json:"condition" tony:"field=condition"`
-	Gates     []Gate    `json:"gates,omitempty" tony:"field=gates,omitzero"` // conjunctive (all must proceed)
-	Action    Action    `json:"action" tony:"field=action"`
+	Name      string    `tony:"field=name"`
+	Condition Condition `tony:"field=condition"`
+	Gates     []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	Action    Action    `tony:"field=action"`
 }
 
 // Condition is the ECA "cause": what fires the trigger, and what the firing is about.
@@ -47,13 +47,13 @@ type Trigger struct {
 type Condition struct {
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
 	// one change event; temporal operators relate the verse's evolution instead.
-	When *Formula `json:"when" tony:"field=when"`
+	When *Formula `tony:"field=when"`
 	// Subject is what the firing is ABOUT, selected at the fire instant — never
 	// accumulated, so it carries no temporal operators. Omitted = the matched entity; an
 	// address names one entity; a system+kind selector is a pattern — matched against the
 	// firing's own subject (a reflected process's `flow`) when it has one, else the SET of
 	// matching entities in the store, one action per member.
-	Subject Match `json:"subject,omitempty" tony:"field=subject,omitzero"`
+	Subject Match `tony:"field=subject,omitzero"`
 }
 
 // validate reports whether the condition is installable. It is deliberately strict: the
@@ -143,9 +143,9 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 //
 //tony:schemagen=verse-trigger-gate,notag
 type Gate struct {
-	Name    string   `json:"name,omitempty" tony:"field=name,omitzero"`
-	Mode    string   `json:"mode,omitempty" tony:"field=mode,omitzero"` // auto | ask | park
-	Formula *Formula `json:"formula,omitempty" tony:"field=formula,omitzero"`
+	Name    string   `tony:"field=name,omitzero"`
+	Mode    string   `tony:"field=mode,omitzero"` // auto | ask | park
+	Formula *Formula `tony:"field=formula,omitzero"`
 }
 
 // mode resolves the gate's autonomy mode. A temporal gate (Formula set) with no explicit
@@ -173,18 +173,18 @@ func (g Gate) mode() (process.Mode, error) {
 //
 //tony:schemagen=verse-action,notag
 type Action struct {
-	Set   map[string]any `json:"set,omitempty" tony:"field=set,omitzero"`
-	Spawn *launch.Spec   `json:"spawn,omitempty" tony:"field=spawn,omitzero"`
+	Set   map[string]any `tony:"field=set,omitzero"`
+	Spawn *launch.Spec   `tony:"field=spawn,omitzero"`
 
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
 	// it scoped to exactly this spawn's process (see Engine.applyHook / hookFor). onOrphaned is
 	// inert until resume rehydrates hooks (see docs/completion-hooks.md).
-	OnDone      *Action `json:"onDone,omitempty" tony:"field=onDone,omitzero"`           // status done (success)
-	OnFailed    *Action `json:"onFailed,omitempty" tony:"field=onFailed,omitzero"`       // status failed
-	OnCancelled *Action `json:"onCancelled,omitempty" tony:"field=onCancelled,omitzero"` // status cancelled
-	OnOrphaned  *Action `json:"onOrphaned,omitempty" tony:"field=onOrphaned,omitzero"`   // status orphaned
+	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
+	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
+	OnCancelled *Action `tony:"field=onCancelled,omitzero"` // status cancelled
+	OnOrphaned  *Action `tony:"field=onOrphaned,omitzero"`  // status orphaned
 }
 
 // hookFor returns the completion hook for a terminal status (nil if none). The four terminal
