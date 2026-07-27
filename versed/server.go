@@ -816,12 +816,22 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	res := process.Resolution{Proceed: body.Approve, By: "human:cli", Steer: body.Say}
+	by := body.By
+	if by == "" {
+		by = "human:cli"
+	}
+	res := process.Resolution{Proceed: body.Approve, By: by, Steer: body.Say}
 	// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
 	// (trigger:…~N) whose owner isn't a process falls through to the registry.
 	owner := body.ID
 	if i := strings.Index(owner, process.GateSep); i >= 0 {
 		owner = owner[:i]
+	}
+	if !s.isProcess(owner) {
+		// The id named no process — either an engine gate, or an executor-raised one whose
+		// id carries no owner by construction. Ask the snapshots which process holds it;
+		// an engine gate is held by none and still falls through to the registry below.
+		owner = s.processHoldingGate(body.ID)
 	}
 	if s.isProcess(owner) {
 		if !s.resolveProcessDecision(owner, body.ID, res) {
@@ -1007,6 +1017,42 @@ func (s *Server) isProcess(id string) bool {
 	return false
 }
 
+// processHoldingGate finds which process has decisionID open, for a gate id that does not
+// carry its owner.
+//
+// A gate the RUNTIME raises is <process-id>~dN, so its owner is readable off the id. One an
+// EXECUTOR raises (`process do gate`) is <name>-<hex>, deliberately free of GateSep —
+// shortID avoids it so the id survives a shell and a URL intact — with the consequence that
+// splitting on GateSep recovers nothing and `verse gate approve` answered 404 on a gate
+// `verse gates` was listing one line above, `process:` and all. The routing information was
+// never missing; it was in the snapshot rather than in the id. This reads it from there.
+//
+// Unscoped, like isProcess beside it: a resolve is addressed by a unique decision id, not
+// discovered by listing, so it does not go through processSnapshots' scope filter.
+func (s *Server) processHoldingGate(decisionID string) string {
+	holds := func(inst process.Instance) bool {
+		for _, pg := range inst.Pending {
+			if pg.ID == decisionID {
+				return true
+			}
+		}
+		return false
+	}
+	for _, inst := range s.Procd.Snapshots() {
+		if holds(inst) {
+			return inst.ID
+		}
+	}
+	if l, ok := s.runner.(processLister); ok {
+		for _, inst := range l.ListProcesses() {
+			if holds(inst) {
+				return inst.ID
+			}
+		}
+	}
+	return ""
+}
+
 // resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the
 // runtime for a local process, the runner handle for a brokered one.
 func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) bool {
@@ -1014,10 +1060,13 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 		return s.Procd.Resolve(procID, decisionID, res)
 	}
 	if h := s.runner.Attach(procID); h != nil {
+		// by is carried across this seam, not dropped: the local leg above takes the whole
+		// Resolution, so a brokered gate that lost the answerer would be attributed
+		// differently from an identical local one purely by where it happened to run.
 		if rh, ok := h.(interface {
-			Resolve(decision string, proceed bool, say string) bool
+			Resolve(decision string, proceed bool, say, by string) bool
 		}); ok {
-			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "))
+			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
 		}
 	}
 	return false
@@ -1137,7 +1186,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 	case "resolve":
 		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
 		rh, ok := h.(interface {
-			Resolve(decision string, proceed bool, say string) bool
+			Resolve(decision string, proceed bool, say, by string) bool
 		})
 		if !ok {
 			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
@@ -1152,7 +1201,11 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		_ = codec.Read(r, &body)
 		// The relay interface still carries a single steer string; a multi-part say is
 		// joined rather than dropped. Widening it is part of the broker/processd pass.
-		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n")) {
+		by := body.By
+		if by == "" {
+			by = "human:cli"
+		}
+		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n"), by) {
 			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 			return
 		}

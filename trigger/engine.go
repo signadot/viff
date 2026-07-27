@@ -766,13 +766,23 @@ func refIDs(refs []entity.Ref) []string {
 
 // ── the who-axis: governed provider selection ───────────────────────────────
 
-// selectProvider resolves the who-axis for a spawn whose Spec carries a Provider: it
-// reifies a `select` motion — a motion over the eligible doers as options — resolves it
-// through the SAME machinery as a whether-gate (openChannel/awaitMotion/commitMotion),
-// and returns the chosen driver (bound into Spec.Driver before spawn — no live swap). The
-// commit is CAS terminal-once with the revoke guard, so a ballot retracted between threshold
-// and commit re-monitors; a re-fire is idempotent (same channel). Orthogonal to the
-// runner that then transports the chosen driver.
+// selectProvider resolves the who-axis for a spawn whose Spec carries a Provider and
+// returns the chosen driver (bound into Spec.Driver before spawn — no live swap).
+//
+// `ask` and `vote` reify a `select` motion — a motion over the eligible doers as options —
+// resolved through the SAME machinery as a whether-gate (openChannel/awaitMotion/
+// commitMotion). The commit is CAS terminal-once with the revoke guard, so a ballot
+// retracted between threshold and commit re-monitors; a re-fire is idempotent (same
+// channel). `auto` poses no question and opens no motion — see below.
+//
+// So the dial has three settings but two surfaces, and which one a setting lands on is not
+// arbitrary: the docket carries a question that is NOT settled when it is posed, because it
+// needs several contributions or because a clock (`within`) can settle it instead. That is
+// why `ask` sits here rather than in `verse gates` alongside a whether-ask — it composes
+// with `within`, and naming a doer is a claim that must be attributable, which a ballot is
+// by construction and `gate approve` today is not.
+//
+// Orthogonal to the runner that then transports the chosen driver.
 func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string, bool) {
 	options, drivers := e.eligibleProviders(p)
 	if len(options) == 0 {
@@ -787,15 +797,27 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 			"select", p.Select, "why", e.whyNoEligible(p))
 		return "", false
 	}
+	// auto: a rule picks the first eligible doer immediately — and poses NOTHING. The docket
+	// is the votable, attributable surface; an auto pick has no voter and casts no ballot, so
+	// opening a channel for it put `outcome=gpt tally=0` on the docket — a decision reported
+	// as the group's that nobody made. This is the rule the whether-axis already follows: a
+	// channel is opened only for a gate carrying a Formula, never for `mode: auto`.
+	//
+	// The pick stays observable on the spawned process (its Driver). What a motion would add
+	// is the alternatives, and those are provenance of a spawn rather than a decision anyone
+	// took — if they are wanted, they belong on the process entity.
+	//
+	// Not latching also retires a failure mode: a committed auto pick outlived the registry
+	// and went on naming a retired doer (what driverFor's fallback exists to absorb).
+	// Re-deriving per firing is deterministic given the same registry — eligibleProviders
+	// sorts — and follows the registry when it changes.
+	if p.Select == "" || p.Select == "auto" {
+		return driverFor(drivers, options[0]), true
+	}
+
 	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subject, p))}
 	m := e.compileProvider(p, subject, channelRef, options)
 	e.openChannel(m)
-
-	// auto: a rule picks the first eligible doer immediately — no channel await, no votes.
-	if p.Select == "" || p.Select == "auto" {
-		eff, _ := e.commitMotion(channelRef, nil, options[0], nil)
-		return driverFor(drivers, eff), true
-	}
 
 	// vote/ask: resolve over the vote log, bounded by the engine lifetime, with the revoke
 	// guard active — a ballot retracted between threshold and commit re-monitors.

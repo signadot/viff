@@ -86,6 +86,7 @@ context:
 - tony-format/context
 define:
   approve: .[bool]
+  by: .[string]
   id: .[string]
   say: .[array(string)]
 signature:

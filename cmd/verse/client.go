@@ -384,9 +384,15 @@ func gateCmd() *cli.Command {
 // `vote <motion> <choice>` deliberately stays a positional: a select motion's choice is an
 // arbitrary option id (a provider name), an OPEN set, which is data. A gate's answer is a
 // closed binary, which is grammar.
+// --as is optional here, where `vote --as` is required, and the difference is real rather
+// than an oversight: a ballot is meaningless without its voter (a tally of anonymous votes
+// governs nothing), while an approval is an act that happens whether or not it is signed.
+// Unset, the server records "human:cli" — which is what it recorded for EVERY approval
+// before this flag existed, so the dial only ever adds attribution.
 type gateAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
+	As  string `cli:"name=as desc='identity answering the gate, recorded on the decision (default human:cli)'"`
 }
 
 func gateAnswerCmd(approve bool) *cli.Command {
@@ -418,7 +424,7 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	if len(args) < 1 {
 		return fmt.Errorf("%w: gate %s wants a decision id", cli.ErrUsage, verb)
 	}
-	body := api.Resolve{ID: args[0], Approve: approve}
+	body := api.Resolve{ID: args[0], Approve: approve, By: cfg.As}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}
