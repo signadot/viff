@@ -214,15 +214,15 @@ func TestNegotiate(t *testing.T) {
 		want   Format
 		ok     bool
 	}{
-		{"", Tony, true},                                       // absent → fallback
-		{"*/*", Tony, true},                                    // no preference → fallback
-		{"application/tony", Tony, true},                       // explicit
-		{"application/yaml", YAML, true},                       // explicit
-		{"text/plain", Tony, true},                             // unknown to verse → fallback
-		{"application/yaml, application/tony", YAML, true},     // equal q → first wins
-		{"application/yaml;q=0.5, application/tony", Tony, true},   // q beats order
+		{"", Tony, true},                                               // absent → fallback
+		{"*/*", Tony, true},                                            // no preference → fallback
+		{"application/tony", Tony, true},                               // explicit
+		{"application/yaml", YAML, true},                               // explicit
+		{"text/plain", Tony, true},                                     // unknown to verse → fallback
+		{"application/yaml, application/tony", YAML, true},             // equal q → first wins
+		{"application/yaml;q=0.5, application/tony", Tony, true},       // q beats order
 		{"application/tony;q=0.2, application/yaml;q=0.9", YAML, true}, // reversed
-		{"application/tony;q=0, application/yaml", YAML, true},  // q=0 is a refusal
+		{"application/tony;q=0, application/yaml", YAML, true},         // q=0 is a refusal
 
 		// json is a type verse KNOWS and will not render. Naming it alone is the 406
 		// case; naming it alongside something writable is just a preference verse can

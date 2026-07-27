@@ -24,9 +24,11 @@ func conditionalCommit(t *testing.T, s Store) {
 		"bob":   map[string]any{"choice": "approve"},
 	}.Payload()}
 
-	committed, err := s.Write(Write{At: ch.At(),
+	committed, err := s.Write(Write{
+		At:    ch.At(),
 		Value: Obj{"status": "closed", "outcome": "proceed", "gate": "approvals"}.Payload(),
-		When:  []Require{stillOpen, witness}})
+		When:  []Require{stillOpen, witness},
+	})
 	if err != nil || !committed {
 		t.Fatalf("commit should succeed: committed=%v err=%v", committed, err)
 	}
@@ -36,9 +38,11 @@ func conditionalCommit(t *testing.T, s Store) {
 	}
 
 	// terminal-once: status is now "closed", so the same precondition fails.
-	committed2, err := s.Write(Write{At: ch.At(),
+	committed2, err := s.Write(Write{
+		At:    ch.At(),
 		Value: Obj{"status": "closed", "outcome": "deny"}.Payload(),
-		When:  []Require{stillOpen, witness}})
+		When:  []Require{stillOpen, witness},
+	})
 	if err != nil {
 		t.Fatalf("second commit err: %v", err)
 	}
@@ -64,9 +68,11 @@ func conditionalCommitRevoke(t *testing.T, s Store) {
 		"bob":   map[string]any{"choice": "approve"}, // bob never voted → precondition fails
 	}.Payload()}
 
-	committed, err := s.Write(Write{At: ch.At(),
+	committed, err := s.Write(Write{
+		At:    ch.At(),
 		Value: Obj{"status": "closed", "outcome": "proceed"}.Payload(),
-		When:  []Require{stillOpen, witness}})
+		When:  []Require{stillOpen, witness},
+	})
 	if err != nil {
 		t.Fatalf("commit err: %v", err)
 	}
@@ -142,8 +148,10 @@ func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 func TestPresencePatternDoesNotMatchAbsent(t *testing.T) {
 	store := openStore(t)
 	missing := Ref{System: "run", Kind: "claim", ID: "nothing-here"}
-	ok, err := store.Write(Write{At: Ref{System: "x", Kind: "y", ID: "z"}.At(), Value: Obj{"a": 1}.Payload(),
-		When: []Require{{At: missing.At(), Pattern: Obj{"status": "open"}.Payload()}}})
+	ok, err := store.Write(Write{
+		At: Ref{System: "x", Kind: "y", ID: "z"}.At(), Value: Obj{"a": 1}.Payload(),
+		When: []Require{{At: missing.At(), Pattern: Obj{"status": "open"}.Payload()}},
+	})
 	if err != nil {
 		t.Fatalf("commit: %v", err)
 	}

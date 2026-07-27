@@ -263,8 +263,10 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 		next["witness"] = ids
 	}
 
-	committed, err := e.store.Write(entity.Write{At: ref.At(), Value: next.Payload(),
-		When: []entity.Require{{Pattern: entity.Obj{"terminal": false}.Payload()}}})
+	committed, err := e.store.Write(entity.Write{
+		At: ref.At(), Value: next.Payload(),
+		When: []entity.Require{{Pattern: entity.Obj{"terminal": false}.Payload()}},
+	})
 	if err != nil {
 		e.tracef("goal %s: terminal commit error: %v", g.Def.Name, err)
 		return

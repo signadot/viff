@@ -36,8 +36,10 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	eng.Start(ctx)
 
 	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	if _, err := store.Write(entity.Write{At: entity.Path{Ref: ref},
-		Value: entity.Obj{"stage": "open", "env": "prod"}.Payload()}); err != nil {
+	if _, err := store.Write(entity.Write{
+		At:    entity.Path{Ref: ref},
+		Value: entity.Obj{"stage": "open", "env": "prod"}.Payload(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(300 * time.Millisecond)

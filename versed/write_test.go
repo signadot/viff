@@ -46,8 +46,10 @@ func TestWriteEntityMergesAndGoesDeep(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, got := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
-		Payload: entity.Obj{"stage": "open", "env": "prod"}.Payload()}); code != 200 || got["stage"] != "open" {
+	if code, got := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
+		Payload: entity.Obj{"stage": "open", "env": "prod"}.Payload(),
+	}); code != 200 || got["stage"] != "open" {
 		t.Fatalf("create: %d %+v", code, got)
 	}
 
@@ -76,31 +78,41 @@ func TestWriteEntityConditions(t *testing.T) {
 	defer ts.Close()
 	yes, no := true, false
 
-	if code, _ := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
+	if code, _ := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
 		Payload: entity.Obj{"stage": "open"}.Payload(),
-		When:    []api.Condition{{Exists: &yes}}}); code != http.StatusConflict {
+		When:    []api.Condition{{Exists: &yes}},
+	}); code != http.StatusConflict {
 		t.Fatalf("update of an absent entity = %d, want 409", code)
 	}
-	if code, _ := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
+	if code, _ := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
 		Payload: entity.Obj{"stage": "open"}.Payload(),
-		When:    []api.Condition{{Exists: &no}}}); code != 200 {
+		When:    []api.Condition{{Exists: &no}},
+	}); code != 200 {
 		t.Fatalf("create of an absent entity = %d, want 200", code)
 	}
-	if code, _ := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
+	if code, _ := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
 		Payload: entity.Obj{"stage": "hijacked"}.Payload(),
-		When:    []api.Condition{{Exists: &no}}}); code != http.StatusConflict {
+		When:    []api.Condition{{Exists: &no}},
+	}); code != http.StatusConflict {
 		t.Fatalf("create of an existing entity = %d, want 409", code)
 	}
 
 	// A pattern condition, and a cross-entity one.
-	if code, got := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
+	if code, got := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
 		Payload: entity.Obj{"stage": "reviewed"}.Payload(),
-		When:    []api.Condition{{Pattern: entity.Obj{"stage": "open"}.Payload()}}}); code != 200 || got["stage"] != "reviewed" {
+		When:    []api.Condition{{Pattern: entity.Obj{"stage": "open"}.Payload()}},
+	}); code != 200 || got["stage"] != "reviewed" {
 		t.Fatalf("conditional update: %d %+v", code, got)
 	}
-	if code, _ := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
+	if code, _ := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
 		Payload: entity.Obj{"stage": "deployed"}.Payload(),
-		When:    []api.Condition{{Ref: "demo:gate:1", Pattern: entity.Obj{"open": true}.Payload()}}}); code != http.StatusConflict {
+		When:    []api.Condition{{Ref: "demo:gate:1", Pattern: entity.Obj{"open": true}.Payload()}},
+	}); code != http.StatusConflict {
 		t.Fatalf("write gated on an absent entity = %d, want 409", code)
 	}
 
@@ -116,9 +128,11 @@ func TestWriteEntityRejectsAnEmptyCondition(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	if code, _ := post(t, ts, api.PutEntity{Ref: "demo:pr:1",
+	if code, _ := post(t, ts, api.PutEntity{
+		Ref:     "demo:pr:1",
 		Payload: entity.Obj{"stage": "open"}.Payload(),
-		When:    []api.Condition{{}}}); code != http.StatusBadRequest {
+		When:    []api.Condition{{}},
+	}); code != http.StatusBadRequest {
 		t.Fatalf("empty condition = %d, want 400", code)
 	}
 }
