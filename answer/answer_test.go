@@ -191,6 +191,78 @@ func TestProseIsNoDocument(t *testing.T) {
 	}
 }
 
+// A document that was written and is broken must come back with the parser's complaint. This
+// is the observed failure (friction:entry:f024): a classifier answered `class: design drift`
+// — two bare words, which makes the whole document unparseable — and was told only that its
+// message "carries no answer document". Both repair attempts went on the container while the
+// line that actually broke went unmentioned, which is the budget misspend the design set out
+// to delete, reached from the other side.
+func TestBrokenDocumentReportsTheParseError(t *testing.T) {
+	c := mustParse(t, contractSrc)
+	_, err := c.Check("class: design drift\nseverity: low\nwhy: \"it drifted\"\n")
+	f, ok := err.(*Failure)
+	if !ok {
+		t.Fatalf("err is %T (%v), want *Failure", err, err)
+	}
+	if f.Kind != NoDocument {
+		t.Fatalf("kind %v, want NoDocument", f.Kind)
+	}
+	if f.ParseErr == nil {
+		t.Fatal("the parse error was discarded")
+	}
+	if !strings.Contains(f.ParseErr.Error(), "line") {
+		t.Errorf("the parse error names no line: %v", f.ParseErr)
+	}
+	if !strings.Contains(f.Error(), f.ParseErr.Error()) {
+		t.Errorf("Error() drops the parse error: %v", f)
+	}
+	if msg := f.Repair(c, ""); !strings.Contains(msg, f.ParseErr.Error()) {
+		t.Errorf("the repair message does not carry the parse error:\n%s", msg)
+	}
+}
+
+// The error kept is the fenced block's, not the whole message's. Narration then a fence fails
+// the whole-message parse on the prose at line 0 every time, so reporting that one would hand
+// back an error about a sentence the agent never meant as a document — the same wrong
+// diagnosis, differently sourced.
+func TestParseErrorComesFromTheFencedBlock(t *testing.T) {
+	c := mustParse(t, contractSrc)
+	final := "I read the handler and the two callers.\n\n" +
+		"```tony\nclass: design drift\nseverity: low\n```\n"
+	_, err := c.Check(final)
+	f, ok := err.(*Failure)
+	if !ok {
+		t.Fatalf("err is %T (%v), want *Failure", err, err)
+	}
+	if f.ParseErr == nil {
+		t.Fatal("the parse error was discarded")
+	}
+	// The premise: parsing the whole message DOES fail, and that error is the one worth not
+	// reporting. If this ever stops failing the test below proves nothing.
+	if _, whole := parseComposite(final); whole == nil {
+		t.Fatal("the whole message now parses; this test no longer tests anything")
+	} else if f.ParseErr.Error() == whole.Error() {
+		t.Errorf("the whole-message error won over the block's: %v", f.ParseErr)
+	}
+}
+
+// Prose carries no parse error worth reporting only when it parses as something — a bare word
+// is a String, and nothing about it is broken. The distinction keeps a repair from citing a
+// line for text that was never a document.
+func TestBareWordHasNoParseError(t *testing.T) {
+	c := mustParse(t, contractSrc)
+	for _, s := range []string{"LGTM!", "high", ""} {
+		_, err := c.Check(s)
+		f, ok := err.(*Failure)
+		if !ok {
+			t.Fatalf("%q -> %T (%v), want *Failure", s, err, err)
+		}
+		if f.ParseErr != nil {
+			t.Errorf("%q -> ParseErr %v, want none", s, f.ParseErr)
+		}
+	}
+}
+
 // A contract that cannot be parsed fails where it is written, not after a model call.
 func TestBadContractFailsAtParse(t *testing.T) {
 	for _, src := range []string{"", "   ", "{class: !or [bug"} {

@@ -134,9 +134,9 @@ func (c *Contract) Repairs() int { return c.maxTries }
 // A nil error means the answer is good and the returned node is what a charter's `$data`
 // will deref — the same value mirror projects, because both go through Extract.
 func (c *Contract) Check(final string) (*ir.Node, error) {
-	doc := Extract(final)
+	doc, parseErr := extract(final)
 	if doc == nil {
-		return nil, &Failure{Kind: NoDocument}
+		return nil, &Failure{Kind: NoDocument, ParseErr: parseErr}
 	}
 	var why tony.Explanation
 	ok, err := tony.MatchWith(doc, c.accept, c.ctx, tony.Explaining(&why))
@@ -173,10 +173,23 @@ type Failure struct {
 	// wrong it is (tony.ReasonAbsent, ReasonValue, ReasonOp, …). nil when Kind is
 	// NoDocument, since nothing was matched.
 	Why *tony.Explanation
+	// ParseErr is why the text that was closest to a document is not one: the parser's own
+	// complaint, naming the line. Set when Kind is NoDocument and something was tried and
+	// broke; nil when there was nothing document-shaped to break — prose, or a bare word.
+	//
+	// It is kept because "no document" and "a document with a syntax error in it" are the
+	// same nil node to a caller holding only the node, and the difference is the entire
+	// content of the diagnosis. A model told only that it "carries no answer document" when
+	// it DID write one has nothing to act on, and spends the repair budget on the container
+	// while the broken line goes unmentioned (friction:entry:f024).
+	ParseErr error
 }
 
 func (f *Failure) Error() string {
 	if f.Kind == NoDocument {
+		if f.ParseErr != nil {
+			return "the final message carries no answer document: " + f.ParseErr.Error()
+		}
 		return "the final message carries no answer document"
 	}
 	lines := f.lines()
@@ -214,6 +227,13 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 	case NoDocument:
 		b.WriteString("Your final message was not an answer: this spawn declares an answer " +
 			"contract, and nothing in what you said parses as a document.\n")
+		// Said as the parser's complaint rather than as "your document is wrong here",
+		// because this branch is also reached by pure narration, where there is no document
+		// to be wrong and the complaint is about a sentence. Phrased that way it is
+		// actionable when a document was meant and inert when one was not.
+		if f.ParseErr != nil {
+			fmt.Fprintf(&b, "What the parser said about the closest thing to one: %v\n", f.ParseErr)
+		}
 	default:
 		b.WriteString("Your final message did not satisfy this spawn's answer contract:\n")
 		for _, line := range f.lines() {
@@ -252,16 +272,41 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 // the mirror's projection both, so what a contract validated and what `$data` derefs cannot
 // be different documents.
 func Extract(text string) *ir.Node {
-	if n := parseComposite(text); n != nil {
-		return n
+	n, _ := extract(text)
+	return n
+}
+
+// extract is Extract with the reason kept: nil node and nil error is "there was no document
+// here", nil node and an error is "there was one and it is broken at this line". Only the
+// contract check has any use for the difference — a repair is written from it — so the
+// exported form stays the plain question the mirror asks.
+//
+// WHICH error, when the text offers several candidates, is the whole subtlety. A message that
+// narrates and then fences fails the whole-message parse on its own prose, at line 0, every
+// time: that error is always available and never the one that matters. So a fenced block's
+// error wins over the whole message's, and the whole message's is reported only when there
+// was no fence to have a better one from — which is also the case that motivated this, an
+// agent whose entire message was an unquoted, unfenced document.
+func extract(text string) (*ir.Node, error) {
+	n, wholeErr := parseComposite(text)
+	if n != nil {
+		return n, nil
 	}
 	blocks := fenced(text)
+	var blockErr error
 	for i := len(blocks) - 1; i >= 0; i-- { // last first: the answer follows the narration
-		if n := parseComposite(blocks[i]); n != nil {
-			return n
+		bn, err := parseComposite(blocks[i])
+		if bn != nil {
+			return bn, nil
+		}
+		if blockErr == nil {
+			blockErr = err
 		}
 	}
-	return nil
+	if blockErr != nil {
+		return nil, blockErr
+	}
+	return nil, wholeErr
 }
 
 // render prints the accept pattern for a model to read: one field per line, each value in
@@ -298,18 +343,21 @@ func hasField(doc *ir.Node, name string) bool {
 	return false
 }
 
-func parseComposite(s string) *ir.Node {
+// parseComposite is "this text as an object or a list, or why it is not one". A parse that
+// failed reports its error; a parse that SUCCEEDED into a scalar does not, because a bare
+// word is not a broken document — nothing there is wrong for a model to fix.
+func parseComposite(s string) (*ir.Node, error) {
 	if strings.TrimSpace(s) == "" {
-		return nil
+		return nil, nil
 	}
 	n, err := codec.ParseNode([]byte(s), codec.Tony)
-	if err != nil || n == nil {
-		return nil
+	if err != nil {
+		return nil, err
 	}
-	if n.Type != ir.ObjectType && n.Type != ir.ArrayType {
-		return nil
+	if n == nil || (n.Type != ir.ObjectType && n.Type != ir.ArrayType) {
+		return nil, nil
 	}
-	return n
+	return n, nil
 }
 
 // fenced returns the contents of each ``` block, ignoring any language tag. An unclosed
