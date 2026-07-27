@@ -60,10 +60,10 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:   entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{
-				Patch:      entity.Obj{"stage": "reviewed"}.Payload(),
+				Patch:    entity.Obj{"stage": "reviewed"}.Payload(),
 				Spawn:    &launch.Spec{Task: "merge $subject"},
 				OnDone:   &Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
 				OnFailed: &Action{Spawn: &launch.Spec{Task: "escalate $subject"}},

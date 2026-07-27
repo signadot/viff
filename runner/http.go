@@ -245,6 +245,6 @@ func (failedHandle) Result() string                    { return "" }
 
 var (
 	_ process.Runner = (*httpRunner)(nil)
-	_ process.Handle    = (*remoteHandle)(nil)
-	_ process.Handle    = failedHandle{}
+	_ process.Handle = (*remoteHandle)(nil)
+	_ process.Handle = failedHandle{}
 )

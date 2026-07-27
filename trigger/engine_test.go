@@ -176,7 +176,7 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	eng.AddTrigger(Trigger{
 		Name:      "spin",
 		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop"})}, // any change re-matches
-		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()},                           // writes the SAME value back
+		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()},                   // writes the SAME value back
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

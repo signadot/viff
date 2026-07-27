@@ -180,12 +180,12 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 	}
 
 	ok := map[string]upConfig{
-		"defaults":            {},
-		"memory":              {Store: "memory"},
-		"running docd":        {DocdAddr: "h:1", DocdMountAddr: "h:2"},
-		"data dir":            {Data: "/tmp/x"},
-		"broker with a face":  {Broker: true, BrokerAddr: ":9090"},
-		"broker face only":    {BrokerAddr: ":9090"},
+		"defaults":           {},
+		"memory":             {Store: "memory"},
+		"running docd":       {DocdAddr: "h:1", DocdMountAddr: "h:2"},
+		"data dir":           {Data: "/tmp/x"},
+		"broker with a face": {Broker: true, BrokerAddr: ":9090"},
+		"broker face only":   {BrokerAddr: ":9090"},
 		"remote runner":      {Runner: "http://x"},
 	}
 	for name, cfg := range ok {

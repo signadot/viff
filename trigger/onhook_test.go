@@ -79,7 +79,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:  &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
@@ -112,13 +112,13 @@ func TestOnDoneChains(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:   entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{
-				Patch:   entity.Obj{"stage": "reviewed"}.Payload(),
+				Patch: entity.Obj{"stage": "reviewed"}.Payload(),
 				Spawn: &launch.Spec{Task: "merge $subject"},
 				OnDone: &Action{
-					Patch:   entity.Obj{"stage": "merged"}.Payload(),
+					Patch: entity.Obj{"stage": "merged"}.Payload(),
 					Spawn: &launch.Spec{Task: "approve $subject"},
 					OnDone: &Action{
 						Patch: entity.Obj{"stage": "approved"}.Payload(),
@@ -170,7 +170,7 @@ func TestOnFailed(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:      entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:    &launch.Spec{Task: "review and fail $subject"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},

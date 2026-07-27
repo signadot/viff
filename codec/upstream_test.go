@@ -35,22 +35,22 @@ func TestUpstreamJSONParsesAsTony(t *testing.T) {
 		// The corpus below is what licenses readAs: parsing JSON with the tony parser is
 		// only safe if the two agree on every JSON document, not just the easy ones. Each
 		// line is a place a YAML-family parser could plausibly diverge from a JSON one.
-		`{"s":"a\"b\\c\nd\te\/f"}`,                  // escapes, including the optional \/
-		`{"s":"é中😀"}`,                               // non-ASCII
+		`{"s":"a\"b\\c\nd\te\/f"}`,                    // escapes, including the optional \/
+		`{"s":"é中😀"}`,                                 // non-ASCII
 		`{"a":1e10,"b":-0.5,"c":1.2E-3,"d":0,"e":-0}`, // exponents and signed zero
-		`{"f":1.0}`,                                 // a float that looks like an int
-		`{}`, `[]`, `{"a":{},"b":[]}`,               // empty containers
-		`{"a":1,"a":2}`,                             // duplicate keys
+		`{"f":1.0}`,                   // a float that looks like an int
+		`{}`, `[]`, `{"a":{},"b":[]}`, // empty containers
+		`{"a":1,"a":2}`, // duplicate keys
 		// tony-significant characters, quoted: none of these may start a comment, a block
 		// scalar, a list item or a mapping.
 		`{"s":"# not a comment","t":"!glob","u":"a: b","v":"- item","w":"|","x":">","y":"k:v"}`,
-		`{"a b":1,"!or":2,"a:b":3,"":4,"#c":5,"-x":6}`, // keys that look like syntax
+		`{"a b":1,"!or":2,"a:b":3,"":4,"#c":5,"-x":6}`,          // keys that look like syntax
 		"{\n  \"a\": 1,\n  \"b\": {\n    \"c\": [1, 2]\n  }\n}", // pretty-printed
 		"{\n\t\"a\": 1,\n\t\"b\": [\n\t\t{\"c\": true}\n\t]\n}", // tab-indented
 		`{"a":{"b":{"c":{"d":[{"e":null}]}}}}`,                  // deep nesting
 		`null`, `true`, `false`, `-3`, `1.5e2`,                  // top-level scalars
-		`[1,"two",null,true,{"a":[]},[[]]]`,                     // mixed array
-		`{"n":"42","b":"true","z":"null"}`,                      // scalars that are strings
+		`[1,"two",null,true,{"a":[]},[[]]]`, // mixed array
+		`{"n":"42","b":"true","z":"null"}`,  // scalars that are strings
 	} {
 		asTony, err := parse.Parse([]byte(in), parse.ParseTony())
 		if err != nil {
