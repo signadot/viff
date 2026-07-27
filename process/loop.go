@@ -128,6 +128,7 @@ type Process struct {
 	cancel    context.CancelCauseFunc
 	steer     []sayMsg // injected say-to instructions, drained at the boundary
 	pauseGate *pauseGate
+	err       string // why this process terminated (failed/cancelled); see Err
 
 	// read plane (event bus; Subscribe from any goroutine, emit from Run):
 	busMu  sync.Mutex
@@ -263,6 +264,11 @@ func (p *Process) Run(ctx context.Context) (Outcome, error) {
 		// 1. what does the process want to do next?
 		tu, more, err := p.driver.Next(ctx, prev)
 		if err != nil {
+			// Record the reason BEFORE teardown: teardown emits the terminal EvStatus, and the
+			// mirror projects err off that frame. Set it afterwards and the durable entity —
+			// which is the only thing a charter can match or bind — would carry a failed
+			// process with no account of why.
+			p.setErr(err)
 			p.joinChildren() // bottom-up: children unwind before the parent
 			p.teardown(ctx, Failed)
 			return Outcome{Process: p.ID, Reason: string(Failed), Boundary: p.seq}, err
@@ -462,8 +468,36 @@ func (p *Process) joinChildren() {
 
 // cancelExit joins children bottom-up, then unwinds the parent's own frame.
 func (p *Process) cancelExit(ctx context.Context, cause error) (Outcome, error) {
+	p.setErr(cause)
 	p.joinChildren()
 	return p.teardown(ctx, Cancelled), cause
+}
+
+// setErr records why this process is terminating. Read by Err() and, through it, projected
+// onto the durable entity by the mirror.
+func (p *Process) setErr(err error) {
+	if err == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.err == "" { // first cause wins — a later unwind must not overwrite the reason
+		p.err = err.Error()
+	}
+}
+
+// Err reports why a terminal process failed or was cancelled, empty otherwise.
+//
+// It is the counterpart to Result, and the two are INDEPENDENT rather than exclusive: a
+// driver can say something and then fail, and both halves are worth keeping. What Err does
+// NOT cover is a process that fails at its task and reports so in prose — for an llm driver
+// that is an ordinary completion, because the model's only structural exits are "keep going"
+// and "stop" (see harness/llm.go, which is why the fail tool exists). Err is infrastructure
+// failure; semantic failure is the charter's to check by naming what it expects.
+func (p *Process) Err() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.err
 }
 
 func (p *Process) pushFrame(label string) {

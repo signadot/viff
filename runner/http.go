@@ -181,6 +181,21 @@ func (h *remoteHandle) SetVector(v *process.Vector, by string) {
 	}
 }
 
+// Err reads the terminal failure detail off the snapshot — the remote's process.Instance
+// already carries it, so this is the same read as Result against a different field.
+func (h *remoteHandle) Err() string {
+	resp, err := h.cl.Get(h.url(""))
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var snap struct {
+		Err string `tony:"field=err"`
+	}
+	_ = decodeResp(resp, &snap)
+	return snap.Err
+}
+
 // Result reads the terminal result off the snapshot.
 func (h *remoteHandle) Result() string {
 	resp, err := h.cl.Get(h.url(""))
@@ -242,6 +257,9 @@ func (failedHandle) Cancel(string)                     {}
 func (failedHandle) Steer(string, string)              {}
 func (failedHandle) SetVector(*process.Vector, string) {}
 func (failedHandle) Result() string                    { return "" }
+
+// Err is the reason the spawn could not be issued — the one thing this handle knows.
+func (h failedHandle) Err() string { return h.err }
 
 var (
 	_ process.Runner = (*httpRunner)(nil)

@@ -216,6 +216,7 @@ func (f *fakeHandle) Cancel(string)                             {}
 func (f *fakeHandle) Steer(string, string)                      {}
 func (f *fakeHandle) SetVector(*process.Vector, string)         {}
 func (f *fakeHandle) Result() string                            { return "" }
+func (f *fakeHandle) Err() string                               { return "" }
 
 // A gate that has been answered must LEAVE the entity, not linger on it. Reflect writes the
 // state it knows, and a write merges — so clearing a field means saying so, and the field

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -170,6 +171,22 @@ func (d *llmDriver) Next(ctx context.Context, prev process.StepResult) (process.
 		if d.idx < len(d.pending) { // dispatch the next buffered tool call
 			tc := d.pending[d.idx]
 			d.idx++
+			// `fail` is a TERMINAL tool: it is not dispatched to the executor, it ends the
+			// loop with an error, which is the process's Failed path (the same one failDriver
+			// takes). Without it the model has no structural way to distinguish "I did it"
+			// from "I could not" — the loop below ends on "no more tool calls" either way — so
+			// a process that could not open the file it was asked to review completes as
+			// `done` with prose explaining the failure. A tool call is a discrete branch the
+			// model must choose, which is a far better signal than hoping prose gets read.
+			//
+			// It raises the floor; it is not a guarantee. A model can still stop without
+			// calling it. What does not depend on the model's honesty is the charter naming
+			// what it expects (see the deref in trigger/deref.go): an agent that failed
+			// cannot produce the value, so the firing fails whether or not it admitted
+			// anything.
+			if tc.Function.Name == failTool {
+				return process.ToolUse{}, false, errors.New(failReason(tc))
+			}
 			d.last = &tc
 			return toToolUse(tc), true, nil
 		}
@@ -277,5 +294,32 @@ func toolDefs() []toolDef {
 			map[string]any{"command": s}, []string{"command"}),
 		mk("call_agent", "Delegate a self-contained subtask to a sub-agent that runs concurrently. Give a short agent name and a full prompt describing the task; its result comes back when it finishes. Use for independent subtasks you can run in parallel.",
 			map[string]any{"agent": s, "prompt": s}, []string{"agent", "prompt"}),
+		mk(failTool, "Declare that you could NOT complete the task, and stop. Call this instead of "+
+			"finishing with an explanation when the task could not be done — a file you needed was "+
+			"missing, a command failed, the request was impossible. Simply stopping is read as "+
+			"SUCCESS by everything downstream, so an explanation in your final message is not enough: "+
+			"it must be this call. Give the reason.",
+			map[string]any{"reason": s}, []string{"reason"}),
 	}
+}
+
+// failTool is the terminal tool by which a model declares failure. Named once because the
+// driver matches on it and the tool definition declares it, and a drift between the two
+// would silently turn the fail branch back off.
+const failTool = "fail"
+
+// failReason pulls the model's stated reason out of the fail call, falling back to a fixed
+// message: a fail with unparseable arguments is still a fail, and must not be swallowed into
+// a successful completion because the JSON was malformed.
+func failReason(tc toolCall) string {
+	var args struct {
+		Reason string `json:"reason"`
+	}
+	if tc.Function.Arguments != "" {
+		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+	}
+	if strings.TrimSpace(args.Reason) == "" {
+		return "the agent declared failure without giving a reason"
+	}
+	return args.Reason
 }

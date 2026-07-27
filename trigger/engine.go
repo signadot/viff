@@ -1093,7 +1093,38 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	// segment and so quotes a multi-segment chain: Join("review.onDone", "onFailed") is
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
-	hook.apply(fp.chain+"."+seg, ev, []entity.Ref{subj}, e)
+	chain := fp.chain + "." + seg
+	if err := hook.apply(chain, ev, []entity.Ref{subj}, e); err != nil {
+		e.recordHookFailure(mirror.Ref(fp.id), chain, err)
+	}
+}
+
+// recordHookFailure persists a completion hook's failure onto the process whose completion
+// fired it, under a `hook` record:
+//
+//	hook: { chain: review.onDone, status: failed, err: "$data.severity is not present …" }
+//
+// A hook is where an unverifiable claim turns into a state transition, so its failure is the
+// one an operator most needs to see — and a trace line is invisible to everything that reads
+// the verse. Written here rather than onto the SUBJECT because the failure is a fact about
+// this process's completion, not about the PR: the subject deliberately did not advance, and
+// putting an error in a field a charter matches on is what would make `fields: {stage: X}`
+// quietly stop matching.
+//
+// Writing to the process entity is safe despite the mirror owning that payload, because a
+// store write MERGES: a field the mirror never names survives its re-Put (see mirror.go,
+// which relies on the same property for `pending`). That also makes it ordering-independent,
+// which matters — this can run before the mirror's own terminal write, since the two race.
+//
+// `hook` is one reserved name on an entity the engine and the mirror already co-own, the way
+// `verse` is one reserved root on a subject. status is the mirror's field and is left alone.
+func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
+	e.tracef("hook %s on %s: %v", chain, ref, err)
+	e.modify(ref, func(cur entity.Payload) entity.Payload {
+		p := clonePayload(cur)
+		p["hook"] = entity.Obj{"chain": chain, "status": "failed", "err": err.Error()}
+		return p.Payload()
+	})
 }
 
 // procEvent synthesizes the store event for a completed process — the bus-driven reapOnDone
@@ -1126,6 +1157,15 @@ func (e *Engine) procEvent(fp flowProc, status process.Status) entity.Event {
 	if fp.h != nil {
 		if r := fp.h.Result(); r != "" {
 			st["result"] = r
+			// Derive `data` here too, with the mirror's own function: a hook that derefs
+			// $data.x must resolve against the same document the store ends up holding,
+			// and this path can run before the mirror has written anything.
+			if d := mirror.ParseResult(r); d != nil {
+				st["data"] = d
+			}
+		}
+		if er := fp.h.Err(); er != "" {
+			st["err"] = er
 		}
 	}
 	if fp.subject != "" {

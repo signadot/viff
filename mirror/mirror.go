@@ -11,6 +11,9 @@ package mirror
 import (
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
 )
@@ -144,6 +147,12 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 					if process.Status(ev.Text).Terminal() {
 						if r := h.Result(); r != "" { // keep the full final answer, durably
 							st["result"] = r
+							if d := ParseResult(r); d != nil {
+								st["data"] = d
+							}
+						}
+						if e := h.Err(); e != "" { // status says only THAT it ended, never why
+							st["err"] = e
 						}
 						write(store, id, st)
 						return // stop projecting; the entity remains, marked terminal
@@ -173,6 +182,37 @@ func write(store entity.Store, id string, st entity.Obj) {
 	if _, err := store.Write(entity.Write{At: Ref(id).At(), Value: st.Payload()}); err != nil {
 		return
 	}
+}
+
+// ParseResult is the structured face of a driver's final answer: the text parsed as tony,
+// projected beside it as `data` so a charter can deref into it ($data.severity) instead of
+// pattern-matching prose. nil when the answer is not structured, and `result` always carries
+// the text either way — the two are one value with two faces, not alternatives.
+//
+// It accepts a parse ONLY when the result is an object or a list. The parser is strict enough
+// that English fails it ("Verdict: ship it", "No blocking issues found." — both parse errors),
+// so this is not about guarding against prose accidentally becoming a record. It is that a
+// bare word parses fine as a tony string: "high", "yes" and "LGTM!" all decode to String, so
+// without this gate `data` would be present for practically every answer and would signal
+// nothing. A composite is the only shape that says the agent actually returned structure.
+//
+// This is what makes a reference the declaration: a charter that derefs $data.severity has
+// said it expects structure, and gets a loud failure when the agent returned prose instead —
+// no schema to declare up front, and no reliance on the agent reporting its own failure
+// honestly.
+// It is exported because the mirror is not the only writer that has to answer this question:
+// the trigger engine synthesizes a completed process's payload when it beats the mirror to
+// the terminal (see trigger.Engine.procEvent), and if the two derived `data` differently a
+// hook would deref against a different document than the one the store ends up holding.
+func ParseResult(text string) entity.Payload {
+	n, err := codec.ParseNode([]byte(text), codec.Tony)
+	if err != nil || n == nil {
+		return nil
+	}
+	if n.Type != ir.ObjectType && n.Type != ir.ArrayType {
+		return nil
+	}
+	return n
 }
 
 // preview bounds a narration line for the index; the full text is on the read plane

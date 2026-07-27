@@ -38,6 +38,11 @@ type Handle interface {
 	Steer(instruction, by string)
 	SetVector(v *Vector, by string)
 	Result() string
+	// Err is why a terminal process failed or was cancelled — independent of Result, not
+	// exclusive with it: a driver can say something and then fail. It is on the Handle
+	// rather than inferred from status because status says a process STOPPED and nothing
+	// about why, and the mirror can only project what the handle exposes.
+	Err() string
 }
 
 // *Process is the local Handle.

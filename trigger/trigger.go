@@ -328,10 +328,18 @@ func (a Action) noNestedSeq(inSeq bool) error {
 // that subject) then spawn (if any). chain is this action's kpath inside its trigger (the
 // trigger name at the top, `review.onDone` for a hook), used to derive the spawned process
 // id. Writing entities advances state — which wakes the next trigger, closing the loop.
-func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine) {
+// It returns the first subject's failure, if any. A fan-out still attempts every subject —
+// one member's bad reference must not stop the others — but the error is reported rather
+// than only traced, so a caller that has somewhere to record it (a completion hook, which
+// knows the process it belongs to) can persist it instead of dropping it into the log.
+func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine) error {
+	var first error
 	for _, subj := range subjects {
 		h, err := a.applyOne(chain, ev, subj, e)
 		if err != nil {
+			if first == nil {
+				first = err
+			}
 			continue // already traced; this subject does not advance
 		}
 		// A sequence starts once the carrier's own write has landed. It cannot also have
@@ -340,6 +348,7 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 			e.startSeq(chain, a, ev, subj)
 		}
 	}
+	return first
 }
 
 // applyOne is apply for exactly one subject: the write, then the spawn. It returns the

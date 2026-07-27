@@ -377,6 +377,12 @@ func (h *handle) Resolve(decision string, proceed bool, say string) bool {
 	return true
 }
 
+// Err is empty for a brokered process: the dial-in report carries a terminal status and a
+// result, and has no error channel — a worker says "failed", not why. Giving the report an
+// `err` field is a change to the worker protocol (and to `verse process do`), so it is left
+// for that change rather than faked from the result text here.
+func (h *handle) Err() string { return "" }
+
 func (h *handle) Result() string {
 	ps := h.b.get(h.id)
 	if ps == nil {

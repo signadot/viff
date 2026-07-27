@@ -111,7 +111,16 @@ func (e *Engine) finishSeq(chain string, carrier Action, ev entity.Event, subj e
 	e.publishSeq(chain, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
 	e.releaseRun(chain, subj)
 	if carrier.OnDone != nil {
-		carrier.OnDone.apply(chain+"."+"onDone", ev, []entity.Ref{subj}, e)
+		hook := chain + "." + "onDone"
+		if err := carrier.OnDone.apply(hook, ev, []entity.Ref{subj}, e); err != nil {
+			// Record it against the process whose completion got us here. A sequence can also
+			// finish without one — every element being a bare patch completes immediately — and
+			// then ev is the original triggering change, whose ref is the subject rather than a
+			// process. There is no process to hang it on in that case, so it stays traced.
+			if ev.Ref.System == mirror.System {
+				e.recordHookFailure(ev.Ref, hook, err)
+			}
+		}
 	}
 }
 

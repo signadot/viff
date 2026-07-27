@@ -276,7 +276,44 @@ the depth axis, and it has its own section below.
 Every field of the changed payload is bound by name (`$stage`, `$path`, …), plus `$subject`
 — the *resolved* subject. So `review $subject` in a spawn's task names the PR the firing is
 about, even when the entity that fired was a process, not the PR. A completion hook also
-reads the finished process's payload: `$status`, `$result`, `$flow`, `$chain`.
+reads the finished process's payload: `$status`, `$result`, `$data`, `$err`, `$flow`,
+`$chain`.
+
+Those last four are what a process leaves behind, and they answer different questions:
+
+| field | what it is |
+|---|---|
+| `status` | that the process **stopped** — `done`, `failed`, `cancelled`, `orphaned` |
+| `result` | the driver's final answer, as text, always present |
+| `data` | that answer parsed, **only when it is an object or a list** — absent otherwise |
+| `err` | why it failed: infrastructure, a driver error, a declared `fail` |
+
+`status: done` means the process stopped, not that the work succeeded. An agent asked to
+review a file it cannot open will stop and say so in prose, and that is an ordinary
+completion — its only structural exits are "keep going" and "stop". The `fail` tool gives it
+a third, which is what `err` records, but a model can still stop without reaching for it.
+
+So do not read success off `status`. **A hook that advances state should name evidence**:
+
+```tony
+onDone: { patch: { stage: reviewed, severity: $data.severity } }
+```
+
+An agent that failed cannot produce `$data.severity`, so the firing fails and the subject
+does not advance — no detection of the lie required, and no reliance on the agent reporting
+its own failure honestly. A hook spelled `patch: {stage: reviewed}` advances on a bare claim.
+This is the same discipline a goal already follows: `doneWhen` latches on a witness in the
+store, never on a process saying it finished.
+
+A hook's failure is recorded against the process whose completion fired it, under `hook`:
+
+```tony
+hook: { chain: review.onDone, status: failed, err: "$data.severity is not present …" }
+```
+
+It goes there rather than on the subject because it is a fact about that completion, and
+because putting an error into a field a charter matches on is exactly what makes
+`fields: {severity: high}` quietly stop matching.
 
 A `patch` resolves references too, and there it is a **deref by kpath**, not a template
 substitution — it names a value, it does not compute one:

@@ -22,6 +22,7 @@ func (h *recHandle) Cancel(string)                             { h.mu.Lock(); h.
 func (h *recHandle) Steer(string, string)                      {}
 func (h *recHandle) SetVector(*process.Vector, string)         {}
 func (h *recHandle) Result() string                            { return "" }
+func (h *recHandle) Err() string                               { return "" }
 
 // A resumed process (Adopt) must be steerable, not merely observed: it is re-tracked
 // under its flow, so flow control (here CancelFlow) reaches it.
