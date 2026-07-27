@@ -73,17 +73,25 @@ func IsMountOwned(system, kind string) bool {
 	return false
 }
 
-// LogdStore is an entity.Store backed by a logd document server (tony-format),
-// reached through the embedded libctl client — the durable, observable substrate
-// the in-memory MemStore stands in for during dev/test. Entities map to kinded
-// paths (<root>.<system>.<kind>.<id>); reads are Match, writes are Patch, and the
-// change stream + revision cursor come from a single logd Watch on the root.
+// observer is one live subscriber: a buffered channel plus the count of events dropped
+// while it was full, flushed to it as a gap marker before its next delivery so a drop is
+// never silent (the consumer recovers the gap via Since).
+type observer struct {
+	ch      chan Event
+	dropped int
+}
+
+// LogdStore is an entity.Store backed by a logd document server (tony-format), reached
+// through the embedded libctl client — the durable, observable substrate the whole verse
+// runs on. Entities map to kinded paths (<root>.<system>.<kind>.<id>); reads are Match,
+// writes are Patch, and the change stream + revision cursor come from a single logd Watch
+// on the root.
 //
-// Revisions here are logd commit numbers: monotonic but *sparse* (a commit may
-// jump by more than one, and other writers advance it), unlike MemStore's dense
-// +1. Consumers must treat Rev as an opaque monotonic cursor and reconcile via
-// Since — which the engine does. Since is served natively by a FromCommit replay
-// watch (a query by revision), so a hold costs a cursor, not a buffer.
+// Revisions here are logd commit numbers: monotonic but *sparse* — a commit may jump by
+// more than one, and other writers advance it. Consumers must treat Rev as an opaque
+// monotonic cursor and reconcile via Since — which the engine does. Since is served
+// natively by a FromCommit replay watch (a query by revision), so a hold costs a cursor,
+// not a buffer.
 type LogdStore struct {
 	root string
 	// sess multiplexes everything: reads, writes, the live root watch, per-trigger
@@ -105,8 +113,12 @@ type LogdStore struct {
 	subs        map[int]*observer
 	nextID      int
 	closed      bool
-	synced      bool               // rev/openCommit have been seeded (by ensureSynced or the lazy watch)
+	synced      bool               // openCommit has been fixed (by ensureSynced or the lazy watch)
 	watchCancel context.CancelFunc // cancels the lazy root watch; nil when no Observe subscribers
+	// doc is the watched document as of the last applied commit — seeded by the root
+	// watch's State and advanced by each delta. It is what an event's level payload is read
+	// out of (see eventsFromDelta); nil until a watch has run.
+	doc *ir.Node
 
 	scopesMu sync.Mutex
 	scopes   map[string]*LogdStore // lazily-created scoped children, keyed by scope name
@@ -247,9 +259,14 @@ func payloadToNode(p Payload) *ir.Node {
 }
 
 // nodeToPayload is the read face. A node is already a payload; the only work left is
-// dropping null-valued FIELDS of an object — logd tombstones from a replace — so callers
-// see only present fields. A scalar payload has no fields and passes through untouched;
-// a null one is an absent entity and reads as nil.
+// dropping null-valued FIELDS of an object — logd's tombstones — so callers see only what
+// is present. A scalar payload has no fields and passes through untouched; a null one is an
+// absent entity and reads as nil.
+//
+// It recurses, because a tombstone can be at any depth now that a write can be: removing
+// `labels.urgent` leaves a null AT that key, and a reader shown `labels: {urgent: null}`
+// would say the label is still there, holding nothing. Arrays are left alone — a null in a
+// list is a position, not an absence.
 func nodeToPayload(node *ir.Node) Payload {
 	if node == nil || node.Type == ir.NullType {
 		return nil
@@ -259,8 +276,8 @@ func nodeToPayload(node *ir.Node) Payload {
 	}
 	live := map[string]*ir.Node{}
 	for k, v := range ir.ToMap(node) {
-		if v != nil && v.Type != ir.NullType {
-			live[k] = clone(v)
+		if p := nodeToPayload(v); p != nil {
+			live[k] = p
 		}
 	}
 	return ir.FromMap(live)
@@ -268,7 +285,7 @@ func nodeToPayload(node *ir.Node) Payload {
 
 // addRemovedNulls makes a Patch replace rather than merge: for every field present
 // in the old value but absent from the new payload, it appends an explicit null so
-// logd tombstones it. This gives Put the whole-value replace semantics MemStore has.
+// logd tombstones it. This is what gives Put its whole-value replace semantics.
 //
 // It applies only when BOTH sides are objects, which is the only case where a merge could
 // leave a stale field behind. A scalar (or array) new value replaces the old outright —
@@ -298,6 +315,9 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	node, err := s.sess.Match(ctx, s.refPath(ref))
+	if isNotFound(err) {
+		return Entity{}, false, nil // nothing stands there — an answer, not a failure
+	}
 	if err != nil {
 		return Entity{}, false, fmt.Errorf("read %s: %w", ref, err)
 	}
@@ -307,125 +327,103 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true, nil
 }
 
-// Put creates or updates an entity with replace semantics and returns a best-effort
-// echo event. The authoritative change (with its commit as Rev) arrives on the
-// watch stream; the echo's Rev is the store's current cursor, adequate for the HTTP
-// reply that consumes it.
-func (s *LogdStore) Put(ref Ref, p Payload) Event {
-	ctx, cancel := s.reqCtx()
-	defer cancel()
-	s.mu.Lock()
-	rev := s.rev
-	s.mu.Unlock()
-	echo := Event{Ref: ref, Op: Set, To: clone(p), Rev: rev}
-
-	node := payloadToNode(p)
-	path := s.refPath(ref)
-	if old, err := s.sess.Match(ctx, path); err == nil {
-		addRemovedNulls(node, old, p)
-	}
-	_ = s.sess.Patch(ctx, path, node)
-	return echo
+// isNotFound reports whether a read error is the substrate saying "nothing stands there"
+// rather than "I could not look" — the distinction Get exists to preserve.
+//
+// It has to ask the MESSAGE, which is unpleasant and deliberately narrow. logd answers a
+// read of a path that does not exist with an error, not a null, and libctl renders the
+// server's typed code (api.ErrCodeNotFound) into an opaque string on the way out, so the
+// code that would settle this never reaches us. Until it does, this is the discriminator.
+//
+// Getting it wrong in the other direction is what makes it worth the ugliness: before this,
+// every absent entity whose id, kind, or system had never been written came back as a read
+// FAILURE — so `GET /entity` for anything absent answered 502 on any verse that had ever
+// been written to, and an agent asking after a file was told the store was unreachable.
+func isNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "path not found")
 }
 
-// Modify atomically read-modify-writes an entity using logd's compare-and-swap: it
-// Matches the current value, applies fn, and PatchIf's the result conditioned on the
-// value being unchanged; a concurrent write fails the precondition (ErrMatchFailed)
-// and the loop re-reads and re-applies. So two triggers writing the same ref cannot
-// lose an update. Retries until it commits or the deadline/an error stops it; the
-// returned Rev is a best-effort echo (the authoritative commit arrives on the watch).
-func (s *LogdStore) Modify(ref Ref, fn func(Payload) Payload) Event {
-	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
-	defer cancel()
-	path := s.refPath(ref)
-
-	var next Payload
-	for ctx.Err() == nil {
-		old, err := s.sess.Match(ctx, path)
-		if err != nil {
-			// The path does not exist yet (docd errors on a missing path) or is briefly
-			// unreadable. Treat it as absent and fall through to CREATE it: the CAS below
-			// runs with an expect-absent precondition (old == null), so a genuine create
-			// lands, while an entity that actually exists fails the precondition
-			// (ErrMatchFailed) and we re-read. So Modify (and the `set` action built on it)
-			// can create a fresh entity, without risking a clobber on a transient error.
-			old = nil
-		}
-		var cur Payload
-		if old != nil && old.Type == ir.ObjectType {
-			cur = nodeToPayload(old)
-		}
-		next = fn(cur)
-		node := payloadToNode(next)
-		if old == nil {
-			old = ir.Null()
-		}
-		if old.Type == ir.ObjectType {
-			addRemovedNulls(node, old, next)
-		}
-		// CAS: commit only if the value is still what we read.
-		err = s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: path, Data: old})
-		if err == nil {
-			break // committed
-		}
-		if errors.Is(err, libctl.ErrMatchFailed) {
-			continue // conflict — re-read and re-apply
-		}
-		break // other error: best-effort, give up
-	}
-
-	s.mu.Lock()
-	rev := s.rev
-	s.mu.Unlock()
-	return Event{Ref: ref, Op: Set, To: clone(next), Rev: rev}
-}
-
-// CommitIf implements ConditionalCommitter over docd's cross-path conditional write: it
-// combines every precondition into ONE root-anchored match pattern and issues a single
-// PatchIf, so the verdict write and all the precondition checks commit atomically at the
-// server. docd evaluates the match (a tony pattern) at the root subtree with the write in
-// one step; a failed precondition surfaces as ErrMatchFailed → (false, nil). This is the
-// airtight revoke + terminal-once the in-memory store gets from its single lock.
-func (s *LogdStore) CommitIf(ref Ref, payload Payload, pre ...Precondition) (bool, error) {
+// Write is THE write: value merges in at one path iff every precondition holds, in a single
+// commit. Every precondition is folded into ONE root-anchored match issued with the patch
+// (docd allows a single match path), so the checks and the write are one step at the server —
+// no window for a revoke to slip between them. A failed precondition surfaces as
+// ErrMatchFailed → (false, nil): the world said no, which is not an error.
+//
+// It does not read first. A merge is what logd's patch already does, and a nil value is a
+// tombstone, so the only thing a read could add is "which fields did the caller drop" — a
+// question the caller can answer without a round trip. That read is the reason a write used
+// to cost the same as a read (see go-tony bvm163tyh12krwcqcsn0), which on a growing log is
+// most of what a write cost.
+//
+// There is no commit number in the result because libctl discards it (PatchResult.Commit is
+// dropped by doPatch), and a fabricated one is worse than none.
+func (s *LogdStore) Write(w Write) (bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	node := payloadToNode(payload)
-	// Nest each precondition's pattern at its <system>[.<kind>[.<id>]] under the root, so a
-	// single match at the root subtree checks them all together (docd allows one match path).
-	patNode := rootPattern(pre)
-	path := s.refPath(ref)
-	if old, err := s.sess.Match(ctx, path); err == nil {
-		addRemovedNulls(node, old, payload) // faithful whole-value set, like Put/Modify
+	path := s.writePath(w.At)
+	node := payloadToNode(w.Value)
+	if w.Value == nil {
+		node = ir.Null() // remove whatever stands there
 	}
-	err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: patNode})
+	if len(w.When) == 0 {
+		if err := s.sess.Patch(ctx, path, node); err != nil {
+			return false, fmt.Errorf("write %s: %w", w.At, err)
+		}
+		return true, nil
+	}
+	pre := make([]pathPattern, 0, len(w.When))
+	for _, r := range w.When {
+		pre = append(pre, pathPattern{at: r.path(w), pattern: r.Pattern})
+	}
+	err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
 		return false, nil // a precondition did not hold — a revoke, or already committed
 	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("write %s: %w", w.At, err)
 	}
 	return true, nil
 }
 
-// nestPattern places pattern at m[system][kind]([id]), building intermediate maps — the
-// nested shape docd's root document has (<root>.<system>.<kind>.<id>). Raw segment names are
-// used because those are the field names docd stores; seg-quoting is only for kpath request
-// strings, not the stored fields.
+// writePath renders a path as a kpath: the entity's path, then a segment per field.
+func (s *LogdStore) writePath(at Path) string {
+	path := s.refPath(at.Ref)
+	for _, f := range at.Field {
+		path += "." + seg(f)
+	}
+	return path
+}
+
+// replacing returns payload with an explicit null for every field the stored value has and
+// the payload does not — what turns a merge into a whole-value replace. It costs a READ, and
+// it is the only thing in the store that does; it exists because Put/Modify/CommitIf promise
+// replace semantics to callers written against them. A caller that says which fields to drop
+// (by writing nil at them) needs none of this.
+func (s *LogdStore) replacing(ref Ref, payload Payload) Payload {
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	node := payloadToNode(payload)
+	if old, err := s.sess.Match(ctx, s.refPath(ref)); err == nil {
+		addRemovedNulls(node, old, payload)
+	}
+	return node
+}
+
 // rootPattern folds every precondition into ONE match against the root document, which is
-// what keeps the check atomic with the write (docd allows a single match path).
+// what keeps the checks atomic with the write (docd allows a single match path).
 //
 // Presence preconditions nest into a single tree, as they always have. An ABSENCE
 // precondition cannot: there is no key at its path to carry a pattern, so it becomes its own
 // negated branch — "the document does not have run.claim.<id>" — and the branches are ANDed.
-func rootPattern(pre []Precondition) *ir.Node {
+func rootPattern(pre []pathPattern) *ir.Node {
 	var branches []*ir.Node
 	present, any := patTree{}, false
 	for _, p := range pre {
-		if IsAbsent(p.Pattern) {
-			branches = append(branches, absentPath(p.Ref))
+		if IsAbsent(p.pattern) {
+			branches = append(branches, absentPath(p.at))
 			continue
 		}
-		nestPattern(present, p.Ref, p.Pattern)
+		nestPattern(present, p.at, p.pattern)
 		any = true
 	}
 	if any {
@@ -441,20 +439,56 @@ func rootPattern(pre []Precondition) *ir.Node {
 	}
 }
 
-// absentPath renders "nothing stands at ref" as a negated presence at ref's path.
-func absentPath(ref Ref) *ir.Node {
-	t := patTree{}
-	nestPattern(t, ref, ir.Null())
-	return t.node().WithTag("!not")
+// pathPattern is one precondition reduced to what the match needs: a place and a pattern.
+type pathPattern struct {
+	at      Path
+	pattern Payload
 }
 
-func nestPattern(root patTree, ref Ref, pattern Payload) {
-	sys := root.child(ref.System)
-	if ref.ID == "" {
-		sys[ref.Kind] = pattern
+// absentPath renders "nothing stands at ref" — which over docd is TWO shapes, not one.
+// A ref that was never written has no key at its path, so absence is a negated presence
+// (a null pattern is the presence test). A ref that was DELETED still has its key: logd
+// tombstones with a null leaf, and the tombstone is what makes the delete replayable. So
+// the two are ORed, and a claim released by Delete can be taken again — without the
+// second branch, releaseRun would free a claim that claimRun could never re-win, and a
+// sequence would run exactly once per subject for the lifetime of the document.
+func absentPath(at Path) *ir.Node {
+	noKey, tombstone := patTree{}, patTree{}
+	nestPattern(noKey, at, ir.Null())    // negated below: no key at the path at all
+	nestPattern(tombstone, at, Absent()) // a key holding null: deleted
+	return ir.FromSlice([]*ir.Node{noKey.node().WithTag("!not"), tombstone.node()}).WithTag("!or")
+}
+
+// nestPattern places pattern at m[system][kind][id][field...], building intermediate maps —
+// the nested shape docd's root document has (<root>.<system>.<kind>.<id>.<field>…). Raw
+// segment names are used because those are the field names docd stores; seg-quoting is only
+// for kpath request strings, not for stored fields. A trailing segment left empty ends the
+// nesting there, so a precondition can be about a whole kind subtree (a motion's vote log)
+// or about one field inside one entity.
+func nestPattern(root patTree, at Path, pattern Payload) {
+	segs := at.segments()
+	if len(segs) == 0 {
 		return
 	}
-	sys.child(ref.Kind)[ref.ID] = pattern
+	t := root
+	for _, seg := range segs[:len(segs)-1] {
+		t = t.child(seg)
+	}
+	t[segs[len(segs)-1]] = pattern
+}
+
+// segments is the path as document field names: system, kind, id, then each field, stopping
+// at the first empty one. A ref with no ID addresses a whole kind subtree (a motion's vote
+// log), which is why the tail may be short rather than invalid.
+func (p Path) segments() []string {
+	out := make([]string, 0, 3+len(p.Field))
+	for _, seg := range append([]string{p.System, p.Kind, p.ID}, p.Field...) {
+		if seg == "" {
+			return out
+		}
+		out = append(out, seg)
+	}
+	return out
 }
 
 // patTree is the nesting under construction: branches are patTrees, LEAVES ARE NODES. It is
@@ -486,23 +520,6 @@ func (t patTree) node() *ir.Node {
 	return ir.FromMap(m)
 }
 
-// Delete tombstones an entity (a null patch) and reports whether it existed.
-func (s *LogdStore) Delete(ref Ref) (Event, bool) {
-	ctx, cancel := s.reqCtx()
-	defer cancel()
-	path := s.refPath(ref)
-	old, err := s.sess.Match(ctx, path)
-	if err != nil || old == nil || old.Type == ir.NullType {
-		return Event{}, false
-	}
-	_ = s.sess.Patch(ctx, path, ir.Null())
-
-	s.mu.Lock()
-	rev := s.rev
-	s.mu.Unlock()
-	return Event{Ref: ref, Op: Delete, From: nodeToPayload(old), Rev: rev}, true
-}
-
 // Rev returns the highest logd commit observed (an opaque monotonic cursor). With no
 // standing root watch, a store that is only written/read (never Observed) has no live
 // rev, so this seeds it once from a transient current-state read.
@@ -513,18 +530,25 @@ func (s *LogdStore) Rev() int64 {
 	return s.rev
 }
 
-// ensureSynced seeds rev and openCommit once, from a transient current-state read, for
-// the cursor consumers (Rev's value, Since's watermark) on a store with no lazy root
+// ensureSynced brings rev up to the current commit from a transient current-state read,
+// for the cursor consumers (Rev's value, Since's watermark) on a store with no lazy root
 // watch running. It holds NO standing watch — it opens one, reads the initial State
 // commit, and closes it — so it never becomes a long-lived root watch. It needs no
 // serialization against a concurrent Observe or Since on the same path: each watch is
 // keyed by its own request id (see LogdStore.sess).
+//
+// It re-reads on every call, because nothing else advances rev on a store nobody
+// Observes: a write goes straight to logd and the authoritative commit comes back on a
+// watch stream that isn't running, so a once-only seed would pin Rev to whatever the
+// commit was when the store opened (a /status reporting storeRev 0 after a hundred
+// writes). openCommit — this instance's Since low-watermark — IS once-only: it is a
+// floor, and raising it later would tell a live consumer its valid cursor had aged out.
 func (s *LogdStore) ensureSynced() {
 	s.mu.Lock()
-	skip := s.synced || s.watchCancel != nil
+	watching := s.watchCancel != nil
 	s.mu.Unlock()
-	if skip {
-		return
+	if watching {
+		return // the root watch is live: rev is already current
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
@@ -541,9 +565,9 @@ func (s *LogdStore) ensureSynced() {
 	case <-ctx.Done():
 	}
 	s.mu.Lock()
-	s.synced = true
-	if s.openCommit == 0 {
-		s.openCommit = s.rev // this instance's low-watermark for Since
+	if !s.synced {
+		s.synced = true
+		s.openCommit = s.rev // this instance's low-watermark for Since, fixed at first sync
 	}
 	s.mu.Unlock()
 }
@@ -840,7 +864,7 @@ func (e errString) Error() string { return string(e) }
 // that feeds it is opened LAZILY on the first observer and torn down when the last one
 // leaves — so a store with no observer (the common case: engines observe per-trigger
 // subtrees, not the root) holds no root watch to collide with a controller mount. Like
-// MemStore it is a low-latency hint that drops under backpressure; correctness comes
+// the contract says, it is a low-latency hint that drops under backpressure; correctness comes
 // from the cursor + Since. Today the only observer is the /watch debug stream (decision:
 // an active whole-verse watch is transient and retries on a membership_changed force-end).
 func (s *LogdStore) Observe() (<-chan Event, func()) {
@@ -886,7 +910,7 @@ func (s *LogdStore) startRootWatchLocked() {
 // query by revision), returning them in commit order. It is a pure read — it derives
 // each event's Op from the delta alone (a tombstone is Delete, any value is Set) and
 // mutates no store state, so repeated or concurrent calls are consistent. This is
-// what keeps a hold costing a cursor rather than an in-memory buffer.
+// what keeps a hold costing a cursor rather than a growing buffer.
 //
 // ok is false when the caller must resync from current state: the replay could not
 // be established, or `from` predates this store's low-watermark (openCommit) — logd
@@ -916,6 +940,13 @@ func (s *LogdStore) Since(from int64) ([]Event, bool) {
 	}
 	defer w.Close()
 
+	// A replay carries deltas, and an event owes its consumer the whole entity as of its
+	// commit — so replay it the way the live watch does: read the document as it stood AT
+	// `from`, then advance it one commit at a time. That is one read for the whole catch-up
+	// rather than one per event, and it makes a replayed event indistinguishable from the
+	// live one it may be recovering.
+	doc := s.docAt(ctx, from)
+
 	var out []Event
 	for {
 		select {
@@ -929,10 +960,27 @@ func (s *LogdStore) Since(from int64) ([]Event, bool) {
 				return out, true // caught up to current
 			}
 			if ev.Patch != nil {
-				out = append(out, s.eventsFromDelta(ev.Commit, ev.Patch)...)
+				doc = applyDelta(doc, ev.Patch)
+				out = append(out, s.eventsFromDelta(ev.Commit, ev.Patch, doc)...)
 			}
 		}
 	}
+}
+
+// docAt reads the whole watched document as it stood at commit, root key and all — the base
+// a replay levels its deltas against.
+//
+// An unreadable base is an EMPTY document, not nil: the read fails when nothing has ever
+// been written under the root, and there the replay itself carries every commit an entity
+// has, so applying the deltas onto nothing reconstructs it exactly. (A base that fails for
+// some other reason leaves the replay levelling only what it can see, which is what it had
+// before any of this existed.)
+func (s *LogdStore) docAt(ctx context.Context, commit int64) *ir.Node {
+	node, err := s.sess.MatchAt(ctx, seg(s.root), commit)
+	if err != nil || node == nil {
+		return ir.FromMap(map[string]*ir.Node{})
+	}
+	return ir.FromMap(map[string]*ir.Node{s.root: node})
 }
 
 // runWatch consumes the live root watch, re-establishing it if the connection
@@ -971,19 +1019,44 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		if ev.Commit > s.rev {
 			s.rev = ev.Commit
 		}
+		// A State is rooted AT the watched path (its top-level fields are systems), while a
+		// delta is rooted at the DOCUMENT (its top-level field is the root). Wrap the State
+		// so both speak the same shape — otherwise the first delta grafts a second tree
+		// beside the first and every level read misses.
+		s.doc = ir.FromMap(map[string]*ir.Node{s.root: ev.State})
 		s.mu.Unlock()
 	case ev.Patch != nil:
-		for _, e := range s.eventsFromDelta(ev.Commit, ev.Patch) {
+		s.mu.Lock()
+		s.doc = applyDelta(s.doc, ev.Patch)
+		doc := s.doc
+		s.mu.Unlock()
+		for _, e := range s.eventsFromDelta(ev.Commit, ev.Patch, doc) {
 			s.emit(e)
 		}
 	}
 }
 
-// eventsFromDelta turns a document-root-rooted delta into change events — a pure
-// function of the delta: a tombstone (null leaf) is Delete, any value is Set, with
-// To the changed payload. No prior state is consulted (create-vs-update is not
-// distinguished), so it is safe on both the live and the replay (Since) paths.
-func (s *LogdStore) eventsFromDelta(commit int64, patch *ir.Node) []Event {
+// eventsFromDelta turns a document-root-rooted delta into change events: a tombstone
+// (null leaf) is Delete, any value is Set. Create-vs-update is not distinguished.
+//
+// To is the entity AS OF THIS COMMIT, not the delta — and that difference is the whole
+// reason a field can be written on its own. A consumer asks "does the entity look like
+// this?" (entity.Pattern.MatchEvent matches To), so a delta would answer a question nobody
+// asked: a trigger reading two fields would stop matching the moment one of them was
+// written by itself, though the entity satisfied it perfectly. That failure is silent —
+// nothing errors, the trigger simply never fires — so the level state is the contract, and
+// the store pays for it here rather than leaving every consumer to remember.
+//
+// The level state comes from doc, the watched document with this delta already applied, so
+// an event reports the world as it was at ITS commit — a transient state that has since been
+// overwritten is still dispatched. doc costs nothing: the watch delivers a State to seed it
+// and a delta per commit to advance it, which is what a watch is. Reading the entity back
+// per event would be exact too, and was the first shape this took, but it puts a network
+// round trip per changed entity on the watch goroutine — the stream stalls behind its own
+// bookkeeping, and on a log that has grown, each of those reads is not cheap (see go-tony
+// bvm163tyh12krwcqcsn0). A nil doc falls back to the delta, which for a whole-entity write
+// is the same value.
+func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
 	changes := walkEntities(childByKey(patch, s.root)) // strip the document root
 	s.mu.Lock()
 	if commit > s.rev {
@@ -996,13 +1069,44 @@ func (s *LogdStore) eventsFromDelta(commit int64, patch *ir.Node) []Event {
 			out = append(out, Event{Ref: ch.ref, Op: Delete, Rev: commit})
 			continue
 		}
-		out = append(out, Event{Ref: ch.ref, Op: Set, To: ch.payload, Rev: commit})
+		to := ch.payload
+		if level := payloadIn(doc, s.root, ch.ref); level != nil {
+			to = level
+		}
+		out = append(out, Event{Ref: ch.ref, Op: Set, To: to, Rev: commit})
 	}
 	return out
 }
 
+// payloadIn reads one entity's whole payload out of a root-rooted document, or nil if it
+// does not stand there.
+func payloadIn(doc *ir.Node, root string, ref Ref) Payload {
+	n := childByKey(childByKey(childByKey(childByKey(doc, root), ref.System), ref.Kind), ref.ID)
+	if n == nil || n.Type == ir.NullType {
+		return nil
+	}
+	return nodeToPayload(n)
+}
+
+// applyDelta advances a watched document by one commit's patch. A patch that fails to apply
+// leaves the document unchanged — a later State (a reconnect) resyncs it — because logd owns
+// the diff encoding and decoding it by hand is how a delta gets silently dropped.
+//
+// With no document there is nothing to advance: a delta before the first State, or a base
+// read that could not be served. It stays nil, and levelling falls back to the delta.
+// (tony.Patch dereferences a nil document rather than erroring, so this is also the guard.)
+func applyDelta(doc, patch *ir.Node) *ir.Node {
+	if doc == nil {
+		return nil
+	}
+	if nd, err := tony.Patch(doc, patch); err == nil {
+		return nd
+	}
+	return doc
+}
+
 // emit broadcasts to observers, non-blocking with drop-and-gap accounting — the
-// same contract as MemStore (drops are recovered by consumers via Since).
+// the contract Observe documents (drops are recovered by consumers via Since).
 func (s *LogdStore) emit(e Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

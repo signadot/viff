@@ -173,20 +173,17 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
 	// where no root dispatch loop runs. Store-driven means race-free for a fast process (unlike
 	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
-	if sw, ok := e.store.(entity.SubtreeWatcher); ok {
-		if ch, unsub, err := sw.WatchSubtree(mirror.System, "instance"); err == nil {
-			go e.reapLoop(ctx, ch, unsub)
-		} else {
-			e.tracef("mirror subtree watch: %v", err)
-		}
+	if ch, unsub, err := e.store.WatchSubtree(mirror.System, "instance"); err == nil {
+		go e.reapLoop(ctx, ch, unsub)
+	} else {
+		e.tracef("mirror subtree watch: %v", err)
 	}
 }
 
 // watchTriggerSubtree opens a subtree watch per (system,kind) the trigger's When READS and
 // fires it on each matching change. Asking the formula which subtrees it reads — the same
 // question a Monitor asks — means a When over several subtrees is watched correctly for
-// free, and there is no "exactly one match" restriction to enforce. The store must support
-// SubtreeWatcher (the logd store does).
+// free, and there is no "exactly one match" restriction to enforce.
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
 	subtrees := t.Condition.When.Subtrees()
 	if len(subtrees) == 0 {
@@ -198,14 +195,10 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 				"a scoped engine opens no root watch, so there is nothing to watch without one", t.Name)
 		}
 	}
-	sw, ok := e.store.(entity.SubtreeWatcher)
-	if !ok {
-		return fmt.Errorf("scoped trigger %q: store has no subtree watch", t.Name)
-	}
 	ctx := e.bgctx
 	for _, st := range subtrees {
 		system, kind := st[0], st[1]
-		ch, unsub, err := sw.WatchSubtree(system, kind)
+		ch, unsub, err := e.store.WatchSubtree(system, kind)
 		if err != nil {
 			return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, system, kind, err)
 		}
@@ -270,7 +263,7 @@ func (e *Engine) loop(ctx context.Context, ch <-chan entity.Event, unsub func())
 // if it is anywhere ahead of the cursor, reconcile the whole gap from the store via
 // catchUp (Since). This keeps the engine correct without trusting live contiguity
 // or assuming the backend's revisions are dense — logd commits are monotonic but
-// sparse; MemStore's happen to be +1. Both are just "greater than the cursor."
+// sparse. All the cursor ever asks is "greater than".
 func (e *Engine) consume(ctx context.Context, ev entity.Event) {
 	if ev.Rev > e.cursor {
 		e.catchUp(ctx)
@@ -604,7 +597,7 @@ func (e *Engine) deadlineAt(ref entity.Ref, dur time.Duration) time.Time {
 	}
 	want := e.now().Add(dur).Format(time.RFC3339)
 	var eff string
-	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
+	e.modify(ref, func(cur entity.Payload) entity.Payload {
 		if s := entity.Str(cur, "deadline_at"); s != "" {
 			eff = s // a concurrent arming won the CAS — honor its instant, not ours
 			return cur
@@ -636,23 +629,23 @@ func parseDeadlineAt(p entity.Payload) (time.Time, bool) {
 // the effective (possibly pre-existing) outcome and whether it was revoked. The witness is
 // recorded on the entity for audit.
 //
-// When the store is a ConditionalCommitter and the recheck is a quorum, both guards ride one
-// ATOMIC conditional write (terminal-once via the channel's status, revoke via the witness
-// ballots) — no window between the check and the commit. Otherwise it falls back to a
-// best-effort check-then-Modify, which leaves a small non-atomic window.
+// When the recheck is a quorum, both guards ride one ATOMIC conditional write
+// (terminal-once via the channel's status, revoke via the witness ballots) — no window
+// between the check and the commit. A deny has no satisfy side to predicate on, so it
+// falls back to a best-effort recheck then a terminal-once Modify, which leaves a small
+// non-atomic window.
 func (e *Engine) commitMotion(ref entity.Ref, recheck *Formula, outcome string, witness []entity.Ref) (eff string, revoked bool) {
-	cc, canCommitIf := e.store.(entity.ConditionalCommitter)
-	if wpre, ok := witnessPreconditions(recheck, witness); canCommitIf && ok {
-		return e.commitMotionAtomic(cc, ref, outcome, witness, wpre)
+	if wpre, ok := witnessPreconditions(recheck, witness); ok {
+		return e.commitMotionAtomic(ref, outcome, witness, wpre)
 	}
-	// Fallback: a store without conditional commit, or a deny with no satisfy side to
-	// predicate on. Best-effort recheck, then a terminal-once Modify.
+	// A deny: nothing to predicate the revoke guard on. Best-effort recheck, then a
+	// terminal-once Modify.
 	if recheck != nil {
 		if ok, _ := recheck.Eval(e.store); !ok {
 			return "", true // the justifying facts no longer hold — do not commit
 		}
 	}
-	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
+	e.modify(ref, func(cur entity.Payload) entity.Payload {
 		if o := entity.Str(cur, "outcome"); o != "" {
 			eff = o // already latched — terminal-once, honor it
 			return cur
@@ -668,7 +661,7 @@ func (e *Engine) commitMotion(ref entity.Ref, recheck *Formula, outcome string, 
 // hold), both checked with the write in a single step. A refused commit is either an
 // already-latched motion (read it back and honor it — terminal-once) or a revoke (the
 // witness moved — re-monitor).
-func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.Ref, outcome string, witness []entity.Ref, wpre []entity.Precondition) (eff string, revoked bool) {
+func (e *Engine) commitMotionAtomic(ref entity.Ref, outcome string, witness []entity.Ref, wpre []entity.Require) (eff string, revoked bool) {
 	// A failed read must NOT fall through to the commit below: the new payload is built
 	// FROM cur, so committing on an empty cur would overwrite a motion with a stripped
 	// one. Treat it as a revoke — monitorGate re-monitors and we try again with a real read.
@@ -680,8 +673,12 @@ func (e *Engine) commitMotionAtomic(cc entity.ConditionalCommitter, ref entity.R
 	if o := entity.Str(cur.Payload, "outcome"); o != "" {
 		return o, false // already committed — terminal-once
 	}
-	pre := append([]entity.Precondition{{Ref: ref, Pattern: entity.Obj{"status": "open"}.Payload()}}, wpre...)
-	committed, err := cc.CommitIf(ref, closedMotion(cur.Payload, outcome, witness), pre...)
+	when := append([]entity.Require{{Pattern: entity.Obj{"status": "open"}.Payload()}}, wpre...)
+	committed, err := e.store.Write(entity.Write{
+		At:    ref.At(),
+		Value: closedMotion(cur.Payload, outcome, witness),
+		When:  when,
+	})
 	if err != nil {
 		e.tracef("commit %s: conditional commit error: %v", ref.ID, err)
 		return "", true // treat as a revoke; monitorGate re-monitors
@@ -717,7 +714,7 @@ func closedMotion(cur entity.Payload, outcome string, witness []entity.Ref) enti
 // witness ballot to still be present with the counted choice, over the motion's vote
 // subtree. Returns ok=false when there is no quorum recheck or no witness (the deny path, or
 // a non-quorum formula) — the caller then uses the best-effort fallback.
-func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Precondition, bool) {
+func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Require, bool) {
 	if recheck == nil || recheck.Op != OpAtom || recheck.Req == nil || recheck.Req.Kind != ReqQuorum {
 		return nil, false
 	}
@@ -741,7 +738,10 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Prec
 	if len(sub) == 0 {
 		return nil, false
 	}
-	return []entity.Precondition{{Ref: entity.Ref{System: system, Kind: kind}, Pattern: entity.Obj(sub).Payload()}}, true
+	return []entity.Require{{
+		At:      entity.Path{Ref: entity.Ref{System: system, Kind: kind}}, // the whole vote subtree
+		Pattern: entity.Obj(sub).Payload(),
+	}}, true
 }
 
 // clonePayload reads p back as a mutable object builder (nil, or a non-object payload →
@@ -852,23 +852,21 @@ func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]str
 		add(d, d)
 	}
 	if p.Capability != "" {
-		if lister, ok := e.store.(entity.Lister); ok {
-			var pattern *ir.Node
-			if len(p.Match) > 0 {
-				pattern, _ = gomap.ToTonyIR(p.Match)
+		var pattern *ir.Node
+		if len(p.Match) > 0 {
+			pattern, _ = gomap.ToTonyIR(p.Match)
+		}
+		ents := e.store.List(func(r entity.Ref) bool { return r.System == "provider" && r.Kind == p.Capability })
+		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.ID < ents[j].Ref.ID })
+		for _, en := range ents {
+			if pattern != nil && !providerMatches(en.Payload, pattern) {
+				continue
 			}
-			ents := lister.List(func(r entity.Ref) bool { return r.System == "provider" && r.Kind == p.Capability })
-			sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.ID < ents[j].Ref.ID })
-			for _, en := range ents {
-				if pattern != nil && !providerMatches(en.Payload, pattern) {
-					continue
-				}
-				driver := entity.Str(en.Payload, "driver")
-				if driver == "" {
-					driver = en.Ref.ID
-				}
-				add(en.Ref.ID, driver)
+			driver := entity.Str(en.Payload, "driver")
+			if driver == "" {
+				driver = en.Ref.ID
 			}
+			add(en.Ref.ID, driver)
 		}
 	}
 	return options, drivers
@@ -884,13 +882,9 @@ func (e *Engine) whyNoEligible(p *launch.Provider) string {
 	if p.Capability == "" {
 		return "the spawn's provider lists no eligible doers and names no capability"
 	}
-	lister, ok := e.store.(entity.Lister)
-	if !ok {
-		return fmt.Sprintf("capability %q cannot be resolved: this store cannot list entities", p.Capability)
-	}
 	// Registered-but-excluded and not-registered-at-all look the same from the caller and
 	// are fixed in opposite places, so count the registry before the match is applied.
-	registered := len(lister.List(func(r entity.Ref) bool {
+	registered := len(e.store.List(func(r entity.Ref) bool {
 		return r.System == "provider" && r.Kind == p.Capability
 	}))
 	if registered == 0 {
@@ -1268,29 +1262,47 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Event, unsub fun
 // ReconcileOrphans retires process:instance entities that a previous run left
 // non-terminal: a fresh runtime holds no handle for them (processd is in-memory, so
 // a restart kills every process), so their last durable state is marked orphaned
-// rather than left claiming to run. Returns how many were reconciled; a no-op on a
-// store that cannot be listed (or an empty one).
+// rather than left claiming to run. Returns how many were reconciled.
 //
 // Call it once at monolith startup, before Start. Do NOT call it in a split
 // deployment where the process runtime outlives the engine — there the processes are
 // real and reconnectable, not orphans.
 func (e *Engine) ReconcileOrphans() int {
-	l, ok := e.store.(entity.Lister)
-	if !ok {
-		return 0
-	}
 	n := 0
-	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || process.TerminalStatus(status) {
 			continue
 		}
-		p := clonePayload(ent.Payload)
-		p["status"] = string(process.Orphaned)
-		e.store.Put(ent.Ref, p.Payload())
+		e.write(ent.Ref.At("status"), entity.Val(string(process.Orphaned)))
 		n++
 	}
 	return n
+}
+
+// modify read-modify-writes an entity under compare-and-swap, bounded so a losing writer
+// cannot spin forever. Like write, a failure is logged rather than returned: the engine is
+// reacting, and there is nobody to hand an error to.
+func (e *Engine) modify(ref entity.Ref, fn func(entity.Payload) entity.Payload) {
+	parent := e.bgctx
+	if parent == nil {
+		parent = context.Background() // not started (a direct call in a test)
+	}
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+	defer cancel()
+	if err := entity.Modify(ctx, e.store, ref, fn); err != nil {
+		e.logger.Warn("read-modify-write failed; the reaction did not land", "ref", ref.String(), "err", err)
+	}
+}
+
+// write applies a value at a path. A failed write is LOGGED, at Warn: the engine is
+// reacting, not being called, so there is nobody to return an error to — and a reaction
+// that did not land is exactly the thing an operator must not have to infer from the
+// absence of what should have happened next.
+func (e *Engine) write(at entity.Path, v entity.Payload) {
+	if _, err := e.store.Write(entity.Write{At: at, Value: v}); err != nil {
+		e.logger.Warn("write failed; the reaction did not land", "at", at.String(), "err", err)
+	}
 }
 
 // tracef is the engine's running commentary on what it is doing — every dispatch, gate
@@ -1318,7 +1330,7 @@ func proceedWord(ok bool) string {
 // run's verdict is the one that stands.
 func (e *Engine) patchEntity(ref entity.Ref, patch entity.Payload) error {
 	var perr error
-	e.store.Modify(ref, func(cur entity.Payload) entity.Payload {
+	e.modify(ref, func(cur entity.Payload) entity.Payload {
 		// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a nil
 		// doc, and null is what "nothing there yet" means in tony anyway. This is what keeps
 		// a named subject's patch CREATING the entity, as the old `set` did.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
 )
 
@@ -80,7 +81,7 @@ func TestGitRunnerHookReconciles(t *testing.T) {
 	initRepo(t, dir)
 	commit(t, dir, "a.txt", "hi", "first")
 
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	g := source.NewGit()
 	g.AddRepo("A", dir)
 	rn := source.NewRunner(g, store, 0) // periodic net off: only initial + hints reconcile

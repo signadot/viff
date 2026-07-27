@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
 
@@ -15,11 +16,12 @@ import (
 )
 
 // prs seeds n demo:pr entities at a stage, returning their refs.
-func prs(store entity.Store, stage string, ids ...string) []entity.Ref {
+func prs(t *testing.T, store entity.Store, stage string, ids ...string) []entity.Ref {
+	t.Helper()
 	out := make([]entity.Ref, 0, len(ids))
 	for _, id := range ids {
 		ref := entity.Ref{System: "demo", Kind: "pr", ID: id}
-		store.Put(ref, entity.Obj{"stage": stage}.Payload())
+		entitytest.Set(t, store, ref, entity.Obj{"stage": stage}.Payload())
 		out = append(out, ref)
 	}
 	return out
@@ -29,9 +31,9 @@ func prs(store entity.Store, stage string, ids ...string) []entity.Ref {
 // and the set-valued Subject fans the action out over every matching entity: one action per
 // member, each about exactly one subject.
 func TestSetValuedSubjectFansOut(t *testing.T) {
-	store := entity.NewMemStore()
-	reviewed := prs(store, "reviewed", "1", "2", "3")
-	prs(store, "open", "4") // not selected — wrong stage
+	store := entitytest.Store(t)
+	reviewed := prs(t, store, "reviewed", "1", "2", "3")
+	prs(t, store, "open", "4") // not selected — wrong stage
 
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
@@ -49,7 +51,7 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	eng.Start(ctx)
 
 	// ONE change, about nothing in particular — the fan-out comes from the Subject.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	for _, ref := range reviewed {
 		waitStage(t, store, ref, "shipped")
@@ -67,8 +69,8 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 // Each fanned-out member gets its own process, with $subject bound to THAT member — so a
 // broadcast spawn is N processes each about one subject, not one process about a set.
 func TestFanOutSpawnsPerMember(t *testing.T) {
-	store := entity.NewMemStore()
-	prs(store, "reviewed", "1", "2", "3")
+	store := entitytest.Store(t)
+	prs(t, store, "reviewed", "1", "2", "3")
 
 	eng := New(store, process.AutoResolver{})
 	type spawned struct {
@@ -94,7 +96,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	seen := map[string]string{} // subject -> task
 	ids := map[string]bool{}
@@ -126,8 +128,8 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 // (trigger, subject), so the second broadcast re-uses each member's id rather than starting a
 // duplicate. This is what makes a broadcast safe to re-trigger.
 func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
-	store := entity.NewMemStore()
-	prs(store, "reviewed", "1", "2")
+	store := entitytest.Store(t)
+	prs(t, store, "reviewed", "1", "2")
 
 	eng := New(store, process.AutoResolver{})
 	// The spawner runs on an engine goroutine while the test polls, so the counter must be
@@ -153,11 +155,11 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	eng.Start(ctx)
 
 	ci := entity.Ref{System: "ci", Kind: "status", ID: "build"}
-	store.Put(ci, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, ci, entity.Obj{"state": "green"}.Payload())
 	eventuallyN(t, "2 spawns", func() bool { return spawns.Load() == 2 })
 
 	// Fire again over the same set — same members, same ids, so no new processes.
-	store.Put(ci, entity.Obj{"state": "green", "run": "2"}.Payload())
+	entitytest.Set(t, store, ci, entity.Obj{"state": "green", "run": "2"}.Payload())
 	time.Sleep(300 * time.Millisecond)
 	if n := spawns.Load(); n != 2 {
 		t.Fatalf("a re-fire spawned %d processes; want 2 (idempotent per member)", n)
@@ -167,12 +169,12 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 // The runaway backstop meters ENTITIES ACTED ON, not firings — a fan-out over more members
 // than the budget allows is truncated rather than dropped whole, and stops at the cap.
 func TestFanOutBudgetMetersEntities(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	ids := make([]string, 0, 10)
 	for i := range 10 {
 		ids = append(ids, fmt.Sprint(i))
 	}
-	prs(store, "reviewed", ids...)
+	prs(t, store, "reviewed", ids...)
 
 	eng := New(store, process.AutoResolver{})
 	eng.SetMaxFires(4) // fewer than the 10 members
@@ -189,7 +191,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	time.Sleep(400 * time.Millisecond)
 	if f := eng.Fired(); f != 4 {
@@ -209,7 +211,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 // A set-valued Subject that currently matches nothing is a no-op, not an error: the firing
 // simply has no members to be about.
 func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
@@ -224,7 +226,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	time.Sleep(250 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired %d times over an empty subject set", f)
@@ -234,8 +236,8 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 // Select is sorted, so a truncated fan-out is deterministic rather than picking arbitrary
 // members from a map iteration.
 func TestSubjectSelectionIsDeterministic(t *testing.T) {
-	store := entity.NewMemStore()
-	prs(store, "reviewed", "b", "a", "c")
+	store := entitytest.Store(t)
+	prs(t, store, "reviewed", "b", "a", "c")
 	m := Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}}
 	want := []string{"demo:pr:a", "demo:pr:b", "demo:pr:c"}
 	for range 20 { // map iteration order varies per range, so repeat
@@ -251,8 +253,8 @@ func TestSubjectSelectionIsDeterministic(t *testing.T) {
 // A broadcast raises ONE gate for the firing, not one per member — an operator approving "ship
 // every reviewed PR" answers a single question.
 func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
-	store := entity.NewMemStore()
-	prs(store, "reviewed", "1", "2", "3")
+	store := entitytest.Store(t)
+	prs(t, store, "reviewed", "1", "2", "3")
 
 	asked := make(chan process.GateQuestion, 8)
 	eng := New(store, countingResolver{asked})
@@ -270,7 +272,7 @@ func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	// All three members advance off one approval.
 	for _, id := range []string{"1", "2", "3"} {
@@ -309,8 +311,8 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 // demo:pr:*` addresses the whole kind's live processes. It used to parse to a `ref` naming an
 // entity literally called "*", so nothing fanned out and `set` created `demo:pr:*` instead.
 func TestGlobSubjectFansOut(t *testing.T) {
-	store := entity.NewMemStore()
-	open := prs(store, "open", "1", "2", "3")
+	store := entitytest.Store(t)
+	open := prs(t, store, "open", "1", "2", "3")
 
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
@@ -326,7 +328,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	for _, ref := range open {
 		waitStage(t, store, ref, "shipped")
@@ -339,8 +341,8 @@ func TestGlobSubjectFansOut(t *testing.T) {
 
 // An id glob selects a FAMILY within a kind, not the whole kind.
 func TestIdGlobSelectsAFamily(t *testing.T) {
-	store := entity.NewMemStore()
-	prs(store, "open", "hotfix-1", "hotfix-2", "feature-9")
+	store := entitytest.Store(t)
+	prs(t, store, "open", "hotfix-1", "hotfix-2", "feature-9")
 
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
@@ -356,7 +358,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}, "shipped")
 	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-2"}, "shipped")
@@ -369,7 +371,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 // trigger publishes a fact nothing has written yet. Routing the string form through the address
 // grammar must not quietly turn this into a select-what-exists no-op.
 func TestConcreteSubjectNamesAndCreates(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"record",
@@ -384,7 +386,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	waitStage(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "noted")
 }
 
@@ -392,9 +394,9 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 // is not what the subject names is a no-op — never a misfire onto the wrong entity. This is the
 // filter the old `$flow` deref lacked (it advanced whatever the payload carried, unconstrained).
 func TestSubjectPatternFiltersTheFlow(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	other := entity.Ref{System: "other", Kind: "thing", ID: "1"}
-	store.Put(other, entity.Obj{"stage": "x"}.Payload())
+	entitytest.Set(t, store, other, entity.Obj{"stage": "x"}.Payload())
 
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
@@ -412,7 +414,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed process whose flow is NOT a demo:pr — the subject pattern doesn't name it.
-	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
+	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
 		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })

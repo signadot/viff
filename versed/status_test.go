@@ -7,13 +7,14 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/trigger"
 )
 
 // /status summarizes the running verse: it reports the store revision and live
 // counts, which move as the verse is driven.
 func TestStatus(t *testing.T) {
-	srv := New(ScriptedBuilder) // in-memory, no daemons needed
+	srv := testServer(t) // no daemons needed
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -49,7 +50,7 @@ func TestStatus(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	srv.Store.Put(entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{"k": "v"}.Payload())
+	entitytest.Set(t, srv.Store, entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{"k": "v"}.Payload())
 
 	m = get()
 	if n, _ := codec.AsInt64(m["triggers"]); n != 1 {

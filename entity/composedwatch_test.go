@@ -175,7 +175,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 	// Control: no mounts yet, so the root watch is single-route.
 	before := s.Rev()
 	refA := Ref{System: "demo", Kind: "pr", ID: "a"}
-	s.Put(refA, Obj{"stage": "open"}.Payload())
+	set(t, s, refA, Obj{"stage": "open"}.Payload())
 	eventually(t, "Since to replay a write with no mount present", func() bool {
 		evs, ok, _ := sinceReplays(t, s, before)
 		return ok && hasRef(evs, refA)
@@ -201,7 +201,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 	// The claim: Since still replays a write made after the mount.
 	mid := s.Rev()
 	refB := Ref{System: "demo", Kind: "pr", ID: "b"}
-	s.Put(refB, Obj{"stage": "open"}.Payload())
+	set(t, s, refB, Obj{"stage": "open"}.Payload())
 
 	evs, ok, elapsed, found := awaitSince(t, s, mid, refB)
 	t.Logf("with the mount on its own root: Since(%d) → ok=%v events=%d elapsed=%s", mid, ok, len(evs), elapsed)
@@ -248,7 +248,7 @@ func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
 
 	before := s.Rev()
 	refA := Ref{System: "demo", Kind: "pr", ID: "a"}
-	s.Put(refA, Obj{"stage": "open"}.Payload())
+	set(t, s, refA, Obj{"stage": "open"}.Payload())
 	eventually(t, "Since to replay a write with no mount present", func() bool {
 		evs, ok, _ := sinceReplays(t, s, before)
 		return ok && hasRef(evs, refA)
@@ -264,7 +264,7 @@ func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
 
 	mid := s.Rev()
 	refB := Ref{System: "demo", Kind: "pr", ID: "b"}
-	s.Put(refB, Obj{"stage": "open"}.Payload())
+	set(t, s, refB, Obj{"stage": "open"}.Payload())
 
 	evs, ok, elapsed, found := awaitSince(t, s, mid, refB)
 	t.Logf("with a mount below the root: Since(%d) → ok=%v events=%d elapsed=%s", mid, ok, len(evs), elapsed)

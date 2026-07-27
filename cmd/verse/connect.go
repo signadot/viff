@@ -203,14 +203,20 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 				} else {
 					created++
 				}
-				store.Put(entity.Ref{System: source.System, Kind: statusKind, ID: rel}, entity.Obj(meta).Payload())
+				ref := entity.Ref{System: source.System, Kind: statusKind, ID: rel}
+				if _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj(meta).Payload()}); err != nil {
+					fmt.Fprintf(cc.Err, "connect: publishing %s: %v\n", ref, err)
+				}
 			}
 			prev[rel] = sig
 		}
 		for rel := range prev {
 			if _, ok := cur[rel]; !ok {
 				removed++
-				store.Delete(entity.Ref{System: source.System, Kind: statusKind, ID: rel})
+				ref := entity.Ref{System: source.System, Kind: statusKind, ID: rel}
+				if _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // nil value removes it
+					fmt.Fprintf(cc.Err, "connect: removing %s: %v\n", ref, err)
+				}
 				delete(prev, rel)
 			}
 		}
@@ -302,7 +308,7 @@ func docdAddrs() (client, mount string, err error) {
 	}
 	decodeClose(resp, &st)
 	if st.Docd.Client == "" {
-		return "", "", fmt.Errorf("connect: this verse has no docd — federation needs the docd store (run `verse up` without --store memory)")
+		return "", "", fmt.Errorf("connect: this verse published no docd address on /status — federation needs the docd faces (is it an older `verse up`?)")
 	}
 	return st.Docd.Client, st.Docd.Mount, nil
 }
@@ -323,7 +329,7 @@ func disconnectCmd() *cli.Command {
 					fmt.Fprintf(cc.Out, "dropped scope %q (overlay removed)\n", g.Scope)
 					return nil
 				case http.StatusNotImplemented:
-					// in-memory store: no real overlay — fall back to local:* cleanup.
+					// a store without real scopes — fall back to local:* cleanup.
 				default:
 					msg, _ := io.ReadAll(resp.Body)
 					return fmt.Errorf("disconnect: %s: %s", resp.Status, strings.TrimSpace(string(msg)))

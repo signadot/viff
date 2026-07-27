@@ -26,9 +26,9 @@ type upConfig struct {
 	*cli.Command
 	Root string `cli:"name=root desc='working dir an llm agent reads/acts in (e.g. . for local-dev federation); default: isolated temp dir'"`
 
-	// Store backend. Default: docd (durable, controller-federated). The store client
-	// connects to docd's client face; Sources mount at its controller face.
-	Store string `cli:"name=store desc='force an alternate store: memory (no persistence, no daemons). default: docd'"`
+	// The store is docd (durable, controller-federated): the store client connects to
+	// docd's client face, and Sources mount at its controller face.
+	//
 	// docd resolution (see docd.go): pass a running docd, or a data dir to bring
 	// logd+docd up on, or nothing for a fresh temp data dir.
 	DocdAddr      string `cli:"name=docd-addr desc='connect to a running docd (client face); if set, verse spawns nothing'"`
@@ -49,21 +49,6 @@ type upConfig struct {
 // combination that cannot work is knowable from the flags alone; nothing should have
 // happened yet when we say so.
 func (cfg *upConfig) validate() error {
-	switch cfg.Store {
-	case "memory", "mem":
-		// The memory store spawns and connects to nothing, so every docd knob is inert.
-		// Silently ignoring them reads as "verse used my running docd" when it did not.
-		if cfg.DocdAddr != "" || cfg.DocdMountAddr != "" || cfg.Data != "" {
-			return fmt.Errorf("%w: verse up: --store memory runs no docd, so --docd-addr/--docd-mount-addr/--data have nothing to act on",
-				cli.ErrUsage)
-		}
-	case "":
-	default:
-		// Name every accepted spelling: "mem" works and the old message denied it, which is
-		// how a person who typed the abbreviation once learns it is unsupported.
-		return fmt.Errorf("%w: unknown --store %q: pass 'memory' (or 'mem'), or omit it for the default docd store",
-			cli.ErrUsage, cfg.Store)
-	}
 	// Refuse the docd knobs that only LOOK like they were honored. --data names a dir to
 	// bring daemons up in, so with --docd-addr (which spawns nothing) it is dead; and
 	// --docd-mount-addr names a face of the docd being connected to, so without --docd-addr
@@ -158,31 +143,24 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 	}
 
-	var srv *versed.Server
-	storeKind := "docd"
-	switch cfg.Store { // validate() has already refused anything but "", memory and mem
-	case "memory", "mem":
-		srv = versed.New(build) // in-memory: no persistence, no daemons
-		storeKind = "memory"
-	case "":
-		// docd-backed (default). Resolve docd's addresses — connecting to a running
-		// one, or bringing logd+docd up via `o sys up` (see docd.go).
-		d, err := resolveDocd(cfg, cc)
-		if err != nil {
-			return err
-		}
-		defer d.stop()
-		store, err := openDocdStore(entity.LogdConfig{Addr: d.clientAddr, ClientID: "versed"}, 3*time.Minute, cc)
-		if err != nil {
-			return fmt.Errorf("connect to docd at %s: %w", d.clientAddr, err)
-		}
-		defer store.Close()
-		srv = versed.NewWithStore(build, store)
-		// Publish docd's faces on /status so `verse connect` (its own process) can find
-		// the mount face and run the file controller against it.
-		srv.DocdClient, srv.DocdMount = d.clientAddr, d.mountAddr
-		storeKind = fmt.Sprintf("docd[client=%s mount=%s]", d.clientAddr, d.mountAddr)
+	// Resolve docd's addresses — connecting to a running one, or bringing logd+docd up
+	// via `o sys up` (see docd.go) — and open the store on its client face.
+	d, err := resolveDocd(cfg, cc)
+	if err != nil {
+		return err
 	}
+	defer d.stop()
+	store, err := openDocdStore(entity.LogdConfig{Addr: d.clientAddr, ClientID: "versed"}, 3*time.Minute, cc)
+	if err != nil {
+		return fmt.Errorf("connect to docd at %s: %w", d.clientAddr, err)
+	}
+	defer store.Close()
+	srv := versed.NewWithStore(build, store)
+	// Publish docd's faces on /status so `verse connect` (its own process) can find
+	// the mount face and run the file controller against it.
+	srv.DocdClient, srv.DocdMount = d.clientAddr, d.mountAddr
+	storeKind := fmt.Sprintf("docd[client=%s mount=%s]", d.clientAddr, d.mountAddr)
+
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
 	if cfg.Policy != "" {         // run processes on a remote controlPolicy instead of in-process

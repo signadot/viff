@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -28,7 +29,7 @@ func (noExec) Execute(context.Context, process.ToolUse) (process.StepResult, []p
 // Engine.Spawn hands the (bound) launch.Spec to the Spawner and mirrors the
 // resulting process into the verse — the wire-form action becoming a real process.
 func TestSpawnRoutesBoundSpec(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 
 	var got launch.Spec
@@ -72,7 +73,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 // spawned process id must stay a single, route-safe URL segment (it routes through
 // /processes/{id}), so slashes are sanitized while the real ref lives on as Subject.
 func TestSpawnIDIsRouteSafe(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	ids := make(chan string, 4)
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
@@ -94,7 +95,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	store.Put(entity.Ref{System: "local", Kind: "file", ID: "process/processd/daemon.go"},
+	entitytest.Set(t, store, entity.Ref{System: "local", Kind: "file", ID: "process/processd/daemon.go"},
 		entity.Obj{"path": "process/processd/daemon.go"}.Payload())
 
 	select {
@@ -161,7 +162,7 @@ func TestSpawnIDNeverContainsGateSep(t *testing.T) {
 
 // With no Spawner configured, Spawn is a no-op that returns nil (traced), not a panic.
 func TestSpawnWithoutSpawner(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	if p := eng.Spawn("x", launch.Spec{Task: "t"}); p != nil {
 		t.Fatal("expected nil process with no spawner")
 	}

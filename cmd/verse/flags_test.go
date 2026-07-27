@@ -165,13 +165,10 @@ func TestGateAndProcessAnswerVerbs(t *testing.T) {
 // an impossible command spent forty seconds launching daemons to reach its own rejection.
 func TestUpValidateRefusesContradictions(t *testing.T) {
 	cases := map[string]upConfig{
-		"unknown store":            {Store: "sqlite"},
-		"memory store with --data": {Store: "memory", Data: "/tmp/x"},
-		"memory store with docd":   {Store: "mem", DocdAddr: "h:1"},
-		"--data with --docd-addr":  {DocdAddr: "h:1", Data: "/tmp/x"},
-		"mount face with no docd":  {DocdMountAddr: "h:2"},
-		"two run policies":         {Policy: "http://x", Broker: true},
-		"broker with no face":      {Broker: true},
+		"--data with --docd-addr": {DocdAddr: "h:1", Data: "/tmp/x"},
+		"mount face with no docd": {DocdMountAddr: "h:2"},
+		"two run policies":        {Policy: "http://x", Broker: true},
+		"broker with no face":     {Broker: true},
 	}
 	for name, cfg := range cases {
 		if err := cfg.validate(); !errors.Is(err, cli.ErrUsage) {
@@ -181,7 +178,6 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 
 	ok := map[string]upConfig{
 		"defaults":            {},
-		"memory":              {Store: "memory"},
 		"running docd":        {DocdAddr: "h:1", DocdMountAddr: "h:2"},
 		"data dir":            {Data: "/tmp/x"},
 		"broker with a face":  {Broker: true, BrokerAddr: ":9090"},

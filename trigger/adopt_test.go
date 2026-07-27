@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 )
 
@@ -26,7 +26,7 @@ func (h *recHandle) Result() string                            { return "" }
 // A resumed process (Adopt) must be steerable, not merely observed: it is re-tracked
 // under its flow, so flow control (here CancelFlow) reaches it.
 func TestAdoptMakesResumedProcessSteerable(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	h := &recHandle{ch: make(chan process.Frame)}
 	eng.Adopt("demo:pr:1", "review-demo:pr:1", h)
 

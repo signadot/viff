@@ -326,19 +326,7 @@ func chainUnder(prefix, target string) bool {
 func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
 	ref := mirror.ClaimRef(spawnID(chainID(chain), subj))
 	payload := entity.Obj{"flow": subj.String(), "chain": chain}.Payload()
-	cc, ok := e.store.(entity.ConditionalCommitter)
-	if !ok {
-		// Best-effort on a store without conditional commit: check, then write. The window
-		// between them is exactly what the capability exists to close, so say so rather than
-		// pretend the guarantee holds.
-		if _, exists, _ := e.store.Get(ref); exists {
-			return false
-		}
-		e.tracef("seq %s: store cannot commit conditionally; claim is best-effort", chain)
-		e.store.Put(ref, payload)
-		return true
-	}
-	won, err := cc.CommitIf(ref, payload, entity.Precondition{Ref: ref, Pattern: entity.Absent()})
+	won, err := e.store.Write(entity.Write{At: ref.At(), Value: payload, When: []entity.Require{entity.Created()}})
 	if err != nil {
 		e.tracef("seq %s: claiming %s failed: %v", chain, ref, err)
 		return false
@@ -349,5 +337,5 @@ func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
 // releaseRun drops the claim when a sequence ends, however it ends. A claim that outlives its
 // run would block the next one forever, so every exit path releases.
 func (e *Engine) releaseRun(chain string, subj entity.Ref) {
-	e.store.Delete(mirror.ClaimRef(spawnID(chainID(chain), subj)))
+	e.write(mirror.ClaimRef(spawnID(chainID(chain), subj)).At(), nil) // nil removes it
 }

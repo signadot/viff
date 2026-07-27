@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -64,7 +65,7 @@ func (blockForever) Next(ctx context.Context, _ process.StepResult) (process.Too
 // A flow is a QUERY, so one address can steer a whole kind or a whole system — "relational
 // flows" without a second primitive. This is the capability step 4 exists to unlock.
 func TestFlowAddressingSelectsSets(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
 	spawnFP(t, eng, "p2", "demo:pr:1") // two processes on one subject
 	spawnFP(t, eng, "p3", "demo:pr:2")
@@ -98,7 +99,7 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 // Steering by a set address reaches every selected process and reports the count — the
 // {subject, verb, affected} contract the tutorial documents (api.Steered).
 func TestSteerWholeKind(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
 	spawnFP(t, eng, "p2", "demo:pr:2")
 	spawnFP(t, eng, "p3", "demo:issue:9")
@@ -121,10 +122,10 @@ func TestSteerWholeKind(t *testing.T) {
 // "hold the work on every open PR" is the same selector at a wider setting. It reads the
 // subject entity, so it only applies to subjects that exist in the store.
 func TestFlowAddressingByPayload(t *testing.T) {
-	store := entity.NewMemStore()
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "merged"}.Payload())
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
+	store := entitytest.Store(t)
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "merged"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
 
 	eng := New(store, process.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
@@ -141,7 +142,7 @@ func TestFlowAddressingByPayload(t *testing.T) {
 // per (trigger, subject), and the runtime would happily run duplicates while clobbering its
 // own registry entry, so the engine dedupes by id.
 func TestSpawnIsIdempotentPerID(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	spawned := 0
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		spawned++
@@ -175,7 +176,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 // A distinct subject gets a distinct id and its own process, so dedupe is per subject rather
 // than per trigger.
 func TestSpawnDedupeIsPerSubject(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, blockForever{}, noExec{})
@@ -193,7 +194,7 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 // Goal steering is the flow query at its narrowest setting, so it must still reach exactly
 // the goal subject's work after the registry change.
 func TestGoalSteeringUsesTheFlowQuery(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddGoal(GoalDef{
 		Name:     "ship",

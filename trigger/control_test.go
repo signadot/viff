@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 )
 
@@ -14,7 +15,7 @@ import (
 // observations, so none of them fire while paused — control can't queue behind an
 // observation backlog. On Resume the buffered burst dispatches.
 func TestControlOutranksObservation(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "count",
@@ -30,7 +31,7 @@ func TestControlOutranksObservation(t *testing.T) {
 
 	// A burst of changes arrives while paused; none may fire.
 	for i := 0; i < 20; i++ {
-		store.Put(entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, nil)
+		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, entity.Obj{}.Payload())
 	}
 	time.Sleep(100 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {

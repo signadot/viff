@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 
 	"github.com/signadot/verse/codec"
 )
@@ -64,7 +65,7 @@ func TestFormulaCompactRoundTrip(t *testing.T) {
 // A quorum atom is satisfied once ≥ N matching facts exist, and reports them as the
 // witness (the refs whose presence justified satisfaction — the future CAS precondition).
 func TestFormulaEvalQuorum(t *testing.T) {
-	st := entity.NewMemStore()
+	st := entitytest.Store(t)
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
 		Facts: Match{"system": "motion", "kind": "vote"},
@@ -72,13 +73,13 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	}}
 
 	// Below threshold: one vote → not satisfied.
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "alice"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "alice"}, entity.Obj{"choice": "approve"}.Payload())
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) satisfied with 1 vote")
 	}
 
 	// At threshold: two votes → satisfied, witness names both.
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "bob"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "bob"}, entity.Obj{"choice": "approve"}.Payload())
 	ok, witness := quorum.Eval(st)
 	if !ok {
 		t.Fatalf("quorum(2) not satisfied with 2 votes")
@@ -88,7 +89,7 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	}
 
 	// Revoke below threshold: delete a vote → un-satisfied (safety: it can flip back).
-	st.Delete(entity.Ref{System: "motion", Kind: "vote", ID: "bob"})
+	entitytest.Remove(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "bob"})
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) still satisfied after a vote was retracted")
 	}
@@ -96,15 +97,15 @@ func TestFormulaEvalQuorum(t *testing.T) {
 
 // A Where selector narrows which facts count.
 func TestFormulaEvalQuorumWhere(t *testing.T) {
-	st := entity.NewMemStore()
+	st := entitytest.Store(t)
 	approvals := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
 		Facts: Match{"system": "motion", "kind": "vote", "fields": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Obj{"choice": "approve"}.Payload())
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Obj{"choice": "reject"}.Payload())
-	st.Put(entity.Ref{System: "motion", Kind: "vote", ID: "c"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Obj{"choice": "reject"}.Payload())
+	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "c"}, entity.Obj{"choice": "approve"}.Payload())
 	ok, witness := approvals.Eval(st)
 	if !ok || len(witness) != 2 {
 		t.Fatalf("approve-quorum(2) = (%v, %d refs), want (true, 2) — 'reject' must not count", ok, len(witness))
@@ -113,9 +114,9 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 
 // A stubbed requirement kind (no producer yet) blocks — it never satisfies.
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
-	st := entity.NewMemStore()
+	st := entitytest.Store(t)
 	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: Match{"system": "motion", "kind": "judgment"}}}
-	st.Put(entity.Ref{System: "motion", Kind: "judgment", ID: "x"}, entity.Obj{"verdict": "ship"}.Payload())
+	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "judgment", ID: "x"}, entity.Obj{"verdict": "ship"}.Payload())
 	if ok, _ := judged.Eval(st); ok {
 		t.Fatalf("stubbed requirement %q should block, not satisfy", ReqJudgment)
 	}

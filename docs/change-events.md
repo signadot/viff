@@ -7,14 +7,13 @@ on a portable baseline instead of an exotic one.
 ## The question
 
 A change event needs to carry enough for a trigger to react. The rich shape —
-`Op ∈ {create, update, delete}` plus full before/after payloads — is trivial for the
-in-memory MemStore (it holds prior state) but expensive for a durable, remote store.
-The logd-backed store originally faked it with a mutable `seen` set threaded through
-both the live watch and `Since`, which made the authoritative catch-up path impure,
-mislabelled creates inside a replay window, and diverged from the interface. Those
-were symptoms of one thing: **the store synthesising *edge* semantics the substrate
-doesn't carry.** So: what should a change event actually carry, and is matching
-edge- or level-triggered?
+`Op ∈ {create, update, delete}` plus full before/after payloads — is trivial for a store
+that holds prior state in memory, but expensive for a durable, remote one. The logd-backed
+store originally faked it with a mutable `seen` set threaded through both the live watch and
+`Since`, which made the authoritative catch-up path impure, mislabelled creates inside a
+replay window, and diverged from the interface. Those were symptoms of one thing: **the
+store synthesising *edge* semantics the substrate doesn't carry.** So: what should a change
+event actually carry, and is matching edge- or level-triggered?
 
 ## What logd's watch actually delivers (measured)
 
@@ -51,15 +50,65 @@ both without prior state: a **tombstone (null leaf) → `Delete`**, any **value 
 
 - **`Op` is `set` | `delete`.** Create-vs-update is dropped — it needs prior
   existence the substrate doesn't provide, and requiring it would tie the store to
-  an uncommon capability (below). Both stores emit `Set` for a create-or-update, so
-  MemStore and logd agree; charters are portable across them.
+  an uncommon capability (below). A create-or-update is `Set` either way, so a charter
+  does not depend on which it was.
 - **`Since` is a pure read.** It derives `Op` from the delta alone and mutates no
   store state, so it is idempotent and safe under concurrent/repeated callers. The
   `seen` set is gone.
-- **`To` is the change's payload (the delta).** For verse's own writes — which are
-  full-payload replaces — that *is* the full entity; a partial `To` only arises from
-  a foreign partial writer, and any consumer needing authoritative state does `Get`
-  (index, not warehouse: follow the reference).
+- **`To` is the ENTITY as of that commit, not the delta.** *When* an event happens is an
+  edge (one per commit); *what it says* is level (the whole entity at that commit). See
+  "Why `To` is level" below — this is the one decision here that was reversed, and it was
+  reversed by measurement.
+
+## Why `To` is level (and how a delta answered a question nobody asked)
+
+`To` used to be the delta — the writer's patch for that commit — on the reasoning that
+verse only ever wrote whole entities, so the delta *was* the entity. That reasoning held
+exactly as long as the premise did. The moment a write can address a field
+(`demo:pr:1.stage`), the delta stops being the entity, and a consumer matching on `To` is
+matching a fragment.
+
+Measured, on both substrates — a deep write of one field, watched:
+
+```
+logd   patch at demo:pr:1.stage -> event To = {stage: reviewed}
+docd   patch at demo:pr:1.stage -> event To = {stage: reviewed}
+```
+
+The entity at that commit is `{stage: reviewed, env: prod}`. `env` is simply not in the
+event. And `entity.Pattern.MatchEvent` matches `To`, so a trigger whose `when` reads two
+fields fired on a whole-entity write and stayed **silent** on the deep write that reached
+the identical state:
+
+```
+whole-entity write to the matching state: fired = 1
+deep write to the same state:             fired = 0
+```
+
+Nothing errors. The trigger simply never runs. A rule about the world has to be evaluated
+against the world, so the store levels: `LogdStore.eventsFromDelta` reports the entity as of
+the commit, and the store — not each consumer — is where that is paid for.
+
+**As of the commit, not "now".** The level state is read at the event's own commit, so an
+event still reports the world as it was when it changed: a transient state that has already
+been overwritten is still dispatched. Levelling against *current* state would have been
+simpler still and is why the doorbell shape (`Event{Ref, Op, Rev}`, consumer reads state)
+was rejected — a workflow engine that skips a step because the subject moved on fails in a
+way nobody notices.
+
+**It costs nothing per event.** The store levels from the watched document it already
+maintains — seeded by the watch's initial `State`, advanced by each delta (the same
+apply-don't-decode discipline as below) — so no read is issued per event. A `Since` replay
+reads the document once, at `from`, and rolls it forward with the deltas it is replaying;
+the alternative, a point-in-time read per changed entity, is exact too but puts a network
+round trip per entity on the watch goroutine, where the stream stalls behind its own
+bookkeeping. (It also matters that those reads are not cheap on a grown log: go-tony
+`bvm163tyh12krwcqcsn0`.)
+
+One assumption remains, unchanged from before: the **set of changed refs** still comes from
+walking the delta's structure, and only the payloads come from the applied document. That is
+safe for a baseline delta (a verbatim merge) and is the residual noted at the end of the
+next section.
 
 ## Consuming a delta: apply it, don't decode it
 
@@ -79,13 +128,14 @@ Patch, replace for a State — opaquely, whatever ops it carries), and reads ent
 of the *reconstructed object*, diffing against the last snapshot for per-entity
 `Set`/`Delete`. tony owns patch semantics (merge vs `!replace` vs `!delete`/`!insert`,
 field order); verse applies them and never depends on the wire shape of a diff. This is
-what `LogdStore.WatchSubtree` does. (The baseline `Since`/replay path still reads its
-patches directly — safe only because a baseline delta is always a verbatim merge, never
-a scope-computed `!replace`.)
+what `LogdStore.WatchSubtree` does — and now also what the root watch and the `Since`
+replay do, to level their payloads (`applyDelta`). The residual: those two still take the
+*set of changed refs* from the delta's structure (`walkEntities`) rather than from a diff of
+the reconstructed document, which is safe only because a baseline delta is always a verbatim
+merge, never a scope-computed `!replace`. A root watch over a scope would need the diff.
 
 **The diff makes the subtree watch edge-on-real-change: an entity whose reconstructed content
-is unchanged emits nothing.** Both stores do this — `LogdStore.WatchSubtree` and
-`MemStore.WatchSubtree` alike — so a write that changes no content is *not a reactive edge*.
+is unchanged emits nothing**, so a write that changes no content is *not a reactive edge*.
 That is what keeps a reactive re-write from looping: a trigger whose effect re-touches its own
 cause — e.g. a `reviewed` rule re-setting a PR that is already `reviewed` when the process it
 spawned completes — writes the *same value*, so no edge fires and the trigger does not re-run.
@@ -127,11 +177,17 @@ see Residuals.
 The capability verse leans on — an **ordered, resumable, revisioned change stream**
 (watch + `Since(cursor)`) — is the modern-store baseline, not a logd peculiarity:
 etcd watches, FoundationDB, Kafka offsets, Cockroach/Mongo changefeeds, Postgres
-logical replication, or an in-memory ring (MemStore) all provide it. What *would*
+logical replication, or an in-memory ring all provide it. What *would*
 tie verse to an uncommon feature is requiring **create-vs-update or prior-value in
 the interface** — etcd exposes it (`CreateRevision`, `PrevKv`), many stores don't,
 and logd (measured above) doesn't either. Keeping create/update out of the contract
 is therefore both the portable choice and the one the substrate can actually honour.
+
+Note the asymmetry, which is not an accident: create-vs-update is unavailable when
+*observing* a change but perfectly available when *making* one. A write states its own
+precondition (`entity.Created()` / `entity.Updated()`), and the store checks it atomically
+with the write. You cannot ask the stream "was that a create?"; you can insist, at the
+moment of writing, that it be one.
 
 ## What dropping create-vs-update costs (and the idiom that recovers it)
 
@@ -171,9 +227,11 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
   framing. Revisit if a charter ever needs cross-entity transactional reactions; until
   then it is an unadvertised, load-bearing assumption worth naming rather than a settled
   design.
-- **Cheap re-entry suppression** would need logd to grow a create-reporting Patch
-  ("fail if it exists / report whether created"). No charter needs it yet — add it
-  when one does, not before.
+- **Cheap re-entry suppression** — for the *observer*. The write side is settled: a
+  create-only write is `entity.Created()`, a conditional patch that fails if anything is
+  already there, checked with the write in one step. What is still missing is the event
+  saying *which* it was, so a trigger cannot say "fire only on first entry"; the latch idiom
+  above remains the answer, and no charter has needed more yet.
 - **Truncation detection.** logd *silently under-delivers* a `Since` range it has
   compacted (empty index range → no error), so `ok=false` can't come from an error.
   The store guards with a low-watermark: `Since(from)` returns `ok=false` when `from`

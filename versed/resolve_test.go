@@ -42,7 +42,7 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 // api.Resolve — the id names the gate, approve carries the answer, and say rides along
 // as steering.
 func TestGateResolveAcceptsAPIResolve(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -84,7 +84,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 // 501?) comes out identical whether the body decoded or not. Only a decision that is
 // actually open distinguishes "answered it" from "silently answered nothing".
 func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	b := broker.New()
 	b.Spawn("p1", "review PR #7", "human", nil)
 	srv.SetPolicy(b) // the resolve route relays to a worker only under a broker policy

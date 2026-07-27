@@ -2,6 +2,7 @@ package entity
 
 import (
 	"testing"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 )
@@ -24,61 +25,64 @@ func TestParseRefRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPutCreateThenUpdate(t *testing.T) {
-	s := NewMemStore()
+// A write is unconditional and last-write-wins unless it says otherwise: a create and an
+// update are the same operation, and the store does not distinguish them. (Which it WAS is
+// not in the change stream at all — see docs/change-events.md — but a writer that cares can
+// insist, with Created() or Updated().)
+func TestCreateThenUpdate(t *testing.T) {
+	s := openStore(t)
 	ref := Ref{"linear", "issue", "1090"}
 
-	ev := s.Put(ref, Obj{"stage": "open"}.Payload())
-	if ev.Op != Set || ev.From != nil || Str(ev.To, "stage") != "open" {
-		t.Fatalf("create event wrong: %+v", ev)
+	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"stage": "open"}.Payload()})
+	if got, ok, _ := s.Get(ref); !ok || Str(got.Payload, "stage") != "open" {
+		t.Fatalf("get after create: %+v ok=%v", got, ok)
 	}
-	ev = s.Put(ref, Obj{"stage": "reviewed"}.Payload())
-	if ev.Op != Set || Str(ev.From, "stage") != "open" || Str(ev.To, "stage") != "reviewed" {
-		t.Fatalf("update event wrong: %+v", ev)
-	}
+	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"stage": "reviewed"}.Payload()})
 	got, ok, _ := s.Get(ref)
 	if !ok || ToObj(got.Payload)["stage"] != "reviewed" {
 		t.Fatalf("get after update: %+v ok=%v", got, ok)
 	}
 }
 
-func TestPutClonesPayload(t *testing.T) {
-	s := NewMemStore()
+func TestWriteClonesPayload(t *testing.T) {
+	s := openStore(t)
 	ref := Ref{"x", "y", "z"}
 	p := Obj{"n": 1}.Payload()
-	s.Put(ref, p)
-	*ir.Get(p, "n") = *ir.FromInt(999) // mutate the caller's node after Put
+	mustWrite(t, s, Write{At: ref.At(), Value: p})
+	*ir.Get(p, "n") = *ir.FromInt(999) // mutate the caller's node after the write
 	got, _, _ := s.Get(ref)
 	if ToObj(got.Payload)["n"] != int64(1) {
 		t.Fatalf("store aliased caller payload: %+v", got.Payload)
 	}
 }
 
-func TestDeleteAndMissing(t *testing.T) {
-	s := NewMemStore()
+// Removal is a write of nothing. Removing what is not there is not an error: the write
+// says what should stand at a path, and "nothing" is a thing it can say about a path that
+// already holds nothing.
+func TestRemoveAndMissing(t *testing.T) {
+	s := openStore(t)
 	ref := Ref{"x", "y", "z"}
-	if _, ok := s.Delete(ref); ok {
-		t.Fatal("delete of missing should report false")
+	mustWrite(t, s, Write{At: ref.At()}) // nothing is there; still not an error
+
+	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"a": 1}.Payload()})
+	if _, ok, _ := s.Get(ref); !ok {
+		t.Fatal("entity missing after it was written")
 	}
-	s.Put(ref, Obj{"a": 1}.Payload())
-	ev, ok := s.Delete(ref)
-	if !ok || ev.Op != Delete || ToObj(ev.From)["a"] != int64(1) || ev.To != nil {
-		t.Fatalf("delete event wrong: %+v ok=%v", ev, ok)
-	}
+	mustWrite(t, s, Write{At: ref.At()})
 	if _, ok, _ := s.Get(ref); ok {
-		t.Fatal("entity still present after delete")
+		t.Fatal("entity still present after being removed")
 	}
 }
 
 func TestObserveDeliversChanges(t *testing.T) {
-	s := NewMemStore()
+	s := openStore(t)
 	ch, unsub := s.Observe()
 	defer unsub()
 
 	ref := Ref{"linear", "issue", "1"}
-	s.Put(ref, Obj{"stage": "open"}.Payload())
-	s.Put(ref, Obj{"stage": "reviewed"}.Payload())
-	s.Delete(ref)
+	set(t, s, ref, Obj{"stage": "open"}.Payload())
+	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
+	remove(t, s, ref)
 
 	want := []Op{Set, Set, Delete}
 	for i, w := range want {
@@ -90,10 +94,12 @@ func TestObserveDeliversChanges(t *testing.T) {
 }
 
 func TestListPredicate(t *testing.T) {
-	s := NewMemStore()
-	s.Put(Ref{"linear", "issue", "1"}, nil)
-	s.Put(Ref{"github", "pr", "2"}, nil)
-	s.Put(Ref{"linear", "issue", "3"}, nil)
+	s := openStore(t)
+	// An entity with no fields is an EMPTY OBJECT: a nil value means "nothing stands here",
+	// which is a removal, not a blank entity.
+	set(t, s, Ref{"linear", "issue", "1"}, Obj{}.Payload())
+	set(t, s, Ref{"github", "pr", "2"}, Obj{}.Payload())
+	set(t, s, Ref{"linear", "issue", "3"}, Obj{}.Payload())
 
 	linear := s.List(func(r Ref) bool { return r.System == "linear" })
 	if len(linear) != 2 {
@@ -105,72 +111,91 @@ func TestListPredicate(t *testing.T) {
 	}
 }
 
+// The cursor is opaque and monotonic — commits are sparse, so a consumer asks "what is
+// after this cursor", never "what is at cursor+1".
 func TestRevAndSince(t *testing.T) {
-	s := NewMemStore()
-	if s.Rev() != 0 {
-		t.Fatalf("fresh Rev = %d, want 0", s.Rev())
-	}
+	s := openStore(t)
+	start := s.Rev()
 	ref := Ref{"demo", "pr", "1"}
-	e1 := s.Put(ref, Obj{"stage": "open"}.Payload())     // rev 1
-	e2 := s.Put(ref, Obj{"stage": "reviewed"}.Payload()) // rev 2
-	if e1.Rev != 1 || e2.Rev != 2 || s.Rev() != 2 {
-		t.Fatalf("revs wrong: e1=%d e2=%d cur=%d", e1.Rev, e2.Rev, s.Rev())
+	set(t, s, ref, Obj{"stage": "open"}.Payload())
+	mid := s.Rev()
+	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
+	end := s.Rev()
+	if !(start < mid && mid < end) {
+		t.Fatalf("revs did not advance: start=%d mid=%d end=%d", start, mid, end)
 	}
 
-	// Since(0) replays both, in order; Since(1) only the second; Since(2) nothing.
-	if evs, ok := s.Since(0); !ok || len(evs) != 2 || evs[0].Rev != 1 || evs[1].Rev != 2 {
-		t.Fatalf("Since(0) = %+v ok=%v", evs, ok)
+	// From the start both replay, in order; from mid only the second; from current, nothing.
+	evs, ok := s.Since(start)
+	if !ok || len(evs) != 2 || Str(evs[0].To, "stage") != "open" || Str(evs[1].To, "stage") != "reviewed" {
+		t.Fatalf("Since(start) = %+v ok=%v", evs, ok)
 	}
-	if evs, ok := s.Since(1); !ok || len(evs) != 1 || evs[0].Rev != 2 {
-		t.Fatalf("Since(1) = %+v ok=%v", evs, ok)
+	if evs[0].Rev >= evs[1].Rev {
+		t.Fatalf("replay is not ordered: %d then %d", evs[0].Rev, evs[1].Rev)
 	}
-	if evs, ok := s.Since(2); !ok || len(evs) != 0 {
-		t.Fatalf("Since(2) = %+v ok=%v, want empty", evs, ok)
+	if evs, ok := s.Since(mid); !ok || len(evs) != 1 || Str(evs[0].To, "stage") != "reviewed" {
+		t.Fatalf("Since(mid) = %+v ok=%v", evs, ok)
+	}
+	if evs, ok := s.Since(end); !ok || len(evs) != 0 {
+		t.Fatalf("Since(end) = %+v ok=%v, want empty", evs, ok)
 	}
 }
 
-// A cursor older than the retained window returns ok=false — the caller resyncs.
+// A cursor older than what this store instance has observed returns ok=false — the
+// caller resyncs from current state rather than being handed a partial replay. The
+// low-watermark is per-instance: a store that opens onto an already-written verse has
+// no standing to answer for the commits that preceded it.
 func TestSinceTooOld(t *testing.T) {
-	s := NewMemStore()
-	s.histCap = 3 // retain only the last 3 changes
+	addr := startLogd(t)
+	first := openStoreAt(t, addr)
 	ref := Ref{"demo", "x", "1"}
-	for i := 0; i < 5; i++ { // revs 1..5; only 3..5 retained
-		s.Put(ref, Obj{"n": i}.Payload())
+	for i := range 5 {
+		set(t, first, ref, Obj{"n": i}.Payload())
 	}
-	if _, ok := s.Since(0); ok {
-		t.Fatal("Since(0) should be too-old (revs 1,2 dropped)")
+
+	late := openStoreAt(t, addr) // opens at commit 5; commits 1..5 are before its time
+	if _, ok := late.Since(0); ok {
+		t.Fatal("Since(0) on a store opened after those commits should be too-old")
 	}
-	if evs, ok := s.Since(3); !ok || len(evs) != 2 || evs[0].Rev != 4 {
-		t.Fatalf("Since(3) within window = %+v ok=%v", evs, ok)
+	cur := late.Rev()
+	set(t, first, ref, Obj{"n": 99}.Payload())
+	if evs, ok := late.Since(cur); !ok || len(evs) != 1 || evs[0].Rev <= cur {
+		t.Fatalf("Since(%d) within window = %+v ok=%v", cur, evs, ok)
 	}
 }
 
 func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
-	s := NewMemStore()
+	s := openStore(t)
 	ch, unsub := s.Observe()
 	defer unsub()
 
 	ref := Ref{"x", "y", "z"}
-	for i := 0; i < 300; i++ { // overflow the 256 buffer without draining
-		s.Put(ref, Obj{"n": i}.Payload())
+	for i := range 300 { // overflow the 256 buffer without draining
+		set(t, s, ref, Obj{"n": i}.Payload())
 	}
-	for i := 0; i < 10; i++ { // free slots, then emit → gap marker flushes
+	// A full buffer is not yet a drop — the writes race the watch, and 256 delivered with
+	// the rest still in flight looks the same from here. Wait for it to fill, then write
+	// MORE without reading: those have nowhere to go, so they are dropped for certain.
+	eventually(t, "the observer buffer to fill", func() bool { return len(ch) == 256 })
+	for i := range 50 {
+		set(t, s, ref, Obj{"n": 1000 + i}.Payload())
+	}
+	eventually(t, "the surplus to be delivered", func() bool { return s.Rev() >= int64(300) })
+
+	for range 10 { // free slots, then emit → the gap marker flushes
 		<-ch
 	}
-	s.Put(ref, Obj{"n": 999}.Payload())
+	set(t, s, ref, Obj{"n": 999}.Payload())
 
-	sawGap := false
+	deadline := time.After(10 * time.Second)
 	for {
 		select {
 		case ev := <-ch:
 			if ev.Gap > 0 {
-				sawGap = true
+				return
 			}
-		default:
-			if !sawGap {
-				t.Fatal("expected a gap marker after backpressure drops")
-			}
-			return
+		case <-deadline:
+			t.Fatal("expected a gap marker after backpressure drops")
 		}
 	}
 }
@@ -178,9 +203,9 @@ func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 // A namespace-as-query returns the same shape List gives, so cross-cutting
 // selection needs no separate construct in v0.
 func TestNamespaceIsAQuery(t *testing.T) {
-	s := NewMemStore()
-	s.Put(Ref{"github", "pr", "1"}, Obj{"env": "prod"}.Payload())
-	s.Put(Ref{"github", "pr", "2"}, Obj{"env": "staging"}.Payload())
+	s := openStore(t)
+	set(t, s, Ref{"github", "pr", "1"}, Obj{"env": "prod"}.Payload())
+	set(t, s, Ref{"github", "pr", "2"}, Obj{"env": "staging"}.Payload())
 	prodTouching := s.List(func(r Ref) bool {
 		e, _, _ := s.Get(r)
 		return ToObj(e.Payload)["env"] == "prod"

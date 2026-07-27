@@ -99,8 +99,8 @@ func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
 
 // Event is one observed change in the entity-verse — the unit triggers match on.
 // To carries the change's payload (what was set); it is nil on Delete. From is a
-// best-effort prior payload — MemStore and Delete populate it, the logd store leaves
-// it nil on Set — so it is informational, never matched on. There is no "pure
+// best-effort prior payload — Delete populates it, a Set leaves it nil — so it is
+// informational, never matched on. There is no "pure
 // signal" event: anything worth triggering on is a state change, so it stays
 // durable, replayable, and uniform.
 //

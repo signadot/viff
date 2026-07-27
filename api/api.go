@@ -28,7 +28,18 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// PutEntity writes a payload to an entity ref (`POST /entity`).
+// PutEntity is one conditional write (`POST /entity`) — the store's single write, on the
+// wire. Creating, updating, patching a field and removing one are all this request with
+// different fields set.
+//
+// Ref names the entity; Field goes further, naming a place INSIDE its payload
+// ({"labels","urgent"}), so a write can be a whole entity or one field of one. Field is a
+// list rather than a dotted string because an entity id may itself contain dots (a file
+// path is a perfectly good id), and a dotted spelling could not be told apart from one.
+//
+// The value MERGES at that place: fields it does not mention are left alone, and an absent
+// (null) Payload removes whatever stands there. A writer that means to drop a field says
+// so, by writing null at it.
 //
 // Payload is a tony node, not a map: an entity payload is ANY tony value (see
 // entity.Payload), so `verse entity put demo:count:1 42` has to survive the wire as the
@@ -38,7 +49,28 @@ import (
 //tony:schemagen=verse-put-entity,notag
 type PutEntity struct {
 	Ref     string         `tony:"field=ref"`
+	Field   []string       `tony:"field=field,omitzero"`
 	Payload entity.Payload `tony:"field=payload,omitzero"`
+	// When are preconditions, ALL of which must hold. They are checked WITH the write, in
+	// one step at the store, so there is no window between the check and the write for
+	// something to change underneath. An empty When is an unconditional write.
+	When []Condition `tony:"field=when,omitzero"`
+}
+
+// Condition is one precondition on a write: what must be true, and where.
+//
+// Ref/Field name the place asked about; both empty means the write's own place, which is
+// what create ("nothing is there yet") and update ("something is") are about.
+//
+//tony:schemagen=verse-condition,notag
+type Condition struct {
+	Ref   string   `tony:"field=ref,omitzero"`
+	Field []string `tony:"field=field,omitzero"`
+	// Exists asks only whether anything stands there: false is a create, true is an update.
+	// It is a pointer so that "did not ask" is distinguishable from "asked for absence".
+	Exists *bool `tony:"field=exists,omitzero"`
+	// Pattern asks what it looks like — a tony match, so it can say more than equality.
+	Pattern entity.Payload `tony:"field=pattern,omitzero"`
 }
 
 // Resolve answers ONE pending gate, by its id, wherever it lives — an engine gate the

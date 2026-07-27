@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -66,7 +67,7 @@ func waitField(t *testing.T, store entity.Store, ref entity.Ref, key string, wan
 // with no separate completion trigger. Runs under ObserveScoped (versed's mode) with the
 // immediate (fast) driver, so it also exercises the race-free store-driven reapLoop path.
 func TestOnDoneFiresUnderScoped(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		return startHookProc(store, id, spec)
@@ -79,7 +80,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:  &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
@@ -87,14 +88,14 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 }
 
 // onDone is recursive: each hook is a full Action, so review → merge → approve reads as one
 // nested spine. Each link's spawn gets a distinct, deterministic id (chain descends by status).
 func TestOnDoneChains(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	var mu sync.Mutex
 	var ids []string
@@ -112,13 +113,13 @@ func TestOnDoneChains(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:   entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{
-				Patch:   entity.Obj{"stage": "reviewed"}.Payload(),
+				Patch: entity.Obj{"stage": "reviewed"}.Payload(),
 				Spawn: &launch.Spec{Task: "merge $subject"},
 				OnDone: &Action{
-					Patch:   entity.Obj{"stage": "merged"}.Payload(),
+					Patch: entity.Obj{"stage": "merged"}.Payload(),
 					Spawn: &launch.Spec{Task: "approve $subject"},
 					OnDone: &Action{
 						Patch: entity.Obj{"stage": "approved"}.Payload(),
@@ -130,7 +131,7 @@ func TestOnDoneChains(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "approved")
 
 	// The chain produced three distinct spawn ids, keyed by chain position — and the
@@ -157,7 +158,7 @@ func TestOnDoneChains(t *testing.T) {
 
 // onFailed fires (and onDone does not) when the process errors.
 func TestOnFailed(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		return startHookProc(store, id, spec)
@@ -170,7 +171,7 @@ func TestOnFailed(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{When: prWhen("open")},
 		Action: Action{
-			Patch:      entity.Obj{"stage": "reviewing"}.Payload(),
+			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:    &launch.Spec{Task: "review and fail $subject"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
@@ -179,7 +180,7 @@ func TestOnFailed(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "rejected")
 	if e, _, _ := store.Get(prRef("1")); entity.ToObj(e.Payload)["stage"] == "reviewed" {
 		t.Fatal("onDone fired on a failed process")
@@ -189,7 +190,7 @@ func TestOnFailed(t *testing.T) {
 // A completion hook rides the exact process (its flowProc), not the subject: two processes about
 // the SAME subject each fire their own hook independently.
 func TestOnHookPerProcess(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
 		return startHookProc(store, id, spec)
@@ -198,7 +199,7 @@ func TestOnHookPerProcess(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	subj := prRef("1").String()
 	eng.spawnHooked("pa", launch.Spec{Subject: subj, Task: "a"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"a": "1"}.Payload()}}, "pa")
@@ -211,7 +212,7 @@ func TestOnHookPerProcess(t *testing.T) {
 
 // AddTrigger rejects a completion hook with no spawn to complete, at any nesting depth.
 func TestOnHookValidation(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	cond := Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})}
 
 	if err := eng.AddTrigger(Trigger{Name: "a", Condition: cond,
@@ -264,13 +265,13 @@ func TestOnHookTonyRoundTrip(t *testing.T) {
 // an action up by. It is the entry point for a process that answers to no charter (`process
 // run`), and the one for a charter-spawned process is AdoptChain, below.
 func TestAdoptDropsHooks(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("adopted", sup, immediate{}, noExec{})
 	mirror.Reflect(store, "adopted", p, mirror.Meta{Subject: prRef("1").String(), Policy: "local"})
@@ -289,7 +290,7 @@ func TestAdoptDropsHooks(t *testing.T) {
 // into the charter buys: before it, a completion after a restart silently ended a chain,
 // because Adopt tracked the process with no hooks at all.
 func TestAdoptChainRehydratesHooks(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -305,7 +306,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	// A process that outlived a restart: mirrored and adopted BEFORE it runs, because the
 	// point is that adoption re-attaches the hooks a completion will look for. (Built here
@@ -324,7 +325,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 // process ran, or a chain the charter no longer has. The process is still adopted — steerable
 // and reaped — there is simply no action left to run.
 func TestAdoptChainSurvivesAMissingCharter(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("gone@demo:pr:1", sup, immediate{}, noExec{})

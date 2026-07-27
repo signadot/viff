@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // failingStore is a store whose reads fail — a dead controller mount, a reset session, a
@@ -34,7 +35,7 @@ func (f failingStore) Get(ref entity.Ref) (entity.Entity, bool, error) {
 // so it went to create it. The two answers lead somewhere different, so the wire has to
 // tell them apart.
 func TestEntityReadFailureIsNot404(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	base := srv.Store
 	srv.Store = failingStore{Store: base, err: errors.New("read tcp 127.0.0.1:1->127.0.0.1:2: connection reset by peer")}
 	ts := httptest.NewServer(srv.Handler())
@@ -62,7 +63,7 @@ func TestEntityReadFailureIsNot404(t *testing.T) {
 // The other half: a genuinely absent entity is still a 404. The fix must not turn every
 // miss into an error.
 func TestAbsentEntityIsStill404(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -80,7 +81,7 @@ func TestAbsentEntityIsStill404(t *testing.T) {
 // The content reader an agent's read_file goes through must propagate the failure rather
 // than reporting the file as missing.
 func TestContentReaderPropagatesReadFailure(t *testing.T) {
-	base := entity.NewMemStore()
+	base := entitytest.Store(t)
 	wantErr := errors.New("mount is gone")
 	c := storeContentReader{
 		store: failingStore{Store: base, err: wantErr},
@@ -101,5 +102,34 @@ func TestContentReaderPropagatesReadFailure(t *testing.T) {
 	c2 := storeContentReader{store: base, kind: "dir-content-scope1"}
 	if _, ok, err := c2.ReadContent("nope.go"); ok || err != nil {
 		t.Errorf("absent file: ok=%v err=%v, want (false, nil)", ok, err)
+	}
+}
+
+// The other half of the 502-vs-404 distinction: an entity that is merely ABSENT — including
+// one whose system has never been written — is a 404. It read as a store failure until the
+// store learned to tell logd's "no such path" from a real read failure, so asking after
+// anything absent on a verse that had ever been written to answered 502.
+func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	// Write something, so the verse is non-empty and the queried paths are genuinely absent
+	// rather than absent-because-nothing-exists.
+	if _, err := srv.Store.Write(entity.Write{
+		At:    entity.Ref{System: "demo", Kind: "pr", ID: "1"}.At(),
+		Value: entity.Obj{"stage": "open"}.Payload(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, ref := range []string{"demo:pr:2", "demo:issue:1", "motion:channel:x"} {
+		resp, err := http.Get(ts.URL + "/entity?" + url.Values{"ref": {ref}}.Encode())
+		if err != nil {
+			t.Fatalf("get %s: %v", ref, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET /entity?ref=%s = %d, want 404 for an entity that is simply absent", ref, resp.StatusCode)
+		}
 	}
 }

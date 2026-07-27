@@ -24,11 +24,11 @@ func asInt(v any) int64 {
 // concurrentIncrement has two goroutines read-modify-write the same entity,
 // incrementing disjoint fields n times each. Without atomic Modify (compare-and-
 // swap + retry), interleaved read→write would lose increments; with it, both fields
-// reach n. Exercises MemStore's lock and the logd store's PatchIf CAS loop.
+// reach n. Exercises the store's PatchIf CAS loop.
 func concurrentIncrement(t *testing.T, store Store) {
 	t.Helper()
 	ref := Ref{System: "demo", Kind: "counter", ID: "1"}
-	store.Put(ref, Obj{}.Payload())
+	set(t, store, ref, Obj{}.Payload())
 	const n = 25
 
 	var wg sync.WaitGroup
@@ -37,14 +37,17 @@ func concurrentIncrement(t *testing.T, store Store) {
 		go func(f string) {
 			defer wg.Done()
 			for range n {
-				store.Modify(ref, func(cur Payload) Payload {
+				if err := Modify(t.Context(), store, ref, func(cur Payload) Payload {
 					p := ToObj(cur)
 					if p == nil {
 						p = Obj{}
 					}
 					p[f] = asInt(p[f]) + 1
 					return p.Payload()
-				})
+				}); err != nil {
+					t.Errorf("modify: %v", err)
+					return
+				}
 			}
 		}(field)
 	}
@@ -61,9 +64,6 @@ func concurrentIncrement(t *testing.T, store Store) {
 		t.Fatalf("b = %d, want %d (lost update)", b, n)
 	}
 }
-
-func TestMemStore_ModifyNoLostUpdate(t *testing.T)  { concurrentIncrement(t, NewMemStore()) }
-func TestLogdStore_ModifyNoLostUpdate(t *testing.T) { concurrentIncrement(t, openStore(t)) }
 
 // startLogd brings up an in-process logd on an ephemeral port, backed by a temp
 // dir, and returns its address. Mirrors go-tony's own test harness.
@@ -83,9 +83,13 @@ func startLogd(t *testing.T) string {
 	return srv.TCPAddr()
 }
 
-func openStore(t *testing.T) *LogdStore {
+func openStore(t *testing.T) *LogdStore { return openStoreAt(t, startLogd(t)) }
+
+// openStoreAt opens a store on an already-running logd — for a test that needs two
+// clients (or two opened at different commits) over one substrate.
+func openStoreAt(t *testing.T, addr string) *LogdStore {
 	t.Helper()
-	s, err := OpenLogdStore(LogdConfig{Addr: startLogd(t), ClientID: "verse-test"})
+	s, err := OpenLogdStore(LogdConfig{Addr: addr, ClientID: "verse-test"})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -114,7 +118,7 @@ func eventually(t *testing.T, why string, cond func() bool) {
 func TestLogdStore_PutGet(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	s.Put(ref, Obj{"stage": "open", "num": int64(42), "ok": true}.Payload())
+	set(t, s, ref, Obj{"stage": "open", "num": int64(42), "ok": true}.Payload())
 
 	e, ok, _ := s.Get(ref)
 	if !ok {
@@ -133,47 +137,34 @@ func TestLogdStore_PutGet(t *testing.T) {
 func TestLogdStore_QuotedID(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "github", Kind: "pr", ID: "signadot/x#42"}
-	s.Put(ref, Obj{"stage": "review"}.Payload())
+	set(t, s, ref, Obj{"stage": "review"}.Payload())
 	e, ok, _ := s.Get(ref)
 	if !ok || ToObj(e.Payload)["stage"] != "review" {
 		t.Fatalf("quoted-id round-trip failed: ok=%v payload=%#v", ok, e.Payload)
 	}
 }
 
-// Put has replace (not merge) semantics: a field dropped from the payload is gone
-// on read-back, matching MemStore.
-func TestLogdStore_PutReplaces(t *testing.T) {
+// Removing an entity makes it absent, and observers see a Delete for it.
+func TestLogdStore_Remove(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	s.Put(ref, Obj{"stage": "open", "extra": "x"}.Payload())
-	s.Put(ref, Obj{"stage": "reviewing"}.Payload()) // drops "extra"
+	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
-	e, _, _ := s.Get(ref)
-	if ToObj(e.Payload)["stage"] != "reviewing" {
-		t.Fatalf("stage not updated: %#v", e.Payload)
-	}
-	if _, present := ToObj(e.Payload)["extra"]; present {
-		t.Fatalf("Put did not replace: stale field remains: %#v", e.Payload)
-	}
-}
+	ch, unsub := s.Observe()
+	defer unsub()
+	eventually(t, "the watch to be live", func() bool { return s.Rev() > 0 })
 
-// Delete reports prior existence and makes the entity absent.
-func TestLogdStore_Delete(t *testing.T) {
-	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	if _, ok := s.Delete(ref); ok {
-		t.Fatal("Delete of absent ref reported existed")
-	}
-	s.Put(ref, Obj{"stage": "open"}.Payload())
-	ev, ok := s.Delete(ref)
-	if !ok {
-		t.Fatal("Delete of present ref reported absent")
-	}
-	if ev.Op != Delete || Str(ev.From, "stage") != "open" {
-		t.Fatalf("delete event wrong: %#v", ev)
-	}
+	remove(t, s, ref)
 	if _, ok, _ := s.Get(ref); ok {
-		t.Fatal("entity still present after Delete")
+		t.Fatal("entity still present after being removed")
+	}
+	select {
+	case ev := <-ch:
+		if ev.Op != Delete || ev.Ref != ref {
+			t.Fatalf("event = %#v, want a Delete for %s", ev, ref)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no event after a removal")
 	}
 }
 
@@ -182,7 +173,7 @@ func TestLogdStore_Delete(t *testing.T) {
 func TestLogdStore_ScopeIsolation(t *testing.T) {
 	base := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	base.Put(ref, Obj{"stage": "open"}.Payload())
+	set(t, base, ref, Obj{"stage": "open"}.Payload())
 
 	scoped, ok := base.Scope("me").(*LogdStore)
 	if !ok {
@@ -195,7 +186,7 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 	}
 
 	// A scope write is isolated: the scope sees it, baseline does not.
-	scoped.Put(ref, Obj{"stage": "reviewing"}.Payload())
+	set(t, scoped, ref, Obj{"stage": "reviewing"}.Payload())
 	if e, _, _ := scoped.Get(ref); ToObj(e.Payload)["stage"] != "reviewing" {
 		t.Fatalf("scope write not visible in scope: %#v", e.Payload)
 	}
@@ -205,7 +196,7 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 
 	// A scope-only entity does not exist in baseline.
 	only := Ref{System: "demo", Kind: "pr", ID: "scope-only"}
-	scoped.Put(only, Obj{"x": "1"}.Payload())
+	set(t, scoped, only, Obj{"x": "1"}.Payload())
 	if _, ok, _ := base.Get(only); ok {
 		t.Fatal("scope-only entity leaked into baseline")
 	}
@@ -249,8 +240,8 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 	s := openStore(t)
 	start := s.Rev()
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	s.Put(ref, Obj{"stage": "open"}.Payload())      // would have been "create"
-	s.Put(ref, Obj{"stage": "reviewing"}.Payload()) // would have been "update"
+	set(t, s, ref, Obj{"stage": "open"}.Payload())      // would have been "create"
+	set(t, s, ref, Obj{"stage": "reviewing"}.Payload()) // would have been "update"
 
 	var first []Event
 	eventually(t, "Since to replay both writes", func() bool {
@@ -296,7 +287,7 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 			{System: "demo", Kind: "pr", ID: "3"},
 		}
 		for i, r := range refs {
-			s.Put(r, Obj{"stage": "open", "i": int64(i)}.Payload())
+			set(t, s, r, Obj{"stage": "open", "i": int64(i)}.Payload())
 		}
 		// Let the writes land, so every concurrent replay has the same window to see.
 		eventually(t, "writes to be replayable", func() bool {
@@ -351,8 +342,8 @@ func TestLogdStore_SinceBelowWatermarkResyncs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s1.Put(Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
-	s1.Put(Ref{System: "demo", Kind: "pr", ID: "2"}, Obj{"stage": "open"}.Payload())
+	set(t, s1, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
+	set(t, s1, Ref{System: "demo", Kind: "pr", ID: "2"}, Obj{"stage": "open"}.Payload())
 	eventually(t, "history to land", func() bool { return s1.Rev() >= 2 })
 	s1.Close()
 
@@ -382,7 +373,7 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 		{System: "demo", Kind: "pr", ID: "3"},
 	}
 	for i, r := range refs {
-		s.Put(r, Obj{"stage": "open", "i": int64(i)}.Payload())
+		set(t, s, r, Obj{"stage": "open", "i": int64(i)}.Payload())
 	}
 
 	// Rev advances past the start as the watch observes the writes.

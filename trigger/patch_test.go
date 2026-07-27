@@ -8,12 +8,13 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
 )
 
-// patchEngine is a started engine over a MemStore, for the write-path tests.
-func patchEngine(t *testing.T, store *entity.MemStore) *Engine {
+// patchEngine is a started engine over a store, for the write-path tests.
+func patchEngine(t *testing.T, store *entity.LogdStore) *Engine {
 	t.Helper()
 	eng := New(store, process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -27,7 +28,7 @@ func patchEngine(t *testing.T, store *entity.MemStore) *Engine {
 // the second writer of `verse` would have erased the first — which is exactly the shape
 // docs/seq-plan.md's progress root has.
 func TestPatchMergesSiblingSubtrees(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := patchEngine(t, store)
 
 	for _, tr := range []Trigger{{
@@ -44,7 +45,7 @@ func TestPatchMergesSiblingSubtrees(t *testing.T) {
 		}
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	// both branches survive, and so does the field neither of them wrote
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
@@ -59,7 +60,7 @@ func TestPatchMergesSiblingSubtrees(t *testing.T) {
 // A patch can REMOVE a key. `set` could only ever overwrite one, so retracting a fact — a
 // pending marker, a claim that no longer holds — had no spelling at all.
 func TestPatchDeletes(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := patchEngine(t, store)
 
 	del, err := codec.ParseNode([]byte(`{tmp: !delete null}`), codec.Tony)
@@ -74,7 +75,7 @@ func TestPatchDeletes(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open", "tmp": "scratch"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "tmp": "scratch"}.Payload())
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
 		return entity.Get(p, "tmp") == nil
 	}, "tmp deleted")
@@ -86,7 +87,7 @@ func TestPatchDeletes(t *testing.T) {
 // The common case is unchanged by the rename: a flat record patch behaves exactly as the
 // overlay did, which is why no charter in the tree needed more than a new word.
 func TestPatchFlatRecordIsUnchanged(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := patchEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "advance",
@@ -95,7 +96,7 @@ func TestPatchFlatRecordIsUnchanged(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open", "keep": "me"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "keep": "me"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "reviewing")
 	if got := entity.Str(mustGet(t, store, prRef("1")), "keep"); got != "me" {
 		t.Errorf("sibling field lost: keep = %q", got)
@@ -106,7 +107,7 @@ func TestPatchFlatRecordIsUnchanged(t *testing.T) {
 // fact nothing has written. The absent payload is nil, and tony.Patch panics on a nil
 // document, so this also pins the null-document guard in apply.
 func TestPatchCreatesNamedSubject(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := patchEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name: "record",
@@ -118,7 +119,7 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	waitField(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "stage", "noted")
 }
 
@@ -126,7 +127,7 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 // the trigger failed to establish is worse than not firing: the process runs against a verse
 // that never got the transition it was started for.
 func TestFailedPatchDoesNotSpawn(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	spawned := make(chan string, 4)
 	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
@@ -156,7 +157,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 
 	before := mustGet(t, store, prRef("1"))
 	_ = before
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	select {
 	case id := <-spawned:
@@ -184,7 +185,7 @@ func TestPatchOperatorWorksInBothDialects(t *testing.T) {
 			"action":{"patch":{"tmp":{"delete":null}}}}`, codec.JSON},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			store := entity.NewMemStore()
+			store := entitytest.Store(t)
 			eng := patchEngine(t, store)
 			var tr Trigger
 			if err := codec.Unmarshal([]byte(c.doc), &tr, c.f); err != nil {
@@ -206,7 +207,7 @@ func TestPatchOperatorWorksInBothDialects(t *testing.T) {
 				t.Errorf("operator did not become a tag at install: %s", out)
 			}
 			// and it does the deleting
-			store.Put(prRef("1"), entity.Obj{"stage": "open", "tmp": "scratch"}.Payload())
+			entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "tmp": "scratch"}.Payload())
 			waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
 				return entity.Get(p, "tmp") == nil
 			}, "tmp deleted")

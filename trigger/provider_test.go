@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 )
 
 // auto-select picks the first eligible doer and reifies the choice on a select channel.
 func TestSelectProviderAuto(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "1"}
@@ -28,16 +29,16 @@ func TestSelectProviderAuto(t *testing.T) {
 
 // vote-select picks the option that reaches the plurality threshold over the vote log.
 func TestSelectProviderVotePlurality(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "vote", Need: 2}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "2"}
 	did := motionChannelID(providerSpecSeed(subj, p))
 
 	// two ballots for claude, one for gpt → claude wins at need=2.
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "claude"}.Payload())
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "claude"}.Payload())
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "z"}, entity.Obj{"choice": "gpt"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "claude"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "claude"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "z"}, entity.Obj{"choice": "gpt"}.Payload())
 
 	driver, ok := eng.selectProvider(p, subj)
 	if !ok || driver != "claude" {
@@ -48,13 +49,13 @@ func TestSelectProviderVotePlurality(t *testing.T) {
 // a ballot for a non-eligible option does not count: a rogue vote can't win; an eligible
 // option reaching the threshold does.
 func TestPluralityIgnoresIneligible(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "vote", Need: 1}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "3"}
 	did := motionChannelID(providerSpecSeed(subj, p))
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "rogue"}.Payload()) // ineligible
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "gpt"}.Payload())   // eligible → wins at need=1
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "rogue"}.Payload()) // ineligible
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "gpt"}.Payload())   // eligible → wins at need=1
 
 	driver, ok := eng.selectProvider(p, subj)
 	if !ok || driver != "gpt" {
@@ -64,13 +65,13 @@ func TestPluralityIgnoresIneligible(t *testing.T) {
 
 // ask-select: a party picks — the first valid pick decides (need is forced to 1).
 func TestSelectProviderAsk(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "ask"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "4"}
 	did := motionChannelID(providerSpecSeed(subj, p))
 
-	store.Put(entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Obj{"choice": "claude"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Obj{"choice": "claude"}.Payload())
 	driver, ok := eng.selectProvider(p, subj)
 	if !ok || driver != "claude" {
 		t.Fatalf("ask select = (%q, %v), want (claude, true) — the first pick decides", driver, ok)
@@ -81,11 +82,11 @@ func TestSelectProviderAsk(t *testing.T) {
 // the eligible set. Here tier=premium admits gpt & claude (not the basic one); auto picks
 // the first (by id), and the option resolves to that provider's `driver`.
 func TestSelectProviderRegistryMatch(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "gpt"}, entity.Obj{"driver": "llm-gpt", "tier": "premium"}.Payload())
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "claude"}, entity.Obj{"driver": "llm-claude", "tier": "premium"}.Payload())
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "cheapo"}, entity.Obj{"driver": "scripted", "tier": "basic"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "gpt"}, entity.Obj{"driver": "llm-gpt", "tier": "premium"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "claude"}, entity.Obj{"driver": "llm-claude", "tier": "premium"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "cheapo"}, entity.Obj{"driver": "scripted", "tier": "basic"}.Payload())
 
 	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "9"}
@@ -104,7 +105,7 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 // pick — the who-axis analog of an `until` gate defaulting on its deadline. It must return
 // (,false) promptly rather than block open-endedly (the pre-deadline hang).
 func TestSelectProviderVoteDeadline(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "vote", Need: 2, Within: "60ms"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "dl"}
@@ -133,7 +134,7 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 // different places, so the message has to say which one it is — that is the whole reason
 // this path speaks at all.
 func TestWhyNoEligibleNamesTheFix(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, nil)
 
 	// Nothing registered: the answer is "go register a doer".
@@ -148,7 +149,7 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 
 	// Registered but excluded: the answer is "loosen the match", the opposite fix — and
 	// the match is echoed in tony, as the charter spells it, not as Go prints a map.
-	store.Put(entity.Ref{System: "provider", Kind: "review", ID: "cheapo"},
+	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "cheapo"},
 		entity.Obj{"driver": "scripted", "tier": "basic"}.Payload())
 	got = eng.whyNoEligible(p)
 	if !strings.Contains(got, "all 1 registered") {

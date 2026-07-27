@@ -104,10 +104,10 @@ func Str(p Payload, field string) string {
 // elements are skipped.
 //
 // It exists because a payload no longer remembers Go types. The map-backed payload held
-// whatever the writer put in it, so a `[]string` written came back a `[]string` — but only
-// in memory: the docd-backed store always round-tripped through the document and returned a
-// list of anys. Now both stores agree, and reading a list means asking for the element type
-// you want rather than type-asserting the slice the writer happened to use.
+// whatever the writer put in it, so a `[]string` written came back a `[]string` — but the
+// docd-backed store always round-tripped through the document and returned a list of anys.
+// Reading a list now means asking for the element type you want rather than type-asserting
+// the slice the writer happened to use.
 func Strs(p Payload, field string) []string {
 	f := Get(p, field)
 	if f == nil || f.Type != ir.ArrayType {
