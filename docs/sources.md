@@ -42,7 +42,7 @@ pass that reads external truth and converges the owned slice. So the load-bearin
 rule:
 
 > A webhook never writes entities. It triggers a reconcile of the affected ref(s);
-> the reconcile reads the external source of truth and Put/Deletes to converge.
+> the reconcile reads the external source of truth and writes to converge.
 
 That one rule buys idempotency, self-healing, and order/duplicate independence for
 free — you converge against the system's real state, not a flaky delivery.
@@ -66,7 +66,7 @@ type Source interface {
 
     // Reconcile converges the owned slice with external truth. ref == zero → a full
     // resync; a concrete ref → the targeted reconcile a webhook asked for. It reads
-    // the external system and Put/Deletes entities; it is the authority.
+    // the external system and writes entities; it is the authority.
     Reconcile(ctx context.Context, store entity.Store, ref entity.Ref) error
 
     // Webhook maps a raw delivery to the ref(s) to reconcile — it does NOT write
@@ -117,7 +117,7 @@ idempotent and CAS-free.
 
 Reconcile, concretely:
 ```
-git for-each-ref …            → desired ref set; diff vs List(git:ref:*); Put/Delete
+git for-each-ref …            → desired ref set; diff vs List(git:ref:*); write/remove
 git symbolic-ref HEAD; rev-parse HEAD; rev-list --count @{u}..  → git:head:<repo>
 git status --porcelain        → working-tree entities
 ```

@@ -22,18 +22,17 @@ export VERSE_ADDR=localhost:9797
 ./verse up                        # engine + process runtime + store, in one process
 ```
 
-`up` is docd-backed by default — durable, and it brings up logd and docd as children. Add
-`--store memory` for a zero-dependency, no-persistence run. In another terminal, install a
-charter and drive it: `verse trigger add …`, `verse entity put …`, `verse gates`,
-`verse gate approve …`. The [tutorial](docs/tutorial.md) walks it end to end — charters,
-gates, processes, steering, human-executed dial-in processes, and federating your local
-working tree.
+`up` brings up logd and docd as children, so the store is durable from the first run. In
+another terminal, install a charter and drive it: `verse trigger add …`, `verse entity put …`,
+`verse gates`, `verse gate approve …`. The [tutorial](docs/tutorial.md) walks it end to
+end — charters, gates, processes, steering, human-executed dial-in processes, and
+federating your local working tree.
 
 ## What's here
 
 - `entity/` — the entity-verse: a `<system, kind, id>` store, observable and
-  revision-cursored. Durable and scope-aware, with copy-on-write, via logd/docd by default;
-  an in-memory store (`--store memory`) drops in behind the same interface.
+  revision-cursored, durable and scope-aware with copy-on-write, over logd/docd. One
+  conditional write addresses a whole entity or one field inside it.
 - `trigger/` — the ECA engine: conjunctive matches, conjunctive gates posed concurrently,
   actions-as-data, level-triggered catch-up via a cursor, and per-subtree watches with no
   root watch.

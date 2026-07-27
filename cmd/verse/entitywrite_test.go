@@ -41,7 +41,10 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 		}
 		cmd, args = sub, args[1:]
 	}
-	return out.String(), cmd.Run(cc, args)
+	// Run FIRST: `return out.String(), cmd.Run(...)` evaluates its operands left to right,
+	// so it would snapshot the buffer before the command had written a thing.
+	err := cmd.Run(cc, args)
+	return out.String(), err
 }
 
 // nopCloser makes a buffer usable as the context's output, which is closable because a
@@ -123,6 +126,25 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 	}
 	if got := payloadOf(t, store, pr1); got != nil {
 		t.Fatalf("entity survived rm: %+v", got)
+	}
+}
+
+// What a put PRINTS is the entity as it now stands, not an echo of the request — the two
+// differ the moment a write merges, which is the whole point. docs/tutorial.md §2 shows this
+// output, so it is pinned here rather than left to drift.
+func TestEntityPutPrintsTheEntity(t *testing.T) {
+	serve(t)
+	if _, err := runCLI(t, "entity", "put", "demo:pr:1", `{stage: open}`); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	out, err := runCLI(t, "entity", "put", "demo:pr:1", `{owner: ana}`)
+	if err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	for _, want := range []string{"ref: demo:pr:1", "owner: ana", "stage: open"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("put printed:\n%s\nwant it to contain %q", out, want)
+		}
 	}
 }
 
