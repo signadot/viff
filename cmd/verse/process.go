@@ -121,11 +121,11 @@ func (cfg *procDoGateConfig) run(cc *cli.Context, args []string) error {
 	}
 	var snap struct {
 		DialURL string `tony:"field=dialURL"`
-		Policy  string `tony:"field=policy"`
+		Runner  string `tony:"field=runner"`
 	}
 	decodeClose(r, &snap)
 	if snap.DialURL == "" {
-		return fmt.Errorf("process do gate: %s is not a brokered process (policy %q)", id, snap.Policy)
+		return fmt.Errorf("process do gate: %s is not a brokered process (runner %q)", id, snap.Runner)
 	}
 	base := strings.TrimRight(snap.DialURL, "/")
 	epoch, cCursor, err := brokerClaim(base, id, cfg.As)
@@ -232,11 +232,11 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 	}
 	var snap struct {
 		DialURL string `tony:"field=dialURL"`
-		Policy  string `tony:"field=policy"`
+		Runner  string `tony:"field=runner"`
 	}
 	decodeClose(r, &snap)
 	if snap.DialURL == "" {
-		return fmt.Errorf("process do: %s is not a brokered process (policy %q) — no broker to dial in to", id, snap.Policy)
+		return fmt.Errorf("process do: %s is not a brokered process (runner %q) — no broker to dial in to", id, snap.Runner)
 	}
 	base := strings.TrimRight(snap.DialURL, "/")
 	epoch, _, err := brokerClaim(base, id, as)
@@ -616,7 +616,7 @@ func procVectorCmd() *cli.Command {
 
 // run re-vectors a process: the common form sets the default autonomy (auto|ask|park); --file
 // supplies a full gate vector. The vector rides a PUT to /processes/{id}/vector, which is
-// policy-agnostic — the runtime slides a local process, the broker relays it to a remote one.
+// runner-agnostic — the runtime slides a local process, the broker relays it to a remote one.
 func (cfg *procVectorConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {

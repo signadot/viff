@@ -4,6 +4,10 @@ This note records why `entity.Op` is two-valued (`set`, `delete`) rather than
 create/update/delete, why `Since` is a pure read, and why that keeps verse Storage
 on a portable baseline instead of an exotic one.
 
+You watch the stream this describes in
+[tutorial §2](tutorial.md#2-install-a-charter-and-drive-it), and §10 sketches the store it
+comes out of.
+
 ## The question
 
 A change event needs to carry enough for a trigger to react. The rich shape —
@@ -11,8 +15,8 @@ A change event needs to carry enough for a trigger to react. The rich shape —
 that holds prior state in memory, but expensive for a durable, remote one. The logd-backed
 store originally faked it with a mutable `seen` set threaded through both the live watch and
 `Since`, which made the authoritative catch-up path impure, mislabelled creates inside a
-replay window, and diverged from the interface. Those were symptoms of one thing: **the
-store synthesising *edge* semantics the substrate doesn't carry.** So: what should a change
+replay window, and diverged from the interface. Those were symptoms of one thing: the
+store synthesising *edge* semantics the substrate doesn't carry. So: what should a change
 event actually carry, and is matching edge- or level-triggered?
 
 ## What logd's watch actually delivers (measured)
@@ -28,27 +32,27 @@ UPDATE demo.pr.1 (partial) {verse:{demo:{pr:{"1":{stage:done}}}}}
 
 Two facts settle the design:
 
-1. **Create and update are byte-identical.** Adding the new key `"1"` looks exactly
+1. Create and update are byte-identical. Adding the new key `"1"` looks exactly
    like replacing an existing `"1"`. There is no add-vs-replace marker, no new-node
-   flag — create-vs-update is simply **not in the stream.**
-2. **The delta is the writer's applied patch, verbatim — not a computed old→new
-   diff.** The full update re-emitted the unchanged `x:1`; a diff would have dropped
+   flag — create-vs-update is simply not in the stream.
+2. The delta is the writer's applied patch, verbatim — not a computed old→new
+   diff. The full update re-emitted the unchanged `x:1`; a diff would have dropped
    it. logd forwards *what was written this commit*, carrying zero knowledge of prior
-   state. (This holds for the **baseline** watch. A **scoped** watch over a
+   state. (This holds for the baseline watch. A scoped watch over a
    copy-on-write overlay is different: logd recomputes the scope's view and emits a
    *computed* diff between scope states, whose first delta — diffed from an empty/null
    baseline — is a `!replace`, not an additive merge. The encoding of a delta is logd's
    to choose; see "Consuming a delta" below.)
 
-So the watch is already an **edge** stream (one event per commit = one transition),
+So the watch is already an edge stream (one event per commit = one transition),
 and the delta *is* the edge. We don't have to choose level-triggering and lose
 transients — logd hands us edges. And a delta carries exactly two recoverable facts,
-both without prior state: a **tombstone (null leaf) → `Delete`**, any **value →
-`Set`**. That is the whole of `Op`.
+both without prior state: a tombstone (null leaf) → `Delete`, any value →
+`Set`. That is the whole of `Op`.
 
 ## The decision
 
-- **`Op` is `set` | `delete`.** Create-vs-update is dropped — it needs prior
+- `Op` is `set` | `delete`. Create-vs-update is dropped — it needs prior
   existence the substrate doesn't provide, and requiring it would tie the store to
   an uncommon capability (below). A create-or-update is `Set` either way, so a charter
   does not depend on which it was.
@@ -122,8 +126,9 @@ merge-style walk cannot pull the appeared key out of a `!replace`. That is exact
 bug that once made an N-file `verse connect` fire N−1 validators (the first scoped
 delta, the `!replace`, was dropped).
 
-The contract is therefore: **apply the delta, don't decode it.** A subtree watcher
-maintains the watched slice as a document, applies each event to it (`tony.Patch` for a
+The contract is therefore: apply the delta, don't decode it. A subtree watcher
+maintains the watched slice as a document, applies each event to it
+([`tony.Patch`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony#Patch) for a
 Patch, replace for a State — opaquely, whatever ops it carries), and reads entities out
 of the *reconstructed object*, diffing against the last snapshot for per-entity
 `Set`/`Delete`. tony owns patch semantics (merge vs `!replace` vs `!delete`/`!insert`,
@@ -134,8 +139,8 @@ replay do, to level their payloads (`applyDelta`). The residual: those two still
 the reconstructed document, which is safe only because a baseline delta is always a verbatim
 merge, never a scope-computed `!replace`. A root watch over a scope would need the diff.
 
-**The diff makes the subtree watch edge-on-real-change: an entity whose reconstructed content
-is unchanged emits nothing**, so a write that changes no content is *not a reactive edge*.
+The diff makes the subtree watch edge-on-real-change: an entity whose reconstructed content
+is unchanged emits nothing, so a write that changes no content is *not a reactive edge*.
 That is what keeps a reactive re-write from looping: a trigger whose effect re-touches its own
 cause — e.g. a `reviewed` rule re-setting a PR that is already `reviewed` when the process it
 spawned completes — writes the *same value*, so no edge fires and the trigger does not re-run.
@@ -145,41 +150,41 @@ root-watch `Start`/`Since` dispatch loop is dormant and does not yet diff.)
 
 ## One commit, many entities: the entity is the reactive grain
 
-A logd commit is a single, atomic transaction that can patch **many** branches at once —
+A logd commit is a single, atomic transaction that can patch many branches at once —
 several `verse.<system>.<kind>.<id>` paths, across systems and kinds. But an
 `entity.Event` names exactly one `Ref`, so the store normalises: `walkEntities` recurses
-the commit's delta and, at path-depth 3 (`system/kind/id`), emits **one `Event` per
-entity** — all sharing that commit's number as their `Rev` (`LogdStore.eventsFromDelta`).
+the commit's delta and, at path-depth 3 (`system/kind/id`), emits one `Event` per
+entity — all sharing that commit's number as their `Rev` (`LogdStore.eventsFromDelta`).
 Patch five branches in one tx → five per-entity events; patch a whole kind subtree, or
 above it → it descends to each `id` and still yields one event apiece. The "one entity per
 change" grain is imposed *here*, at the logd↔store seam, not assumed by the engine.
 
-This is what makes a trigger's **subject well-defined**: a firing is driven by one event,
+This is what makes a trigger's subject well-defined: a firing is driven by one event,
 which carries one `Ref`, so `$subject` — and hence the flow, and a goal keyed on it — is
 always exactly one entity. Not because a match *pattern* is constrained to one entity (it
 isn't; `{system:"demo"}` matches every demo entity), but because dispatch is
 per-entity-edge. A broad pattern simply fans out to one independent firing per matching
 change.
 
-**The subtlety (and its cost).** This normalisation is deliberately lossy in one way: the
-reactive grain is the **entity, not the transaction.** A commit that atomically sets
+The subtlety (and its cost). This normalisation is deliberately lossy in one way: the
+reactive grain is the entity, not the transaction. A commit that atomically sets
 `demo:pr:1` *and* `demo:pr:2` surfaces as two independent events; the engine dispatches
 them one at a time and fires each trigger with its own subject. The shared `Rev` is the
 *only* trace that they were one tx — and nothing in the engine groups by `Rev`. So a
-well-defined subject is guaranteed, but **cross-entity, transaction-scoped reactivity does
-not exist**: you cannot write a trigger that reacts to "these two changed together in one
+well-defined subject is guaranteed, but cross-entity, transaction-scoped reactivity does
+not exist: you cannot write a trigger that reacts to "these two changed together in one
 tx" as a unit. The store can *write* atomically across entities; the engine can only
 *observe* the result as separate entity edges. This is subtle and may warrant revisiting —
 see Residuals.
 
 ## Why this is the portable choice (not an exotic dependency)
 
-The capability verse leans on — an **ordered, resumable, revisioned change stream**
+The capability verse leans on — an ordered, resumable, revisioned change stream
 (watch + `Since(cursor)`) — is the modern-store baseline, not a logd peculiarity:
 etcd watches, FoundationDB, Kafka offsets, Cockroach/Mongo changefeeds, Postgres
 logical replication, or an in-memory ring all provide it. What *would*
-tie verse to an uncommon feature is requiring **create-vs-update or prior-value in
-the interface** — etcd exposes it (`CreateRevision`, `PrevKv`), many stores don't,
+tie verse to an uncommon feature is requiring create-vs-update or prior-value in
+the interface — etcd exposes it (`CreateRevision`, `PrevKv`), many stores don't,
 and logd (measured above) doesn't either. Keeping create/update out of the contract
 is therefore both the portable choice and the one the substrate can actually honour.
 
@@ -193,21 +198,21 @@ moment of writing, that it be one.
 
 `Op` only ever surfaced to charter authors via `EventMatch.Op`. The losses:
 
-- **Kept for free:** `delete` is exact (tombstone), so teardown-on-removal is
+- Kept for free: `delete` is exact (tombstone), so teardown-on-removal is
   unaffected; and because the delta is an edge, "fire when a field *becomes* X" is
   still once-per-transition (the commit that set it), not once-per-incidental-change.
-- **The one real loss:** you can't distinguish "created with `stage=open`" from
+- The one real loss: you can't distinguish "created with `stage=open`" from
   "re-opened to `stage=open`" — both deltas set `stage=open`, so both fire. You lose
-  native **re-entry suppression** ("act on the first entry into a state, never on
+  native re-entry suppression ("act on the first entry into a state, never on
   re-entry").
-- **The idiom that recovers it:** express "once" as a **state latch**, not an edge —
+- The idiom that recovers it: express "once" as a state latch, not an edge —
   match a field the action then advances (`stage=open` → action sets
   `stage=reviewing`, so it can't re-fire). verse's demo already works this way; the
   subject's stage *is* the latch. This is cleaner than an implicit edge, and it's how
   level-triggered systems get once-semantics.
-- **The footgun to know:** a non-idempotent *gated* or *spawning* action that matches a state
-  it can genuinely **re-enter** — a real round-trip like `reviewed`→`open`→`reviewed` — re-fires
-  on each real entry. (A re-write to the *same* value does **not**: edge-on-real-change makes it
+- The footgun to know: a non-idempotent *gated* or *spawning* action that matches a state
+  it can genuinely re-enter — a real round-trip like `reviewed`→`open`→`reviewed` — re-fires
+  on each real entry. (A re-write to the *same* value does not: edge-on-real-change makes it
   inert, so a reactive re-write that re-touches its own cause does not loop — see "Consuming a
   delta" above.) For a genuine re-entry you still want a latch — charter-authoring discipline,
   not an engine limit.
@@ -217,7 +222,7 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
 
 ## Residuals (punted, by design)
 
-- **Transaction-scoped reactivity (subtle — may need cleaning up).** The per-entity
+- Transaction-scoped reactivity (subtle — may need cleaning up). The per-entity
   normalisation above flattens a multi-branch commit into independent per-entity events
   (sharing a `Rev`), so triggers react at *entity* grain, never at *transaction* grain.
   This keeps every subject/flow/goal well-defined, but an atomic multi-entity write can't

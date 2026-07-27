@@ -124,7 +124,7 @@ var payloadKeys = []string{mKeyPayload, mKeyFields, mKeyEntity}
 
 // matchKeys is the closed set of dimensions a Match may carry. Its disjointness from the
 // formula tag names is load-bearing and asserted in match_test.go: once `when` is a Formula
-// (docs/trigger-model-plan.md step 2), an object is classified as a match or as a formula tag
+// (docs/trigger-model.md), an object is classified as a match or as a formula tag
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
 	mKeySystem: true, mKeyKind: true, mKeyID: true,

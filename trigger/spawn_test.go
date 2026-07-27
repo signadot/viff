@@ -33,11 +33,11 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 
 	var got launch.Spec
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		got = spec
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		p := process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, p, mirror.Meta{Policy: "local"}) // the Spawner now owns mirror + run
+		mirror.Reflect(store, id, p, mirror.Meta{Runner: "local"}) // the Spawner now owns mirror + run
 		go p.Run(context.Background())
 		return p
 	})
@@ -76,11 +76,11 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	ids := make(chan string, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		ids <- id
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		p := process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local"})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		go p.Run(context.Background())
 		return p
 	})

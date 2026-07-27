@@ -167,7 +167,7 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 	cases := map[string]upConfig{
 		"--data with --docd-addr": {DocdAddr: "h:1", Data: "/tmp/x"},
 		"mount face with no docd": {DocdMountAddr: "h:2"},
-		"two run policies":        {Policy: "http://x", Broker: true},
+		"two runners":             {Runner: "http://x", Broker: true},
 		"broker with no face":     {Broker: true},
 	}
 	for name, cfg := range cases {
@@ -177,12 +177,12 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 	}
 
 	ok := map[string]upConfig{
-		"defaults":            {},
-		"running docd":        {DocdAddr: "h:1", DocdMountAddr: "h:2"},
-		"data dir":            {Data: "/tmp/x"},
-		"broker with a face":  {Broker: true, BrokerAddr: ":9090"},
-		"broker face only":    {BrokerAddr: ":9090"},
-		"remote controlPolic": {Policy: "http://x"},
+		"defaults":           {},
+		"running docd":       {DocdAddr: "h:1", DocdMountAddr: "h:2"},
+		"data dir":           {Data: "/tmp/x"},
+		"broker with a face": {Broker: true, BrokerAddr: ":9090"},
+		"broker face only":   {BrokerAddr: ":9090"},
+		"remote runner":      {Runner: "http://x"},
 	}
 	for name, cfg := range ok {
 		if err := cfg.validate(); err != nil {

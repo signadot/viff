@@ -8,7 +8,7 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// a ProcHandle that records control calls; its read plane stays open (never terminal).
+// a Handle that records control calls; its read plane stays open (never terminal).
 type recHandle struct {
 	mu        sync.Mutex
 	cancelled bool

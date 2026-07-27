@@ -31,7 +31,7 @@ func TestCharterRoundTrip(t *testing.T) {
 			},
 			Gates: []Gate{{Name: "human", Mode: "ask"}},
 			Action: Action{Spawn: &launch.Spec{
-				Driver: "llm", Task: "review $subject", Policy: "local",
+				Driver: "llm", Task: "review $subject", Vector: "local",
 			}},
 		},
 		{

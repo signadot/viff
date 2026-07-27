@@ -13,7 +13,7 @@ type Instance struct {
 	Task    string        `tony:"field=task,omitzero"`
 	Driver  string        `tony:"field=driver,omitzero"`
 	Status  Status        `tony:"field=status"`
-	Policy  string        `tony:"field=policy,omitzero"`  // which controlPolicy hosts it (local|<ref>|broker)
+	Runner  string        `tony:"field=runner,omitzero"`  // which runner hosts it (local|<ref>|broker)
 	Cursor  int64         `tony:"field=cursor,omitzero"`  // resume the event stream with ?since=<cursor>
 	Result  string        `tony:"field=result,omitzero"`  // the driver's final answer, once completed
 	Err     string        `tony:"field=err,omitzero"`     // failure detail (e.g. "driver error: …")

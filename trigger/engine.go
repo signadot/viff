@@ -23,19 +23,19 @@ import (
 )
 
 // Spawner turns a (bound) launch.Spec into a running, hosted process and returns
-// it. It owns the full lifecycle — resolve the spec's references (driver, policy,
+// it. It owns the full lifecycle — resolve the spec's references (driver, runner,
 // resolver, scope, environment), build, mirror into the verse, and run/host — so
 // the engine stays agnostic to how processes are hosted (a processd runtime here,
 // an RPC to a remote runtime when distributed).
-type Spawner func(id string, spec launch.Spec) process.ProcHandle
+type Spawner func(id string, spec launch.Spec) process.Handle
 
 // flowProc is one LIVE process: its id (for store-driven reap by ref), the subject it is
 // about, and its governing handle (the control target — a *Process locally, a remote handle
-// behind a controlPolicy URL later). The engine holds handles, not concrete processes.
+// behind a runner URL later). The engine holds handles, not concrete processes.
 type flowProc struct {
 	id      string
 	subject string // the resolved subject this process is about — a flow is a query over these
-	h       process.ProcHandle
+	h       process.Handle
 	// hooks is the spawning action, carried so the engine can fire its completion hook (onX)
 	// when THIS process reaches a terminal status — scoped to this process, not every process
 	// about the subject. nil for Adopt (a resumed process has no charter action to hook).
@@ -772,7 +772,7 @@ func refIDs(refs []entity.Ref) []string {
 // and returns the chosen driver (bound into Spec.Driver before spawn — no live swap). The
 // commit is CAS terminal-once with the revoke guard, so a ballot retracted between threshold
 // and commit re-monitors; a re-fire is idempotent (same channel). Orthogonal to the
-// controlPolicy that then transports the chosen driver.
+// runner that then transports the chosen driver.
 func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string, bool) {
 	options, drivers := e.eligibleProviders(p)
 	if len(options) == 0 {
@@ -921,14 +921,14 @@ func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
 // Spawn asks the Spawner to launch a process from a launch.Spec — non-blocking.
 // The Spawner owns build/mirror/run; the process's state appears in the verse and
 // its acts write entities, closing the loop. Requires a Spawner.
-func (e *Engine) Spawn(id string, spec launch.Spec) process.ProcHandle {
+func (e *Engine) Spawn(id string, spec launch.Spec) process.Handle {
 	return e.spawnHooked(id, spec, nil, "")
 }
 
 // spawnHooked is Spawn with completion hooks: hooks is the spawning action (its onX fire when
 // this process ends), chain is this spawn's position in a hook chain (for deterministic nested
 // ids). Public Spawn passes nil/"" — an ordinary spawn with no chaining.
-func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) process.ProcHandle {
+func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) process.Handle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
 		return nil
@@ -966,7 +966,7 @@ func (e *Engine) track(fp flowProc) {
 // exactly as Spawn does a fresh one, so the resumed process is steerable (flow
 // cancel/say/pause) and reaped from the flow when it ends — not merely observed. subject
 // "" is a no-op.
-func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
+func (e *Engine) Adopt(subject, id string, h process.Handle) {
 	e.AdoptChain(subject, id, "", h)
 }
 
@@ -977,14 +977,14 @@ func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
 //
 // This is what a chain being a LOOKUP KEY into the charter is for. Before it, resume tracked
 // a process with no hooks at all, which meant a completion after a restart silently ended a
-// chain: docs/completion-hooks.md records that as a limitation, and it is why `onOrphaned`
+// chain: docs/trigger-model.md records that as a limitation, and it is why `onOrphaned`
 // never fires (the only orphan is written by this very reconcile, on a fresh engine).
 //
 // Rehydration is best-effort by nature, and the failures are ordinary rather than alarming:
 // a trigger removed while its process ran, or a charter edited so the chain no longer
 // resolves. Both mean there is no action left to run, which is the correct outcome — the
 // process is still adopted, so it stays steerable and is still reaped.
-func (e *Engine) AdoptChain(subject, id, chain string, h process.ProcHandle) {
+func (e *Engine) AdoptChain(subject, id, chain string, h process.Handle) {
 	if h == nil || subject == "" {
 		return
 	}
@@ -1045,7 +1045,7 @@ func (e *Engine) retire(id string) (flowProc, bool) {
 
 // retireHandle is retire scoped to a specific handle: it removes the entry only if the tracked
 // handle still matches (not a successor that reused the id). The reapOnDone path uses it.
-func (e *Engine) retireHandle(id string, h process.ProcHandle) (flowProc, bool) {
+func (e *Engine) retireHandle(id string, h process.Handle) (flowProc, bool) {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
 	if fp, ok := e.live[id]; ok && fp.h == h {

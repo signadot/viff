@@ -14,7 +14,7 @@ import (
 func treeEngine(t *testing.T, store *entity.LogdStore) *Engine {
 	t.Helper()
 	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		return startHookProc(store, id, spec)
 	})
 	ctx, cancel := context.WithCancel(context.Background())

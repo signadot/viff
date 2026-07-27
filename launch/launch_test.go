@@ -7,7 +7,7 @@ func TestBindExpandsSubject(t *testing.T) {
 		Driver:      "harness",
 		Task:        "review $subject and report",
 		Environment: "sandbox-$subject",
-		Policy:      "supervised",
+		Vector:      "supervised",
 	}
 	got := s.Bind(Binding{"subject": "demo:pr:1"})
 
@@ -18,7 +18,7 @@ func TestBindExpandsSubject(t *testing.T) {
 		t.Fatalf("Environment = %q", got.Environment)
 	}
 	// fields without a $var are untouched
-	if got.Driver != "harness" || got.Policy != "supervised" {
+	if got.Driver != "harness" || got.Vector != "supervised" {
 		t.Fatalf("plain fields changed: %+v", got)
 	}
 }

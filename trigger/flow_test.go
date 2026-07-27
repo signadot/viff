@@ -23,10 +23,10 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 
 	var proc *process.Process
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		proc = process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, proc, mirror.Meta{Subject: spec.Subject, Policy: "local"})
+		mirror.Reflect(store, id, proc, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		return proc // the test starts Run after arranging the pause
 	})
 
@@ -71,10 +71,10 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 func TestFlowReapedOnCompletion(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		p := process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local"})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		go p.Run(context.Background())
 		return p
 	})

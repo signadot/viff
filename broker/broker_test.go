@@ -14,7 +14,7 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// The full two-legged dial-in loop: verse drives a process through the ControlPolicy seam
+// The full two-legged dial-in loop: verse drives a process through the Runner seam
 // (Spawn + Subscribe + Cancel) while a worker dials in over claim/inbox/report. Worker
 // reports become the events verse observes; verse control becomes items the worker pulls.
 func TestBrokerDialInLoop(t *testing.T) {

@@ -23,7 +23,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/controlpolicy"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
@@ -40,7 +40,7 @@ type Server struct {
 	Reg    *process.Registry
 	Eng    *trigger.Engine
 	Procd  *processd.Daemon
-	policy process.ControlPolicy // how processes are run/governed; local (processd) today
+	runner process.Runner // how processes are run/governed; local (processd) today
 
 	// Addr/BrokerAddr are this verse's OWN listen addresses — the operator API and (if
 	// served) the broker face — published on /status so a client or worker can discover
@@ -72,7 +72,7 @@ type Server struct {
 	scopeEngs map[string]*scopeEngine
 
 	// brokers are worker-facing handlers hosted under /broker/<nonce> (see BrokerHandler).
-	// The nonce is a capability: knowing the URL is the grant to dial in as that policy's
+	// The nonce is a capability: knowing the URL is the grant to dial in as that runner's
 	// worker. The well-known "local" nonce is handled specially (the in-process supervisor).
 	brokerMu sync.Mutex
 	brokers  map[string]http.Handler
@@ -97,42 +97,42 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	eng := trigger.New(store, reg)
 	procd := processd.New(build)
 	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd, scopeEngs: map[string]*scopeEngine{}}
-	s.policy = localPolicy{procd} // the in-process controlPolicy ("/broker/local")
+	s.runner = localRunner{procd} // the in-process runner ("/broker/local")
 
-	// The Spawner owns the full lifecycle: host it via the controlPolicy, then mirror
+	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
 	eng.SetSpawner(s.spawnerFor(store, nil))
 	return s
 }
 
-// localPolicy is the in-process controlPolicy: it hosts processes on the embedded
-// processd runtime — the "/broker/local" handler. Remote policies (a controlPolicy base
-// URL: k8s, lambda, a human broker) implement the same process.ControlPolicy behind the
-// wire contract; the engine drives them through the identical seam. See docs/control-policy.md.
-type localPolicy struct{ d *processd.Daemon }
+// localRunner is the in-process runner: it hosts processes on the embedded
+// processd runtime — the "/broker/local" handler. Remote runners (a base
+// URL: k8s, lambda, a human broker) implement the same process.Runner behind the
+// wire contract; the engine drives them through the identical seam. See docs/process-control.md.
+type localRunner struct{ d *processd.Daemon }
 
-func (l localPolicy) Spawn(id, task, driver string, content process.ContentReader) process.ProcHandle {
+func (l localRunner) Spawn(id, task, driver string, content process.ContentReader) process.Handle {
 	return l.d.Spawn(id, task, driver, content)
 }
 
 // Attach returns the still-live in-process handle for id, or nil — after a restart the
 // in-memory runtime is gone, so the caller orphans (a local process cannot outlive verse).
-func (l localPolicy) Attach(id string) process.ProcHandle {
+func (l localRunner) Attach(id string) process.Handle {
 	if p := l.d.Lookup(id); p != nil {
 		return p
 	}
 	return nil
 }
 
-func (localPolicy) Ref() string { return "local" }
+func (localRunner) Ref() string { return "local" }
 
-// SetPolicy rebinds how this server runs processes — e.g. to a remote controlPolicy base
-// URL (controlpolicy.HTTP) instead of the in-process local supervisor. The spawnerFor
-// closures read s.policy at spawn time, so this takes effect for subsequent spawns
-// (baseline and scoped). content federation is not forwarded to a remote policy yet.
-func (s *Server) SetPolicy(p process.ControlPolicy) { s.policy = p }
+// SetRunner rebinds how this server runs processes — e.g. to a remote runner base
+// URL (runner.HTTP) instead of the in-process local supervisor. The spawnerFor
+// closures read s.runner at spawn time, so this takes effect for subsequent spawns
+// (baseline and scoped). content federation is not forwarded to a remote runner yet.
+func (s *Server) SetRunner(p process.Runner) { s.runner = p }
 
-// UseBroker installs an in-process dial-in broker as the controlPolicy, hosted under a
+// UseBroker installs an in-process dial-in broker as the runner, hosted under a
 // minted nonce, and returns it (e.g. for the operator to Revoke a claim). face is this
 // verse's externally-reachable broker base (scheme://host:broker-addr — what a worker can
 // reach); the broker publishes <face>/broker/<nonce> as each process's `dialURL`, closing
@@ -141,13 +141,13 @@ func (s *Server) UseBroker(face string) *broker.Broker {
 	b := broker.New()
 	nonce := s.HostBroker("", b.WorkerHandler())
 	b.SetBase(strings.TrimRight(face, "/") + "/broker/" + nonce)
-	s.SetPolicy(b)
+	s.SetRunner(b)
 	return b
 }
 
-// BrokerHandler serves this verse's broker face — the controlPolicy contract hosted under
-// /broker/<nonce>, so a remote verse or a worker reaches a policy through verse's own URL
-// rather than a separate service (see docs/control-policy.md "Hosting"). The well-known
+// BrokerHandler serves this verse's broker face — the runner contract hosted under
+// /broker/<nonce>, so a remote verse or a worker reaches a runner through verse's own URL
+// rather than a separate service (see docs/process-control.md "Hosting"). The well-known
 // "local" nonce is the built-in supervisor (processd); any other nonce is a handler
 // registered via HostBroker (e.g. a dial-in broker's WorkerHandler). It is intended for a
 // SIBLING port, kept distinct from the trusted operator API.
@@ -203,23 +203,23 @@ func mintNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
-// spawnerFor builds a Spawner that hosts a process via the controlPolicy and mirrors its
+// spawnerFor builds a Spawner that hosts a process via the runner and mirrors its
 // state into st — the baseline store for the baseline engine, a scoped store for a
 // per-scope engine, so a scoped flow's process state stays in that scope. content (nil
 // for baseline) routes a spawned agent's read_file through the verse.
 func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
-	return func(id string, spec launch.Spec) process.ProcHandle {
-		h := s.policy.Spawn(id, spec.Task, spec.Driver, content)
-		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Policy: s.policy.Ref(), Chain: spec.Chain, Task: spec.Task})
+	return func(id string, spec launch.Spec) process.Handle {
+		h := s.runner.Spawn(id, spec.Task, spec.Driver, content)
+		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task})
 		return h
 	}
 }
 
 // reconcileProcesses runs on Start: for each non-terminal process:instance, either RESUME
-// (a remote policy still running the work — re-attach and re-mirror from the entity's
-// policy + cursor) or ORPHAN (a local in-process runtime that died with the previous
+// (a remote runner still running the work — re-attach and re-mirror from the entity's
+// runner + cursor) or ORPHAN (a local in-process runtime that died with the previous
 // run). This refines the old orphan-only reconcile now that a process can outlive verse
-// behind a remote policy. Control re-tracking (cancel/say a resumed process) is a
+// behind a remote runner. Control re-tracking (cancel/say a resumed process) is a
 // follow-on; this keeps the entity truthful.
 func (s *Server) reconcileProcesses() {
 	var resumed []resumedRun
@@ -234,18 +234,18 @@ func (s *Server) reconcileProcesses() {
 		if status == "" || process.TerminalStatus(status) {
 			continue
 		}
-		policyRef := entity.Str(ent.Payload, "policy")
+		runnerRef := entity.Str(ent.Payload, "runner")
 		subject := entity.Str(ent.Payload, "flow")
 		// Reflect REPLACES the entity's payload, so provenance it does not carry is lost on
 		// re-attach. Read the chain back off the entity and hand it straight in: it is the
 		// address of the action that spawned this process, and a resumed process should not
-		// forget where it came from. (Re-deriving its HOOKS from that address is the next
-		// step and is not done here — see docs/flow-shape-kpath-plan.md.)
+		// forget where it came from. AdoptChain re-derives its hooks from that address —
+		// see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
-		if policyRef != "" && policyRef != "local" { // remote: the work outlived verse
-			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {
+		if runnerRef != "" && runnerRef != "local" { // remote: the work outlived verse
+			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
-				mirror.Reflect(s.Store, ent.Ref.ID, h, mirror.Meta{Subject: subject, Policy: policyRef, Chain: chain})
+				mirror.Reflect(s.Store, ent.Ref.ID, h, mirror.Meta{Subject: subject, Runner: runnerRef, Chain: chain})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
 				s.Eng.AdoptChain(subject, ent.Ref.ID, chain, h)
@@ -436,8 +436,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", "verse-steered")
 	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", "verse-steered")
 	// process runtime (proc) — mounted; serves /processes[/{id}[/…]]. versed intercepts the
-	// two READ routes to union the local runtime with the active policy's own processes
-	// (e.g. a broker's), stamping each with its policy; everything else (spawn, events,
+	// two READ routes to union the local runtime with the active runner's own processes
+	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
 	// control) falls through to the local runtime.
 	ph := s.Procd.Handler()
 	rt.handle("GET /processes", s.listProcesses, "", "verse-instance")
@@ -447,8 +447,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.processEvents(w, r, ph)
 	}, "", "verse-frame")
-	// cancel/say are policy-agnostic: local processes go to the runtime, brokered/remote
-	// ones to the policy's handle — so `process cancel`/`say` work wherever a process runs.
+	// cancel/say are runner-agnostic: local processes go to the runtime, brokered/remote
+	// ones to the runner's handle — so `process cancel`/`say` work wherever a process runs.
 	rt.handle("POST /processes/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "cancel")
 	}, "", "")
@@ -458,9 +458,9 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "resolve")
 	}, "verse-resolve", "")
-	// re-vector (slide autonomy on a running process) — policy-agnostic like cancel/say: a
+	// re-vector (slide autonomy on a running process) — runner-agnostic like cancel/say: a
 	// local process is served by the runtime mount (processd's setVector), a brokered/remote
-	// one goes to the policy handle's SetVector.
+	// one goes to the runner handle's SetVector.
 	rt.handle("PUT /processes/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "vector")
 	}, "verse-set-vector", "")
@@ -860,7 +860,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Gates:     len(s.Reg.Pending()),
 		Processes: s.Procd.Count(),
 		Fired:     s.Eng.Fired(),
-		Policy:    s.policyStatus(), // how processes run: kind + resume + dial legs
+		Runner:    s.runnerStatus(), // how processes run: kind + resume + dial legs
 		LLM:       s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
 	// When docd-backed, publish its addresses so a controller process (verse connect)
@@ -875,35 +875,35 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// policyStatus describes the run policy along its two independent legs, so the two are not
+// runnerStatus describes the runner along its two independent legs, so the two are not
 // confused: `resume` is the VERSE-facing control/re-attach address (what a restart needs),
 // `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
 // a remote processd (one URL, no separate worker leg) and diverge for a broker (verse drives
-// it in-process — ephemeral — while a worker dials a separate face). See docs/control-policy.md.
-func (s *Server) policyStatus() *api.PolicyStatus {
-	pol := &api.PolicyStatus{Resume: "ephemeral"}
+// it in-process — ephemeral — while a worker dials a separate face). See docs/process-control.md.
+func (s *Server) runnerStatus() *api.RunnerStatus {
+	pol := &api.RunnerStatus{Resume: "ephemeral"}
 	switch {
-	case hasFace(s.policy): // a dial-in broker: in-process control, external worker face
+	case hasFace(s.runner): // a dial-in broker: in-process control, external worker face
 		pol.Kind = "broker"
-		if face := s.policy.(interface{ Face() string }).Face(); face != "" {
+		if face := s.runner.(interface{ Face() string }).Face(); face != "" {
 			pol.Dial = face
 		}
-	case s.policy.Ref() == "local":
+	case s.runner.Ref() == "local":
 		pol.Kind = "local"
-	default: // a remote controlPolicy base URL — the Ref IS the re-attach address
+	default: // a remote runner base URL — the Ref IS the re-attach address
 		pol.Kind = "remote"
-		pol.Resume = s.policy.Ref()
+		pol.Resume = s.runner.Ref()
 	}
 	return pol
 }
 
-func hasFace(p process.ControlPolicy) bool {
+func hasFace(p process.Runner) bool {
 	_, ok := p.(interface{ Face() string })
 	return ok
 }
 
-// processLister is a controlPolicy that keeps its OWN process registry (a broker), distinct
-// from the local runtime. localPolicy does NOT implement it — it delegates to the same
+// processLister is a runner that keeps its OWN process registry (a broker), distinct
+// from the local runtime. localRunner does NOT implement it — it delegates to the same
 // processd the union already lists — so brokered processes are added without double-counting
 // local ones.
 type processLister interface {
@@ -912,8 +912,8 @@ type processLister interface {
 }
 
 // spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
-// subject/flow, but it goes through the SAME seam: host it via the controlPolicy (so a run
-// honors --policy/--broker, not just trigger spawns) and mirror it into the store (so a run
+// subject/flow, but it goes through the SAME seam: host it via the runner (so a run
+// honors --runner/--broker, not just trigger spawns) and mirror it into the store (so a run
 // is a process:instance entity — observable, and its completion can drive triggers) — the
 // consistency the "processes are entities" model wants.
 func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
@@ -937,21 +937,21 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		store = s.Store.Scope(scope)
 	}
-	h := s.policy.Spawn(id, body.Task, body.Driver, nil)
-	mirror.Reflect(store, id, h, mirror.Meta{Policy: s.policy.Ref()})
+	h := s.runner.Spawn(id, body.Task, body.Driver, nil)
+	mirror.Reflect(store, id, h, mirror.Meta{Runner: s.runner.Ref()})
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
-// listProcesses is the unified process list: the local runtime plus, when the policy is a
-// broker (or any policy with its own registry), its processes — each stamped with its policy
+// listProcesses is the unified process list: the local runtime plus, when the runner is a
+// broker (or any runner with its own registry), its processes — each stamped with its runner
 // so a client sees whether a process is local or brokered (and, for a broker, its dialURL).
 func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, s.processSnapshots(s.scopedStore(r)))
 }
 
 // processSnapshots is the unified process list for one store view (baseline, or a ?scope
-// overlay): the local runtime plus the active policy's own processes (a broker's), each
-// stamped with its policy.
+// overlay): the local runtime plus the active runner's own processes (a broker's), each
+// stamped with its runner.
 //
 // The runtime and the broker are scope-blind — they hold every process globally — so a
 // bare list would leak a `verse connect` scope's processes into baseline (and across
@@ -967,15 +967,15 @@ func (s *Server) processSnapshots(store entity.Store) []process.Instance {
 	out := make([]process.Instance, 0)
 	for _, inst := range s.Procd.Snapshots() {
 		if keep(inst) {
-			inst.Policy = "local"
+			inst.Runner = "local"
 			out = append(out, inst)
 		}
 	}
-	if l, ok := s.policy.(processLister); ok {
-		ref := s.policy.Ref()
+	if l, ok := s.runner.(processLister); ok {
+		ref := s.runner.Ref()
 		for _, inst := range l.ListProcesses() {
 			if keep(inst) {
-				inst.Policy = ref
+				inst.Runner = ref
 				out = append(out, inst)
 			}
 		}
@@ -995,12 +995,12 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	return ids
 }
 
-// isProcess reports whether id names a process in the runtime or the active policy.
+// isProcess reports whether id names a process in the runtime or the active runner.
 func (s *Server) isProcess(id string) bool {
 	if _, ok := s.Procd.SnapshotOf(id); ok {
 		return true
 	}
-	if l, ok := s.policy.(processLister); ok {
+	if l, ok := s.runner.(processLister); ok {
 		_, ok := l.ProcessSnapshot(id)
 		return ok
 	}
@@ -1008,12 +1008,12 @@ func (s *Server) isProcess(id string) bool {
 }
 
 // resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the
-// runtime for a local process, the policy handle for a brokered one.
+// runtime for a local process, the runner handle for a brokered one.
 func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) bool {
 	if _, ok := s.Procd.SnapshotOf(procID); ok {
 		return s.Procd.Resolve(procID, decisionID, res)
 	}
-	if h := s.policy.Attach(procID); h != nil {
+	if h := s.runner.Attach(procID); h != nil {
 		if rh, ok := h.(interface {
 			Resolve(decision string, proceed bool, say string) bool
 		}); ok {
@@ -1024,18 +1024,18 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 }
 
 // getProcess resolves one process across backends: the local runtime first (live detail),
-// then the policy's own registry (a brokered process) — so `process get <id>` works whether
+// then the runner's own registry (a brokered process) — so `process get <id>` works whether
 // the process runs locally or behind a broker.
 func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if inst, ok := s.Procd.SnapshotOf(id); ok {
-		inst.Policy = "local"
+		inst.Runner = "local"
 		writeOut(w, r, http.StatusOK, inst)
 		return
 	}
-	if l, ok := s.policy.(processLister); ok {
+	if l, ok := s.runner.(processLister); ok {
 		if inst, ok := l.ProcessSnapshot(id); ok {
-			inst.Policy = s.policy.Ref()
+			inst.Runner = s.runner.Ref()
 			writeOut(w, r, http.StatusOK, inst)
 			return
 		}
@@ -1043,8 +1043,8 @@ func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-// inboxReader is a policy (a broker) that can surface a process's queued worker control for
-// operator observability, unfenced. localPolicy doesn't implement it (no dial-in worker).
+// inboxReader is a runner (a broker) that can surface a process's queued worker control for
+// operator observability, unfenced. localRunner doesn't implement it (no dial-in worker).
 type inboxReader interface {
 	ProcessInbox(id string) ([]api.InboxItem, bool)
 }
@@ -1053,7 +1053,7 @@ type inboxReader interface {
 // unfenced, so it doesn't disturb a live worker. A local process has no worker inbox → empty.
 func (s *Server) processInbox(w http.ResponseWriter, r *http.Request) {
 	items := []api.InboxItem{}
-	if ir, ok := s.policy.(inboxReader); ok {
+	if ir, ok := s.runner.(inboxReader); ok {
 		if got, ok := ir.ProcessInbox(r.PathValue("id")); ok {
 			items = got
 		}
@@ -1066,7 +1066,7 @@ func (s *Server) processInbox(w http.ResponseWriter, r *http.Request) {
 }
 
 // processEvents bridges `attach` across backends: a locally-hosted process streams from the
-// runtime (its native SSE); a brokered/remote one is bridged here — Subscribe the policy
+// runtime (its native SSE); a brokered/remote one is bridged here — Subscribe the runner
 // handle (which replays the merged log then goes live) and re-emit each event as SSE.
 func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
 	id := r.PathValue("id")
@@ -1074,7 +1074,7 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
-	h := s.policy.Attach(id)
+	h := s.runner.Attach(id)
 	if h == nil {
 		http.NotFound(w, r)
 		return
@@ -1101,7 +1101,7 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 }
 
 // processControl routes cancel/say: a process the local runtime hosts is served by it (live
-// detail); otherwise the request goes to the policy's handle (a brokered/remote process),
+// detail); otherwise the request goes to the runner's handle (a brokered/remote process),
 // so the same command works wherever a process runs.
 func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
 	id := r.PathValue("id")
@@ -1109,7 +1109,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
-	h := s.policy.Attach(id)
+	h := s.runner.Attach(id)
 	if h == nil {
 		http.NotFound(w, r)
 		return
@@ -1140,7 +1140,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 			Resolve(decision string, proceed bool, say string) bool
 		})
 		if !ok {
-			http.Error(w, "policy does not support gate resolution", http.StatusNotImplemented)
+			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
 			return
 		}
 		// Same body as `POST /gate/resolve` (api.Resolve): one gate, named by id,

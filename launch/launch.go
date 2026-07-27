@@ -5,7 +5,7 @@
 // reflected as an entity (triggers-as-data). Nothing here depends on the process
 // substrate; it is pure data + binding.
 //
-// Every field is a *reference* to something named elsewhere (a policy, a grant, an
+// Every field is a *reference* to something named elsewhere (a vector, a grant, an
 // environment) rather than the thing inlined — the same index-not-warehouse
 // discipline as the rest of the verse: the spec points at native semantics; the
 // runtime that builds the process resolves the references against its own
@@ -13,7 +13,7 @@
 //
 //	Driver      → which runtime/Driver builds the process (LLM harness, scripted, …)
 //	Task        → the prompt/task the driver is seeded with
-//	Policy      → the gate vector (the autonomy dial) — soft, slidable
+//	Vector      → the gate vector (the autonomy dial) — soft, slidable
 //	Resolver    → how ASK gates are answered (human/auto/scm/…)
 //	Grant       → hard authority — what it may do at all
 //	Environment → the sandbox/workspace floor — unbypassable
@@ -22,7 +22,7 @@
 // verse for the entity-store isolation overlay (entity.Store.Scope, config.Scope, --scope,
 // VERSE_SCOPE, connect's nonce), and this field is the one place it meant authority. The
 // word the type (process.Grant) and the delegation check (Grant.Subset) already use is the
-// right one. See docs/expose.md.
+// right one. See docs/roadmap/expose.md.
 package launch
 
 //go:generate go tool tony-codegen -dir .
@@ -41,7 +41,7 @@ import (
 type Spec struct {
 	Driver      string `tony:"field=driver,omitzero"`
 	Task        string `tony:"field=task,omitzero"`
-	Policy      string `tony:"field=policy,omitzero"`
+	Vector      string `tony:"field=vector,omitzero"`
 	Resolver    string `tony:"field=resolver,omitzero"`
 	Grant       string `tony:"field=grant,omitzero"`
 	Environment string `tony:"field=environment,omitzero"`
@@ -58,14 +58,14 @@ type Spec struct {
 	// Provider, when set, makes the who-axis (Driver) a GOVERNED SELECTION rather than a
 	// fixed authoring-time value: the engine selects one of Eligible via the Select
 	// surface, reifies it as a motion, and binds the winner into Driver before spawn
-	// (no live swap — reassign = cancel+respawn). Orthogonal to the controlPolicy that
+	// (no live swap — reassign = cancel+respawn). Orthogonal to the RUNNER that
 	// then transports the chosen Driver.
 	Provider *Provider `tony:"field=provider,omitzero"`
 }
 
 // Provider declares the who-axis as a governed 1-of-N selection: the eligible doers (a
 // hard set, like Grant) and the surface that selects among them (the soft who-dial, like
-// Policy). Absent = today's fixed Driver.
+// Vector). Absent = today's fixed Driver.
 //
 // Eligibility takes one of two forms: an inline `Eligible` list of doer ids (simple), or
 // the registry form `Capability` (+ optional `Where`) which selects the `provider:<cap>:*`
@@ -110,7 +110,7 @@ func (s Spec) Bind(b Binding) Spec {
 	return Spec{
 		Driver:      expand(s.Driver, b),
 		Task:        expand(s.Task, b),
-		Policy:      expand(s.Policy, b),
+		Vector:      expand(s.Vector, b),
 		Resolver:    expand(s.Resolver, b),
 		Grant:       expand(s.Grant, b),
 		Environment: expand(s.Environment, b),

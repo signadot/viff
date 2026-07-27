@@ -56,7 +56,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	d := &sayer{result: "here is the summary you asked for"}
 	p := process.NewProcess("p2", sup, d, noopExec{})
 	d.emit = p.Emit // narration onto the read plane, as harness.Build wires it
-	Reflect(store, p.ID, p, Meta{Policy: "local"})
+	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	go func() { p.Run(context.Background()) }()
 
 	ref := Ref("p2")
@@ -85,13 +85,13 @@ func TestReflectProjectsOutput(t *testing.T) {
 
 // dialer wraps a handle with a worker-facing dial URL, as the broker's handle does.
 type dialer struct {
-	process.ProcHandle
+	process.Handle
 	url string
 }
 
 func (d dialer) DialURL() string { return d.url }
 
-// A dial-in policy publishes where a worker connects: Reflect projects a handle's DialURL
+// A dial-in runner publishes where a worker connects: Reflect projects a handle's DialURL
 // onto the entity as `dialURL`, so a worker can be told where to dial in (mint→publish→dial)
 // rather than being pre-configured. A handle without one (local, remote-processd) sets none.
 func TestReflectPublishesDialURL(t *testing.T) {
@@ -99,7 +99,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("d1", sup, &steps{n: 1}, noopExec{})
 	const url = "http://verse.test:9090/broker/abc123"
-	Reflect(store, p.ID, dialer{p, url}, Meta{Policy: "broker"}) // initial Put is synchronous
+	Reflect(store, p.ID, dialer{p, url}, Meta{Runner: "broker"}) // initial Put is synchronous
 
 	got, ok, _ := store.Get(Ref("d1"))
 	if !ok || entity.ToObj(got.Payload)["dialURL"] != url {
@@ -108,7 +108,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 
 	// a plain handle (no DialURL) publishes no dialURL key.
 	p2 := process.NewProcess("d2", sup, &steps{n: 1}, noopExec{})
-	Reflect(store, p2.ID, p2, Meta{Policy: "local"})
+	Reflect(store, p2.ID, p2, Meta{Runner: "local"})
 	if g2, _, _ := store.Get(Ref("d2")); entity.ToObj(g2.Payload)["dialURL"] != nil {
 		t.Fatalf("local handle should publish no dialURL: %+v", g2.Payload)
 	}
@@ -124,7 +124,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("p1", sup, &steps{n: 2}, noopExec{})
-	Reflect(store, p.ID, p, Meta{Policy: "local"})
+	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
 	go func() { p.Run(context.Background()) }()
 
@@ -168,7 +168,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	p := process.NewProcess("p-chain", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{
 		Subject: "demo:pr:1",
-		Policy:  "local",
+		Runner:  "local",
 		Chain:   "review.onDone",
 	})
 	e, ok, _ := store.Get(Ref("p-chain")) // the initial Put is synchronous
@@ -192,7 +192,7 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	store := entitytest.Store(t)
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("p-bare", sup, &sayer{}, noopExec{})
-	Reflect(store, p.ID, p, Meta{Policy: "local"})
+	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	e, ok, _ := store.Get(Ref("p-bare"))
 	if !ok {
 		t.Fatal("process entity not mirrored")
@@ -205,7 +205,7 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	}
 }
 
-// fakeHandle is a ProcHandle whose read plane is a channel the test drives, so a
+// fakeHandle is a process.Handle whose read plane is a channel the test drives, so a
 // transition can be observed at the instant it happens rather than raced against.
 type fakeHandle struct{ ch chan process.Frame }
 
@@ -224,7 +224,7 @@ func (f *fakeHandle) Result() string                            { return "" }
 func TestReflectClearsAnAnsweredGate(t *testing.T) {
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan process.Frame)}
-	Reflect(store, "g1", h, Meta{Policy: "local"})
+	Reflect(store, "g1", h, Meta{Runner: "local"})
 
 	fields := func() map[string]any {
 		t.Helper()

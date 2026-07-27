@@ -157,7 +157,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 		Driver string `tony:"field=driver"`
 	}
 	_ = codec.Read(r, &body)
-	id := body.Id // a controlPolicy client (the engine) passes its own id so it matches
+	id := body.Id // a runner client (the engine) passes its own id so it matches
 	if id == "" { // the process:instance entity; an ad-hoc `process run` gets a fresh one
 		id = fmt.Sprintf("p%d", d.seq.Add(1))
 	}
@@ -177,7 +177,7 @@ func (d *Daemon) list(w http.ResponseWriter, r *http.Request) {
 }
 
 // Snapshots returns every hosted process in the shape the process API returns — for versed
-// to union the local runtime with a policy's own processes (e.g. a broker's) in one list.
+// to union the local runtime with a runner's own processes (e.g. a broker's) in one list.
 func (d *Daemon) Snapshots() []process.Instance {
 	d.mu.Lock()
 	defer d.mu.Unlock()

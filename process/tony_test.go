@@ -19,7 +19,7 @@ func TestTonyRoundTrip(t *testing.T) {
 	}{
 		{"instance", Instance{
 			ID: "run-1", Task: "review", Driver: "llm", Status: Running,
-			Policy: "local", Cursor: 7, DialURL: "http://x/y",
+			Runner: "local", Cursor: 7, DialURL: "http://x/y",
 			Pending: []PendingGate{{ID: "d1", Gate: "shell", Mode: "ask", Reason: "why"}},
 		}, func() any { return &Instance{} }},
 

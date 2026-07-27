@@ -30,7 +30,7 @@ func TestGitWebhookTargets(t *testing.T) {
 	}
 }
 
-// InstallHook writes an executable reference-transaction hook that POSTs the runner, refuses
+// InstallHook writes an executable reference-transaction hook that POSTs the reflector, refuses
 // to clobber a foreign hook, and RemoveHook takes only ours back out.
 func TestGitInstallHook(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -54,7 +54,7 @@ func TestGitInstallHook(t *testing.T) {
 	}
 	b, _ := os.ReadFile(path)
 	if s := string(b); !contains(s, "http://127.0.0.1:9999/hooks/git") || !contains(s, "repo="+id) {
-		t.Fatalf("hook does not POST the runner: %s", s)
+		t.Fatalf("hook does not POST the reflector: %s", s)
 	}
 
 	// a foreign hook is not clobbered.
@@ -73,7 +73,7 @@ func TestGitInstallHook(t *testing.T) {
 
 // End-to-end informer: a hint POST to Hooks() drives a targeted reconcile that reflects a
 // change the (disabled) periodic net wouldn't have caught yet.
-func TestGitRunnerHookReconciles(t *testing.T) {
+func TestGitReflectorHookReconciles(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
@@ -84,17 +84,17 @@ func TestGitRunnerHookReconciles(t *testing.T) {
 	store := entitytest.Store(t)
 	g := source.NewGit()
 	g.AddRepo("A", dir)
-	rn := source.NewRunner(g, store, 0) // periodic net off: only initial + hints reconcile
+	rf := source.NewReflector(g, store, 0) // periodic net off: only initial + hints reconcile
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go rn.Run(ctx)
+	go rf.Run(ctx)
 
 	waitFor(t, store, entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}) // initial sync
 
 	// a new branch the periodic net won't see (it's off) — only a hint reconcile surfaces it.
 	gitRun(t, dir, "branch", "shiny")
-	ts := httptest.NewServer(rn.Hooks())
+	ts := httptest.NewServer(rf.Hooks())
 	defer ts.Close()
 	resp, err := http.Post(ts.URL+"/hooks/git?repo=A", "application/json", nil)
 	if err != nil {

@@ -60,7 +60,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 
 	specs := make(chan launch.Spec, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		specs <- spec
 		return nil
 	})

@@ -13,10 +13,10 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// process run (POST /processes) goes through the controlPolicy, not straight to the local
-// runtime: under a broker policy the ad-hoc run lands on the broker, and it is mirrored as a
+// process run (POST /processes) goes through the runner, not straight to the local
+// runtime: under a broker runner the ad-hoc run lands on the broker, and it is mirrored as a
 // process:instance entity like any other process.
-func TestProcessRunHonorsPolicy(t *testing.T) {
+func TestProcessRunHonorsRunner(t *testing.T) {
 	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
@@ -36,7 +36,7 @@ func TestProcessRunHonorsPolicy(t *testing.T) {
 		t.Fatal("no id returned from process run")
 	}
 
-	// honored the policy: the run is on the broker, not the local runtime.
+	// honored the runner: the run is on the broker, not the local runtime.
 	lr, _ := ts.Client().Get(ts.URL + "/processes")
 	var list []map[string]any
 	decodeResp(t, lr, &list)
@@ -44,11 +44,11 @@ func TestProcessRunHonorsPolicy(t *testing.T) {
 	var pol string
 	for _, m := range list {
 		if m["id"] == sp.ID {
-			pol, _ = m["policy"].(string)
+			pol, _ = m["runner"].(string)
 		}
 	}
 	if pol != "broker" {
-		t.Fatalf("run policy=%q, want broker (process run should honor the policy)", pol)
+		t.Fatalf("runner=%q, want broker (process run should honor the runner)", pol)
 	}
 
 	// mirrored: it is a process:instance entity like any other process.
@@ -102,10 +102,10 @@ func TestBrokeredAttachStreams(t *testing.T) {
 	}
 }
 
-// /status describes the run policy along its two legs — `resume` (verse-facing re-attach)
+// /status describes the runner along its two legs — `resume` (verse-facing re-attach)
 // and `dial` (worker-facing) — so a worker can discover where to dial in and the two are
 // not confused. For a broker: kind=broker, resume=ephemeral, dial=the hosted face.
-func TestStatusShowsBrokerPolicy(t *testing.T) {
+func TestStatusShowsBrokerRunner(t *testing.T) {
 	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
@@ -117,23 +117,23 @@ func TestStatusShowsBrokerPolicy(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var st struct {
-		Policy struct {
+		Runner struct {
 			Kind   string `tony:"field=kind"`
 			Resume string `tony:"field=resume"`
 			Dial   string `tony:"field=dial"`
-		} `tony:"field=policy"`
+		} `tony:"field=runner"`
 	}
 	decodeResp(t, resp, &st)
-	if st.Policy.Kind != "broker" || st.Policy.Resume != "ephemeral" {
-		t.Fatalf("policy = %+v, want kind=broker resume=ephemeral", st.Policy)
+	if st.Runner.Kind != "broker" || st.Runner.Resume != "ephemeral" {
+		t.Fatalf("runner = %+v, want kind=broker resume=ephemeral", st.Runner)
 	}
-	if !strings.HasPrefix(st.Policy.Dial, "http://verse.test:9090/broker/") {
-		t.Fatalf("policy.dial=%q, want the hosted worker face", st.Policy.Dial)
+	if !strings.HasPrefix(st.Runner.Dial, "http://verse.test:9090/broker/") {
+		t.Fatalf("runner.dial=%q, want the hosted worker face", st.Runner.Dial)
 	}
 }
 
-// The default local policy reports kind=local, ephemeral, no worker dial leg.
-func TestStatusShowsLocalPolicy(t *testing.T) {
+// The default local runner reports kind=local, ephemeral, no worker dial leg.
+func TestStatusShowsLocalRunner(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -144,20 +144,20 @@ func TestStatusShowsLocalPolicy(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var st struct {
-		Policy struct {
+		Runner struct {
 			Kind   string  `tony:"field=kind"`
 			Resume string  `tony:"field=resume"`
 			Dial   *string `tony:"field=dial"`
-		} `tony:"field=policy"`
+		} `tony:"field=runner"`
 	}
 	decodeResp(t, resp, &st)
-	if st.Policy.Kind != "local" || st.Policy.Resume != "ephemeral" || st.Policy.Dial != nil {
-		t.Fatalf("policy = %+v, want kind=local resume=ephemeral dial=null", st.Policy)
+	if st.Runner.Kind != "local" || st.Runner.Resume != "ephemeral" || st.Runner.Dial != nil {
+		t.Fatalf("runner = %+v, want kind=local resume=ephemeral dial=null", st.Runner)
 	}
 }
 
-// process list unions the local runtime with the active policy's own processes: under a
-// broker policy, a brokered process appears with policy=broker and its dialURL, and get
+// process list unions the local runtime with the active runner's own processes: under a
+// broker runner, a brokered process appears with runner=broker and its dialURL, and get
 // resolves it across backends. This is how a broker URL is found via `process list`/`get`.
 func TestProcessListUnionsBrokered(t *testing.T) {
 	srv := testServer(t)
@@ -192,8 +192,8 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 	if found == nil {
 		t.Fatalf("brokered process not in unified list: %+v", list)
 	}
-	if found["policy"] != "broker" {
-		t.Fatalf("policy=%v, want broker", found["policy"])
+	if found["runner"] != "broker" {
+		t.Fatalf("runner=%v, want broker", found["runner"])
 	}
 	if d, _ := found["dialURL"].(string); !strings.HasPrefix(d, "http://verse.test:9090/broker/") {
 		t.Fatalf("dialURL=%v, want the broker face", found["dialURL"])
@@ -210,13 +210,13 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, gr, &got)
-	if got["policy"] != "broker" || got["task"] != "brokered review" {
+	if got["runner"] != "broker" || got["task"] != "brokered review" {
 		t.Fatalf("get = %+v, want the brokered process tagged broker", got)
 	}
 }
 
 // process inbox is an operator peek at the control queued for a brokered process's worker
-// (unfenced), and cancel/say route to the policy handle so they work for brokered processes.
+// (unfenced), and cancel/say route to the runner handle so they work for brokered processes.
 func TestProcessInboxAndControlRouting(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
@@ -276,7 +276,7 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 	}
 }
 
-// UseBroker installs a dial-in broker as the policy and composes its published dial base
+// UseBroker installs a dial-in broker as the runner and composes its published dial base
 // from the given verse-reachable face + the minted nonce, so a spawned process advertises
 // where a worker dials in.
 func TestUseBrokerPublishesDialBase(t *testing.T) {
@@ -295,7 +295,7 @@ func TestUseBrokerPublishesDialBase(t *testing.T) {
 
 // A worker dials in through verse's own broker face: HostBroker mounts a broker's
 // worker handler under /broker/<nonce>, and a claim routed through BrokerHandler reaches
-// it with the prefix stripped — proving verse can host a dial-in policy under its URL
+// it with the prefix stripped — proving verse can host a dial-in runner under its URL
 // without exposing a separate service.
 func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	srv := testServer(t)

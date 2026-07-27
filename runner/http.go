@@ -1,9 +1,9 @@
-// Package controlpolicy provides the HTTP client of the verse-facing controlPolicy
-// contract: an httpPolicy drives a remote processd-shaped service at a base URL, so the
+// Package runner provides the HTTP client of the verse-facing process-control
+// contract: an httpRunner drives a remote processd-shaped service at a base URL, so the
 // engine can run a process on another host, k8s, or a broker exactly as it runs one in
-// process. It is the mirror of versed's localPolicy — same process.ControlPolicy seam,
-// HTTP transport. See docs/control-policy.md.
-package controlpolicy
+// process. It is the mirror of versed's localRunner — same process.Runner seam,
+// HTTP transport. See docs/process-control.md.
+package runner
 
 import (
 	"bufio"
@@ -19,12 +19,12 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// HTTP returns a ControlPolicy that drives the controlPolicy at baseURL.
-func HTTP(baseURL string) process.ControlPolicy {
-	return &httpPolicy{base: strings.TrimRight(baseURL, "/"), cl: http.DefaultClient}
+// HTTP returns a Runner that drives the runner at baseURL.
+func HTTP(baseURL string) process.Runner {
+	return &httpRunner{base: strings.TrimRight(baseURL, "/"), cl: http.DefaultClient}
 }
 
-type httpPolicy struct {
+type httpRunner struct {
 	base string
 	cl   *http.Client
 }
@@ -32,7 +32,7 @@ type httpPolicy struct {
 // Spawn POSTs /processes carrying the caller's id (so the remote uses it and it matches
 // the process:instance entity). content is not forwarded — a remote runtime resolves
 // files its own way; federating a remote read_file is a later concern.
-func (p *httpPolicy) Spawn(id, task, driver string, _ process.ContentReader) process.ProcHandle {
+func (p *httpRunner) Spawn(id, task, driver string, _ process.ContentReader) process.Handle {
 	body, _ := codec.Marshal(map[string]string{"id": id, "task": task, "driver": driver}, codec.Tony)
 	if resp, err := p.cl.Post(p.base+"/processes", codec.MediaType(codec.Tony), bytes.NewReader(body)); err != nil {
 		return failedHandle{err.Error()}
@@ -44,20 +44,20 @@ func (p *httpPolicy) Spawn(id, task, driver string, _ process.ContentReader) pro
 
 // Attach re-attaches to an existing remote process (no spawn). remoteHandle.Subscribe
 // replays from the start (?since=0), so a resumed mirror re-derives current state.
-func (p *httpPolicy) Attach(id string) process.ProcHandle {
+func (p *httpRunner) Attach(id string) process.Handle {
 	return &remoteHandle{base: p.base, id: id, cl: p.cl}
 }
 
-// Ref is the base URL — how the process:instance entity records this policy so a restart
+// Ref is the base URL — how the process:instance entity records this runner so a restart
 // can reconstruct it.
-func (p *httpPolicy) Ref() string { return p.base }
+func (p *httpRunner) Ref() string { return p.base }
 
-// ListProcesses / ProcessSnapshot let versed union a remote policy's processes into the
+// ListProcesses / ProcessSnapshot let versed union a remote runner's processes into the
 // unified `process list`/`get` (implementing the same lister interface a broker does). Each
 // call is bounded by a short timeout so an unreachable remote yields nothing rather than
 // hanging the list — those processes remain visible via the entity mirror. The verse-facing
 // contract already serves GET /processes and GET /processes/{id}, so this is a thin client.
-func (p *httpPolicy) ListProcesses() []process.Instance {
+func (p *httpRunner) ListProcesses() []process.Instance {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes", nil)
@@ -71,7 +71,7 @@ func (p *httpPolicy) ListProcesses() []process.Instance {
 	return out
 }
 
-func (p *httpPolicy) ProcessSnapshot(id string) (process.Instance, bool) {
+func (p *httpRunner) ProcessSnapshot(id string) (process.Instance, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes/"+id, nil)
@@ -90,7 +90,7 @@ func (p *httpPolicy) ProcessSnapshot(id string) (process.Instance, bool) {
 	return m, true
 }
 
-// remoteHandle is a ProcHandle over the wire: the read plane is GET /events (SSE), the
+// remoteHandle is a Handle over the wire: the read plane is GET /events (SSE), the
 // control plane the matching POSTs.
 type remoteHandle struct {
 	base string
@@ -244,7 +244,7 @@ func (failedHandle) SetVector(*process.Vector, string) {}
 func (failedHandle) Result() string                    { return "" }
 
 var (
-	_ process.ControlPolicy = (*httpPolicy)(nil)
-	_ process.ProcHandle    = (*remoteHandle)(nil)
-	_ process.ProcHandle    = failedHandle{}
+	_ process.Runner = (*httpRunner)(nil)
+	_ process.Handle    = (*remoteHandle)(nil)
+	_ process.Handle    = failedHandle{}
 )

@@ -78,7 +78,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 		spec launch.Spec
 	}
 	got := make(chan spawned, 8)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		got <- spawned{id, spec}
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, blockForever{}, noExec{})
@@ -135,7 +135,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	// The spawner runs on an engine goroutine while the test polls, so the counter must be
 	// atomic — a plain int here is a data race, not a flake.
 	var spawns atomic.Int64
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		spawns.Add(1)
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, blockForever{}, noExec{})

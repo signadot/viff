@@ -15,7 +15,7 @@ import (
 	"github.com/scott-cotton/cli"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/controlpolicy"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/harness"
@@ -35,8 +35,8 @@ type upConfig struct {
 	DocdMountAddr string `cli:"name=docd-mount-addr desc='the running docd controller/MOUNT face (with --docd-addr)'"`
 	Data          string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
 	OBin          string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
-	// controlPolicy: where processes run. Default is the in-process local supervisor.
-	Policy     string `cli:"name=policy desc='controlPolicy base URL to run processes on (default: local, in-process)'"`
+	// runner: where processes run. Default is the in-process local supervisor.
+	Runner     string `cli:"name=runner desc='process-control base URL to run processes on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
 	Broker     bool   `cli:"name=broker desc='run processes on an in-process dial-in broker (requires --broker-addr; publishes each process dialURL from it)'"`
 }
@@ -44,7 +44,7 @@ type upConfig struct {
 // validate rejects contradictory flag combinations BEFORE anything is started.
 //
 // These checks used to sit further down run, past the point where docd had been brought up
-// and a store opened — so `verse up --policy … --broker` spent forty seconds compiling and
+// and a store opened — so `verse up --runner … --broker` spent forty seconds compiling and
 // launching daemons, then refused the command it could have refused immediately. A flag
 // combination that cannot work is knowable from the flags alone; nothing should have
 // happened yet when we say so.
@@ -60,8 +60,8 @@ func (cfg *upConfig) validate() error {
 	if cfg.DocdAddr == "" && cfg.DocdMountAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-mount-addr needs --docd-addr (it is the mount face of the docd being connected to)", cli.ErrUsage)
 	}
-	if cfg.Policy != "" && cfg.Broker {
-		return fmt.Errorf("%w: verse up: --policy and --broker are mutually exclusive (one run policy)", cli.ErrUsage)
+	if cfg.Runner != "" && cfg.Broker {
+		return fmt.Errorf("%w: verse up: --runner and --broker are mutually exclusive (one runner)", cli.ErrUsage)
 	}
 	if cfg.Broker && cfg.BrokerAddr == "" {
 		return fmt.Errorf("%w: verse up: --broker requires --broker-addr (the worker face to dial in on)", cli.ErrUsage)
@@ -163,13 +163,13 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
-	if cfg.Policy != "" {         // run processes on a remote controlPolicy instead of in-process
-		srv.SetPolicy(controlpolicy.HTTP(cfg.Policy))
+	if cfg.Runner != "" {         // run processes on a remote runner instead of in-process
+		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}
 	if cfg.Broker { // run processes on an in-process dial-in broker, hosted on the broker face
 		face := brokerFace(cfg.BrokerAddr)
 		srv.UseBroker(face)
-		fmt.Fprintf(cc.Out, "verse up: dial-in broker policy; workers dial %s\n", face)
+		fmt.Fprintf(cc.Out, "verse up: dial-in broker runner; workers dial %s\n", face)
 	}
 
 	// Catch SIGTERM as well as SIGINT so `verse down` (which signals us) triggers the
@@ -201,7 +201,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 
 	// Broker face on a SIBLING port (worker/remote-facing, kept off the operator API):
 	// serves /broker/local — this verse's local supervisor — so a remote verse can bind
-	// `--policy http://<host>:<broker-addr>/broker/local`.
+	// `--runner http://<host>:<broker-addr>/broker/local`.
 	if cfg.BrokerAddr != "" {
 		srv.BrokerAddr = cfg.BrokerAddr // publish the broker face address on /status
 		brokerSrv := &http.Server{Addr: cfg.BrokerAddr, Handler: srv.BrokerHandler()}

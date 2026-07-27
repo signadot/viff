@@ -336,7 +336,7 @@ func TestMatchRefusesTwoPayloadSpellings(t *testing.T) {
 // and patching a field turns the entity into a record, and the 42 is gone. tony.Patch does
 // this silently, and it is reachable only because a payload can be a scalar at all.
 //
-// THIS PINS CURRENT BEHAVIOUR, NOT THE INTENDED ONE. docs/patch-plan.md settles the scalar
+// THIS PINS CURRENT BEHAVIOUR, NOT THE INTENDED ONE. docs/trigger-model.md settles the scalar
 // case the other way — fail loudly, via a conditional write whose precondition is that the
 // payload is object-shaped, so a scalar sitting where a flow's subject lives fails the commit
 // instead of being overwritten. The framing there is invariant checking rather than a policy

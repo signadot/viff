@@ -2,7 +2,8 @@
 
 The command surface, the config layers, and what verse reads and writes. The
 [tutorial](tutorial.md) walks the same ground as a path you follow; this is the flat
-version you come back to.
+version you come back to. For what the charter fields mean, see
+[the trigger model](trigger-model.md); for the map of everything, [the docs index](README.md).
 
 ## Commands
 
@@ -16,12 +17,12 @@ verse
        [--docd-addr host:port]               attach to a running docd (client face) …
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
        [--o-bin path]                        the o binary to spawn daemons (default: go run pinned cmd/o)
-       [--policy <url>]                      run processes on a remote controlPolicy base URL …
+       [--runner <url>]                      run processes on a remote process-control base URL …
        [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
                                              publishes each process's dialURL from it) …
        [--broker-addr host:port]             … the sibling port serving this verse's broker face
                                              (/broker/<nonce>); all default off (local in-process
-                                             supervisor). See docs/control-policy.md.
+                                             supervisor). See docs/process-control.md.
   status                                     engine/store snapshot
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
@@ -30,14 +31,15 @@ verse
   Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
 
   entities [--system <s>] [--kind <k>]       the store
-  entity (e)  get <ref> · put <ref> <payload>
+  entity (e)  get <ref> · put <ref> <payload>   (put is whole-payload; no `patch` verb yet —
+                                                 a trigger's action.patch is the merge path)
   gates                                      pending decisions across the fleet
   gate    approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
   triggers                                   the installed charter
   trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
   processes (ps)                             every process, whatever runs it
-  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors policy; mirrored)
+  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
@@ -73,13 +75,13 @@ Flags may appear before or after positionals (`gate approve <id> --say ok` works
 Defaults are resolved through layers, each overriding the one before:
 
 1. `/etc/verse.{tony,json,yaml}` — system base
-2. `~/.config/verse.{tony,json,yaml}` — per-user; it **patches** the system file (a merge,
+2. `~/.config/verse.{tony,json,yaml}` — per-user; it patches the system file (a merge,
    so you set only the keys you want to change; everything else falls through)
 3. environment variables
 4. CLI flags
 
-**A config layer's format comes from its file name** — `.tony`, `.json`, `.yaml` or `.yml`
-— and the two layers need not agree: `/etc/verse.json` patched by `~/.config/verse.tony`
+A config layer's format comes from its file name — `.tony`, `.json`, `.yaml` or `.yml` —
+and the two layers need not agree: `/etc/verse.json` patched by `~/.config/verse.tony`
 merges fine, because both are parsed to the same tree before the merge. A config file
 cannot declare its own format, so its name declares it. Two files for one layer is an error
 rather than a silent precedence rule. `VERSE_CONFIG=<file>` replaces both layers outright.
@@ -97,23 +99,23 @@ llm: {
 ```
 
 `addr` and `scope` are read by every command (they say which verse to talk to). The `llm`
-block, however, is read by the **server** (`verse up`) — it hosts the process runtime, so
+block, however, is read by the server (`verse up`) — it hosts the process runtime, so
 that's whose config/environment the agent driver reads for its model + creds; setting it for
 a `process run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
 `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `PORTKEY_BASE_URL` (which override the file).
 Precedence for any value is, low → high:
 `/etc/verse.tony` → `~/.config/verse.tony` → environment → CLI flag.
 
-**The driver is chosen per spawn.** A trigger's `spawn.driver`, `connect --driver`, and
+The driver is chosen per spawn. A trigger's `spawn.driver`, `connect --driver`, and
 `process run --driver` each select `scripted` or `llm`; an empty driver uses the default
 (`scripted`, or `llm` when creds are configured). Requesting `llm` with no configured creds
-fails **that** process (status `failed`, with a message telling you to set the creds) —
+fails that one process — status `failed`, with a message telling you to set the creds — and
 the engine keeps running.
 
 ## Representation
 
-verse **reads** tony, JSON and YAML, and **writes** tony and YAML. The asymmetry is
-deliberate, and it is worth thirty seconds up front:
+verse reads tony, JSON and YAML, and writes tony and YAML. The asymmetry is deliberate, and
+it is worth thirty seconds up front:
 
 ```sh
 verse triggers             # tony (the default)
@@ -123,12 +125,12 @@ curl -s localhost:9797/status                              # tony
 curl -s -H 'Accept: application/yaml' localhost:9797/status # yaml
 ```
 
-**Write your input in JSON if you like.** A `.json` charter, an `application/json` body,
-a JSON payload typed on the command line: all fine, all unchanged. Valid JSON is valid
+Write your input in JSON if you like. A `.json` charter, an `application/json` body, a JSON
+payload typed on the command line: all fine, all unchanged. Valid JSON is valid
 [tony](https://signadot.github.io/tony-format/), so verse simply parses it — there is no
 conversion step and nothing to configure.
 
-**What verse will not do is hand JSON back.** `-o json`, `VERSE_FORMAT=json` and
+What verse will not do is hand JSON back. `-o json`, `VERSE_FORMAT=json` and
 `Accept: application/json` are refused, the last with a 406. The reason is tags. A formula
 is built from them — `!quorum 2`, `!until [...]` — and JSON has no tag syntax, so
 rendering one means rewriting it as a single-key object: `{"quorum": 2}`. That is
@@ -151,7 +153,7 @@ Output is colorized on a terminal and plain when piped, so `verse triggers | o v
 working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
 off.
 
-The **file suffix decides** what a file is read as, so `verse trigger add -f charter.json`
+The file suffix decides what a file is read as, so `verse trigger add -f charter.json`
 and `-f charter.tony` both work regardless of the default. For input that names no format —
 stdin, an extensionless file, a payload typed on the command line — `--ifmt` decides, then
 the config default.

@@ -94,8 +94,8 @@ func seqIndexOf(chain string) (carrier string, idx int, ok bool) {
 // navigate resolves a chain to the Action it addresses inside t. This is what makes a chain a
 // lookup key into the charter rather than a label: given `review.seq[2].onFailed` off a
 // completed process, the engine can fetch exactly the action that spawned it — which is what
-// advancing a sequence needs, and what rehydrating hooks on resume will need
-// (docs/flow-shape-kpath-plan.md).
+// advancing a sequence needs, and what rehydrating hooks on resume needs
+// (docs/trigger-model.md).
 //
 // Only the shapes a chain can actually have are walked: the root is the trigger name, a field
 // segment is one of the four completion hooks, and an index segment selects a `seq` element.

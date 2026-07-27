@@ -1,20 +1,23 @@
 # Sources: reflecting external systems into the verse
 
-Status: the pattern is settled, and **local-tree federation is built** — though as a
-special case, not via the generic `Source` below. `verse connect` federates the
-working tree under a per-session scope: it *writes* scoped metadata
-(`local:dir-status-<scope>:*`) to docd, and runs a read-only **content controller**
-(`source/content.go`, a `libctl.Handler` under `RunController`) that serves file bytes
-on demand at `local:dir-content-<scope>:*`. Metadata is a scoped write rather than a
+Status: built as a library, not yet reachable from the CLI. The `Source` interface and its
+`Reflector` are in `source/reflector.go`, and `source/git.go` is a multi-repo git Source —
+`Reconcile`, `Webhook`, and `InstallHook`/`RemoveHook`, with tests. What is missing is the
+wiring: no command registers a repo or starts a reflector, so `NewGit` has no caller outside
+its test. Reading this as a design sketch is the one mistake to avoid; the design landed.
+
+Local-tree federation is built too, but as a special case rather than through the `Source`
+below. `verse connect` federates the working tree under a per-session scope: it *writes*
+scoped metadata (`local:dir-status-<scope>:*`) to docd, and runs a read-only content
+controller (`source/content.go`, a `libctl.Handler` under `RunController`) that serves file
+bytes on demand at `local:dir-content-<scope>:*`. Metadata is a scoped write rather than a
 mounted Handler because docd mounts are not scope-specific; see
-`content-federation.md`. The generic `Source` interface below — a single Handler that
-reflects an external system via Reconcile/Webhook — is the design for the *remote*
-systems (git, GitHub, Linear), which are still ahead.
+[content federation](content-federation.md).
 
 ## What a Source is
 
-A **Source** reflects an external system — a git repo, GitHub, Linear, Notion — into
-the slice of the entity-verse it **owns** (its system: `git:*`, `github:*`, …). It is
+A Source reflects an external system — a git repo, GitHub, Linear, Notion — into
+the slice of the entity-verse it owns (its system: `git:*`, `github:*`, …). It is
 the single writer for that slice. Triggers and agents *read* the reflected entities
 and react; the Source only reflects. Acting back *on* the external system (comment on
 a PR, move an issue, push a tag) is a separate, outbound concern (see below).
@@ -24,22 +27,22 @@ verse already reflects two systems. `connect` federates the local tree (scoped
 controller), and `mirror` reflects processes (`process:instance:*`, event-based). A
 Source generalizes the *remote* case — webhook + poll-reconcile against an external
 truth — and is the same "controller owns a subtree and answers for it" shape as the
-content controller in `content-federation.md`.
+content controller in [content federation](content-federation.md).
 
 ## The core law: a webhook is a hint, reconcile is the truth
 
 External systems offer two integration modes, and they are the same split verse
 already runs internally:
 
-> **webhook : poll-reconcile :: Observe : Since**
+> webhook : poll-reconcile :: Observe : Since
 
-A **webhook** is a low-latency hint ("PR 42 changed") that may be missed, duplicated,
-or arrive out of order. A **poll-reconcile** is the authoritative, level-triggered
+A webhook is a low-latency hint ("PR 42 changed") that may be missed, duplicated,
+or arrive out of order. A poll-reconcile is the authoritative, level-triggered
 pass that reads external truth and converges the owned slice. So the load-bearing
 rule:
 
-> **A webhook never writes entities. It triggers a reconcile of the affected ref(s);
-> the reconcile reads the external source of truth and Put/Deletes to converge.**
+> A webhook never writes entities. It triggers a reconcile of the affected ref(s);
+> the reconcile reads the external source of truth and Put/Deletes to converge.
 
 That one rule buys idempotency, self-healing, and order/duplicate independence for
 free — you converge against the system's real state, not a flaky delivery.
@@ -72,17 +75,17 @@ type Source interface {
 }
 ```
 
-Plus a **runner** (the informer shape): serve `/hooks/<system>` → `Webhook` → enqueue
-a targeted `Reconcile`; and run a **periodic full `Reconcile`** as the resync net.
+Plus a `Reflector` (the informer shape): serve `/hooks/<system>` → `Webhook` → enqueue
+a targeted `Reconcile`; and run a periodic full `Reconcile` as the resync net.
 Reflection is mechanical connector code, not an agent — judgment lives in the triggers
 and agent-processes that react to the reflected entities.
 
-**Inbound vs outbound.** `Source` is inbound (reflect external → verse). Acting on the
+Inbound vs outbound. `Source` is inbound (reflect external → verse). Acting on the
 external system (the write-back: comment, merge, transition) is the outbound executor
 path — a gated action/process calling the API, like any other effect. A connector
 reflects; an action writes back. Don't conflate them.
 
-**Source state is dogfood.** A poll cursor (updated-since, etag, page token) lives *as
+Source state is dogfood. A poll cursor (updated-since, etag, page token) lives *as
 an entity* (`source:cursor:github`) so the connector's own progress is observable in
 the verse like everything else.
 
@@ -92,17 +95,17 @@ A git repo fits the pattern more cleanly than the SaaS ones, needs no credential
 network, and is SDLC-native — so it is the right first Source once the controller
 primitive is ready.
 
-- **The "webhook" is a git hook** — `post-commit` / `reference-transaction` locally,
+- The "webhook" is a git hook — `post-commit` / `reference-transaction` locally,
   `post-receive` on a bare repo — curling `/hooks/git`. No signing, no network. verse
   installs it the way `connect` installs its poll.
-- **Reconcile is cursorless**, because git is content-addressed: `git for-each-ref` →
+- Reconcile is cursorless, because git is content-addressed: `git for-each-ref` →
   a `ref→sha` map, diffed against the verse's `git:ref:*` entities. Comparing shas
   *is* the level-triggered diff — no since-token, no missed-event window in the poll.
-- **It subsumes `connect`** — it reflects git-*aware* state (branch, HEAD, dirty,
+- It subsumes `connect` — it reflects git-*aware* state (branch, HEAD, dirty,
   ahead/behind), which is what SDLC flows react to ("commit landed on main," "branch
   pushed," "tag created"), not "a byte changed."
 
-Two truths, both reflected, **index-not-warehouse**:
+Two truths, both reflected, index-not-warehouse:
 - committed state — refs/commits/tags: immutable, content-addressed
 - working tree — index + uncommitted: mutable (what `connect` reflects today)
 
@@ -125,25 +128,27 @@ tombstone, and that a trigger fires on "commit on main."
 
 ## Built on docd's controller primitive
 
-The docd + controller work has landed (go-tony, `libctl`), and a Source maps onto it
-directly — the `Source` sketch above is the *verse-facing* shape; the *substrate* is:
+The docd and controller work has landed in
+[go-tony's `libctl`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl),
+and a Source maps onto it directly. The `Source` sketch above is the *verse-facing* shape;
+the *substrate* is:
 
-- **`libctl.Handler`** — `Match(path, pattern)`, `Patch(path, data, opts)`,
-  `Watch(path, opts, emit)`. A controller mounts a subtree via **`RunController`** and
+- `libctl.Handler` — `Match(path, pattern)`, `Patch(path, data, opts)`,
+  `Watch(path, opts, emit)`. A controller mounts a subtree via `RunController` and
   docd forwards client operations for that subtree to these methods. A read-only
-  reflector declines `Patch` (`ErrUnsupported`) but **must still implement `Watch`** —
+  reflector declines `Patch` (`ErrUnsupported`) but must still implement `Watch` —
   a Source's `Watch` emits its reflected changes, and even a purely on-demand controller
   must serve `Watch` as a no-op rather than decline it, because docd composes an ancestor
-  watch by folding in each mount's `Watch` and a declining mount breaks it (**hence: no
-  root watches**; see `docs/controllers.md` for the full contract and invariants). "The
+  watch by folding in each mount's `Watch` and a declining mount breaks it (hence: no
+  root watches; see [writing a controller](controllers.md) for the full contract and invariants). "The
   controller owns the subtree and answers for it; content need not live in logd" — so a
   git Source answers `Match`/`Watch` straight from the repo.
-- **docd speaks the logd session protocol to clients**, routing each op by
+- docd speaks the logd session protocol to clients, routing each op by
   longest-prefix mount to the owning controller (and everything else to logd). So
-  verse's store client points at **docd's client address** unchanged and gets
+  verse's store client points at docd's client address unchanged and gets
   federation for free: `demo:*`/`process:*` resolve to logd, `git:*` to the git
   controller. No store rewrite.
-- The **`Reconcile`/`Webhook`** split above is the Source's *internal* mechanism for
+- The `Reconcile`/`Webhook` split above is the Source's *internal* mechanism for
   staying current — the poll and the git hook drive what `Watch` emits and freshen
   what `Match` returns. The webhook-is-a-hint law lives inside the Handler.
 
@@ -153,9 +158,10 @@ verse's store points at docd; triggers and the mirror are unchanged.
 
 ## Next step
 
-With docd tagged and local federation built, the first *generic* Source is unblocked:
-the **git Source**, read-only (reflection) — a `Handler` serving `git:*` from repo
-plumbing + an installable git hook — with a credential-free end-to-end test (commit →
-hook → Watch/Match → `git:ref:*` changes → a trigger fires). It follows the
-Reconcile/Webhook shape above and mounts under docd like the content controller does.
-Write-back stays deferred to the outbound executor path.
+The git Source exists and reconciles; what it lacks is a way in. It needs a command that
+registers a repo and runs it — `AddRepo` plus a `Reflector` under `verse up`, and a route the
+installed hook can POST to — after which the end-to-end path (commit → hook → reconcile →
+`git:ref:*` changes → a trigger fires) is exercisable rather than merely unit-tested.
+
+Write-back stays deferred to the outbound executor path
+([the write half of expose](roadmap/expose.md#the-write-half)); a Source only reflects.

@@ -1,11 +1,11 @@
-// Package broker is a controlPolicy whose runtime is an external DIAL-IN worker — a
+// Package broker is a runner whose runtime is an external DIAL-IN worker — a
 // laptop agent, a pod in a private cluster, or a human. verse drives it through the
-// process.ControlPolicy seam exactly as it drives a local or remote-processd policy; a
+// process.Runner seam exactly as it drives a local or remote-processd runner; a
 // worker connects OUT to the broker's worker-facing HTTP (claim / inbox / report) and
 // the broker glues the two legs: a worker's reports become the events verse observes, and
 // verse's control becomes items the worker pulls. Both parties are clients; only the
 // broker is reachable — so a firewalled worker or a human works without verse inverting.
-// See docs/control-policy.md "The worker-facing dial-in protocol".
+// See docs/process-control.md "The worker-facing dial-in protocol".
 package broker
 
 import (
@@ -47,7 +47,7 @@ func (b *Broker) dialURL() string {
 // (parallel to how docd addresses are published) — where a worker dials in.
 func (b *Broker) Face() string { return b.dialURL() }
 
-// Ref identifies this policy on the process:instance entity for resume-or-orphan. An
+// Ref identifies this runner on the process:instance entity for resume-or-orphan. An
 // in-process broker's state is in memory, so like the local supervisor it is ephemeral
 // across a verse restart — the label, not a control URL (the worker-facing dial base is
 // published separately as `dialURL`; see SetBase).
@@ -60,7 +60,7 @@ func (b *Broker) get(id string) *procState {
 }
 
 // Spawn registers a process for a worker to claim and returns the verse-side handle.
-func (b *Broker) Spawn(id, task, driver string, _ process.ContentReader) process.ProcHandle {
+func (b *Broker) Spawn(id, task, driver string, _ process.ContentReader) process.Handle {
 	b.mu.Lock()
 	b.procs[id] = &procState{
 		id: id, task: task, driver: driver,
@@ -71,7 +71,7 @@ func (b *Broker) Spawn(id, task, driver string, _ process.ContentReader) process
 }
 
 // Attach re-attaches to an existing process (the resume path).
-func (b *Broker) Attach(id string) process.ProcHandle {
+func (b *Broker) Attach(id string) process.Handle {
 	if b.get(id) == nil {
 		return nil
 	}
@@ -103,7 +103,7 @@ type procState struct {
 	epoch    int64                      // claim generation; the fencing token (0 = unclaimed)
 	log      []process.Frame            // merged event log (worker reports + control-effects)
 	inbox    []api.InboxItem            // control directed at the worker
-	subs     map[int]chan process.Frame // verse-side ProcHandle subscribers
+	subs     map[int]chan process.Frame // verse-side Handle subscribers
 	nextSub  int
 	logCur   int64
 	inboxCur int64
@@ -260,7 +260,7 @@ func (b *Broker) ProcessInbox(id string) ([]api.InboxItem, bool) {
 	return append(make([]api.InboxItem, 0, len(ps.inbox)), ps.inbox...), true
 }
 
-// handle is the verse-side ProcHandle: the read plane replays+streams the merged log; the
+// handle is the verse-side Handle: the read plane replays+streams the merged log; the
 // control plane enqueues inbox items for the worker (and records operator-authored effects
 // on the log, per the interlock).
 type handle struct {
@@ -377,7 +377,7 @@ func (h *handle) Result() string {
 	return ps.result
 }
 
-var _ process.ControlPolicy = (*Broker)(nil)
+var _ process.Runner = (*Broker)(nil)
 
 // WorkerHandler serves the worker-facing dial-in protocol (claim / inbox / report). It is
 // intended for verse's sibling broker port, mounted under /broker/<nonce>. Both verse and

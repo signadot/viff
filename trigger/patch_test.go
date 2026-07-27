@@ -26,7 +26,7 @@ func patchEngine(t *testing.T, store *entity.LogdStore) *Engine {
 // The reason `patch` had to replace `set`: two triggers writing under one key must not
 // clobber each other. The old shallow overlay replaced whatever top-level key it touched, so
 // the second writer of `verse` would have erased the first — which is exactly the shape
-// docs/seq-plan.md's progress root has.
+// docs/trigger-model.md's progress root has.
 func TestPatchMergesSiblingSubtrees(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := patchEngine(t, store)
@@ -130,7 +130,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	spawned := make(chan string, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		spawned <- id
 		return nil
 	})

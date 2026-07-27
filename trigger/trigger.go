@@ -66,7 +66,7 @@ func (c Condition) validate() error {
 	if !c.When.IsMatchAtom() {
 		return fmt.Errorf("condition.when carries temporal operators, which are not evaluated " +
 			"yet: a temporal when has no change to dispatch on, so it needs a long-lived monitor " +
-			"over the subtrees it reads (see docs/trigger-model-plan.md). Use a point-in-time " +
+			"over the subtrees it reads (see docs/trigger-model.md). Use a point-in-time " +
 			"match here; temporal composition works today in a gate's `formula` and a goal's " +
 			"`doneWhen`")
 	}
@@ -182,7 +182,7 @@ type Action struct {
 	// this deep-merges, deletes and replaces, and "set" describes one of those. (The read
 	// side keeps `fields` beside `payload` because requiring an object there is what makes
 	// `fields: "stage=open"` an install error; nothing here needs that guard — `patch: 42`
-	// is a legitimate whole-value replace.) See docs/patch-plan.md.
+	// is a legitimate whole-value replace.) See docs/trigger-model.md.
 	// Spelled entity.Payload, which is what it IS. That was impossible until go-tony
 	// v0.0.95: the resolver could not follow an alias ("Payload is not a named type"), so
 	// every schemagen'd field had to say *ir.Node and the domain vocabulary was absent from
@@ -194,7 +194,7 @@ type Action struct {
 	// the only construct the model needed for sequencing, because parallelism already has
 	// one: independent triggers matching the same condition. The two axes stay orthogonal in
 	// the id space — breadth is distinct roots sharing a subject, depth is extension of one
-	// chain — which is why there is no `par`. See docs/seq-plan.md.
+	// chain — which is why there is no `par`. See docs/trigger-model.md.
 	//
 	// The sequence owns the DONE slot of each element: an element may carry onFailed /
 	// onCancelled / onOrphaned as off-ramps (firing one ends the sequence), but not onDone,
@@ -206,7 +206,7 @@ type Action struct {
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
 	// it scoped to exactly this spawn's process (see Engine.applyHook / hookFor). onOrphaned is
-	// inert until resume rehydrates hooks (see docs/completion-hooks.md).
+	// inert until resume rehydrates hooks (see docs/trigger-model.md).
 	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
 	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
 	OnCancelled *Action `tony:"field=onCancelled,omitzero"` // status cancelled
@@ -295,7 +295,7 @@ func (a Action) validate() error {
 //
 // It is what keeps re-fire idempotence a PREDICATE rather than a search: with at most one seq
 // per chain, "the sequence this live process belongs to" is a unique ancestor rather than a
-// stack of them (docs/seq-plan.md).
+// stack of them (docs/trigger-model.md).
 func (a Action) noNestedSeq(inSeq bool) error {
 	if len(a.Seq) > 0 {
 		if inSeq {
@@ -343,7 +343,7 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 // spawned process (nil when the action starts none) and the write's error, which is what lets
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
-func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.ProcHandle, error) {
+func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.Handle, error) {
 	if a.Patch != nil {
 		if err := e.patchEntity(subj, a.Patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a process started about
@@ -362,7 +362,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	spec.Subject = subj.String()
 	// who-axis: if the spawn declares a governed provider selection, resolve it and bind
 	// the chosen doer into Driver before spawn — no live swap (reassign = cancel+respawn).
-	// Orthogonal to the controlPolicy that then transports Driver.
+	// Orthogonal to the runner that then transports Driver.
 	if spec.Provider != nil {
 		driver, ok := e.selectProvider(spec.Provider, subj)
 		if !ok {

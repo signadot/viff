@@ -34,9 +34,9 @@ type Meta struct {
 	// so a completion trigger can advance that subject when the process finishes, and does
 	// not collide with the $subject binding (the matched ref).
 	Subject string
-	// Policy is the controlPolicy hosting it — "local", "broker", or a remote URL — so a
+	// Runner is the process-control backend hosting it — "local", "broker", or a remote URL — so a
 	// restart can decide resume-or-orphan.
-	Policy string
+	Runner string
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
 	// "review.onDone". Empty for a process with no trigger behind it (`verse process run`).
 	Chain string
@@ -67,21 +67,21 @@ func TriggerOf(chain string) string {
 // handle (control still goes through the process API).
 //
 // The provenance a process carries beyond its own state is Meta.
-func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
+func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	ch, unsub := h.Subscribe()
 	// A brokered process starts in the pre-running `unclaimed` state — it is hosted on
 	// the broker awaiting an executor; the claim emits an EvStatus{running} that moves it
 	// on. Local/remote processes execute immediately, so they start `running`.
 	initial := process.Running
-	if m.Policy == "broker" {
+	if m.Runner == "broker" {
 		initial = process.Unclaimed
 	}
 	st := entity.Obj{"status": string(initial)}
 	if m.Subject != "" {
 		st["flow"] = m.Subject
 	}
-	if m.Policy != "" { // which controlPolicy runs this — so a restart can resume-or-orphan
-		st["policy"] = m.Policy
+	if m.Runner != "" { // which runner runs this — so a restart can resume-or-orphan
+		st["runner"] = m.Runner
 	}
 	// Where this process came from in the charter. `chain` is the spawning action's kpath
 	// inside its trigger (review, review.onDone, …) and `trigger` is its root segment,
@@ -94,7 +94,7 @@ func Reflect(store entity.Store, id string, h process.ProcHandle, m Meta) {
 	if m.Task != "" {
 		st["task"] = m.Task
 	}
-	// A dial-in policy (broker) has a worker-facing base URL distinct from how verse
+	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
 	// dial loop) rather than being pre-configured. Local/remote-processd handles have none.
 	if d, ok := h.(interface{ DialURL() string }); ok {
