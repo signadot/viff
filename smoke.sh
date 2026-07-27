@@ -342,6 +342,40 @@ step "status"
 has "$(v status)" 'triggers' || die "status missing engine counts"
 ok "status reports engine counts"
 
+# ── restart: the charter is durable ──────────────────────────────────────────
+# The rules installed above are entities (trigger:rule:<name>), so a second `up` over the
+# same data dir comes back running the same program. This is the one check that exercises
+# the real path end to end — down, up, and a change that arrives only afterwards.
+step "restart (the charter survives)"
+v down >/dev/null 2>&1 || true
+wait "$SRV" 2>/dev/null || true
+"$BIN" --addr "$ADDR" up --data "$tmp/data" --o-bin "$tmp/o" >"$tmp/server2.log" 2>&1 &
+SRV=$!
+ready=
+for _ in $(seq 1 300); do
+	if v status >/dev/null 2>&1; then
+		ready=1
+		break
+	fi
+	kill -0 "$SRV" 2>/dev/null || { tail -20 "$tmp/server2.log" >&2; die "server exited during restart"; }
+	sleep 0.5
+done
+[ -n "$ready" ] || { tail -20 "$tmp/server2.log" >&2; die "server never became ready after restart" ; }
+has "$(v triggers)" 'smoke-advance' || die "the charter did not survive the restart"
+ok "the installed charter is listed again after a restart"
+# And it is live, not merely listed: a PR that opens only now still advances.
+v entity put demo:pr:restart '{"stage":"open"}' >/dev/null || die "post-restart put failed"
+advanced=
+for _ in $(seq 1 40); do
+	if haskv "$(v entity get demo:pr:restart 2>/dev/null || true)" stage reviewed; then
+		advanced=1
+		break
+	fi
+	sleep 0.25
+done
+[ -n "$advanced" ] || die "the restored trigger did not fire on a new change"
+ok "a restored trigger fires on a change that arrived after the restart"
+
 # ── shutdown ─────────────────────────────────────────────────────────────────
 step "down"
 v down >/dev/null 2>&1 || true # the trap also reaps the server + its daemons

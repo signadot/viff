@@ -404,10 +404,12 @@ func (e *Engine) dispatch(ctx context.Context, ev entity.Event) {
 	e.trigMu.Unlock()
 	for i := range trigs {
 		t := trigs[i]
-		// Ignition guard: reflected process:* state is not in the default match set;
-		// a trigger must opt in (a Match with System == mirror.System) to react to it,
-		// so the loop cannot ignite on its own machinery.
-		if ev.Ref.System == mirror.System && !t.opensTo(mirror.System) {
+		// Ignition guard: the engine's own machinery — reflected process:* state, and the
+		// durable trigger:* charter — is not in the default match set; a trigger must opt
+		// in (a Match naming that system) to react to it, so the loop cannot ignite on
+		// itself. Only the root loop needs the guard: a subtree watch delivers exactly the
+		// slice the trigger named, so naming it IS the opt-in.
+		if machinery(ev.Ref.System) && !t.opensTo(ev.Ref.System) {
 			continue
 		}
 		if !t.matchesEvent(ev) {
@@ -1441,15 +1443,22 @@ func (e *Engine) ReconcileOrphans() int {
 // cannot spin forever. Like write, a failure is logged rather than returned: the engine is
 // reacting, and there is nobody to hand an error to.
 func (e *Engine) modify(ref entity.Ref, fn func(entity.Payload) entity.Payload) {
+	if err := e.modifyErr(ref, fn); err != nil {
+		e.logger.Warn("read-modify-write failed; the reaction did not land", "ref", ref.String(), "err", err)
+	}
+}
+
+// modifyErr is modify with the failure RETURNED. A reaction has nobody to return one to, so
+// modify logs; a request does (installing a goal), and a caller that can refuse the whole
+// operation should not have to read the log to find out that it half-happened.
+func (e *Engine) modifyErr(ref entity.Ref, fn func(entity.Payload) entity.Payload) error {
 	parent := e.bgctx
 	if parent == nil {
 		parent = context.Background() // not started (a direct call in a test)
 	}
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
-	if err := entity.Modify(ctx, e.store, ref, fn); err != nil {
-		e.logger.Warn("read-modify-write failed; the reaction did not land", "ref", ref.String(), "err", err)
-	}
+	return entity.Modify(ctx, e.store, ref, fn)
 }
 
 // write applies a value at a path. A failed write is LOGGED, at Warn: the engine is

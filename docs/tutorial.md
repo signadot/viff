@@ -798,6 +798,12 @@ record — `verse goal add -f ship.tony` — which carries `triggers: [ … ]` a
 `doneWhen`. On a terminal, done or unachievable, the goal reaps its owned triggers, so a
 finished goal leaves no orphaned charter.
 
+A goal outlives a restart: `goal:instance:ship` carries the record you installed, so a start
+picks up every goal still being pursued and reinstalls its charter and its watching. If the
+target was reached while verse was down, the goal latches on the way back up rather than
+waiting for one more change to notice — the same replay an installed trigger gets. A goal you
+removed stays removed, and a settled one stays settled.
+
 *(v0: `doneWhen` is a single fact/quorum atom; multi-condition targets, an optional plan that
 generates the owned triggers, and scope-isolated reap are next — §10.)*
 

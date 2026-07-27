@@ -191,6 +191,13 @@ for resume. Nothing assumes dense or gap-free numbering, and everything reconcil
 land in the scope only. Local-dev federation and a dev's in-flight flows live in a private
 scope, isolated from baseline and from other devs, and dropped in one `DeleteScope`.
 
+*The charter is durable.* An installed trigger is an entity (`trigger:rule:<name>`), and a
+goal's record carries the definition it was installed from, so a restart reinstalls the rules
+and the goals standing in the verse before anything observes — the program comes back with
+the state it acts on. Restoring replays, exactly as installing does: a change that arrived
+while verse was down is acted on, and a goal reached while it was down latches on the way back
+up. See [the trigger model](trigger-model.md#the-charter-is-durable).
+
 *Resume, not orphan.* On restart, `versed.reconcileProcesses` re-attaches a non-terminal
 process whose work outlived verse — one on a remote runner — replaying to recover a terminal
 reached while down, and orphans one whose in-process runtime died with the previous run.

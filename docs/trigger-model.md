@@ -77,6 +77,62 @@ type Condition struct {
 A trigger is fully declarative, so a charter can be installed over the wire, persisted, or
 reflected as an entity, and the engine interprets it directly — there is no compiled form.
 
+### The charter is durable
+
+Installing a trigger writes it into the verse as `trigger:rule:<name>`; removing one deletes
+that entity; and a start reads them back before anything observes. So the program a verse
+comes back up running is the one it went down with.
+
+Everything else a restart needs was already durable — a process is mirrored, a sequence's
+position is a fact on its subject, a claim is a lease in the store, and resume rehydrates a
+chain's hooks from it. The one thing that did not survive was the program itself, so a verse
+came back with its work in progress intact and nothing left to react to it.
+
+One entity per rule, because that is what the operations already are: an install writes one,
+a removal deletes one, and neither reads the others — so two installs cannot lose each
+other, and a rule is addressable (`verse entity get trigger:rule:review`).
+
+**A rule is stored as its tony document, not as structure.** That is forced by the property
+that makes the store good at everything else: a write is a tony *patch*, so operator tags in
+a payload are EXECUTED by the store rather than stored by it. A charter is full of them —
+`id: !glob "hotfix-*"`, `patch: {tmp: !delete null}` — and a structurally-stored rule is not
+one that reads back wrong, it is one that cannot be read back at all: the write leaves an
+entity whose own patch log no longer applies (`glob patching "null" gave cannot patch with
+glob operation`). The text is the same document a charter file holds, so nothing is lost in
+the trip and the entity stays legible to a person reading it.
+
+Restoring a rule is an ordinary install, which means it **replays**: a subtree watch is
+level-triggered at the open, so a restored trigger acts on what already matches it — including
+what arrived while verse was down. A restart is then just an install over a verse that has
+moved on, which is the same property described above, and the same reason to write a latch
+rather than an edge.
+
+A **goal** is durable the same way, and its record is the goal: `goal:instance:<name>` holds
+the definition it was installed from, next to the live status and the terminal latch it
+already carried. A start reinstalls every goal still being pursued, which brings back both
+halves — the doing (its owned triggers) and the watching (its monitor). Three properties make
+that a re-install rather than a reconstruction: the deadline's absolute instant is stamped on
+the record, so it does not slide forward; `doneWhen` is evaluated before the monitor waits, so
+a goal *reached while verse was down* latches on the way back up; and the terminal commit is a
+CAS on `terminal=false`, so nothing can latch twice. A **settled** goal is not restored — its
+outcome stands and its charter was reaped, so reinstalling it would recreate the doing for a
+goal that is over.
+
+This is why a goal's owned triggers are not *also* written out as standalone rules: they
+travel in the goal's record and come back with it. Written separately they would have two
+owners and two lifetimes, and the standalone copy would survive the reap that ends the goal —
+still firing for something nobody is pursuing.
+
+One thing is deliberately not restored. A **scoped charter** (`verse trigger add --scope`) is
+written into its scope, but a scope's engine is created on demand by `verse connect`, and a
+scoped store reads baseline layered underneath — so restoring one means enumerating scopes and
+reading only the scope's own layer. That is the same gap scoped resume has.
+
+The charter is now an observable slice like any other, so a trigger can watch the charter
+(`when: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `process:*`
+as the engine's own machinery, kept out of the default match set so the loop cannot ignite on
+itself. Meta-observation stays possible, and stays deliberate.
+
 ## `when` — what fires it
 
 A `when` is a match: a point-in-time predicate over the verse. It ANDs its dimensions —

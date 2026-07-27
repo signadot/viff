@@ -1,0 +1,157 @@
+package trigger
+
+// The charter is durable: an installed trigger is written into the verse as a
+// trigger:rule:<name> entity, and read back at startup. A goal is durable the same way,
+// carrying its definition on its own record — see goal.go's LoadGoals.
+//
+// Before this, a charter lived only in the engine's memory. Everything else a restart needs
+// was already durable — a process is mirrored, a sequence's position is a fact on its
+// subject, a claim is a lease in the store, and resume rehydrates a chain's hooks from it —
+// so the one thing that did not survive was the program itself. A verse came back up with
+// its work in progress intact and nothing left to react to it.
+//
+// It is one entity per rule rather than one charter document, because that is what the
+// operations already are: installing writes one entity, removing deletes one, and neither
+// needs to read the others (no read-modify-write, so two installs cannot lose each other).
+// It also makes a rule addressable — `verse entity get trigger:rule:review` — and a charter
+// change an ordinary observable fact.
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
+)
+
+// CharterSystem/CharterKind name where the durable charter lives: trigger:rule:<name>, the
+// id being the trigger's name (which is unique by construction — AddTrigger refuses a
+// duplicate — so the address needs nothing else to be distinct).
+const (
+	CharterSystem = "trigger"
+	CharterKind   = "rule"
+)
+
+// CharterRef names the entity holding one rule.
+func CharterRef(name string) entity.Ref {
+	return entity.Ref{System: CharterSystem, Kind: CharterKind, ID: name}
+}
+
+// specField is where a durable record keeps the declaration it was installed from: the rule
+// on trigger:rule, the goal on goal:instance. One name, because it is one idea.
+//
+// It holds the declaration as its tony DOCUMENT — text, not structure. That is not a
+// shortcut, it is forced, and by exactly the property that makes the store good at
+// everything else: a write is a tony PATCH, so a payload's operator tags are executed by
+// the store rather than stored by it. A charter is full of them — `id: !glob "hotfix-*"`,
+// `patch: {tmp: !delete null}` — so a structurally-stored rule is not a rule that reads
+// back wrong, it is one that cannot be read back at all (the probe that established this
+// left an entity whose own patch log no longer applies: "glob patching null gave cannot
+// patch with glob operation").
+//
+// The text is the same document a charter file holds and `verse trigger show` prints, so
+// nothing is lost in the trip and the entity stays legible to a person reading it.
+const specField = "spec"
+
+// ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is
+// fine, the verse could not record it. A caller answering a request tells the two apart
+// with errors.Is — a malformed rule is the installer's problem, an unwritable charter is
+// verse's, and reporting the second as the first sends someone to debug a correct trigger.
+var ErrCharter = errors.New("the charter could not be written")
+
+// persist writes t into the verse as its charter entity.
+//
+// Its failure is RETURNED rather than logged, unlike the engine's reactive writes: this one
+// is on a request path (`verse trigger add`), and a trigger that did not persist is one the
+// next restart silently drops. The installer is entitled to hear that at install time
+// rather than discover it after a restart, by its absence.
+func (e *Engine) persist(t Trigger) error {
+	doc, err := t.ToTony()
+	if err != nil {
+		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
+	}
+	ref := CharterRef(t.Name)
+	if _, err := e.store.Write(entity.Write{
+		At:    ref.At(),
+		Value: entity.Obj{specField: string(doc)}.Payload(),
+	}); err != nil {
+		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
+	}
+	return nil
+}
+
+// forget deletes a rule's charter entity, so a removal survives the restart the install
+// does. Logged rather than returned: a trigger removed from a live engine has stopped
+// firing whatever the store says, so the removal has already taken effect — but an
+// operator has to know that the rule will come back at the next start.
+//
+// Deleting an address nothing ever wrote is a clean no-op in the store, which is what lets
+// a goal's (deliberately non-durable) triggers take this same removal path without a
+// second one, and without a Warn on every reap. No durable rule can be caught by it either:
+// a name is unique across the whole charter, goal-owned rules included.
+func (e *Engine) forget(name string) { e.write(CharterRef(name).At(), nil) }
+
+// LoadCharter installs the rules standing in the verse — the durable charter — into this
+// engine. Called at startup, before observation begins, so that entering subtree mode
+// gives each restored rule its watch (see ObserveScoped).
+//
+// Restoring a rule is an ordinary install, which means it REPLAYS: a subtree watch is
+// level-triggered at the open, so a restored trigger acts on what already matches it. That
+// is the same property installing a trigger has always had, and it is why a charter states
+// transitions as latches rather than edges — see docs/change-events.md. A restart is then
+// just an install over a verse that has moved on.
+//
+// A rule that cannot be decoded or installed is REPORTED AND SKIPPED, and its entity is
+// left alone: the rest of the charter is still a program worth running, and a rule verse
+// could not read is not one it should quietly delete. Errors are joined, so one bad rule
+// names itself rather than hiding behind "the charter failed to load".
+func (e *Engine) LoadCharter() error {
+	var errs []error
+	for _, ent := range e.store.List(func(r entity.Ref) bool {
+		return r.System == CharterSystem && r.Kind == CharterKind
+	}) {
+		t, err := ruleOf(ent)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		// durable=false: it is already durable — that is where it came from. Re-writing it
+		// would be a no-op with a revision attached, and a charter subtree watch would see
+		// every restart as a charter change.
+		if err := e.addTrigger(t, false); err != nil {
+			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// ruleOf decodes one charter entity back into a trigger.
+//
+// A name that disagrees with the address is refused rather than reconciled. The two are
+// written together and can only diverge by a hand edit, and neither answer is safe: the
+// name is what a spawn id and a chain are built from, while the address is what a removal
+// deletes — so installing under one and deleting under the other would leave a rule nothing
+// can get rid of.
+func ruleOf(ent entity.Entity) (Trigger, error) {
+	doc := entity.Str(ent.Payload, specField)
+	if doc == "" {
+		return Trigger{}, fmt.Errorf("charter %s: no %s field (payload is %v)", ent.Ref, specField, ent.Payload)
+	}
+	var t Trigger
+	if err := t.FromTony([]byte(doc)); err != nil {
+		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
+	}
+	if t.Name != ent.Ref.ID {
+		return Trigger{}, fmt.Errorf("charter %s: the rule names itself %q; a rule is addressed by its "+
+			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
+	}
+	return t, nil
+}
+
+// machinery reports whether a system is the engine's OWN — process:* is reflected process
+// state, trigger:* is the charter it runs. Neither is in the default match set: a trigger
+// has to name the system in its `when` to react to it, so the loop cannot ignite on its own
+// machinery. Meta-observation stays possible, and stays deliberate.
+func machinery(system string) bool {
+	return system == mirror.System || system == CharterSystem
+}
