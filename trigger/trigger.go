@@ -169,7 +169,10 @@ func (g Gate) mode() (process.Mode, error) {
 //
 // Bindings available to templates: each field of the changed payload by name ($stage,
 // $path, …), and $subject — the RESOLVED subject, set last so a payload field cannot
-// shadow it.
+// shadow it. A Patch resolves the same names as a kpath deref, at any depth and keeping the
+// value's type ($result, $verse.review.step, $result.findings[0].id) — see deref.go, which
+// is what lets a process's output become a fact the next `when` can match rather than only
+// text in the next prompt. A Spawn's strings keep the older flat substitution (launch.Bind).
 //
 //tony:schemagen=verse-action,notag
 type Action struct {
@@ -345,7 +348,19 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 // distinction advanceSeq turns on.
 func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.Handle, error) {
 	if a.Patch != nil {
-		if err := e.patchEntity(subj, a.Patch); err != nil {
+		// Resolve $references against the payload that fired this action, so a patch can
+		// write a value it read (a completed process's $result, a nested $verse.review.done)
+		// rather than only a constant. An unresolved reference fails the firing for the same
+		// reason a failed write does — and specifically must not be dropped: the store
+		// distinguishes an absent key from a null one, so omitting it would launder "the
+		// process never said" into "the process said nothing", which a match reads as a
+		// different fact.
+		patch, err := expandPatch(a.Patch, refRoot(ev, subj))
+		if err != nil {
+			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
+			return nil, err
+		}
+		if err := e.patchEntity(subj, patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a process started about
 			// a state the trigger FAILED to establish is worse than no process at all, and it
 			// would be the harder failure to read afterwards.

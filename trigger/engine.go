@@ -1026,7 +1026,7 @@ func (e *Engine) reapOnDone(fp flowProc) {
 	// (retireHandle is atomic, so the store-driven reapLoop/reap and this can't double-fire).
 	got, ok := e.retireHandle(fp.id, fp.h)
 	if ok && status != "" {
-		e.applyHook(got, process.Status(status), e.procEvent(fp.id))
+		e.applyHook(got, process.Status(status), e.procEvent(got, process.Status(status)))
 	}
 }
 
@@ -1096,14 +1096,45 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	hook.apply(fp.chain+"."+seg, ev, []entity.Ref{subj}, e)
 }
 
-// procEvent synthesizes the store event for a completed process from its mirror entity — the
-// bus-driven reapOnDone path has no entity.Event, so it reads the final process:instance payload
-// to give the hook the same bindings the store-driven path has.
-func (e *Engine) procEvent(id string) entity.Event {
-	ev := entity.Event{Ref: mirror.Ref(id)}
-	if ent, ok, _ := e.store.Get(mirror.Ref(id)); ok {
-		ev.To = ent.Payload
+// procEvent synthesizes the store event for a completed process — the bus-driven reapOnDone
+// path has no entity.Event, so it reads the process:instance payload to give the hook the
+// same bindings the store-driven path has.
+//
+// The mirror entity is NOT authoritative for the terminal facts. reapOnDone and
+// mirror.Reflect are two independent subscribers to the same process bus, so when this path
+// wins the retire — which for a fast process it reliably does, the engine's reader getting
+// there first — the store still holds the PRE-terminal projection. The hook then bound
+// $status to "running" and found no $result at all, which is exactly the payload a
+// completion hook exists to read. The store-driven path never had this problem: mirror
+// writes status and result in one commit (see mirror.go), so the event it dispatches on
+// already carries both.
+//
+// So the facts this path knows first-hand are overlaid on whatever the mirror has managed to
+// write: the terminal status this reap just observed, and the handle's final answer. flow and
+// chain come from the engine's own record for the same reason — a hook must bind them even
+// when the mirror has written nothing about this process yet.
+func (e *Engine) procEvent(fp flowProc, status process.Status) entity.Event {
+	ref := mirror.Ref(fp.id)
+	ev := entity.Event{Ref: ref}
+	st := entity.Obj{}
+	if ent, ok, _ := e.store.Get(ref); ok {
+		if o := entity.ToObj(ent.Payload); o != nil {
+			st = o
+		}
 	}
+	st["status"] = string(status)
+	if fp.h != nil {
+		if r := fp.h.Result(); r != "" {
+			st["result"] = r
+		}
+	}
+	if fp.subject != "" {
+		st["flow"] = fp.subject
+	}
+	if fp.chain != "" {
+		st["chain"] = fp.chain
+	}
+	ev.To = st.Payload()
 	return ev
 }
 

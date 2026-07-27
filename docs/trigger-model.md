@@ -275,8 +275,66 @@ the depth axis, and it has its own section below.
 
 Every field of the changed payload is bound by name (`$stage`, `$path`, …), plus `$subject`
 — the *resolved* subject. So `review $subject` in a spawn's task names the PR the firing is
-about, even when the entity that fired was a process, not the PR. A completion hook can also
-read the finished process's payload via `$result` and `$status`.
+about, even when the entity that fired was a process, not the PR. A completion hook also
+reads the finished process's payload: `$status`, `$result`, `$flow`, `$chain`.
+
+A `patch` resolves references too, and there it is a **deref by kpath**, not a template
+substitution — it names a value, it does not compute one:
+
+```tony
+onDone:
+  patch:
+    stage:    reviewed
+    severity: $result            # the process's own answer, as a fact on the subject
+    step:     $verse.review.step # any depth, and list indices: $result.findings[0].id
+```
+
+The reference grammar is [tony](https://signadot.github.io/tony-format/)'s, not verse's:
+`$result.findings[0].id` resolves by handing `result.findings[0].id` to the same kpath
+navigation that addresses an action inside its trigger (`review.seq[2].onFailed`). The
+familiar `$name` spelling *is* that kpath at depth one.
+
+This is what closes the loop. Before it, a process's output could reach the next *prompt* and
+nothing else, so a flow only ever advanced through state the charter wrote by hand. A result
+patched onto the subject is an ordinary fact, and an ordinary `when` matches it — no
+knowledge of processes required:
+
+```tony
+when: { system: demo, kind: pr, fields: { stage: reviewed, severity: high } }
+```
+
+Four semantics are worth knowing.
+
+*Whole value versus interpolation.* A value that is **exactly** one reference resolves to
+that reference's node, so a number stays a number and an object stays an object. A reference
+**embedded in text** interpolates and yields a string, because that is how it was written.
+The distinction is load-bearing: payload predicates are type-exact, so a `3` flattened to
+`"3"` is a value `fields: {count: 3}` does not match.
+
+```tony
+patch: { count: $n }          # the number 3
+patch: { note: "saw $n" }     # the string "saw 3"
+```
+
+*A composite has no text form.* `"saw $result"` where `$result` is an object is an error, not
+a rendering — inventing one would make the same charter mean different things depending on
+what a process happened to return. Reference it on its own to write the whole value.
+
+*An absent reference fails the firing.* It is not dropped, and this follows from the store
+recording an absent key as different from a null one: omitting it would launder "the process
+never said" into "the process said nothing", which a match reads as a different fact. A field
+written null resolves to null, as it should. The failure is the same one a failed write takes
+— the action stops, and its spawn does not start.
+
+*There is no escape.* `$$` is not a literal dollar; `a$$b` references `$b`. Anything that is
+not a well-formed reference is left exactly as written (`$5.00`, `100$`, a bare `$`), which
+is what keeps a charter that predates patch expansion meaning what it did.
+
+A spawn's strings are still the older, flatter substitution: top-level fields only, always as
+text, and an unresolved `$var` is left in place rather than failing. So `$verse.review.step`
+derefs in a `patch` and does not in a `spawn.task`. Unifying the two halves onto one
+resolver is the obvious next step and deliberately not taken here, because making a spawn
+fail on an unbound variable would change what already-installed charters do.
 
 ### Completion hooks: one trigger, chaining visible
 
