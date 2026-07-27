@@ -177,13 +177,15 @@ Now watch it self-drive. In terminal A you'll see the stage advance twice:
 
 ```
 {op: set ref: demo:pr:1 rev: 1 to: {stage: open}}
-{from: {stage: open} op: set ref: demo:pr:1 rev: 2 to: {stage: reviewing}}       ← review action
-{from: {stage: reviewing} op: set ref: demo:pr:1 rev: N to: {stage: reviewed}}   ← review's onDone, after the process finished
+{op: set ref: demo:pr:1 rev: 2 to: {stage: reviewing}}   ← review action
+{op: set ref: demo:pr:1 rev: N to: {stage: reviewed}}    ← review's onDone, after the process finished
 ```
 
 Each change is one line — flow form, so a watch stays greppable and one event never
 wraps into the next. (`op` is `set` for created-or-updated; see
-[the trigger model](trigger-model.md).)
+[the trigger model](trigger-model.md).) `to` is the entity's whole *level* state as of that
+commit, not the delta that was written, so a rule reading two fields still matches when only
+one of them was written.
 
 The second transition is the point: you did not drive "reviewing → reviewed" by hand. The
 review process finishing — its `process:instance` reaching `status=done` — fired the
@@ -208,7 +210,7 @@ process id (a `run-…`):
 verse process run "echo summarizing; sleep 2"          # scripted: runs the task as a shell command
 verse process run --wait "echo done"                   # …and block for the final output
 verse processes
-verse process get <id>        # snapshot: status, say, lastOutput, result, pending gates
+verse process get <id>        # snapshot: status, task, driver, runner, result, pending gates
 verse process say <id> "also mention the dial"        # say to the agent mid-run (re-prompt)
 verse process vector <id> ask --as human:scott        # slide autonomy (auto|ask|park); --as attributes the slide
 verse process vector <id> --file vector.tony          # …or install a full gate vector
@@ -319,9 +321,12 @@ verse entity put demo:pr:2 '{stage: open}'      # open a change…
 verse gates                                     # …find its review gate, then:
 verse gate approve <that-id>                    # review runs, the PR reaches `reviewed`, hold fires
 verse flows
-# - demo:pr:1
 # - demo:pr:2                                   ← a live 60s flow to steer
 ```
+
+`demo:pr:1` is not listed: `hold` was installed after that PR was already `reviewed`, and the
+engine reacts to changes rather than to standing state, so nothing ever fired for it — and its
+review process is long finished. A flow exists only while its processes run.
 
 The hold process's own completion re-sets the PR to `reviewed`, but that write changes nothing,
 and the engine reacts to real changes rather than to writes, so `hold` fires exactly once. No
@@ -349,10 +354,10 @@ verse flows                           # the distinct subjects with live work
 comes next — ask for its shape:
 
 ```sh
-verse flow show demo:pr:1
+verse flow show demo:pr:2
 # - roots:
 #   - chain: hold
-#     id: hold@demo:pr:1
+#     id: hold@demo:pr:2
 #     kind: root
 #     lastAction: run_bash
 #     status: running
@@ -362,12 +367,12 @@ verse flow show demo:pr:1
 #     - chain: review.onDone
 #       kind: onDone
 #       status: applied
-#     id: review@demo:pr:1
+#     id: review@demo:pr:2
 #     kind: root
 #     lastAction: run_bash
 #     status: done
-#     task: "echo reviewing demo:pr:1; sleep 1"
-#   subject: demo:pr:1
+#     task: "echo reviewing demo:pr:2; sleep 1"
+#   subject: demo:pr:2
 ```
 
 Two roots, because two triggers acted on this PR: `hold` is still running its 60 seconds, and
@@ -379,7 +384,7 @@ inside its trigger. A kpath is tony's way of addressing a position *inside* a do
 dotted field names, with brackets for list positions. So `review` is that trigger's action,
 `review.onDone` is its done-hook, and a sequence step's failure hook would be
 `review.seq[2].onFailed`. The same string is the id the action spawns under
-(`review@demo:pr:1`), which is what makes the tree not a second model of the work: it is the
+(`review@demo:pr:2`), which is what makes the tree not a second model of the work: it is the
 charter and the runtime read through one address. See
 [chains and ids](trigger-model.md#chains-and-ids).
 
@@ -455,10 +460,10 @@ never type that URL; verse resolves it for you:
 ```sh
 ID=$(verse process run "review the auth change")
 verse processes
-# - dialURL: "http://localhost:9090/broker/<nonce>"
+# - dialURL: http://localhost:9090/broker/<nonce>
 #   id: run-…
 #   runner: broker
-#   status: running
+#   status: unclaimed
 #   task: "review the auth change"
 ```
 
@@ -469,6 +474,8 @@ you from the process, so there is no URL to type:
 ```sh
 verse process do note "$ID" "reviewing the auth change" --as human:scott
 ```
+
+That first act claims it: `verse process get "$ID"` now reads `status: running`.
 
 Mid-work you reach a decision you shouldn't make alone. Raise it *up* to verse rather than
 deciding — the verse governs who resolves it: an operator, a reviewer, a vote, or, if the
@@ -667,9 +674,9 @@ verse entity put provider:review:claude '{driver: llm, tier: premium}'
 verse entity put provider:review:gpt    '{driver: llm, tier: premium}'
 verse entity put provider:review:cheapo '{driver: scripted, tier: basic}'
 verse providers
+# review     cheapo         driver=scripted tier=basic
 # review     claude         driver=llm tier=premium
 # review     gpt            driver=llm tier=premium
-# review     cheapo         driver=scripted tier=basic
 ```
 
 Now the action selects by capability plus a match over attributes, not by name:
@@ -897,18 +904,27 @@ create identical to update, since logd delivers the writer's applied patch verba
 
 ### The reactive grain is the entity, not the transaction
 
-This one is subtle, and may need cleaning up. A single docd commit can atomically patch many
+This one is subtle. A single docd commit can atomically patch many
 entities, but the store normalises each commit into one change event per entity —
 `walkEntities`, at path-depth `system/kind/id` — all sharing that commit's revision. That
 normalisation is exactly what guarantees a trigger's subject is always one entity: dispatch
 is per-entity-edge, so `$subject`, and the flow or goal keyed on it, is never ambiguous even
 under a broad match, since a broad pattern just fans out to one firing per matching change.
 
-TODO: really?  when matches over the verse, which has already been updated.
-The cost is that transaction atomicity is flattened. The engine cannot react to "these two
-changed together in one tx" as a unit — the shared revision is the only trace, and nothing
-groups by it. It is a load-bearing assumption worth naming, and worth revisiting if
-cross-entity transactional reactions are ever needed. See [change events](change-events.md).
+Less is lost to that than it first sounds, because the commit lands *whole* before any of its
+events dispatch: the store advances its watched document by the entire patch, then walks it
+for events, and each event's `to` is read back out of the already-advanced document. So when
+the edge for one entity fires, every entity that moved with it is already at its new value —
+in the level state on the event, and in the verse a gate or a set-valued subject reads at fire
+time. "When A opens, and B is green" is expressible today, and it does not care whether B went
+green in the same commit or an hour earlier.
+
+What is genuinely flattened is the commit as a *unit*. Two entities changing together produce
+two firings, not one, so a rule matching both fires twice and any dedup is yours; and nothing
+can ask "did these move together?", since the shared revision is the only trace and nothing
+groups by it. That is the load-bearing assumption worth naming — worth revisiting only if a
+reaction ever needs the grouping itself rather than the joint state.
+See [change events](change-events.md).
 
 ### Where the rest stands
 
