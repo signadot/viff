@@ -37,6 +37,17 @@ type Launch struct {
 	// work). A name no driver knows fails the spawn rather than shrinking it in silence.
 	Tools []string
 
+	// Answer is the ANSWER CONTRACT: the shape this process's final message must have,
+	// as tony source (see package answer). Empty = no contract.
+	//
+	// It rides the wire with Frame and Tools rather than being enforced by the engine after
+	// the fact, because the check has to happen INSIDE the loop — the run is not finished
+	// until the answer is good, and a driver that has already stopped cannot be asked
+	// again. A runtime whose driver cannot enforce a contract must fail the spawn rather
+	// than run it unchecked: a contract silently dropped is worse than none, since the
+	// charter downstream is written believing it holds.
+	Answer string
+
 	// Vector is the gate vector to launch under; nil = the runtime's own default. Grant is
 	// the hard envelope to install as the process's scope; nil = unbounded, which is what
 	// every process got before a spawn could say otherwise.

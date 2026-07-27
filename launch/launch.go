@@ -65,8 +65,26 @@ type Spec struct {
 	// still not authority: Grant is what refuses an action. A spawn usually wants both,
 	// because a tool withheld never comes up, while a tool offered-but-ungranted costs a
 	// turn being refused.
-	Tools       []string `tony:"field=tools,omitzero"`
-	Vector      string   `tony:"field=vector,omitzero"`
+	Tools []string `tony:"field=tools,omitzero"`
+	// Answer is this spawn's ANSWER CONTRACT: the shape its final message must have,
+	// written as a tony schema's accept clause (or a bare pattern, which is the same thing
+	// without the wrapper). Empty = no contract, and the run ends wherever the model stops.
+	//
+	// It is inline text alongside Frame and Task rather than a name to resolve, for the
+	// reason Frame gives: it is written by the authoring party for this spawn, and only the
+	// charter that derefs `$data.severity` knows what shape it needs. It is a STRING rather
+	// than the parsed pattern because a charter is itself an entity: a pattern in a payload
+	// is a document full of operators (`!or`, `!irtype`) being written into a store that
+	// interprets operators, and text crosses that seam without an escape.
+	//
+	// Unlike Frame it is not advice. A frame can ask for a shape and be ignored — that is
+	// exactly what was observed, three firings out of three — while a contract is checked
+	// when the model stops, fed back when it fails, and fails the process when it cannot be
+	// met. That last part is what makes the deref downstream total: `patch: {class:
+	// $data.class}` can no longer fail at patch time, because a process that could not
+	// produce `class` did not succeed.
+	Answer      string `tony:"field=answer,omitzero"`
+	Vector      string `tony:"field=vector,omitzero"`
 	Resolver    string   `tony:"field=resolver,omitzero"`
 	Grant       string   `tony:"field=grant,omitzero"`
 	Environment string   `tony:"field=environment,omitzero"`
@@ -136,6 +154,7 @@ func (s Spec) Bind(b Binding) Spec {
 		Driver:      expand(s.Driver, b),
 		Task:        expand(s.Task, b),
 		Frame:       expand(s.Frame, b),
+		Answer:      expand(s.Answer, b),
 		Vector:      expand(s.Vector, b),
 		Resolver:    expand(s.Resolver, b),
 		Grant:       expand(s.Grant, b),

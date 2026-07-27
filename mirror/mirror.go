@@ -11,9 +11,7 @@ package mirror
 import (
 	"strings"
 
-	"github.com/signadot/tony-format/go-tony/ir"
-
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
 )
@@ -184,32 +182,32 @@ func write(store entity.Store, id string, st entity.Obj) {
 	}
 }
 
-// ParseResult is the structured face of a driver's final answer: the text parsed as tony,
-// projected beside it as `data` so a charter can deref into it ($data.severity) instead of
-// pattern-matching prose. nil when the answer is not structured, and `result` always carries
-// the text either way — the two are one value with two faces, not alternatives.
+// ParseResult is the structured face of a driver's final answer: the answer document
+// projected beside the text as `data` so a charter can deref into it ($data.severity)
+// instead of pattern-matching prose. nil when the answer is not structured, and `result`
+// always carries the text either way — the two are one value with two faces, not
+// alternatives.
 //
-// It accepts a parse ONLY when the result is an object or a list. The parser is strict enough
-// that English fails it ("Verdict: ship it", "No blocking issues found." — both parse errors),
-// so this is not about guarding against prose accidentally becoming a record. It is that a
-// bare word parses fine as a tony string: "high", "yes" and "LGTM!" all decode to String, so
-// without this gate `data` would be present for practically every answer and would signal
-// nothing. A composite is the only shape that says the agent actually returned structure.
+// It accepts only an object or a list, for the reason answer.Extract gives: a bare word
+// parses fine as a tony string, so without that gate `data` would be present for practically
+// every answer and would signal nothing.
 //
 // This is what makes a reference the declaration: a charter that derefs $data.severity has
 // said it expects structure, and gets a loud failure when the agent returned prose instead —
 // no schema to declare up front, and no reliance on the agent reporting its own failure
-// honestly.
+// honestly. A spawn that wants that failure moved EARLIER, onto the process rather than onto
+// the patch, declares an answer contract (launch.Spec.Answer) — and the two agree by
+// construction, because the contract validates exactly the document this returns.
+//
 // It is exported because the mirror is not the only writer that has to answer this question:
 // the trigger engine synthesizes a completed process's payload when it beats the mirror to
 // the terminal (see trigger.Engine.procEvent), and if the two derived `data` differently a
-// hook would deref against a different document than the one the store ends up holding.
+// hook would deref against a different document than the one the store ends up holding. The
+// answer contract's check is a third such reader, which is why the extraction itself lives
+// in one place rather than being written out again here.
 func ParseResult(text string) entity.Payload {
-	n, err := codec.ParseNode([]byte(text), codec.Tony)
-	if err != nil || n == nil {
-		return nil
-	}
-	if n.Type != ir.ObjectType && n.Type != ir.ArrayType {
+	n := answer.Extract(text)
+	if n == nil {
 		return nil
 	}
 	return n

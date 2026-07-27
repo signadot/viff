@@ -12,6 +12,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/process"
 )
 
@@ -73,6 +74,37 @@ func defaultFrame(tds []toolDef, vec *process.Vector) string {
 	return b.String()
 }
 
+// contractHeading opens the clause the contract adds to the frame. It is a constant because
+// withoutContract cuts on it: the parent's frame is handed to children, and text describing
+// a check the child does not run has to come back off exactly where it went on.
+const contractHeading = "ANSWER CONTRACT."
+
+// contractClause tells the agent, up front, the shape its final message must have and what
+// happens if it does not — including the consequence, because "you will be asked to fix it,
+// and a run that never matches fails" is what makes the shape worth the effort of the first
+// attempt rather than the third.
+func contractClause(c *answer.Contract) string {
+	var b strings.Builder
+	b.WriteString(contractHeading + " Your final message must be a document in this shape and " +
+		"nothing else — no preamble, no commentary after it:\n\n")
+	for _, line := range strings.Split(strings.TrimRight(c.Source(), "\n"), "\n") {
+		fmt.Fprintf(&b, "  %s\n", line)
+	}
+	fmt.Fprintf(&b, "\nIt is checked the moment you stop. A mismatch comes back to you naming "+
+		"exactly what is wrong, and a run that never satisfies it FAILS. If a value is not "+
+		"something you were able to determine, call %s with the reason — do not invent one to "+
+		"fit the shape.", failTool)
+	return b.String()
+}
+
+// withoutContract removes the clause contractClause added, leaving the frame as it was.
+func withoutContract(frame string) string {
+	if i := strings.Index(frame, contractHeading); i >= 0 {
+		return strings.TrimRight(frame[:i], "\n")
+	}
+	return frame
+}
+
 // gateModeFor evaluates one tool against the vector the way the loop will, using a probe
 // action carrying representative arguments.
 //
@@ -121,6 +153,9 @@ type Config struct {
 	// see process.Launch.
 	Frame string
 	Tools []string
+	// Answer is the tony source of this spawn's answer contract; empty → no contract, and
+	// the run ends wherever the model stops. See package answer.
+	Answer string
 	// Vector overrides the demo gate vector. It is here rather than applied by the caller
 	// afterwards because the frame is derived from it, and a vector installed after Build
 	// would be described by a frame written against the wrong one.
@@ -152,6 +187,18 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 		// different one and saying nothing is how `grant: read-only` came to mean nothing.
 		return process.NewFailed(cfg.ID, cfg.Resolver, "launch tools: "+err.Error()), func() []ExecRecord { return nil }
 	}
+	// A contract that cannot be parsed fails the spawn, for the reason an unknown tool
+	// name does: the charter asked for something specific, and running without it while
+	// saying nothing is how a field comes to mean nothing. It is parsed here as well as on
+	// the engine side because a process can be spawned straight at a runtime (`process
+	// run`, a remote POST) without ever passing through a charter.
+	var contract *answer.Contract
+	if strings.TrimSpace(cfg.Answer) != "" {
+		var err error
+		if contract, err = answer.Parse(cfg.Answer); err != nil {
+			return process.NewFailed(cfg.ID, cfg.Resolver, "answer contract: "+err.Error()), func() []ExecRecord { return nil }
+		}
+	}
 	vec := cfg.Vector
 	if vec == nil {
 		vec = Vector()
@@ -165,8 +212,18 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 	if frame == "" {
 		frame = defaultFrame(tools, vec)
 	}
+	// The contract is stated in the frame even when the spawn wrote the frame itself, and
+	// appending to an author's text is otherwise not this function's business. It is
+	// warranted here because this is not advice about the task: it is a fact about how the
+	// loop will behave — the final message is checked and a failure comes back — and an
+	// agent that meets the check for the first time as a rejection wastes a repair
+	// attempt learning what it could have been told at the start.
+	if contract != nil {
+		frame = strings.TrimRight(frame, "\n") + "\n\n" + contractClause(contract)
+	}
 
-	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Task, log: cfg.Log}
+	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Task,
+		log: cfg.Log, contract: contract}
 	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
 	p := process.NewProcess(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
@@ -181,7 +238,19 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 		// capability its parent's spawn withheld — and inheriting the frame keeps the
 		// answer shape the charter asked for, since a child's result folds into the
 		// parent's conversation and thence into what $result reads.
-		childDriver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: req.Prompt, log: cfg.Log}
+		//
+		// It does NOT inherit the answer contract, and the asymmetry is the point. The
+		// contract describes THIS process's answer — the value a charter derefs — while a
+		// child answers a subtask its parent chose the wording of, and its result arrives
+		// as one more tool result for the parent to read. Forcing the parent's shape onto
+		// it would demand a verdict from an agent that was asked to go read a file, and
+		// would fail runs over a document nothing downstream reads. A child that needs a
+		// contract is a spawn of its own.
+		//
+		// (frame carries the parent's contract clause. It is text about a check the child
+		// does not run, so it is trimmed rather than left to mislead.)
+		childDriver := &llmDriver{client: cfg.Client, tools: tools, frame: withoutContract(frame),
+			prompt: req.Prompt, log: cfg.Log}
 		childExec := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
 		child, err := parent.NewChild(childID, mode, req, childDriver, childExec)
 		if err == nil {

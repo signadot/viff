@@ -176,6 +176,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 		Driver string          `tony:"field=driver"`
 		Frame  string          `tony:"field=frame"`
 		Tools  []string        `tony:"field=tools"`
+		Answer string          `tony:"field=answer"`
 		Vector *process.Vector `tony:"field=vector,omitzero"`
 		Grant  *process.Grant  `tony:"field=grant,omitzero"`
 	}
@@ -191,7 +192,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	// gives: the vocabulary lives at one end, so the two cannot drift apart.
 	h := d.spawnHosted(process.Launch{
 		ID: id, Task: body.Task, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
-		Vector: body.Vector, Grant: body.Grant,
+		Answer: body.Answer, Vector: body.Vector, Grant: body.Grant,
 	}, nil)
 	writeOut(w, r, http.StatusCreated, map[string]any{"id": h.proc.ID})
 }

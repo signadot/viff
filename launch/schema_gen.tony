@@ -14,6 +14,7 @@ signature:
 context:
 - tony-format/context
 define:
+  answer: .[string]
   chain: .[string]
   driver: .[string]
   environment: .[string]

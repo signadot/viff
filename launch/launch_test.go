@@ -1,6 +1,10 @@
 package launch
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/signadot/verse/codec"
+)
 
 func TestBindExpandsSubject(t *testing.T) {
 	s := Spec{
@@ -76,5 +80,33 @@ func TestBindCopiesTools(t *testing.T) {
 	got.Tools[0] = "run_bash"
 	if s.Tools[0] != "read_file" {
 		t.Fatalf("Bind aliased the receiver's tools: %v", s.Tools)
+	}
+}
+
+// The answer contract is authored as a BLOCK STRING and stays text the whole way: it is
+// dense with tony's own operators (`!or`, `!irtype`), and a charter is itself an entity, so
+// a parsed pattern in the spec would be a payload full of operators going into a store that
+// interprets them. As text it crosses that seam intact and needs no escape.
+func TestAnswerContractSurvivesAsText(t *testing.T) {
+	const src = "driver: llm\nanswer: |\n  severity: !or [low, high]\n  note: !irtype string\n"
+	var s Spec
+	if err := codec.Unmarshal([]byte(src), &s, codec.Tony); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	const want = "severity: !or [low, high]\nnote: !irtype string\n"
+	if s.Answer != want {
+		t.Fatalf("Answer = %q, want %q", s.Answer, want)
+	}
+	// and back out again, so `trigger show` renders what the author wrote
+	out, err := codec.Marshal(&s, codec.Tony)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var round Spec
+	if err := codec.Unmarshal(out, &round, codec.Tony); err != nil {
+		t.Fatalf("re-decode %q: %v", out, err)
+	}
+	if round.Answer != want {
+		t.Fatalf("round trip Answer = %q, want %q", round.Answer, want)
 	}
 }

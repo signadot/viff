@@ -126,6 +126,13 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 		switch driver {
 		case "scripted":
+			// A contract the driver cannot enforce fails the spawn. The scripted driver
+			// has no model to ask again, so honouring the field would mean dropping it,
+			// and a dropped contract is worse than none: the charter downstream was
+			// written believing the shape is guaranteed.
+			if l.Answer != "" {
+				return process.NewFailed(l.ID, reg, "the scripted driver cannot enforce an answer contract")
+			}
 			return versed.NewScriptedProcess(l.ID, l.Task, root, reg)
 		case "llm":
 			if !appCfg.LLM.Available() {
@@ -142,7 +149,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			// scripted driver, so neither path depends on a builder remembering.
 			p, _ := harness.Build(harness.Config{
 				ID: l.ID, Task: l.Task, Root: root, Resolver: reg, Log: cc.Err, Content: content,
-				Frame: l.Frame, Tools: l.Tools, Vector: l.Vector,
+				Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
 				LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
 				LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
 			})

@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -156,5 +157,40 @@ func waitPath(t *testing.T, store entity.Store, ref entity.Ref, kp, want string)
 			t.Fatalf("%s %s never became %q; payload=%v", ref, kp, want, entity.ToObj(e.Payload))
 		default:
 		}
+	}
+}
+
+// The observed failure, three firings out of three: an agent that has read nine files
+// narrates and fences before it answers. The answer inside the fence is the answer, so the
+// deref resolves and the subject advances — and it is the same document a spawn's `answer`
+// contract validates, because both go through answer.Extract.
+func TestDerefReadsAFencedAnswer(t *testing.T) {
+	eng, store := structuredEngine(t, structured{r: "I read the handler and both callers.\n\n" +
+		"```tony\n{severity: high, findings: [{id: \"f1\"}]}\n```\n\nHappy to write the patch."})
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{When: prWhen("open")},
+		Action: Action{
+			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
+			Spawn: &launch.Spec{Task: "review $subject"},
+			OnDone: &Action{Patch: entity.Obj{
+				"stage":    "reviewed",
+				"severity": "$data.severity",
+				"first":    "$data.findings[0].id",
+			}.Payload()},
+		},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	waitField(t, store, prRef("1"), "severity", "high")
+	waitField(t, store, prRef("1"), "first", "f1")
+
+	// the narration is still there verbatim: data and result are two faces of one value
+	e, _, _ := store.Get(mirror.Ref("review@demo:pr:1"))
+	if r := entity.Str(e.Payload, "result"); !strings.Contains(r, "nine files") && !strings.Contains(r, "I read the handler") {
+		t.Errorf("result = %q, want the agent's full text", r)
 	}
 }

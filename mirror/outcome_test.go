@@ -43,6 +43,38 @@ func TestParseResultOnlyStructure(t *testing.T) {
 	}
 }
 
+// An agent that has just read nine files narrates and fences before it answers, and that
+// was the observed shape of the failure: `data` absent, and a hook derefing $data.class
+// failing at patch time. A fenced answer is a formatting habit, not a refusal to answer, so
+// the document inside the fence is the answer — and it is the SAME document the spawn's
+// answer contract validated, because both go through answer.Extract.
+func TestParseResultReadsAFencedAnswer(t *testing.T) {
+	const final = "I read the handler and both callers.\n\n" +
+		"```tony\n{class: bug, severity: high}\n```\n\n" +
+		"Happy to write the patch if you want it."
+	got := ParseResult(final)
+	if got == nil {
+		t.Fatal("no data from a fenced answer")
+	}
+	if c := ir.Get(got, "class"); c == nil || c.String != "bug" {
+		t.Fatalf("data.class = %v, want bug", c)
+	}
+}
+
+// Tolerance stops at the fence. Mining a trailing {…} out of a paragraph would turn a
+// sentence that happens to contain braces into a record, and a wrong document is worse than
+// no document — the charter derefing it cannot tell.
+func TestParseResultDoesNotMineProse(t *testing.T) {
+	for _, s := range []string{
+		"I'd set {class: bug} but I'm not certain, and severity is unclear.",
+		"The config file has a `{class: bug}` entry, which is unrelated.",
+	} {
+		if got := ParseResult(s); got != nil {
+			t.Errorf("%q -> data %v, want none", s, got.Type)
+		}
+	}
+}
+
 // The two faces are not alternatives: a structured answer keeps its text as well, so a
 // charter that wants the whole thing verbatim is never forced through the parse.
 func TestParseResultKeepsBothFaces(t *testing.T) {

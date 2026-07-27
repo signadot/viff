@@ -330,13 +330,16 @@ fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 `provider` selection of the doer. The spawned process is tagged with the subject, which is
 what makes it part of that subject's flow.
 
-The spec's fields fall into two groups, and the difference decides what a charter can say.
+The spec's fields fall into three groups, and the difference decides what a charter can say.
 
 *The request* — `task` and `frame`. Both are text you write. `task` is the one job; `frame`
 is the standing instructions it is read in (the agent's system prompt). A frame is worth
 writing whenever the charter reads the answer rather than a person: the default tells the
 agent its last message *is* the result and not to summarise, but only the charter knows what
-shape it wants back. If you `patch: { severity: $result.severity }`, say so in the frame.
+shape it wants back.
+
+*The contract* — `answer`. This is the shape the final message must have, and unlike the
+frame it is not advice: it is checked. See [the answer contract](#the-answer-contract) below.
 
 *The envelope* — `vector`, `grant`, `tools`. These name things rather than spelling them out.
 `vector: auto|ask|park` sets how much the process must confirm; a firing that already
@@ -356,7 +359,9 @@ built to avoid. `resolver` and `environment` remain declared and unread — see
 spawn:
   driver: llm
   task:   "Review $subject for security defects."
-  frame:  "Answer with a tony object: {severity: low|high, note: string}. Nothing else."
+  answer: |
+    severity: !or [low, high]
+    note:     !irtype string
   grant:  read-only
   vector: auto
   tools:  [read_file, list_dir]
@@ -408,6 +413,54 @@ hook: { chain: review.onDone, status: failed, err: "$data.severity is not presen
 It goes there rather than on the subject because it is a fact about that completion, and
 because putting an error into a field a charter matches on is exactly what makes
 `fields: {severity: high}` quietly stop matching.
+
+### The answer contract
+
+That failure is late. `$data.class` is missing at PATCH time — after the work is done and
+the tokens are spent — and what is left is a hook error on the process entity and a subject
+stranded at a stage no rule matches. A frame asking for a shape does not prevent it: an
+agent that has just read nine files narrates and fences before it answers, and the frame is
+advice a model may ignore.
+
+`answer` is the same request made enforceable — the shape the final message must have,
+written as a tony **match pattern** (the `accept` clause of a schema, which is the same
+vocabulary `when` is written in):
+
+```tony
+spawn:
+  driver: llm
+  task:   "Review $subject."
+  answer: |
+    class:    !or [bug, nit, risk]
+    severity: !or [low, high]
+    why:      !irtype string
+```
+
+It is checked when the model stops, which is the only moment it can be: a run ends by the
+model ceasing to call tools, so stopping and reporting are one act. A failure goes back to
+the agent as a **diagnosis** — the path, what was expected there, what was found, and every
+such failure rather than the first — and it is asked to fix it. That is bounded at two
+attempts: if a model cannot produce the shape with the complaint in front of it, more turns
+will not teach it.
+
+A run whose answer never satisfies its contract **fails**. That is the whole point:
+
+- `patch: { class: $data.class }` can no longer fail at patch time, because a process that
+  could not produce `class` did not succeed. The failure moves from a hook nobody watches to
+  `onFailed`, which every rule already declares a branch for.
+- The check is on the answer, not the layout: a fenced answer is unwrapped, so the repair
+  budget is spent on content.
+- It is a guarantee about SHAPE, not about content. A repair loop pressures a model toward
+  compliance, so the agent is also told to call `fail` rather than invent a value it could
+  not determine — an honest failure is worth more than a well-formed wrong answer.
+- A sub-agent (`call_agent`) does not inherit it. A child answers a subtask its parent
+  worded, and its result comes back as one more tool result; only the parent's own final
+  message is what a charter derefs.
+
+Writing a contract the driver cannot parse fails the firing where it is written, before a
+model call — same as an unknown tool name. A driver with no model to ask again (`scripted`)
+fails the spawn rather than running it unchecked, because a contract silently dropped is
+worse than none: the charter downstream was written believing it holds.
 
 A `patch` resolves references too, and there it is a **deref by kpath**, not a template
 substitution — it names a value, it does not compute one:

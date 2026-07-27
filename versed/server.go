@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
@@ -245,7 +246,18 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	l := process.Launch{
 		ID: id, Task: spec.Task, Driver: spec.Driver,
-		Frame: spec.Frame, Tools: spec.Tools,
+		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer,
+	}
+	// The contract travels as source, but it is PARSED here as well, and the parse is the
+	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
+	// paying for a model call, a run, and a repair round before failing a check it could
+	// never have passed. Same discipline as the two axes below — the engine resolves what it
+	// can before the spawn crosses the seam. (The runtime parses it again for real; this is
+	// a gate, not a hand-off.)
+	if strings.TrimSpace(spec.Answer) != "" {
+		if _, err := answer.Parse(spec.Answer); err != nil {
+			return process.Launch{}, fmt.Errorf("answer contract: %w", err)
+		}
 	}
 	vec, err := process.NamedVector(spec.Vector)
 	if err != nil {
