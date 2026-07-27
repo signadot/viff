@@ -1,5 +1,63 @@
 package process
 
+// Launch is everything one spawn says about the process it asks for: which driver builds
+// it, the task it is seeded with, and the FRAME that task is read in.
+//
+// It is a struct rather than the positional (id, task, driver) it replaces because what a
+// spawn may say about its agent is the axis that grows, and every growth was widening the
+// same four signatures. Every field but ID is optional; empty means "whatever the runtime
+// defaults to", which is what an ad-hoc `process run` sends.
+//
+// It is the runner-facing half of launch.Spec: the fields a runtime needs to BUILD the
+// process, without the ones (vector, grant, environment, provider) the engine resolves
+// against its own registries before it ever gets here.
+type Launch struct {
+	ID     string
+	Task   string
+	Driver string
+
+	// Frame is the standing instructions the Task is read in — the agent's system
+	// prompt, as against its one job.
+	//
+	// It is per-spawn because it is the CHARTER's to write, and a package default cannot
+	// know what this spawn is for. Two things it gets wrong by construction: whether the
+	// agent's last message is prose for a person or the value a `patch: {x: $result}`
+	// will lift out of it, and which of the offered tools are worth reaching for under
+	// the gate vector this trigger runs at — a default that recommends delegating is
+	// wrong advice for an unattended firing whose delegate gate is ASK.
+	//
+	// Empty = the driver's own default frame.
+	Frame string
+
+	// Tools names the tools offered to the agent, narrowing the driver's full set. Empty
+	// = all of them. It is the hard counterpart of Frame's advice: a frame can only ask
+	// an agent not to reach for something, whereas a tool that is not offered cannot be
+	// called at all. A driver always keeps whatever tools its own contract depends on
+	// (the LLM harness keeps `fail`, which is how a process reports it could not do the
+	// work). A name no driver knows fails the spawn rather than shrinking it in silence.
+	Tools []string
+
+	// Vector is the gate vector to launch under; nil = the runtime's own default. Grant is
+	// the hard envelope to install as the process's scope; nil = unbounded, which is what
+	// every process got before a spawn could say otherwise.
+	//
+	// These two are RESOLVED VALUES where Frame and Task are text, and the asymmetry is
+	// deliberate. A charter writes `vector: auto` / `grant: read-only` — names — and the
+	// engine resolves them (NamedVector/NamedGrant) before the spawn crosses this seam. It
+	// could as easily have sent the names and let the far end resolve them, and that would
+	// be worse: the two ends can be different builds, and a runtime whose vocabulary had
+	// drifted would run the process under a different envelope than the charter named,
+	// silently. Sending the predicates makes the meaning travel with the request and keeps
+	// the vocabulary in exactly one place.
+	//
+	// Grant is a pointer for the same reason NamedGrant returns an ok: the zero Grant
+	// permits NOTHING, so "no envelope declared" and "the empty envelope" must not be the
+	// same value. Conflating them refuses every action of every process that never
+	// mentioned a grant.
+	Vector *Vector
+	Grant  *Grant
+}
+
 // Runner runs and governs processes on some substrate; verse (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a processd
 // wrapper); remote runners addressed by a base URL — k8s, lambda, a human broker — come
@@ -10,7 +68,7 @@ package process
 type Runner interface {
 	// Spawn starts a process and returns a handle to govern it. The id is assigned by
 	// the caller (the engine's spawnID); content routes a federated read_file.
-	Spawn(id, task, driver string, content ContentReader) Handle
+	Spawn(l Launch, content ContentReader) Handle
 
 	// Attach re-attaches to an already-running process by id — the resume path on
 	// restart, when the work outlived verse (a remote runner). Its handle's read plane
@@ -47,3 +105,31 @@ type Handle interface {
 
 // *Process is the local Handle.
 var _ Handle = (*Process)(nil)
+
+// FailedHandle is the Handle for work that never started: a spawn that could not be issued
+// at all. Its read plane reports one terminal frame and closes, so a mirror records a failed
+// process rather than stranding the entity as running, and Err carries the reason to
+// `process get`.
+//
+// It is here rather than in each caller because there are now two callers with the same
+// need — a remote spawn whose POST did not go through (runner), and a spawn whose declared
+// envelope did not resolve (versed) — and a Handle that lies about a process's status is
+// exactly the thing not to reimplement per package.
+func FailedHandle(reason string) Handle { return failedHandle{reason} }
+
+type failedHandle struct{ err string }
+
+func (f failedHandle) Subscribe() (<-chan Frame, func()) {
+	ch := make(chan Frame, 1)
+	ch <- Frame{Kind: EvStatus, Text: string(Failed), Err: f.err}
+	close(ch)
+	return ch, func() {}
+}
+
+func (failedHandle) Pause()                    {}
+func (failedHandle) Resume()                   {}
+func (failedHandle) Cancel(string)             {}
+func (failedHandle) Steer(string, string)      {}
+func (failedHandle) SetVector(*Vector, string) {}
+func (failedHandle) Result() string            { return "" }
+func (f failedHandle) Err() string             { return f.err }

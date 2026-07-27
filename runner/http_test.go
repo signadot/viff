@@ -36,15 +36,15 @@ func (okExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult
 // runs to a terminal status — no in-process handle. This is the Phase-3 proof of the
 // base-URL decoupling.
 func TestHTTPRunnerDrivesRemoteProcessd(t *testing.T) {
-	build := func(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, &doneDriver{steps: 2}, okExec{})
+		return process.NewProcess(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(processd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn("t1", "do a thing", "scripted", nil)
+	h := pol.Spawn(process.Launch{ID: "t1", Task: "do a thing", Driver: "scripted"}, nil)
 
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -86,15 +86,15 @@ loop:
 // A remote runner enumerates its processes so versed can union them into `process list`/
 // `get`: ListProcesses/ProcessSnapshot are a thin client over the remote's GET /processes.
 func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
-	build := func(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, &doneDriver{steps: 2}, okExec{})
+		return process.NewProcess(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(processd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	pol.Spawn("r1", "remote task", "scripted", nil)
+	pol.Spawn(process.Launch{ID: "r1", Task: "remote task", Driver: "scripted"}, nil)
 
 	lister, ok := pol.(interface {
 		ListProcesses() []process.Instance
@@ -128,16 +128,16 @@ func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
 // (which kept running and finished) converges the entity to its terminal status. This is
 // what versed.reconcileProcesses does: resume, not orphan, when the work outlived verse.
 func TestResumeReAttachesToRemoteProcess(t *testing.T) {
-	build := func(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, &doneDriver{steps: 2}, okExec{})
+		return process.NewProcess(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(processd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	pol.Spawn("t1", "task", "scripted", nil) // runs on the remote to completion
-	time.Sleep(300 * time.Millisecond)       // let it finish (retained in the ring)
+	pol.Spawn(process.Launch{ID: "t1", Task: "task", Driver: "scripted"}, nil) // runs on the remote to completion
+	time.Sleep(300 * time.Millisecond)                                         // let it finish (retained in the ring)
 
 	// "verse restart": a fresh store with a STALE running entity tagged with the runner.
 	store := entitytest.Store(t)

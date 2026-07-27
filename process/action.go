@@ -38,8 +38,14 @@ type CallAgentRequest struct {
 // delegation tree a child Grant must be ⊆ the parent's (authority is
 // non-increasing down the chain). v0 models it as the capability predicates the
 // child may exercise.
+//
+// It has a wire form because a spawn now carries a resolved envelope to whatever runtime
+// hosts the process, local or remote (see process.Launch) — a name would let the two ends
+// disagree about what it meant.
+//
+//tony:schemagen=verse-grant,notag
 type Grant struct {
-	Allow []GateMatch // capability predicates the child may exercise
+	Allow []GateMatch `tony:"field=allow,omitzero"` // capability predicates the child may exercise
 }
 
 // Subset reports whether child is within parent — the monotonicity check a

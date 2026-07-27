@@ -39,12 +39,37 @@ import (
 //
 //tony:schemagen=verse-launch-spec,notag
 type Spec struct {
-	Driver      string `tony:"field=driver,omitzero"`
-	Task        string `tony:"field=task,omitzero"`
-	Vector      string `tony:"field=vector,omitzero"`
-	Resolver    string `tony:"field=resolver,omitzero"`
-	Grant       string `tony:"field=grant,omitzero"`
-	Environment string `tony:"field=environment,omitzero"`
+	Driver string `tony:"field=driver,omitzero"`
+	Task   string `tony:"field=task,omitzero"`
+	// Frame is the standing instructions the Task is read in — the agent's system prompt.
+	//
+	// It is INLINE, alongside Task, rather than a reference like the axes below, and the
+	// cut is request-versus-governance rather than an exception to the discipline: Task
+	// and Frame are both text the authoring party wrote for this spawn, while Vector,
+	// Grant, Resolver and Environment name semantics the runtime holds. A frame is not a
+	// permission — a model may ignore every word of it — so making it a reference would
+	// index the one field with nothing to look up.
+	//
+	// It is per-spawn because the two things a package-level default gets wrong are both
+	// per-spawn facts: whether the agent's last message is prose for a person or the value
+	// a `patch: {severity: $result.severity}` will lift out of it, and which of the tools
+	// on offer are worth reaching for under this spawn's vector. A charter that derefs
+	// $result has to be able to say what shape it expects, and only the charter knows.
+	//
+	// A driver definition carrying a default frame per driver name is the natural next
+	// step and would not replace this: the complaint that produced this field is one
+	// driver needing different frames on different spawns.
+	Frame string `tony:"field=frame,omitzero"`
+	// Tools narrows the driver's tool set to those named; empty = all of them. Unlike
+	// Frame it is not advice — a tool that is not offered cannot be called — but it is
+	// still not authority: Grant is what refuses an action. A spawn usually wants both,
+	// because a tool withheld never comes up, while a tool offered-but-ungranted costs a
+	// turn being refused.
+	Tools       []string `tony:"field=tools,omitzero"`
+	Vector      string   `tony:"field=vector,omitzero"`
+	Resolver    string   `tony:"field=resolver,omitzero"`
+	Grant       string   `tony:"field=grant,omitzero"`
+	Environment string   `tony:"field=environment,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The
 	// engine tracks a flow's processes by subject so it can be steered/cancelled as
 	// a unit. Usually the concrete matched ref, not a template.
@@ -107,9 +132,10 @@ type Binding map[string]string
 // Bind expands $vars in every string field of the spec against b, returning the
 // instantiated (specific) spec. Unbound $vars are left as-is.
 func (s Spec) Bind(b Binding) Spec {
-	return Spec{
+	out := Spec{
 		Driver:      expand(s.Driver, b),
 		Task:        expand(s.Task, b),
+		Frame:       expand(s.Frame, b),
 		Vector:      expand(s.Vector, b),
 		Resolver:    expand(s.Resolver, b),
 		Grant:       expand(s.Grant, b),
@@ -117,6 +143,15 @@ func (s Spec) Bind(b Binding) Spec {
 		Subject:     expand(s.Subject, b),
 		Provider:    s.Provider.bind(b),
 	}
+	// Tools are NOT expanded. Every other string here is a template because a charter has
+	// reason to build it out of the firing — but a tool name is drawn from a fixed set the
+	// driver defines, so a $var in one could only ever name a tool that does not exist, or
+	// name one chosen by whoever last wrote the entity being matched. The second is the
+	// interesting case: this list is adjacent to authority, and letting payload text pick
+	// which tools an agent is handed is the widening-by-binding risk authority.md names.
+	// Copied rather than shared so a bound spec cannot alias the charter's slice.
+	out.Tools = append([]string(nil), s.Tools...)
+	return out
 }
 
 // Expand substitutes $vars in s from b — exported for callers building strings

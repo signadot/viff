@@ -88,7 +88,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn("p1", "review PR #7", "human", nil)
+	b.Spawn(process.Launch{ID: "p1", Task: "review PR #7", Driver: "human"}, nil)
 	srv.SetRunner(b) // the resolve route relays to a worker only under a broker runner
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
@@ -140,7 +140,7 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 func TestGateResolveRoutesAnOwnerlessProcessGate(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn("p1", "review the auth change", "human", nil)
+	b.Spawn(process.Launch{ID: "p1", Task: "review the auth change", Driver: "human"}, nil)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
@@ -216,7 +216,7 @@ func waitPending(t *testing.T, srv *Server, id string) {
 func TestGateListingOmitsAbsentFields(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn("p1", "migrate the schema", "human", nil)
+	b.Spawn(process.Launch{ID: "p1", Task: "migrate the schema", Driver: "human"}, nil)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
 	// `verse gates` lists only processes in the requested scope, and membership is the

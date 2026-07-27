@@ -21,7 +21,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 	b := broker.New()
 
 	// verse side: spawn + observe.
-	h := b.Spawn("t1", "review PR #42", "human", nil)
+	h := b.Spawn(process.Launch{ID: "t1", Task: "review PR #42", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -72,7 +72,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 	// verse control → the worker's inbox (a fresh process, so the cancel is observable
 	// before terminal). Uses a second process to keep this assertion independent of the
 	// completed one above.
-	h2 := b.Spawn("t2", "watch", "human", nil)
+	h2 := b.Spawn(process.Launch{ID: "t2", Task: "watch", Driver: "human"}, nil)
 	var claim2 struct {
 		Epoch   int64 `tony:"field=epoch"`
 		CCursor int64 `tony:"field=cCursor"`
@@ -100,7 +100,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 // stays authoritative, and a lost-ack retry reads as success (200 + terminal), not error.
 func TestTerminalOnce(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "task", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -132,7 +132,7 @@ func TestTerminalOnce(t *testing.T) {
 // worker report — and a late worker `completed` loses to the latch.
 func TestVerseAuthoritativeCancel(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "task", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 	srv := httptest.NewServer(b.WorkerHandler())
@@ -182,7 +182,7 @@ loop:
 // the claim is released (Revoke).
 func TestFenceAndTakeover(t *testing.T) {
 	b := broker.New()
-	b.Spawn("p", "task", "human", nil)
+	b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -229,7 +229,7 @@ func TestFenceAndTakeover(t *testing.T) {
 // records the decision (clearing pending). The executor never resolves its own gate.
 func TestGateLoop(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "task", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 	srv := httptest.NewServer(b.WorkerHandler())
@@ -316,7 +316,7 @@ func TestGateLoop(t *testing.T) {
 // "vector" marker and drop the vector, so the worker had nothing to apply.)
 func TestSetVectorRelaysPayload(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "task", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
 
 	h.SetVector(&process.Vector{Default: process.Ask}, "human:scott")
 
@@ -346,7 +346,7 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 // EvVector carrying the new default mode) — like a say-to, not waiting on the worker to echo.
 func TestSetVectorObservable(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "task", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -463,7 +463,7 @@ var _ = process.EvSay
 // that was never going to carry any.
 func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "migrate the schema", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "migrate the schema", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -503,7 +503,7 @@ func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 // stays empty — the routing keys off the status, not off the presence of text.
 func TestCompletionTextStaysAResult(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn("p", "review", "human", nil)
+	h := b.Spawn(process.Launch{ID: "p", Task: "review", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()

@@ -111,8 +111,8 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 // wire contract; the engine drives them through the identical seam. See docs/process-control.md.
 type localRunner struct{ d *processd.Daemon }
 
-func (l localRunner) Spawn(id, task, driver string, content process.ContentReader) process.Handle {
-	return l.d.Spawn(id, task, driver, content)
+func (l localRunner) Spawn(spec process.Launch, content process.ContentReader) process.Handle {
+	return l.d.Spawn(spec, content)
 }
 
 // Attach returns the still-live in-process handle for id, or nil — after a restart the
@@ -209,10 +209,56 @@ func mintNonce() string {
 // for baseline) routes a spawned agent's read_file through the verse.
 func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
 	return func(id string, spec launch.Spec) process.Handle {
-		h := s.runner.Spawn(id, spec.Task, spec.Driver, content)
+		l, err := launchOf(id, spec)
+		if err != nil {
+			// A charter that names an envelope this build does not have must not run
+			// UNBOUNDED. Dropping the field is how `grant: read-only` came to mean nothing
+			// in the first place, and defaulting a misspelling to the wildcard is the same
+			// mistake with an error message attached. So the spawn fails, visibly, and the
+			// trigger's own failure path carries the reason.
+			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+			mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task})
+			return h
+		}
+		h := s.runner.Spawn(l, content)
 		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task})
 		return h
 	}
+}
+
+// launchOf turns a bound launch.Spec into the runner-facing process.Launch, resolving the
+// two axes that are named rather than written out.
+//
+// This is the consumer those fields never had. `vector:` and `grant:` have been on the spec
+// since it was written — parsed, persisted, expanded by Bind, rendered back by `trigger
+// show` — and read by nothing, so a charter could state an envelope, see it echoed, and get
+// an agent that ignored it. Resolution happens HERE, on the engine side, rather than at
+// whatever runtime ends up hosting the process: the vocabulary then lives in one place, and
+// what crosses the wire is the predicate rather than a word two builds might read
+// differently.
+//
+// Resolver and Environment are still unread, and still named in the spec. They are not
+// resolved here because neither has semantics to resolve TO yet — there is no registry of
+// named resolvers, and the environment floor is a design note (docs/roadmap/expose.md).
+// Naming that plainly is better than another silent drop.
+func launchOf(id string, spec launch.Spec) (process.Launch, error) {
+	l := process.Launch{
+		ID: id, Task: spec.Task, Driver: spec.Driver,
+		Frame: spec.Frame, Tools: spec.Tools,
+	}
+	vec, err := process.NamedVector(spec.Vector)
+	if err != nil {
+		return process.Launch{}, err
+	}
+	l.Vector = vec
+	g, ok, err := process.NamedGrant(spec.Grant)
+	if err != nil {
+		return process.Launch{}, err
+	}
+	if ok {
+		l.Grant = &g
+	}
+	return l, nil
 }
 
 // reconcileProcesses runs on Start: for each non-terminal process:instance, either RESUME
@@ -484,8 +530,8 @@ func (s *Server) Handler() http.Handler {
 // wires the effect-gating vector.
 // ScriptedBuilder is the processd.Builder form (root = the process's cwd). `verse up` uses
 // NewScriptedProcess directly to confine scripted commands to the agent root.
-func ScriptedBuilder(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
-	return NewScriptedProcess(id, task, "", reg)
+func ScriptedBuilder(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+	return NewScriptedProcess(l.ID, l.Task, "", reg)
 }
 
 // NewScriptedProcess builds a scripted process rooted at root.
@@ -976,7 +1022,7 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		store = s.Store.Scope(scope)
 	}
-	h := s.runner.Spawn(id, body.Task, body.Driver, nil)
+	h := s.runner.Spawn(process.Launch{ID: id, Task: body.Task, Driver: body.Driver}, nil)
 	mirror.Reflect(store, id, h, mirror.Meta{Runner: s.runner.Ref()})
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }

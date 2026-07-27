@@ -270,10 +270,41 @@ triggers writing under one key do not clobber each other, and the
 apply. `patch: { tmp: !delete null }` removes a key, which is something no amount of setting
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
-`spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
-`vector`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed `provider`
-selection of the doer. The spawned process is tagged with the subject, which is what makes it
-part of that subject's flow.
+`spawn` launches a process from a `launch.Spec` — or, instead of a fixed `driver`, a governed
+`provider` selection of the doer. The spawned process is tagged with the subject, which is
+what makes it part of that subject's flow.
+
+The spec's fields fall into two groups, and the difference decides what a charter can say.
+
+*The request* — `task` and `frame`. Both are text you write. `task` is the one job; `frame`
+is the standing instructions it is read in (the agent's system prompt). A frame is worth
+writing whenever the charter reads the answer rather than a person: the default tells the
+agent its last message *is* the result and not to summarise, but only the charter knows what
+shape it wants back. If you `patch: { severity: $result.severity }`, say so in the frame.
+
+*The envelope* — `vector`, `grant`, `tools`. These name things rather than spelling them out.
+`vector: auto|ask|park` sets how much the process must confirm; a firing that already
+answered its own `gates` can say `vector: auto` rather than re-ask per action.
+`grant: read-only|no-delegate|none|all` is the hard authority: an action outside it is
+*refused*, not asked about, because nobody at a console was delegated the authority to widen
+what the charter granted. `tools` narrows what the driver offers at all — `tools: [read_file,
+list_dir]` on a review agent means shell and delegation never come up. `fail` is always
+offered whatever you list, since it is how a process reports it could not do the work.
+
+An unknown `vector`, `grant`, or tool name fails the spawn rather than falling back to
+unbounded: a field that reads back as written and enforces nothing is the failure this is
+built to avoid. `resolver` and `environment` remain declared and unread — see
+[authority](roadmap/authority.md).
+
+```tony
+spawn:
+  driver: llm
+  task:   "Review $subject for security defects."
+  frame:  "Answer with a tony object: {severity: low|high, note: string}. Nothing else."
+  grant:  read-only
+  vector: auto
+  tools:  [read_file, list_dir]
+```
 
 `seq` runs a list of actions in order, each starting when the previous one completes. It is
 the depth axis, and it has its own section below.

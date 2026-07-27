@@ -289,7 +289,29 @@ func (p *Process) Run(ctx context.Context) (Outcome, error) {
 		}
 		tu.ID = p.nextID()
 
-		// 2. gate: derive → evaluate → resolve (present human on ASK)
+		// 2. authority: does the hard envelope admit this action at all?
+		//
+		// This runs BEFORE the vector, and it refuses instead of asking. The two layers
+		// answer different questions — the grant says what the caller authorized, the
+		// vector says which of that must be confirmed — so an action outside the envelope
+		// is not a decision anyone present may make. Asking would offer the resolver an
+		// authority the caller never delegated to them.
+		//
+		// Until now nothing consulted a process's own scope; Grant.Subset at the
+		// call_agent boundary was its only reader, so an envelope bounded delegation and
+		// nothing else. A default root scope is the wildcard, so a process that declared
+		// no grant is unaffected — this refuses only what a caller explicitly narrowed.
+		p.sup.Derive(&tu)
+		if !p.scope.Permits(tu) {
+			p.logf("⛔ %s refused: outside the process's grant", tu.Name)
+			p.emit(Frame{Kind: EvExec, Tool: tu.Name, Err: "outside grant"})
+			p.record(tu, Resolution{Question: GateQuestion{Gate: "grant", Reason: "outside the process's grant"}})
+			prev = StepResult{Use: tu, Blocked: true,
+				Note: "outside the grant this process was launched with: not permitted, and not something a gate can approve"}
+			continue
+		}
+
+		// 3. gate: derive → evaluate → resolve (present human on ASK)
 		res, err := p.sup.Check(ctx, tu)
 		p.record(tu, res)
 		if err != nil { // e.g. context cancelled while blocked at the gate
@@ -304,7 +326,7 @@ func (p *Process) Run(ctx context.Context) (Outcome, error) {
 			continue // PARK/deny: cursor holds here; driver re-plans
 		}
 
-		// 3. execute
+		// 4. execute
 		if tu.CallAgent != nil { // uniformly async: spawn detached, join later
 			prev = p.spawnChild(ctx, tu, res.ChildMode)
 			continue

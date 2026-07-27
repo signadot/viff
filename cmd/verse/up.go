@@ -119,27 +119,36 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		defaultDriver = "llm"
 		fmt.Fprintf(cc.Err, "agents rooted at %s\n", root)
 	}
-	build := func(id, task, driver string, reg *process.Registry, content process.ContentReader) *process.Process {
+	build := func(l process.Launch, reg *process.Registry, content process.ContentReader) *process.Process {
+		driver := l.Driver
 		if driver == "" {
 			driver = defaultDriver
 		}
 		switch driver {
 		case "scripted":
-			return versed.NewScriptedProcess(id, task, root, reg)
+			return versed.NewScriptedProcess(l.ID, l.Task, root, reg)
 		case "llm":
 			if !appCfg.LLM.Available() {
-				return process.NewFailed(id, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
+				return process.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
 			}
 			// content (non-nil for a scoped federation) routes read_file through the
 			// verse; otherwise the agent reads the server-side --root tree.
+			//
+			// Frame/Tools/Vector come from the spawn. The vector is handed to Build rather
+			// than left for the daemon to install afterwards because the DEFAULT FRAME is
+			// derived from it: describing each tool as it will actually behave only works
+			// if the vector is known while the frame is being written. The daemon installs
+			// it again after Build, which is idempotent and is also what bounds the
+			// scripted driver, so neither path depends on a builder remembering.
 			p, _ := harness.Build(harness.Config{
-				ID: id, Task: task, Root: root, Resolver: reg, Log: cc.Err, Content: content,
+				ID: l.ID, Task: l.Task, Root: root, Resolver: reg, Log: cc.Err, Content: content,
+				Frame: l.Frame, Tools: l.Tools, Vector: l.Vector,
 				LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
 				LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
 			})
 			return p
 		default:
-			return process.NewFailed(id, reg, "unknown driver "+driver+" (want scripted or llm)")
+			return process.NewFailed(l.ID, reg, "unknown driver "+driver+" (want scripted or llm)")
 		}
 	}
 

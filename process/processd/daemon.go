@@ -23,12 +23,13 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// Builder constructs a hosted process from an id, a task, the requested driver
-// (e.g. "scripted"/"llm"; "" = the builder's default), the Registry that serves as its
-// gate resolver, and an optional ContentReader (nil = read from the local filesystem;
-// non-nil = read federated files through the verse). It is injected so the daemon stays
-// decoupled from any particular driver/runtime, and picks the driver per spawn.
-type Builder func(id, task, driver string, reg *process.Registry, content process.ContentReader) *process.Process
+// Builder constructs a hosted process from a process.Launch — the id, the task, the
+// requested driver (e.g. "scripted"/"llm"; "" = the builder's default), and the frame and
+// tool set that shape the agent — plus the Registry that serves as its gate resolver and
+// an optional ContentReader (nil = read from the local filesystem; non-nil = read
+// federated files through the verse). It is injected so the daemon stays decoupled from
+// any particular driver/runtime, and picks the driver per spawn.
+type Builder func(l process.Launch, reg *process.Registry, content process.ContentReader) *process.Process
 
 // Daemon hosts a set of running processes.
 type Daemon struct {
@@ -115,16 +116,29 @@ func (d *Daemon) Lookup(id string) *process.Process {
 // seam the engine's Spawner uses, so a trigger-spawned process is hosted and
 // controllable (list/get/attach/cancel) exactly like a `verse process run` one.
 // Returns the running process (already Run in the background).
-func (d *Daemon) Spawn(id, task, driver string, content process.ContentReader) *process.Process {
-	return d.spawnHosted(id, task, driver, content).proc
+func (d *Daemon) Spawn(l process.Launch, content process.ContentReader) *process.Process {
+	return d.spawnHosted(l, content).proc
 }
 
 // spawnHosted builds, registers, wires the read plane, and runs a process. Shared
 // by Spawn and the HTTP spawn handler.
-func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentReader) *hosted {
+func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) *hosted {
 	reg := process.NewRegistry()
-	proc := d.build(id, task, driver, reg, content)
-	h := &hosted{proc: proc, reg: reg, task: task, driver: driver, status: process.Running}
+	proc := d.build(l, reg, content)
+
+	// Install the spawn's authority axes here rather than in the Builder, because they are
+	// properties of the RUNTIME's contract with verse, not of any driver: a scripted
+	// process and an LLM one are bounded the same way, and a Builder that forgot to apply
+	// them would silently hand back an unbounded process. Both are conditional — a spawn
+	// that named neither gets exactly what it got before (wildcard scope, the builder's
+	// own vector), so this narrows only what a caller asked to have narrowed.
+	if l.Grant != nil {
+		proc.SetScope(*l.Grant)
+	}
+	if l.Vector != nil {
+		proc.SetVector(l.Vector, "launch")
+	}
+	h := &hosted{proc: proc, reg: reg, task: l.Task, driver: l.Driver, status: process.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
@@ -136,7 +150,7 @@ func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentRea
 	})
 
 	d.mu.Lock()
-	d.proc[id] = h
+	d.proc[l.ID] = h
 	d.mu.Unlock()
 
 	go func() {
@@ -157,16 +171,28 @@ func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentRea
 
 func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Id     string `tony:"field=id"`
-		Task   string `tony:"field=task"`
-		Driver string `tony:"field=driver"`
+		Id     string          `tony:"field=id"`
+		Task   string          `tony:"field=task"`
+		Driver string          `tony:"field=driver"`
+		Frame  string          `tony:"field=frame"`
+		Tools  []string        `tony:"field=tools"`
+		Vector *process.Vector `tony:"field=vector,omitzero"`
+		Grant  *process.Grant  `tony:"field=grant,omitzero"`
 	}
 	_ = codec.Read(r, &body)
 	id := body.Id // a runner client (the engine) passes its own id so it matches
 	if id == "" { // the process:instance entity; an ad-hoc `process run` gets a fresh one
 		id = fmt.Sprintf("p%d", d.seq.Add(1))
 	}
-	h := d.spawnHosted(id, body.Task, body.Driver, nil) // ad-hoc `process run`: local filesystem
+	// ad-hoc `process run`: local filesystem. Everything that shapes or bounds the agent
+	// rides the wire, so a process hosted on a REMOTE runner is framed and bounded exactly
+	// as a local one — the seam is complete or the guarantee is local-only. The vector and
+	// grant arrive as resolved predicates rather than names for the reason process.Launch
+	// gives: the vocabulary lives at one end, so the two cannot drift apart.
+	h := d.spawnHosted(process.Launch{
+		ID: id, Task: body.Task, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
+		Vector: body.Vector, Grant: body.Grant,
+	}, nil)
 	writeOut(w, r, http.StatusCreated, map[string]any{"id": h.proc.ID})
 }
 

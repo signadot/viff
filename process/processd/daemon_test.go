@@ -37,7 +37,7 @@ func (okExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult
 
 // fakeBuild makes a hosted process whose single action hits an ASK gate, so the
 // resolve/read-plane paths are exercised without a live model.
-func fakeBuild(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
+func fakeBuild(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
 	vec := &process.Vector{
 		Default: process.Auto,
 		Gates:   []process.Gate{{Name: "shell", Mode: process.Ask, Match: process.GateMatch{Verbs: []process.Verb{process.Exec}}}},
@@ -45,7 +45,7 @@ func fakeBuild(id, task, _ string, reg *process.Registry, _ process.ContentReade
 	sup := process.NewSupervisor(vec, reg)
 	sup.SetDeriver(process.BasicDeriver{})
 	tu := process.ToolUse{Name: "run", Effects: []process.Effect{{Verb: process.Exec, Resource: process.Resource{Kind: process.KindProcess, Ref: "x"}}}}
-	return process.NewProcess(id, sup, &seqDriver{steps: []process.ToolUse{tu}}, okExec{})
+	return process.NewProcess(l.ID, sup, &seqDriver{steps: []process.ToolUse{tu}}, okExec{})
 }
 
 func newTestServer(t *testing.T) *httptest.Server {

@@ -58,6 +58,13 @@ signature:
 context:
 - tony-format/context
 define:
+  allow: .[array(verse-gate-match)]
+signature:
+  name: verse-grant
+---
+context:
+- tony-format/context
+define:
   gate: .[string]
   id: .[string]
   mode: .[string]

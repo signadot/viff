@@ -60,14 +60,22 @@ func (b *Broker) get(id string) *procState {
 }
 
 // Spawn registers a process for a worker to claim and returns the verse-side handle.
-func (b *Broker) Spawn(id, task, driver string, _ process.ContentReader) process.Handle {
+//
+// The frame, tool set, vector and grant are deliberately not recorded here. A brokered
+// process is performed by a dial-in worker that builds its own agent — or is a human — so
+// the broker has no construction to shape and no boundary to enforce at: it observes
+// reports and relays control. Storing an envelope it cannot check would be a claim verse
+// is unable to keep, which is the exact failure this change exists to remove. Bounding a
+// remote worker is a real question, and it belongs to the claim protocol rather than to
+// this registration. See docs/external-processes.md.
+func (b *Broker) Spawn(l process.Launch, _ process.ContentReader) process.Handle {
 	b.mu.Lock()
-	b.procs[id] = &procState{
-		id: id, task: task, driver: driver,
+	b.procs[l.ID] = &procState{
+		id: l.ID, task: l.Task, driver: l.Driver,
 		subs: map[int]chan process.Frame{}, pending: map[string]process.Frame{},
 	}
 	b.mu.Unlock()
-	return &handle{b: b, id: id}
+	return &handle{b: b, id: l.ID}
 }
 
 // Attach re-attaches to an existing process (the resume path).

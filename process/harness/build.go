@@ -10,19 +10,87 @@ package harness
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/signadot/verse/process"
 )
 
-const systemPrompt = `You are an autonomous coding agent working through a supervised loop.
-Tools: read_file(path), write_file(path, content), run_bash(command), list_dir(path),
-call_agent(agent, prompt) — delegate an independent subtask to a concurrent sub-agent.
-You operate inside a sandboxed working directory; all paths are relative to it.
-Some actions are gated by a human supervisor and may be DENIED. If a tool result says
-DENIED, do not retry the same action — find another approach or explain why you cannot
-proceed. For independent subtasks, prefer call_agent to run them in parallel; each
-sub-agent's result comes back when it finishes. Complete the user's task, then stop with
-a one-paragraph summary.`
+// defaultFrame is the frame used when a spawn does not write one — and it is DERIVED, from
+// the tools actually offered and the vector actually installed, rather than being the
+// package constant it replaces.
+//
+// That constant had two defects, and both are of a kind a constant cannot avoid.
+//
+// It ended "Complete the user's task, then stop with a one-paragraph summary." The final
+// assistant message is what Result() returns, which is what a completed process's `result`
+// carries, which is what a charter's `$result` derefs. trigger/deref.go is built to resolve
+// $result.findings[0].severity structurally — against a prompt instructing prose. The two
+// were in direct contradiction and the prompt won: structured answers came back as
+// paragraphs. So this says the opposite, and a spawn wanting a particular shape states it
+// in its own frame, which is what the field is for.
+//
+// It also said "prefer call_agent to run them in parallel" while Vector(), a few lines
+// below, ASK-gates the call-agent verb. Two package constants, adjacent, disagreeing: the
+// prompt recommended the one action guaranteed to stop and wait for a human, which for an
+// unattended trigger firing means park. Rewording the constant would not fix it, because
+// the vector is per-spawn and slidable while the constant is neither. Deriving the advice
+// from the vector does: below, each tool is described as it will actually behave.
+func defaultFrame(tds []toolDef, vec *process.Vector) string {
+	var free, gated []string
+	for _, td := range tds {
+		name := td.Function.Name
+		if name == failTool {
+			continue // not an action; described on its own terms at the end
+		}
+		if gateModeFor(name, vec).Blocks() {
+			gated = append(gated, name)
+			continue
+		}
+		free = append(free, name)
+	}
+
+	var b strings.Builder
+	b.WriteString("You are an autonomous agent working through a supervised loop.\n")
+	b.WriteString("You operate inside a sandboxed working directory; all paths are relative to it.\n")
+	if len(free) > 0 {
+		fmt.Fprintf(&b, "These tools run without interruption: %s.\n", strings.Join(free, ", "))
+	}
+	if len(gated) > 0 {
+		// Naming the cost is the point. An agent told that a tool suspends it until a human
+		// answers reaches for it when the task needs it and not otherwise — the behaviour
+		// the old "prefer call_agent" advice inverted.
+		fmt.Fprintf(&b, "These tools STOP the loop until a supervisor approves each use, and may be "+
+			"denied: %s. Use them where the task requires it, not by preference.\n", strings.Join(gated, ", "))
+	}
+	fmt.Fprintf(&b, "A tool result that says DENIED is a decision, not a transient error: do not retry "+
+		"the same action — take another approach, or call %s.\n", failTool)
+	b.WriteString("A result saying an action is outside your grant is final. Nobody present can " +
+		"approve it and no rephrasing makes it permitted.\n")
+	b.WriteString("Your final message IS this process's result. It is read by whatever asked for the " +
+		"work — usually another part of the system rather than a person — so make it the answer " +
+		"itself. Do not append a summary of what you did or how you did it. If the task states a " +
+		"shape for the answer, produce exactly that shape and nothing else.")
+	return b.String()
+}
+
+// gateModeFor evaluates one tool against the vector the way the loop will, using a probe
+// action carrying representative arguments.
+//
+// The arguments matter. demoDeriver classifies read_file/write_file by their `path` and
+// run_bash by its `command`, and an action with no derived effect matches no verb gate — so
+// probing with empty input would report every tool as ungated, quietly reintroducing the
+// exact disagreement this function exists to prevent.
+func gateModeFor(tool string, vec *process.Vector) process.Mode {
+	if vec == nil {
+		return process.Auto
+	}
+	tu := process.ToolUse{Name: tool, Input: map[string]any{"path": "probe", "command": "probe"}}
+	if tool == "call_agent" {
+		tu.CallAgent = &process.CallAgentRequest{Agent: "probe"}
+	}
+	demoDeriver{}.Derive(&tu)
+	return vec.Evaluate(tu).Mode
+}
 
 // Vector is the demo gate vector: read freely; ASK before writing a file, running
 // a shell command, or delegating to a sub-agent.
@@ -47,6 +115,17 @@ type Config struct {
 	Log      io.Writer             // local narration/exec log; nil → io.Discard
 	Content  process.ContentReader // read_file source; nil → local filesystem under Root
 
+	// Frame is the agent's system prompt; empty → defaultFrame, derived from the tools
+	// offered and the vector installed. Tools narrows the offered set; empty → all of
+	// them. Both come from the spawn (launch.Spec.frame / .tools), which is the point:
+	// see process.Launch.
+	Frame string
+	Tools []string
+	// Vector overrides the demo gate vector. It is here rather than applied by the caller
+	// afterwards because the frame is derived from it, and a vector installed after Build
+	// would be described by a frame written against the wrong one.
+	Vector *process.Vector
+
 	// LLM creds for the model client (resolved from verse config: file ← env). Any
 	// empty field falls back to its default (base URL, model) or the environment.
 	LLMBaseURL    string
@@ -66,10 +145,28 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 	if cfg.Log == nil {
 		cfg.Log = io.Discard
 	}
-	sup := process.NewSupervisor(Vector(), cfg.Resolver)
+	tools, err := selectTools(cfg.Tools)
+	if err != nil {
+		// A spawn that named a tool this build does not have gets a FAILED process, not a
+		// quietly smaller toolset. The charter asked for a specific set; running with a
+		// different one and saying nothing is how `grant: read-only` came to mean nothing.
+		return process.NewFailed(cfg.ID, cfg.Resolver, "launch tools: "+err.Error()), func() []ExecRecord { return nil }
+	}
+	vec := cfg.Vector
+	if vec == nil {
+		vec = Vector()
+	}
+	sup := process.NewSupervisor(vec, cfg.Resolver)
 	sup.SetDeriver(demoDeriver{})
 
-	driver := &llmDriver{client: cfg.Client, tools: toolDefs(), prompt: cfg.Task, log: cfg.Log}
+	// The frame is derived from THIS process's tools and vector when the spawn did not
+	// write one, so what the agent is told matches what it will actually meet.
+	frame := cfg.Frame
+	if frame == "" {
+		frame = defaultFrame(tools, vec)
+	}
+
+	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Task, log: cfg.Log}
 	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
 	p := process.NewProcess(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
@@ -79,7 +176,12 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 	p.SetSpawn(func(parent *process.Process, mode process.ChildMode, req *process.CallAgentRequest) (*process.Process, error) {
 		kid++
 		childID := fmt.Sprintf("%s.%s%s%d", parent.ID, req.Agent, process.GateSep, kid)
-		childDriver := &llmDriver{client: cfg.Client, tools: toolDefs(), prompt: req.Prompt, log: cfg.Log}
+		// A child inherits the parent's tool set and frame. Inheriting the tools is the
+		// conservative reading of delegation — a sub-agent should not be handed a
+		// capability its parent's spawn withheld — and inheriting the frame keeps the
+		// answer shape the charter asked for, since a child's result folds into the
+		// parent's conversation and thence into what $result reads.
+		childDriver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: req.Prompt, log: cfg.Log}
 		childExec := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
 		child, err := parent.NewChild(childID, mode, req, childDriver, childExec)
 		if err == nil {

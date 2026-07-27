@@ -153,6 +153,7 @@ type llmDriver struct {
 	idx          int
 	last         *toolCall
 	started      bool
+	frame        string // system prompt; empty is legal (a driver built without one)
 	prompt       string
 	log          io.Writer
 	emit         func(process.Frame) // publish narration onto the process read plane; nil = log only
@@ -192,9 +193,15 @@ func (d *llmDriver) Next(ctx context.Context, prev process.StepResult) (process.
 		}
 		if !d.started {
 			d.started = true
-			d.messages = append(d.messages,
-				chatMessage{Role: "system", Content: systemPrompt},
-				chatMessage{Role: "user", Content: d.prompt})
+			// The frame is per-driver, not a package constant: it is what the spawn (or,
+			// failing that, defaultFrame) says this agent's task is to be read in. An empty
+			// frame sends no system message at all rather than an empty one — a blank
+			// system turn is a claim about the agent's standing instructions, and "none"
+			// is the honest wire form of having none.
+			if d.frame != "" {
+				d.messages = append(d.messages, chatMessage{Role: "system", Content: d.frame})
+			}
+			d.messages = append(d.messages, chatMessage{Role: "user", Content: d.prompt})
 		}
 		if len(d.pendingSteer) > 0 { // re-prompt folds in here — pending drained, results already appended
 			d.messages = append(d.messages, d.pendingSteer...)
@@ -271,6 +278,55 @@ func resultContent(prev process.StepResult) string {
 	default:
 		return prev.Output
 	}
+}
+
+// selectTools returns the tool definitions to offer: all of them when only is empty, else
+// exactly the ones named — plus failTool, always.
+//
+// fail is not optional because the loop's contract depends on it. It is the only structural
+// way an agent can say "I could not": a driver that simply stops is read as SUCCESS by
+// everything downstream, so a spawn that withheld fail would turn every failure into a
+// completed process with an excuse in its result. A charter deref'ing $result is exactly
+// the caller that cannot afford that.
+//
+// An unknown name is an error rather than a skip. Quietly offering fewer tools than the
+// charter asked for is the failure mode this change exists to remove: a field that reads
+// back as written and does something else.
+func selectTools(only []string) ([]toolDef, error) {
+	all := toolDefs()
+	if len(only) == 0 {
+		return all, nil
+	}
+	byName := make(map[string]toolDef, len(all))
+	for _, td := range all {
+		byName[td.Function.Name] = td
+	}
+	var out []toolDef
+	seen := map[string]bool{}
+	for _, n := range only {
+		td, ok := byName[n]
+		if !ok {
+			return nil, fmt.Errorf("no such tool %q (have %s)", n, strings.Join(toolNames(all), ", "))
+		}
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, td)
+		}
+	}
+	if !seen[failTool] {
+		out = append(out, byName[failTool])
+	}
+	return out, nil
+}
+
+// toolNames lists what is on offer, in order — used by the frame, so the prompt cannot name
+// a tool the request does not actually carry.
+func toolNames(tds []toolDef) []string {
+	out := make([]string, 0, len(tds))
+	for _, td := range tds {
+		out = append(out, td.Function.Name)
+	}
+	return out
 }
 
 func toolDefs() []toolDef {

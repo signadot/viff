@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/process"
 )
 
 // process run (POST /processes) goes through the runner, not straight to the local
@@ -62,7 +63,7 @@ func TestProcessRunHonorsRunner(t *testing.T) {
 func TestBrokeredAttachStreams(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
-	h := b.Spawn("bp1", "t", "human", nil)
+	h := b.Spawn(process.Launch{ID: "bp1", Task: "t", Driver: "human"}, nil)
 	h.Steer("hello there", "op") // an EvSay lands on the merged log before attach
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -220,7 +221,7 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 func TestProcessInboxAndControlRouting(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
-	b.Spawn("bp1", "brokered task", "human", nil)
+	b.Spawn(process.Launch{ID: "bp1", Task: "brokered task", Driver: "human"}, nil)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	cl := ts.Client()
@@ -283,7 +284,7 @@ func TestUseBrokerPublishesDialBase(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090/")
 
-	h := b.Spawn("x", "task", "human", nil)
+	h := b.Spawn(process.Launch{ID: "x", Task: "task", Driver: "human"}, nil)
 	u := h.(interface{ DialURL() string }).DialURL()
 	if !strings.HasPrefix(u, "http://verse.test:9090/broker/") {
 		t.Fatalf("dial base = %q, want <face>/broker/<nonce>", u)
@@ -301,7 +302,7 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	srv := testServer(t)
 
 	b := broker.New()
-	b.Spawn("p1", "review PR #7", "human", nil) // verse side registers the process
+	b.Spawn(process.Launch{ID: "p1", Task: "review PR #7", Driver: "human"}, nil) // verse side registers the process
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
 	ts := httptest.NewServer(srv.BrokerHandler())

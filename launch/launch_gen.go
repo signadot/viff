@@ -34,6 +34,20 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["task"] = ir.FromString(string(s.Task))
 	}
 
+	// Field: Frame
+	if s.Frame != "" {
+		irMap["frame"] = ir.FromString(string(s.Frame))
+	}
+
+	// Field: Tools
+	if len(s.Tools) > 0 {
+		slice := make([]*ir.Node, len(s.Tools))
+		for i, v := range s.Tools {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["tools"] = ir.FromSlice(slice)
+	}
+
 	// Field: Vector
 	if s.Vector != "" {
 		irMap["vector"] = ir.FromString(string(s.Vector))
@@ -118,6 +132,27 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
 			}
 			s.Task = string(fieldNodeUnwrapped.String)
+		case "frame":
+			// Field: Frame
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "frame", fieldNodeUnwrapped.Type)
+			}
+			s.Frame = string(fieldNodeUnwrapped.String)
+		case "tools":
+			// Field: Tools
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Tools = slice
+			}
 		case "vector":
 			// Field: Vector
 			if fieldNodeUnwrapped.Type != ir.StringType {

@@ -100,6 +100,17 @@ func (s *Supervisor) SetResolver(r Resolver) { s.resolver.Store(&resolverBox{r})
 // SetDeriver swaps the capability-classification step.
 func (s *Supervisor) SetDeriver(d Deriver) { s.deriver = d }
 
+// Derive classifies an action into typed effects, in place — the step Check does first,
+// exposed because the loop must classify BEFORE it can check the action against the hard
+// envelope, and the envelope is refused rather than asked about (so it cannot ride inside
+// Check, which routes to a resolver). Deriving is idempotent — a deriver returns early
+// once an action carries effects — so the Check that follows does not repeat it.
+func (s *Supervisor) Derive(tu *ToolUse) {
+	if s.deriver != nil {
+		s.deriver.Derive(tu)
+	}
+}
+
 // SetOrigin stamps this supervisor's questions with a process id (attribution).
 func (s *Supervisor) SetOrigin(id string) { s.origin = id }
 

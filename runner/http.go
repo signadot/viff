@@ -32,14 +32,31 @@ type httpRunner struct {
 // Spawn POSTs /processes carrying the caller's id (so the remote uses it and it matches
 // the process:instance entity). content is not forwarded — a remote runtime resolves
 // files its own way; federating a remote read_file is a later concern.
-func (p *httpRunner) Spawn(id, task, driver string, _ process.ContentReader) process.Handle {
-	body, _ := codec.Marshal(map[string]string{"id": id, "task": task, "driver": driver}, codec.Tony)
+func (p *httpRunner) Spawn(l process.Launch, _ process.ContentReader) process.Handle {
+	req := map[string]any{"id": l.ID, "task": l.Task, "driver": l.Driver}
+	// Send only what the spawn actually said. An empty frame or an absent grant means "the
+	// remote's own default", and writing them out empty would be a claim rather than an
+	// absence — the grant especially, since the zero Grant permits nothing, so sending it
+	// unconditionally would refuse every action of every process nobody meant to bound.
+	if l.Frame != "" {
+		req["frame"] = l.Frame
+	}
+	if len(l.Tools) > 0 {
+		req["tools"] = l.Tools
+	}
+	if l.Vector != nil {
+		req["vector"] = l.Vector
+	}
+	if l.Grant != nil {
+		req["grant"] = l.Grant
+	}
+	body, _ := codec.Marshal(req, codec.Tony)
 	if resp, err := p.cl.Post(p.base+"/processes", codec.MediaType(codec.Tony), bytes.NewReader(body)); err != nil {
-		return failedHandle{err.Error()}
+		return process.FailedHandle(err.Error())
 	} else {
 		resp.Body.Close()
 	}
-	return &remoteHandle{base: p.base, id: id, cl: p.cl}
+	return &remoteHandle{base: p.base, id: l.ID, cl: p.cl}
 }
 
 // Attach re-attaches to an existing remote process (no spawn). remoteHandle.Subscribe
@@ -241,28 +258,7 @@ func (h *remoteHandle) post(path string, body any) {
 	}
 }
 
-// failedHandle stands in when a remote spawn could not be issued: it reports a terminal
-// status so the mirror doesn't strand the entity as "running".
-type failedHandle struct{ err string }
-
-func (f failedHandle) Subscribe() (<-chan process.Frame, func()) {
-	ch := make(chan process.Frame, 1)
-	ch <- process.Frame{Kind: process.EvStatus, Text: "cancelled", Err: f.err}
-	close(ch)
-	return ch, func() {}
-}
-func (failedHandle) Pause()                            {}
-func (failedHandle) Resume()                           {}
-func (failedHandle) Cancel(string)                     {}
-func (failedHandle) Steer(string, string)              {}
-func (failedHandle) SetVector(*process.Vector, string) {}
-func (failedHandle) Result() string                    { return "" }
-
-// Err is the reason the spawn could not be issued — the one thing this handle knows.
-func (h failedHandle) Err() string { return h.err }
-
 var (
 	_ process.Runner = (*httpRunner)(nil)
 	_ process.Handle = (*remoteHandle)(nil)
-	_ process.Handle = failedHandle{}
 )

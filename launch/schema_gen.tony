@@ -17,11 +17,13 @@ define:
   chain: .[string]
   driver: .[string]
   environment: .[string]
+  frame: .[string]
   grant: .[string]
   provider: .[nullable(verse-launch-provider)]
   resolver: .[string]
   subject: .[string]
   task: .[string]
+  tools: .[array(string)]
   vector: .[string]
 signature:
   name: verse-launch-spec

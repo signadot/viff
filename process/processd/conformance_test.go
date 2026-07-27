@@ -48,12 +48,12 @@ func (p *localProducer) Caps() processtest.Caps {
 	return processtest.Caps{FailureReason: true, CompletionAnswer: true}
 }
 
-func (p *localProducer) build(id, task, driver string, reg *process.Registry, _ process.ContentReader) *process.Process {
+func (p *localProducer) build(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
 	p.mu.Lock()
-	spec := p.specs[id]
+	spec := p.specs[l.ID]
 	p.mu.Unlock()
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
-	return process.NewProcess(id, sup, &conformanceDriver{spec: spec}, noopExec{})
+	return process.NewProcess(l.ID, sup, &conformanceDriver{spec: spec}, noopExec{})
 }
 
 func (p *localProducer) Start(t *testing.T, spec processtest.Spec) string {
@@ -63,7 +63,7 @@ func (p *localProducer) Start(t *testing.T, spec processtest.Spec) string {
 	p.mu.Lock()
 	p.specs[id] = spec
 	p.mu.Unlock()
-	p.d.Spawn(id, "a task", spec.Driver, nil)
+	p.d.Spawn(process.Launch{ID: id, Task: "a task", Driver: spec.Driver}, nil)
 	return id
 }
 
