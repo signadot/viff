@@ -62,6 +62,11 @@ type Store interface {
 	// WatchSubtree observes exactly one (system,kind) slice — or a whole system when kind
 	// is "" — rather than the whole store. It is what a scoped trigger watches, so that
 	// observation is precisely what the trigger matches and no root watch is held.
+	//
+	// Unlike Observe it is LEVEL-TRIGGERED at the open: it first replays what already
+	// stands in the slice as Set events, then streams changes. A rule is a statement about
+	// the world, and a trigger installed over a populated verse should act on the entities
+	// that already match it rather than waiting for each to be re-touched.
 	WatchSubtree(system, kind string) (<-chan Event, func(), error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.

@@ -62,3 +62,51 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 		}
 	}
 }
+
+// The same, on the PRODUCTION path: a per-trigger subtree watch (ObserveScoped), which is
+// what versed runs. The level state has to come from the same place there — the subtree
+// document, seeded by the watch's initial State — and a field written before the trigger was
+// installed is part of it.
+//
+// The binding is the point, not just the firing. An action resolves its $refs against the
+// payload that fired it, so a partial payload does not fail loudly: the trigger fires, the
+// reference resolves to nothing, and what lands (or what an agent is asked to do) says
+// "$note" where the note should be.
+func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+	if err := eng.AddTrigger(Trigger{
+		Name: "announce",
+		Condition: Condition{When: MatchWhen(Match{
+			"system": "demo", "kind": "task",
+			"fields": map[string]any{"stage": "ready"},
+		})},
+		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ref := entity.Ref{System: "demo", Kind: "task", ID: "t1"}
+	// Written BEFORE the watch opens — so only the seed can account for it.
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "queued", "note": "ship it"}.Payload())
+
+	eng.ObserveScoped(t.Context())
+
+	if _, err := store.Write(entity.Write{At: ref.At("stage"), Value: ir.FromString("ready")}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.After(5 * time.Second)
+	for {
+		got, _, _ := store.Get(ref)
+		echo := entity.ToObj(got.Payload)["echo"]
+		if echo == "ship it" {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("echo = %v, want %q; the firing saw %v", echo, "ship it", entity.ToObj(got.Payload))
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}

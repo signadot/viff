@@ -609,7 +609,32 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 // later ones are merges; either applies cleanly), so verse can't and shouldn't decode
 // it by hand — doing so silently dropped the first appearance. A burst of events is
 // applied then diffed once. unsub (or closing the store) stops it.
+//
+// The document is SEEDED by the watch's initial State, which is what makes an event's
+// payload the whole entity as of the commit rather than the writer's delta (see
+// docs/change-events.md, "Why To is level").
+//
+// THE SEED IS REPLAYED, not adopted silently: the opening snapshot is diffed against an
+// empty one, so everything already standing in the slice arrives as a Set. This is what
+// makes the watch level-triggered rather than merely edge-from-open — a rule is a statement
+// about the world, and the world includes what was written before anyone was listening. A
+// trigger installed over a populated verse acts on the backlog that already matches it,
+// instead of waiting for someone to re-touch each entity to announce a state it has held
+// all along. A RE-established watch (a force-end, a dropped connection) does not replay:
+// its State is diffed against the snapshot the previous one left, so it emits only the gap.
+//
+// The cost, which is the charter author's to carry: what fires is "matches now", so a
+// non-idempotent action behind a state a subject can genuinely re-enter fires again when
+// the engine restarts over a verse still in that state. The latch idiom answers it — match
+// a field the action advances (see docs/change-events.md) — and it is the same discipline a
+// re-entry already needs.
 func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), error) {
+	// The path as segments as well as a kpath: the two watch event shapes are rooted
+	// differently and the document has to hold one of them (see stateDoc).
+	segs := []string{s.root, system}
+	if kind != "" {
+		segs = append(segs, kind)
+	}
 	path := seg(s.root) + "." + seg(system)
 	if kind != "" {
 		path += "." + seg(kind)
@@ -627,8 +652,13 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		// each watch event: a State (initial or reconnect) replaces it; a Patch is
 		// applied with tony.Patch. We never interpret the patch's structure — logd owns
 		// the diff encoding (merge vs !replace vs !delete/!insert, field order, …) — we
-		// apply it opaquely and read entities out of the reconstructed object. prev is
-		// the last emitted snapshot.
+		// apply it opaquely and read entities out of the reconstructed object.
+		//
+		// prev is the last emitted snapshot, and it starts EMPTY — including under the
+		// opening State, so the first diff reports the whole slice and the backlog fires.
+		// Nothing here distinguishes the opening State from a reconnect's, and nothing has
+		// to: after the first diff prev holds the slice, so a reconnect's State diffs to
+		// the gap alone.
 		doc := ir.Null()
 		prev := map[Ref]Payload{}
 		send := func(e Event) bool {
@@ -642,7 +672,7 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		apply := func(ev *logdapi.WatchEvent) {
 			switch {
 			case ev.State != nil:
-				doc = ev.State // full current state of the subtree (root-rooted)
+				doc = stateDoc(ev.State, segs) // full current state of the subtree
 			case ev.Patch != nil:
 				if nd, err := tony.Patch(doc, ev.Patch); err == nil {
 					doc = nd
@@ -745,6 +775,31 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		}
 	}()
 	return out, cancel, nil
+}
+
+// stateDoc re-roots a State event's node under the watched path's segments
+// (root[, system[, kind]]), which is what makes it the same document a Patch event
+// applies to.
+//
+// THE TWO EVENT SHAPES DIFFER, and nothing in either one says so. A Patch is the commit's
+// delta rooted at the store root (verse.demo.pr.1: {…}) — logd forwards the writer's patch
+// verbatim, and a scoped watch's computed diff is re-rooted to match. A State carries the
+// value AT the watched path (the logd session extracts it; docd's composed read builds it
+// relative to the path), so its top-level fields are ids, not the root. Taking the State
+// verbatim leaves a document whose root segment is missing: every read of it navigates
+// root → system → kind and finds nothing, so the seed contributes no entities and the
+// level state degenerates to whatever has been patched since the watch opened — a deep
+// write of one field then surfaces as an entity of one field, and a trigger binds $note
+// from a payload with no note in it.
+func stateDoc(at *ir.Node, segs []string) *ir.Node {
+	node := at
+	if node == nil {
+		node = ir.Null()
+	}
+	for i := len(segs) - 1; i >= 0; i-- {
+		node = ir.FromMap(map[string]*ir.Node{segs[i]: node})
+	}
+	return node
 }
 
 // entitiesFromDoc reads the entity set out of a root-rooted subtree document (the doc
@@ -1019,11 +1074,10 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		if ev.Commit > s.rev {
 			s.rev = ev.Commit
 		}
-		// A State is rooted AT the watched path (its top-level fields are systems), while a
-		// delta is rooted at the DOCUMENT (its top-level field is the root). Wrap the State
-		// so both speak the same shape — otherwise the first delta grafts a second tree
-		// beside the first and every level read misses.
-		s.doc = ir.FromMap(map[string]*ir.Node{s.root: ev.State})
+		// A State is rooted AT the watched path while a delta is rooted at the DOCUMENT, so
+		// re-root it (stateDoc, which the subtree watch shares) — otherwise the first delta
+		// grafts a second tree beside the first and every level read misses.
+		s.doc = stateDoc(ev.State, []string{s.root})
 		s.mu.Unlock()
 	case ev.Patch != nil:
 		s.mu.Lock()

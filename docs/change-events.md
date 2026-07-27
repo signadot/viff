@@ -139,6 +139,17 @@ replay do, to level their payloads (`applyDelta`). The residual: those two still
 the reconstructed document, which is safe only because a baseline delta is always a verbatim
 merge, never a scope-computed `!replace`. A root watch over a scope would need the diff.
 
+**A State and a Patch are not rooted alike, and neither one says so.** A Patch is the
+commit's delta rooted at the document (`verse.demo.pr.1: {…}`); a State carries the value
+*at the watched path* (logd extracts it; docd's composed read builds it relative to the
+path). Taken verbatim, a State seeds a document whose root segment is missing — so every
+read of it navigates root → system → kind and finds nothing, the seed contributes no
+entities, and the level state silently degenerates to *whatever has been patched since the
+watch opened*. A deep write of one field then reports an entity of one field, and a trigger
+binds `$note` from a payload that has no note in it: not a crash, a task whose prompt reads
+literally `$note`. Both watchers re-root the State (`entity.stateDoc`) so the document has
+one shape.
+
 The diff makes the subtree watch edge-on-real-change: an entity whose reconstructed content
 is unchanged emits nothing, so a write that changes no content is *not a reactive edge*.
 That is what keeps a reactive re-write from looping: a trigger whose effect re-touches its own
@@ -147,6 +158,33 @@ spawned completes — writes the *same value*, so no edge fires and the trigger 
 No charter latch is required for that case; the substrate reacts to changes, not to writes. (The
 engine's per-trigger subtree watch is the production path — `versed` runs `ObserveScoped`; the
 root-watch `Start`/`Since` dispatch loop is dormant and does not yet diff.)
+
+## The seed is replayed: a subtree watch is level-triggered at the open
+
+The subtree watch diffs its opening snapshot against an *empty* one, so everything already
+standing in the slice arrives as a `Set` before the first live change. A trigger installed
+over a populated verse therefore acts on the backlog that already matches it. This is the
+level reading taken to its conclusion: if `To` is the entity rather than the delta because a
+rule is a statement about the world, then *which* entities a rule is about cannot depend on
+who happened to be listening when they were written. A task sitting at `stage: ready` since
+before the charter existed matches perfectly and — without the replay — fires nothing, until
+somebody re-writes it to announce a state it has held all along. That re-write is a
+workaround for the substrate, not work anyone wanted to do.
+
+A *re-established* watch does not replay: a reconnect's `State` is diffed against the
+snapshot the previous one left, so it emits only the gap. Replay is a property of the open,
+not of the `State` event.
+
+`Observe` (the root watch) stays "from now" and does not replay — it is the whole-verse
+doorbell behind the debug stream, and its consumer, the dispatch loop, starts from
+`store.Rev()` and reconciles with `Since`. Level-at-open belongs to the watch that *is* a
+trigger's observation.
+
+The cost is the charter author's to carry, and it is the cost re-entry already had: what
+fires is "matches now", so a non-idempotent action behind a state a subject can re-enter
+fires again when the engine restarts over a verse still in that state. The latch idiom
+answers it — match a field the action advances — and a re-write to the same value stays inert
+(see edge-on-real-change, below).
 
 ## One commit, many entities: the entity is the reactive grain
 

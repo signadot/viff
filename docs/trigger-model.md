@@ -91,6 +91,13 @@ Keep it small. The "when" is where complexity hides. Create and update are one `
 to fire "only the first time", match a state field your action then advances — a latch,
 rather than an edge (see [change events](change-events.md)).
 
+**Installing a trigger fires it on what already matches.** A trigger's observation replays
+the slice it watches when it opens, so the backlog standing in the verse when you install the
+charter is acted on immediately — you do not have to re-touch each entity to announce a state
+it has held all along. The same property means the latch above is what stops an action
+re-running when the engine restarts over a verse still in the matching state; see
+[change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
+
 A `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language a
 gate formula uses), at which point it is watched over the verse's evolution rather than
 matched against one change. That is not evaluated yet; see [Limits today](#limits-today).
