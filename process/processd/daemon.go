@@ -284,14 +284,19 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 		DecisionID string   `tony:"field=decisionId"`
 		Proceed    bool     `tony:"field=proceed"`
 		ChildMode  string   `tony:"field=childMode"`
+		By         string   `tony:"field=by"`  // who answered; empty = an unattributed caller
 		Say        []string `tony:"field=say"` // words to say on resolution (a gate that informs)
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	by := body.By
+	if by == "" {
+		by = "human:daemon"
+	}
 	res := process.Resolution{
-		Proceed: body.Proceed, By: "human:daemon",
+		Proceed: body.Proceed, By: by,
 		ChildMode: parseChildMode(body.ChildMode), Steer: body.Say,
 	}
 	if !h.reg.Answer(body.DecisionID, res) {

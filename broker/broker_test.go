@@ -262,24 +262,28 @@ func TestGateLoop(t *testing.T) {
 		t.Fatalf("snapshot pending = %+v, want gate/tool/reason as reported", got)
 	}
 
+	// This assertion mirrors versed's, which is a STRUCTURAL one guarded by `, ok` — a
+	// signature change on one side alone makes it silently report false and brokered
+	// resolution stops working with no compile error. Asserting it here is what turns that
+	// into a build failure.
 	rh := h.(interface {
-		Resolve(string, bool, string) bool
+		Resolve(decision string, proceed bool, say, by string) bool
 	})
 
 	// resolving an unknown decision id (typo, wrong process) matches no open gate and
 	// reports false — so verse can 404 rather than silently enqueue a phantom resolve.
-	if rh.Resolve("deploy-nope", true, "oops") {
+	if rh.Resolve("deploy-nope", true, "oops", "human:ops") {
 		t.Fatal("Resolve of an unknown decision reported success")
 	}
 
 	// governance resolves the real gate (verse-side); the worker's inbox gets a resolve item.
-	if !rh.Resolve("deploy-1", true, "ship it") {
+	if !rh.Resolve("deploy-1", true, "ship it", "human:ops") {
 		t.Fatal("Resolve of the open gate reported failure")
 	}
 	drainFor(t, ch, "decision") // verse observes the resolution; pending clears
 
 	// resolving it a second time now finds nothing pending (already answered) -> false.
-	if rh.Resolve("deploy-1", true, "again") {
+	if rh.Resolve("deploy-1", true, "again", "human:ops") {
 		t.Fatal("second Resolve of an answered decision reported success")
 	}
 
@@ -295,6 +299,11 @@ func TestGateLoop(t *testing.T) {
 	}
 	if got == nil || !got.Proceed {
 		t.Fatalf("worker inbox missing the approved resolve: %+v", inbox)
+	}
+	// The answerer reaches the worker too: a dialed-in executor unblocked by a resolve is
+	// entitled to know who unblocked it, and the identity is dropped nowhere along the way.
+	if got.By != "human:ops" {
+		t.Fatalf("resolve inbox item By = %q, want human:ops — the answerer must survive the relay", got.By)
 	}
 	if snap, _ := b.ProcessSnapshot("p"); len(snap.Pending) != 0 {
 		t.Fatalf("pending should clear after resolve: %+v", snap.Pending)

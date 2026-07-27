@@ -361,7 +361,7 @@ func (h *handle) SetVector(v *process.Vector, by string) {
 // genuine open gate: an unknown id (typo, wrong process) or one already answered finds
 // nothing in pending and returns false, so verse can surface a 404 rather than silently
 // enqueueing a resolve for a decision the worker will never recognize.
-func (h *handle) Resolve(decision string, proceed bool, say string) bool {
+func (h *handle) Resolve(decision string, proceed bool, say, by string) bool {
 	ps := h.b.get(h.id)
 	if ps == nil {
 		return false
@@ -372,8 +372,10 @@ func (h *handle) Resolve(decision string, proceed bool, say string) bool {
 	if !open {
 		return false
 	}
-	ps.enqueue(api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say})
-	ps.emit(process.Frame{Kind: process.EvDecision, ID: decision, Proceed: proceed})
+	// by rides both legs: the worker sees who answered on its inbox item, and the read
+	// plane records it on the decision — the same By a locally-resolved gate carries.
+	ps.enqueue(api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say, By: by})
+	ps.emit(process.Frame{Kind: process.EvDecision, ID: decision, Proceed: proceed, By: by})
 	return true
 }
 

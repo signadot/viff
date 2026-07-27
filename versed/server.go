@@ -816,7 +816,11 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	res := process.Resolution{Proceed: body.Approve, By: "human:cli", Steer: body.Say}
+	by := body.By
+	if by == "" {
+		by = "human:cli"
+	}
+	res := process.Resolution{Proceed: body.Approve, By: by, Steer: body.Say}
 	// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
 	// (trigger:…~N) whose owner isn't a process falls through to the registry.
 	owner := body.ID
@@ -1014,10 +1018,13 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 		return s.Procd.Resolve(procID, decisionID, res)
 	}
 	if h := s.runner.Attach(procID); h != nil {
+		// by is carried across this seam, not dropped: the local leg above takes the whole
+		// Resolution, so a brokered gate that lost the answerer would be attributed
+		// differently from an identical local one purely by where it happened to run.
 		if rh, ok := h.(interface {
-			Resolve(decision string, proceed bool, say string) bool
+			Resolve(decision string, proceed bool, say, by string) bool
 		}); ok {
-			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "))
+			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
 		}
 	}
 	return false
@@ -1137,7 +1144,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 	case "resolve":
 		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
 		rh, ok := h.(interface {
-			Resolve(decision string, proceed bool, say string) bool
+			Resolve(decision string, proceed bool, say, by string) bool
 		})
 		if !ok {
 			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
@@ -1152,7 +1159,11 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		_ = codec.Read(r, &body)
 		// The relay interface still carries a single steer string; a multi-part say is
 		// joined rather than dropped. Widening it is part of the broker/processd pass.
-		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n")) {
+		by := body.By
+		if by == "" {
+			by = "human:cli"
+		}
+		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n"), by) {
 			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 			return
 		}
