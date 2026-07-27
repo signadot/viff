@@ -114,6 +114,7 @@ type procState struct {
 	// id -> gate silently blanked it on every brokered gate.
 	pending  map[string]process.Frame
 	result   string
+	err      string         // terminal failure reason (Failed only); see latchTerminal
 	status   process.Status // latched terminal status
 	terminal bool
 }
@@ -156,8 +157,16 @@ func (ps *procState) enqueue(it api.InboxItem) {
 // latchTerminal records the terminal status once — first writer wins (terminal-once). It
 // returns true iff this call performed the latch; the caller emits the status event only on
 // a true return, so a losing writer (e.g. a late worker `completed` after a verse `cancel`)
-// leaves no second terminal on the log. An optional result is frozen alongside.
-func (ps *procState) latchTerminal(status process.Status, result string) bool {
+// leaves no second terminal on the log.
+//
+// The terminal text is filed by STATUS, not by which field it arrived in. `do complete <x>`
+// and `do fail <why>` both ride the report's `result`, so filing both as a result made a
+// failed brokered process report `result: "the migration is not reversible"` while an
+// identical local one reported `err: "exit status 3"` — the same question answered from a
+// different field depending on where the work ran. Worse downstream: the mirror runs
+// ParseResult over `result` looking for structured data, so a failure reason was being mined
+// for a payload it was never going to have.
+func (ps *procState) latchTerminal(status process.Status, text string) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.terminal {
@@ -165,17 +174,25 @@ func (ps *procState) latchTerminal(status process.Status, result string) bool {
 	}
 	ps.terminal = true
 	ps.status = status
-	if result != "" {
-		ps.result = result
+	if text != "" {
+		// A running result already reported stays a result — only the terminal text is
+		// filed by status, and a failure does not retroactively turn it into an error.
+		if status == process.Failed {
+			ps.err = text
+		} else {
+			ps.result = text
+		}
 	}
 	return true
 }
 
-// terminalState reports the frozen terminal status/result, if any.
-func (ps *procState) terminalState() (status process.Status, result string, ok bool) {
+// terminalState reports the frozen terminal status/result/err, if any. All three ride the
+// idempotent re-ack to a worker retrying a terminal report, so a lost ack does not cost the
+// worker the reason it just gave.
+func (ps *procState) terminalState() (status process.Status, result, errText string, ok bool) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	return ps.status, ps.result, ps.terminal
+	return ps.status, ps.result, ps.err, ps.terminal
 }
 
 // fenced reports whether epoch is NOT the current claim generation. A stale generation (a
@@ -215,7 +232,7 @@ func (ps *procState) snapshot() process.Instance {
 	}
 	return process.Instance{
 		ID: ps.id, Task: ps.task, Driver: ps.driver, Status: status,
-		Result: ps.result, Cursor: ps.logCur, Pending: pending,
+		Result: ps.result, Err: ps.err, Cursor: ps.logCur, Pending: pending,
 	}
 }
 
@@ -379,11 +396,20 @@ func (h *handle) Resolve(decision string, proceed bool, say, by string) bool {
 	return true
 }
 
-// Err is empty for a brokered process: the dial-in report carries a terminal status and a
-// result, and has no error channel — a worker says "failed", not why. Giving the report an
-// `err` field is a change to the worker protocol (and to `verse process do`), so it is left
-// for that change rather than faked from the result text here.
-func (h *handle) Err() string { return "" }
+// Err is the reason a brokered process failed. It needed no change to the worker protocol,
+// contrary to what stood here: the protocol already carries the reason, because
+// `verse process do fail <id> <why>` reports it on the terminal event's result. What was
+// missing was filing it as a failure rather than as an answer (see latchTerminal), which is
+// why this used to return "" and the mirror recorded a failure reason under `result`.
+func (h *handle) Err() string {
+	ps := h.b.get(h.id)
+	if ps == nil {
+		return ""
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.err
+}
 
 func (h *handle) Result() string {
 	ps := h.b.get(h.id)
@@ -419,7 +445,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, _, ok := ps.terminalState(); ok {
+	if _, _, _, ok := ps.terminalState(); ok {
 		http.Error(w, "process is terminal", http.StatusGone)
 		return
 	}
@@ -494,8 +520,11 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if status, result, ok := ps.terminalState(); ok {
-		writeOut(w, r, map[string]any{"rCursor": ps.cursorNow(), "status": status, "result": result, "terminal": true})
+	if status, result, errText, ok := ps.terminalState(); ok {
+		writeOut(w, r, map[string]any{
+			"rCursor": ps.cursorNow(), "status": status,
+			"result": result, "err": errText, "terminal": true,
+		})
 		return
 	}
 	var body struct {

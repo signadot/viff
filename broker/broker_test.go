@@ -452,3 +452,74 @@ func itoa(n int64) string {
 }
 
 var _ = process.EvSay
+
+// A failure reason is filed as a failure, not as an answer.
+//
+// `do complete <x>` and `do fail <why>` both ride the report's `result` field, so the broker
+// used to latch both into Result — and a failed brokered process reported
+// `result: "the migration is not reversible"` where an identical LOCAL one reported
+// `err: "exit status 3"`. Same question, different field, decided by where the work ran.
+// The mirror then ran ParseResult over that result hunting structured data in a sentence
+// that was never going to carry any.
+func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "migrate the schema", "human", nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"human:scott"}`, &claim)
+
+	const why = "the migration is not reversible"
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"`+why+`"}`, nil)
+
+	snap, ok := b.ProcessSnapshot("p")
+	if !ok {
+		t.Fatal("no snapshot")
+	}
+	if snap.Status != process.Failed {
+		t.Fatalf("status = %q, want failed", snap.Status)
+	}
+	if snap.Err != why {
+		t.Errorf("snapshot Err = %q, want the reason %q — a failure reason belongs in Err", snap.Err, why)
+	}
+	if snap.Result != "" {
+		t.Errorf("snapshot Result = %q, want empty — the reason is not the process's answer", snap.Result)
+	}
+	// The Handle agrees, since that is what the mirror projects onto the entity.
+	if h.Err() != why {
+		t.Errorf("Err() = %q, want %q", h.Err(), why)
+	}
+	if h.Result() != "" {
+		t.Errorf("Result() = %q, want empty", h.Result())
+	}
+}
+
+// A successful completion is unaffected: `do complete <answer>` is still a Result, and Err
+// stays empty — the routing keys off the status, not off the presence of text.
+func TestCompletionTextStaysAResult(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn("p", "review", "human", nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"human:scott"}`, &claim)
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"done"}],"result":"LGTM"}`, nil)
+
+	snap, _ := b.ProcessSnapshot("p")
+	if snap.Result != "LGTM" || snap.Err != "" {
+		t.Fatalf("snapshot = {Result:%q Err:%q}, want {LGTM, empty}", snap.Result, snap.Err)
+	}
+	if h.Result() != "LGTM" || h.Err() != "" {
+		t.Fatalf("handle = {Result:%q Err:%q}, want {LGTM \"\"}", h.Result(), h.Err())
+	}
+}
