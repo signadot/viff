@@ -59,6 +59,13 @@ func (e *Engine) AddTrigger(t Trigger) error {
 
 // RemoveTrigger removes a trigger by name. Reports whether it existed. Builds a fresh
 // slice, so a concurrent dispatch (which snapshots under the lock) is unaffected.
+//
+// It also STOPS THE TRIGGER'S OBSERVATION, which in subtree mode is not the charter's
+// business but a set of live goroutines: each trigger holds its own subtree watch, so a
+// removal that only edits the charter leaves those watchers running and the removed trigger
+// keeps firing — invisibly, since nothing lists it any more. Dropping it from the dispatch
+// snapshot is enough only for the root loop, where observation is shared and the charter
+// really is the whole answer.
 func (e *Engine) RemoveTrigger(name string) bool {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
@@ -74,6 +81,7 @@ func (e *Engine) RemoveTrigger(name string) bool {
 	e.triggers = nt
 	if found {
 		e.forgetShapes(name)
+		e.stopWatchers(name)
 	}
 	return found
 }

@@ -98,6 +98,12 @@ type Engine struct {
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
 	subtree bool
 	bgctx   context.Context
+	// watchers holds, per trigger name, the cancel that stops THAT trigger's subtree
+	// watchers. In subtree mode a trigger's observation is its own goroutines, so the
+	// charter alone no longer says what fires: removing a trigger has to stop them, or a
+	// removed trigger keeps firing off a watch nobody can see. Guarded by trigMu, with
+	// the charter it mirrors.
+	watchers map[string]func()
 
 	// shapes fingerprints each installed sequence by its carrier's chain, so a running
 	// sequence can tell that the charter moved under it. Recorded at install (see
@@ -110,11 +116,12 @@ type Engine struct {
 func New(store entity.Store, resolver process.Resolver) *Engine {
 	return &Engine{
 		store: store, resolver: resolver, logger: slog.Default(),
-		control: make(chan func(), 64),
-		stopped: make(chan struct{}),
-		live:    map[string]flowProc{},
-		goals:   map[string]*Goal{},
-		shapes:  map[string]string{},
+		control:  make(chan func(), 64),
+		stopped:  make(chan struct{}),
+		live:     map[string]flowProc{},
+		goals:    map[string]*Goal{},
+		shapes:   map[string]string{},
+		watchers: map[string]func(){},
 	}
 }
 
@@ -184,6 +191,12 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 // fires it on each matching change. Asking the formula which subtrees it reads — the same
 // question a Monitor asks — means a When over several subtrees is watched correctly for
 // free, and there is no "exactly one match" restriction to enforce.
+//
+// The watchers run under a context of this trigger's own, derived from bgctx, and its
+// cancel is registered under the trigger's name — so RemoveTrigger can stop exactly these
+// goroutines while every other trigger keeps observing. A partial failure (the second of
+// three subtrees refuses to watch) cancels the ones already opened rather than leaving a
+// half-installed trigger firing.
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
 	subtrees := t.Condition.When.Subtrees()
 	if len(subtrees) == 0 {
@@ -195,11 +208,12 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 				"a scoped engine opens no root watch, so there is nothing to watch without one", t.Name)
 		}
 	}
-	ctx := e.bgctx
+	ctx, cancel := context.WithCancel(e.bgctx)
 	for _, st := range subtrees {
 		system, kind := st[0], st[1]
 		ch, unsub, err := e.store.WatchSubtree(system, kind)
 		if err != nil {
+			cancel() // stop this trigger's already-opened watchers; none of it is installed
 			return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, system, kind, err)
 		}
 		go func() {
@@ -212,15 +226,65 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 					if !ok {
 						return
 					}
+					// A cancel and a pending event are both ready: select picks either, so
+					// removal has to be checked, not merely selected on, or a removed
+					// trigger can still fire once on an event that raced it.
+					if ctx.Err() != nil {
+						return
+					}
 					if !t.matchesEvent(ev) || e.overBudget() {
 						continue
 					}
-					go e.fire(ctx, t, ev) // off the watcher goroutine: a gate must not stall it
+					// Fire on bgctx, not this trigger's ctx: a firing already under way —
+					// a posed gate, a spawned process — belongs to the work, not to the
+					// charter entry, and removing the trigger stops FURTHER firings rather
+					// than cancelling one in flight.
+					go e.fire(e.bgctx, t, ev) // off the watcher goroutine: a gate must not stall it
 				}
 			}
 		}()
 	}
+	e.registerWatchers(t.Name, cancel)
 	return nil
+}
+
+// registerWatchers records the cancel that stops a trigger's subtree watchers. It cancels
+// any cancel it replaces — a re-installed name must not leave its predecessor's watchers
+// running — and, if the trigger is no longer in the charter, cancels the one just handed to
+// it: opening the watches is not instantaneous, so a RemoveTrigger can land in the middle
+// of it, and the removal has to win rather than lose to a late registration.
+func (e *Engine) registerWatchers(name string, cancel func()) {
+	e.trigMu.Lock()
+	old := e.watchers[name]
+	installed := false
+	for _, t := range e.triggers {
+		if t.Name == name {
+			installed = true
+			break
+		}
+	}
+	if installed {
+		e.watchers[name] = cancel
+	} else {
+		delete(e.watchers, name)
+	}
+	e.trigMu.Unlock()
+	if old != nil {
+		old()
+	}
+	if !installed {
+		cancel()
+	}
+}
+
+// stopWatchers stops a trigger's subtree watchers, if it had any (nothing in baseline
+// mode). Called with trigMu HELD: the cancel is non-blocking — the watcher goroutines
+// notice and unsubscribe on their own — so this cannot deadlock against the charter lock.
+func (e *Engine) stopWatchers(name string) {
+	if cancel := e.watchers[name]; cancel != nil {
+		delete(e.watchers, name)
+		cancel()
+	}
 }
 
 func (e *Engine) loop(ctx context.Context, ch <-chan entity.Event, unsub func()) {
