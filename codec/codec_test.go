@@ -60,8 +60,10 @@ func TestMarshalWireIsSingleLine(t *testing.T) {
 
 // A number read out of a decoded `any` must not depend on which decoder produced it.
 func TestAsInt64(t *testing.T) {
-	for _, v := range []any{int(2), int8(2), int16(2), int32(2), int64(2),
-		uint(2), uint8(2), uint16(2), uint32(2), uint64(2), float32(2), float64(2)} {
+	for _, v := range []any{
+		int(2), int8(2), int16(2), int32(2), int64(2),
+		uint(2), uint8(2), uint16(2), uint32(2), uint64(2), float32(2), float64(2),
+	} {
 		got, ok := AsInt64(v)
 		if !ok || got != 2 {
 			t.Errorf("AsInt64(%v (%T)) = (%d, %v), want (2, true)", v, v, got, ok)

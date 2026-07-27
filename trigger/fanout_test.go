@@ -437,8 +437,11 @@ func TestSubjectLabelNamesTheWholeFiring(t *testing.T) {
 		{"one", []entity.Ref{ref("1")}, "demo:pr:1"},
 		{"a few, all named", []entity.Ref{ref("1"), ref("2")}, "demo:pr:1, demo:pr:2"},
 		{"at the cutoff", []entity.Ref{ref("1"), ref("2"), ref("3")}, "demo:pr:1, demo:pr:2, demo:pr:3"},
-		{"beyond it, counted", []entity.Ref{ref("1"), ref("2"), ref("3"), ref("4"), ref("5")},
-			"demo:pr:1, demo:pr:2, demo:pr:3 (+2 more)"},
+		{
+			"beyond it, counted",
+			[]entity.Ref{ref("1"), ref("2"), ref("3"), ref("4"), ref("5")},
+			"demo:pr:1, demo:pr:2, demo:pr:3 (+2 more)",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

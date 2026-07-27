@@ -517,8 +517,10 @@ func (p *Process) record(tu ToolUse, res Resolution) {
 	line := fmt.Sprintf("[%s] %s → %s by %s (%s)",
 		tu.ID, tu.Name, res.Question.Mode, res.By, res.Question.Reason)
 	p.appendJournal(line)
-	p.emit(Frame{Kind: EvDecision, ID: res.Question.ID, Tool: tu.Name, Gate: res.Question.Gate,
-		Mode: res.Question.Mode.String(), Proceed: res.Proceed, By: res.By, Text: res.Question.Reason})
+	p.emit(Frame{
+		Kind: EvDecision, ID: res.Question.ID, Tool: tu.Name, Gate: res.Question.Gate,
+		Mode: res.Question.Mode.String(), Proceed: res.Proceed, By: res.By, Text: res.Question.Reason,
+	})
 }
 
 func (p *Process) nextID() string {

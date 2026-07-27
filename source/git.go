@@ -180,8 +180,7 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 		return err
 	}
 	for name, r := range refs {
-		desired[entity.Ref{System: GitSystem, Kind: "ref", ID: id + "/" + name}] =
-			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
+		desired[entity.Ref{System: GitSystem, Kind: "ref", ID: id + "/" + name}] = entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
@@ -195,8 +194,7 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 	// diverges under rebase/amend, and the object format (sha1→sha256) changes hashes. So a
 	// commit belongs to its repo; two repos never share one entity.
 	for _, c := range gitRecentCommits(ctx, dir, g.commitDepth) {
-		desired[entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha}] =
-			entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
+		desired[entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha}] = entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
 	}
 
 	g.converge(store, id, desired)

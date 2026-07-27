@@ -119,8 +119,10 @@ func TestCollectionsRefuseArguments(t *testing.T) {
 func TestGateAndProcessAnswerVerbs(t *testing.T) {
 	root := rootCmd()
 	for _, c := range []struct{ group, verb string }{
-		{"gate", "approve"}, {"gate", "deny"},
-		{"process", "approve"}, {"process", "deny"},
+		{"gate", "approve"},
+		{"gate", "deny"},
+		{"process", "approve"},
+		{"process", "deny"},
 	} {
 		group := root.FindSub(cli.DefaultContext(), c.group)
 		if group == nil {

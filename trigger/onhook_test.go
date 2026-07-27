@@ -214,22 +214,28 @@ func TestOnHookValidation(t *testing.T) {
 	eng := New(entity.NewMemStore(), process.AutoResolver{})
 	cond := Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})}
 
-	if err := eng.AddTrigger(Trigger{Name: "a", Condition: cond,
-		Action: Action{OnDone: &Action{Patch: entity.Obj{"x": "1"}.Payload()}}}); err == nil {
+	if err := eng.AddTrigger(Trigger{
+		Name: "a", Condition: cond,
+		Action: Action{OnDone: &Action{Patch: entity.Obj{"x": "1"}.Payload()}},
+	}); err == nil {
 		t.Fatal("expected error: onDone without a spawn")
 	}
-	if err := eng.AddTrigger(Trigger{Name: "b", Condition: cond,
+	if err := eng.AddTrigger(Trigger{
+		Name: "b", Condition: cond,
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "t"},
 			OnDone: &Action{OnFailed: &Action{Patch: entity.Obj{"x": "1"}.Payload()}}, // nested hook, no nested spawn
-		}}); err == nil {
+		},
+	}); err == nil {
 		t.Fatal("expected error: nested onFailed without a spawn")
 	}
-	if err := eng.AddTrigger(Trigger{Name: "c", Condition: cond,
+	if err := eng.AddTrigger(Trigger{
+		Name: "c", Condition: cond,
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "t"},
 			OnDone: &Action{Patch: entity.Obj{"x": "1"}.Payload()},
-		}}); err != nil {
+		},
+	}); err != nil {
 		t.Fatalf("valid onDone rejected: %v", err)
 	}
 }

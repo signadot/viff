@@ -2,10 +2,11 @@ package trigger
 
 import (
 	"context"
-	"github.com/signadot/verse/process"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/process"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -39,8 +40,10 @@ func matchErr(t *testing.T, src string, f codec.Format) string {
 // which syntax it was typed in.
 func TestMatchOperatorSpellingsAgree(t *testing.T) {
 	cases := []struct{ tony, json string }{
-		{`{system: demo, kind: pr, id: !glob "hotfix-*"}`,
-			`{"system":"demo","kind":"pr","id":{"glob":"hotfix-*"}}`},
+		{
+			`{system: demo, kind: pr, id: !glob "hotfix-*"}`,
+			`{"system":"demo","kind":"pr","id":{"glob":"hotfix-*"}}`,
+		},
 		{`{id: !not "1"}`, `{"id":{"not":"1"}}`},
 		{`{op: !or [set, delete]}`, `{"op":{"or":["set","delete"]}}`},
 		// Nested: the sugar is rewritten throughout the operand, not just at the top.
@@ -232,10 +235,16 @@ func TestMatchFieldsAcceptsOperators(t *testing.T) {
 		match entity.Obj
 		miss  entity.Obj
 	}{
-		{`{system: demo, fields: {stage: !or [open, merged]}}`,
-			entity.Obj{"stage": "merged"}, entity.Obj{"stage": "closed"}},
-		{`{fields: {stage: !glob "op*"}}`,
-			entity.Obj{"stage": "open"}, entity.Obj{"stage": "closed"}},
+		{
+			`{system: demo, fields: {stage: !or [open, merged]}}`,
+			entity.Obj{"stage": "merged"},
+			entity.Obj{"stage": "closed"},
+		},
+		{
+			`{fields: {stage: !glob "op*"}}`,
+			entity.Obj{"stage": "open"},
+			entity.Obj{"stage": "closed"},
+		},
 		{`{entity: {stage: !or [open, merged]}}`, // the alias too
 			entity.Obj{"stage": "open"}, entity.Obj{"stage": "closed"}},
 	}
@@ -278,8 +287,10 @@ func TestMatchFieldsStillPlain(t *testing.T) {
 // the scalar, the list and the operator-over-one that a payload may now actually be.
 func TestMatchPayloadRootPredicate(t *testing.T) {
 	ev := func(v any) entity.Event {
-		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "count", ID: "1"},
-			Op: entity.Set, To: entity.Val(v)}
+		return entity.Event{
+			Ref: entity.Ref{System: "demo", Kind: "count", ID: "1"},
+			Op:  entity.Set, To: entity.Val(v),
+		}
 	}
 	cases := []struct {
 		src   string
@@ -384,8 +395,10 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 // pins that a charter can actually say them.
 func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 	ev := func(p entity.Obj) entity.Event {
-		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
-			Op: entity.Set, To: p.Payload()}
+		return entity.Event{
+			Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+			Op:  entity.Set, To: p.Payload(),
+		}
 	}
 	var (
 		absent  = entity.Obj{"other": 1}

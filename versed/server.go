@@ -1256,8 +1256,10 @@ func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
 	if by == "" {
 		by = "human:cli"
 	}
-	writeOut(w, r, http.StatusOK, api.Steered{Goal: body.Name, Verb: "say",
-		Affected: s.Eng.SteerGoal(body.Name, body.Text, by)})
+	writeOut(w, r, http.StatusOK, api.Steered{
+		Goal: body.Name, Verb: "say",
+		Affected: s.Eng.SteerGoal(body.Name, body.Text, by),
+	})
 }
 
 func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) api.Steered) {

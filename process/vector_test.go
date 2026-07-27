@@ -38,8 +38,10 @@ func TestVectorToolsAndFiles(t *testing.T) {
 		t.Fatalf("want AUTO, got %v", d.Mode)
 	}
 	// Bash on a release branch -> PARK (most restrictive wins)
-	tu = derive(ToolUse{Name: "Bash", Input: map[string]any{"command": "kubectl apply -f x.yaml"},
-		Repo: &RepoContext{Branch: "release/1.2"}})
+	tu = derive(ToolUse{
+		Name: "Bash", Input: map[string]any{"command": "kubectl apply -f x.yaml"},
+		Repo: &RepoContext{Branch: "release/1.2"},
+	})
 	if d := v.Evaluate(tu); d.Mode != Park || d.Gate != "shell-on-release" {
 		t.Fatalf("want PARK/shell-on-release, got %v/%q", d.Mode, d.Gate)
 	}

@@ -325,6 +325,7 @@ func (h *handle) Cancel(reason string) {
 		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Cancelled)})
 	}
 }
+
 func (h *handle) Steer(instr, by string) {
 	h.enqueue(api.InboxItem{Kind: "say", Text: instr, By: by}) // relay to the worker
 	if ps := h.b.get(h.id); ps != nil {                        // operator-authored: verse observes it too

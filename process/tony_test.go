@@ -23,8 +23,11 @@ func TestTonyRoundTrip(t *testing.T) {
 			Pending: []PendingGate{{ID: "d1", Gate: "shell", Mode: "ask", Reason: "why"}},
 		}, func() any { return &Instance{} }},
 
-		{"instance-minimal", Instance{ID: "run-2", Status: Done},
-			func() any { return &Instance{} }},
+		{
+			"instance-minimal",
+			Instance{ID: "run-2", Status: Done},
+			func() any { return &Instance{} },
+		},
 
 		{"frame", Frame{
 			Kind: EvDecision, Process: "run-1", Cursor: 3, ID: "d1",

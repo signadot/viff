@@ -171,9 +171,11 @@ func goalSteerCmd(name, synopsis, path string) *cli.Command {
 func goalsPauseCmd() *cli.Command {
 	return goalSteerCmd("pause", "pause a goal's in-flight work: pause <name>", "/goal/pause")
 }
+
 func goalsResumeCmd() *cli.Command {
 	return goalSteerCmd("resume", "resume a paused goal: resume <name>", "/goal/resume")
 }
+
 func goalsCancelCmd() *cli.Command {
 	return goalSteerCmd("cancel", "cancel a goal's in-flight work: cancel <name>", "/goal/cancel")
 }

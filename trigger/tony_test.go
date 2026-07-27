@@ -108,41 +108,67 @@ func TestCharterGrammarSpellings(t *testing.T) {
 		fmt  codec.Format
 		want func(*Formula) bool
 	}{
-		{"tony/quorum-threshold", `!quorum 2`, codec.Tony,
-			func(f *Formula) bool { return f.Req != nil && f.Req.Kind == ReqQuorum && f.Req.N == 2 }},
-		{"tony/quorum-object", `!quorum {n: 2, choice: reject}`, codec.Tony,
-			func(f *Formula) bool { return f.Req.N == 2 && f.Req.Choice == "reject" }},
-		{"tony/fact", `!fact motion:deadline`, codec.Tony,
+		{
+			"tony/quorum-threshold", `!quorum 2`, codec.Tony,
+			func(f *Formula) bool { return f.Req != nil && f.Req.Kind == ReqQuorum && f.Req.N == 2 },
+		},
+		{
+			"tony/quorum-object", `!quorum {n: 2, choice: reject}`, codec.Tony,
+			func(f *Formula) bool { return f.Req.N == 2 && f.Req.Choice == "reject" },
+		},
+		{
+			"tony/fact", `!fact motion:deadline`, codec.Tony,
 			func(f *Formula) bool {
 				return f.Req.Kind == ReqFact && f.Req.Facts.System() == "motion" && f.Req.Facts.Kind() == "deadline"
-			}},
-		{"tony/deadline", `!deadline "4h"`, codec.Tony,
-			func(f *Formula) bool { return f.Req.Kind == ReqDeadline && f.Req.Within == "4h" }},
-		{"tony/until", `!until [!quorum 2, !deadline "4h"]`, codec.Tony,
+			},
+		},
+		{
+			"tony/deadline", `!deadline "4h"`, codec.Tony,
+			func(f *Formula) bool { return f.Req.Kind == ReqDeadline && f.Req.Within == "4h" },
+		},
+		{
+			"tony/until", `!until [!quorum 2, !deadline "4h"]`, codec.Tony,
 			func(f *Formula) bool {
 				return f.Op == OpUntil && len(f.Args) == 2 &&
 					f.Args[0].Req.Kind == ReqQuorum && f.Args[1].Req.Kind == ReqDeadline
-			}},
-		{"tony/address-sugar", `demo:pr:*`, codec.Tony,
+			},
+		},
+		{
+			"tony/address-sugar", `demo:pr:*`, codec.Tony,
 			func(f *Formula) bool {
 				return f.IsMatchAtom() && f.Req.Facts.System() == "demo" && f.Req.Facts.Kind() == "pr"
-			}},
-		{"tony/bare-match", `{system: demo, kind: pr}`, codec.Tony,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.Kind() == "pr" }},
-		{"tony/empty-match", `{}`, codec.Tony,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.IsEmpty() }},
-		{"tony/explicit-match-tag", `!match {system: demo}`, codec.Tony,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" }},
+			},
+		},
+		{
+			"tony/bare-match", `{system: demo, kind: pr}`, codec.Tony,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.Kind() == "pr" },
+		},
+		{
+			"tony/empty-match", `{}`, codec.Tony,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.IsEmpty() },
+		},
+		{
+			"tony/explicit-match-tag", `!match {system: demo}`, codec.Tony,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" },
+		},
 
 		// The JSON spelling, decoded by the same code path.
-		{"json/tag-keyed-quorum", `{"quorum": 2}`, codec.JSON,
-			func(f *Formula) bool { return f.Req.Kind == ReqQuorum && f.Req.N == 2 }},
-		{"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "motion:deadline"}]}`, codec.JSON,
-			func(f *Formula) bool { return f.Op == OpUntil && len(f.Args) == 2 }},
-		{"json/verbose-node", `{"op": "atom", "req": {"kind": "quorum", "n": 2}}`, codec.JSON,
-			func(f *Formula) bool { return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.N == 2 }},
-		{"json/address-sugar", `"demo:pr:*"`, codec.JSON,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" }},
+		{
+			"json/tag-keyed-quorum", `{"quorum": 2}`, codec.JSON,
+			func(f *Formula) bool { return f.Req.Kind == ReqQuorum && f.Req.N == 2 },
+		},
+		{
+			"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "motion:deadline"}]}`, codec.JSON,
+			func(f *Formula) bool { return f.Op == OpUntil && len(f.Args) == 2 },
+		},
+		{
+			"json/verbose-node", `{"op": "atom", "req": {"kind": "quorum", "n": 2}}`, codec.JSON,
+			func(f *Formula) bool { return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.N == 2 },
+		},
+		{
+			"json/address-sugar", `"demo:pr:*"`, codec.JSON,
+			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" },
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
