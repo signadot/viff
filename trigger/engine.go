@@ -764,6 +764,10 @@ func (e *Engine) commitMotionAtomic(ref entity.Ref, outcome string, witness []en
 
 // closedMotion builds the closed channel payload from the open one, preserving its open
 // fields (need/gate/subject) and recording the outcome, tally, and witness.
+//
+// AsData because it is built from what was READ and written straight back (the commit is one
+// conditional write, not a Modify — see commitMotionAtomic), and a write is a patch: whatever
+// the channel carries has to be stored again rather than executed.
 func closedMotion(cur entity.Payload, outcome string, witness []entity.Ref) entity.Payload {
 	p := clonePayload(cur)
 	p["status"] = "closed"
@@ -772,7 +776,7 @@ func closedMotion(cur entity.Payload, outcome string, witness []entity.Ref) enti
 	if ids := refIDs(witness); len(ids) > 0 {
 		p["witness"] = ids
 	}
-	return p.Payload()
+	return entity.AsData(p.Payload())
 }
 
 // witnessPreconditions builds the revoke-guard precondition for an atomic commit: it is
@@ -813,10 +817,22 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Requ
 // clonePayload reads p back as a mutable object builder (nil, or a non-object payload →
 // empty), so a Modify can extend the current value without mutating the store's copy. The
 // caller converts once, with .Payload(), when it returns.
+//
+// Field by field as NODES, not through entity.ToObj: a map[string]any has nowhere to put a
+// tag, so reading a payload back through Go values silently rewrites what it carries — a
+// goal's stored definition losing `!glob "hotfix-*"` down to the string, and its
+// `tmp: !delete null` down to a null, which the write would then apply as a tombstone. A
+// record that holds a document has to survive being extended by one field. Each node is
+// cloned because the builder's result is parented into a fresh document, and the copy it came
+// from belongs to the store.
+//
+// What is built from one of these is data on its way back in. Through Modify that is taken
+// care of (it escapes what it writes); a builder written STRAIGHT back has to say so itself,
+// with entity.AsData — closedMotion and commitGoal are the two that do.
 func clonePayload(p entity.Payload) entity.Obj {
 	out := entity.Obj{}
-	for k, v := range entity.ToObj(p) {
-		out[k] = v
+	for k, v := range entity.Fields(p) {
+		out[k] = v.Clone()
 	}
 	return out
 }

@@ -100,6 +100,13 @@ func (r Require) path(of Write) Path {
 // answer is the whole payload — so a field fn drops is dropped, which is what a
 // read-modify-write means.
 //
+// Everything here is DATA, on both sides: fn is handed what stands in the store and answers
+// with what should stand there, so neither the value nor the expect-unchanged precondition
+// may interpret a tag the entity happens to hold as data (a charter is full of them, and a
+// record carrying one used to delete itself the moment anything else about it changed).
+// AsData escapes those and nothing else — the explicit nulls withRemovals adds are how a
+// dropped field is dropped, and they still have to execute.
+//
 // It gives up when ctx is done, returning that error, and does not swallow a store failure.
 func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload) error {
 	for {
@@ -113,11 +120,11 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 		when := Require{Pattern: Absent()} // expect-absent: this is a create
 		next := fn(nil)
 		if exists {
-			when = Require{Pattern: cur.Payload} // expect-unchanged: this is an update
+			when = Require{Pattern: AsData(cur.Payload)} // expect-unchanged: this is an update
 			next = fn(cur.Payload)
 			next = withRemovals(next, cur.Payload)
 		}
-		ok, err := s.Write(Write{At: ref.At(), Value: next, When: []Require{when}})
+		ok, err := s.Write(Write{At: ref.At(), Value: AsData(next), When: []Require{when}})
 		if err != nil {
 			return err
 		}

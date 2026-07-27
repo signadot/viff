@@ -267,8 +267,25 @@ func payloadToNode(p Payload) *ir.Node {
 // `labels.urgent` leaves a null AT that key, and a reader shown `labels: {urgent: null}`
 // would say the label is still there, holding nothing. Arrays are left alone — a null in a
 // list is a position, not an absence.
+//
+// A TAGGED null is not a tombstone but a value, and is kept. Absence is spelled by the store
+// and by nothing else: every null verse writes to remove something — a nil Value, the
+// explicit nulls of a whole-value replace — is written bare, and so is logd's own. A null
+// wearing a tag got there as data, `patch: {tmp: !delete null}` in a stored rule being the
+// case this exists for, and dropping it takes an operation out of a charter that reads back
+// otherwise intact. (A null a writer meant as data and wrote bare is still indistinguishable
+// from a tombstone; that was true before and is unchanged.)
+//
+// An object is rebuilt without its dead fields, and KEEPS ITS OWN TAG. Rebuilding used to
+// drop it, which is invisible for the record-shaped payloads verse writes — they are untagged
+// objects — and total for one that holds a document: a goal whose `doneWhen: !fact {facts: …}`
+// went into the store intact came back an untagged object, and read as a match with an
+// unknown `facts` key. Field order is not preserved (ir.FromMap sorts), on purpose: a payload
+// is compared against the last one to decide whether an entity changed, and a canonical order
+// is what keeps that answer about the value rather than about the order two reads happened to
+// return.
 func nodeToPayload(node *ir.Node) Payload {
-	if node == nil || node.Type == ir.NullType {
+	if node == nil || (node.Type == ir.NullType && node.Tag == "") {
 		return nil
 	}
 	if node.Type != ir.ObjectType {
@@ -280,7 +297,7 @@ func nodeToPayload(node *ir.Node) Payload {
 			live[k] = p
 		}
 	}
-	return ir.FromMap(live)
+	return ir.FromMap(live).WithTag(node.Tag)
 }
 
 // addRemovedNulls makes a Patch replace rather than merge: for every field present
