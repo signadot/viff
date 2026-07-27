@@ -827,6 +827,12 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 	if i := strings.Index(owner, process.GateSep); i >= 0 {
 		owner = owner[:i]
 	}
+	if !s.isProcess(owner) {
+		// The id named no process — either an engine gate, or an executor-raised one whose
+		// id carries no owner by construction. Ask the snapshots which process holds it;
+		// an engine gate is held by none and still falls through to the registry below.
+		owner = s.processHoldingGate(body.ID)
+	}
 	if s.isProcess(owner) {
 		if !s.resolveProcessDecision(owner, body.ID, res) {
 			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
@@ -1009,6 +1015,42 @@ func (s *Server) isProcess(id string) bool {
 		return ok
 	}
 	return false
+}
+
+// processHoldingGate finds which process has decisionID open, for a gate id that does not
+// carry its owner.
+//
+// A gate the RUNTIME raises is <process-id>~dN, so its owner is readable off the id. One an
+// EXECUTOR raises (`process do gate`) is <name>-<hex>, deliberately free of GateSep —
+// shortID avoids it so the id survives a shell and a URL intact — with the consequence that
+// splitting on GateSep recovers nothing and `verse gate approve` answered 404 on a gate
+// `verse gates` was listing one line above, `process:` and all. The routing information was
+// never missing; it was in the snapshot rather than in the id. This reads it from there.
+//
+// Unscoped, like isProcess beside it: a resolve is addressed by a unique decision id, not
+// discovered by listing, so it does not go through processSnapshots' scope filter.
+func (s *Server) processHoldingGate(decisionID string) string {
+	holds := func(inst process.Instance) bool {
+		for _, pg := range inst.Pending {
+			if pg.ID == decisionID {
+				return true
+			}
+		}
+		return false
+	}
+	for _, inst := range s.Procd.Snapshots() {
+		if holds(inst) {
+			return inst.ID
+		}
+	}
+	if l, ok := s.runner.(processLister); ok {
+		for _, inst := range l.ListProcesses() {
+			if holds(inst) {
+				return inst.ID
+			}
+		}
+	}
+	return ""
 }
 
 // resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the

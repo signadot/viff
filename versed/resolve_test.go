@@ -127,6 +127,71 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	}
 }
 
+// `verse gate approve` must answer an EXECUTOR-raised gate, whose id carries no owner.
+//
+// The unified `verse gates` lists engine and process gates together and tells the reader to
+// "answer one with `verse gate`". For a gate raised by `process do gate` that was false: the
+// id is <name>-<hex>, deliberately free of GateSep (shortID keeps it clear of anything a
+// shell or URL reads as punctuation), so splitting on GateSep recovered no owner, no process
+// matched, and the answer fell through to the engine registry — which has never heard of it.
+// 404, on a gate listed one line above with its `process:` field populated.
+func TestGateResolveRoutesAnOwnerlessProcessGate(t *testing.T) {
+	srv := testServer(t)
+	b := broker.New()
+	b.Spawn("p1", "review the auth change", "human", nil)
+	srv.SetRunner(b)
+	nonce := srv.HostBroker("", b.WorkerHandler())
+
+	ops := httptest.NewServer(srv.Handler())
+	defer ops.Close()
+	work := httptest.NewServer(srv.BrokerHandler())
+	defer work.Close()
+
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/claim", map[string]any{"identity": "human:scott"})
+	var cl struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	decodeResp(t, claim, &cl)
+	claim.Body.Close()
+
+	// The shape `process do gate` mints: a gate name and a hex suffix, no GateSep anywhere.
+	const decision = "deploy-approval-dbc7b607"
+	if strings.Contains(decision, process.GateSep) {
+		t.Fatalf("decision %q carries GateSep; this test is about ids that do NOT", decision)
+	}
+	rep := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/report", map[string]any{
+		"epoch":  cl.Epoch,
+		"events": []process.Frame{{Kind: process.EvPending, ID: decision, Gate: "deploy-approval"}},
+	})
+	rep.Body.Close()
+
+	// Answer it the way an operator reading `verse gates` does — by id alone, with no
+	// process id to help, through the same route `verse gate approve` posts to.
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("gate resolve = %s, want 204 — an ownerless process gate must still route", resp.Status)
+	}
+
+	// It reached the worker, carrying who answered.
+	inbox, ok := b.ProcessInbox("p1")
+	if !ok {
+		t.Fatal("no inbox")
+	}
+	var got *api.InboxItem
+	for i, it := range inbox {
+		if it.Kind == "resolve" && it.Decision == decision {
+			got = &inbox[i]
+		}
+	}
+	if got == nil || !got.Proceed {
+		t.Fatalf("worker inbox missing the approved resolve: %+v", inbox)
+	}
+	if got.By != "human:alice" {
+		t.Errorf("resolve By = %q, want human:alice", got.By)
+	}
+}
+
 func waitPending(t *testing.T, srv *Server, id string) {
 	t.Helper()
 	for range 100 {
