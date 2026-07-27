@@ -936,6 +936,20 @@ type processLister interface {
 	ProcessSnapshot(id string) (process.Instance, bool)
 }
 
+// gateResolver is a Handle that can answer a gate its worker raised, by relaying the
+// outcome to that worker. It is optional on Handle because only a runner with a worker leg
+// has one to relay to — a local process resolves through its own registry instead.
+//
+// It is NAMED, and that is the point. It was written inline at both of its call sites, and a
+// structural assertion is checked with `, ok`: widening the signature on one side alone does
+// not fail to compile, it makes the assertion silently report false and gate resolution stop
+// working. Which is exactly what happened — adding `by` updated one site, and the other kept
+// asserting the three-argument shape and started answering 501. One declaration means one
+// thing to change, and every implementer breaks loudly when it does.
+type gateResolver interface {
+	Resolve(decision string, proceed bool, say, by string) bool
+}
+
 // spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
 // subject/flow, but it goes through the SAME seam: host it via the runner (so a run
 // honors --runner/--broker, not just trigger spawns) and mirror it into the store (so a run
@@ -1078,9 +1092,7 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 		// by is carried across this seam, not dropped: the local leg above takes the whole
 		// Resolution, so a brokered gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.
-		if rh, ok := h.(interface {
-			Resolve(decision string, proceed bool, say, by string) bool
-		}); ok {
+		if rh, ok := h.(gateResolver); ok {
 			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
 		}
 	}
@@ -1200,9 +1212,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		h.SetVector(body.Vector, body.By)
 	case "resolve":
 		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
-		rh, ok := h.(interface {
-			Resolve(decision string, proceed bool, say, by string) bool
-		})
+		rh, ok := h.(gateResolver)
 		if !ok {
 			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
 			return
