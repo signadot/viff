@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -397,6 +398,31 @@ func (s *Server) Start(ctx context.Context) {
 	// and its cursor/steering control plane remain in the engine, dormant, for
 	// reintroduction when engine-wide steering is wired.
 	s.Eng.ObserveScoped(ctx)
+
+	// The durable charter: the rules standing in the verse are reinstalled, so the program a
+	// restart comes back to is the one it went down with. Each opens its own watch as it
+	// installs and REPLAYS what already matches it — which is why this follows reconcile: a
+	// restored trigger should see a process entity that tells the truth about the restart
+	// rather than the `running` a dead runtime left behind.
+	//
+	// And why it follows ObserveScoped, which is what binds ctx to the engine: a goal
+	// restored before that would run its monitor under a context nothing cancels, so it
+	// would outlive the shutdown that was supposed to stop it.
+	//
+	// A rule that could not be restored is reported and skipped, so one bad entity does not
+	// cost the rest of the charter. Scoped charters are not restored here: a scope's engine
+	// is created on demand (verse connect) and a scoped store reads baseline layered
+	// underneath, so restoring one means enumerating scopes and reading only the scope's own
+	// layer — the same gap scoped resume has (see reconcileClaims).
+	if err := s.Eng.LoadCharter(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
+	}
+	// Then the goals still being pursued, each reinstalling the charter it owns. After the
+	// standalone charter, deliberately: the two share one name space, so a collision leaves
+	// the rule somebody installed directly holding its name.
+	if err := s.Eng.LoadGoals(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: goals: %v\n", err)
+	}
 }
 
 // Handler returns the HTTP surface. Observation (read plane) and control are
@@ -1260,7 +1286,14 @@ func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
 		eng = s.scopeEngine(scope)
 	}
 	if err := eng.AddTrigger(d); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		// A rule the store would not record is not a bad request: the trigger is fine and
+		// the client cannot fix it by sending a better one. Saying 400 there sends someone
+		// to debug a correct charter while the verse is the thing that is unwell.
+		code := http.StatusBadRequest
+		if errors.Is(err, trigger.ErrCharter) {
+			code = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -1320,7 +1353,11 @@ func (s *Server) addGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Eng.AddGoal(d); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		code := http.StatusBadRequest // a goal the store would not record is not a bad request
+		if errors.Is(err, trigger.ErrCharter) {
+			code = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)

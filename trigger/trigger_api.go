@@ -11,10 +11,20 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// AddTrigger installs a trigger into the charter. It validates each gate's mode and
-// rejects a duplicate name. The engine interprets the trigger directly — there is no
-// separate compiled form.
-func (e *Engine) AddTrigger(t Trigger) error {
+// AddTrigger installs a trigger into the charter — durably: the rule is written into the
+// verse as its trigger:rule:<name> entity, so it is still there after a restart (see
+// charter.go). It validates each gate's mode and rejects a duplicate name. The engine
+// interprets the trigger directly — there is no separate compiled form.
+func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true) }
+
+// addTrigger installs a trigger, writing it to the durable charter when durable.
+//
+// Two callers pass false, for the same reason: the rule is already written down elsewhere.
+// LoadCharter's rules came out of the store. A GOAL's owned triggers are carried in the
+// goal's own record and reinstalled with it (LoadGoals), so writing them out again would
+// give one rule two owners and two lifetimes — the standalone copy would survive the reap
+// that ends the goal, and keep firing for something nobody is pursuing any more.
+func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := validTriggerName(t.Name); err != nil {
 		return err
 	}
@@ -48,6 +58,17 @@ func (e *Engine) AddTrigger(t Trigger) error {
 	}
 	e.triggers = append(e.triggers, t)
 	e.trigMu.Unlock()
+	// Persist before observing: in subtree mode the watch is what makes the trigger fire,
+	// so a rule that cannot be made durable never starts. (In baseline mode the dispatch
+	// loop already reads the charter, so a firing can race a failed persist and be rolled
+	// back after it — the same way removing a trigger stops FURTHER firings rather than
+	// cancelling one in flight.)
+	if durable {
+		if err := e.persist(t); err != nil {
+			e.RemoveTrigger(t.Name) // an installed rule the next restart would lose is worse than none
+			return err
+		}
+	}
 	e.recordShapes(t)
 	// In subtree (scoped) mode the engine runs no root loop: give this trigger its own
 	// subtree watch. In baseline mode the dispatch loop already sees every change.
@@ -66,9 +87,12 @@ func (e *Engine) AddTrigger(t Trigger) error {
 // keeps firing — invisibly, since nothing lists it any more. Dropping it from the dispatch
 // snapshot is enough only for the root loop, where observation is shared and the charter
 // really is the whole answer.
+//
+// And it DELETES THE RULE'S CHARTER ENTITY, which is the same argument one level out: a
+// removal that only stops the live engine leaves the rule standing in the store, and the
+// next start reinstalls what an operator removed.
 func (e *Engine) RemoveTrigger(name string) bool {
 	e.trigMu.Lock()
-	defer e.trigMu.Unlock()
 	found := false
 	var nt []Trigger
 	for _, t := range e.triggers {
@@ -82,6 +106,10 @@ func (e *Engine) RemoveTrigger(name string) bool {
 	if found {
 		e.forgetShapes(name)
 		e.stopWatchers(name)
+	}
+	e.trigMu.Unlock()
+	if found {
+		e.forget(name) // the durable copy — off the charter lock, since it is a store write
 	}
 	return found
 }

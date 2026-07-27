@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,20 +45,35 @@ type Goal struct {
 	cancel    context.CancelFunc
 }
 
-// goalRef / goalDoneRef / goalFailedRef name a goal's entities. goal:instance carries the
-// live status + terminal latch; goal:done / goal:failed are the ordinary fact a charter
+// GoalSystem / GoalKind name where a goal lives: goal:instance:<name>.
+const (
+	GoalSystem = "goal"
+	GoalKind   = "instance"
+)
+
+// goalRef / goalDoneRef / goalFailedRef name a goal's entities. goal:instance IS the goal —
+// its definition (under `spec`, the document form the charter uses), its live status, and
+// its terminal latch, in one record. goal:done / goal:failed are the ordinary fact a charter
 // trigger may match ({system:"goal", kind:"done"|"failed"}) to advance a subject — emergent,
 // opt-in; the goal never sets a subject field itself. Such a trigger names the goal's subject
 // with a `subject` pattern matched against the goal:done fact's `flow` (see commitGoal) — the
 // same way a process-completion trigger names the PR its process carried.
-func goalRef(name string) entity.Ref     { return entity.Ref{System: "goal", Kind: "instance", ID: name} }
-func goalDoneRef(name string) entity.Ref { return entity.Ref{System: "goal", Kind: "done", ID: name} }
+//
+// The definition sits on the SAME entity as the status rather than beside it, because a goal
+// that is recorded but not pursued, or pursued from a definition whose status record has gone,
+// are two halves that cannot be made to agree — and one write cannot leave them disagreeing.
+func goalRef(name string) entity.Ref { return entity.Ref{System: GoalSystem, Kind: GoalKind, ID: name} }
+func goalDoneRef(name string) entity.Ref {
+	return entity.Ref{System: GoalSystem, Kind: "done", ID: name}
+}
 func goalFailedRef(name string) entity.Ref {
-	return entity.Ref{System: "goal", Kind: "failed", ID: name}
+	return entity.Ref{System: GoalSystem, Kind: "failed", ID: name}
 }
 
-// AddGoal installs a goal: it owns and installs the goal's triggers (the doing), seeds the
-// goal:instance entity, and starts the lifecycle monitor over until[doneWhen, deadline].
+// AddGoal installs a goal — durably: it owns and installs the goal's triggers (the doing),
+// seeds the goal:instance entity WITH the definition that produced it, and starts the
+// lifecycle monitor over until[doneWhen, deadline]. A start reads those records back
+// (LoadGoals), so a goal is still being pursued after a restart.
 func (e *Engine) AddGoal(d GoalDef) error {
 	if d.Name == "" {
 		return fmt.Errorf("goal: name required")
@@ -70,6 +86,12 @@ func (e *Engine) AddGoal(d GoalDef) error {
 			return fmt.Errorf("goal %q: bad deadline %q: %w", d.Name, d.Deadline, err)
 		}
 	}
+	// Encode before anything is installed: a goal that cannot be written down is refused
+	// whole rather than left running as a thing no restart can recover.
+	doc, err := d.ToTony()
+	if err != nil {
+		return fmt.Errorf("goal %q: encoding it for its record: %w", d.Name, err)
+	}
 
 	e.goalsMu.Lock()
 	if _, exists := e.goals[d.Name]; exists {
@@ -78,9 +100,13 @@ func (e *Engine) AddGoal(d GoalDef) error {
 	}
 	// Install the owned triggers (the doing). Roll back on any failure so a goal never
 	// half-installs its charter.
+	//
+	// Not as standalone charter entities: these rules travel in the goal's own record and
+	// come back with it, so writing them out again would give one rule two owners and two
+	// lifetimes — see addTrigger.
 	var names []string
 	for _, td := range d.Triggers {
-		if err := e.AddTrigger(td); err != nil {
+		if err := e.addTrigger(td, false); err != nil {
 			for _, n := range names {
 				e.RemoveTrigger(n)
 			}
@@ -98,18 +124,21 @@ func (e *Engine) AddGoal(d GoalDef) error {
 	e.goals[d.Name] = g
 	e.goalsMu.Unlock()
 
-	// Seed the durable goal:instance entity. terminal=false is the terminal-once guard the
-	// commit CAS predicates on. waitingOn is computed BEFORE the Modify — Unmet reads the
-	// store (a read lock), and the Modify closure already holds the store's write lock (a
-	// non-reentrant RWMutex), so evaluating it inside would self-deadlock.
+	// Seed the durable goal:instance entity — the definition and the live fluent together.
+	// terminal=false is the terminal-once guard the commit CAS predicates on; it is written
+	// as part of the same modify, and a restore is careful never to write it over a latch
+	// (LoadGoals skips a terminal goal entirely). waitingOn is computed BEFORE the Modify —
+	// Unmet reads the store (a read lock), and the Modify closure already holds the store's
+	// write lock (a non-reentrant RWMutex), so evaluating it inside would self-deadlock.
 	waiting := waitingLabels(d.DoneWhen.Unmet(e.store))
 	status := "active"
 	if len(waiting) > 0 {
 		status = "blocked"
 	}
-	e.modify(goalRef(d.Name), func(cur entity.Payload) entity.Payload {
+	if err := e.modifyErr(goalRef(d.Name), func(cur entity.Payload) entity.Payload {
 		p := clonePayload(cur)
 		p["name"] = d.Name
+		p[specField] = string(doc)
 		if d.Subject != "" {
 			p["subject"] = d.Subject
 		}
@@ -120,14 +149,84 @@ func (e *Engine) AddGoal(d GoalDef) error {
 		}
 		p["waitingOn"] = waiting
 		return p.Payload()
-	})
+	}); err != nil {
+		// The record is the goal: without it there is no live status to read, no instant to
+		// stamp a deadline on, and nothing for a restart to find. Take the whole install
+		// back rather than pursue a goal the verse has no record of.
+		e.RemoveGoal(d.Name)
+		return fmt.Errorf("%w: goal %q: %w", ErrCharter, d.Name, err)
+	}
 	go e.runGoal(ctx, g)
 	return nil
+}
+
+// LoadGoals installs the goals standing in the verse — the ones still being pursued — into
+// this engine. Called at startup, alongside LoadCharter (see charter.go), and after it: a
+// goal's owned triggers share one name space with the standalone charter, so the rules
+// somebody installed directly are the ones that keep their names in a collision.
+//
+// Restoring a goal is an ordinary install, which is what makes this small: AddGoal reseeds
+// the live status from the verse as it now stands, and runGoal's fast path evaluates
+// doneWhen before it waits — so a goal REACHED while verse was down latches `done` on the
+// way back up rather than waiting for one more change to notice. An elapsed deadline lands
+// the same way: the absolute instant is stamped on the record, so it fires immediately
+// instead of sliding forward (see deadlineAt).
+//
+// A TERMINAL goal is not restored. It is settled: its outcome is latched, its owned charter
+// was reaped, and there is nothing left to pursue — reinstalling it would recreate the doing
+// for a goal that is over. Its record stands as the outcome, which is what a terminal being
+// monotonic means.
+func (e *Engine) LoadGoals() error {
+	var errs []error
+	for _, ent := range e.store.List(func(r entity.Ref) bool {
+		return r.System == GoalSystem && r.Kind == GoalKind
+	}) {
+		if b := entity.Get(ent.Payload, "terminal"); b != nil && b.Bool {
+			continue
+		}
+		d, err := goalOf(ent)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := e.AddGoal(d); err != nil {
+			errs = append(errs, fmt.Errorf("goal %s: %w", ent.Ref, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// goalOf decodes one goal record back into the definition that produced it. A name that
+// disagrees with the address is refused for the reason ruleOf gives: the two name the same
+// goal to different callers, and installing under one while removing under the other leaves
+// a goal nothing can stop.
+func goalOf(ent entity.Entity) (GoalDef, error) {
+	doc := entity.Str(ent.Payload, specField)
+	if doc == "" {
+		return GoalDef{}, fmt.Errorf("goal %s: still being pursued, but the record does not carry "+
+			"the definition (%s) it was installed from — it cannot be restored, so reinstall it "+
+			"or remove it", ent.Ref, specField)
+	}
+	var d GoalDef
+	if err := d.FromTony([]byte(doc)); err != nil {
+		return GoalDef{}, fmt.Errorf("goal %s: %w", ent.Ref, err)
+	}
+	if d.Name != ent.Ref.ID {
+		return GoalDef{}, fmt.Errorf("goal %s: the record names itself %q; a goal is addressed by "+
+			"its name, so it would install as one goal and be removed as another", ent.Ref, d.Name)
+	}
+	return d, nil
 }
 
 // RemoveGoal stops a goal's monitor and reaps its owned triggers. Reports whether it
 // existed. It does NOT retract a latch already committed (terminals are monotonic); it just
 // stops pursuing. Used for teardown and tests.
+//
+// Stopping has to reach the durable record too, or the removal is only a pause: the next
+// start would find the goal standing in the verse and pursue it again. So the record goes —
+// UNLESS it has latched a terminal, which is the outcome and outlives the pursuing. The
+// delete is conditional on terminal=false rather than read-then-deleted, so a goal that
+// reaches its terminal concurrently with the removal keeps the latch it just earned.
 func (e *Engine) RemoveGoal(name string) bool {
 	e.goalsMu.Lock()
 	g, ok := e.goals[name]
@@ -140,6 +239,13 @@ func (e *Engine) RemoveGoal(name string) bool {
 	}
 	g.cancel()
 	e.reapGoalTriggers(g)
+	if _, err := e.store.Write(entity.Write{
+		At: goalRef(name).At(), Value: nil,
+		When: []entity.Require{{Pattern: entity.Obj{"terminal": false}.Payload()}},
+	}); err != nil {
+		e.logger.Warn("goal record not removed; the next start will pursue it again",
+			"goal", name, "err", err)
+	}
 	return true
 }
 
