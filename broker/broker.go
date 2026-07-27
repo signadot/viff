@@ -64,7 +64,7 @@ func (b *Broker) Spawn(id, task, driver string, _ process.ContentReader) process
 	b.mu.Lock()
 	b.procs[id] = &procState{
 		id: id, task: task, driver: driver,
-		subs: map[int]chan process.Frame{}, pending: map[string]string{},
+		subs: map[int]chan process.Frame{}, pending: map[string]process.Frame{},
 	}
 	b.mu.Unlock()
 	return &handle{b: b, id: id}
@@ -107,7 +107,12 @@ type procState struct {
 	nextSub  int
 	logCur   int64
 	inboxCur int64
-	pending  map[string]string // open gate decisions raised by the worker: id -> gate
+	// pending holds the open gate decisions raised by the worker, keyed by decision id.
+	// It keeps the whole raised frame rather than just the gate name: `do gate --reason`
+	// rides in on Text, and a resolver reading `verse gates` needs it — that reason is the
+	// entire point of an executor escalating instead of deciding. Narrowing this to
+	// id -> gate silently blanked it on every brokered gate.
+	pending  map[string]process.Frame
 	result   string
 	status   process.Status // latched terminal status
 	terminal bool
@@ -123,7 +128,7 @@ func (ps *procState) emit(e process.Frame) {
 	ps.log = append(ps.log, e)
 	switch e.Kind { // track open gate decisions so `process get`/resolve see them
 	case process.EvPending:
-		ps.pending[e.ID] = e.Gate
+		ps.pending[e.ID] = e
 	case process.EvDecision:
 		delete(ps.pending, e.ID)
 	}
@@ -200,9 +205,13 @@ func (ps *procState) snapshot() process.Instance {
 	if ps.terminal {
 		status = ps.status
 	}
+	// Mode and Origin stay empty on purpose: a worker raises a gate, it does not decide
+	// who answers it or under which dial — that is versed's to say, upstream of here.
 	pending := make([]process.PendingGate, 0, len(ps.pending))
-	for id, gate := range ps.pending {
-		pending = append(pending, process.PendingGate{ID: id, Gate: gate})
+	for id, ev := range ps.pending {
+		pending = append(pending, process.PendingGate{
+			ID: id, Gate: ev.Gate, Tool: ev.Tool, Reason: ev.Text,
+		})
 	}
 	return process.Instance{
 		ID: ps.id, Task: ps.task, Driver: ps.driver, Status: status,

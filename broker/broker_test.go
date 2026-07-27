@@ -241,9 +241,10 @@ func TestGateLoop(t *testing.T) {
 	}
 	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
 
-	// worker raises a gate (report EvPending).
+	// worker raises a gate (report EvPending), carrying the --reason on text.
 	postJSON(t, cl, srv.URL+"/processes/p/report",
-		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"deploy-1","gate":"deploy"}]}`, nil)
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"deploy-1","gate":"deploy",`+
+			`"tool":"deploy_prod","text":"prod, off-hours"}]}`, nil)
 	drainFor(t, ch, "pending") // verse observes the pending gate
 
 	if _, ok := b.ProcessSnapshot("p"); !ok {
@@ -252,6 +253,13 @@ func TestGateLoop(t *testing.T) {
 	snap, _ := b.ProcessSnapshot("p")
 	if len(snap.Pending) != 1 || snap.Pending[0].ID != "deploy-1" {
 		t.Fatalf("snapshot pending = %+v, want the raised gate", snap.Pending)
+	}
+	// The reason is what a resolver reads to decide, so it has to survive the projection
+	// from the worker's report to the snapshot `verse gates` renders — it used to be
+	// dropped by a pending map that kept only id -> gate.
+	if got := snap.Pending[0]; got.Reason != "prod, off-hours" || got.Tool != "deploy_prod" ||
+		got.Gate != "deploy" {
+		t.Fatalf("snapshot pending = %+v, want gate/tool/reason as reported", got)
 	}
 
 	rh := h.(interface {

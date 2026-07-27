@@ -22,8 +22,10 @@ type Instance struct {
 }
 
 // PendingGate is one open gate on a process: a raised GateQuestion awaiting a
-// resolution, in the snapshot's shape. A broker fills only what the worker
-// reported (id + gate); the local runtime carries the full question.
+// resolution, in the snapshot's shape. The local runtime carries the full question; a
+// broker fills what the worker reported, which is id/gate plus Tool and the --reason on
+// Text. Origin and Mode stay empty there — a worker raises a gate, it does not decide who
+// answers it, so those are versed's to fill upstream of the snapshot.
 //
 //tony:schemagen=verse-pending-gate,notag
 type PendingGate struct {
