@@ -23,12 +23,12 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )

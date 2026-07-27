@@ -15,10 +15,10 @@ import (
 	"github.com/scott-cotton/cli"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/harness"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/versed"
 )
 

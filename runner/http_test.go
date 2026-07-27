@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
+	"github.com/signadot/verse/runner"
 )
 
 // a driver that takes `steps` no-op actions then completes.
