@@ -10,7 +10,11 @@ import (
 	"github.com/signadot/verse/launch"
 )
 
-// auto-select picks the first eligible doer and reifies the choice on a select channel.
+// auto-select picks the first eligible doer and opens NO motion: nobody is asked, so there
+// is no question to pose. It used to reify the pick as a closed channel, which put
+// `outcome=gpt tally=0` on the docket — an outcome attributed to a group that never voted,
+// on the one surface whose contract is that its answers are votable and attributable. The
+// whether-axis has always worked this way; `mode: auto` reaches no channel either.
 func TestSelectProviderAuto(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
@@ -21,9 +25,23 @@ func TestSelectProviderAuto(t *testing.T) {
 	if !ok || driver != "gpt" {
 		t.Fatalf("auto select = (%q, %v), want (gpt, true)", driver, ok)
 	}
-	ch, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
-	if !found || entity.ToObj(ch.Payload)["axis"] != "select" || entity.ToObj(ch.Payload)["outcome"] != "gpt" || entity.ToObj(ch.Payload)["status"] != "closed" {
-		t.Fatalf("select channel = %+v, want axis=select outcome=gpt status=closed", ch.Payload)
+	if _, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))}); found {
+		t.Fatal("auto select opened a motion; the docket is for questions someone is asked")
+	}
+}
+
+// An empty Select means auto, so it takes the same silent path.
+func TestSelectProviderDefaultIsSilentAuto(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, denyResolver{})
+	p := &launch.Provider{Eligible: []string{"gpt", "claude"}}
+	subj := entity.Ref{System: "change", Kind: "pr", ID: "11"}
+
+	if driver, ok := eng.selectProvider(p, subj); !ok || driver != "gpt" {
+		t.Fatalf("default select = (%q, %v), want (gpt, true)", driver, ok)
+	}
+	if _, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))}); found {
+		t.Fatal("an unset select opened a motion; it defaults to auto, which poses nothing")
 	}
 }
 
@@ -95,9 +113,11 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 	if !ok || driver != "llm-claude" { // options sorted by id: claude, gpt → auto picks claude
 		t.Fatalf("registry auto select = (%q, %v), want (llm-claude, true)", driver, ok)
 	}
-	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
-	if opts, _ := entity.ToObj(ch.Payload)["options"].([]any); len(opts) != 2 {
-		t.Fatalf("eligible options = %v, want 2 premium providers (basic filtered out)", entity.ToObj(ch.Payload)["options"])
+	// Read the filter off eligibleProviders rather than off a motion: an auto select opens
+	// none, and the eligible set is what the match produced regardless of which dial reads it.
+	options, _ := eng.eligibleProviders(p)
+	if len(options) != 2 || options[0] != "claude" || options[1] != "gpt" {
+		t.Fatalf("eligible options = %v, want [claude gpt] (the basic tier filtered out)", options)
 	}
 }
 

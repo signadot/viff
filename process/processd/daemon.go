@@ -43,6 +43,11 @@ type hosted struct {
 	proc *process.Process
 	reg  *process.Registry
 	task string
+	// driver is retained, not just passed to build, because it is the only durable record
+	// of WHO was picked when a spawn's doer came from a `provider` selection. The broker's
+	// snapshot has always reported it; a locally-run process did not, so an auto-selected
+	// doer was observable nowhere but a trace line.
+	driver string
 
 	mu     sync.Mutex
 	status process.Status
@@ -63,7 +68,7 @@ func (h *hosted) snapshot() process.Instance {
 		})
 	}
 	return process.Instance{
-		ID: h.proc.ID, Task: h.task, Status: h.status,
+		ID: h.proc.ID, Task: h.task, Driver: h.driver, Status: h.status,
 		Err: h.err, Result: h.result, Pending: pending,
 		Cursor: h.proc.Cursor(), // resume the event stream with ?since=<cursor>
 	}
@@ -119,7 +124,7 @@ func (d *Daemon) Spawn(id, task, driver string, content process.ContentReader) *
 func (d *Daemon) spawnHosted(id, task, driver string, content process.ContentReader) *hosted {
 	reg := process.NewRegistry()
 	proc := d.build(id, task, driver, reg, content)
-	h := &hosted{proc: proc, reg: reg, task: task, status: process.Running}
+	h := &hosted{proc: proc, reg: reg, task: task, driver: driver, status: process.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.

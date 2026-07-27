@@ -525,9 +525,15 @@ tally reaches the bar. One machinery, two questions: *whether* an action fires, 
 is `proceed` or `deny`, and *who* does the work, whose answer is a choice of doer.
 
 Both are answered the same three ways — `auto`, where verse picks by a rule, by one person,
-or by the group — over the one votable, attributable surface, `verse docket` and
-`verse vote`. A one-click `ask` still lives in `verse gates` and `gate approve`; a motion is
-what an answer that accumulates over time needs.
+or by the group — over the one votable, attributable surface, `verse docket` and `verse vote`.
+
+Three settings, but two surfaces, and the split is worth stating because it is not the dial
+that decides it. The docket carries a question that is *not settled at the moment it is
+posed*: it needs several contributions, or a clock or an external fact can settle it instead.
+Everything else answers immediately. So `auto` reaches neither surface — nobody is asked, so
+nothing is posed, on either axis. A whether-`ask` is one click in `verse gates`. A who-`ask`
+is a motion, because it composes with a deadline and because naming a doer is a claim that
+should carry who made it — which a ballot does by construction.
 
 A motion is an ordinary entity, `motion:channel:<id>`, so the docket is a view of the store:
 you can `watch` it, `get` one, and write a trigger that reacts to it, exactly as with a PR.
@@ -645,8 +651,9 @@ to choose, instead of one driver:
 ```
 
 `select` is the same dial on the *who* axis: `auto` picks the first eligible by a rule, `ask`
-lets one person pick, `vote` lets the group pick. It raises the same kind of motion, except
-that the options are now the doers:
+lets one person pick, `vote` lets the group pick. `ask` and `vote` raise the same kind of
+motion, except that the options are now the doers — while `auto` raises none, since a rule
+answering to nobody is not a question:
 
 ```sh
 verse docket
