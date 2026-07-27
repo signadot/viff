@@ -3,6 +3,8 @@ package answer
 import (
 	"strings"
 	"testing"
+
+	tony "github.com/signadot/tony-format/go-tony"
 )
 
 const contractSrc = `class: !or [bug, nit, risk]
@@ -11,7 +13,7 @@ why: !irtype string`
 
 func mustParse(t *testing.T, src string) *Contract {
 	t.Helper()
-	c, err := Parse(src)
+	c, err := ParseSource(src)
 	if err != nil {
 		t.Fatalf("Parse(%q): %v", src, err)
 	}
@@ -60,8 +62,9 @@ accept:
 }
 
 // The point of the whole exercise: every failure names its path, what was expected there,
-// and what was found — and reports ALL of them, so one repair round can fix everything
-// that is wrong rather than everything minus one.
+// and what was found — and reports ALL of them, so one repair round can fix everything that
+// is wrong rather than everything minus one. None of this is verse's to derive: it is the
+// match's own account of how it walked (tony.Explaining, v0.0.102).
 func TestFailureNamesEveryPath(t *testing.T) {
 	c := mustParse(t, contractSrc)
 	_, err := c.Check(`{class: critical, why: 3}`)
@@ -75,26 +78,28 @@ func TestFailureNamesEveryPath(t *testing.T) {
 	if f.Kind != Mismatched {
 		t.Fatalf("kind %v, want Mismatched", f.Kind)
 	}
-	if len(f.Mismatches) != 3 {
-		t.Fatalf("%d mismatches, want 3: %v", len(f.Mismatches), f.Mismatches)
+	by := map[string]*tony.Frame{}
+	for _, fr := range f.Why.Failures {
+		by[fr.Path] = fr
 	}
-	by := map[string]Mismatch{}
-	for _, m := range f.Mismatches {
-		by[m.Path] = m
+	if len(by) != 3 {
+		t.Fatalf("%d failures, want 3: %s", len(by), f.Why)
 	}
-	if m := by[".class"]; m.Reason != Wrong || !strings.Contains(m.Expected, "bug") || !strings.Contains(m.Found, "critical") {
-		t.Errorf(".class -> %+v", m)
+	// present-but-wrong, and the operator that judged it
+	if fr := by["class"]; fr == nil || fr.Op != "or" || fr.Found == nil || fr.Found.String != "critical" {
+		t.Errorf("class -> %+v", fr)
 	}
-	if m := by[".severity"]; m.Reason != Absent {
-		t.Errorf(".severity -> %+v, want absent", m)
+	// absent, which is the distinction a caller can most often repair by itself
+	if fr := by["severity"]; fr == nil || fr.Reason != tony.ReasonAbsent {
+		t.Errorf("severity -> %+v, want absent", fr)
 	}
-	if m := by[".why"]; m.Reason != Wrong || m.Found != "3" {
-		t.Errorf(".why -> %+v", m)
+	if fr := by["why"]; fr == nil || fr.Op != "irtype" {
+		t.Errorf("why -> %+v", fr)
 	}
 }
 
-// Nesting: the path has to reach the field that is actually wrong, not stop at the object
-// containing it — the difference between a usable diagnosis and "something in here".
+// Nesting: the path reaches the field that is actually wrong, not the object containing it —
+// the difference between a usable diagnosis and "something in here".
 func TestNestedPaths(t *testing.T) {
 	c := mustParse(t, `review: {verdict: !or [ship, hold], of: {pr: !irtype string}}`)
 	_, err := c.Check(`{review: {verdict: maybe, of: {pr: 12}}}`)
@@ -102,20 +107,20 @@ func TestNestedPaths(t *testing.T) {
 	if !ok {
 		t.Fatalf("err is %T (%v), want *Failure", err, err)
 	}
-	want := map[string]bool{".review.verdict": true, ".review.of.pr": true}
-	for _, m := range f.Mismatches {
-		if !want[m.Path] {
-			t.Errorf("unexpected path %q", m.Path)
+	want := map[string]bool{"review.verdict": true, "review.of.pr": true}
+	for _, fr := range f.Why.Failures {
+		if !want[fr.Path] {
+			t.Errorf("unexpected path %q", fr.Path)
 		}
-		delete(want, m.Path)
+		delete(want, fr.Path)
 	}
 	for p := range want {
-		t.Errorf("no mismatch reported at %s", p)
+		t.Errorf("no failure reported at %s", p)
 	}
 }
 
-// A list pattern matches length-exactly, so the length IS the diagnosis; reporting each
-// index on top of it would bury it.
+// A list pattern matches element by element and so length-exactly, and the length is decided
+// before any element is: the diagnosis is the length, not five confusing element errors.
 func TestListLength(t *testing.T) {
 	c := mustParse(t, `findings: [{severity: !or [low, high]}]`)
 	_, err := c.Check(`{findings: [{severity: low}, {severity: high}]}`)
@@ -123,14 +128,18 @@ func TestListLength(t *testing.T) {
 	if !ok {
 		t.Fatalf("err is %T (%v), want *Failure", err, err)
 	}
-	if len(f.Mismatches) != 1 || f.Mismatches[0].Reason != WrongLen || f.Mismatches[0].Path != ".findings" {
-		t.Fatalf("mismatches = %v", f.Mismatches)
+	if len(f.Why.Failures) != 1 {
+		t.Fatalf("failures = %s", f.Why)
+	}
+	if fr := f.Why.Failures[0]; fr.Path != "findings" || fr.Reason != tony.ReasonLength {
+		t.Fatalf("failure = %+v, want a length failure at findings", fr)
 	}
 }
 
-// An element inside `!all` is exactly what the walk cannot see into — the operator holds
-// that knowledge. It must still say something true and located, rather than nothing.
-func TestAllOperatorReportsThePathItCanSee(t *testing.T) {
+// The element inside an `!all` is what no caller outside the match could name — only the
+// operator knows which element it was walking. This is the case the upstream request was
+// filed for, and it lands: `findings[1].severity`, not "findings".
+func TestAllOperatorNamesTheElement(t *testing.T) {
 	c := mustParse(t, `findings: !all {severity: !or [low, high]}`)
 	if _, err := c.Check(`{findings: [{severity: low}, {severity: high}]}`); err != nil {
 		t.Fatalf("good answer rejected: %v", err)
@@ -140,11 +149,8 @@ func TestAllOperatorReportsThePathItCanSee(t *testing.T) {
 	if !ok {
 		t.Fatalf("err is %T (%v), want *Failure", err, err)
 	}
-	if len(f.Mismatches) != 1 || f.Mismatches[0].Path != ".findings" {
-		t.Fatalf("mismatches = %v", f.Mismatches)
-	}
-	if !strings.Contains(f.Mismatches[0].Expected, "all") {
-		t.Errorf("expected does not show the operator: %q", f.Mismatches[0].Expected)
+	if len(f.Why.Failures) != 1 || f.Why.Failures[0].Path != "findings[1].severity" {
+		t.Fatalf("failures = %s", f.Why)
 	}
 }
 
@@ -188,7 +194,7 @@ func TestProseIsNoDocument(t *testing.T) {
 // A contract that cannot be parsed fails where it is written, not after a model call.
 func TestBadContractFailsAtParse(t *testing.T) {
 	for _, src := range []string{"", "   ", "{class: !or [bug"} {
-		if _, err := Parse(src); err == nil {
+		if _, err := ParseSource(src); err == nil {
 			t.Errorf("Parse(%q) accepted a contract it cannot mean", src)
 		}
 	}
@@ -200,7 +206,7 @@ func TestRepairMessageCarriesTheDiagnosis(t *testing.T) {
 	c := mustParse(t, contractSrc)
 	_, err := c.Check(`{class: critical, why: 3}`)
 	msg := err.(*Failure).Repair(c, "fail")
-	for _, want := range []string{".class", "critical", ".severity", "absent", ".why", "!or", "fail"} {
+	for _, want := range []string{"class", "critical", "severity", "absent", "why", "!or", "fail"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("repair message missing %q:\n%s", want, msg)
 		}
@@ -212,7 +218,7 @@ func TestRepairMessageCarriesTheDiagnosis(t *testing.T) {
 // reinterpret it as a demand that the ANSWER contain fields called `signature` and `define`
 // — turning a diagnosed error into a mismatch about the contract's own keywords.
 func TestBrokenSchemaDoesNotDegradeIntoAPattern(t *testing.T) {
-	_, err := Parse(`signature: {name: c}
+	_, err := ParseSource(`signature: {name: c}
 define:
   node: {next: .[node]}
 accept: .[node]

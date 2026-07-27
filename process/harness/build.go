@@ -12,6 +12,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/process"
 )
@@ -153,9 +155,9 @@ type Config struct {
 	// see process.Launch.
 	Frame string
 	Tools []string
-	// Answer is the tony source of this spawn's answer contract; empty → no contract, and
-	// the run ends wherever the model stops. See package answer.
-	Answer string
+	// Answer is this spawn's answer contract as a tony match pattern; nil → no contract,
+	// and the run ends wherever the model stops. See package answer.
+	Answer *ir.Node
 	// Vector overrides the demo gate vector. It is here rather than applied by the caller
 	// afterwards because the frame is derived from it, and a vector installed after Build
 	// would be described by a frame written against the wrong one.
@@ -193,7 +195,7 @@ func Build(cfg Config) (*process.Process, func() []ExecRecord) {
 	// the engine side because a process can be spawned straight at a runtime (`process
 	// run`, a remote POST) without ever passing through a charter.
 	var contract *answer.Contract
-	if strings.TrimSpace(cfg.Answer) != "" {
+	if cfg.Answer != nil {
 		var err error
 		if contract, err = answer.Parse(cfg.Answer); err != nil {
 			return process.NewFailed(cfg.ID, cfg.Resolver, "answer contract: "+err.Error()), func() []ExecRecord { return nil }

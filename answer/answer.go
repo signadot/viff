@@ -19,12 +19,12 @@
 // verse already publishes for describing documents (see package schema, whose own comment
 // holds a place for the first deliberately authored validating schema — this is it).
 //
-// It travels as SOURCE TEXT rather than as a parsed node, and that is not laziness. A
-// contract is dense with tony's own operators (`!or`, `!irtype`), and the charter that
-// declares one is itself persisted as an entity: a parsed pattern in a payload is a
-// document full of operators being written into a store that interprets operators. Text
-// crosses that seam intact, needs no escape, and is exactly how Frame — the other field a
-// spawn authors for itself rather than names — already travels.
+// WHAT GOES BACK TO THE MODEL is the load-bearing part, and it is not something a bare
+// match could give: `accept` is a match, and a match answers yes or no. tony.Explaining
+// (go-tony v0.0.102, filed from here as axp74f1wh12krznjcxn0) is what turns the verdict
+// into a diagnosis — the path of each failing node, what was expected there, what was
+// found, absent kept apart from present-but-wrong, and every failing field rather than the
+// first, so one repair round can fix them all.
 package answer
 
 import (
@@ -53,23 +53,26 @@ type Contract struct {
 // failure is invisible. The honest end of an unconvincible model is a failed process.
 const DefaultRepairs = 2
 
-// Parse reads a contract from tony source. Two forms are accepted, and the difference is
-// only ceremony: a whole schema document carrying an `accept:` clause (plus any `define:`
-// it needs), or a bare pattern, which is taken AS the accept clause.
+// ParseSource reads a contract from tony source — the hand-written form, for a test or a
+// caller holding text rather than a document. A charter carries the document itself.
+func ParseSource(src string) (*Contract, error) {
+	doc, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		return nil, fmt.Errorf("parse answer contract: %w", err)
+	}
+	return Parse(doc)
+}
+
+// Parse reads a contract from the document a spawn declared. Two forms are accepted, and
+// the difference is only ceremony: a whole schema document carrying an `accept:` clause
+// (plus any `define:` it needs), or a bare pattern, which is taken AS the accept clause.
 //
 // A malformed contract is an error here rather than a surprise at check time. This runs on
 // the engine side before a spawn is issued (versed.launchOf) as well as in the driver, so
 // a charter that wrote a contract it cannot mean fails the firing instead of paying for a
 // model call and then failing the check it could never have passed.
-func Parse(src string) (*Contract, error) {
-	if strings.TrimSpace(src) == "" {
-		return nil, fmt.Errorf("empty answer contract")
-	}
-	doc, err := codec.ParseNode([]byte(src), codec.Tony)
-	if err != nil {
-		return nil, fmt.Errorf("parse answer contract: %w", err)
-	}
-	if doc == nil {
+func Parse(doc *ir.Node) (*Contract, error) {
+	if doc == nil || doc.Type == ir.NullType {
 		return nil, fmt.Errorf("empty answer contract")
 	}
 	// Which of the two forms this is has to be decided on what the author WROTE, not on
@@ -95,6 +98,15 @@ func Parse(src string) (*Contract, error) {
 	if err != nil {
 		return nil, fmt.Errorf("expand answer contract: %w", err)
 	}
+	// The source is rendered once, here, and it is what the agent is shown — in the frame
+	// up front and in a repair afterwards. Rendered rather than carried as the author's own
+	// keystrokes because the author no longer writes text: a contract arrives as the
+	// document it is, so this is the only text there is, and it is the same text `verse
+	// entity get` prints for the rule.
+	src, err := render(s.Accept)
+	if err != nil {
+		return nil, fmt.Errorf("render answer contract: %w", err)
+	}
 	return &Contract{
 		src:    src,
 		accept: expanded,
@@ -105,8 +117,7 @@ func Parse(src string) (*Contract, error) {
 	}, nil
 }
 
-// Source is the contract as written, for the prompt that asks a model to satisfy it: the
-// author's own text is a better statement of intent than anything re-rendered from the IR.
+// Source is the contract rendered as tony, for the prompt that asks a model to satisfy it.
 func (c *Contract) Source() string { return c.src }
 
 // Repairs is how many re-asks this contract allows before the run fails.
@@ -127,7 +138,8 @@ func (c *Contract) Check(final string) (*ir.Node, error) {
 	if doc == nil {
 		return nil, &Failure{Kind: NoDocument}
 	}
-	ok, err := tony.MatchWith(doc, c.accept, c.ctx)
+	var why tony.Explanation
+	ok, err := tony.MatchWith(doc, c.accept, c.ctx, tony.Explaining(&why))
 	if err != nil {
 		// A malformed PATTERN, not a bad answer — an unknown operator tag, say. Nothing
 		// the model can repair, so it is not a Failure: it is the spawn's own error.
@@ -136,7 +148,7 @@ func (c *Contract) Check(final string) (*ir.Node, error) {
 	if ok {
 		return doc, nil
 	}
-	return nil, &Failure{Kind: Mismatched, Mismatches: explain(doc, c.accept, c.ctx)}
+	return nil, &Failure{Kind: Mismatched, Why: &why}
 }
 
 // Kind distinguishes the two ways an answer fails its contract, because they need different
@@ -155,25 +167,36 @@ const (
 // from an ordinary error because the driver treats it differently: a Failure is fed back
 // and retried, anything else fails the run at once.
 type Failure struct {
-	Kind       Kind
-	Mismatches []Mismatch
+	Kind Kind
+	// Why is the match's own account of itself: a frame per failing node, each carrying a
+	// kpath into the ANSWER, the pattern that judged it, the value found, and which kind of
+	// wrong it is (tony.ReasonAbsent, ReasonValue, ReasonOp, …). nil when Kind is
+	// NoDocument, since nothing was matched.
+	Why *tony.Explanation
 }
 
 func (f *Failure) Error() string {
 	if f.Kind == NoDocument {
 		return "the final message carries no answer document"
 	}
-	parts := make([]string, 0, len(f.Mismatches))
-	for _, m := range f.Mismatches {
-		parts = append(parts, m.String())
-	}
-	if len(parts) == 0 {
-		// The explainer found nothing to say — possible when the whole pattern is one
-		// operator whose internals it cannot see into. Better a bare truth than a
-		// confident-sounding wrong path.
+	lines := f.lines()
+	if len(lines) == 0 {
 		return "the answer does not satisfy the contract"
 	}
-	return "the answer does not satisfy the contract: " + strings.Join(parts, "; ")
+	return "the answer does not satisfy the contract: " + strings.Join(lines, "; ")
+}
+
+// lines is the explanation one failure per line. It is tony's own rendering — the paths and
+// the bounded node printing are the match's to describe, not this package's to re-derive.
+func (f *Failure) lines() []string {
+	if f.Why == nil {
+		return nil
+	}
+	s := strings.TrimSpace(f.Why.String())
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
 }
 
 // Repair is what goes back to the model. It is a DIAGNOSIS, not a re-ask: the distinction
@@ -193,8 +216,8 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 			"contract, and nothing in what you said parses as a document.\n")
 	default:
 		b.WriteString("Your final message did not satisfy this spawn's answer contract:\n")
-		for _, m := range f.Mismatches {
-			fmt.Fprintf(&b, "  %s\n", m)
+		for _, line := range f.lines() {
+			fmt.Fprintf(&b, "  %s\n", line)
 		}
 	}
 	b.WriteString("\nThe contract is:\n\n")
@@ -239,6 +262,26 @@ func Extract(text string) *ir.Node {
 		}
 	}
 	return nil
+}
+
+// render prints the accept pattern for a model to read: one field per line, each value in
+// tony's compact wire form. The pretty encoder breaks a tagged list across four lines
+// (`class: !or` / `[` / `bug` / …), which is correct tony and unreadable as a statement of
+// what an answer must look like — and this text is the whole of what the agent is told.
+func render(accept *ir.Node) (string, error) {
+	if accept == nil || accept.Type != ir.ObjectType || accept.Tag != "" {
+		b, err := codec.NodeBytesWire(accept, codec.Tony)
+		return strings.TrimSpace(string(b)), err
+	}
+	var b strings.Builder
+	for i, f := range accept.Fields {
+		v, err := codec.NodeBytesWire(accept.Values[i], codec.Tony)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "%s: %s\n", f.String, strings.TrimSpace(string(v)))
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
 }
 
 // hasField reports whether an object document carries a top-level field — how Parse tells

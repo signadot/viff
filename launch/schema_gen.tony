@@ -13,8 +13,9 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  answer: .[string]
+  answer: .[tony-base:ir]
   chain: .[string]
   driver: .[string]
   environment: .[string]

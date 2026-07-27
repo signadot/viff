@@ -254,7 +254,7 @@ func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	// never have passed. Same discipline as the two axes below — the engine resolves what it
 	// can before the spawn crosses the seam. (The runtime parses it again for real; this is
 	// a gate, not a hand-off.)
-	if strings.TrimSpace(spec.Answer) != "" {
+	if spec.Answer != nil {
 		if _, err := answer.Parse(spec.Answer); err != nil {
 			return process.Launch{}, fmt.Errorf("answer contract: %w", err)
 		}

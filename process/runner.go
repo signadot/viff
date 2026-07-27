@@ -1,5 +1,7 @@
 package process
 
+import "github.com/signadot/tony-format/go-tony/ir"
+
 // Launch is everything one spawn says about the process it asks for: which driver builds
 // it, the task it is seeded with, and the FRAME that task is read in.
 //
@@ -38,7 +40,7 @@ type Launch struct {
 	Tools []string
 
 	// Answer is the ANSWER CONTRACT: the shape this process's final message must have,
-	// as tony source (see package answer). Empty = no contract.
+	// as a tony match pattern (see package answer). nil = no contract.
 	//
 	// It rides the wire with Frame and Tools rather than being enforced by the engine after
 	// the fact, because the check has to happen INSIDE the loop — the run is not finished
@@ -46,7 +48,7 @@ type Launch struct {
 	// again. A runtime whose driver cannot enforce a contract must fail the spawn rather
 	// than run it unchecked: a contract silently dropped is worse than none, since the
 	// charter downstream is written believing it holds.
-	Answer string
+	Answer *ir.Node
 
 	// Vector is the gate vector to launch under; nil = the runtime's own default. Grant is
 	// the hard envelope to install as the process's scope; nil = unbounded, which is what

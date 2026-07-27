@@ -30,6 +30,8 @@ package launch
 import (
 	"sort"
 	"strings"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // Spec is the declarative launch descriptor. It is a *template*: string fields may
@@ -66,16 +68,22 @@ type Spec struct {
 	// because a tool withheld never comes up, while a tool offered-but-ungranted costs a
 	// turn being refused.
 	Tools []string `tony:"field=tools,omitzero"`
-	// Answer is this spawn's ANSWER CONTRACT: the shape its final message must have,
-	// written as a tony schema's accept clause (or a bare pattern, which is the same thing
-	// without the wrapper). Empty = no contract, and the run ends wherever the model stops.
+	// Answer is this spawn's ANSWER CONTRACT: the shape its final message must have, as a
+	// tony match pattern (a schema's `accept` clause, or a bare pattern, which is the same
+	// thing without the wrapper). nil = no contract, and the run ends wherever the model
+	// stops.
 	//
-	// It is inline text alongside Frame and Task rather than a name to resolve, for the
-	// reason Frame gives: it is written by the authoring party for this spawn, and only the
-	// charter that derefs `$data.severity` knows what shape it needs. It is a STRING rather
-	// than the parsed pattern because a charter is itself an entity: a pattern in a payload
-	// is a document full of operators (`!or`, `!irtype`) being written into a store that
-	// interprets operators, and text crosses that seam without an escape.
+	// It is inline alongside Frame and Task rather than a name to resolve, for the reason
+	// Frame gives: it is written by the authoring party for this spawn, and only the charter
+	// that derefs `$data.severity` knows what shape it needs.
+	//
+	// It is a DOCUMENT rather than the text of one, which it could not be until a rule could
+	// be stored as structure: a contract is dense with operators (`!or`, `!irtype`), a write
+	// is a tony patch, and a payload full of operators used to be executed by the store
+	// rather than stored by it. `!raw` (entity.Raw) is the escape that settled that, and the
+	// same escape carries this — so a contract is the same kind of thing as the `when` it
+	// sits beside, readable field by field on the rule's own entity, rather than a string
+	// something has to re-parse to ask a question about.
 	//
 	// Unlike Frame it is not advice. A frame can ask for a shape and be ignored — that is
 	// exactly what was observed, three firings out of three — while a contract is checked
@@ -83,8 +91,8 @@ type Spec struct {
 	// met. That last part is what makes the deref downstream total: `patch: {class:
 	// $data.class}` can no longer fail at patch time, because a process that could not
 	// produce `class` did not succeed.
-	Answer      string `tony:"field=answer,omitzero"`
-	Vector      string `tony:"field=vector,omitzero"`
+	Answer      *ir.Node `tony:"field=answer,omitzero"`
+	Vector      string   `tony:"field=vector,omitzero"`
 	Resolver    string   `tony:"field=resolver,omitzero"`
 	Grant       string   `tony:"field=grant,omitzero"`
 	Environment string   `tony:"field=environment,omitzero"`
@@ -154,7 +162,6 @@ func (s Spec) Bind(b Binding) Spec {
 		Driver:      expand(s.Driver, b),
 		Task:        expand(s.Task, b),
 		Frame:       expand(s.Frame, b),
-		Answer:      expand(s.Answer, b),
 		Vector:      expand(s.Vector, b),
 		Resolver:    expand(s.Resolver, b),
 		Grant:       expand(s.Grant, b),
@@ -162,6 +169,10 @@ func (s Spec) Bind(b Binding) Spec {
 		Subject:     expand(s.Subject, b),
 		Provider:    s.Provider.bind(b),
 	}
+	// Answer is not expanded either, and for a plainer reason than Tools: it is a pattern,
+	// not text, and $var expansion inside a match is the same future work Provider.Match is
+	// waiting on. It is carried across as it was written.
+	out.Answer = s.Answer
 	// Tools are NOT expanded. Every other string here is a template because a charter has
 	// reason to build it out of the firing — but a tool name is drawn from a fixed set the
 	// driver defines, so a $var in one could only ever name a tool that does not exist, or

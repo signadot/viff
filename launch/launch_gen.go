@@ -48,9 +48,9 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["tools"] = ir.FromSlice(slice)
 	}
 
-	// Field: Answer
-	if s.Answer != "" {
-		irMap["answer"] = ir.FromString(string(s.Answer))
+	// Field: Answer (optional)
+	if s.Answer != nil {
+		irMap["answer"] = s.Answer
 	}
 
 	// Field: Vector
@@ -159,11 +159,11 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Tools = slice
 			}
 		case "answer":
-			// Field: Answer
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "answer", fieldNodeUnwrapped.Type)
+			if gomap.GetUnmapComments(opts...) {
+				s.Answer = fieldNode
+			} else {
+				s.Answer = fieldNodeUnwrapped
 			}
-			s.Answer = string(fieldNodeUnwrapped.String)
 		case "vector":
 			// Field: Vector
 			if fieldNodeUnwrapped.Type != ir.StringType {

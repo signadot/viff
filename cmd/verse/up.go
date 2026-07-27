@@ -130,7 +130,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			// has no model to ask again, so honouring the field would mean dropping it,
 			// and a dropped contract is worse than none: the charter downstream was
 			// written believing the shape is guaranteed.
-			if l.Answer != "" {
+			if l.Answer != nil {
 				return process.NewFailed(l.ID, reg, "the scripted driver cannot enforce an answer contract")
 			}
 			return versed.NewScriptedProcess(l.ID, l.Task, root, reg)

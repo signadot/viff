@@ -3,6 +3,9 @@ package launch
 import (
 	"testing"
 
+	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/codec"
 )
 
@@ -83,21 +86,25 @@ func TestBindCopiesTools(t *testing.T) {
 	}
 }
 
-// The answer contract is authored as a BLOCK STRING and stays text the whole way: it is
-// dense with tony's own operators (`!or`, `!irtype`), and a charter is itself an entity, so
-// a parsed pattern in the spec would be a payload full of operators going into a store that
-// interprets them. As text it crosses that seam intact and needs no escape.
-func TestAnswerContractSurvivesAsText(t *testing.T) {
-	const src = "driver: llm\nanswer: |\n  severity: !or [low, high]\n  note: !irtype string\n"
+// The answer contract is a DOCUMENT, and it keeps its operators. It could not be one until
+// a rule could be stored as structure — a write is a tony patch, so `!or` in a payload used
+// to be executed by the store rather than stored by it — and `!raw` (entity.Raw) is what
+// settled that. As a document it is the same kind of thing as the `when` it sits beside.
+func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
+	const src = "driver: llm\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
 	var s Spec
 	if err := codec.Unmarshal([]byte(src), &s, codec.Tony); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	const want = "severity: !or [low, high]\nnote: !irtype string\n"
-	if s.Answer != want {
-		t.Fatalf("Answer = %q, want %q", s.Answer, want)
+	// the operators are still operators, which is the whole question: it MATCHES
+	if !matches(t, s.Answer, `{severity: low, note: "x"}`) {
+		t.Fatal("the contract does not accept a document it describes")
 	}
-	// and back out again, so `trigger show` renders what the author wrote
+	if matches(t, s.Answer, `{severity: nope, note: "x"}`) {
+		t.Fatal("the contract accepts a severity outside its !or")
+	}
+
+	// and back out again, so `trigger show` renders the pattern the author wrote
 	out, err := codec.Marshal(&s, codec.Tony)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -106,7 +113,32 @@ func TestAnswerContractSurvivesAsText(t *testing.T) {
 	if err := codec.Unmarshal(out, &round, codec.Tony); err != nil {
 		t.Fatalf("re-decode %q: %v", out, err)
 	}
-	if round.Answer != want {
-		t.Fatalf("round trip Answer = %q, want %q", round.Answer, want)
+	if !matches(t, round.Answer, `{severity: high, note: "x"}`) || matches(t, round.Answer, `{severity: nope}`) {
+		t.Fatalf("round trip lost the operator: %q", out)
 	}
+}
+
+// Bind carries the contract across as written. It is a pattern, not text, so there is
+// nothing to substitute into — $var expansion inside a match is the same future work
+// Provider.Match is waiting on.
+func TestBindCarriesTheAnswerContract(t *testing.T) {
+	pat, _ := codec.ParseNode([]byte("severity: !or [low, high]"), codec.Tony)
+	got := Spec{Answer: pat}.Bind(Binding{"subject": "demo:pr:1"})
+	if !matches(t, got.Answer, `{severity: low}`) || matches(t, got.Answer, `{severity: nope}`) {
+		t.Fatalf("Answer = %v, want the pattern as written", got.Answer)
+	}
+}
+
+// matches runs a document against a pattern the way the contract check will.
+func matches(t *testing.T, pattern *ir.Node, doc string) bool {
+	t.Helper()
+	d, err := codec.ParseNode([]byte(doc), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse %q: %v", doc, err)
+	}
+	ok, err := tony.Match(d, pattern)
+	if err != nil {
+		t.Fatalf("match: %v", err)
+	}
+	return ok
 }

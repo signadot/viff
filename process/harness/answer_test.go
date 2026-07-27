@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/answer"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
@@ -15,7 +16,7 @@ severity: !or [low, high]`
 
 func contract(t *testing.T) *answer.Contract {
 	t.Helper()
-	c, err := answer.Parse(testContract)
+	c, err := answer.ParseSource(testContract)
 	if err != nil {
 		t.Fatalf("parse contract: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestWrongValueIsNamedInTheRepair(t *testing.T) {
 	}
 	sent := fake.seen[1]
 	repair := sent[len(sent)-1].Content
-	if !strings.Contains(repair, ".class") || !strings.Contains(repair, "catastrophe") {
+	if !strings.Contains(repair, "class") || !strings.Contains(repair, "catastrophe") {
 		t.Errorf("repair does not name the field and the value found:\n%s", repair)
 	}
 }
@@ -138,7 +139,7 @@ func TestContractClauseGoesOnAndComesOff(t *testing.T) {
 	base := defaultFrame(toolDefs(), Vector())
 	c := contract(t)
 	framed := strings.TrimRight(base, "\n") + "\n\n" + contractClause(c)
-	for _, line := range strings.Split(testContract, "\n") { // indented into the clause
+	for _, line := range strings.Split(c.Source(), "\n") { // indented into the clause
 		if !strings.Contains(framed, line) {
 			t.Fatalf("the frame does not state the contract line %q", line)
 		}
@@ -151,13 +152,18 @@ func TestContractClauseGoesOnAndComesOff(t *testing.T) {
 	}
 }
 
-// A contract the driver cannot parse fails the process at BUILD, before a model call — the
-// same treatment a tool name no driver knows gets, and for the same reason.
-func TestUnparseableContractFailsTheBuild(t *testing.T) {
-	p, _ := Build(Config{ID: "p1", Task: "go", Client: &fakeCompleter{}, Answer: "{class: !or [bug"})
-	out, err := p.Run(context.Background())
-	if err == nil {
-		t.Fatal("a process was built on a contract that does not parse")
+// A contract the driver cannot USE fails the process at BUILD, before a model call — the
+// same treatment a tool name no driver knows gets, and for the same reason. A document
+// always parses; what does not survive is a schema with a defect in it.
+func TestUnusableContractFailsTheBuild(t *testing.T) {
+	bad, err := codec.ParseNode([]byte("signature: {name: c}\ndefine:\n  node: {next: .[node]}\naccept: .[node]\n"), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	p, _ := Build(Config{ID: "p1", Task: "go", Client: &fakeCompleter{}, Answer: bad})
+	out, runErr := p.Run(context.Background())
+	if runErr == nil {
+		t.Fatal("a process was built on a contract that cannot be used")
 	}
 	if out.Reason != string(process.Failed) {
 		t.Errorf("reason %q, want %q", out.Reason, process.Failed)

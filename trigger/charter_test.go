@@ -8,6 +8,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 
+	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -121,7 +122,11 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 		gates:  [{name: approval, mode: ask}],
 		action: {
 			patch:  {stage: reviewed, tmp: !delete null},
-			spawn:  {driver: scripted, task: "review $subject"},
+			spawn:  {
+				driver: llm,
+				task:   "review $subject",
+				answer: {class: !or [bug, nit], severity: !or [low, high]},
+			},
 			onDone: {patch: {stage: shipped}},
 		},
 	}`), &trig, codec.Tony); err != nil {
@@ -167,6 +172,15 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	doc, _ := back.ToTony()
 	if !strings.Contains(string(doc), "!delete") || !strings.Contains(string(doc), "hotfix-*") {
 		t.Fatalf("the round trip dropped an operator: %s", doc)
+	}
+	// A spawn's ANSWER CONTRACT is a pattern like any other, and it is the reason the field
+	// is a document rather than the text of one: it survives the store as the operators it
+	// was written as, so what the driver enforces is what the charter said.
+	if _, err := answer.Parse(back.Action.Spawn.Answer); err != nil {
+		t.Fatalf("the stored answer contract is not usable: %v", err)
+	}
+	if cls := ir.Get(ir.Get(ir.Get(ir.Get(spec, "action"), "spawn"), "answer"), "class"); cls == nil {
+		t.Fatalf("action.spawn.answer.class is not on the entity: %s", doc)
 	}
 }
 

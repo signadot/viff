@@ -372,7 +372,7 @@ built to avoid. `resolver` and `environment` remain declared and unread — see
 spawn:
   driver: llm
   task:   "Review $subject for security defects."
-  answer: |
+  answer:
     severity: !or [low, high]
     note:     !irtype string
   grant:  read-only
@@ -437,13 +437,13 @@ advice a model may ignore.
 
 `answer` is the same request made enforceable — the shape the final message must have,
 written as a tony **match pattern** (the `accept` clause of a schema, which is the same
-vocabulary `when` is written in):
+vocabulary `when` is written in, stored the same way, under the same `!raw` escape):
 
 ```tony
 spawn:
   driver: llm
   task:   "Review $subject."
-  answer: |
+  answer:
     class:    !or [bug, nit, risk]
     severity: !or [low, high]
     why:      !irtype string
@@ -451,8 +451,11 @@ spawn:
 
 It is checked when the model stops, which is the only moment it can be: a run ends by the
 model ceasing to call tools, so stopping and reporting are one act. A failure goes back to
-the agent as a **diagnosis** — the path, what was expected there, what was found, and every
-such failure rather than the first — and it is asked to fix it. That is bounded at two
+the agent as a **diagnosis** — the path, what was expected there, what was found, absent kept
+apart from present-but-wrong, and every such failure rather than the first — and it is asked
+to fix it. That is the match's own account of how it walked (`tony.Explaining`), so a failure
+inside an operator is located as precisely as the operator knows it: `findings[1].severity`,
+not "findings". That is bounded at two
 attempts: if a model cannot produce the shape with the complaint in front of it, more turns
 will not teach it.
 

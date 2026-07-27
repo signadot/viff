@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
@@ -176,7 +178,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 		Driver string          `tony:"field=driver"`
 		Frame  string          `tony:"field=frame"`
 		Tools  []string        `tony:"field=tools"`
-		Answer string          `tony:"field=answer"`
+		Answer *ir.Node        `tony:"field=answer,omitzero"`
 		Vector *process.Vector `tony:"field=vector,omitzero"`
 		Grant  *process.Grant  `tony:"field=grant,omitzero"`
 	}

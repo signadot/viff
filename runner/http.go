@@ -44,7 +44,7 @@ func (p *httpRunner) Spawn(l process.Launch, _ process.ContentReader) process.Ha
 	if len(l.Tools) > 0 {
 		req["tools"] = l.Tools
 	}
-	if l.Answer != "" {
+	if l.Answer != nil {
 		req["answer"] = l.Answer
 	}
 	if l.Vector != nil {
