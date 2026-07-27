@@ -17,12 +17,12 @@ verse
        [--docd-addr host:port]               attach to a running docd (client face) …
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
        [--o-bin path]                        the o binary to spawn daemons (default: go run pinned cmd/o)
-       [--policy <url>]                      run processes on a remote controlPolicy base URL …
+       [--policy <url>]                      run processes on a remote process-control base URL …
        [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
                                              publishes each process's dialURL from it) …
        [--broker-addr host:port]             … the sibling port serving this verse's broker face
                                              (/broker/<nonce>); all default off (local in-process
-                                             supervisor). See docs/control-policy.md.
+                                             supervisor). See docs/process-control.md.
   status                                     engine/store snapshot
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 

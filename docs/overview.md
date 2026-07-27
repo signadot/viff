@@ -67,7 +67,7 @@ they separate into services without changing callers.
    │  watch · get · list         │  gate approve · flow steer · process control │
    └───────┬───────────────────────────────┬───────────────────────┬───────────┘
            │                                │                        │
-      entity.Store                    trigger.Engine            controlPolicy
+      entity.Store                    trigger.Engine           process control
    (MemStore | logd/docd)         (reactive, per-subtree      (how a process RUNS)
    Put/Modify(CAS)/Get/watch       watches, gate registry)     ├─ local  (processd, in-proc)
            ▲                                │  spawn           ├─ remote (controlpolicy.HTTP)
@@ -81,12 +81,12 @@ read-modify-write, so there are no lost updates; `Get` reads a ref and a `Lister
 `Observe` is a low-latency hint that may drop, while the cursored `watch … since=<rev>`
 replay is the source of truth. `MemStore` serves dev and test; a logd/docd backing gives
 durability, copy-on-write scopes, and controller federation. See
-[change events](change-events.md) and [entity values](entity-values.md).
+[change events](change-events.md).
 
 `trigger` is the reactive engine. It observes the store through per-subtree watches — each
 trigger watches exactly the `system.kind` it matches, and there is no root watch — matches
 installed `Def`s, resolves gates through a shared registry, and fires actions. A spawn action
-goes through the engine's `Spawner`, which hosts the process via the controlPolicy and
+goes through the engine's `Spawner`, which hosts the process via process control and
 mirrors it back.
 
 `process` and `process/processd` are the process runtime. A `Process` runs a driver
@@ -99,7 +99,7 @@ entity: status, a `say` preview, last tool output, final `result`, the resume `c
 `policy`, and a broker's `dialURL`. It is one-way, and an index rather than a warehouse. This
 is the bridge that lets process completion drive the next trigger.
 
-`controlpolicy` and `broker` are the two off-box controlPolicies, described below.
+`controlpolicy` and `broker` are the two off-box process-control backends, described below.
 
 `versed` is the assembly and the HTTP surface. It also owns scopes — per-scope engines over a
 copy-on-write store view — hosts brokers under `/broker/<nonce>`, and runs resume-or-orphan
@@ -149,7 +149,7 @@ Because `mirror` projects the read plane into the store, the whole fleet is obse
 watching `process:instance:*`, completions are ordinary change events, and a process's
 outcome survives its ephemeral runtime.
 
-### How a process runs is a seam: the controlPolicy
+### How a process runs is a seam
 
 `ControlPolicy{Spawn, Attach, Ref}` returns a
 `ProcHandle{Subscribe, Pause/Resume/Cancel/Steer/SetVector/Result}`. The engine drives every
@@ -168,7 +168,7 @@ local path. Three implementations sit behind it:
 Because the seam is uniform, `verse processes` and
 `verse process get/attach/cancel/say/approve` work whether a process is local, remote, or
 brokered, and a human executes a process via `verse process do` exactly as an agent would.
-See [the controlPolicy](control-policy.md).
+See [process control](process-control.md).
 
 ### Gates are the dial, and they point up
 
@@ -202,7 +202,7 @@ generation is rejected — so a displaced or zombie worker cannot corrupt the lo
 Each seam is where you plug in without touching the core.
 
 - *Driver* — how a process thinks: `scripted`, `llm`, or your own `Next`.
-- *controlPolicy* — where and how a process runs: a k8s Job, a lambda, a broker for humans.
+- *Process control* — where and how a process runs: a k8s Job, a lambda, a broker for humans.
 - *Store* — `MemStore` or logd/docd, or anything implementing the `Store` interface.
 - *Source, or docd controller* — reflect an external system into an owned slice of the verse
   ([sources](sources.md), [writing a controller](controllers.md)).
@@ -212,7 +212,7 @@ Each seam is where you plug in without touching the core.
 Today `verse up` runs the engine, process runtime, and HTTP surface in one process, and
 either brings up logd and docd as children or attaches to a running docd. The pieces — store,
 engine (`versed`), process runtime (`proc`) — are separable services behind these same
-interfaces, and the controlPolicy already lets processes run off-box. See
+interfaces, and process control already lets processes run off-box. See
 [deployment and steering](deployment-and-steering.md).
 
 ## Where to go next

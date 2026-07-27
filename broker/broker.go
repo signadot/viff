@@ -5,7 +5,7 @@
 // the broker glues the two legs: a worker's reports become the events verse observes, and
 // verse's control becomes items the worker pulls. Both parties are clients; only the
 // broker is reachable — so a firewalled worker or a human works without verse inverting.
-// See docs/control-policy.md "The worker-facing dial-in protocol".
+// See docs/process-control.md "The worker-facing dial-in protocol".
 package broker
 
 import (

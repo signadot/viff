@@ -98,28 +98,14 @@ events, yet all 300 changes still dispatch on resume, replayed from the cursor.
 `TestControlOutranksObservation` pins it: a `Pause` takes effect ahead of a burst of
 20 observations (none fire while paused), and the burst dispatches on `Resume`.
 
-## The `verse` CLI
+## The surface carries the split
 
-One binary, one surface. `up` is the only daemon verb; everything else is a client that
-connects to whatever is running. Output is tony (`-o`), so entities round-trip:
-`verse entity get … | verse entity put`. The current command surface is in
-[the reference](reference.md#commands); what matters here is that its shape encodes the
-plane split.
-
-Observe — `watch`, `process attach`, `get`, `list`, `status` — hits the read plane. Steer —
-`flow`, `gate approve|deny`, `process cancel|say` — hits the out-of-band control plane, so
-the operator cannot accidentally steer via a write. Saying something to a running agent
-(`process say`, `flow say`) is one such steering gesture: out-of-band, folded in at the
-process's next boundary, never a store write. `flow`, a subject's whole lifecycle, and
-`process`, one governed unit, are different scopes on purpose; `watch`, which is store-wide,
-and `process attach`, which is one process, are coarse versus fine observation. `gate` is
-where the release approver lives.
-
-The load-bearing rule for versed's HTTP surface is that control endpoints are distinct from
-the observation and read endpoints, mirroring `processd`. A `verse flow pause` or a gate
-resolve hits the control plane and is applied with priority; it is never expressed as a change
-written into the verse. Today `up` runs engine, proc and store in one process; split mode
-would run them apart, with clients targeting each through config.
+One binary. `up` is the only daemon verb and everything else is a client, so the split has
+to show up in the surface itself, or an operator can reach the control plane by accident.
+The rule for versed's HTTP surface is that control endpoints are distinct from the read
+endpoints, mirroring `processd`: a `verse flow pause` or a gate resolve hits the control
+plane and is applied with priority, and is never expressed as a change written into the
+verse. The command surface that falls out is in [the reference](reference.md#commands).
 
 ## Local dev: federating the working tree
 
@@ -147,46 +133,6 @@ the validator reads contents *through the verse* rather than a shared disk.
 This settles the store shape: local dev requires an external, scope-aware store
 that multiple clients embed (versed on baseline, each dev's connector on a scope) —
 exactly the docd-client-not-embedded-engine model.
-
-## Built vs. next
-
-Built (this note's change): the engine control plane — priority drain,
-pause-holds-dispatch, `Pause`/`Resume`/`Do`, race-clean, with the invariant test; and
-revision-cursored observation (`Event.Rev`, `Store.Since`/`Rev`, engine catch-up)
-so holds cost a cursor, not a buffer — with a drop-recovery test.
-
-Also realized since: the single `verse` CLI (subcommands per the CLI section);
-`up` wiring the engine + proc + store in one process (spawning logd+docd, or attaching
-to a running docd); versed's HTTP surface with the control/observation split; and typed
-per-flow control ops — pause/resume, cancel a flow, say to a flow (inject an
-instruction) — each
-carrying a subject ref, plus `verse status`. Gate answers ride the out-of-band resolver
-path (`gate approve` / `gate deny` → `POST /gate/resolve`).
-
-Next, for the dogfood:
-- Rebind autonomy at runtime (slide a gate) as a first-class control op.
-- Wire the gate resolver to a real surface — Slack — for the release approver.
-- `verse down`; a git Source (the first generic external Source).
-- Realized: the store. A logd client adapter (the service is external —
-  versed embeds the client) gives durability + replay, mapping `Since` →
-  query-by-revision via a `FromCommit` replay watch, with atomic CAS writes
-  (`PatchIf`). It is now fronted by docd and is `up`'s default: with no store
-  flags `up` brings logd+docd up on a temp data dir via `o sys up`; `--data <dir>` for
-  a durable dir, `--docd-addr`/`--docd-mount-addr` to attach to a running docd,
-  `--store memory` to opt out (in-memory `entity.Store`, no daemons).
-- Realized: `verse connect` + the global `--scope`, and real copy-on-write
-  scopes on the docd/logd store — `Store.Scope(name)` returns an isolating child
-  (writes to the scope, reads overlaid on baseline) and `disconnect --scope` drops
-  the overlay via `DeleteScope`. The in-memory store keeps a non-isolating
-  passthrough, so federation was an addition, not a rewrite.
-- Realized: the full local-federation loop — `verse connect` writes scoped file
-  metadata to docd, runs a content controller serving bytes on demand, and installs
-  a scoped trigger; a per-scope engine fires a validator per file, and the agent's
-  `read_file` resolves content *through the verse* (so it needn't share a disk). Scoped
-  engines observe via per-trigger subtree watches — each trigger watches exactly the
-  `system.kind` it matches, not a root watch (docd routes a subtree watch at/below a
-  mount; whole-tree root watches are out of scope by design). See
-  [content federation](content-federation.md).
 
 ## Why this ordering
 

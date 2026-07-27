@@ -7,7 +7,7 @@ interface for humans and agents, so a human can take over a runaway agent; (3) u
 semantics when available — stdout, stderr, exit, maybe stdin and a pty; (4) keep permissions
 on the long-term radar.
 
-Design D below is what got built; [the controlPolicy](control-policy.md) is the resulting
+Design D below is what got built; [process control](process-control.md) is the resulting
 contract, and [tutorial §5](tutorial.md#5-human-executed-processes-dial-in) drives it.
 
 ## The key observation: a process is already a contract, not a runtime

@@ -112,7 +112,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 // localPolicy is the in-process controlPolicy: it hosts processes on the embedded
 // processd runtime — the "/broker/local" handler. Remote policies (a controlPolicy base
 // URL: k8s, lambda, a human broker) implement the same process.ControlPolicy behind the
-// wire contract; the engine drives them through the identical seam. See docs/control-policy.md.
+// wire contract; the engine drives them through the identical seam. See docs/process-control.md.
 type localPolicy struct{ d *processd.Daemon }
 
 func (l localPolicy) Spawn(id, task, driver string, content process.ContentReader) process.ProcHandle {
@@ -151,7 +151,7 @@ func (s *Server) UseBroker(face string) *broker.Broker {
 
 // BrokerHandler serves this verse's broker face — the controlPolicy contract hosted under
 // /broker/<nonce>, so a remote verse or a worker reaches a policy through verse's own URL
-// rather than a separate service (see docs/control-policy.md "Hosting"). The well-known
+// rather than a separate service (see docs/process-control.md "Hosting"). The well-known
 // "local" nonce is the built-in supervisor (processd); any other nonce is a handler
 // registered via HostBroker (e.g. a dial-in broker's WorkerHandler). It is intended for a
 // SIBLING port, kept distinct from the trusted operator API.
@@ -248,7 +248,7 @@ func (s *Server) reconcileProcesses() {
 		// re-attach. Read the chain back off the entity and hand it straight in: it is the
 		// address of the action that spawned this process, and a resumed process should not
 		// forget where it came from. AdoptChain re-derives its hooks from that address —
-		// see docs/completion-hooks.md.
+		// see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
 		if policyRef != "" && policyRef != "local" { // remote: the work outlived verse
 			if h := controlpolicy.HTTP(policyRef).Attach(ent.Ref.ID); h != nil {
@@ -834,7 +834,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 // confused: `resume` is the VERSE-facing control/re-attach address (what a restart needs),
 // `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
 // a remote processd (one URL, no separate worker leg) and diverge for a broker (verse drives
-// it in-process — ephemeral — while a worker dials a separate face). See docs/control-policy.md.
+// it in-process — ephemeral — while a worker dials a separate face). See docs/process-control.md.
 func (s *Server) policyStatus() *api.PolicyStatus {
 	pol := &api.PolicyStatus{Resume: "ephemeral"}
 	switch {

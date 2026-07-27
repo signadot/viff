@@ -3,7 +3,7 @@ package process
 // ControlPolicy runs and governs processes on some substrate; verse (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a processd
 // wrapper); remote policies addressed by a base URL — k8s, lambda, a human broker — come
-// later, all behind this same seam. See docs/control-policy.md.
+// later, all behind this same seam. See docs/process-control.md.
 //
 // Keeping even the local case behind the interface is deliberate: there is no privileged
 // in-memory path, so the contract stays complete and local ≡ remote.

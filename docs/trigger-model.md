@@ -300,10 +300,16 @@ when a completion should fan into several reactions, advance a different subject
 authored separately; the hook is the tool for a linear chain owned by one trigger, with the
 process step visible inline.
 
-Hooks survive a restart: resume rehydrates them from the process's chain, so `done` /
-`failed` / `cancelled` still fire. (`onOrphaned` is inert — a process that can be re-attached
-is adopted and never marked orphaned, one that cannot is orphaned and never tracked, so no
-tracked process reaches that status.) See [completion hooks](completion-hooks.md).
+The four hooks are named fields rather than an `on map[status]*Action`, which is what makes
+an unknown status unwritable: there is no field to write it in, so nothing needs validating.
+The cost is that a fifth terminal status would be a schema change, and that a misspelled
+`onDoen` is dropped like any other unknown field.
+
+Hooks survive a restart: resume rehydrates them from the process's chain, so `done`,
+`failed` and `cancelled` still fire. `onOrphaned` is inert, and not for want of
+rehydration — orphaning and adopting are the two alternatives in reconcile, so a process
+that can be re-attached is adopted and never marked orphaned, and one that cannot is
+orphaned and never tracked. No tracked process reaches that status.
 
 ### `seq`: sequence along the chain, parallel across triggers
 
@@ -353,12 +359,34 @@ The rules:
   rather than a stack, which is what keeps re-fire idempotence a predicate rather than a
   search.
 
-An element's chain reads `review.seq[2]`, and its failure branch `review.seq[2].onFailed`.
-The id renders the same address without brackets — `review.seq.2@demo:pr:1` — because
-brackets are shell-hostile (`zsh` kills `review.seq[2]@demo:pr:1` with `no matches found`
-before verse ever sees it) and ids get pasted onto command lines constantly. The dotted form
-is lossless because `Action`'s field set is closed: a segment after `seq` is an element, a
-segment matching a hook name is a field.
+### Chains and ids
+
+A spawned process is identified by `<chain>@<subject>`, where the chain is the
+[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath) of the action
+inside its trigger — dotted field names, brackets for list positions. Hooks descend by field
+name and sequence elements by index:
+
+| the action | chain | id for `demo:pr:1` |
+|---|---|---|
+| the trigger's own | `review` | `review@demo:pr:1` |
+| its done-hook | `review.onDone` | `review.onDone@demo:pr:1` |
+| a nested done-hook | `review.onDone.onDone` | `review.onDone.onDone@demo:pr:1` |
+| the third sequence step | `review.seq[2]` | `review.seq.2@demo:pr:1` |
+| that step's failure branch | `review.seq[2].onFailed` | `review.seq.2.onFailed@demo:pr:1` |
+
+Because the chain addresses the action rather than naming it privately, it is deterministic,
+which is what makes a re-fire idempotent — a spawn dedups by id. It is also a lookup key back
+into the charter, which is how resume rehydrates a process's hooks and how a sequence finds
+its next step. And it is published on the process entity as `chain`, with its root as
+`trigger`, so "every process of this trigger" is a payload predicate rather than a glob over
+ids.
+
+The id drops the brackets because they are shell-hostile: `zsh` kills
+`review.seq[2]@demo:pr:1` with `no matches found` before verse ever sees it, and ids get
+pasted onto command lines constantly. The dotted form is lossless because `Action`'s field
+set is closed — a segment after `seq` is an element, a segment matching a hook name is a
+field. The `@` join replaced an earlier `-`, which could not be decoded back because trigger
+names spend `-` too.
 
 ### Progress facts
 

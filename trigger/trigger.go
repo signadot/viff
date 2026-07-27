@@ -206,7 +206,7 @@ type Action struct {
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
 	// it scoped to exactly this spawn's process (see Engine.applyHook / hookFor). onOrphaned is
-	// inert until resume rehydrates hooks (see docs/completion-hooks.md).
+	// inert until resume rehydrates hooks (see docs/trigger-model.md).
 	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
 	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
 	OnCancelled *Action `tony:"field=onCancelled,omitzero"` // status cancelled

@@ -98,7 +98,7 @@ Read it in four parts. `condition` is the cause — `when` matches an opened `de
 because no `subject` is named, the firing is about the entity that changed. `gates` is the
 guard: one gate named `approval`, in `ask` mode, so a human decides. `action` is the
 consequence: mark the subject *reviewing* and spawn a review process. And `onDone` is a
-[completion hook](completion-hooks.md) — when that process finishes, mark the subject
+[completion hook](trigger-model.md#completion-hooks-one-trigger-chaining-visible) — when that process finishes, mark the subject
 *reviewed*. The whole chain reads top-to-bottom in one rule. Every field, and the grammars
 behind them, are in [the trigger model](trigger-model.md).
 
@@ -389,7 +389,7 @@ dotted field names, with brackets for list positions. So `review` is that trigge
 `review.seq[2].onFailed`. The same string is the id the action spawns under
 (`review@demo:pr:1`), which is what makes the tree not a second model of the work: it is the
 charter and the runtime read through one address. See
-[completion hooks](completion-hooks.md#addressing-the-chain-is-a-kpath).
+[chains and ids](trigger-model.md#chains-and-ids).
 
 Some statuses come from no process at all, because a charter position is not a process.
 `review.onDone` above is `applied`: it fired — that is what set `reviewed` — but it only sets
@@ -511,7 +511,7 @@ broker. From outside, the operator drives and watches: `list`, `get`, `attach`, 
 
 The broker is where a human sits on the dial of autonomy — the same process the engine drives
 and steers, done by a person, observed and governed through the one verse. See
-[the controlPolicy](control-policy.md) for the seam and the dial-in protocol.
+[process control](process-control.md) for the seam and the dial-in protocol.
 
 ---
 
@@ -941,12 +941,12 @@ children or attaching to a running docd. The pieces — store, engine (`versed`)
 runtime (`proc`) — are separable services behind the same interfaces. See
 [deployment and steering](deployment-and-steering.md).
 
-The controlPolicy makes how a process runs a seam. The default is the in-process supervisor,
+Process control makes how a process runs a seam. The default is the in-process supervisor,
 `up --policy <url>` hosts processes on a remote verse, and `up --broker` hosts them behind a
 broker that a firewalled worker or a human dials in to. verse drives all three through the
 identical handle, so `verse processes` and `process get`/`attach`/`cancel`/`say`/`approve` /
 `deny` work across all of them, and a human or external worker executes via `verse process do`
-(§5). Left to do: the inbox long-poll. See [the controlPolicy](control-policy.md).
+(§5). Left to do: the inbox long-poll. See [process control](process-control.md).
 
 Governed decisions are one machinery answering two questions. *Whether* an action fires is a
 gate whose formula the verse resolves itself: a quorum vote, with a deny-quorum for "no", a

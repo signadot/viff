@@ -5,6 +5,13 @@ faces to do it. This is the mechanics-and-docd view; for the general controller 
 [writing a controller](controllers.md), and to run it first see
 [tutorial §8](tutorial.md#8-federate-your-local-working-tree).
 
+`connect` is a proof of concept of federation rather than its settled shape. It works, and
+the mechanics below are the real ones, but it fuses three separable things into one
+ephemeral session: the directory surface, the scope that isolates it, and a validator
+charter over it. [expose](roadmap/expose.md) is where that goes — the surface gets a name
+and outlives the session, and the validator becomes a charter you opt into. Read this for
+how federation works today; read that for what it is becoming.
+
 ## What connect is
 
 `verse connect [path]` projects your local working tree into the entity store under a

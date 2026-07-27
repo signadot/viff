@@ -983,7 +983,7 @@ func (e *Engine) Adopt(subject, id string, h process.ProcHandle) {
 //
 // This is what a chain being a LOOKUP KEY into the charter is for. Before it, resume tracked
 // a process with no hooks at all, which meant a completion after a restart silently ended a
-// chain: docs/completion-hooks.md records that as a limitation, and it is why `onOrphaned`
+// chain: docs/trigger-model.md records that as a limitation, and it is why `onOrphaned`
 // never fires (the only orphan is written by this very reconcile, on a fresh engine).
 //
 // Rehydration is best-effort by nature, and the failures are ordinary rather than alarming:

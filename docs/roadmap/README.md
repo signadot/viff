@@ -76,7 +76,7 @@ Two categories deliberately stay in `docs/`:
 
 - Notes about work that landed, kept for the reasoning — [external
   processes](../external-processes.md) chose the seam that
-  [the controlPolicy](../control-policy.md) implements.
-- Notes about built things with a stated gap — [the controlPolicy](../control-policy.md)
+  [process control](../process-control.md) implements.
+- Notes about built things with a stated gap — [process control](../process-control.md)
   still owes an inbox long-poll, and [sources](../sources.md) has a git Source that no
   command yet exposes. A gap inside something that runs is recorded where it runs.

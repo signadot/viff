@@ -1,13 +1,13 @@
-# The controlPolicy: a base-URL contract for running and governing processes
+# Process control: a base-URL contract for running and governing processes
 
 The contract behind `verse up --policy <url>` and `verse up --broker`. Walk it first in
 [tutorial §5](tutorial.md#5-human-executed-processes-dial-in), where a human executes a
 process by dialing in; this is the seam that makes that work. It builds on
 [external processes](external-processes.md) (design D, detached-core-first) and makes its
-"controlPolicy wrapping and enforcing the verse invariants" concrete.
+"wrapping and enforcing the verse invariants" concrete.
 
-In one line: a controlPolicy is the `processd` HTTP contract, made resumable and
-claim-aware, behind a base URL. verse is its client and mirrors it into the durable
+In one line: the process-control interface is the `processd` HTTP contract, made resumable
+and claim-aware, behind a base URL. verse is its client and mirrors it into the durable
 `process:instance` entity; the local supervisor is one built-in implementation of the same
 URL contract with no privileged shortcut; and anyone else (k8s, AWS Lambda, a human-workflow
 service, a custom runtime) plugs in a URL, completely outside verse.
@@ -15,12 +15,33 @@ service, a custom runtime) plugs in a URL, completely outside verse.
 Most of what follows is built — see [what is built](#what-is-built) at the end for the parts
 that are not.
 
-## What a controlPolicy is
+## A note on the name
+
+This interface governs how one *process* runs. It is not a general control policy — nothing
+here has an opinion about the engine, its charter, or how a firing is gated. Keeping those
+distinct matters, because a policy layer over the engine is a plausible thing to want later
+and would collide head-on.
+
+The code has not caught up. It still spells this `process.ControlPolicy`, package
+`controlpolicy`, and `verse up --policy`; this document says *process control* and treats
+those as the spellings of the same thing, pending a rename.
+
+Worse, `policy` is already two different wire fields:
+
+| where | `policy` means |
+|---|---|
+| `launch.Spec.policy` | the gate vector — the autonomy dial, soft and slidable |
+| the `process:instance` entity | which process-control backend runs it (`local`, a base URL) |
+
+Those are unrelated, and a reader who learns one meaning will misread the other. The
+disambiguation wants to reach the wire, not just this file.
+
+## What the interface is
 
 verse defines a process not as "an LLM loop" but as a contract: a driver proposes, an
 executor performs, effects are gated by a vector at boundaries, a read plane streams events,
 a control plane steers at boundaries, and the whole thing is mirrored to a `process:instance`
-entity and ends with a terminal. A controlPolicy is the durable generalization of the
+entity and ends with a terminal. Process control is the durable generalization of the
 in-process `Supervisor` that enforces that contract.
 
 In-process, enforcement is interception: the loop cannot `Execute` an action until
@@ -40,17 +61,17 @@ mechanism differs. Takeover falls out for free: `cancel` the agent, a human re-c
 claim transfer plus identity), reads the journal (durable handoff), and continues on the same
 subject under the same policy.
 
-A controlPolicy is a reconciler over the `process:instance` resource, not a gated process
+A process-control backend is a reconciler over the `process:instance` resource, not a gated process
 itself — which stops the regress, since governing a process must not require another governed
 process. It is the dual of a [Source](sources.md): a Source is a controller that reflects
-external state *into* the verse; a controlPolicy is a controller that runs and governs *work*
+external state *into* the verse; a process-control backend is a controller that runs and governs *work*
 on a substrate. Both are docd-controller-shaped, both reconcile a resource, both must be
 idempotent. And k8s sits on both sides — `k8s:*` as a Source reflecting the cluster in, and
-k8s as a controlPolicy backend running processes as Jobs out.
+k8s as a process-control backend running processes as Jobs out.
 
 ## Idempotency ⇒ the restart discipline (`verse down; up`)
 
-Because a controlPolicy is a reconciler, it must be level-triggered and reconstructable from
+Because it is a reconciler, a backend must be level-triggered and reconstructable from
 the durable entity — the same `Observe:Since` / `webhook:reconcile` law verse runs everywhere.
 Two rules follow.
 
@@ -194,7 +215,7 @@ coarser by nature; that is stated, not hidden.
 ## Brokering: firewalled workers and humans, without inverting verse
 
 A worker that cannot accept inbound connections — a laptop agent, a pod in a private cluster,
-a person — does not force verse to invert. The controlPolicy service, the broker, is the one
+a person — does not force verse to invert. The broker, itself a backend, is the one
 reachable rendezvous, and both verse and the worker are clients that dial out to it:
 
 ```
@@ -226,7 +247,7 @@ mechanism, and why designing the human case first gets the agent for free.
 
 A base URL does not have to be a new service. verse can host a broker the way docd hosts a
 controller: docd forwards a subtree's ops to a registered controller under a mount, and verse
-forwards a process's worker and engine ops to a registered controlPolicy under
+forwards a process's worker and engine ops to a registered backend under
 `/broker/<nonce>` — the same capability-URL trick [`connect`](connect.md) uses for
 `dir-content-<nonce>`. A policy binding is then uniformly a URL: `<broker>/broker/local`,
 `<broker>/broker/<nonce>`, or an external one. verse consumes the verse-facing contract from

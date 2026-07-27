@@ -2,7 +2,7 @@
 // contract: an httpPolicy drives a remote processd-shaped service at a base URL, so the
 // engine can run a process on another host, k8s, or a broker exactly as it runs one in
 // process. It is the mirror of versed's localPolicy — same process.ControlPolicy seam,
-// HTTP transport. See docs/control-policy.md.
+// HTTP transport. See docs/process-control.md.
 package controlpolicy
 
 import (

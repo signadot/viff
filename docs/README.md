@@ -26,7 +26,6 @@ core of the model, and almost everything else is something a rule can reach.
 |---|---|
 | walk | [§2 install a charter and drive it](tutorial.md#2-install-a-charter-and-drive-it) · [§6 gates the group decides](tutorial.md#6-gates-the-group-decides--whether-and-who) · [§7 goals](tutorial.md#7-goals--give-a-flow-a-destination) |
 | read | [The trigger model](trigger-model.md) — the two grammars, and every field of a rule |
-| | [Completion hooks](completion-hooks.md) — why `onDone` is a field and not a second trigger |
 
 ### Processes and autonomy
 
@@ -36,7 +35,7 @@ drive a local agent, a remote one, and a human.
 | | |
 |---|---|
 | walk | [§3 processes](tutorial.md#3-processes) · [§5 human-executed processes](tutorial.md#5-human-executed-processes-dial-in) |
-| read | [The controlPolicy](control-policy.md) — the base-URL contract and the dial-in protocol |
+| read | [Process control](process-control.md) — the base-URL contract and the dial-in protocol |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 
@@ -59,7 +58,6 @@ what makes the reactive loop converge.
 |---|---|
 | walk | [§10 what this is and isn't yet](tutorial.md#10-what-this-is-and-isnt-yet) |
 | read | [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain costs |
-| | [Entity values](entity-values.md) — why a payload is a tony node rather than a Go map |
 | ahead | [Named persistent channels](roadmap/channel-observe.md) — an idea, not yet a design |
 
 ### Federation: bringing the outside in
