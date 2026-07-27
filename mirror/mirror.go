@@ -102,7 +102,7 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 			st["dialURL"] = u
 		}
 	}
-	store.Put(Ref(id), st.Payload())
+	write(store, id, st)
 	go func() {
 		defer unsub()
 		for ev := range ch {
@@ -114,8 +114,12 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 				st["pending"] = ev.ID
 				st["pendingGate"] = ev.Gate
 			case process.EvDecision:
-				delete(st, "pending")
-				delete(st, "pendingGate")
+				// nil, not delete: a write MERGES, so a field left out of the payload stays
+				// as it was. Saying "this is gone" is the writer's job, and it is the whole
+				// difference between a gate that clears and a process that looks blocked
+				// forever. (Under whole-value replace this was `delete` and read the same.)
+				st["pending"] = nil
+				st["pendingGate"] = nil
 				st["lastAction"] = ev.Tool
 			case process.EvExec:
 				st["lastAction"] = ev.Tool
@@ -141,11 +145,11 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 						if r := h.Result(); r != "" { // keep the full final answer, durably
 							st["result"] = r
 						}
-						store.Put(Ref(id), st.Payload())
+						write(store, id, st)
 						return // stop projecting; the entity remains, marked terminal
 					}
 				}
-				store.Put(Ref(id), st.Payload())
+				write(store, id, st)
 				continue
 			case process.EvVector: // an autonomy slide — project the dial so `entity get` shows it
 				st["vector"] = ev.Mode
@@ -155,9 +159,20 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
 			}
-			store.Put(Ref(id), st.Payload()) // Store clones the payload; safe to reuse st
+			write(store, id, st) // the payload is cloned on the way out; safe to reuse st
 		}
 	}()
+}
+
+// write projects the accumulated state onto the process's entity. A failed write is
+// DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the
+// process's own event goroutine with nobody to return to, and a process must not stall
+// because its index could not be updated. What it costs is that the entity can lag the
+// process it mirrors — the index is a projection, and the read plane remains the record.
+func write(store entity.Store, id string, st entity.Obj) {
+	if _, err := store.Write(entity.Write{At: Ref(id).At(), Value: st.Payload()}); err != nil {
+		return
+	}
 }
 
 // preview bounds a narration line for the index; the full text is on the read plane

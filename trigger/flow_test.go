@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -18,7 +19,7 @@ import (
 // store write. Here the flow is paused before its process runs, so it must hold at
 // its first boundary and only complete once resumed.
 func TestPauseFlowHoldsThenResumes(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 
 	var proc *process.Process
@@ -68,7 +69,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 // the reflected process:instance completion and drops the handle, so Flows() shows
 // only in-flight work (no stale subjects).
 func TestFlowReapedOnCompletion(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
@@ -99,7 +100,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 // matchFlow snapshots the live registry. Under -race this trips if either touches the map
 // unguarded. (Behavioral guard; -race is the assertion.)
 func TestReapVsCancelFlowNoRace(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	const subj = "demo:pr:1"
 	addr := mustExpr(t, subj)
 	mkproc := func(id string) *process.Process {
@@ -146,7 +147,7 @@ func mustExpr(t *testing.T, s string) Match {
 // do() must not deadlock when the loop has already exited (ctx cancelled): the
 // closure can never be drained, so the caller falls back to the stopped signal.
 func TestDoNoDeadlockAfterCancel(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	eng.Start(ctx)
 	cancel()
@@ -165,9 +166,9 @@ func TestDoNoDeadlockAfterCancel(t *testing.T) {
 // running; ReconcileOrphans retires them (they have no live handle) without touching
 // already-terminal ones.
 func TestReconcileOrphans(t *testing.T) {
-	store := entity.NewMemStore()
-	store.Put(mirror.Ref("old-running"), entity.Obj{"status": string(process.Running), "flow": "demo:pr:1"}.Payload())
-	store.Put(mirror.Ref("old-done"), entity.Obj{"status": string(process.Done), "flow": "demo:pr:2"}.Payload())
+	store := entitytest.Store(t)
+	entitytest.Set(t, store, mirror.Ref("old-running"), entity.Obj{"status": string(process.Running), "flow": "demo:pr:1"}.Payload())
+	entitytest.Set(t, store, mirror.Ref("old-done"), entity.Obj{"status": string(process.Done), "flow": "demo:pr:2"}.Payload())
 
 	eng := New(store, process.AutoResolver{})
 	if n := eng.ReconcileOrphans(); n != 1 {

@@ -12,7 +12,6 @@ verse
   up   [--root <dir>]                        start the monolith (engine + store + proc)
                                              the dir an llm agent reads/acts in; default: an
                                              isolated temp dir, printed at start
-       [--store memory]                      opt out of docd (no daemons, no persistence)
        [--data <dir>]                        bring logd+docd up on <dir> (default: fresh temp dir)
        [--docd-addr host:port]               attach to a running docd (client face) …
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
@@ -31,8 +30,12 @@ verse
   Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
 
   entities [--system <s>] [--kind <k>]       the store
-  entity (e)  get <ref> · put <ref> <payload>   (put is whole-payload; no `patch` verb yet —
-                                                 a trigger's action.patch is the merge path)
+  entity (e)  get <ref> · put <ref> <payload> · rm <ref>
+          put/rm [--at <field.path>]         write or remove INSIDE the payload, not the whole entity
+          put [--create|--update]            only if nothing is there yet · only if something is
+          put [--if <pattern>]               only if what is there matches
+                                             (a put MERGES: fields it does not name are left alone,
+                                              and `rm --at` is how one goes away)
   gates                                      pending decisions across the fleet
   gate    approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 )
 
@@ -50,7 +51,7 @@ func (s *sayer) Result() string { return s.result }
 // A process's output is durable in the verse: its narration, last tool output, and
 // full final answer land on the process:instance entity, readable after the run.
 func TestReflectProjectsOutput(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	d := &sayer{result: "here is the summary you asked for"}
 	p := process.NewProcess("p2", sup, d, noopExec{})
@@ -94,7 +95,7 @@ func (d dialer) DialURL() string { return d.url }
 // onto the entity as `dialURL`, so a worker can be told where to dial in (mint→publish→dial)
 // rather than being pre-configured. A handle without one (local, remote-processd) sets none.
 func TestReflectPublishesDialURL(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("d1", sup, &steps{n: 1}, noopExec{})
 	const url = "http://verse.test:9090/broker/abc123"
@@ -117,7 +118,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 // progresses to a terminal status — so another observer sees its lifecycle purely
 // by watching entities.
 func TestReflectProjectsProcessState(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	ch, unsub := store.Observe()
 	defer unsub()
 
@@ -162,7 +163,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 // "every process of the review trigger" is a payload predicate — which is all a `fields`
 // match can express — rather than a glob over ids.
 func TestReflectPublishesChainAndTrigger(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("p-chain", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{
@@ -188,7 +189,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 // A process with no trigger behind it (`verse process run`) carries no chain, and must not
 // be given an empty one — an empty `trigger` field would match a predicate looking for it.
 func TestReflectOmitsChainWhenAbsent(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("p-bare", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
@@ -201,5 +202,59 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	}
 	if _, present := entity.ToObj(e.Payload)["trigger"]; present {
 		t.Errorf("trigger published for a process with none: %+v", e.Payload)
+	}
+}
+
+// fakeHandle is a process.Handle whose read plane is a channel the test drives, so a
+// transition can be observed at the instant it happens rather than raced against.
+type fakeHandle struct{ ch chan process.Frame }
+
+func (f *fakeHandle) Subscribe() (<-chan process.Frame, func()) { return f.ch, func() {} }
+func (f *fakeHandle) Pause()                                    {}
+func (f *fakeHandle) Resume()                                   {}
+func (f *fakeHandle) Cancel(string)                             {}
+func (f *fakeHandle) Steer(string, string)                      {}
+func (f *fakeHandle) SetVector(*process.Vector, string)         {}
+func (f *fakeHandle) Result() string                            { return "" }
+
+// A gate that has been answered must LEAVE the entity, not linger on it. Reflect writes the
+// state it knows, and a write merges — so clearing a field means saying so, and the field
+// that says "this process is blocked on a human" is the one nobody may get wrong: a stale
+// `pending` reads as a process waiting forever on a gate that was already answered.
+func TestReflectClearsAnAnsweredGate(t *testing.T) {
+	store := entitytest.Store(t)
+	h := &fakeHandle{ch: make(chan process.Frame)}
+	Reflect(store, "g1", h, Meta{Runner: "local"})
+
+	fields := func() map[string]any {
+		t.Helper()
+		e, _, _ := store.Get(Ref("g1"))
+		return entity.ToObj(e.Payload)
+	}
+	await := func(why string, ok func(map[string]any) bool) map[string]any {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			if f := fields(); ok(f) {
+				return f
+			}
+			select {
+			case <-deadline:
+				t.Fatalf("timed out waiting for %s; entity = %+v", why, fields())
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}
+
+	h.ch <- process.Frame{Kind: process.EvPending, ID: "gate1", Gate: "write"}
+	await("the gate to appear", func(f map[string]any) bool { return f["pending"] == "gate1" })
+
+	h.ch <- process.Frame{Kind: process.EvDecision, ID: "gate1", Tool: "act"}
+	f := await("the gate to clear", func(f map[string]any) bool { return f["pending"] == nil })
+	if f["pendingGate"] != nil {
+		t.Fatalf("the gate name outlived the gate: %+v", f)
+	}
+	if f["lastAction"] != "act" {
+		t.Fatalf("clearing the gate lost the rest of the state: %+v", f)
 	}
 }

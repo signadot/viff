@@ -66,14 +66,14 @@ native one is probably unavoidable eventually; the question is whether it arrive
 
 Before inventing an append operation, note that an entity's successive payloads are a
 sequence: `Store.Since(rev)` replays them from a cursor, and every existing observer — watch,
-triggers, cursors, gap markers — already speaks it. So "post" could be a `Set` (via `Modify`, so
-concurrent posters do not clobber) and "read the thread" a `Since` over that ref, with no new
-operation in the store.
+triggers, cursors, gap markers — already speaks it. So "post" could be a write under a
+precondition (so concurrent posters do not clobber) and "read the thread" a `Since` over that
+ref, with no new operation in the store.
 
-The catch is retention, and it is store-dependent: `MemStore` keeps a bounded history and
-answers `Since` with `ok=false` once the revisions asked for have been dropped
-(`entity/store.go`). A durable channel cannot be built on a window that can silently close — so
-this direction is worth taking only as far as the logd-backed store's retention really goes.
+The catch is retention. `Since` answers `ok=false` once the revisions asked for are older
+than what the store can serve — below the low-watermark it opened at, or compacted away
+(`entity/logdstore.go`). A durable channel cannot be built on a window that can silently
+close, so this direction is worth taking only as far as the store's retention really goes.
 Anything a reader must be able to find *later* is exactly the case where a bounded buffer fails.
 
 ## The relation back to the flow tree

@@ -34,7 +34,7 @@ type globals struct {
 	OFmt  string `cli:"name=ofmt aliases=o desc='output format: tony | yaml (verse does not render json)'"`
 	IFmt  string `cli:"name=ifmt aliases=i desc='input format for stdin, extensionless files and typed payloads: tony | json | yaml (a file suffix wins)'"`
 	Color string `cli:"name=color default=auto desc='colorize output: auto (a terminal only) | always | never'"`
-	Scope string `cli:"name=scope desc='operate in a copy-on-write scope (real isolation on the default docd store; passthrough under --store memory)'"`
+	Scope string `cli:"name=scope desc='operate in a copy-on-write scope: a federation overlay isolated from baseline'"`
 }
 
 var g = &globals{Addr: defaultAddr}

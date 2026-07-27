@@ -204,7 +204,7 @@ func quorumFormula(mid, opt string, need int) *Formula {
 // a voter can find it (`verse docket`) and observe the tally. Idempotent: it never
 // reopens a channel that has already closed (an `outcome` is present).
 func (e *Engine) openChannel(m *motion) {
-	e.store.Modify(m.channel, func(cur entity.Payload) entity.Payload {
+	e.modify(m.channel, func(cur entity.Payload) entity.Payload {
 		if entity.Get(cur, "outcome") != nil {
 			return cur // already closed — leave it
 		}
@@ -266,10 +266,6 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 	if id, w, decided := check(); decided {
 		return id, w, true
 	}
-	sw, ok2 := e.store.(entity.SubtreeWatcher)
-	if !ok2 {
-		return "", nil, false
-	}
 	sub, cancel := context.WithCancel(ctx)
 	defer cancel()
 	events := make(chan entity.Event, 64)
@@ -283,7 +279,7 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 				continue
 			}
 			seen[st] = true
-			ch, unsub, err := sw.WatchSubtree(st[0], st[1])
+			ch, unsub, err := e.store.WatchSubtree(st[0], st[1])
 			if err != nil {
 				continue
 			}

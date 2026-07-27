@@ -12,7 +12,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -55,7 +57,7 @@ type Server struct {
 	// DocdClient/DocdMount are the addresses of the docd this verse is backed by,
 	// when store-kind is docd. They are published on GET /status so a separately-run
 	// controller process (e.g. `verse connect`) can find docd's mount face without
-	// guessing the ephemeral ports `up` chose. Empty on the in-memory store.
+	// guessing the ephemeral ports `up` chose.
 	DocdClient string
 	DocdMount  string
 
@@ -86,16 +88,10 @@ type scopeEngine struct {
 	cancel context.CancelFunc
 }
 
-// New assembles the server over an in-memory store — the dev/test default.
-func New(build processd.Builder) *Server {
-	return NewWithStore(build, entity.NewMemStore())
-}
-
-// NewWithStore assembles the server with the given process driver builder
-// (scripted, LLM, …) over an explicit store (in-memory or logd-backed). The engine
-// resolves trigger gates through the shared registry, so a human answers them
-// out-of-band via POST /gate/resolve; a trigger's spawn action goes through the
-// process runtime (hosted, mirrored into the verse).
+// NewWithStore assembles the server with the given process driver builder (scripted,
+// LLM, …) over a store. The engine resolves trigger gates through the shared registry,
+// so a human answers them out-of-band via POST /gate/resolve; a trigger's spawn action
+// goes through the process runtime (hosted, mirrored into the verse).
 func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	reg := process.NewRegistry()
 	eng := trigger.New(store, reg)
@@ -226,12 +222,8 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 // behind a remote runner. Control re-tracking (cancel/say a resumed process) is a
 // follow-on; this keeps the entity truthful.
 func (s *Server) reconcileProcesses() {
-	l, ok := s.Store.(entity.Lister)
-	if !ok {
-		return
-	}
 	var resumed []resumedRun
-	for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+	for _, ent := range s.Store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		if ent.Ref.Kind == mirror.ClaimKind {
 			// A run claim, not a process. It is cleared below rather than here, and it is
 			// named explicitly so it is not merely skipped by accident (a claim carries no
@@ -261,15 +253,22 @@ func (s *Server) reconcileProcesses() {
 				continue
 			}
 		}
-		// local (or unresolvable): the in-process runtime is gone → orphan.
-		p := entity.ToObj(ent.Payload)
-		if p == nil {
-			p = entity.Obj{}
-		}
-		p["status"] = string(process.Orphaned)
-		s.Store.Put(ent.Ref, p.Payload())
+		// local (or unresolvable): the in-process runtime is gone → orphan. Only the status
+		// changes, so only the status is written — the rest of what the process recorded is
+		// none of this reconcile's business.
+		s.write(ent.Ref.At("status"), entity.Val(string(process.Orphaned)))
 	}
-	s.reconcileClaims(l, resumed)
+	s.reconcileClaims(resumed)
+}
+
+// write applies a value at a path during startup reconciliation, reporting a failure on
+// stderr. Reconcile runs before the server serves, with no request to fail: a write that did
+// not land leaves the verse claiming something untrue about a process, and the operator
+// deserves to see that at the point it happens rather than to deduce it later.
+func (s *Server) write(at entity.Path, v entity.Payload) {
+	if _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: reconcile: write %s: %v\n", at, err)
+	}
 }
 
 // resumedRun is a process that survived the restart, and the chain it came from — enough to
@@ -295,14 +294,14 @@ type resumedRun struct{ subject, chain string }
 // Scoped engines hold their claims in their own scope stores; those are created lazily and
 // are not walked here. A scoped sequence therefore keeps a stale claim across a restart —
 // worth fixing when scoped resume is, since both are the same gap.
-func (s *Server) reconcileClaims(l entity.Lister, resumed []resumedRun) {
-	for _, ent := range l.List(func(r entity.Ref) bool {
+func (s *Server) reconcileClaims(resumed []resumedRun) {
+	for _, ent := range s.Store.List(func(r entity.Ref) bool {
 		return r.System == mirror.System && r.Kind == mirror.ClaimKind
 	}) {
 		if claimIsLive(ent, resumed) {
 			continue
 		}
-		s.Store.Delete(ent.Ref)
+		s.write(ent.Ref.At(), nil) // release: nothing stands there any more
 	}
 }
 
@@ -420,8 +419,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /schema", s.serveSchema, "", "")
 	rt.handle("GET /schema/{name}", s.serveSignature, "", "")
 	// mutation + control (out-of-band from observation; priority-serviced)
-	rt.handle("POST /entity", s.putEntity, "verse-put-entity", "verse-event")
-	rt.handle("DELETE /entity", s.deleteEntity, "", "verse-event")
+	rt.handle("POST /entity", s.putEntity, "verse-put-entity", "verse-entity")
+	rt.handle("DELETE /entity", s.deleteEntity, "", "")
 	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", "")
 	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", "")
 	rt.handle("POST /goals", s.addGoal, "verse-goal", "")
@@ -550,18 +549,12 @@ func (e *shellExec) Execute(ctx context.Context, tu process.ToolUse) (process.St
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
 
 // deleteScope drops the ?scope copy-on-write overlay and all its data — federation
-// teardown. It runs against the baseline store (only baseline may delete a scope),
-// so it is independent of scopedStore. A store without real scopes (in-memory)
-// answers 501 so the client can fall back to per-entity cleanup.
+// teardown. It runs against the baseline store (only baseline may delete a scope), so it
+// is independent of scopedStore.
 func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("scope")
 	if name == "" {
 		http.Error(w, "scope delete: ?scope required", http.StatusBadRequest)
-		return
-	}
-	deleter, ok := s.Store.(entity.ScopeDeleter)
-	if !ok {
-		http.Error(w, "store has no scopes to delete", http.StatusNotImplemented)
 		return
 	}
 	// Stop the scope's engine (if any) before its data goes away, so it isn't
@@ -572,7 +565,7 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 		delete(s.scopeEngs, name)
 	}
 	s.scopeMu.Unlock()
-	if err := deleter.DeleteScope(name); err != nil {
+	if err := s.Store.DeleteScope(name); err != nil {
 		http.Error(w, "scope delete: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -580,8 +573,8 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 }
 
 // scopedStore returns the store view for the request's ?scope (baseline if absent).
-// The seam for local-dev federation — in-memory it is a passthrough; a logd-backed
-// store isolates the scope (see docs/deployment-and-steering.md).
+// The seam for local-dev federation — the logd-backed store isolates the scope (see
+// docs/deployment-and-steering.md).
 func (s *Server) scopedStore(r *http.Request) entity.Store {
 	if sc := r.URL.Query().Get("scope"); sc != "" {
 		return s.Store.Scope(sc)
@@ -648,12 +641,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	sys, kind := q.Get("system"), q.Get("kind")
-	lister, ok := s.scopedStore(r).(entity.Lister)
-	if !ok {
-		http.Error(w, "store does not support listing", http.StatusNotImplemented)
-		return
-	}
-	ents := lister.List(func(ref entity.Ref) bool {
+	ents := s.scopedStore(r).List(func(ref entity.Ref) bool {
 		return (sys == "" || ref.System == sys) && (kind == "" || ref.Kind == kind)
 	})
 	out := make([]map[string]any, 0, len(ents))
@@ -688,20 +676,30 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, e)
 }
 
+// deleteEntity removes whatever stands at a ref — or, with ?field=a&field=b, at one place
+// inside it. Removing what is not there is not an error: the request says what should stand
+// there afterwards, and nothing already does.
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
-	ref, err := entity.ParseRef(r.URL.Query().Get("ref"))
+	q := r.URL.Query()
+	ref, err := entity.ParseRef(q.Get("ref"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ev, ok := s.scopedStore(r).Delete(ref)
-	if !ok {
-		http.NotFound(w, r)
+	if _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(q["field"]...)}); err != nil {
+		http.Error(w, "entity remove failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeOut(w, r, http.StatusOK, ev)
+	w.WriteHeader(http.StatusNoContent)
 }
 
+// putEntity is the write surface: a value MERGES in at a place — an entity, or a field
+// inside one — iff every stated condition holds.
+//
+// A refused condition is 409, not an error: the request was well-formed and the store was
+// reachable, and the answer is "not while that is true". The success body is the entity as
+// it now stands, read back, because a write that merges into a place is precisely the case
+// where the caller cannot compute the result from what it sent.
 func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	var body api.PutEntity
 	if err := codec.Read(r, &body); err != nil {
@@ -713,8 +711,55 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ev := s.scopedStore(r).Put(ref, body.Payload)
-	writeOut(w, r, http.StatusOK, ev)
+	when, err := conditions(body.When)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	store := s.scopedStore(r)
+	committed, err := store.Write(entity.Write{At: ref.At(body.Field...), Value: body.Payload, When: when})
+	if err != nil {
+		http.Error(w, "entity write failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	if !committed {
+		http.Error(w, "write refused: a condition did not hold", http.StatusConflict)
+		return
+	}
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok {
+		w.WriteHeader(http.StatusNoContent) // it landed; we just cannot show it back
+		return
+	}
+	writeOut(w, r, http.StatusOK, e)
+}
+
+// conditions maps the wire's preconditions onto the store's. A condition that asks nothing
+// is refused rather than silently dropped: sending one means intending a guard, and a guard
+// that is quietly not applied is worse than a rejected request.
+func conditions(cs []api.Condition) ([]entity.Require, error) {
+	out := make([]entity.Require, 0, len(cs))
+	for _, c := range cs {
+		var at entity.Path
+		if c.Ref != "" {
+			ref, err := entity.ParseRef(c.Ref)
+			if err != nil {
+				return nil, fmt.Errorf("condition ref %q: %w", c.Ref, err)
+			}
+			at = ref.At(c.Field...)
+		}
+		switch {
+		case c.Pattern != nil:
+			out = append(out, entity.Require{At: at, Pattern: c.Pattern})
+		case c.Exists != nil && *c.Exists:
+			out = append(out, entity.Require{At: at, Pattern: entity.Present()})
+		case c.Exists != nil:
+			out = append(out, entity.Require{At: at, Pattern: entity.Absent()})
+		default:
+			return nil, fmt.Errorf("condition asks nothing: set `exists` or `pattern`")
+		}
+	}
+	return out, nil
 }
 
 // listGates is the unified pending-gate view: engine (trigger) gates from the registry AND
@@ -914,16 +959,11 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 // mirror.Reflect writes (synchronously, at spawn) into the spawning scope's copy-on-write
 // store. So a process belongs to this view iff its instance entity is visible here: the
 // overlay's own writes, plus baseline seen through the overlay. On a store without real
-// scopes (the in-memory passthrough) every instance is visible in every scope, so this is
-// a no-op there — matching the documented isolation boundary (real isolation on docd/logd).
+// scopes every instance would be visible in every scope, making this a no-op — the
+// isolation boundary is the store's (real on docd/logd).
 func (s *Server) processSnapshots(store entity.Store) []process.Instance {
 	members := s.scopeMembers(store)
-	keep := func(inst process.Instance) bool {
-		if members == nil {
-			return true
-		}
-		return members[inst.ID]
-	}
+	keep := func(inst process.Instance) bool { return members[inst.ID] }
 	out := make([]process.Instance, 0)
 	for _, inst := range s.Procd.Snapshots() {
 		if keep(inst) {
@@ -944,15 +984,10 @@ func (s *Server) processSnapshots(store entity.Store) []process.Instance {
 }
 
 // scopeMembers returns the set of process ids whose process:instance entity is visible in
-// store — the scope's membership. It returns nil when the store cannot enumerate entities
-// (no real scopes to enforce), signaling processSnapshots not to filter.
+// store — the scope's membership.
 func (s *Server) scopeMembers(store entity.Store) map[string]bool {
-	lister, ok := store.(entity.Lister)
-	if !ok {
-		return nil
-	}
 	ids := map[string]bool{}
-	for _, e := range lister.List(func(ref entity.Ref) bool {
+	for _, e := range store.List(func(ref entity.Ref) bool {
 		return ref.System == mirror.System && ref.Kind == "instance"
 	}) {
 		ids[e.Ref.ID] = true
@@ -1181,12 +1216,7 @@ func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
 // listGoals returns the live goal roster read from the goal:instance entities — name,
 // subject, status, waitingOn, deadline, and (once terminal) outcome — the `verse goals` view.
 func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
-	lister, ok := s.Store.(entity.Lister)
-	if !ok {
-		writeOut(w, r, http.StatusOK, []map[string]any{})
-		return
-	}
-	ents := lister.List(func(ref entity.Ref) bool { return ref.System == "goal" && ref.Kind == "instance" })
+	ents := s.Store.List(func(ref entity.Ref) bool { return ref.System == "goal" && ref.Kind == "instance" })
 	out := make([]map[string]any, 0, len(ents))
 	for _, e := range ents {
 		row := map[string]any{"name": e.Ref.ID}

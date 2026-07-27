@@ -19,7 +19,7 @@ import (
 // otherwise the published API points at a description that does not exist, which is worse
 // than declaring nothing, because a reader has no way to tell a typo from a missing type.
 func TestEveryRouteSignatureResolves(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -52,7 +52,7 @@ func TestEveryRouteSignatureResolves(t *testing.T) {
 // The table is a byproduct of registration, so it must cover the routes that actually exist.
 // A spot check on the ones every client depends on.
 func TestRouteTableCoversTheKnownSurface(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -130,7 +130,7 @@ func TestCuratedSignaturesAreReportedAndOnlyFillGaps(t *testing.T) {
 // render a lie. The schema endpoint is no exception — least of all it, since signatures are
 // where tags live.
 func TestSchemaRefusesJSON(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -208,7 +208,7 @@ func TestEntitySignaturesAreGeneratedNotCurated(t *testing.T) {
 // the act and the count of it — so a reader had to know which endpoint produced a document to
 // know what its second key meant.
 func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

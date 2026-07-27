@@ -27,9 +27,8 @@ By default `up` is docd-backed: it brings up logd and docd on a fresh temp data 
 You don't need to know anything about docd to *play* with verse, since `up` stands it up
 for you, but it is where verse's deeper properties come from — copy-on-write scopes,
 conditional and coordinated writes, edge-faithful watches, compactions — and §10 draws
-that out. For a zero-dependency run with no daemons and no persistence, add
-`--store memory`. To use a durable dir, `--data <dir>`; to attach to an already-running
-docd, `--docd-addr <addr> --docd-mount-addr <addr>`.
+that out. To use a durable dir rather than a fresh temp one, `--data <dir>`; to attach to an
+already-running docd, `--docd-addr <addr> --docd-mount-addr <addr>`.
 
 `up` decides two things for the whole runtime, because it hosts the process runtime and
 the clients don't.
@@ -117,17 +116,30 @@ In terminal B, open a change and drive it:
 
 ```sh
 verse entity put demo:pr:1 '{stage: open}'
-# op: set
-# ref: demo:pr:1
-# rev: 1
-# to: {
+# payload:
 #   stage: open
-# }
+# ref: demo:pr:1
 ```
 
 A payload typed on the command line names no file, so it is read in the default format —
 tony here, which is why `{stage: open}` needs no quotes around either half. Commas are
 optional in tony, so `{stage: open, id: 7}` and `{stage: open id: 7}` are the same thing.
+
+`put` answers with the entity as it now stands, rather than an echo of what you sent, and
+those are not the same thing: a put MERGES. Fields you do not name are left alone, so
+`put demo:pr:1 '{owner: ana}'` adds an owner and keeps the stage. To write inside the
+payload rather than at the top of it, `--at`; to take something away, `rm`:
+
+```sh
+verse entity put --at labels.urgent demo:pr:1 true     # one field, deep
+verse entity rm  --at labels.urgent demo:pr:1          # and gone again
+verse entity rm demo:pr:1                              # the whole entity
+```
+
+A put can also refuse to happen. `--create` writes only if nothing is there yet, `--update`
+only if something is, and `--if <pattern>` only if what is there still looks like the
+pattern — each checked *with* the write, in one step at the store, so nothing can change in
+between. A refused write says so and leaves the entity alone; §10 is where that matters.
 
 The `review` trigger fires but its gate is `ask`, so it blocks:
 
@@ -180,9 +192,8 @@ follow-up read top-to-bottom in one rule.
 
 ```sh
 verse entity get demo:pr:1
-# payload: {
+# payload:
 #   stage: reviewed
-# }
 # ref: demo:pr:1
 ```
 
@@ -560,9 +571,8 @@ verse vote ec9856c1 approve --as bob     # 2 of 2 → carries
 verse docket
 # ec9856c1  whether closed  options=[proceed=approve(2)]  outcome=proceed tally=2  subject=change:pr:42
 verse entity get change:pr:42
-# payload: {
+# payload:
 #   stage: merged
-# }
 # ref: change:pr:42
 ```
 
@@ -856,10 +866,10 @@ verse disconnect --scope me                          # drop the whole overlay
 `disconnect --scope me` tears the overlay down in one shot — every scope write, not just
 `local:*` files — via logd's `DeleteScope`.
 
-Which store you are on matters here. Real copy-on-write scopes require the docd/logd store,
-which is now `up`'s default. On `--store memory`, `--scope` is a passthrough with no
-isolation, and `disconnect --scope` falls back to removing `local:*` entities. Making a scope
-a first-class, listable thing is [still a design note](roadmap/scope-lifecycle.md).
+Scopes are the store's, not the surface's: a copy-on-write overlay is something logd/docd
+does, and `disconnect --scope` asks it to drop one. A store without real scopes would answer
+501 and the client would fall back to removing `local:*` entities one at a time. Making a
+scope a first-class, listable thing is [still a design note](roadmap/scope-lifecycle.md).
 
 ---
 
@@ -877,9 +887,8 @@ no reader reconstructs, reorders, or drops an edit; and compactions, which keep 
 bounded while preserving current state.
 
 With no store flags, `up` brings up logd and docd on a fresh temp data dir via `o sys up` and
-points the store at docd's client face. `--data <dir>` uses a durable dir,
-`--docd-addr`/`--docd-mount-addr` attach to an already-running docd, and `--store memory`
-opts out entirely, with no daemons and no persistence.
+points the store at docd's client face. `--data <dir>` uses a durable dir, and
+`--docd-addr`/`--docd-mount-addr` attach to an already-running docd.
 
 The store maps each entity to a kinded path `verse.<system>.<kind>.<id>`, reads and writes
 via Match/Patch, and drives the change stream and revision cursor from a single logd watch.
@@ -906,8 +915,7 @@ cross-entity transactional reactions are ever needed. See [change events](change
 ### Where the rest stands
 
 Scopes are real copy-on-write overlays on the docd/logd store: writes isolated, reads layered
-on baseline, and `disconnect --scope` drops the overlay via `DeleteScope`. On `--store memory`
-they remain a passthrough.
+on baseline, and `disconnect --scope` drops the overlay via `DeleteScope`.
 
 Local federation works as §8 describes: scoped `local:dir-status-<scope>:*` metadata writes,
 a content controller serving `local:dir-content-<scope>:*` bytes on demand, and a scoped

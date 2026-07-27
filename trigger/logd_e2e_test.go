@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 
 	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
@@ -57,7 +58,7 @@ func TestEmergentChainOverLogd(t *testing.T) {
 	eng.Start(ctx)
 
 	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	store.Put(subj, entity.Obj{"stage": "open"}.Payload()) // ignite
+	entitytest.Set(t, store, subj, entity.Obj{"stage": "open"}.Payload()) // ignite
 
 	waitStage(t, store, subj, "deployed")
 

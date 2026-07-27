@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -289,11 +290,11 @@ func TestMatchEventDimensions(t *testing.T) {
 // it must be applied on top of the delegated system/kind/fields selection — including the "*"
 // wildcard that flow addressing will use.
 func TestMatchSelect(t *testing.T) {
-	store := entity.NewMemStore()
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "reviewed"}.Payload())
-	store.Put(entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
-	store.Put(entity.Ref{System: "other", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
+	store := entitytest.Store(t)
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "reviewed"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "other", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
 
 	count := func(m Match) int { return len(m.Select(store)) }
 

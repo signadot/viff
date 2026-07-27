@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/process"
 )
 
 // treeEngine is the onhook harness plus a mirrored task, which is what a tree renders.
-func treeEngine(t *testing.T, store *entity.MemStore) *Engine {
+func treeEngine(t *testing.T, store *entity.LogdStore) *Engine {
 	t.Helper()
 	eng := New(store, process.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
@@ -53,7 +54,7 @@ func onlyTree(t *testing.T, eng *Engine, addr string) FlowTree {
 // mirror (the live registry has already retired it), and the branch the charter declares
 // but nothing reached is present as a node rather than missing.
 func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 
 	if err := eng.AddTrigger(Trigger{
@@ -73,7 +74,7 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "merged")
 
 	tree := onlyTree(t, eng, "demo:pr:1")
@@ -129,7 +130,7 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 // While a chain is still moving, the branch below it is PENDING (it may yet run) — the
 // distinction from skipped is the whole reason both statuses exist.
 func TestFlowTreePendingWhileRunning(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 
 	// A gate the test never resolves would be one way to hold it; simpler and race-free:
@@ -144,7 +145,7 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:2"},
+	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:2"},
 		entity.Obj{"status": "running", "flow": "demo:pr:2", "chain": "review", "trigger": "review"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:2")
@@ -165,9 +166,9 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 // subject's flow. It has no charter position, so it is a root of its own rather than being
 // dropped — a tree that silently omits work is worse than one with a bare node in it.
 func TestFlowTreeIncludesChainlessProcesses(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "run-abc"},
+	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "run-abc"},
 		entity.Obj{"status": "running", "flow": "demo:pr:3", "task": "poke at it"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:3")
@@ -183,9 +184,9 @@ func TestFlowTreeIncludesChainlessProcesses(t *testing.T) {
 // History outlives the charter: a trigger removed after its processes ran leaves a tree
 // that still shows what happened, with no shape to extend it by.
 func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "gone@demo:pr:4"},
+	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "gone@demo:pr:4"},
 		entity.Obj{"status": "done", "flow": "demo:pr:4", "chain": "gone", "trigger": "gone"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:4")
@@ -201,10 +202,10 @@ func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 // The address grammar is the same one every other flow command speaks, so a pattern yields
 // one tree per subject — and a subject nothing has touched yields none.
 func TestFlowTreeAddressing(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 	for _, id := range []string{"1", "2"} {
-		store.Put(entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:" + id},
+		entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:" + id},
 			entity.Obj{"status": "done", "flow": "demo:pr:" + id, "chain": "review", "trigger": "review"}.Payload())
 	}
 	m, _ := ParseExpr("demo:pr:*")

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // Unmet returns exactly the leaf requirements that do not currently hold — the "waiting on"
 // complement of Eval's witness.
 func TestFormulaUnmet(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	f := &Formula{Op: OpUntil, Args: []*Formula{
 		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}}}},
 		{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}}, // omitted from Unmet (a time derivation)
@@ -29,7 +30,7 @@ func TestFormulaUnmet(t *testing.T) {
 	}
 
 	// Satisfy the fact → no unmet leaves.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	if un := f.Unmet(store); len(un) != 0 {
 		t.Fatalf("unmet after satisfying = %v, want none", un)
 	}
@@ -39,7 +40,7 @@ func TestFormulaUnmet(t *testing.T) {
 // list and no done latch; once the fact appears it latches goal:done exactly once, marks the
 // instance terminal, and reaps its owned trigger.
 func TestGoalDoneLatch(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,7 +83,7 @@ func TestGoalDoneLatch(t *testing.T) {
 	}
 
 	// Satisfy doneWhen → done latch, terminal, owned trigger reaped.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	if !existsWithin(store, goalDoneRef("ship"), 2*time.Second) {
 		t.Fatal("goal did not latch done after doneWhen held")
 	}
@@ -108,7 +109,7 @@ func TestGoalDoneLatch(t *testing.T) {
 // A goal whose deadline elapses with doneWhen unmet latches goal:failed exactly once and
 // marks the instance unachievable.
 func TestGoalDeadlineFail(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -141,10 +142,10 @@ func TestGoalDeadlineFail(t *testing.T) {
 // Done wins a done/deadline tie: a goal whose doneWhen already holds before the deadline
 // latches done, never failed — even with a short deadline armed.
 func TestGoalDoneWinsDeadline(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	// doneWhen already satisfied at install.
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
@@ -171,10 +172,10 @@ func TestGoalDoneWinsDeadline(t *testing.T) {
 // commitGoal is terminal-once: a first "done" latches and freezes, and a later contradicting
 // "unachievable" is a no-op — the outcome stays done and no fail fact is written.
 func TestGoalTerminalOnce(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	g := &Goal{Def: GoalDef{Name: "once", Subject: "change:pr:1"}}
-	store.Put(goalRef("once"), entity.Obj{"name": "once", "status": "active", "terminal": false}.Payload())
+	entitytest.Set(t, store, goalRef("once"), entity.Obj{"name": "once", "status": "active", "terminal": false}.Payload())
 
 	eng.commitGoal(g, "done", []entity.Ref{{System: "ci", Kind: "status", ID: "x"}})
 	if inst, _, _ := store.Get(goalRef("once")); entity.ToObj(inst.Payload)["outcome"] != "done" || entity.ToObj(inst.Payload)["terminal"] != true {
@@ -198,7 +199,7 @@ func TestGoalTerminalOnce(t *testing.T) {
 // exercise the goalsMu→trigMu→flowsMu lock ordering and the terminal-once commit for hangs,
 // deadlocks, and data races.
 func TestGoalConcurrentLifecycle(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -228,7 +229,7 @@ func TestGoalConcurrentLifecycle(t *testing.T) {
 				return
 			}
 			// Drive the rest to done via their (distinct) fact subtree.
-			store.Put(entity.Ref{System: "ci", Kind: name, ID: "build"}, entity.Obj{"state": "green"}.Payload())
+			entitytest.Set(t, store, entity.Ref{System: "ci", Kind: name, ID: "build"}, entity.Obj{"state": "green"}.Payload())
 		}()
 	}
 	wg.Wait()

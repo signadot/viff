@@ -68,20 +68,22 @@ they separate into services without changing callers.
    └───────┬───────────────────────────────┬───────────────────────┬───────────┘
            │                                │                        │
       entity.Store                    trigger.Engine           process control
-   (MemStore | logd/docd)         (reactive, per-subtree      (how a process RUNS)
-   Put/Modify(CAS)/Get/watch       watches, gate registry)     ├─ local  (processd, in-proc)
+      (logd/docd)                 (reactive, per-subtree      (how a process RUNS)
+   Write(conditional)/Get/watch    watches, gate registry)     ├─ local  (processd, in-proc)
            ▲                                │  spawn           ├─ remote (runner.HTTP)
            │  mirror (process → entity)     ▼                  └─ broker (dial-in worker)
            └──────────────  process runtime (process/processd)  ◀──┘
                             Process · Supervisor · Vector · Event stream · gate registry
 ```
 
-`entity` is the store. `Put` is last-write-wins; `Modify` is a compare-and-swap
-read-modify-write, so there are no lost updates; `Get` reads a ref and a `Lister` enumerates.
-`Observe` is a low-latency hint that may drop, while the cursored `watch … since=<rev>`
-replay is the source of truth. `MemStore` serves dev and test; a logd/docd backing gives
-durability, copy-on-write scopes, and controller federation. See
-[change events](change-events.md).
+`entity` is the store, and it has ONE write: a value merges in at a place — a whole entity
+or one field inside it — if every precondition holds, checked with the write in a single
+step. Creating, updating, patching a field, removing one, and claiming an address are that
+call with different arguments; `entity.Modify` builds compare-and-swap out of it, so there
+are no lost updates. `Get` reads a ref and `List` enumerates. `Observe` is a low-latency
+hint that may drop, while the cursored `watch … since=<rev>` replay is the source of truth,
+and every event carries the entity as of its commit. logd/docd gives durability,
+copy-on-write scopes, and controller federation. See [change events](change-events.md).
 
 `trigger` is the reactive engine. It observes the store through per-subtree watches — each
 trigger watches exactly the `system.kind` it matches, and there is no root watch — matches
@@ -116,9 +118,10 @@ and the same pattern generalizes to git, GitHub and the rest. See [connect](conn
 
 The store is the truth and the change stream is a cursor into it. `Observe` may drop under
 load, because it is a doorbell; correctness comes from replaying `since=<rev>`, so a long
-hold costs a cursor rather than a buffer. Writes are CAS (`Modify`, or docd's `PatchIf`), so
-concurrent modifiers never lose an update. This is what lets the engine, a restart, or a
-second reader converge on the same state without coordination.
+hold costs a cursor rather than a buffer. A contended write states its precondition and the
+store checks it with the write, so concurrent modifiers never lose an update. This is what
+lets the engine, a restart, or a second reader converge on the same state without
+coordination.
 
 ### Observation and control are separate planes, and control has priority
 
@@ -192,9 +195,10 @@ scope, isolated from baseline and from other devs, and dropped in one `DeleteSco
 process whose work outlived verse — one on a remote runner — replaying to recover a terminal
 reached while down, and orphans one whose in-process runtime died with the previous run.
 
-*CAS at every contended write.* Store writes go through `Modify` or `PatchIf`. A broker adds
-a terminal-once latch, where the first terminal writer wins and post-terminal reports are
-frozen idempotent no-ops, and a claim fence, where each claim mints an epoch and a stale
+*CAS at every contended write.* A store write carries its preconditions, checked with it in
+one step (docd's `PatchIf`). A broker adds a terminal-once latch, where the first terminal
+writer wins and post-terminal reports are frozen idempotent no-ops, and a claim fence, where
+each claim mints an epoch and a stale
 generation is rejected — so a displaced or zombie worker cannot corrupt the log.
 
 ## Extension points
@@ -203,7 +207,7 @@ Each seam is where you plug in without touching the core.
 
 - *Driver* — how a process thinks: `scripted`, `llm`, or your own `Next`.
 - *Process control* — where and how a process runs: a k8s Job, a lambda, a broker for humans.
-- *Store* — `MemStore` or logd/docd, or anything implementing the `Store` interface.
+- *Store* — logd/docd, or anything implementing the `Store` interface.
 - *Source, or docd controller* — reflect an external system into an owned slice of the verse
   ([sources](sources.md), [writing a controller](controllers.md)).
 

@@ -21,7 +21,7 @@ import (
 // The fix is at ingest (codec.Read → StripBrackets), so this asserts the property a reader
 // sees rather than the mechanism: post it braced, read it back, find no braces.
 func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -59,7 +59,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 // The same for a payload verse stores but never interprets: `entity put` with a JSON body
 // is tony written in brackets, and the brackets are not part of the value.
 func TestAStoredPayloadRendersInOneShape(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

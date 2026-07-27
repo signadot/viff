@@ -135,7 +135,7 @@ For a Source (reflect git/GitHub/k8s/… into its owned slice), the internal mec
 keeps `Match`/`Watch` current follows `webhook : poll-reconcile :: Observe : Since`:
 
 > A webhook never writes entities. It triggers a *reconcile* of the affected ref(s); the
-> reconcile reads the external source of truth and Put/Deletes to converge.
+> reconcile reads the external source of truth and writes to converge.
 
 That buys idempotency, self-healing, and order/duplicate independence. A periodic full
 reconcile is the safety net for missed hooks. The controller's own progress (a poll

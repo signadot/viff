@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
 )
 
@@ -52,7 +53,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	ctx := context.Background()
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 
 	dirA, dirB := t.TempDir(), t.TempDir()
 	initRepo(t, dirA)

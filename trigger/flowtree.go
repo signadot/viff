@@ -91,22 +91,20 @@ type FlowTree struct {
 // has all finished still has a tree — which is the point of asking after the fact.
 func (e *Engine) FlowTrees(m Match) []FlowTree {
 	bySubject := map[string][]entity.Entity{}
-	if l, ok := e.store.(entity.Lister); ok {
-		for _, ent := range l.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
-			subj := entity.Str(ent.Payload, "flow")
-			if subj == "" {
-				continue // a process about nothing is in no flow
-			}
-			ref, err := entity.ParseRef(subj)
-			if err != nil || !m.MatchRef(ref) {
-				continue
-			}
-			bySubject[subj] = append(bySubject[subj], ent)
+	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+		subj := entity.Str(ent.Payload, "flow")
+		if subj == "" {
+			continue // a process about nothing is in no flow
 		}
+		ref, err := entity.ParseRef(subj)
+		if err != nil || !m.MatchRef(ref) {
+			continue
+		}
+		bySubject[subj] = append(bySubject[subj], ent)
 	}
-	// A live process whose mirror has not landed yet (or whose store cannot list) still
-	// belongs in the tree: the registry is the present, and a tree that omits what is
-	// running now would be worse than one that omits what ran yesterday.
+	// A live process whose mirror has not landed yet still belongs in the tree: the
+	// registry is the present, and a tree that omits what is running now would be worse
+	// than one that omits what ran yesterday.
 	for _, fp := range e.matchFlow(m) {
 		if _, seen := bySubject[fp.subject]; !seen {
 			bySubject[fp.subject] = nil

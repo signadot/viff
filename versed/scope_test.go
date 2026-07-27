@@ -8,37 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
-
-	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
-	"github.com/signadot/tony-format/go-tony/system/logd/storage"
+	"github.com/signadot/verse/entity/entitytest"
 )
-
-func startLogd(t *testing.T) string {
-	t.Helper()
-	store, err := storage.Open(t.TempDir(), nil)
-	if err != nil {
-		t.Fatalf("open storage: %v", err)
-	}
-	t.Cleanup(func() { store.Close() })
-	srv := logdserver.New(&logdserver.Spec{Storage: store})
-	if err := srv.StartTCP("127.0.0.1:0"); err != nil {
-		t.Fatalf("start logd: %v", err)
-	}
-	t.Cleanup(func() { srv.StopTCP() })
-	return srv.TCPAddr()
-}
 
 // The scope overlay is honored end-to-end through the HTTP surface, and
 // POST /scope/delete tears it down — the federation teardown path the CLI drives.
 func TestScopeOverHTTP(t *testing.T) {
-	store, err := entity.OpenLogdStore(entity.LogdConfig{Addr: startLogd(t), ClientID: "versed-scope-test"})
-	if err != nil {
-		t.Fatalf("open logd store: %v", err)
-	}
-	defer store.Close()
-
-	srv := NewWithStore(ScriptedBuilder, store)
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -102,22 +78,5 @@ func TestScopeOverHTTP(t *testing.T) {
 	}
 	if s, _ := stageOf("me", "demo:pr:1"); s != "open" {
 		t.Fatalf("after delete, overlay survived: %q", s)
-	}
-}
-
-// The in-memory store has no real scopes: scope delete answers 501 so the client
-// falls back to per-entity cleanup.
-func TestScopeDeleteUnsupportedOnMemStore(t *testing.T) {
-	srv := New(ScriptedBuilder) // in-memory
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-
-	resp, err := http.Post(ts.URL+"/scope/delete?scope=me", "application/json", nil)
-	if err != nil {
-		t.Fatalf("scope delete: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Fatalf("mem-store scope delete status = %d, want 501", resp.StatusCode)
 	}
 }

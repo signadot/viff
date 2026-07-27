@@ -439,8 +439,8 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 
 func entityCmd() *cli.Command {
 	return cli.NewCommand("entity").WithAliases("e").
-		WithSynopsis("entity — one entity in the store: get|put <ref> (list them with `verse entities`)").
-		WithSubs(entityGetCmd(), entityPutCmd())
+		WithSynopsis("entity — one entity in the store: get|put|rm <ref> (list them with `verse entities`)").
+		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd())
 }
 
 type entityGetConfig struct{ *cli.Command }
@@ -467,13 +467,56 @@ func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
 	return printBody(cc, resp)
 }
 
-type entityPutConfig struct{ *cli.Command }
+type entityPutConfig struct {
+	*cli.Command
+	At     string `cli:"name=at desc='write INSIDE the payload, at this dot-separated field path (e.g. labels.urgent)'"`
+	Create bool   `cli:"name=create desc='only if nothing is there yet — the write loses a race rather than clobbering'"`
+	Update bool   `cli:"name=update desc='only if something is already there'"`
+	If     string `cli:"name=if desc='only if what is there matches this tony pattern'"`
+}
 
 func entityPutCmd() *cli.Command {
 	cfg := &entityPutConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
 	return cli.NewCommandAt(&cfg.Command, "put").
-		WithSynopsis("put an entity: put <ref> <payload-json>").
+		WithSynopsis("put an entity: put <ref> <payload> [--at <field.path>] [--create|--update] [--if <pattern>]").
+		WithOpts(opts...).
 		WithRun(cfg.run)
+}
+
+// conditions renders the guard flags as the wire's preconditions. --create and --update are
+// opposite answers to the same question, so asking both is a contradiction rather than a
+// pair of conditions that can never hold — say so from the flags, before anything is sent.
+func (cfg *entityPutConfig) conditions() ([]api.Condition, error) {
+	var out []api.Condition
+	if cfg.Create && cfg.Update {
+		return nil, fmt.Errorf("%w: --create and --update are opposites; pass one", cli.ErrUsage)
+	}
+	if cfg.Create || cfg.Update {
+		exists := cfg.Update
+		out = append(out, api.Condition{Exists: &exists})
+	}
+	if cfg.If != "" {
+		pattern, err := codec.ParseNode([]byte(cfg.If), inFmt())
+		if err != nil {
+			return nil, fmt.Errorf("--if: %w", err)
+		}
+		out = append(out, api.Condition{Pattern: pattern})
+	}
+	return out, nil
+}
+
+// fieldPath splits a dot-separated --at into the segments the wire takes. A field name
+// containing a dot is not addressable this way; the wire takes the segments as a list, so
+// nothing but this spelling is in the way if one ever needs to be.
+func fieldPath(at string) []string {
+	if at == "" {
+		return nil
+	}
+	return strings.Split(at, ".")
 }
 
 func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
@@ -495,11 +538,64 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("entity put: payload: %w", err)
 	}
-	resp, err := httpPost("/entity", api.PutEntity{Ref: args[0], Payload: payload})
+	when, err := cfg.conditions()
+	if err != nil {
+		return fmt.Errorf("entity put: %w", err)
+	}
+	resp, err := httpPost("/entity", api.PutEntity{
+		Ref:     args[0],
+		Field:   fieldPath(cfg.At),
+		Payload: payload,
+		When:    when,
+	})
 	if err != nil {
 		return fmt.Errorf("entity put: %w", err)
 	}
 	return printBody(cc, resp)
+}
+
+type entityRmConfig struct {
+	*cli.Command
+	At string `cli:"name=at desc='remove one field INSIDE the payload, at this dot-separated path'"`
+}
+
+func entityRmCmd() *cli.Command {
+	cfg := &entityRmConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return cli.NewCommandAt(&cfg.Command, "rm").
+		WithSynopsis("rm — remove an entity, or one field of it: rm <ref> [--at <field.path>]").
+		WithOpts(opts...).
+		WithRun(cfg.run)
+}
+
+func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
+	if len(args) < 1 {
+		return fmt.Errorf("%w: entity rm wants a ref (system:kind:id)", cli.ErrUsage)
+	}
+	q := url.Values{"ref": {args[0]}}
+	for _, f := range fieldPath(cfg.At) {
+		q.Add("field", f)
+	}
+	resp, err := httpDelete("/entity", q)
+	if err != nil {
+		return fmt.Errorf("entity rm: %w", err)
+	}
+	defer resp.Body.Close()
+	// Nothing stands there now — which is all there is to say, and is equally true of a ref
+	// that held nothing to begin with.
+	what := args[0]
+	if cfg.At != "" {
+		what += " " + cfg.At
+	}
+	fmt.Fprintf(cc.Out, "removed %s\n", what)
+	return nil
 }
 
 // entities is the one collection with filters of its own, so it does not go through

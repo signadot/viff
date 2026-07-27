@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -46,7 +47,7 @@ func seqFacts(t *testing.T, store entity.Store, ref entity.Ref, trig string) ent
 // The elements run IN ORDER, one process at a time, each id naming its position in the
 // charter — which is the whole reason a chain is a kpath rather than a label.
 func TestSeqRunsInOrder(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, spawned := seqEngine(t, store)
 
 	if err := eng.AddTrigger(Trigger{
@@ -63,7 +64,7 @@ func TestSeqRunsInOrder(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 
 	got := spawned()
@@ -81,7 +82,7 @@ func TestSeqRunsInOrder(t *testing.T) {
 // A set-only element completes immediately — it starts no process, so nothing will ever
 // report its completion. Without the advance loop it would stall the sequence forever.
 func TestSeqSetOnlyElementDoesNotStall(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "marks",
@@ -94,7 +95,7 @@ func TestSeqSetOnlyElementDoesNotStall(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "through")
 }
 
@@ -102,7 +103,7 @@ func TestSeqSetOnlyElementDoesNotStall(t *testing.T) {
 // `when`, and a `when` can only match facts. `done` is published rather than derived because
 // a match cannot compare `step` against `steps` — it compares a value to a pattern.
 func TestSeqPublishesProgress(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
@@ -114,7 +115,7 @@ func TestSeqPublishesProgress(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
 		f := entity.Get(entity.Get(p, VerseRoot), "review")
@@ -141,7 +142,7 @@ func TestSeqPublishesProgress(t *testing.T) {
 // The carrier's onDone means "after the WHOLE sequence", which is what makes a sequence a unit
 // with its own completion rather than a flat list of hooks.
 func TestSeqCarrierOnDoneFiresAfterAll(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, spawned := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
@@ -156,7 +157,7 @@ func TestSeqCarrierOnDoneFiresAfterAll(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "sequence-done")
 
 	// and it fired once, after BOTH elements
@@ -168,7 +169,7 @@ func TestSeqCarrierOnDoneFiresAfterAll(t *testing.T) {
 // Fail-stop: an element that fails runs its own off-ramp and the sequence ends there. The
 // element after it must never start — a sequence is an order, not a list of attempts.
 func TestSeqFailStops(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, spawned := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
@@ -186,7 +187,7 @@ func TestSeqFailStops(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "rejected")
 
 	for _, id := range spawned() {
@@ -204,7 +205,7 @@ func TestSeqFailStops(t *testing.T) {
 // `go e.fire(...)` cannot both win it — and it covers the window BETWEEN elements, where no
 // process is live and a registry-based check had nothing to say.
 func TestSeqClaimExcludesOverlap(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
 	ref := prRef("1")
 
@@ -228,7 +229,7 @@ func TestSeqClaimExcludesOverlap(t *testing.T) {
 // set — so taking one cannot wake the trigger that took it. Machinery must not be reactive
 // fuel; this is the same guard reflected processes already ride.
 func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -257,7 +258,7 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 // says a sequence at this shape already finished. Editing the sequence changes the shape and
 // frees it.
 func TestSeqDoneIsARepeatPolicy(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
 	ref := prRef("1")
 	tr := Trigger{
@@ -293,7 +294,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 // per-trigger, and a patch merges rather than replacing the key it touches. This is the case
 // that made `patch` a prerequisite for `seq`.
 func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
 	for _, name := range []string{"alpha", "beta"} {
 		if err := eng.AddTrigger(Trigger{
@@ -304,7 +305,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 			t.Fatalf("AddTrigger %s: %v", name, err)
 		}
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
 		v := entity.Get(p, VerseRoot)
@@ -415,7 +416,7 @@ func TestSeqIndexOf(t *testing.T) {
 
 // The install-time rules, each with the reason it exists.
 func TestSeqValidation(t *testing.T) {
-	eng := New(entity.NewMemStore(), process.AutoResolver{})
+	eng := New(entitytest.Store(t), process.AutoResolver{})
 	cond := Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})}
 	cases := []struct {
 		name string
@@ -461,7 +462,7 @@ func TestSeqValidation(t *testing.T) {
 // The mirror publishes the CANONICAL chain, so a reader (and the flow tree) sees the kpath
 // rather than the id's flattened rendering.
 func TestSeqMirrorsCanonicalChain(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
@@ -470,7 +471,7 @@ func TestSeqMirrorsCanonicalChain(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	ref := mirror.Ref("review.seq.0@demo:pr:1")
 	waitFor(t, store, ref, func(p entity.Payload) bool {

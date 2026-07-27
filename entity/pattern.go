@@ -48,14 +48,9 @@ func (p Pattern) MatchEvent(ev Event) bool {
 }
 
 // Select returns the refs of every stored entity the pattern picks: entities of
-// (System, Kind) whose payload satisfies every Fields entry. Requires a Lister
-// store (MemStore and the logd store both are); a non-listing store yields none.
+// (System, Kind) whose payload satisfies every Fields entry.
 func (p Pattern) Select(store Store) []Ref {
-	lister, ok := store.(Lister)
-	if !ok {
-		return nil
-	}
-	ents := lister.List(func(ref Ref) bool {
+	ents := store.List(func(ref Ref) bool {
 		return ref.System == p.System && (p.Kind == "" || ref.Kind == p.Kind)
 	})
 	out := make([]Ref, 0, len(ents))

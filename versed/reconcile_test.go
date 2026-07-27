@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 )
@@ -13,9 +14,9 @@ import (
 // is holding. Left in place, the claim would block that sequence forever with no live process
 // to explain why — the failure mode a durable lease has and an in-memory one does not.
 func TestReconcileClearsRunClaims(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	claim := mirror.ClaimRef("review@demo:pr:1")
-	srv.Store.Put(claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
+	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
 
 	srv.reconcileProcesses()
 
@@ -27,13 +28,13 @@ func TestReconcileClearsRunClaims(t *testing.T) {
 // Clearing claims must not disturb the reconcile it rides along with: a non-terminal local
 // process is still orphaned, and a claim is not mistaken for one on the way past.
 func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	live := mirror.Ref("review@demo:pr:2")
-	srv.Store.Put(live, entity.Obj{
+	entitytest.Set(t, srv.Store, live, entity.Obj{
 		"status": string(process.Running), "runner": "local", "flow": "demo:pr:2",
 	}.Payload())
 	claim := mirror.ClaimRef("review@demo:pr:2")
-	srv.Store.Put(claim, entity.Obj{"flow": "demo:pr:2"}.Payload())
+	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": "demo:pr:2"}.Payload())
 
 	srv.reconcileProcesses()
 
@@ -59,16 +60,16 @@ func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 // `running` on that belief, and now its claim stays too. The optimism is pre-existing; this
 // test pins that the claim follows the process rather than diverging from it.
 func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	live := mirror.Ref("review.seq.1@demo:pr:1")
-	srv.Store.Put(live, entity.Obj{
+	entitytest.Set(t, srv.Store, live, entity.Obj{
 		"status": string(process.Running),
 		"runner": "http://elsewhere.invalid", // remote → re-attached, believed alive
 		"flow":   "demo:pr:1",
 		"chain":  "review.seq[1]",
 	}.Payload())
 	claim := mirror.ClaimRef("review@demo:pr:1")
-	srv.Store.Put(claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
+	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
 
 	srv.reconcileProcesses()
 

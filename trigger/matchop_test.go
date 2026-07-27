@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // mustMatch decodes a charter-authored match, in whichever dialect it was written.
@@ -118,9 +119,9 @@ func TestMatchIDOperatorGrammar(t *testing.T) {
 // typed matcher and owns the id, so an operator that only worked on the event path would
 // silently widen every fan-out to the whole kind.
 func TestMatchOperatorSelects(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-1"} {
-		store.Put(entity.Ref{System: "demo", Kind: "pr", ID: id}, entity.Obj{"stage": "open"}.Payload())
+		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: id}, entity.Obj{"stage": "open"}.Payload())
 	}
 
 	m := mustMatch(t, `{system: demo, kind: pr, id: !glob "hotfix-*"}`, codec.Tony)
@@ -357,7 +358,7 @@ func TestMatchRefusesTwoPayloadSpellings(t *testing.T) {
 // happens. When it lands, this test inverts — it should assert the commit FAILS — and that is
 // the signal that the plan's decision has arrived, not a regression.
 func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -371,7 +372,7 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 	}
 
 	ref := entity.Ref{System: "demo", Kind: "count", ID: "1"}
-	store.Put(ref, entity.Val(100))
+	entitytest.Set(t, store, ref, entity.Val(100))
 	deadline := time.After(3 * time.Second)
 	for {
 		got, ok, _ := store.Get(ref)

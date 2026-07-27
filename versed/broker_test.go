@@ -17,7 +17,7 @@ import (
 // runtime: under a broker runner the ad-hoc run lands on the broker, and it is mirrored as a
 // process:instance entity like any other process.
 func TestProcessRunHonorsRunner(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -60,7 +60,7 @@ func TestProcessRunHonorsRunner(t *testing.T) {
 // attach bridges across backends: a brokered process's events are streamed as SSE by
 // versed subscribing the broker handle (which replays the merged log then goes live).
 func TestBrokeredAttachStreams(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
 	h := b.Spawn("bp1", "t", "human", nil)
 	h.Steer("hello there", "op") // an EvSay lands on the merged log before attach
@@ -106,7 +106,7 @@ func TestBrokeredAttachStreams(t *testing.T) {
 // and `dial` (worker-facing) — so a worker can discover where to dial in and the two are
 // not confused. For a broker: kind=broker, resume=ephemeral, dial=the hosted face.
 func TestStatusShowsBrokerRunner(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -134,7 +134,7 @@ func TestStatusShowsBrokerRunner(t *testing.T) {
 
 // The default local runner reports kind=local, ephemeral, no worker dial leg.
 func TestStatusShowsLocalRunner(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -160,7 +160,7 @@ func TestStatusShowsLocalRunner(t *testing.T) {
 // broker runner, a brokered process appears with runner=broker and its dialURL, and get
 // resolves it across backends. This is how a broker URL is found via `process list`/`get`.
 func TestProcessListUnionsBrokered(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -218,7 +218,7 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 // process inbox is an operator peek at the control queued for a brokered process's worker
 // (unfenced), and cancel/say route to the runner handle so they work for brokered processes.
 func TestProcessInboxAndControlRouting(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
 	b.Spawn("bp1", "brokered task", "human", nil)
 	ts := httptest.NewServer(srv.Handler())
@@ -280,7 +280,7 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 // from the given verse-reachable face + the minted nonce, so a spawned process advertises
 // where a worker dials in.
 func TestUseBrokerPublishesDialBase(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090/")
 
 	h := b.Spawn("x", "task", "human", nil)
@@ -298,7 +298,7 @@ func TestUseBrokerPublishesDialBase(t *testing.T) {
 // it with the prefix stripped — proving verse can host a dial-in runner under its URL
 // without exposing a separate service.
 func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 
 	b := broker.New()
 	b.Spawn("p1", "review PR #7", "human", nil) // verse side registers the process

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 )
 
@@ -20,7 +21,7 @@ func (denyResolver) Resolve(context.Context, process.GateQuestion, process.ToolU
 // firings leave the counter at zero (the backstop bounds actions taken, not
 // attempts, so an ask/park-heavy workload can't wedge all firing).
 func TestBudgetNotConsumedByDenials(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	eng.SetMaxFires(1)
 	eng.AddTrigger(Trigger{
@@ -34,7 +35,7 @@ func TestBudgetNotConsumedByDenials(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 	for i := 0; i < 5; i++ {
-		store.Put(entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, nil)
+		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, entity.Obj{}.Payload())
 	}
 	time.Sleep(100 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
@@ -68,7 +69,7 @@ func setStage(stage string) Action {
 // reviewed → deployed purely by triggers reacting to state other actions write,
 // then stops because nothing matches "deployed". No path was authored.
 func TestEmergentChainTurnsAndTerminates(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:      "review",
@@ -87,7 +88,7 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	eng.Start(ctx)
 
 	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	store.Put(subj, entity.Obj{"stage": "open"}.Payload()) // ignite
+	entitytest.Set(t, store, subj, entity.Obj{"stage": "open"}.Payload()) // ignite
 
 	waitStage(t, store, subj, "deployed")
 
@@ -101,7 +102,7 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 // The ignition guard: a reflected process:* change does NOT wake a default trigger,
 // so the loop cannot self-ignite on its own machinery — but ordinary changes do.
 func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "greedy",
@@ -114,14 +115,14 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	eng.Start(ctx)
 
 	// a process:* change must be ignored by the (non-opted-in) greedy trigger
-	store.Put(entity.Ref{System: "process", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("greedy fired on a process:* change (fired=%d) — ignition guard failed", f)
 	}
 
 	// an ordinary change still wakes it
-	store.Put(entity.Ref{System: "demo", Kind: "x", ID: "1"}, nil)
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{}.Payload())
 	deadline := time.After(time.Second)
 	for eng.Fired() < 1 {
 		select {
@@ -138,7 +139,7 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 // would instead be defused by edge-on-real-change and never run away — see
 // TestIdempotentWriteDoesNotLoop; the budget is what bounds a real oscillation.)
 func TestBudgetBoundsRunaway(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
@@ -156,7 +157,7 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx) // versed's production path (per-trigger subtree watch)
 
-	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"phase": "a"}.Payload()) // ignite
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"phase": "a"}.Payload()) // ignite
 
 	// It must settle at the budget, not run forever.
 	time.Sleep(300 * time.Millisecond)
@@ -170,7 +171,7 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 // not forever. This is the substrate mechanism that lets a "hold on reviewed" charter not loop
 // without a latch. (Budget is untouched: 1 ≪ 5.)
 func TestIdempotentWriteDoesNotLoop(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
@@ -183,7 +184,7 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	store.Put(entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"tick": true}.Payload()) // ignite
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"tick": true}.Payload()) // ignite
 
 	time.Sleep(300 * time.Millisecond)
 	if f := eng.Fired(); f != 1 {

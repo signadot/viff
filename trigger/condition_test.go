@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -20,11 +21,11 @@ import (
 // process's flow, not the process — expressed as a Subject, where it used to need an
 // action-level setRef compensating for $subject being wired to the matched entity.
 func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 
 	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	store.Put(pr, entity.Obj{"stage": "reviewing"}.Payload())
+	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewing"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
@@ -42,7 +43,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed process carrying the PR as its flow — exactly what mirror.Reflect writes.
-	store.Put(mirror.Ref("rev-1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
+	entitytest.Set(t, store, mirror.Ref("rev-1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
 
 	waitStage(t, store, pr, "reviewed")
 
@@ -55,7 +56,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 // $subject is the RESOLVED subject, so a spawn's task template names what the work is about
 // rather than whatever entity happened to fire the trigger.
 func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 
 	specs := make(chan launch.Spec, 4)
@@ -79,7 +80,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	store.Put(mirror.Ref("p1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
+	entitytest.Set(t, store, mirror.Ref("p1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
 
 	spec := <-specs
 	if spec.Task != "follow up on "+pr.String() {
@@ -113,7 +114,7 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 // A goal latch publishes `flow` alongside `subject`, so a trigger reacting to it names the
 // goal's subject the same way a process completion does: a `subject` pattern matched against `flow`.
 func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddGoal(GoalDef{
 		Name:     "ship",
@@ -122,7 +123,7 @@ func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddGoal: %v", err)
 	}
-	store.Put(entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
 	var latch entity.Payload
 	deadline := time.After(2 * time.Second)
@@ -145,7 +146,7 @@ func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 // A Subject that cannot resolve makes the firing a no-op — and, because it is resolved before
 // any gate, it never poses one either.
 func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
-	store := entity.NewMemStore()
+	store := entitytest.Store(t)
 	eng := New(store, denyIfAsked{t})
 	if err := eng.AddTrigger(Trigger{
 		Name: "needs-flow",
@@ -164,7 +165,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 
 	// No `flow` field: the demo:pr:* subject has nothing to match, so nothing fires (and, because
 	// the subject resolves before any gate, no gate is posed either).
-	store.Put(mirror.Ref("p1"), entity.Obj{"status": "done"}.Payload())
+	entitytest.Set(t, store, mirror.Ref("p1"), entity.Obj{"status": "done"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired %d times with an unresolvable subject", f)
@@ -216,7 +217,7 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			eng := New(entity.NewMemStore(), process.AutoResolver{})
+			eng := New(entitytest.Store(t), process.AutoResolver{})
 			err := eng.AddTrigger(Trigger{Name: "t", Condition: c.cond})
 			if err == nil {
 				t.Fatalf("installed an invalid condition (%+v)", c.cond)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
@@ -139,8 +140,8 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)       // let it finish (retained in the ring)
 
 	// "verse restart": a fresh store with a STALE running entity tagged with the runner.
-	store := entity.NewMemStore()
-	store.Put(mirror.Ref("t1"), entity.Obj{"status": "running", "runner": srv.URL}.Payload())
+	store := entitytest.Store(t)
+	entitytest.Set(t, store, mirror.Ref("t1"), entity.Obj{"status": "running", "runner": srv.URL}.Payload())
 
 	// resume: re-attach and re-mirror (the core of reconcileProcesses).
 	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Runner: srv.URL})

@@ -15,7 +15,7 @@ import (
 // client that asks for something verse renders gets it, and a client that demands JSON is
 // told no rather than handed tony under a JSON content type.
 func TestWireNegotiation(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -98,7 +98,7 @@ func TestWireNegotiation(t *testing.T) {
 // A request BODY is read in the format it declares — the side of the wire where JSON is
 // still entirely welcome.
 func TestRequestBodyNegotiation(t *testing.T) {
-	srv := New(ScriptedBuilder)
+	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

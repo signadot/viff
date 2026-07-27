@@ -197,8 +197,7 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 		desired[entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha}] = entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
 	}
 
-	g.converge(store, id, desired)
-	return nil
+	return g.converge(store, id, desired)
 }
 
 // converge writes desired and tombstones this repo's removed refs. Everything is scoped by
@@ -206,13 +205,11 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 // unchanged is skipped, so re-reflecting a quiet repo fires no triggers. Commits (repo-scoped
 // too) are immutable within their repo — Put once when new, never re-Put, and never tombstoned
 // (they fall out of the bounded tip window but the history record is kept).
-func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]entity.Obj) {
+func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]entity.Obj) error {
 	current := map[entity.Ref]entity.Obj{} // this repo's entities (all kinds)
-	if l, ok := store.(entity.Lister); ok {
-		for _, e := range l.List(func(r entity.Ref) bool { return r.System == GitSystem }) {
-			if entity.Str(e.Payload, "repo") == repo {
-				current[e.Ref] = entity.ToObj(e.Payload)
-			}
+	for _, e := range store.List(func(r entity.Ref) bool { return r.System == GitSystem }) {
+		if entity.Str(e.Payload, "repo") == repo {
+			current[e.Ref] = entity.ToObj(e.Payload)
 		}
 	}
 	for ref, p := range desired {
@@ -221,16 +218,22 @@ func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]e
 				continue // immutable commit, or unchanged ref/head
 			}
 		}
-		store.Put(ref, p.Payload())
+		if _, err := store.Write(entity.Write{At: ref.At(), Value: p.Payload()}); err != nil {
+			return fmt.Errorf("reflecting %s: %w", ref, err)
+		}
 	}
 	for ref := range current {
 		if ref.Kind == "commit" {
 			continue // keep history
 		}
 		if _, want := desired[ref]; !want {
-			store.Delete(ref) // a deleted branch/tag tombstones its git:ref entity
+			// a deleted branch/tag tombstones its git:ref entity
+			if _, err := store.Write(entity.Write{At: ref.At()}); err != nil {
+				return fmt.Errorf("tombstoning %s: %w", ref, err)
+			}
 		}
 	}
+	return nil
 }
 
 // ── git plumbing (all shape-agnostic; run with the repo dir as cwd) ──────────

@@ -6,7 +6,7 @@ import "testing"
 // be a little record — a counter, a flag, a state name, a list were all inexpressible for
 // no reason anyone had chosen. These are the cases that were impossible before.
 func TestScalarAndListPayloadsRoundTrip(t *testing.T) {
-	s := NewMemStore()
+	s := openStore(t)
 	cases := []struct {
 		name string
 		ref  Ref
@@ -19,7 +19,7 @@ func TestScalarAndListPayloadsRoundTrip(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			s.Put(c.ref, Val(c.val))
+			set(t, s, c.ref, Val(c.val))
 			got, ok, err := s.Get(c.ref)
 			if err != nil || !ok {
 				t.Fatalf("get: ok=%v err=%v", ok, err)
@@ -35,7 +35,7 @@ func TestScalarAndListPayloadsRoundTrip(t *testing.T) {
 	}
 
 	list := Ref{"demo", "list", "1"}
-	s.Put(list, Val([]any{"a", "b"}))
+	set(t, s, list, Val([]any{"a", "b"}))
 	got, _, _ := s.Get(list)
 	if IsObj(got.Payload) {
 		t.Fatalf("list payload became an object: %+v", got.Payload)
@@ -86,9 +86,9 @@ func TestFieldPredicateDoesNotMatchANonObjectPayload(t *testing.T) {
 // as a list of tony strings. The map-backed payload preserved the Go slice, but only in
 // memory — the docd store always normalized. Both stores now agree.
 func TestStrsReadsAListWrittenAsGoStrings(t *testing.T) {
-	s := NewMemStore()
+	s := openStore(t)
 	ref := Ref{"demo", "motion", "1"}
-	s.Put(ref, Obj{"witness": []string{"a", "b"}}.Payload())
+	set(t, s, ref, Obj{"witness": []string{"a", "b"}}.Payload())
 	got, _, _ := s.Get(ref)
 	w := Strs(got.Payload, "witness")
 	if len(w) != 2 || w[0] != "a" || w[1] != "b" {
