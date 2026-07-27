@@ -17,7 +17,7 @@ verse
        [--docd-addr host:port]               attach to a running docd (client face) …
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
        [--o-bin path]                        the o binary to spawn daemons (default: go run pinned cmd/o)
-       [--policy <url>]                      run processes on a remote process-control base URL …
+       [--runner <url>]                      run processes on a remote process-control base URL …
        [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
                                              publishes each process's dialURL from it) …
        [--broker-addr host:port]             … the sibling port serving this verse's broker face
@@ -39,7 +39,7 @@ verse
   triggers                                   the installed charter
   trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
   processes (ps)                             every process, whatever runs it
-  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors policy; mirrored)
+  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)

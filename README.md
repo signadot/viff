@@ -39,7 +39,7 @@ working tree.
   root watch.
 - `process/` and `process/processd/` — governed, steerable units of work, scripted or LLM
   agents, behind an HTTP control and read plane.
-- `controlpolicy/` and `broker/` — how a process *runs* is a seam: local (in-process),
+- `runner/` and `broker/` — how a process *runs* is a seam: local (in-process),
   remote (another verse over HTTP), or a dial-in broker where a firewalled worker or a human
   executes it. The engine drives all three through one handle, so every `verse process` verb
   works whichever it is.

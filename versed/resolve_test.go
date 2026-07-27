@@ -87,7 +87,7 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	srv := New(ScriptedBuilder)
 	b := broker.New()
 	b.Spawn("p1", "review PR #7", "human", nil)
-	srv.SetPolicy(b) // the resolve route relays to a worker only under a broker policy
+	srv.SetRunner(b) // the resolve route relays to a worker only under a broker runner
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
 	ops := httptest.NewServer(srv.Handler())

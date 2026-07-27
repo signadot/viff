@@ -143,7 +143,7 @@ func TestFlowAddressingByPayload(t *testing.T) {
 func TestSpawnIsIdempotentPerID(t *testing.T) {
 	eng := New(entity.NewMemStore(), process.AutoResolver{})
 	spawned := 0
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		spawned++
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, blockForever{}, noExec{})
@@ -176,7 +176,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 // than per trigger.
 func TestSpawnDedupeIsPerSubject(t *testing.T) {
 	eng := New(entity.NewMemStore(), process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, blockForever{}, noExec{})
 	})

@@ -343,7 +343,7 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 // spawned process (nil when the action starts none) and the write's error, which is what lets
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
-func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.ProcHandle, error) {
+func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.Handle, error) {
 	if a.Patch != nil {
 		if err := e.patchEntity(subj, a.Patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a process started about
@@ -362,7 +362,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	spec.Subject = subj.String()
 	// who-axis: if the spawn declares a governed provider selection, resolve it and bind
 	// the chosen doer into Driver before spawn — no live swap (reassign = cancel+respawn).
-	// Orthogonal to the controlPolicy that then transports Driver.
+	// Orthogonal to the runner that then transports Driver.
 	if spec.Provider != nil {
 		driver, ok := e.selectProvider(spec.Provider, subj)
 		if !ok {

@@ -160,7 +160,7 @@ refs legible enough to filter by owner, place, and role.
 `launch.Spec` already declares the axis this note is circling. Its fields are all *references to
 something named elsewhere* rather than inlined things:
 
-	Policy      → the gate vector (the autonomy dial) — soft, slidable
+	Vector      → the gate vector (the autonomy dial) — soft, slidable
 	Grant       → hard authority — what it may do at all
 	Environment → the sandbox/workspace floor — unbypassable
 
@@ -178,7 +178,7 @@ nothing in the tree resolves the name (`launch/launch.go`); the test binds it to
 `sandbox-demo:pr:1`. It is a declared axis waiting for a named, durable, registered thing to
 point at, and `expose` is minting exactly such a thing.
 
-`Policy` is in the same state, and it is the more visible of the two: the spawned process's
+`Vector` is in the same state, and it is the more visible of the two: the spawned process's
 vector is whatever its driver hardcodes (`harness.Vector()` for llm, an empty `Default: auto` for
 scripted), so a trigger cannot say "spawn this one auto — I already gated the firing." That is
 why a trigger-spawned agent asks twice: once at the firing, through the trigger's own `gates`,
@@ -209,7 +209,7 @@ process and re-assembled by every trigger that launches into the same tree. An e
 is its natural home: declare the surfaces once under a name, and every process launched into it
 gets the same set, `cd` moves within a set that was *declared* rather than accumulated, and a
 trigger action says `environment: alice-webapp` instead of enumerating mounts. The `Environment`
-axis then carries the working context the way `Policy` carries the vector.
+axis then carries the working context the way `Vector` carries the autonomy dial.
 
 ### Env today is inherited, which is a leak
 
@@ -231,7 +231,7 @@ Three layers, narrowing, and the note's "base capabilities" is the outermost:
   not slide.
 - Grant — what this process may *exercise* of what is possible, non-increasing down a
   delegation chain (`Grant.Subset` checked at each `call_agent` boundary).
-- Policy (`Vector`) — which of those must *ask*. Soft, slidable, the autonomy dial.
+- Vector — which of those must *ask*. Soft, slidable, the autonomy dial.
 
 Read as possible ⊇ granted ⊇ auto. The difference between the first layer and the other two is
 observable and worth preserving: a `Deny` gate means the tool exists, the agent reaches for it,

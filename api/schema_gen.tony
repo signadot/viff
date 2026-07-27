@@ -62,15 +62,6 @@ signature:
 ---
 context:
 - tony-format/context
-define:
-  dial: .[string]
-  kind: .[string]
-  resume: .[string]
-signature:
-  name: verse-policy-status
----
-context:
-- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   payload: .[tony-base:ir]
@@ -103,6 +94,15 @@ define:
   routes: .[array(verse-route)]
 signature:
   name: verse-routes
+---
+context:
+- tony-format/context
+define:
+  dial: .[string]
+  kind: .[string]
+  resume: .[string]
+signature:
+  name: verse-runner-status
 ---
 context:
 - tony-format/context
@@ -146,8 +146,8 @@ define:
   gates: .[int]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
-  policy: .[nullable(verse-policy-status)]
   processes: .[int]
+  runner: .[nullable(verse-runner-status)]
   storeRev: .[int]
   triggers: .[int]
 signature:

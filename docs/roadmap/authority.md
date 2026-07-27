@@ -67,7 +67,7 @@ is instead re-litigated per action, interactively, with a human in the loop. Not
 secure for it — a wildcard grant with an `ask` vector stops exactly one impatient operator — and
 the cost is a prompt that reads as ridiculous.
 
-The declarative side has the same hole from the other end: `launch.Spec.Policy` and
+The declarative side has the same hole from the other end: `launch.Spec.Vector` and
 `launch.Spec.Grant` are expanded by `Bind` and read by nothing, so a trigger cannot state the
 envelope of what it spawns either.
 
@@ -121,7 +121,7 @@ the gate asks — today's behavior, which remains the correct fallback rather th
 ### The override
 
 An explicit vector or grant on the spawn wins over anything inferred: `process run --vector
-auto|ask|park` for the CLI, and the `policy` / `grant` axes of `launch.Spec` for a trigger,
+auto|ask|park` for the CLI, and the `vector` / `grant` axes of `launch.Spec` for a trigger,
 which finally gives those fields a consumer. Manual statement is the mechanism's escape hatch,
 not its foundation.
 
@@ -137,7 +137,7 @@ granted it and the agent is not the party who may.
 
 - Delegation — a child's grant is `parent ∩ req.Grant` already. A derived root envelope makes
   that check mean something for the first time, instead of a wildcard admitting everything.
-- Triggers — a firing's `gates` authorize the firing; the spawn's `policy`/`grant` should
+- Triggers — a firing's `gates` authorize the firing; the spawn's `vector`/`grant` should
   carry that authorization into the process, closing the double-ask.
 - Environments — the unbypassable floor from [expose](expose.md) sits outside both:
   *possible* ⊇ *granted* ⊇ *auto*. The floor is enforced by construction, the grant by refusal,

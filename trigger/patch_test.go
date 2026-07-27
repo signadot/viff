@@ -129,7 +129,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
 	spawned := make(chan string, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		spawned <- id
 		return nil
 	})

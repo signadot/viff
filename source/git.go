@@ -70,7 +70,7 @@ func (g *Git) Webhook(r *http.Request) ([]entity.Ref, error) {
 const hookMarker = "# verse git Source hook"
 
 // InstallHook writes a reference-transaction hook into repo id's git dir that POSTs hookURL
-// (the runner's /hooks/git) on every ref change — the git-native "webhook". It refuses to
+// (the reflector's /hooks/git) on every ref change — the git-native "webhook". It refuses to
 // clobber a pre-existing reference-transaction hook that isn't ours. Idempotent for ours.
 func (g *Git) InstallHook(id, hookURL string) error {
 	dir, ok := g.dirOf(id)

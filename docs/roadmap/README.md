@@ -27,7 +27,7 @@ Where a process's permission comes from, and what a process can see when it runs
   capability floor.
 
 These two are the same seam from opposite ends. `launch.Spec` already declares three axes —
-`Policy` (the soft dial), `Grant` (the hard envelope), `Environment` (the floor) — and only
+`Vector` (the soft dial), `Grant` (the hard envelope), `Environment` (the floor) — and only
 the first has any consumer. Read the layering as *possible ⊇ granted ⊇ auto*: the floor is
 enforced by construction, the grant by refusal, the vector by asking.
 

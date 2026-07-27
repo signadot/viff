@@ -76,8 +76,8 @@ define:
   err: .[string]
   id: .[string]
   pending: .[array(verse-pending-gate)]
-  policy: .[string]
   result: .[string]
+  runner: .[string]
   status: .[string]
   task: .[string]
 signature:

@@ -264,7 +264,7 @@ apply. `patch: { tmp: !delete null }` removes a key, which is something no amoun
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
 `spawn` launches a process from a `launch.Spec` (`driver`, `task`, and later
-`policy`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed `provider`
+`vector`/`scope`/`environment`) — or, instead of a fixed `driver`, a governed `provider`
 selection of the doer. The spawned process is tagged with the subject, which is what makes it
 part of that subject's flow.
 

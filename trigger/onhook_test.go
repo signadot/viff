@@ -32,7 +32,7 @@ func startHookProc(store entity.Store, id string, spec launch.Spec) *process.Pro
 	} else {
 		p = process.NewProcess(id, sup, immediate{}, noExec{})
 	}
-	mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Policy: "local", Chain: spec.Chain, Task: spec.Task})
+	mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Task: spec.Task})
 	go p.Run(context.Background())
 	return p
 }
@@ -68,7 +68,7 @@ func waitField(t *testing.T, store entity.Store, ref entity.Ref, key string, wan
 func TestOnDoneFiresUnderScoped(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		return startHookProc(store, id, spec)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -98,7 +98,7 @@ func TestOnDoneChains(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	var mu sync.Mutex
 	var ids []string
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		mu.Lock()
 		ids = append(ids, id)
 		mu.Unlock()
@@ -159,7 +159,7 @@ func TestOnDoneChains(t *testing.T) {
 func TestOnFailed(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		return startHookProc(store, id, spec)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -191,7 +191,7 @@ func TestOnFailed(t *testing.T) {
 func TestOnHookPerProcess(t *testing.T) {
 	store := entity.NewMemStore()
 	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		return startHookProc(store, id, spec)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -273,7 +273,7 @@ func TestAdoptDropsHooks(t *testing.T) {
 	store.Put(prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("adopted", sup, immediate{}, noExec{})
-	mirror.Reflect(store, "adopted", p, mirror.Meta{Subject: prRef("1").String(), Policy: "local"})
+	mirror.Reflect(store, "adopted", p, mirror.Meta{Subject: prRef("1").String(), Runner: "local"})
 	eng.Adopt(prRef("1").String(), "adopted", p)
 	go p.Run(ctx)
 
@@ -313,7 +313,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 	// that may already have finished would test nothing.)
 	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 	p := process.NewProcess("review@demo:pr:1", sup, immediate{}, noExec{})
-	mirror.Reflect(store, p.ID, p, mirror.Meta{Subject: prRef("1").String(), Policy: "local", Chain: "review"})
+	mirror.Reflect(store, p.ID, p, mirror.Meta{Subject: prRef("1").String(), Runner: "local", Chain: "review"})
 	eng.AdoptChain(prRef("1").String(), p.ID, "review", p)
 	go p.Run(context.Background())
 

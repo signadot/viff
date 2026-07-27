@@ -18,10 +18,10 @@ define:
   driver: .[string]
   environment: .[string]
   grant: .[string]
-  policy: .[string]
   provider: .[nullable(verse-launch-provider)]
   resolver: .[string]
   subject: .[string]
   task: .[string]
+  vector: .[string]
 signature:
   name: verse-launch-spec

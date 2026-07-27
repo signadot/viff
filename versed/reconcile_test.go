@@ -30,7 +30,7 @@ func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 	srv := New(ScriptedBuilder)
 	live := mirror.Ref("review@demo:pr:2")
 	srv.Store.Put(live, entity.Obj{
-		"status": string(process.Running), "policy": "local", "flow": "demo:pr:2",
+		"status": string(process.Running), "runner": "local", "flow": "demo:pr:2",
 	}.Payload())
 	claim := mirror.ClaimRef("review@demo:pr:2")
 	srv.Store.Put(claim, entity.Obj{"flow": "demo:pr:2"}.Payload())
@@ -53,8 +53,8 @@ func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 // a completion is still coming and the sequence will advance. Dropping it would let a
 // concurrent firing start a second run alongside the one still going.
 //
-// Note what "resumed" means here, because the claim inherits it exactly: controlpolicy
-// Attach returns a handle unconditionally, with no reachability check, so a remote-hosted
+// Note what "resumed" means here, because the claim inherits it exactly: the runner
+// package's Attach returns a handle unconditionally, with no reachability check, so a remote-hosted
 // process is re-adopted whether or not the remote is still there. The process stays
 // `running` on that belief, and now its claim stays too. The optimism is pre-existing; this
 // test pins that the claim follows the process rather than diverging from it.
@@ -63,7 +63,7 @@ func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
 	live := mirror.Ref("review.seq.1@demo:pr:1")
 	srv.Store.Put(live, entity.Obj{
 		"status": string(process.Running),
-		"policy": "http://elsewhere.invalid", // remote → re-attached, believed alive
+		"runner": "http://elsewhere.invalid", // remote → re-attached, believed alive
 		"flow":   "demo:pr:1",
 		"chain":  "review.seq[1]",
 	}.Payload())

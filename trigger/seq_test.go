@@ -18,7 +18,7 @@ func seqEngine(t *testing.T, store entity.Store) (*Engine, func() []string) {
 	eng := New(store, process.AutoResolver{})
 	var mu sync.Mutex
 	var ids []string
-	eng.SetSpawner(func(id string, spec launch.Spec) process.ProcHandle {
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
 		mu.Lock()
 		ids = append(ids, id)
 		mu.Unlock()

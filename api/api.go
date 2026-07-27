@@ -225,18 +225,18 @@ type Status struct {
 	Processes int   `tony:"field=processes"`
 	Fired     int   `tony:"field=fired"`
 
-	Policy *PolicyStatus `tony:"field=policy,omitzero"`
+	Runner *RunnerStatus `tony:"field=runner,omitzero"`
 	Docd   *Docd         `tony:"field=docd,omitzero"`
 	LLM    *LLM          `tony:"field=llm,omitzero"`
 	Listen *Listen       `tony:"field=listen,omitzero"`
 }
 
-// PolicyStatus is how this verse runs processes: local (in-process), broker (a dial-in
-// worker face), or remote (a controlPolicy base URL). Resume says what survives a restart,
+// RunnerStatus is how this verse runs processes: local (in-process), broker (a dial-in
+// worker face), or remote (a runner base URL). Resume says what survives a restart,
 // and Dial is the worker-facing address when there is one.
 //
-//tony:schemagen=verse-policy-status,notag
-type PolicyStatus struct {
+//tony:schemagen=verse-runner-status,notag
+type RunnerStatus struct {
 	Kind   string `tony:"field=kind"`
 	Resume string `tony:"field=resume"`
 	Dial   string `tony:"field=dial,omitzero"`

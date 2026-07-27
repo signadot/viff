@@ -1,6 +1,6 @@
 # Process control: a base-URL contract for running and governing processes
 
-The contract behind `verse up --policy <url>` and `verse up --broker`. Walk it first in
+The contract behind `verse up --runner <url>` and `verse up --broker`. Walk it first in
 [tutorial §5](tutorial.md#5-human-executed-processes-dial-in), where a human executes a
 process by dialing in; this is the seam that makes that work. It builds on
 [external processes](external-processes.md) (design D, detached-core-first) and makes its
@@ -22,19 +22,22 @@ here has an opinion about the engine, its charter, or how a firing is gated. Kee
 distinct matters, because a policy layer over the engine is a plausible thing to want later
 and would collide head-on.
 
-The code has not caught up. It still spells this `process.ControlPolicy`, package
-`controlpolicy`, and `verse up --policy`; this document says *process control* and treats
-those as the spellings of the same thing, pending a rename.
+It used to be called one. `process.ControlPolicy` was the interface, `controlpolicy` the
+package, `--policy` the flag, and `policy` the field on a `process:instance` — while
+`launch.Spec.policy` meant something else entirely, the gate vector. One word, two unrelated
+meanings, both on the wire.
 
-Worse, `policy` is already two different wire fields:
+The word is now retired. What runs a process is its *runner*, and the autonomy dial is its
+*vector* — which is what the dial was already called everywhere else (`process.Vector`,
+`Handle.SetVector`, `verse process vector <id>`); only the launch spec dissented.
 
-| where | `policy` means |
-|---|---|
-| `launch.Spec.policy` | the gate vector — the autonomy dial, soft and slidable |
-| the `process:instance` entity | which process-control backend runs it (`local`, a base URL) |
+| meaning | interface | wire | flag |
+|---|---|---|---|
+| what runs a process | `process.Runner`, returning a `process.Handle` | `runner` on a `process:instance` and on `verse status` | `verse up --runner <url>` |
+| how much it may do unasked | `process.Vector` | `vector` on a launch spec | `verse process vector <id>` |
 
-Those are unrelated, and a reader who learns one meaning will misread the other. The
-disambiguation wants to reach the wire, not just this file.
+This was a clean break: an entity written by an older verse carries `policy`, which nothing
+reads any more, so a process in flight across the upgrade is orphaned rather than resumed.
 
 ## What the interface is
 
@@ -59,7 +62,7 @@ So it is one control contract with three enforcement modes: the local supervisor
 (surfaced attestation). Same vector, gates, resolver, boundaries, terminal — only the
 mechanism differs. Takeover falls out for free: `cancel` the agent, a human re-claims (CAS
 claim transfer plus identity), reads the journal (durable handoff), and continues on the same
-subject under the same policy.
+subject under the same runner.
 
 A process-control backend is a reconciler over the `process:instance` resource, not a gated process
 itself — which stops the regress, since governing a process must not require another governed
@@ -81,20 +84,20 @@ event cursor all sit on the `process:instance` entity, and a restart re-reads th
 `verse up` reconciles, and resume is not orphan. An in-process agent whose runtime died is
 orphaned, because the loop is gone. A detached or claimed process — a human still merging, a
 k8s Job still running — resumes: the work continued in the world while verse was down, so on
-`up` verse re-attaches to its bound policy and reconciles from current status. This refines
+`up` verse re-attaches to its bound runner and reconciles from current status. This refines
 the older `ReconcileOrphans` into "resume where the work outlived the daemon."
 
 ## Everything through the base URL — no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream,
 and mirrors the stream into the `process:instance` entity — so durability lives in verse, not
-the policy. Which policy runs a given process is a per-spawn binding (`policy: <url>` in the
+the runner. Which runner runs a given process is a per-spawn binding (`runner: <url>` in the
 charter or spec, like `--driver`), and there is deliberately no in-memory shortcut:
 `verse process cancel/say/pause` go through the same dispatch as a remote one, which is what
 forces the contract to be complete and keeps local equivalent to remote.
 
 Crucially, verse can mint that URL on its own broker face rather than requiring every
-policy to stand up a service (see "Hosting"): the built-in local supervisor lives at the
+runner to stand up a service (see "Hosting"): the built-in local supervisor lives at the
 well-known `<broker>/broker/local` (an in-process handler), and dynamically registered brokers
 get `<broker>/broker/<nonce>`. So "no privileged local path" costs no separate loopback
 server — local is simply the broker at a fixed nonce.
@@ -112,13 +115,13 @@ POST   /processes/{id}/cancel   {by, key}
 POST   /processes/{id}/pause    {by}
 POST   /processes/{id}/resume   {by}
 PUT    /processes/{id}/vector   {vector, by}                     slide autonomy
-POST   /processes                {task, subject, vector, claim?, policy-config}  spawn → {id}
+POST   /processes                {task, subject, vector, claim?, runner-config}  spawn → {id}
 ```
 
 ### The event envelope and the cursor
 
 Every event carries a per-process, gapless, monotonic cursor — a plain sequence number
-assigned by the policy, which need not be a global logd commit — and a timestamp:
+assigned by the runner, which need not be a global logd commit — and a timestamp:
 
 ```json
 { "cursor": 42, "process": "review@demo:pr:1", "at": "…",
@@ -149,17 +152,17 @@ live-only `gap` marker, which resync makes unnecessary.
 
 With N at or above the current cursor there is nothing to replay, so the stream goes live.
 
-With N inside the retained window, the policy replays `cursor > N` in order and then goes
+With N inside the retained window, the runner replays `cursor > N` in order and then goes
 live. This is the verse-restart path: verse reconnects with its last mirrored cursor, the
-still-running policy replays the gap, and the worker noticed nothing.
+still-running runner replays the gap, and the worker noticed nothing.
 
-With N below the policy's low-watermark — compaction, or the policy-restart path where it lost
-its log — the policy answers a single `{"kind":"resync","cursor":C}` frame; verse re-reads
+With N below the runner's low-watermark — compaction, or the runner-restart path where it lost
+its log — the runner answers a single `{"kind":"resync","cursor":C}` frame; verse re-reads
 `GET /processes/{id}` for level truth, adopts cursor `C`, and streams from there. Fine-grained
 journal between N and C may be lost, but current state is exact.
 
 Resync-to-snapshot is therefore the universal safety net whenever a cursor cannot be served —
-verse restarts, policy restarts, slow consumers, compaction. There is no `gap` marker, because
+verse restarts, runner restarts, slow consumers, compaction. There is no `gap` marker, because
 verse always pulls from its cursor rather than trusting a live tail.
 
 The terminal is a `status` event (`done|failed|cancelled` plus `result`) that verse CAS-writes
@@ -182,7 +185,7 @@ away.
 
 One ordered stream interleaves reports and control-effects by cursor, giving a single total
 order verse replays with nothing else to reconcile. Priority is that ordering: "steering
-outranks observation" means the policy drains control at the boundary before the next action,
+outranks observation" means the runner drains control at the boundary before the next action,
 so a control-effect event precedes the action it gated in cursor order.
 
 Control POSTs carry an idempotency `key` echoed on the resulting event, so a retried `say` or
@@ -201,12 +204,12 @@ exec     @43 {tool:merge, text:"merged"}                    → worker proceeded
 ```
 
 Restart between @40 and @41 → verse replays `pending@40`, re-routes, re-POSTs `resolve`
-with the same `key`; the policy re-surfaces `decision@41`; verse dedups by cursor. Replay +
+with the same `key`; the runner re-surfaces `decision@41`; verse dedups by cursor. Replay +
 idempotent re-POST converge — no lost gate, no double-merge.
 
 ## Invariants verse CAS-enforces on the entity
 
-Regardless of a misbehaving policy or worker, three things hold on the `process:instance`
+Regardless of a misbehaving runner or worker, three things hold on the `process:instance`
 entity: terminal-once (monotonic status), claim-holder-only writes, and
 gate-before-the-effect — which for a detached or human worker is an attestation verse
 timestamps and audits, since it cannot intercept the merge itself. External autonomy is
@@ -249,7 +252,7 @@ A base URL does not have to be a new service. verse can host a broker the way do
 controller: docd forwards a subtree's ops to a registered controller under a mount, and verse
 forwards a process's worker and engine ops to a registered backend under
 `/broker/<nonce>` — the same capability-URL trick [`connect`](connect.md) uses for
-`dir-content-<nonce>`. A policy binding is then uniformly a URL: `<broker>/broker/local`,
+`dir-content-<nonce>`. A runner binding is then uniformly a URL: `<broker>/broker/local`,
 `<broker>/broker/<nonce>`, or an external one. verse consumes the verse-facing contract from
 it, as an in-process call or a forwarded one for a hosted broker, over HTTP for an external
 one.
@@ -274,7 +277,7 @@ broker without a face of its own.
 
 Lifecycle follows the daemon-reaping and restart discipline already in place: `up` binds both
 listeners and re-mints `/broker/local`, brokers register at runtime, `down` reaps them, and
-`up` reconciles each non-terminal process from the policy binding on its entity — re-minting
+`up` reconciles each non-terminal process from the runner binding on its entity — re-minting
 the local, re-attaching an external, orphaning only a dead in-process handler.
 
 The two topologies compose. A hosted nonce-broker can relay out to an external runtime: a
@@ -294,7 +297,7 @@ NAT'd broker interchangeable behind the URL.
 ## The worker-facing dial-in protocol
 
 The verse-facing contract stands on its own; local, k8s, and lambda policies need nothing
-below. But a policy that runs work on a party which cannot accept inbound connections — a
+below. But a runner that runs work on a party which cannot accept inbound connections — a
 laptop agent, a pod in a private cluster, a person — needs a way for that worker to dial out
 and still be driven. The worker leg is the verse leg inverted: verse pulls reports and pushes
 control, the worker pushes reports and pulls control. Both only ever dial out, and the broker
@@ -385,10 +388,10 @@ out the same, and why designing the human case first gets the agent for free.
 ## What is built
 
 Everything above is built except where noted here. The seam itself
-(`ControlPolicy`/`ProcHandle`) carries every process, so the engine holds a handle rather than
+(`process.Runner`/`process.Handle`) carries every process, so the engine holds a handle rather than
 a `*Process`. Events carry a per-process cursor with a bounded ring, `GET /events?since=N`
 replays and then goes live, and verse persists its high-water cursor on the entity.
-`controlpolicy.HTTP(baseURL)` drives a remote verse over the verse-facing contract. Startup
+`runner.HTTP(baseURL)` drives a remote verse over the verse-facing contract. Startup
 reconcile resumes rather than orphans where the work outlived the daemon. The dial-in broker
 is hosted under `/broker/<nonce>`, publishes each process's `dialURL` on its entity, and is
 guarded by the terminal-once latch and the claim fence. `verse process do` is the executor
@@ -396,5 +399,5 @@ vantage; every operator verb works across local, remote, and brokered processes 
 
 Not built: the inbox long-poll (the worker polls today). Two larger tracks sit outside this
 document — a human surfacer and identity-projected inbox, with `owner`/`claimant`/`resolver`
-stamps, and a k8s policy that spawns Jobs behind the broker, alongside `k8s:*` as a
+stamps, and a k8s runner that spawns Jobs behind the broker, alongside `k8s:*` as a
 [Source](controllers.md).

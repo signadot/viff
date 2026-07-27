@@ -70,7 +70,7 @@ they separate into services without changing callers.
       entity.Store                    trigger.Engine           process control
    (MemStore | logd/docd)         (reactive, per-subtree      (how a process RUNS)
    Put/Modify(CAS)/Get/watch       watches, gate registry)     ├─ local  (processd, in-proc)
-           ▲                                │  spawn           ├─ remote (controlpolicy.HTTP)
+           ▲                                │  spawn           ├─ remote (runner.HTTP)
            │  mirror (process → entity)     ▼                  └─ broker (dial-in worker)
            └──────────────  process runtime (process/processd)  ◀──┘
                             Process · Supervisor · Vector · Event stream · gate registry
@@ -96,10 +96,10 @@ and posts gate decisions to a registry. `processd` is the HTTP daemon face of th
 
 `mirror` projects a process's ephemeral read plane onto its durable `process:instance:<id>`
 entity: status, a `say` preview, last tool output, final `result`, the resume `cursor`, the
-`policy`, and a broker's `dialURL`. It is one-way, and an index rather than a warehouse. This
+`runner`, and a broker's `dialURL`. It is one-way, and an index rather than a warehouse. This
 is the bridge that lets process completion drive the next trigger.
 
-`controlpolicy` and `broker` are the two off-box process-control backends, described below.
+`runner` and `broker` are the two off-box process-control backends, described below.
 
 `versed` is the assembly and the HTTP surface. It also owns scopes — per-scope engines over a
 copy-on-write store view — hosts brokers under `/broker/<nonce>`, and runs resume-or-orphan
@@ -151,13 +151,13 @@ outcome survives its ephemeral runtime.
 
 ### How a process runs is a seam
 
-`ControlPolicy{Spawn, Attach, Ref}` returns a
+`process.Runner{Spawn, Attach, Ref}` returns a
 `ProcHandle{Subscribe, Pause/Resume/Cancel/Steer/SetVector/Result}`. The engine drives every
 process through that handle and never touches the runtime directly. There is no privileged
 local path. Three implementations sit behind it:
 
 - *local* — the in-process `processd` supervisor, reached by a Go call.
-- *remote* — `controlpolicy.HTTP(baseURL)`, driving another verse or host over the
+- *remote* — `runner.HTTP(baseURL)`, driving another verse or host over the
   verse-facing contract: `GET /processes`, `GET /events?since`, and control POSTs.
 - *broker* — a process whose runtime is an external dial-in worker: a laptop agent, a
   firewalled pod, or a human. The worker connects out to the broker (`claim`, `inbox`,
@@ -189,7 +189,7 @@ land in the scope only. Local-dev federation and a dev's in-flight flows live in
 scope, isolated from baseline and from other devs, and dropped in one `DeleteScope`.
 
 *Resume, not orphan.* On restart, `versed.reconcileProcesses` re-attaches a non-terminal
-process whose work outlived verse — one on a remote policy — replaying to recover a terminal
+process whose work outlived verse — one on a remote runner — replaying to recover a terminal
 reached while down, and orphans one whose in-process runtime died with the previous run.
 
 *CAS at every contended write.* Store writes go through `Modify` or `PatchIf`. A broker adds

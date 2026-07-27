@@ -1,4 +1,4 @@
-package controlpolicy_test
+package runner_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/controlpolicy"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -30,11 +30,11 @@ func (okExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult
 	return process.StepResult{Use: tu}, nil, nil
 }
 
-// The engine drives a REMOTE processd entirely over HTTP: httpPolicy.Spawn issues the
+// The engine drives a REMOTE processd entirely over HTTP: httpRunner.Spawn issues the
 // spawn, remoteHandle.Subscribe streams the SSE read plane (cursored), and the process
 // runs to a terminal status — no in-process handle. This is the Phase-3 proof of the
 // base-URL decoupling.
-func TestHTTPPolicyDrivesRemoteProcessd(t *testing.T) {
+func TestHTTPRunnerDrivesRemoteProcessd(t *testing.T) {
 	build := func(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, &doneDriver{steps: 2}, okExec{})
@@ -42,7 +42,7 @@ func TestHTTPPolicyDrivesRemoteProcessd(t *testing.T) {
 	srv := httptest.NewServer(processd.New(build).Handler())
 	defer srv.Close()
 
-	pol := controlpolicy.HTTP(srv.URL)
+	pol := runner.HTTP(srv.URL)
 	h := pol.Spawn("t1", "do a thing", "scripted", nil)
 
 	ch, unsub := h.Subscribe()
@@ -82,9 +82,9 @@ loop:
 	}
 }
 
-// A remote policy enumerates its processes so versed can union them into `process list`/
+// A remote runner enumerates its processes so versed can union them into `process list`/
 // `get`: ListProcesses/ProcessSnapshot are a thin client over the remote's GET /processes.
-func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
+func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
 	build := func(id, task, _ string, reg *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
 		return process.NewProcess(id, sup, &doneDriver{steps: 2}, okExec{})
@@ -92,7 +92,7 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 	srv := httptest.NewServer(processd.New(build).Handler())
 	defer srv.Close()
 
-	pol := controlpolicy.HTTP(srv.URL)
+	pol := runner.HTTP(srv.URL)
 	pol.Spawn("r1", "remote task", "scripted", nil)
 
 	lister, ok := pol.(interface {
@@ -100,7 +100,7 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 		ProcessSnapshot(string) (process.Instance, bool)
 	})
 	if !ok {
-		t.Fatal("httpPolicy should implement the lister interface")
+		t.Fatal("httpRunner should implement the lister interface")
 	}
 
 	var found bool
@@ -110,7 +110,7 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("remote process r1 not in the policy's ListProcesses")
+		t.Fatal("remote process r1 not in the runner's ListProcesses")
 	}
 
 	snap, ok := lister.ProcessSnapshot("r1")
@@ -123,7 +123,7 @@ func TestHTTPPolicyListsRemoteProcesses(t *testing.T) {
 }
 
 // Phase 4 resume: a process:instance left stuck "running" (verse crashed mid-run),
-// tagged with a remote policy, is re-attached on restart — the replay from the remote
+// tagged with a remote runner, is re-attached on restart — the replay from the remote
 // (which kept running and finished) converges the entity to its terminal status. This is
 // what versed.reconcileProcesses does: resume, not orphan, when the work outlived verse.
 func TestResumeReAttachesToRemoteProcess(t *testing.T) {
@@ -134,16 +134,16 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	srv := httptest.NewServer(processd.New(build).Handler())
 	defer srv.Close()
 
-	pol := controlpolicy.HTTP(srv.URL)
+	pol := runner.HTTP(srv.URL)
 	pol.Spawn("t1", "task", "scripted", nil) // runs on the remote to completion
 	time.Sleep(300 * time.Millisecond)       // let it finish (retained in the ring)
 
-	// "verse restart": a fresh store with a STALE running entity tagged with the policy.
+	// "verse restart": a fresh store with a STALE running entity tagged with the runner.
 	store := entity.NewMemStore()
-	store.Put(mirror.Ref("t1"), entity.Obj{"status": "running", "policy": srv.URL}.Payload())
+	store.Put(mirror.Ref("t1"), entity.Obj{"status": "running", "runner": srv.URL}.Payload())
 
 	// resume: re-attach and re-mirror (the core of reconcileProcesses).
-	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Policy: srv.URL})
+	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Runner: srv.URL})
 
 	deadline := time.After(5 * time.Second)
 	for {

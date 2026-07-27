@@ -1306,13 +1306,13 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Fired
 	irMap["fired"] = ir.FromInt(int64(s.Fired))
 
-	// Field: Policy (optional)
-	if s.Policy != nil {
-		node, err = s.Policy.ToTonyIR(opts...)
+	// Field: Runner (optional)
+	if s.Runner != nil {
+		node, err = s.Runner.ToTonyIR(opts...)
 		if err != nil {
 			return nil, err
 		}
-		irMap["policy"] = node
+		irMap["runner"] = node
 	}
 
 	// Field: Docd (optional)
@@ -1411,10 +1411,10 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "fired", fieldNodeUnwrapped.Type)
 			}
 			s.Fired = int(*fieldNodeUnwrapped.Int64)
-		case "policy":
-			// Field: Policy
-			s.Policy = &PolicyStatus{}
-			if err := s.Policy.FromTonyIR(fieldNode, opts...); err != nil {
+		case "runner":
+			// Field: Runner
+			s.Runner = &RunnerStatus{}
+			if err := s.Runner.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		case "docd":
@@ -1463,8 +1463,8 @@ func (s *Status) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
-// ToTonyIR converts PolicyStatus to a Tony IR node.
-func (s *PolicyStatus) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+// ToTonyIR converts RunnerStatus to a Tony IR node.
+func (s *RunnerStatus) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
@@ -1485,8 +1485,8 @@ func (s *PolicyStatus) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromMap(irMap), nil
 }
 
-// FromTonyIR populates PolicyStatus from a Tony IR node.
-func (s *PolicyStatus) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+// FromTonyIR populates RunnerStatus from a Tony IR node.
+func (s *RunnerStatus) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	if node == nil {
 		return nil
 	}
@@ -1504,7 +1504,7 @@ func (s *PolicyStatus) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) erro
 		return nil
 	}
 	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for PolicyStatus, got %v", node.Type)
+		return fmt.Errorf("expected map for RunnerStatus, got %v", node.Type)
 	}
 
 	for i, fieldName := range node.Fields {
@@ -1539,8 +1539,8 @@ func (s *PolicyStatus) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) erro
 	return nil
 }
 
-// ToTony converts PolicyStatus to Tony format bytes.
-func (s *PolicyStatus) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+// ToTony converts RunnerStatus to Tony format bytes.
+func (s *RunnerStatus) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	node, err := s.ToTonyIR(opts...)
 	if err != nil {
 		return nil, err
@@ -1552,8 +1552,8 @@ func (s *PolicyStatus) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// FromTony parses Tony format bytes and populates PolicyStatus.
-func (s *PolicyStatus) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+// FromTony parses Tony format bytes and populates RunnerStatus.
+func (s *RunnerStatus) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err

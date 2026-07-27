@@ -674,9 +674,9 @@ func (s *Instance) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["status"] = ir.FromString(string(txt))
 	}
 
-	// Field: Policy
-	if s.Policy != "" {
-		irMap["policy"] = ir.FromString(string(s.Policy))
+	// Field: Runner
+	if s.Runner != "" {
+		irMap["runner"] = ir.FromString(string(s.Runner))
 	}
 
 	// Field: Cursor
@@ -770,12 +770,12 @@ func (s *Instance) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Status.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
 				return fmt.Errorf("field %q: failed to unmarshal text: %w", "status", err)
 			}
-		case "policy":
-			// Field: Policy
+		case "runner":
+			// Field: Runner
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "policy", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
 			}
-			s.Policy = string(fieldNodeUnwrapped.String)
+			s.Runner = string(fieldNodeUnwrapped.String)
 		case "cursor":
 			// Field: Cursor
 			if fieldNodeUnwrapped.Int64 == nil {

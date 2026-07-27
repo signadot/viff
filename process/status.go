@@ -1,7 +1,7 @@
 package process
 
 // Status is a hosted process's lifecycle state — one vocabulary across every
-// controlPolicy (local, remote, broker) and the entity mirror, replacing the
+// runner (local, remote, broker) and the entity mirror, replacing the
 // per-layer strings that used to disagree ("error" vs "failed" vs "driver
 // error"). The completion pattern keys off exactly one value (Done), so the
 // terminal states stay distinct rather than collapsing into one end state.

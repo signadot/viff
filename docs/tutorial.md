@@ -252,7 +252,7 @@ configured the default driver is llm, so the command you just typed comes back a
 decided; the prompt only reveals that verse chose to satisfy your command with an agent.
 
 The vector is fixed by the driver and nothing overrides it at spawn (`run` takes only
-`--wait/--attach/--driver`; the `policy` axis is one of the launch spec's "later" fields). So
+`--wait/--attach/--driver`; the `vector` axis is one of the launch spec's "later" fields). So
 today: pass `--driver scripted` when your task *is* a command — that is exactly what it is for —
 or slide the vector once it starts (`process vector <id> auto`). A trigger hits the same edge from
 the other side: its gates approve *the firing*, not the actions the spawned agent then chooses,
@@ -450,14 +450,14 @@ external, firewalled worker, who dials in to do the work. verse hosts the proces
 inverts: both verse and the worker are clients of the broker, so a laptop or a pod behind a
 firewall works without verse reaching in.
 
-Start verse with a broker as the run policy (a sibling port serves the dial-in face):
+Start verse with a broker as the runner (a sibling port serves the dial-in face):
 
 ```sh
 verse up --broker --broker-addr :9090
 ```
 
-Now spawn a process. With a broker policy it lands on the broker awaiting an executor
-instead of running itself, and `verse processes` shows its policy and where to dial in. You
+Now spawn a process. With a broker runner it lands on the broker awaiting an executor
+instead of running itself, and `verse processes` shows its runner and where to dial in. You
 never type that URL; verse resolves it for you:
 
 ```sh
@@ -465,7 +465,7 @@ ID=$(verse process run "review the auth change")
 verse processes
 # - dialURL: "http://localhost:9090/broker/<nonce>"
 #   id: run-…
-#   policy: broker
+#   runner: broker
 #   status: running
 #   task: "review the auth change"
 ```
@@ -942,7 +942,7 @@ runtime (`proc`) — are separable services behind the same interfaces. See
 [deployment and steering](deployment-and-steering.md).
 
 Process control makes how a process runs a seam. The default is the in-process supervisor,
-`up --policy <url>` hosts processes on a remote verse, and `up --broker` hosts them behind a
+`up --runner <url>` hosts processes on a remote verse, and `up --broker` hosts them behind a
 broker that a firewalled worker or a human dials in to. verse drives all three through the
 identical handle, so `verse processes` and `process get`/`attach`/`cancel`/`say`/`approve` /
 `deny` work across all of them, and a human or external worker executes via `verse process do`
