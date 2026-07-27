@@ -69,7 +69,7 @@ func customCodecSignatures(root string) ([]string, error) {
 		if d.IsDir() {
 			// Worktrees hold whole copies of this repo; scanning them would count every
 			// declaration several times over and report drift that does not exist here.
-			if name := d.Name(); name == ".claude" || name == ".git" || name == "docs" {
+			if name := d.Name(); name == ".worktrees" || name == ".claude" || name == ".git" || name == "docs" {
 				return filepath.SkipDir
 			}
 			return nil

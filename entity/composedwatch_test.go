@@ -49,7 +49,7 @@ func (c contentLikeController) Match(_ context.Context, path string, _ *ir.Node,
 	return ir.FromMap(map[string]*ir.Node{"content": ir.FromString("hi")}), nil
 }
 
-func (contentLikeController) Patch(context.Context, string, *ir.Node, libctl.PatchParams) (*ir.Node, error) {
+func (contentLikeController) Patch(context.Context, string, *ir.Node, libctl.PatchParams) (*logdapi.PatchResult, error) {
 	return nil, libctl.ErrUnsupported
 }
 
@@ -293,7 +293,7 @@ func TestDocdComposedWatchDropsFromCommitBelowRoot(t *testing.T) {
 	ctx := context.Background()
 
 	root := DefaultRoot
-	if err := writer.Patch(ctx, root+".demo.pr.seed", ir.FromMap(map[string]*ir.Node{
+	if _, err := writer.Patch(ctx, root+".demo.pr.seed", ir.FromMap(map[string]*ir.Node{
 		"stage": ir.FromString("open"),
 	})); err != nil {
 		t.Fatalf("seed patch: %v", err)
@@ -320,7 +320,7 @@ func TestDocdComposedWatchDropsFromCommitBelowRoot(t *testing.T) {
 
 	// Mount below the watched root, then write past `from`.
 	mountController(t, docd, seg(root)+".local."+seg(contentMountKind))
-	if err := writer.Patch(ctx, root+".demo.pr.after", ir.FromMap(map[string]*ir.Node{
+	if _, err := writer.Patch(ctx, root+".demo.pr.after", ir.FromMap(map[string]*ir.Node{
 		"stage": ir.FromString("open"),
 	})); err != nil {
 		t.Fatalf("post-mount patch: %v", err)

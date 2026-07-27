@@ -366,7 +366,7 @@ func (s *LogdStore) Write(w Write) (bool, error) {
 		node = ir.Null() // remove whatever stands there
 	}
 	if len(w.When) == 0 {
-		if err := s.sess.Patch(ctx, path, node); err != nil {
+		if _, err := s.sess.Patch(ctx, path, node); err != nil {
 			return false, fmt.Errorf("write %s: %w", w.At, err)
 		}
 		return true, nil
@@ -375,7 +375,7 @@ func (s *LogdStore) Write(w Write) (bool, error) {
 	for _, r := range w.When {
 		pre = append(pre, pathPattern{at: r.path(w), pattern: r.Pattern})
 	}
-	err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
+	_, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
 		return false, nil // a precondition did not hold — a revoke, or already committed
 	}

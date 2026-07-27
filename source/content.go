@@ -80,7 +80,7 @@ func (c *Content) Match(_ context.Context, path string, _ *ir.Node, _ libctl.Mat
 }
 
 // Patch is declined: content is read-only and pulled on demand.
-func (c *Content) Patch(context.Context, string, *ir.Node, libctl.PatchParams) (*ir.Node, error) {
+func (c *Content) Patch(context.Context, string, *ir.Node, libctl.PatchParams) (*logdapi.PatchResult, error) {
 	return nil, libctl.ErrUnsupported
 }
 
