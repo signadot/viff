@@ -72,7 +72,7 @@ the verse that owns it, through a docd controller.
 | | [Content federation](content-federation.md) — why `connect` replaced `--root` |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, GitHub and the rest; webhook as hint, reconcile as truth |
-| ahead | [Write-back](roadmap/write-back.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — the write half, and the lifetime of the isolation it happens in |
+| ahead | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
 ## What is built, and what isn't
 

@@ -1,21 +1,5 @@
 # Verse — a hands-on tutorial
 
-Verse is a small runtime for emergent SDLC flows on a dial of agentic autonomy. You
-describe a *charter* of trigger rules; the runtime reacts to changes in an entity-verse
-and does the work with governed agents. Every reaction passes a gate — *auto*, *ask*
-(a human or agent approves), or *park* — so autonomy is turned up or down per action,
-and the agents stay observable and steerable. Nobody authors the flow: it emerges from
-triggers reacting to state that other actions write, and you set how much runs on its
-own.
-
-The whole system is one loop:
-
-```
-entity change ──▶ trigger matches ──▶ gate resolves ──▶ action fires
-     ▲                                                       │
-     └───────────── actions write entities ◀────────────────┘
-```
-
 This tutorial gets you from zero to a running, steerable, self-driving flow, plus
 federating your local working tree into it. It introduces each idea where you first
 need it; for the model behind them see [the trigger model](trigger-model.md), for the

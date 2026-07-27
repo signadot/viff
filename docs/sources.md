@@ -1,9 +1,9 @@
 # Sources: reflecting external systems into the verse
 
 Status: built as a library, not yet reachable from the CLI. The `Source` interface and its
-`Runner` are in `source/runner.go`, and `source/git.go` is a multi-repo git Source —
+`Reflector` are in `source/reflector.go`, and `source/git.go` is a multi-repo git Source —
 `Reconcile`, `Webhook`, and `InstallHook`/`RemoveHook`, with tests. What is missing is the
-wiring: no command registers a repo or starts a runner, so `NewGit` has no caller outside
+wiring: no command registers a repo or starts a reflector, so `NewGit` has no caller outside
 its test. Reading this as a design sketch is the one mistake to avoid; the design landed.
 
 Local-tree federation is built too, but as a special case rather than through the `Source`
@@ -75,7 +75,7 @@ type Source interface {
 }
 ```
 
-Plus a runner (the informer shape): serve `/hooks/<system>` → `Webhook` → enqueue
+Plus a `Reflector` (the informer shape): serve `/hooks/<system>` → `Webhook` → enqueue
 a targeted `Reconcile`; and run a periodic full `Reconcile` as the resync net.
 Reflection is mechanical connector code, not an agent — judgment lives in the triggers
 and agent-processes that react to the reflected entities.
@@ -159,9 +159,9 @@ verse's store points at docd; triggers and the mirror are unchanged.
 ## Next step
 
 The git Source exists and reconciles; what it lacks is a way in. It needs a command that
-registers a repo and runs it — `AddRepo` plus a `Runner` under `verse up`, and a route the
+registers a repo and runs it — `AddRepo` plus a `Reflector` under `verse up`, and a route the
 installed hook can POST to — after which the end-to-end path (commit → hook → reconcile →
 `git:ref:*` changes → a trigger fires) is exercisable rather than merely unit-tested.
 
 Write-back stays deferred to the outbound executor path
-([roadmap](roadmap/write-back.md)); a Source only reflects.
+([the write half of expose](roadmap/expose.md#the-write-half)); a Source only reflects.

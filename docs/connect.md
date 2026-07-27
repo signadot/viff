@@ -106,7 +106,7 @@ loop runs isolated in its own scope, off the shared baseline.
 
 Today only `read_file` resolves through the content controller. `list_dir` /
 `write_file` / `run_bash` still hit the local filesystem, so a fully-remote validator that
-needs those wants them federated too — the write path is the subject of [write-back](roadmap/write-back.md).
+needs those wants them federated too — the write path is [expose](roadmap/expose.md#the-write-half).
 `--root` remains only as the non-federated, single-machine default (an agent reading its own
 working directory); a federated process never touches the server's disk for a file.
 
@@ -114,5 +114,4 @@ working directory); a federated process never touches the server's disk for a fi
 
 - [content federation](content-federation.md) — why `connect` replaced `--root` (the wrong side, the wrong reach).
 - [writing a controller](controllers.md) — how to write a docd controller (the general form of the content controller).
-- [write-back](roadmap/write-back.md) — federating the *write* path (`write_file`) back through the verse.
 - [the overview](overview.md) — where connect sits in the whole system.

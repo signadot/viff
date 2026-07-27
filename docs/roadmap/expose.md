@@ -55,18 +55,60 @@ more.
 
 The agent tools are `read_file` / `list_dir` / `write_file` / `run_bash` (`process/harness`).
 Today `read_file`/`list_dir` federate through a `process.ContentReader` when one is bound;
-`write_file` still hits the server's local disk (the write-back gap — [write-back](write-back.md)).
-For an exposure:
+`write_file` still hits the server's local disk. For an exposure:
 
 - `read_file`, `list_dir` — served from the exposure's mount. The content controller already
   serves `dir-content-<name>` for reads; `list_dir` federates against the exposure's file set
   (which `dir-status-<name>:*` already enumerates), instead of reading the server's local FS.
-- `write_file` — federated write-back *into the named exposure* (closing write-back.md). A
-  named exposure is what write-back was missing: a definite target and an authority model — the
-  write crosses the process's gate vector at the boundary before it lands in the exposed tree.
+- `write_file` — federated write-back *into the named exposure*, the next section.
 - `run_bash` — does not federate the same way (it runs commands, not file ops); it still needs
   a process running where the files physically are (the local-proc topology in
   [deployment and steering](../deployment-and-steering.md)). Out of scope here.
+
+## The write half
+
+A named exposure is what federated writing was missing: a definite target and an authority
+model. But a write does not fall out of the read by symmetry, and the reason is worth stating
+because it decides the design.
+
+`read_file` federates cleanly because a read is a pure follow-the-reference — idempotent,
+side-effect-free, and honest with *index-not-warehouse*, since the content is served on demand
+from the one system that owns it and never stored in the verse. A write mutates an external
+system. There is no "serve on demand" for a mutation; something must actually apply it to the
+tree. So a write is an *outbound effect*, the same category as commenting on a PR or pushing a
+tag — the outbound-executor path [sources](../sources.md) reserves.
+
+Three constraints shape it. *Read-your-writes*: after `write_file(p, c)`, the next
+`read_file(p)` goes through the content controller and must return `c`. *Index, not
+warehouse*: file contents must not end up in logd; the exposed tree stays the single source of
+truth for bytes. *A write is gated and attributable*: the harness already derives it as a
+`Write` effect on a `File` resource, and a write into someone's tree makes gating matter more,
+not less.
+
+The answer those three force is write-through: the content controller grows a `Patch` path
+for its slice, confines the path under the exposure's root as reads already do, and writes the
+file. Read-your-writes then works immediately, because content is served live from the tree —
+the controller simply re-reads it. Bytes never enter the verse. The harness's `write_file`,
+when bound to an exposure, routes through the verse to that slice instead of `os.WriteFile` on
+the server root, mirroring how `read_file` already routes reads: the same seam, extended from
+a reader to a writer.
+
+Two alternatives are worth recording as closed. A *transparent staging overlay* — pending
+writes invisible in the real tree but merged into reads — is a dead end, because it means
+warehousing the pending bytes somewhere and overlaying them on the controller's reads, which is
+exactly the warehousing the model has been careful to avoid. And *writes as proposed diffs*,
+recorded as entities for the human to apply, is a good review surface but a weak working
+substrate: it breaks read-your-writes unless the controller overlays pending diffs on reads,
+which is the blocked overlay again. Layer it on top later if a review flow wants it.
+
+"Don't touch my live tree" needs no new machinery either: point the process at a *different*
+exposure — a scratch worktree exposed under its own name — and the same write-through path
+lands somewhere else.
+
+Open: conflict policy when a human and an agent write the same file (gated by default,
+last-write-wins when auto, is the likely answer); atomicity across the wire (write temp, then
+rename in the controller); and `list_dir`, which is the trivial sibling — a `Match` of the
+mount subtree *is* the listing, with none of write's hazards.
 
 ## Letting an agent "cd" into an exposure
 
