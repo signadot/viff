@@ -11,6 +11,8 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 )
 
@@ -203,4 +205,74 @@ func waitPending(t *testing.T, srv *Server, id string) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("gate %s never became pending", id)
+}
+
+// A gate listing omits what is genuinely absent rather than rendering it as "".
+//
+// A brokered gate has no origin and no mode by construction — an executor raises one
+// without deciding who answers it or under which dial. Printed as `origin: ""` those sat
+// beside a `reason: ""` that was a real drop, and nothing told the two apart. An absent key
+// is a visible absence; an empty string is camouflage for a bug.
+func TestGateListingOmitsAbsentFields(t *testing.T) {
+	srv := testServer(t)
+	b := broker.New()
+	b.Spawn("p1", "migrate the schema", "human", nil)
+	srv.SetRunner(b)
+	nonce := srv.HostBroker("", b.WorkerHandler())
+	// `verse gates` lists only processes in the requested scope, and membership is the
+	// presence of the process:instance entity the mirror writes. Spawning straight on the
+	// broker skips the mirror, so seed it — otherwise the listing is empty and this test
+	// passes for the wrong reason.
+	entitytest.Set(t, srv.Store,
+		entity.Ref{System: "process", Kind: "instance", ID: "p1"},
+		entity.Obj{"status": "running"}.Payload())
+
+	ops := httptest.NewServer(srv.Handler())
+	defer ops.Close()
+	work := httptest.NewServer(srv.BrokerHandler())
+	defer work.Close()
+
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/claim", map[string]any{"identity": "human:scott"})
+	var cl struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	decodeResp(t, claim, &cl)
+	claim.Body.Close()
+
+	rep := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/report", map[string]any{
+		"epoch": cl.Epoch,
+		"events": []process.Frame{{
+			Kind: process.EvPending, ID: "deploy-1", Gate: "deploy-approval", Text: "prod, off-hours",
+		}},
+	})
+	rep.Body.Close()
+
+	resp, err := http.Get(ops.URL + "/gates")
+	if err != nil {
+		t.Fatalf("get gates: %v", err)
+	}
+	defer resp.Body.Close()
+	var gates []map[string]any
+	decodeResp(t, resp, &gates)
+	if len(gates) != 1 {
+		t.Fatalf("gates = %v, want exactly the one raised", gates)
+	}
+	g := gates[0]
+
+	// What the worker reported is present, including the reason a resolver reads to decide.
+	for k, want := range map[string]string{
+		"id": "deploy-1", "gate": "deploy-approval", "reason": "prod, off-hours",
+		"process": "p1", "where": "process",
+	} {
+		if got, _ := g[k].(string); got != want {
+			t.Errorf("gate[%q] = %q, want %q", k, got, want)
+		}
+	}
+	// What it did not report is ABSENT, not blank — so a future drop reads as a missing
+	// key rather than blending into the empty ones.
+	for _, k := range []string{"origin", "mode", "tool", "subject"} {
+		if v, present := g[k]; present {
+			t.Errorf("gate[%q] = %#v, want the key absent — an unset field must not render as \"\"", k, v)
+		}
+	}
 }

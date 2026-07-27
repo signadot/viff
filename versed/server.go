@@ -772,12 +772,27 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// An engine gate carries its subject on the question; a process gate's is the flow the
 	// process belongs to, which the engine indexes by process id. Both are omitted when
 	// genuinely absent rather than shown empty — a bare `process run` is about nothing.
+	//
+	// compact extends that rule to EVERY field, and the reason is not tidiness. A brokered
+	// gate legitimately has no origin and no mode: an executor raises a gate without
+	// deciding who answers it or under which dial. Those printed as `origin: ""` next to a
+	// `reason: ""` that was a real drop — the broker kept only id and gate — and the drop
+	// was indistinguishable from the structural blanks flanking it. A missing key is
+	// visible; an empty one is camouflage. `id` and `where` are structural and always set.
 	out := make([]map[string]any, 0)
+	compact := func(rec map[string]any) map[string]any {
+		for k, v := range rec {
+			if s, ok := v.(string); ok && s == "" {
+				delete(rec, k)
+			}
+		}
+		return rec
+	}
 	add := func(rec map[string]any, subject string) {
 		if subject != "" {
 			rec["subject"] = subject
 		}
-		out = append(out, rec)
+		out = append(out, compact(rec))
 	}
 	for _, p := range s.Reg.Pending() {
 		rec := map[string]any{
