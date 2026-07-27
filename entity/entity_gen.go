@@ -137,11 +137,6 @@ func (s *Event) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["op"] = ir.FromString(string(txt))
 	}
 
-	// Field: From (optional)
-	if s.From != nil {
-		irMap["from"] = s.From
-	}
-
 	// Field: To (optional)
 	if s.To != nil {
 		irMap["to"] = s.To
@@ -201,12 +196,6 @@ func (s *Event) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			if err := s.Op.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
 				return fmt.Errorf("field %q: failed to unmarshal text: %w", "op", err)
-			}
-		case "from":
-			if gomap.GetUnmapComments(opts...) {
-				s.From = fieldNode
-			} else {
-				s.From = fieldNodeUnwrapped
 			}
 		case "to":
 			if gomap.GetUnmapComments(opts...) {

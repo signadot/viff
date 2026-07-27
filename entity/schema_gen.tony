@@ -12,7 +12,6 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  from: .[tony-base:ir]
   gap: .[int]
   op: .[string]
   ref: .[string]

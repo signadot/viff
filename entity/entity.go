@@ -98,19 +98,24 @@ func (o Op) MarshalText() ([]byte, error) { return []byte(o), nil }
 func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
 
 // Event is one observed change in the entity-verse — the unit triggers match on.
-// To carries the change's payload (what was set); it is nil on Delete. From is a
-// best-effort prior payload — Delete populates it, a Set leaves it nil — so it is
-// informational, never matched on. There is no "pure
-// signal" event: anything worth triggering on is a state change, so it stays
-// durable, replayable, and uniform.
+// To carries the entity's whole LEVEL state as of this commit, not the delta that was
+// written; it is nil on Delete. There is no "pure signal" event: anything worth
+// triggering on is a state change, so it stays durable, replayable, and uniform.
+//
+// There is deliberately no pre-image. One existed while the in-memory store did, which
+// could read the prior value under its write lock; the docd/logd path dropped it and
+// nothing missed it. Reinstating it would be cheap (the pre-delta document is in hand in
+// the watch loop) but it is the wrong affordance to offer: an event is a level, and
+// `Op` does not distinguish create from update, so a consumer reasoning from a diff is
+// reasoning against the grain. Once-semantics come from a state latch instead — see
+// docs/change-events.md.
 //
 //tony:schemagen=verse-event,notag
 type Event struct {
 	Ref Ref `tony:"field=ref"`
 	Op  Op  `tony:"field=op"`
-	// From and To are payloads, so they are open values; To is null on a Delete.
-	From Payload `tony:"field=from,omitzero"`
-	To   Payload `tony:"field=to,omitzero"`
+	// To is a payload, so it is an open value; it is null on a Delete.
+	To Payload `tony:"field=to,omitzero"`
 	// Rev is the store revision at which this change happened — a monotonic cursor.
 	// A consumer tracks the highest Rev it has processed and catches up by querying
 	// the store from that Rev (Store.Since), so a hold/pause/disconnect costs a
