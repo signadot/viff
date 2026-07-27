@@ -56,6 +56,9 @@ func Val(v any) Payload {
 	case nil:
 		return ir.Null()
 	case *ir.Node:
+		if t == nil {
+			return ir.Null() // a nil node is a nil ANY away from being caught above
+		}
 		return t
 	case string:
 		return ir.FromString(t)

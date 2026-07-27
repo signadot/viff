@@ -88,7 +88,7 @@ func (e *Engine) AddGoal(d GoalDef) error {
 	}
 	// Encode before anything is installed: a goal that cannot be written down is refused
 	// whole rather than left running as a thing no restart can recover.
-	doc, err := d.ToTony()
+	doc, err := d.ToTonyIR()
 	if err != nil {
 		return fmt.Errorf("goal %q: encoding it for its record: %w", d.Name, err)
 	}
@@ -138,7 +138,12 @@ func (e *Engine) AddGoal(d GoalDef) error {
 	if err := e.modifyErr(goalRef(d.Name), func(cur entity.Payload) entity.Payload {
 		p := clonePayload(cur)
 		p["name"] = d.Name
-		p[specField] = string(doc)
+		// Structure, not text — see specField. Under Raw even inside a Modify: a merge keeps
+		// the DOCUMENT's tag where the two objects meet, so a patch's own tag is dropped, and
+		// a goal's grammar is tags nearly to the root (`doneWhen: !fact {facts: …}`). Raw
+		// installs the subtree instead of merging into it, which is the only way the tags
+		// arrive. AsData leaves an explicit Raw alone, so this composes with what Modify does.
+		p[specField] = entity.Raw(doc)
 		if d.Subject != "" {
 			p["subject"] = d.Subject
 		}
@@ -201,14 +206,14 @@ func (e *Engine) LoadGoals() error {
 // goal to different callers, and installing under one while removing under the other leaves
 // a goal nothing can stop.
 func goalOf(ent entity.Entity) (GoalDef, error) {
-	doc := entity.Str(ent.Payload, specField)
-	if doc == "" {
+	doc := entity.Get(ent.Payload, specField)
+	if doc == nil {
 		return GoalDef{}, fmt.Errorf("goal %s: still being pursued, but the record does not carry "+
 			"the definition (%s) it was installed from — it cannot be restored, so reinstall it "+
 			"or remove it", ent.Ref, specField)
 	}
 	var d GoalDef
-	if err := d.FromTony([]byte(doc)); err != nil {
+	if err := d.FromTonyIR(doc); err != nil {
 		return GoalDef{}, fmt.Errorf("goal %s: %w", ent.Ref, err)
 	}
 	if d.Name != ent.Ref.ID {
@@ -369,8 +374,13 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 		next["witness"] = ids
 	}
 
+	// AsData, because next was built from what was READ: the record carries the goal's
+	// definition, whose operators are data, and a write is a patch — so latching a terminal
+	// with the payload unescaped would execute the goal's own charter against its record.
+	// Modify does this for its callers; this is a read-modify-write by hand (the CAS is on
+	// terminal=false, not on unchanged), so it does its own.
 	committed, err := e.store.Write(entity.Write{
-		At: ref.At(), Value: next.Payload(),
+		At: ref.At(), Value: entity.AsData(next.Payload()),
 		When: []entity.Require{{Pattern: entity.Obj{"terminal": false}.Payload()}},
 	})
 	if err != nil {

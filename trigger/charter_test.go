@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/mergeop"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -99,10 +102,11 @@ func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	}
 }
 
-// The rule that comes back is the rule that went in — operators and all. A charter is full
-// of tony tags (`id: !glob`, `patch: {tmp: !delete null}`), and they are exactly what a
-// structural payload would not survive: the store's write is a tony PATCH, so those tags
-// would be EXECUTED by the write rather than stored by it. Hence the document form.
+// The rule that comes back is the rule that went in — operators and all. A charter is full of
+// tony tags (`id: !glob`, `patch: {tmp: !delete null}`), and they are what a structural
+// payload could not survive until `!raw`: the store's write is a tony PATCH, so those tags
+// were EXECUTED by the write rather than stored by it. Under the escape they are stored, so
+// the rule is an ordinary document on its entity rather than a string holding one.
 func TestCharterRoundTripsOperators(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
@@ -132,23 +136,70 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("the charter entity does not read back: ok=%v err=%v", ok, err)
 	}
+	// The spec is STRUCTURE on the entity — a document to navigate, not a string to re-parse.
+	spec := entity.Get(ent.Payload, specField)
+	if spec == nil || !entity.IsObj(spec) {
+		t.Fatalf("%s = %v; want the rule as an object", specField, spec)
+	}
+	if id := ir.Get(ir.Get(ir.Get(spec, "condition"), "subject"), "id"); id == nil || id.Tag != "!glob" {
+		t.Fatalf("condition.subject.id = %v; the operator did not survive as a tag", id)
+	}
 	back, err := ruleOf(ent)
 	if err != nil {
 		t.Fatalf("ruleOf: %v", err)
 	}
-	want, err := installed.ToTony()
+	want, err := installed.ToTonyIR()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := back.ToTony()
+	got, err := back.ToTonyIR()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(want) {
-		t.Fatalf("the rule came back changed:\n got: %s\nwant: %s", got, want)
+	// Compared as DATA (mergeop.RawEqual: tags compared, not evaluated), because the store
+	// keeps a value, not a rendering — the layout tags that decide whether an object is
+	// written `{a: 1}` or over two lines are not part of what a rule says.
+	if !mergeop.RawEqual(got, want) {
+		gotDoc, _ := back.ToTony()
+		wantDoc, _ := installed.ToTony()
+		t.Fatalf("the rule came back changed:\n got: %s\nwant: %s", gotDoc, wantDoc)
 	}
-	if !strings.Contains(string(got), "!delete") || !strings.Contains(string(got), "hotfix-*") {
-		t.Fatalf("the round trip dropped an operator: %s", got)
+	doc, _ := back.ToTony()
+	if !strings.Contains(string(doc), "!delete") || !strings.Contains(string(doc), "hotfix-*") {
+		t.Fatalf("the round trip dropped an operator: %s", doc)
+	}
+}
+
+// A re-install REPLACES the stored rule rather than merging into it. The spec is written
+// under entity.Raw, and that is what a record holding a document needs: merged, a field the
+// new version does not have would go on standing in it — a rule firing on a condition nobody
+// wrote, which nothing in the charter file would explain.
+func TestReinstallReplacesTheRule(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+	trig := Trigger{
+		Name:      "review",
+		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})},
+		Gates:     []Gate{{Name: "approval", Mode: "ask"}},
+		Action:    setStage("reviewed"),
+	}
+	if err := eng.AddTrigger(trig); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	if !eng.RemoveTrigger("review") {
+		t.Fatal("RemoveTrigger reported the trigger did not exist")
+	}
+	trig.Gates = nil // the gate is gone from the rule
+	if err := eng.AddTrigger(trig); err != nil {
+		t.Fatalf("AddTrigger (again): %v", err)
+	}
+
+	ent, ok, _ := store.Get(CharterRef("review"))
+	if !ok {
+		t.Fatal("the charter entity does not read back")
+	}
+	if g := ir.Get(entity.Get(ent.Payload, specField), "gates"); g != nil {
+		t.Fatalf("gates = %v; the removed gate survived the re-install", g)
 	}
 }
 
@@ -192,11 +243,11 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})},
 		Action:    setStage("reviewed"),
 	}
-	doc, err := trig.ToTony()
+	doc, err := trig.ToTonyIR()
 	if err != nil {
 		t.Fatal(err)
 	}
-	entitytest.Set(t, store, CharterRef("elsewhere"), entity.Obj{specField: string(doc)}.Payload())
+	entitytest.Set(t, store, CharterRef("elsewhere"), entity.Obj{specField: entity.Raw(doc)}.Payload())
 
 	if err := eng.LoadCharter(); err == nil {
 		t.Fatal("a rule named 'review' installed from trigger:rule:elsewhere")
@@ -327,7 +378,11 @@ func TestGoalOwnedTriggersAreNotStandaloneCharter(t *testing.T) {
 	}
 	// It is in the goal's own record, which is what brings it back.
 	e, ok, _ := store.Get(entity.Ref{System: GoalSystem, Kind: GoalKind, ID: "ship"})
-	if !ok || !strings.Contains(entity.Str(e.Payload, specField), "ship-review") {
+	if !ok {
+		t.Fatal("the goal has no record")
+	}
+	owned := ir.Get(entity.Get(e.Payload, specField), "triggers")
+	if owned == nil || len(owned.Values) != 1 || ir.Get(owned.Values[0], "name").String != "ship-review" {
 		t.Fatalf("the goal's record does not carry its charter: %v", e.Payload)
 	}
 }

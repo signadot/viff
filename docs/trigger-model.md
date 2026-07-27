@@ -92,14 +92,27 @@ One entity per rule, because that is what the operations already are: an install
 a removal deletes one, and neither reads the others — so two installs cannot lose each
 other, and a rule is addressable (`verse entity get trigger:rule:review`).
 
-**A rule is stored as its tony document, not as structure.** That is forced by the property
-that makes the store good at everything else: a write is a tony *patch*, so operator tags in
-a payload are EXECUTED by the store rather than stored by it. A charter is full of them —
-`id: !glob "hotfix-*"`, `patch: {tmp: !delete null}` — and a structurally-stored rule is not
-one that reads back wrong, it is one that cannot be read back at all: the write leaves an
-entity whose own patch log no longer applies (`glob patching "null" gave cannot patch with
-glob operation`). The text is the same document a charter file holds, so nothing is lost in
-the trip and the entity stays legible to a person reading it.
+**A rule is stored as structure, under the `!raw` escape.** The escape is what makes that
+possible, and it is worth saying why it was needed. A write is a tony *patch* — the property
+that makes the store good at everything else — so operator tags in a payload are EXECUTED by
+the store rather than stored by it. A charter is full of them: `id: !glob "hotfix-*"`,
+`patch: {tmp: !delete null}`. A structurally-stored rule was therefore not one that read back
+wrong, it was one that could not be read back at all — the write left an entity whose own
+patch log no longer applied (`glob patching "null" gave cannot patch with glob operation`) —
+and the rule was kept as its tony *text* instead.
+
+`!raw` (go-tony v0.0.100) says *this tag is data*: the subtree is stored verbatim, nothing
+beneath it is interpreted at any depth, and the escape itself is consumed, so the rule lands
+carrying its own tags. `entity.Raw` is that wrap on the way in; a rule read back is ordinary
+data, which is why putting one back means escaping it again (`entity.AsData`, which is what
+`entity.Modify` does for its callers — a record that holds a document would otherwise execute
+its own operators the moment anything else about it changed). Raw also *replaces* rather than
+merging, so re-installing a rule cannot leave a field of the version before it standing in the
+version after.
+
+The gain is that the record is the rule: `verse entity get trigger:rule:review` shows a
+document to read field by field, a charter change is an observable fact about a shape rather
+than about a string, and nothing has to re-parse to ask a question about it.
 
 Restoring a rule is an ordinary install, which means it **replays**: a subtree watch is
 level-triggered at the open, so a restored trigger acts on what already matches it — including
@@ -107,9 +120,9 @@ what arrived while verse was down. A restart is then just an install over a vers
 moved on, which is the same property described above, and the same reason to write a latch
 rather than an edge.
 
-A **goal** is durable the same way, and its record is the goal: `goal:instance:<name>` holds
-the definition it was installed from, next to the live status and the terminal latch it
-already carried. A start reinstalls every goal still being pursued, which brings back both
+A **goal** is durable the same way — the same `spec` field, the same escape — and its record
+is the goal: `goal:instance:<name>` holds the definition it was installed from, next to the
+live status and the terminal latch it already carried. A start reinstalls every goal still being pursued, which brings back both
 halves — the doing (its owned triggers) and the watching (its monitor). Three properties make
 that a re-install rather than a reconstruction: the deadline's absolute instant is stamped on
 the record, so it does not slide forward; `doneWhen` is evaluated before the monitor waits, so

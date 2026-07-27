@@ -40,17 +40,20 @@ func CharterRef(name string) entity.Ref {
 // specField is where a durable record keeps the declaration it was installed from: the rule
 // on trigger:rule, the goal on goal:instance. One name, because it is one idea.
 //
-// It holds the declaration as its tony DOCUMENT — text, not structure. That is not a
-// shortcut, it is forced, and by exactly the property that makes the store good at
-// everything else: a write is a tony PATCH, so a payload's operator tags are executed by
-// the store rather than stored by it. A charter is full of them — `id: !glob "hotfix-*"`,
-// `patch: {tmp: !delete null}` — so a structurally-stored rule is not a rule that reads
-// back wrong, it is one that cannot be read back at all (the probe that established this
-// left an entity whose own patch log no longer applies: "glob patching null gave cannot
-// patch with glob operation").
+// It holds the declaration as STRUCTURE, written under entity.Raw. A charter is full of
+// operator tags — `id: !glob "hotfix-*"`, `patch: {tmp: !delete null}` — and a write is a
+// tony patch, so an unescaped payload has them executed by the store rather than stored by
+// it: not a rule that reads back wrong, one that cannot be read back at all (the entity's own
+// patch log stops applying, "glob patching null gave cannot patch with glob operation"). That
+// is what forced the text form here, and `!raw` is the escape that lifts it — the subtree is
+// stored verbatim, tags intact, interpreting nothing at any depth.
 //
-// The text is the same document a charter file holds and `verse trigger show` prints, so
-// nothing is lost in the trip and the entity stays legible to a person reading it.
+// Structure rather than text because the record is then the rule itself: `verse entity get
+// trigger:rule:review` shows a document a person can read field by field, a charter change is
+// an ordinary observable fact about a shape rather than about a string, and nothing has to
+// re-parse to ask a question about it. Raw also REPLACES, so re-installing a rule cannot
+// leave a field of the version before it standing in the version after — which a merged
+// structural write would, and which the text form got for free by being one scalar.
 const specField = "spec"
 
 // ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is
@@ -66,14 +69,14 @@ var ErrCharter = errors.New("the charter could not be written")
 // next restart silently drops. The installer is entitled to hear that at install time
 // rather than discover it after a restart, by its absence.
 func (e *Engine) persist(t Trigger) error {
-	doc, err := t.ToTony()
+	doc, err := t.ToTonyIR()
 	if err != nil {
 		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
 	ref := CharterRef(t.Name)
 	if _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
-		Value: entity.Obj{specField: string(doc)}.Payload(),
+		Value: entity.Obj{specField: entity.Raw(doc)}.Payload(),
 	}); err != nil {
 		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
 	}
@@ -133,12 +136,12 @@ func (e *Engine) LoadCharter() error {
 // deletes — so installing under one and deleting under the other would leave a rule nothing
 // can get rid of.
 func ruleOf(ent entity.Entity) (Trigger, error) {
-	doc := entity.Str(ent.Payload, specField)
-	if doc == "" {
+	doc := entity.Get(ent.Payload, specField)
+	if doc == nil {
 		return Trigger{}, fmt.Errorf("charter %s: no %s field (payload is %v)", ent.Ref, specField, ent.Payload)
 	}
 	var t Trigger
-	if err := t.FromTony([]byte(doc)); err != nil {
+	if err := t.FromTonyIR(doc); err != nil {
 		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
 	}
 	if t.Name != ent.Ref.ID {
