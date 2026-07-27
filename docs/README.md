@@ -68,7 +68,7 @@ the verse that owns it, through a docd controller.
 | | |
 |---|---|
 | walk | [§8 federate your local working tree](tutorial.md#8-federate-your-local-working-tree) · [§9 scopes](tutorial.md#9-scopes) |
-| read | [verse connect and docd](connect.md) — the mechanics, through docd's two faces |
+| read | [verse connect and docd](working/connect.md) — the mechanics, through docd's two faces |
 | | [Content federation](content-federation.md) — why `connect` replaced `--root` |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, GitHub and the rest; webhook as hint, reconcile as truth |

@@ -251,7 +251,7 @@ mechanism, and why designing the human case first gets the agent for free.
 A base URL does not have to be a new service. verse can host a broker the way docd hosts a
 controller: docd forwards a subtree's ops to a registered controller under a mount, and verse
 forwards a process's worker and engine ops to a registered backend under
-`/broker/<nonce>` — the same capability-URL trick [`connect`](connect.md) uses for
+`/broker/<nonce>` — the same capability-URL trick [`connect`](working/connect.md) uses for
 `dir-content-<nonce>`. A runner binding is then uniformly a URL: `<broker>/broker/local`,
 `<broker>/broker/<nonce>`, or an external one. verse consumes the verse-facing contract from
 it, as an in-process call or a forwarded one for a hosted broker, over HTTP for an external

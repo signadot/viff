@@ -323,9 +323,6 @@ verse flows
 # - demo:pr:2                                   ← a live 60s flow to steer
 ```
 
-That heredoc is stdin, which names no format the way a `.tony` file does, so it too is
-read in the default — `--ifmt json` if you'd rather paste JSON.
-
 The hold process's own completion re-sets the PR to `reviewed`, but that write changes nothing,
 and the engine reacts to real changes rather than to writes, so `hold` fires exactly once. No
 loop, no latch: a set-to-the-same-value is inert (see [change events](change-events.md)).
@@ -907,6 +904,7 @@ normalisation is exactly what guarantees a trigger's subject is always one entit
 is per-entity-edge, so `$subject`, and the flow or goal keyed on it, is never ambiguous even
 under a broad match, since a broad pattern just fans out to one firing per matching change.
 
+TODO: really?  when matches over the verse, which has already been updated.
 The cost is that transaction atomicity is flattened. The engine cannot react to "these two
 changed together in one tx" as a unit — the shared revision is the only trace, and nothing
 groups by it. It is a load-bearing assumption worth naming, and worth revisiting if

@@ -68,4 +68,4 @@ and read plane, and [process control](process-control.md) already runs a process
 Splitting them is a deployment change, not a redesign.
 
 Next: [the reference](reference.md#commands) for the commands this shape produces, and
-[connect](connect.md) for how a developer's working tree joins a running verse.
+[connect](working/connect.md) for how a developer's working tree joins a running verse.
