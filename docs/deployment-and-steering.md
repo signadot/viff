@@ -1,143 +1,71 @@
-# Deployment shape & the steering/observation split
+# Deployment and steering
 
-A design note for the internal dogfood — running real SDLC flows, releases among them, over
-the verse prototype. It fixes the service topology and, most importantly, the one invariant
-that shapes the daemons: steering outranks observation.
+One invariant shapes verse's surface, and it is worth having before you read the HTTP routes
+or the CLI: *steering outranks observation.* An intervention that lands late is an
+intervention defeated. [Tutorial §4](tutorial.md#4-steer-flows) drives it from the operator's
+side; this is why it is built the way it is.
 
-[Tutorial §4](tutorial.md#4-steer-flows) is the same invariant from the operator's side.
+## Two planes
 
-## What we're building
+Everything coordinates through the entity store, but not everything is coordination.
 
-Not a demo — a small internal deployment that actually drives a flow in our SDLC
-(Ani's ask: get it running to do something real, like run releases). That means
-two long-lived services, fronted by one `verse` CLI, and it means the steering
-principle from the representation doc has to be real, not aspirational:
+*Data coordination* is actions writing entities and triggers reacting to them. It flows
+through the store, and it is fine for it to lag — eventual, queued, recoverable.
 
-> Steering outranks observation. Intervention that lands late is intervention
-> defeated.
+*Control* is pausing a flow, cancelling it, answering a gate, sliding autonomy, injecting an
+instruction. It does not flow through the store at all.
 
-## Three logical roles
+The trap is that the "coordinate through the store, no orchestrator" instinct tempts you to
+model an intervention as a store write — a command entity that something reacts to. But then
+the intervention rides the one channel it is supposed to outrank: it queues behind the
+backlog, and under load the store's bounded buffer can drop it. The dial would not turn when
+you turned it.
 
-| Role | What it is | Deploys as |
-|---|---|---|
-| entity-verse (store) | shared coordination state + change stream | in-memory now (behind `entity.Store`); an external docd/logd service later — versed embeds the *client*, not the storage engine |
-| proc / processd | the governed-process runtime — runs agents in sandboxes | a daemon (already an HTTP control+read plane) |
-| versed | the reactive engine/gateway — observes the verse, matches triggers, gates, spawns | a daemon (to build) |
-| connect (local) | federates the laptop's working tree/git into a *scope* of the verse | a local client loop (`verse connect`) |
+So the emergent-coordination idea and the steering-priority invariant genuinely pull apart
+here, and the split is explicit: control is out-of-band from store observation, serviced
+ahead of it, and an intervention is never a store write. It shows up in the surface too —
+control endpoints are distinct from read endpoints, so an operator cannot steer by writing.
 
-Placement: the store lives in `versed`'s process in-memory now, and later moves
-behind an external docd/logd service that `versed` reaches through an embedded
-client (not the storage engine). Either way `versed` owns the store handle; a
-broad shared SCM index is the thing that would be a separate service in its own
-right. `proc` reports process state back into the verse via `mirror`
-(in-process now; over `processd`'s SSE when split out).
+## A hold costs a cursor, not a buffer
 
-## The two planes — and why they must stay apart
+A flow parked at a gate nobody has answered — or a paused engine — must not accumulate a
+growing backlog of unread changes. It doesn't, because observation is revision-cursored.
+Every change carries a monotonic `Rev`, and a consumer keeps only the highest one it has
+processed, catching up with `Since(cursor)` rather than holding a buffer. A hold costs an
+int, however long it lasts.
 
-Everything coordinates through the verse, but not everything is coordination.
-There are two distinct planes, and conflating them is what breaks the invariant:
+That is what makes dropping safe. `Observe` is a low-latency hint that may drop under
+backpressure; `Since` is the source of truth, so a drop becomes a cursor gap to replay rather
+than a silent loss, and pause, resume, a long gate and dropped events all heal the same way.
+It is also the only model that works once the store is across a network, where you cannot
+hold a buffer on the far side. `TestDropRecoveryViaReplay` pins it: a pause that outlasts the
+live buffer drops events, and all 300 changes still dispatch on resume.
 
-- Data coordination — actions write entities, triggers react. Flows through the
-  store; eventual, queued, drop-with-gap. This is the emergent loop and it is *fine*
-  for it to lag.
-- Control / steering — pause, cancel, redirect a flow, slide a gate's autonomy,
-  answer a gate, inject an instruction. This must not flow through the store's
-  observation stream.
+## Where it is enforced
 
-The trap: the "coordinate through the store, no orchestrator" instinct tempts you
-to model intervention as *a store write* (a command entity). But then intervention
-rides the same single observation channel it is supposed to outrank — it queues
-behind the backlog and, under load, the store's bounded buffer can even *drop* it.
-The dial wouldn't turn when you turn it. So the emergent-coordination philosophy and
-the steering-priority invariant genuinely pull apart here, and the split has to be
-explicit: control is out-of-band from store-observation and serviced with
-priority. Intervention is never a store write.
+In the process runtime, a boundary services control before the next action, cancel beats
+pause beats say, and the read plane is fire-and-forget so it can never block control.
 
-## Holds cost a cursor, not a buffer
+In gate resolution, a pending gate is *observed* through the store — `mirror` projects
+it — but *answered* out-of-band through the resolver. Firing runs off the observe goroutine,
+so a gate blocking on a human does not stall observation.
 
-A flow parked at a long-waiting gate — or a paused engine — must not accumulate a
-growing backlog of unread changes. It doesn't: observation is revision-cursored.
-Every change carries a monotonic `Rev`; a consumer tracks only the highest `Rev` it
-has processed and catches up by asking the store `Since(cursor)` rather than holding
-a buffer. A hold costs an int, not memory, however long it lasts.
+In the engine, a control channel is drained at the top of every loop iteration, ahead of
+any dispatch. While paused the loop services control only and consumes no observations at
+all, so a runaway flow can be halted no matter how backed up the change stream is. Control
+closures run on the loop goroutine, so they serialize with dispatch instead of racing it.
+`TestControlOutranksObservation` pins that one.
 
-- `Observe()` is a low-latency *hint* that may drop under backpressure; `Since` (a
-  query by revision) is the source of truth — so drops become *recoverable* (a cursor
-  gap → replay) instead of silent.
-- The engine reconciles level-triggered: every non-paused iteration, `if cursor <
-  Rev(): catchUp` via `Since`. Pause/resume, a long gate, and dropped live events all
-  heal the same way — by replaying from the cursor.
-- This is docd-native and the only sane model once the store is a remote service:
-  you can't hold a buffer on the far side of a network, so you hold a cursor and query.
-  `Since(cursor)` maps onto a docd query-by-revision (`FromCommit`/`ReadStateAt`).
+## What runs where
 
-`TestDropRecoveryViaReplay` pins it: a pause that outlasts the live buffer drops live
-events, yet all 300 changes still dispatch on resume, replayed from the cursor.
+`verse up` runs the engine, the process runtime, and the HTTP surface in one process, and
+either brings up logd and docd as children or attaches to a running docd. Everything else is
+a client of it.
 
-## Where the invariant is realized (status)
+The pieces are separable services behind the interfaces they already use: the store is
+reached through a client rather than embedded, the process runtime is already an HTTP control
+and read plane, and [process control](process-control.md) already runs a process off-box.
+Splitting them is a deployment change, not a redesign.
 
-| Plane | Realizes "steering outranks observation"? | How |
-|---|---|---|
-| Process substrate (`process`, `processd`) | Yes | boundary services control before the next action (`ctx.Err()` → pause hold → fold steer → `Next`); cancel > pause > say; the read plane is fire-and-forget and never blocks control; `processd` exposes control as separate endpoints from `GET /events` |
-| Gate resolution (engine) | Yes | a pending gate is *observed* via the store (`mirror` projects `pending`), but *answered* out-of-band via the `Resolver`/`Registry` — never a store write; and firing is off the observe goroutine so a blocking human gate doesn't even stall observation |
-| Engine flow-level steering (`versed`) | Yes (now built) | the engine has a control plane drained with strict priority — see below |
-
-### The engine control plane (built)
-
-`trigger.Engine` now has a control channel serviced *ahead of* observation:
-
-- the loop calls `drainControl()` at the top of every iteration — all pending
-  control runs before any change is dispatched;
-- while paused, the loop services control *only* and does not consume
-  observations at all (they buffer in the store, dispatch on resume) — so a runaway
-  flow can be halted regardless of how backed-up the change stream is;
-- control closures run on the loop goroutine, so they serialize with dispatch
-  and never race it. `Pause` / `Resume` are synchronous (return once applied); `Do`
-  is the generic steering primitive until typed ops land.
-
-`TestControlOutranksObservation` pins it: a `Pause` takes effect ahead of a burst of
-20 observations (none fire while paused), and the burst dispatches on `Resume`.
-
-## The surface carries the split
-
-One binary. `up` is the only daemon verb and everything else is a client, so the split has
-to show up in the surface itself, or an operator can reach the control plane by accident.
-The rule for versed's HTTP surface is that control endpoints are distinct from the read
-endpoints, mirroring `processd`: a `verse flow pause` or a gate resolve hits the control
-plane and is applied with priority, and is never expressed as a change written into the
-verse. The command surface that falls out is in [the reference](reference.md#commands).
-
-## Local dev: federating the working tree
-
-`signadot local connect`, for the entity-verse. A developer's working tree, git
-state, and local processes are state the SDLC cares about but that lives off-store.
-`verse connect .` federates it into an isolated per-session scope: it writes scoped
-file metadata (`local:dir-status-<scope>:*`), serves file contents on demand via a
-docd content controller (`local:dir-content-<scope>:*`, nothing stored), and installs a
-scoped trigger that spawns a validator per file — so a validation flow reacts to
-*uncommitted* changes with full org context, without polluting the shared baseline, and
-the validator reads contents *through the verse* rather than a shared disk.
-
-- Scopes are the mechanism — their correct, narrow use (the SCOPES doc's "isolated
-  view for sandbox interop"): a scoped session's writes land in the scope, the
-  baseline is untouched, and scoped reads/watches see baseline layered with the scope.
-  `entity.Store` reserves the seam — `Scope(name) Store` (in-memory returns a
-  non-isolating passthrough; a docd-backed store does real copy-on-write).
-- One-way per kind (anti-loop, like `mirror`): local FS is source-of-truth for
-  `local:*` (projected up); shared entities are read-mostly locally (projected down).
-  A kind federated both ways re-ignites.
-- Local topology: the laptop runs `connect` + a local `verse up proc` (so
-  validation processes can actually touch local files), both clients of the remote,
-  scope-aware store and the baseline `versed`. That is the fourth deployment role.
-
-This settles the store shape: local dev requires an external, scope-aware store
-that multiple clients embed (versed on baseline, each dev's connector on a scope) —
-exactly the docd-client-not-embedded-engine model.
-
-## Why this ordering
-
-The invariant is cheap to honor now and expensive to retrofit: if intervention ever
-becomes a store write, unwinding it touches every control path. Validating it before
-building the daemons means `versed`'s HTTP surface is born with the split, and a
-release we dogfood can actually be *stopped in time* — which is the whole point of
-steering a real flow.
+Next: [the reference](reference.md#commands) for the commands this shape produces, and
+[connect](connect.md) for how a developer's working tree joins a running verse.

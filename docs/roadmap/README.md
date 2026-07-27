@@ -1,6 +1,6 @@
 # Roadmap
 
-Design notes for work that is **not built**. Nothing in this directory describes code you
+Design notes for work that is not built. Nothing in this directory describes code you
 can run; each note records a gap, a direction, and the reasoning that has survived so far.
 For what verse does today, go back up to [the docs index](../README.md).
 
@@ -60,14 +60,14 @@ a definite target with an authority model.
 
 Dependencies, not dates.
 
-1. **Scope lifecycle** stands alone and unblocks the rest by making isolation a thing you
+1. Scope lifecycle stands alone and unblocks the rest by making isolation a thing you
    can name, list, and reclaim.
-2. **expose** needs a durable scope to hold its files, and produces the named surface the
+2. expose needs a durable scope to hold its files, and produces the named surface the
    other two want.
-3. **Write-back** needs a definite target and an authority model — which is an exposure.
-4. **Authority** can start any time on the CLI side (the call boundary is already there),
+3. Write-back needs a definite target and an authority model — which is an exposure.
+4. Authority can start any time on the CLI side (the call boundary is already there),
    but its `Environment` half wants the sandbox record `expose` arrives at.
-5. **Channels** are undesigned, and the note argues its named-durable-handle machinery is
+5. Channels are undesigned, and the note argues its named-durable-handle machinery is
    probably `expose`'s — worth building in an order that finds out.
 
 ## What is not here
