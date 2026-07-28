@@ -26,6 +26,7 @@ core of the model, and almost everything else is something a rule can reach.
 |---|---|
 | walk | [§2 install a charter and drive it](tutorial.md#2-install-a-charter-and-drive-it) · [§6 gates the group decides](tutorial.md#6-gates-the-group-decides--whether-and-who) · [§7 goals](tutorial.md#7-goals--give-a-flow-a-destination) |
 | read | [The trigger model](trigger-model.md) — the two grammars, and every field of a rule |
+| | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
 
 ### Processes and autonomy
 

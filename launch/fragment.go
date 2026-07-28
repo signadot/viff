@@ -11,7 +11,7 @@ import "fmt"
 // differ by which runtime ran the prompt and by nothing else. Once a spawn could say `frame`,
 // `tools` and `grant` — what the agent is told, what it may attempt, what it may do at all —
 // that was most of what distinguishes one doer from another, and none of it could cross.
-// See docs/working/provider-selection.md.
+// See docs/provider-selection.md.
 //
 // The fields NOT here are as deliberate as the ones that are. `vector` is absent because a
 // provider entity could otherwise take every action boundary off the docket without touching

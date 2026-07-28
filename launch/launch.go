@@ -123,7 +123,7 @@ type Spec struct {
 	// Orthogonal to the RUNNER that then transports the chosen Driver.
 	//
 	// A spawn that carries one must also declare Grant: a doer may bring its own, and that is
-	// only checkable against a ceiling the charter stated. See docs/working/provider-selection.md.
+	// only checkable against a ceiling the charter stated. See docs/provider-selection.md.
 	Provider *Provider `tony:"field=provider,omitzero"`
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/signadot/verse/process"
 )
 
-// registerTreatments writes the two doers the case in docs/working/provider-selection.md
+// registerTreatments writes the two doers the case in docs/provider-selection.md
 // turns on: a fixer and a memo-writer that run the SAME driver and differ in everything else.
 // Before a selection could bind a fragment, that difference had nowhere to live, so a charter
 // wanting both had to write two triggers and freeze each one's tools and grant at authoring

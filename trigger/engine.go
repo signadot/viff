@@ -855,7 +855,7 @@ func refIDs(refs []entity.Ref) []string {
 // It returned a bare driver string until the fragment landed. That was proportionate when a
 // spawn was (id, task, driver); once a spawn could say frame/tools/grant, two doers could
 // still differ only by which runtime ran the prompt, which is the smaller half of what
-// distinguishes them. See docs/working/provider-selection.md.
+// distinguishes them. See docs/provider-selection.md.
 //
 // `ask` and `vote` reify a `select` motion — a motion over the eligible doers as options —
 // resolved through the SAME machinery as a whether-gate (openChannel/awaitMotion/
