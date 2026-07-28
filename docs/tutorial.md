@@ -747,22 +747,26 @@ replacing would let a doer add a tool the spawn withheld. `vector` it may not se
 person sees an action is the charter's call. A doer that says nothing about a field inherits
 the spawn's.
 
-That is why `grant:` is required on a spawn that selects. Widening has to be impossible for
-a registry anyone can write to be safe to select from:
+That is why `grant:` is required on a spawn that selects — a spawn with a `provider:` and no
+`grant:` will not install. Widening has to be impossible for a registry anyone can write to be
+safe to select from, and a doer that tries is simply not among the options:
 
 ```sh
 verse entity put provider:treat:greedy '{driver: llm, risk: low, grant: all}'
-verse docket
-# nothing — and the log says: greedy: its grant "all" is not within the spawn's
-#           "no-delegate" — a doer may narrow authority, never widen it
+# nothing spawns, and the log says why:
+#   provider selection has no eligible doer … why="1 matching doer(s) may not run under
+#   this spawn: greedy: its grant \"all\" is not within the spawn's \"no-delegate\" —
+#   a doer may narrow authority, never widen it"
 ```
 
-Where doers differ in what they may do, the docket says so, so a voter is choosing an
-envelope knowingly rather than picking a name:
+Where doers differ in what they may do, a ballot says so, so a voter is choosing an envelope
+knowingly rather than picking a name. Switch that spawn to `select: vote, need: 2` and drop
+the match, and both doers stand:
 
 ```sh
 verse docket
-# … select open  options=[fixer[no-delegate +read_file,…] memo[read-only +read_file,list_dir]] …
+# … select open  options=[fixer(2)[no-delegate +read_file,list_dir,write_file,run_bash]
+#                         memo(2)[read-only +read_file,list_dir]] …
 ```
 
 And each process records which doer it got — `verse entity get process:instance:<id>` shows

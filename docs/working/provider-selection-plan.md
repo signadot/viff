@@ -1,5 +1,10 @@
 # Provider selection: development plan
 
+Status: **commits 1–3 are landed on `provider-selection`; commit 4 is not started and needs a
+decision, not a keystroke.** Kept because the "decisions this plan hardcodes" list below is
+the review surface for what was built — each item is a place the design left a question open
+and the code answers it one way. Two items changed on contact and are marked ✎.
+
 The design and its argument are in [provider-selection.md](provider-selection.md). This is
 the build order: four commits, what each one touches, what it hardcodes, and how it is
 verified. Branch `provider-selection`, worktree `.worktrees/provider-selection`.
@@ -31,9 +36,13 @@ answers is cheaper now than after the commit that assumes it.
 5. **`vector` is not settable by a provider in this cycle.** Setting it makes the provider
    ineligible per (4). An ordering over `auto|ask|park` that would let a provider tighten
    autonomy is deferred, not rejected.
-6. **No schema regeneration.** Nothing here adds a field to `launch.Spec` or
-   `launch.Provider` — the fragment lives in an entity payload, which has no schema. If a
-   commit finds itself editing `launch/schema_gen.tony`, something has drifted from this plan.
+6. ✎ **No schema regeneration** — *this one changed.* The rule as written: nothing adds a
+   field to `launch.Spec` or `launch.Provider`, because the fragment lives in an entity
+   payload, which has no schema. That held for commits 1–2. Commit 3 adds exactly one field,
+   `Spec.Doer`, and regenerates. What the rule missed is that the ANSWER to a selection has to
+   reach the process entity, `mirror.Reflect` owns that payload and re-Puts it on every event,
+   so the spec is the only channel — the same reason `Chain` rides it. One field, engine-owned,
+   for provenance rather than for anything a charter writes.
 
 ## Commit 1 — a selection binds a fragment
 
@@ -105,9 +114,12 @@ provider's), so it earns its own sentence.
 - `read-only` under a `no-delegate` ceiling **passes** — this is the case that works only
   because `namedGrants` shares atoms, and a test pins it before `Grant.Subset` is ever made
   more complete;
-- a path-scoped provider grant under a coarser ceiling is **refused**, with a comment naming
-  `process/action.go:52` as the reason. This test documents the known incompleteness rather
-  than asserting it is correct — it should be updated, not deleted, when subsumption lands;
+- ✎ *the plan wanted a path-scoped provider grant refused under a coarser ceiling, to
+  document `Subset`'s incompleteness. It is unwritable: a provider's `grant` is a NAME from
+  `namedGrants`, so there is no way to express a structured one and no reachable case where
+  the incompleteness bites. What landed instead is the full 16-cell ceiling matrix over the
+  four names, which pins every pair the vocabulary can express — so whichever arrives first,
+  a structured grant or subsumption, the change is visible;*
 - tools intersection: spawn `[read_file]` + provider `[read_file, run_bash]` binds
   `[read_file]`;
 - a spawn with `provider:` and no `grant:` fails `AddTrigger`.
