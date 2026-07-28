@@ -106,11 +106,24 @@ type Spec struct {
 	// Spawner is what calls mirror.Reflect, which owns the process entity's payload. It is
 	// what lets a process say where in its trigger's action tree it came from.
 	Chain string `tony:"field=chain,omitzero"`
-	// Provider, when set, makes the who-axis (Driver) a GOVERNED SELECTION rather than a
-	// fixed authoring-time value: the engine selects one of Eligible via the Select
-	// surface, reifies it as a motion, and binds the winner into Driver before spawn
-	// (no live swap — reassign = cancel+respawn). Orthogonal to the RUNNER that
-	// then transports the chosen Driver.
+	// Doer is WHO the selection picked: the winning provider's entity ref
+	// ("provider:treat:fixer"), or the bare name for an inline `eligible` list, which names no
+	// entity. Engine-owned like Subject and Chain — a charter that writes it is overwritten,
+	// because it is an answer and not a request.
+	//
+	// It is separate from Driver because the driver stopped identifying the doer. Two doers
+	// that differ in frame, tools and grant while sharing `driver: llm` is the case a
+	// Fragment exists to serve, so a process entity showing only the driver would report two
+	// quite different spawns as the same work by the same agent.
+	Doer string `tony:"field=doer,omitzero"`
+	// Provider, when set, makes the who-axis a GOVERNED SELECTION rather than a fixed
+	// authoring-time value: the engine selects among the eligible doers via the Select
+	// surface, reifies it as a motion, and overlays the winner's Fragment — driver, frame,
+	// tools, grant — onto this spec before spawn (no live swap — reassign = cancel+respawn).
+	// Orthogonal to the RUNNER that then transports the chosen Driver.
+	//
+	// A spawn that carries one must also declare Grant: a doer may bring its own, and that is
+	// only checkable against a ceiling the charter stated. See docs/working/provider-selection.md.
 	Provider *Provider `tony:"field=provider,omitzero"`
 }
 

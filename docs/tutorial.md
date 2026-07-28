@@ -709,6 +709,66 @@ match pattern over each provider's attributes, so "premium reviewers" — or lat
 under $5" — is just a pattern. The eligible set is discovered at fire time from the registry,
 so you add or retire doers by writing or deleting entities, with no charter change.
 
+### A doer is more than a driver name
+
+Two doers can run the same driver and still be quite different work. A provider entity may
+carry the launch fields that say how — `frame`, `tools`, `grant` — and the selection overlays
+them onto the spawn:
+
+```sh
+verse entity put provider:treat:fixer '{
+  driver: llm, risk: low,
+  tools: [read_file, list_dir, write_file, run_bash],
+  grant: no-delegate,
+  frame: "You apply a confirmed one-line fix, then build and run the named test."
+}'
+verse entity put provider:treat:memo '{
+  driver: llm, risk: high,
+  tools: [read_file, list_dir],
+  grant: read-only,
+  frame: "You put the decision in front of a person."
+}'
+```
+
+One trigger now routes to either, and what varies is the doer rather than the charter:
+
+```tony
+spawn:
+  task: "treat $subject"
+  grant: no-delegate                    # the ceiling the selection happens within
+  provider: { capability: treat, match: { risk: $risk }, select: auto }
+```
+
+The spawn is the base and the doer is the overlay, and the overlay may only **narrow**. Its
+`grant` must be within the spawn's, or it is not offered at all — refused at eligibility, so
+it never reaches a ballot and a vote cannot elect a doer that then cannot run. Its `tools`
+intersect the spawn's rather than replacing them, since an empty list means *all* of them and
+replacing would let a doer add a tool the spawn withheld. `vector` it may not set: whether a
+person sees an action is the charter's call. A doer that says nothing about a field inherits
+the spawn's.
+
+That is why `grant:` is required on a spawn that selects. Widening has to be impossible for
+a registry anyone can write to be safe to select from:
+
+```sh
+verse entity put provider:treat:greedy '{driver: llm, risk: low, grant: all}'
+verse docket
+# nothing — and the log says: greedy: its grant "all" is not within the spawn's
+#           "no-delegate" — a doer may narrow authority, never widen it
+```
+
+Where doers differ in what they may do, the docket says so, so a voter is choosing an
+envelope knowingly rather than picking a name:
+
+```sh
+verse docket
+# … select open  options=[fixer[no-delegate +read_file,…] memo[read-only +read_file,list_dir]] …
+```
+
+And each process records which doer it got — `verse entity get process:instance:<id>` shows
+`doer`, `grant` and `tools` — because with two doers on one driver, the driver no longer
+answers "who did this".
+
 Two questions, *whether* and *who*, over one votable and attributable machinery.
 
 ---

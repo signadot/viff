@@ -1,9 +1,13 @@
 # A provider is a doer, not a driver name
 
-Status: proposed, nothing built. This note argues that a governed provider selection should
-bind a *launch-spec fragment* rather than a single `driver` string, and works through the
-authority problem that opens — which is the part that has to be settled before anything is
-written.
+Status: **built, except the human row.** A governed provider selection binds a *launch-spec
+fragment* rather than a single `driver` string; a doer may only narrow what the spawn granted;
+the resulting envelope is visible on the process entity and on the docket. Selecting a human
+is not done — see "The human row is separate work" at the end.
+
+The argument is kept because the argument is what the rules mean. Two things changed on
+contact with the code, and are marked in place: the ceiling needed an install-time requirement
+this draft did not have, and `Grant.Subset`'s incompleteness turned out to cost nothing yet.
 
 Background if these words are new: a **charter** is a set of triggers; a **trigger** fires an
 **action** when the verse changes; an action may **spawn** a process, described by a
@@ -171,11 +175,17 @@ Within the current four-name vocabulary this happens to be fine: `namedGrants` b
 `read-only` and `no-delegate` out of the same `{Verbs:[Read]}` atoms, so `read-only ⊆
 no-delegate` passes by identity, and `none ⊆ anything` passes trivially.
 
-It breaks the moment a provider wants a finer envelope than a name — which the fixer row above
-already does. "Bounded, in a git worktree" is a path-scoped grant, and `{Verbs:[Write],
-Paths:[…]}` under a `{Verbs:[Write]}` ceiling is genuinely narrower and gets refused. Known
-boundary, not a blocker for the first commit, but the table is already standing on the far
-side of it.
+It breaks the moment a provider wants a finer envelope than a name — `{Verbs:[Write],
+Paths:[…]}` under a `{Verbs:[Write]}` ceiling is genuinely narrower and gets refused.
+
+**Corrected on contact with the code.** That day is further off than this draft assumed,
+because a provider's `grant` is a NAME from `namedGrants` and there is no way to write a
+structured one. So there is no reachable case where the incompleteness bites, and the fixer
+row's "bounded, in a git worktree" is out of reach for a different reason than the one stated
+here: not that `Subset` would refuse it, but that the vocabulary cannot spell it. The
+sixteen-cell ceiling matrix in `trigger/providerceiling_test.go` pins every pair the
+vocabulary can express, so whichever lands first — a structured grant, or subsumption — what
+changes is visible.
 
 ### The check belongs in eligibility, not in the bind
 
@@ -243,12 +253,16 @@ first, so the runner axis has a working selection to attach to instead of both m
 
 ## Order of work
 
-1. Provider entity carries `frame`/`tools`/`grant`; `selectProvider` returns a fragment;
-   `applyOne` overlays it per the table above.
-2. Ceiling: spawn with `provider:` must declare a grant; `eligibleProviders` filters by
-   `Grant.Subset`; `whyNoEligible` explains an exclusion.
-3. Envelope on the process entity (all select modes), then on the docket for `ask`/`vote`.
-4. Runner axis, and the human row.
+1. **Done.** Provider entity carries `frame`/`tools`/`grant`; `selectProvider` returns a
+   `launch.Fragment`; `applyOne` overlays it per the table above.
+2. **Done.** Ceiling: a spawn with `provider:` must declare a grant (refused at install);
+   `providerCandidates` marks each doer eligible or refused; `whyNoEligible` explains, naming
+   both sides.
+3. **Done.** Envelope on the process entity for every select mode (`mirror.Meta`), per-option
+   on the docket for `ask`/`vote` (`optionLabels`), and a `doer` field so a process says which
+   doer it got when two share a driver.
+4. **Open.** Runner axis, and the human row.
 
-Open past that: predicate subsumption in `Grant.Subset` (needed for path-scoped provider
-grants), and whether `vector` ever becomes provider-settable under an ordering.
+Open past that: predicate subsumption in `Grant.Subset` and the structured grant that would
+need it (neither is reachable today — see that section), and whether `vector` ever becomes
+provider-settable under an ordering over `auto|ask|park`.

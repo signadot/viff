@@ -905,7 +905,7 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 	}
 
 	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subject, p))}
-	m := e.compileProvider(p, subject, channelRef, options)
+	m := e.compileProvider(p, subject, channelRef, options, frags)
 	e.openChannel(m)
 
 	// vote/ask: resolve over the vote log, bounded by the engine lifetime, with the revoke
@@ -942,7 +942,7 @@ func fragmentFor(frags map[string]launch.Fragment, selected string) launch.Fragm
 	if f, ok := frags[selected]; ok {
 		return f
 	}
-	return launch.Fragment{Driver: selected}
+	return launch.Fragment{ID: selected, Driver: selected}
 }
 
 // eligibleProviders resolves a spawn's selectable options to {option → fragment}, in a
@@ -1005,7 +1005,7 @@ func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
 		})
 	}
 	for _, d := range p.Eligible {
-		add(d, launch.Fragment{Driver: d}, nil)
+		add(d, launch.Fragment{ID: d, Driver: d}, nil)
 	}
 	if p.Capability != "" {
 		var pattern *ir.Node
@@ -1080,6 +1080,7 @@ func refuseProvider(f launch.Fragment, payload entity.Payload, spawn launch.Spec
 // the claude driver before the field was conventional.
 func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
 	f := launch.Fragment{
+		ID:     ref.String(),
 		Driver: entity.Str(payload, "driver"),
 		Frame:  entity.Str(payload, "frame"),
 		Grant:  entity.Str(payload, "grant"),

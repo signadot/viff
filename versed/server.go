@@ -211,6 +211,13 @@ func mintNonce() string {
 // for baseline) routes a spawned agent's read_file through the verse.
 func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
 	return func(id string, spec launch.Spec) process.Handle {
+		// The provenance every reflection of this spawn carries, envelope included: which
+		// doer a selection picked and what the launch may do. Built once so the failure path
+		// and the running path cannot disagree about what was attempted.
+		meta := mirror.Meta{
+			Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task,
+			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
+		}
 		l, err := launchOf(id, spec)
 		if err != nil {
 			// A charter that names an envelope this build does not have must not run
@@ -219,11 +226,11 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 			// mistake with an error message attached. So the spawn fails, visibly, and the
 			// trigger's own failure path carries the reason.
 			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task})
+			mirror.Reflect(st, id, h, meta)
 			return h
 		}
 		h := s.runner.Spawn(l, content)
-		mirror.Reflect(st, id, h, mirror.Meta{Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task})
+		mirror.Reflect(st, id, h, meta)
 		return h
 	}
 }

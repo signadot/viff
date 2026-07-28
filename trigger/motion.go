@@ -37,10 +37,18 @@ type motion struct {
 // motionOption is one choosable outcome. It is satisfied when its formula holds (a vote quorum
 // on a `choice`, or a fact presence); a nil formula marks a DEFAULT option, satisfied only
 // when the deadline fires. `need`/`choice` are carried for the channel display.
+//
+// `grant`/`tools` are the ENVELOPE a select-axis option would run under, carried for the same
+// display. They exist because the options on a who-motion stopped being interchangeable: once
+// a doer brings its own grant and tool set, picking between two names is picking between two
+// authorities, and a ballot that shows only names asks the group to authorise a capability it
+// was never shown. Empty on a whether-motion, and on any doer that adds nothing to the spawn.
 type motionOption struct {
 	id      string
 	need    int
 	choice  string
+	grant   string
+	tools   []string
 	formula *Formula // nil = default (only the deadline satisfies it)
 }
 
@@ -154,7 +162,8 @@ func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname
 // eligible options: each doer is an option satisfied by a vote quorum on its own id. `ask`
 // is a vote with threshold 1; `within` arms a no-pick deadline. (`auto` short-circuits in
 // the caller — it never awaits.)
-func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref, options []string) *motion {
+func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref, options []string,
+	frags map[string]launch.Fragment) *motion {
 	need := p.Need
 	if p.Select == "ask" {
 		need = 1
@@ -167,8 +176,10 @@ func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref
 		capability: p.Capability,
 	}
 	for _, opt := range options {
+		f := frags[opt]
 		m.options = append(m.options, motionOption{
 			id: opt, need: need, choice: opt,
+			grant: f.Grant, tools: f.Tools,
 			formula: quorumFormula(channel.ID, opt, need),
 		})
 	}
@@ -220,6 +231,15 @@ func (e *Engine) openChannel(m *motion) {
 			}
 			if o.choice != "" {
 				om["choice"] = o.choice
+			}
+			// What this option would run as — see motionOption. Written only when the doer
+			// says something, so a ballot between interchangeable doers stays as terse as it
+			// was.
+			if o.grant != "" {
+				om["grant"] = o.grant
+			}
+			if len(o.tools) > 0 {
+				om["tools"] = o.tools
 			}
 			opts = append(opts, om)
 		}

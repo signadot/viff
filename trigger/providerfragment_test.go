@@ -105,6 +105,11 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 	if fix.Task != "treat demo:finding:1" {
 		t.Errorf("task = %q, want the charter's, bound", fix.Task)
 	}
+	// And each spawn says WHICH doer it got. The driver cannot answer that here — both ran
+	// `llm` — which is the whole reason a process carries the doer separately.
+	if fix.Doer != "provider:treat:fixer" || memo.Doer != "provider:treat:memo" {
+		t.Errorf("doers = %q / %q, want the two provider refs", fix.Doer, memo.Doer)
+	}
 }
 
 // An inline `eligible` list is a list of NAMES, and a name has no attributes to carry — so it
@@ -118,7 +123,9 @@ func TestInlineEligibleCarriesOnlyTheDriver(t *testing.T) {
 	if !ok {
 		t.Fatal("inline eligible did not select")
 	}
-	if !reflect.DeepEqual(frag, launch.Fragment{Driver: "gpt"}) {
+	// Its name is its identity AND its driver — an inline list names no entity, so the doer
+	// a process reports is the same string the charter typed.
+	if !reflect.DeepEqual(frag, launch.Fragment{ID: "gpt", Driver: "gpt"}) {
 		t.Fatalf("inline fragment = %+v, want a bare driver", frag)
 	}
 }

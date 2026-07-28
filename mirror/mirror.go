@@ -45,6 +45,23 @@ type Meta struct {
 	// identity to a reader — so it belongs on the index next to what the process produced,
 	// not only on the read plane that outlives nothing.
 	Task string
+	// Doer, Grant and Tools are the ENVELOPE the process runs under: which doer a governed
+	// selection picked, and what the resulting launch may do.
+	//
+	// They are published for every spawn, not only voted ones, because the surface that would
+	// otherwise carry them does not exist for most of them. `select: auto` opens no motion at
+	// all — deliberately, since an auto pick has no voter and casts no ballot — so a doer
+	// chosen that way appeared on no docket, and the process entity showed only a driver that
+	// two different doers can share. A reader asking "what was this allowed to do" had
+	// nowhere to look.
+	//
+	// Grant is the NAME a charter or a provider wrote ("read-only"), not the resolved
+	// predicates: the name is the vocabulary a person reads, writes and greps for, and the
+	// predicates are already what crosses to the runtime. Empty Tools means the driver's full
+	// set, exactly as on the spec.
+	Doer  string
+	Grant string
+	Tools []string
 }
 
 // TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
@@ -94,6 +111,16 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	if m.Task != "" {
 		st["task"] = m.Task
+	}
+	// The envelope: who was picked, and what the launch may do. See Meta.
+	if m.Doer != "" {
+		st["doer"] = m.Doer
+	}
+	if m.Grant != "" {
+		st["grant"] = m.Grant
+	}
+	if len(m.Tools) > 0 {
+		st["tools"] = m.Tools
 	}
 	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→

@@ -152,6 +152,13 @@ func docketCmd() *cli.Command {
 // select. Where the ballot that counts differs from the option's name — a whether-motion
 // tallies approve/reject, not proceed/deny — it is shown as "id=choice", so the listing
 // tells a voter what to actually type. Returns "" when there are no options.
+//
+// An option that would run under its own envelope shows it: "fixer[no-delegate +run_bash]".
+// A who-motion's options stopped being interchangeable when a doer could bring its own grant
+// and tools — picking between two names became picking between two authorities — and a
+// listing that showed only the names would ask a voter to authorise a capability nobody put
+// in front of them. Only what DIFFERS from a plain name is added, so a ballot between doers
+// that vary by nothing but model reads exactly as it did before.
 func optionLabels(v any) string {
 	opts, ok := v.([]any)
 	if !ok || len(opts) == 0 {
@@ -169,7 +176,33 @@ func optionLabels(v any) string {
 		if n, ok := codec.AsInt64(om["need"]); ok && n > 1 {
 			id = fmt.Sprintf("%s(%d)", id, n)
 		}
+		if env := optionEnvelope(om); env != "" {
+			id += "[" + env + "]"
+		}
 		names = append(names, id)
 	}
 	return strings.Join(names, " ")
+}
+
+// optionEnvelope renders what a select option would run AS: its grant, and the tools it is
+// narrowed to. The tools are prefixed "+" so a reader can tell a tool list from a grant name
+// without knowing the grant vocabulary by heart. "" when the option carries neither, which is
+// every whether-gate option and every doer that only names a driver.
+func optionEnvelope(om map[string]any) string {
+	var parts []string
+	if g, _ := om["grant"].(string); g != "" {
+		parts = append(parts, g)
+	}
+	if ts, ok := om["tools"].([]any); ok && len(ts) > 0 {
+		tools := make([]string, 0, len(ts))
+		for _, t := range ts {
+			if name, ok := t.(string); ok {
+				tools = append(tools, name)
+			}
+		}
+		if len(tools) > 0 {
+			parts = append(parts, "+"+strings.Join(tools, ","))
+		}
+	}
+	return strings.Join(parts, " ")
 }

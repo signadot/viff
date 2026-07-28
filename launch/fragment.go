@@ -22,6 +22,15 @@ import "fmt"
 // because a doer running under an envelope different from the one its entity states is the
 // failure this whole design is closing.
 type Fragment struct {
+	// ID is who this is — the doer's own identity, carried so the spawned process can say
+	// WHICH doer was selected and not only which driver ran. Two doers sharing a driver is
+	// the case this whole feature exists for, so the driver alone no longer identifies the
+	// pick. An entity ref ("provider:treat:fixer") for a registry doer; the bare name for an
+	// inline `eligible` list, which names no entity.
+	//
+	// It is provenance rather than configuration: IsZero ignores it, because a doer that
+	// contributes nothing to the launch still has a name.
+	ID     string
 	Driver string
 	Frame  string
 	Grant  string
@@ -57,6 +66,9 @@ func (f Fragment) IsZero() bool {
 // eligible set instead, so it never reaches a ballot.
 func (s Spec) Overlay(f Fragment) (Spec, error) {
 	out := s
+	if f.ID != "" {
+		out.Doer = f.ID
+	}
 	if f.Driver != "" {
 		out.Driver = f.Driver
 	}

@@ -83,6 +83,11 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["chain"] = ir.FromString(string(s.Chain))
 	}
 
+	// Field: Doer
+	if s.Doer != "" {
+		irMap["doer"] = ir.FromString(string(s.Doer))
+	}
+
 	// Field: Provider (optional)
 	if s.Provider != nil {
 		node, err = s.Provider.ToTonyIR(opts...)
@@ -200,6 +205,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "chain", fieldNodeUnwrapped.Type)
 			}
 			s.Chain = string(fieldNodeUnwrapped.String)
+		case "doer":
+			// Field: Doer
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "doer", fieldNodeUnwrapped.Type)
+			}
+			s.Doer = string(fieldNodeUnwrapped.String)
 		case "provider":
 			// Field: Provider
 			s.Provider = &Provider{}

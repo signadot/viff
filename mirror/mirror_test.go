@@ -259,3 +259,47 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 		t.Fatalf("clearing the gate lost the rest of the state: %+v", f)
 	}
 }
+
+// The envelope a process runs under is on its entity: which doer was picked, and what the
+// launch may do. It is published for EVERY spawn because the alternative surface does not
+// exist for most of them — `select: auto` opens no motion, so an auto-picked doer appeared on
+// no docket, and a driver name no longer identifies a doer now that two can share one.
+func TestReflectPublishesTheEnvelope(t *testing.T) {
+	store := entitytest.Store(t)
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	p := process.NewProcess("e1", sup, &steps{n: 1}, noopExec{})
+	Reflect(store, p.ID, p, Meta{ // the initial Put is synchronous
+		Runner: "local", Doer: "provider:treat:fixer", Grant: "no-delegate",
+		Tools: []string{"read_file", "run_bash"},
+	})
+
+	got, _, _ := store.Get(Ref("e1"))
+	obj := entity.ToObj(got.Payload)
+	if obj["doer"] != "provider:treat:fixer" {
+		t.Errorf("doer not published: %+v", got.Payload)
+	}
+	if obj["grant"] != "no-delegate" {
+		t.Errorf("grant not published: %+v", got.Payload)
+	}
+	if tools := entity.Strs(got.Payload, "tools"); len(tools) != 2 || tools[1] != "run_bash" {
+		t.Errorf("tools not published: %+v", got.Payload)
+	}
+}
+
+// A spawn that said nothing about its envelope publishes no envelope keys — an absent grant
+// is not the same claim as an empty one, and a reader must be able to tell "unbounded, by
+// omission" from "bounded to nothing".
+func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
+	store := entitytest.Store(t)
+	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	p := process.NewProcess("e2", sup, &steps{n: 1}, noopExec{})
+	Reflect(store, p.ID, p, Meta{Runner: "local"})
+
+	got, _, _ := store.Get(Ref("e2"))
+	obj := entity.ToObj(got.Payload)
+	for _, k := range []string{"doer", "grant", "tools"} {
+		if _, present := obj[k]; present {
+			t.Errorf("%q published for a spawn that declared none: %+v", k, got.Payload)
+		}
+	}
+}

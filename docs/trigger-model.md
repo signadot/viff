@@ -343,6 +343,14 @@ fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 `provider` selection of the doer. The spawned process is tagged with the subject, which is
 what makes it part of that subject's flow.
 
+A selection binds the whole doer, not just its driver: the winning provider entity's `driver`,
+`frame`, `tools` and `grant` overlay the spawn's own, so two doers on one driver can differ in
+what they are told and what they may do. The overlay only ever narrows — a doer's grant must
+be within the spawn's (which is why `grant:` is required on a spawn that selects), its tools
+intersect rather than replace, and `vector` is not a doer's to set. A doer that would widen is
+refused at *eligibility*, so it never appears on a ballot. See
+[provider selection](working/provider-selection.md).
+
 The spec's fields fall into three groups, and the difference decides what a charter can say.
 
 *The request* — `task` and `frame`. Both are text you write. `task` is the one job; `frame`
