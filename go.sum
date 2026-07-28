@@ -29,10 +29,8 @@ github.com/scott-cotton/cli v0.2.4 h1:d3Kit1chF0Zt4/D8mE1vfcVmHptSjwOKIOhZ1g07H0
 github.com/scott-cotton/cli v0.2.4/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
-github.com/signadot/tony-format/go-tony v0.0.105 h1:5GKApinfxUo3726Mr9yK+HgzrhLxq8pnIwj0N5YEMic=
-github.com/signadot/tony-format/go-tony v0.0.105/go.mod h1:juZ6dERF8lBGAAxMhb7L4vZZzPo0MlcaPI+OrXbGS+k=
-github.com/signadot/tony-format/go-tony v0.0.106 h1:p/7BAl41te1m+4y5UAUu/Vdb3ja+86Nedz6DDzbFtCE=
-github.com/signadot/tony-format/go-tony v0.0.106/go.mod h1:juZ6dERF8lBGAAxMhb7L4vZZzPo0MlcaPI+OrXbGS+k=
+github.com/signadot/tony-format/go-tony v0.0.108 h1:2dtW2w/WgYvSOhemh5u3NgAJGqySH+Y1Uw8i3czXgg8=
+github.com/signadot/tony-format/go-tony v0.0.108/go.mod h1:juZ6dERF8lBGAAxMhb7L4vZZzPo0MlcaPI+OrXbGS+k=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
