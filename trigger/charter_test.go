@@ -38,7 +38,7 @@ func TestCharterSurvivesARestart(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -60,7 +60,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -81,7 +81,7 @@ func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
 	if err := eng.AddTrigger(trig); err != nil {
@@ -193,7 +193,7 @@ func TestReinstallReplacesTheRule(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
 		Gates:     []Gate{{Name: "approval", Mode: "ask"}},
 		Action:    setStage("reviewed"),
 	}
@@ -225,7 +225,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -254,7 +254,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
 		Action:    setStage("reviewed"),
 	}
 	doc, err := trig.ToTonyIR()
@@ -412,8 +412,8 @@ func shipGoal() GoalDef {
 		}},
 		Triggers: []Trigger{{
 			Name: "ship-review",
-			Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr",
-				"fields": map[string]any{"stage": "open"}})},
+			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
+				"fields": map[string]any{"stage": "open"}}},
 			Action: setStage("reviewing"),
 		}},
 	}

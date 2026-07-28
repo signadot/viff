@@ -76,7 +76,7 @@ Here's a tiny one-rule charter; save it as `charter.tony`:
 ```tony
 - name: review
   condition:
-    when: { system: demo, fields: { stage: open } }
+    subject: { system: demo, kind: pr, fields: { stage: open } }
   gates:
   - { name: approval, mode: ask }
   action:
@@ -86,8 +86,9 @@ Here's a tiny one-rule charter; save it as `charter.tony`:
       patch: { stage: reviewed }
 ```
 
-Read it in four parts. `condition` is the cause — `when` matches an opened `demo` PR, and
-because no `subject` is named, the firing is about the entity that changed. `gates` is the
+Read it in four parts. `condition` says what the rule is about — `subject` matches an opened
+`demo` PR, and since there is no separate `when`, that is the cause too: the rule fires on
+changes to what it is about, and each firing is about the PR that changed. `gates` is the
 guard: one gate named `approval`, in `ask` mode, so a human decides. `action` is the
 consequence: mark the subject *reviewing* and spawn a review process. And `onDone` is a
 [completion hook](trigger-model.md#completion-hooks-one-trigger-chaining-visible) — when that process finishes, mark the subject
@@ -322,7 +323,7 @@ process about that PR — then drive a change through review to trip it:
 verse trigger add -f - <<'TONY'
 - name: hold
   condition:
-    when: { system: demo, kind: pr, fields: { stage: reviewed } }
+    subject: { system: demo, kind: pr, fields: { stage: reviewed } }
   action:
     spawn: { driver: scripted, task: "sleep 60" }
 TONY
@@ -556,7 +557,7 @@ watches and resolves it itself:
 ```tony
 - name: merge
   condition:
-    when: { system: change, fields: { stage: ready } }
+    subject: { system: change, kind: pr, fields: { stage: ready } }
   gates:
   - { name: approvals, formula: !quorum 2 }
   action:
@@ -652,7 +653,7 @@ to choose, instead of one driver:
 ```tony
 - name: review
   condition:
-    when: { system: change, fields: { stage: open } }
+    subject: { system: change, kind: pr, fields: { stage: open } }
   action:
     spawn:
       task: "review $subject"

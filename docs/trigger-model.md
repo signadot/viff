@@ -24,7 +24,7 @@ matches.
 
 | concept | grammar | what it expresses |
 |---|---|---|
-| `subject` | match — point-in-time | the entities a firing is *about* — const system/kind plus an entity predicate, no temporal operators |
+| `subject` | match — point-in-time | the entities a firing is *about* — const system/kind plus an entity predicate, no temporal operators. Required |
 | flow | match — point-in-time | which live processes to steer, by their subject |
 | `when` | formula — temporal | fire when the verse's evolution satisfies this — an edge on a match, or `until`/`deadline`/… |
 | gate | formula — temporal | proceed at a threshold — `quorum`/`fact`/`until`/`deadline` |
@@ -46,10 +46,10 @@ it, and the action that fires.
 ```tony
 - name: review
   condition:
-    when: { system: demo, fields: { stage: open } }   # the cause
+    subject: { system: demo, kind: pr, fields: { stage: open } }   # what it is about
   gates:
-  - { name: approval, mode: ask }                     # the guard
-  action:                                             # the consequence
+  - { name: approval, mode: ask }                                  # the guard
+  action:                                                          # the consequence
     patch: { stage: reviewing }
     spawn: { driver: scripted, task: "echo reviewing $subject" }
     onDone:
@@ -59,20 +59,25 @@ it, and the action that fires.
 ```go
 type Trigger struct {
     Name      string
-    Condition Condition   // the cause: what fires it, and what it is about
+    Condition Condition   // the cause: what it is about, and what fires it
     Gates     []Gate      // the guard — conjunctive: all must resolve to proceed
     Action    Action      // patch / spawn — declarative data, no Go closure
 }
 
-// Condition is the ECA "cause". When and Subject are grouped, not nested, because the
+// Condition is the ECA "cause". Subject and When are grouped, not nested, because the
 // Subject is resolved at the instant When fires — there is no subject before the match —
-// yet neither field owns the other. Two halves of "when X, about Y", in two DIFFERENT
-// grammars: When is temporal, Subject is point-in-time.
+// yet neither field owns the other. Two halves of "about Y, when X", in two DIFFERENT
+// grammars: Subject is point-in-time, When is temporal.
 type Condition struct {
-    When    *Formula  // temporal — fires when the verse's evolution satisfies this
-    Subject Match     // point-in-time — the entities this firing is about, at the fire instant
+    Subject Match     // REQUIRED, point-in-time — the entities this firing is about
+    When    *Formula  // optional, temporal — fires when the verse's evolution satisfies this
 }
 ```
+
+The rule above has no `when`, and that is the ordinary shape: **an omitted `when` is the
+subject**, so the trigger fires on changes to the thing it is about. A `when` is what you add
+when the cause and the subject come apart — a completion trigger that fires on a
+`process:instance` change but acts on the PR, or one change that advances a whole selected set.
 
 A trigger is fully declarative, so a charter can be installed over the wire, persisted, or
 reflected as an entity, and the engine interprets it directly — there is no compiled form.
@@ -142,53 +147,42 @@ scoped store reads baseline layered underneath — so restoring one means enumer
 reading only the scope's own layer. That is the same gap scoped resume has.
 
 The charter is now an observable slice like any other, so a trigger can watch the charter
-(`when: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `process:*`
+(`subject: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `process:*`
 as the engine's own machinery, kept out of the default match set so the loop cannot ignite on
 itself. Meta-observation stays possible, and stays deliberate.
 
-## `when` — what fires it
+## `subject` — what the firing is about, and required
 
-A `when` is a match: a point-in-time predicate over the verse. It ANDs its dimensions —
-`system` / `kind` / `id` / `op` (`set` for created-or-updated, or `delete`) / a payload
-predicate. Empty dimensions are wildcards, and `{}` matches everything.
+`subject` is a point-in-time `Match` — never a formula. It says what a firing acts on, resolved
+once, at the instant the trigger fires. There is no `until` or `deadline` here: a subject is
+*named*, not *awaited*.
 
-The address string is sugar for the identity dimensions, so `demo:pr:*` means
-`{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
-what reads back when you `verse trigger show` it: `demo:pr`. Same match, shorter spelling.
+It is the one field a condition cannot leave out, because nothing else in a trigger can answer
+for it. The action has no target of its own, and a `when` need not pin one kind: `{system:
+demo}` spans all of them, and a disjunction (`!or [a:b:c, {system: d, kind: e}]`) makes it
+plain — "the entity the when matched" answers *which entity fired* when the question is *what
+is this rule about*. A rule that acts on whichever disjunct happened to fire is not a rule
+anyone wrote down. So the subject is always stated, and everything else in the trigger is read
+relative to it.
 
-Keep it small. The "when" is where complexity hides. Create and update are one `set`, so
-to fire "only the first time", match a state field your action then advances — a latch,
-rather than an edge (see [change events](change-events.md)).
+It resolves in one of three ways, all the same match grammar:
 
-**Installing a trigger fires it on what already matches.** A trigger's observation replays
-the slice it watches when it opens, so the backlog standing in the verse when you install the
-charter is acted on immediately — you do not have to re-touch each entity to announce a state
-it has held all along. The same property means the latch above is what stops an action
-re-running when the engine restarts over a verse still in the matching state; see
-[change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
-
-A `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language a
-gate formula uses), at which point it is watched over the verse's evolution rather than
-matched against one change. That is not evaluated yet; see [Limits today](#limits-today).
-
-## `subject` — what the firing is about
-
-`Subject` is a point-in-time `Match` — never a formula. It *selects* the entities a
-firing acts on, evaluated once, at the instant `when` fires. There is no `until` or
-`deadline` here: a subject is *named*, not *awaited*. It resolves in one of three ways, all
-the same match grammar:
-
-| `subject` | resolves to | example |
+| condition | `subject` resolves to | example |
 |---|---|---|
-| *(omitted)* | the matched entity | a change to `demo:pr:1` is about `demo:pr:1` |
-| an address naming one entity (`demo:pr:1`) | that one entity, named — an action's `patch` *creates* it if absent | publishing a fact nothing has written yet |
-| a pattern — a glob (`demo:pr:*`, `demo:*:*`) or a `system`+`kind` selector with an optional payload predicate | the firing's OWN subject if it carries one (a reflected process's `flow`); else the set it selects from the store | the PR a completed process was about; or every reviewed PR |
+| no `when` | the entity that changed | `subject: {system: demo, kind: pr, fields: {stage: open}}` — a PR goes open, and the firing is about that PR |
+| a `when`, and an address naming one entity (`demo:pr:1`) | that one entity, named — an action's `patch` *creates* it if absent | publishing a fact nothing has written yet |
+| a `when`, and a pattern — a glob (`demo:pr:*`, `demo:*:*`) or a `system`+`kind` selector with an optional payload predicate | the firing's OWN subject if it carries one (a reflected process's `flow`); else the set it selects from the store | the PR a completed process was about; or every reviewed PR |
 
-Omitted is one entity, always — even when `when` matches everything. A `when` in its atom
-form is dispatched per change *event*, and the change stream is per-entity, so `when: {}`
-fires once per change, each firing about the entity that changed. It does not sweep the
-store. Fan-out comes only from a *pattern* subject, which is the one dispatch path that
-resolves a set.
+With no `when`, the subject is the cause as well: it is what dispatches, the change stream is
+per-entity, so a firing happens once per change and is about the entity that changed. It never
+sweeps the store, however wide the pattern — that is the difference between "when a PR opens,
+review it" and "when a PR opens, review all of them". Fan-out comes only from a pattern subject
+under an explicit `when`, which is the one dispatch path that resolves a set.
+
+Nothing selects in the no-`when` case, so the subject there need not name a kind:
+`{system: demo}` is a complete condition — every demo entity that changes, about the one that
+changed. Under a `when` it must name a definite `system` and `kind`, or one entity outright,
+since that is what the engine selects and spawns for.
 
 A pattern that names nothing the firing is about is a no-op — it never conjures an entity
 called `*`, nor misfires onto a flow it does not name.
@@ -200,8 +194,8 @@ member, and the runaway backstop meters *entities acted on*, truncating a too-wi
 rather than dropping it. Gates stay per firing — a broadcast asks once.
 
 This is why `subject` is bounded where a `when` formula ranges freely: it pins `system:kind`
-(it must name a definite kind to select and spawn for) and predicates over the single
-entity's payload. "all open PRs" is just `{system: demo, kind: pr, entity: {stage: open}}`.
+and predicates over the single entity's payload, rather than composing over time. "all open
+PRs" is just `{system: demo, kind: pr, entity: {stage: open}}`.
 
 ### The string form is an address, in one grammar
 
@@ -244,6 +238,42 @@ One CI change fires this once, one `ask` gate is raised for the *firing* (not on
 and then every reviewed PR advances. A `spawn` would give each member its own process,
 tagged with that member as its subject — so each is its own flow. Broadcast is a wider
 setting of the same selector, not a new mechanism.
+
+Note that it takes a `when` to say this. Without one, the same subject would fire per change
+and act on the PR that changed; the `when` is what makes the cause a CI status and leaves the
+subject free to select.
+
+## `when` — what fires it, when that is not the subject
+
+A `when` is optional. Omitted, the subject is the cause: the trigger fires on changes to what
+it is about, which is what the ordinary rule wants. Write one when the cause and the subject
+come apart — a completion trigger firing on `process:instance` but acting on the PR it carried,
+a broadcast, or a rule watching one system to advance another.
+
+A `when` is a match: a point-in-time predicate over the verse. It ANDs its dimensions —
+`system` / `kind` / `id` / `op` (`set` for created-or-updated, or `delete`) / a payload
+predicate. Empty dimensions are wildcards, and `{}` matches everything.
+
+The address string is sugar for the identity dimensions, so `demo:pr:*` means
+`{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
+what reads back when you `verse trigger show` it: `demo:pr`. Same match, shorter spelling.
+
+Keep it small. The "when" is where complexity hides. Create and update are one `set`, so
+to fire "only the first time", match a state field your action then advances — a latch,
+rather than an edge (see [change events](change-events.md)). That applies just as much to a
+subject standing in for its own cause, since it is dispatched the same way.
+
+**Installing a trigger fires it on what already matches.** A trigger's observation replays
+the slice it watches — its `when`, or its `subject` when there is no `when` — when it opens, so
+the backlog standing in the verse when you install the charter is acted on immediately; you do
+not have to re-touch each entity to announce a state it has held all along. The same property
+means the latch above is what stops an action re-running when the engine restarts over a verse
+still in the matching state; see
+[change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
+
+A `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language a
+gate formula uses), at which point it is watched over the verse's evolution rather than
+matched against one change. That is not evaluated yet; see [Limits today](#limits-today).
 
 ## What a match can say
 
@@ -504,11 +534,11 @@ familiar `$name` spelling *is* that kpath at depth one.
 
 This is what closes the loop. Before it, a process's output could reach the next *prompt* and
 nothing else, so a flow only ever advanced through state the charter wrote by hand. A result
-patched onto the subject is an ordinary fact, and an ordinary `when` matches it — no
+patched onto the subject is an ordinary fact, and an ordinary condition matches it — no
 knowledge of processes required:
 
 ```tony
-when: { system: demo, kind: pr, fields: { stage: reviewed, severity: high } }
+subject: { system: demo, kind: pr, fields: { stage: reviewed, severity: high } }
 ```
 
 Four semantics are worth knowing.
@@ -586,7 +616,7 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
 ```tony
 - name: review
   condition:
-    when: { system: demo, kind: pr, fields: { stage: open } }
+    subject: { system: demo, kind: pr, fields: { stage: open } }
   gates:
   - { name: review, mode: ask }
   action:
@@ -656,8 +686,8 @@ names spend `-` too.
 
 ### Progress facts
 
-A parallel branch is woken by a `when`, and a `when` matches facts — so a sequence publishes
-its position, or the breadth axis cannot observe the depth axis at all. The engine writes it
+A parallel branch is woken by a condition, and a condition matches facts — so a sequence
+publishes its position, or the breadth axis cannot observe the depth axis at all. The engine writes it
 on the subject under one reserved `verse` root as each element completes:
 
 ```tony
@@ -672,7 +702,7 @@ verse:
 A join reads it at whatever depth it cares about:
 
 ```tony
-when: { system: demo, kind: pr, fields: { verse: { review: { done: true } } } }
+subject: { system: demo, kind: pr, fields: { verse: { review: { done: true } } } }
 ```
 
 One reserved name, not a family. The alternative — flat per-trigger keys like `review.step` —
@@ -717,7 +747,7 @@ layer, no new machinery.
 
 ```json
 { "name": "review",
-  "condition": { "when": { "system": "demo", "fields": { "stage": "open" } } },
+  "condition": { "subject": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
   "gates":     [ { "name": "approval", "mode": "ask" } ],
   "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
 { "name": "reviewed",
@@ -735,8 +765,9 @@ subject — in the same address grammar as everywhere else.
 None of this needs a match to "select one entity" — it needs the change stream to be
 per-entity, and it is. A docd commit is atomic across many branches, but `LogdStore`
 normalises each commit into one `Event` per entity at path-depth `system/kind/id`. So a
-firing is driven by one event → one `Ref` → `when`'s matched entity is exactly one: the
-subject is well-defined *structurally*, not by constraining the pattern. One commit that
+firing is driven by one event → one `Ref` → the change a firing dispatches on is exactly one
+entity: a subject-only trigger's subject is well-defined *structurally*, not by constraining
+the pattern. One commit that
 changes `…:a` and `…:b` yields two events, two firings, and subjects `a` and `b`, with no
 fan-out logic. The known cost, recorded in [change events](change-events.md): transaction
 atomicity is flattened — the reactive grain is the entity, not the commit.

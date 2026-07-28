@@ -37,31 +37,66 @@ type Trigger struct {
 	Action    Action    `tony:"field=action"`
 }
 
-// Condition is the ECA "cause": what fires the trigger, and what the firing is about.
-// When and Subject are grouped rather than nested because the Subject is resolved at the
-// instant When fires — there is no subject before the match — yet neither field owns the
-// other. Two halves of "when X, about Y", in two DIFFERENT grammars: When is temporal,
-// Subject is point-in-time.
+// Condition is the ECA "cause": what the firing is about, and what fires it. Subject and
+// When are grouped rather than nested because the Subject is resolved at the instant When
+// fires — there is no subject before the match — yet neither field owns the other. Two
+// halves of "about Y, when X", in two DIFFERENT grammars: Subject is point-in-time, When
+// is temporal.
+//
+// The REQUIRED half is the Subject. An implicit subject — "whatever entity the when
+// matched" — reads fine on a when that pins one system:kind, and has no coherent general
+// meaning at all: `{system: demo}` already spans kinds, and a disjunctive when (`!or [a:b:c,
+// {system: d, kind: e}]`) makes it plain, since "the matched entity" answers *which entity
+// fired* when the question is *what is this rule about*. A trigger that acts on whichever
+// disjunct happened to fire is not a rule anyone wrote down.
 //
 //tony:schemagen=verse-condition,notag,codec=custom
 type Condition struct {
+	// Subject is what the firing is ABOUT, selected at the fire instant — never
+	// accumulated, so it carries no temporal operators. An address names one entity; a
+	// system+kind selector is a pattern — the changed entity when there is no When,
+	// otherwise the firing's own subject (a reflected process's `flow`) when it carries
+	// one, else the SET of matching entities in the store, one action per member.
+	Subject Match `tony:"field=subject"`
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
 	// one change event; temporal operators relate the verse's evolution instead.
-	When *Formula `tony:"field=when"`
-	// Subject is what the firing is ABOUT, selected at the fire instant — never
-	// accumulated, so it carries no temporal operators. Omitted = the matched entity; an
-	// address names one entity; a system+kind selector is a pattern — matched against the
-	// firing's own subject (a reflected process's `flow`) when it has one, else the SET of
-	// matching entities in the store, one action per member.
-	Subject Match `tony:"field=subject,omitzero"`
+	//
+	// Optional, and an omitted When IS the Subject: the ordinary rule reacts to the thing it
+	// is about ("when a pr goes open, review that pr"), so saying the same match twice would
+	// be the common case paying for the general one. A When is what a trigger adds when the
+	// cause and the subject come apart — a completion trigger firing on `process:instance`
+	// but acting on the PR, or one change advancing a whole selected set.
+	When *Formula `tony:"field=when,omitzero"`
 }
 
 // validate reports whether the condition is installable. It is deliberately strict: the
-// "when" is where complexity hides, so a charter that cannot mean what it says fails at
-// install rather than silently matching nothing.
+// subject is what every other part of a firing is stated relative to, and the "when" is where
+// complexity hides, so a charter that cannot mean what it says fails at install rather than
+// silently matching nothing.
 func (c Condition) validate() error {
+	if len(c.Subject) == 0 {
+		return fmt.Errorf(`condition.subject required: a trigger has to say what it acts on, ` +
+			`because nothing else in it does — the action has no target of its own, and a when ` +
+			`that spans kinds has no one entity to inherit. Name it ("demo:pr:1"), or select a ` +
+			`kind ({system: demo, kind: pr}). A subject alone is a complete condition: it fires ` +
+			`on changes to what it names`)
+	}
+	if err := c.Subject.Validate(); err != nil {
+		return fmt.Errorf("condition.subject: %w", err)
+	}
 	if c.When == nil {
-		return fmt.Errorf(`condition.when required (use {} to match everything)`)
+		// The subject is the cause too: this fires on changes to what it is about, one firing
+		// per change, so the subject is never asked to select a set out of the store and needs
+		// no definite kind. `{system: demo}` is a complete condition — every demo entity that
+		// changes, about the one that changed.
+		return nil
+	}
+	_, names := c.Subject.Names()
+	if !names && !c.Subject.Selects() {
+		return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or name ` +
+			`both a system and a kind when the condition has its own when: the change that fires ` +
+			`is not the subject then, so the subject has to select out of the store, and it has to ` +
+			`name a definite kind to select and spawn for`)
 	}
 	if !c.When.IsMatchAtom() {
 		return fmt.Errorf("condition.when carries temporal operators, which are not evaluated " +
@@ -73,34 +108,32 @@ func (c Condition) validate() error {
 	if err := c.When.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.when: %w", err)
 	}
-	if len(c.Subject) == 0 {
-		return nil // the matched entity
-	}
-	if err := c.Subject.Validate(); err != nil {
-		return fmt.Errorf("condition.subject: %w", err)
-	}
-	if _, names := c.Subject.Names(); names {
-		return nil // one entity, named
-	}
-	if c.Subject.Selects() {
-		return nil // a pattern: matched against the firing's own subject (a process's flow), else fanned out
-	}
-	return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or name ` +
-		`both a system and a kind to select a set (it has to name a definite kind to select and ` +
-		`spawn for)`)
+	return nil
 }
 
-// matchesEvent reports whether an observed change fires this trigger — the edge face of
-// When. A temporal When has no edge and is resolved by Monitor instead.
+// dispatch is the formula a change is tested against to fire this trigger: the When, or the
+// Subject itself when there is none. One accessor rather than a nil check at each of the three
+// call sites (edge match, subtree watch, ignition guard), so "an omitted when is the subject"
+// is stated once and cannot drift between them.
+func (c Condition) dispatch() *Formula {
+	if c.When != nil {
+		return c.When
+	}
+	return matchFormula(c.Subject)
+}
+
+// matchesEvent reports whether an observed change fires this trigger — the edge face of the
+// condition's dispatch formula. A temporal When has no edge and is resolved by Monitor instead.
 func (t Trigger) matchesEvent(ev entity.Event) bool {
-	return t.Condition.When.MatchEvent(ev)
+	return t.Condition.dispatch().MatchEvent(ev)
 }
 
 // opensTo reports whether the condition opts into the given system (used by the ignition
-// guard to require opt-in for the reflected process:* namespace). It asks which subtrees
-// When reads, so it holds for a temporal When over several systems too.
+// guard to require opt-in for the reflected process:* namespace). It asks which subtrees the
+// dispatch formula reads, so it holds for a temporal When over several systems too — and for
+// a subject-only trigger, whose subject is what it reads.
 func (t Trigger) opensTo(system string) bool {
-	for _, st := range t.Condition.When.Subtrees() {
+	for _, st := range t.Condition.dispatch().Subtrees() {
 		if st[0] == system {
 			return true
 		}
@@ -113,8 +146,14 @@ func (t Trigger) opensTo(system string) bool {
 // subject, so the engine acts once per resolved ref.
 func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Ref {
 	m := t.Condition.Subject
-	if len(m) == 0 {
-		return []entity.Ref{ev.Ref} // the matched entity
+	if t.Condition.When == nil {
+		// No when: the subject is what dispatched this change (matchesEvent tested the event
+		// against it), so the entity that changed is the one member of it this firing is about.
+		// One change, one subject — a subject-only trigger never sweeps the store, however wide
+		// its pattern. Stated on "there is no when" rather than on "the change happens to satisfy
+		// the subject", so that an explicit when over the subject's own kind keeps meaning the
+		// selection it means today.
+		return []entity.Ref{ev.Ref}
 	}
 	if ref, names := m.Names(); names {
 		return []entity.Ref{ref} // one entity, named — a `set` may bring it into existence

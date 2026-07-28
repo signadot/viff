@@ -33,11 +33,11 @@ func TestPatchMergesSiblingSubtrees(t *testing.T) {
 
 	for _, tr := range []Trigger{{
 		Name:      "first",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action:    Action{Patch: entity.Obj{"verse": entity.Obj{"a": entity.Obj{"step": 1}}}.Payload()},
 	}, {
 		Name:      "second",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action:    Action{Patch: entity.Obj{"verse": entity.Obj{"b": entity.Obj{"step": 2}}}.Payload()},
 	}} {
 		if err := eng.AddTrigger(tr); err != nil {
@@ -69,7 +69,7 @@ func TestPatchDeletes(t *testing.T) {
 	}
 	if err := eng.AddTrigger(Trigger{
 		Name:      "retract",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action:    Action{Patch: del},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -91,7 +91,7 @@ func TestPatchFlatRecordIsUnchanged(t *testing.T) {
 	eng := patchEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "advance",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action:    Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -146,7 +146,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	}
 	if err := eng.AddTrigger(Trigger{
 		Name:      "broken",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: bad,
 			Spawn: &launch.Spec{Task: "must not run"},
@@ -179,9 +179,9 @@ func TestPatchOperatorWorksInBothDialects(t *testing.T) {
 		name, doc string
 		f         codec.Format
 	}{
-		{"tony", `{name: retract, condition: {when: {system: demo, kind: pr, fields: {stage: open}}},
+		{"tony", `{name: retract, condition: {subject: {system: demo, kind: pr, fields: {stage: open}}},
 			action: {patch: {tmp: !delete null}}}`, codec.Tony},
-		{"json", `{"name":"retract","condition":{"when":{"system":"demo","kind":"pr","fields":{"stage":"open"}}},
+		{"json", `{"name":"retract","condition":{"subject":{"system":"demo","kind":"pr","fields":{"stage":"open"}}},
 			"action":{"patch":{"tmp":{"delete":null}}}}`, codec.JSON},
 	} {
 		t.Run(c.name, func(t *testing.T) {

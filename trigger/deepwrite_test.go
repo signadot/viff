@@ -23,10 +23,10 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
-		Condition: Condition{When: MatchWhen(Match{
+		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "pr",
 			"fields": map[string]any{"stage": "reviewed", "env": "prod"},
-		})},
+		}},
 		Action: Action{},
 	}); err != nil {
 		t.Fatal(err)
@@ -77,10 +77,10 @@ func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "announce",
-		Condition: Condition{When: MatchWhen(Match{
+		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "task",
 			"fields": map[string]any{"stage": "ready"},
-		})},
+		}},
 		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)

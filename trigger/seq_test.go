@@ -52,7 +52,7 @@ func TestSeqRunsInOrder(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
 				{Spawn: &launch.Spec{Task: "lint $subject"}},
@@ -86,7 +86,7 @@ func TestSeqSetOnlyElementDoesNotStall(t *testing.T) {
 	eng, _ := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "marks",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
 			{Patch: entity.Obj{"a": 1}.Payload()},
 			{Patch: entity.Obj{"b": 2}.Payload()},
@@ -107,7 +107,7 @@ func TestSeqPublishesProgress(t *testing.T) {
 	eng, _ := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
 			{Spawn: &launch.Spec{Task: "one"}},
 			{Spawn: &launch.Spec{Task: "two"}},
@@ -146,7 +146,7 @@ func TestSeqCarrierOnDoneFiresAfterAll(t *testing.T) {
 	eng, spawned := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
 				{Spawn: &launch.Spec{Task: "one"}},
@@ -173,7 +173,7 @@ func TestSeqFailStops(t *testing.T) {
 	eng, spawned := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
 				{
@@ -234,9 +234,12 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	eng.Start(ctx) // root dispatch, so a bare `{}` match is installable at all
+	// A `when` of {} matches every change it is ALLOWED to — it names no system, so the guard
+	// is what decides. The subject is one named entity, since the question here is only whether
+	// a claim write wakes anything at all.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "watchall",
-		Condition: Condition{When: MatchWhen(Match{})}, // matches everything it is ALLOWED to
+		Condition: Condition{Subject: mm("demo:pr:1"), When: MatchWhen(Match{})},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -247,10 +250,9 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	if _, ok, _ := store.Get(mirror.ClaimRef(spawnID("review", prRef("1")))); !ok {
 		t.Fatal("claim not written")
 	}
-	// …and nothing reacted to it: the claim carries no `seen` field
-	e, _, _ := store.Get(mirror.ClaimRef(spawnID("review", prRef("1"))))
-	if entity.Get(e.Payload, "seen") != nil {
-		t.Error("a trigger fired on a claim write; machinery ignited on its own machinery")
+	// …and nothing reacted to it
+	if f := eng.Fired(); f != 0 {
+		t.Errorf("a trigger fired on a claim write (fired=%d); machinery ignited on its own machinery", f)
 	}
 }
 
@@ -263,7 +265,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 	ref := prRef("1")
 	tr := Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
 			{Spawn: &launch.Spec{Task: "one"}},
 			{Spawn: &launch.Spec{Task: "two"}},
@@ -299,7 +301,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 	for _, name := range []string{"alpha", "beta"} {
 		if err := eng.AddTrigger(Trigger{
 			Name:      name,
-			Condition: Condition{When: prWhen("open")},
+			Condition: Condition{Subject: prSubject("open")},
 			Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Task: "work"}}}},
 		}); err != nil {
 			t.Fatalf("AddTrigger %s: %v", name, err)
@@ -417,7 +419,7 @@ func TestSeqIndexOf(t *testing.T) {
 // The install-time rules, each with the reason it exists.
 func TestSeqValidation(t *testing.T) {
 	eng := New(entitytest.Store(t), process.AutoResolver{})
-	cond := Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})}
+	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}}
 	cases := []struct {
 		name string
 		act  Action
@@ -466,7 +468,7 @@ func TestSeqMirrorsCanonicalChain(t *testing.T) {
 	eng, _ := seqEngine(t, store)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Task: "work"}}}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

@@ -20,7 +20,7 @@ func TestDropRecoveryViaReplay(t *testing.T) {
 	eng := New(store, process.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "count",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo"})},
+		Condition: Condition{Subject: Match{"system": "demo"}},
 		Action:    Action{},
 	})
 

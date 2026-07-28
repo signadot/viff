@@ -574,31 +574,31 @@ func nodeInt(n *ir.Node) (int, error) {
 
 // ── Condition ────────────────────────────────────────────────────────────────
 
-// Condition is hand-written for two reasons, both about its Subject.
+// Condition is hand-written for two reasons, both about its custom-codec fields.
 //
-// It is a Match — a named map with its own codec — and gomap's REFLECTION path does not
+// Subject is a Match — a named map with its own codec — and gomap's REFLECTION path does not
 // dispatch to a value field's codec on the way IN (it does on the way out, and generated
 // code does both; filed as tony-format#f69agjyeh12ksa25cnn0 item 15). Writing the decode
 // explicitly makes Condition correct however it is reached.
 //
 // And `omitzero` is inert on a field whose type carries a custom codec, so a generated
-// Condition emitted `subject: null` on every charter that does not name one — the same
-// shape as item 12. Here, an absent Subject is simply absent.
+// Condition emitted `when: null` on every charter that names no when — the same shape as item
+// 12. Here, an absent When is simply absent. The Subject is emitted unconditionally, because a
+// condition without one is not installable (Condition.validate) and hiding that in the
+// rendering would turn an install error into a document that reads fine.
 func (c Condition) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	var kvs []ir.KeyVal
+	s, err := c.Subject.ToTonyIR(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("condition.subject: %w", err)
+	}
+	kvs = append(kvs, ir.KeyVal{Key: ir.FromString("subject"), Val: s})
 	if c.When != nil {
 		w, err := c.When.ToTonyIR(opts...)
 		if err != nil {
 			return nil, fmt.Errorf("condition.when: %w", err)
 		}
 		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("when"), Val: w})
-	}
-	if len(c.Subject) > 0 {
-		s, err := c.Subject.ToTonyIR(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("condition.subject: %w", err)
-		}
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("subject"), Val: s})
 	}
 	return ir.FromKeyVals(kvs), nil
 }

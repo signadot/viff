@@ -251,11 +251,12 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 	def := trigger.Trigger{
 		Name: "validate-" + scope,
 		Condition: trigger.Condition{
-			// No subject: the firing is about the dir-status entity that changed, which is
-			// what the validator process is tagged with.
-			When: trigger.MatchWhen(trigger.Match{
+			// Subject and cause in one: no `when`, so this fires on changes to the dir-status
+			// entities it is about, and each firing is about the one that changed — which is
+			// what the validator process is then tagged with.
+			Subject: trigger.Match{
 				"system": source.System, "kind": statusKind, "op": string(entity.Set),
-			}),
+			},
 		},
 		Action: trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
 	}

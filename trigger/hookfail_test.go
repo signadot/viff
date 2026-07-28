@@ -53,7 +53,7 @@ func TestDerefIntoProcessData(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
@@ -80,7 +80,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:  &launch.Spec{Task: "review $subject"},
@@ -123,7 +123,7 @@ func TestDriverErrorIsProjectedAsErr(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
@@ -170,7 +170,7 @@ func TestDerefReadsAFencedAnswer(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},

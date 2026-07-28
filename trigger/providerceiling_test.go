@@ -18,7 +18,7 @@ func TestSpawnWithProviderRequiresAGrant(t *testing.T) {
 	eng := New(store, denyResolver{})
 	tr := Trigger{
 		Name:      "treat",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "finding"})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "finding"}},
 		Action: Action{Spawn: &launch.Spec{
 			Task:     "treat $subject",
 			Provider: &launch.Provider{Capability: "treat", Select: "auto"},

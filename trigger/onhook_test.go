@@ -40,10 +40,11 @@ func startHookProc(store entity.Store, id string, spec launch.Spec) *process.Pro
 
 func prRef(id string) entity.Ref { return entity.Ref{System: "demo", Kind: "pr", ID: id} }
 
-// prWhen matches a demo:pr at a specific stage — a field predicate so advancing the stage does
-// not re-fire the trigger.
-func prWhen(stage string) *Formula {
-	return MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": stage}})
+// prSubject is a demo:pr at a specific stage — the subject of most of these triggers, and
+// with no `when` beside it, their cause too. A field predicate rather than a bare kind, so
+// advancing the stage does not re-fire the trigger.
+func prSubject(stage string) Match {
+	return Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": stage}}
 }
 
 // waitField polls until store[ref].Payload[key] == want, or fails after a deadline.
@@ -78,7 +79,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:  &launch.Spec{Task: "review $subject"},
@@ -111,7 +112,7 @@ func TestOnDoneChains(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
@@ -169,7 +170,7 @@ func TestOnFailed(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:    &launch.Spec{Task: "review and fail $subject"},
@@ -213,7 +214,7 @@ func TestOnHookPerProcess(t *testing.T) {
 // AddTrigger rejects a completion hook with no spawn to complete, at any nesting depth.
 func TestOnHookValidation(t *testing.T) {
 	eng := New(entitytest.Store(t), process.AutoResolver{})
-	cond := Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr"})}
+	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}}
 
 	if err := eng.AddTrigger(Trigger{
 		Name: "a", Condition: cond,
@@ -304,7 +305,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("never")}, // installed for its shape, not to fire
+		Condition: Condition{Subject: prSubject("never")}, // installed for its shape, not to fire
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "review"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},

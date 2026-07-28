@@ -32,10 +32,10 @@ func waitEcho(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 func echoTrigger(name string) Trigger {
 	return Trigger{
 		Name: name,
-		Condition: Condition{When: MatchWhen(Match{
+		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "task",
 			"fields": map[string]any{"stage": "ready"},
-		})},
+		}},
 		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
 	}
 }

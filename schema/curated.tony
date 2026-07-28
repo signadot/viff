@@ -67,9 +67,10 @@ signature:
   name: verse-requirement
 ---
 # trigger.Condition — the one custom-codec type whose FIELD NAMES codegen got right; only the
-# types were wrong. It emits `{when: <formula>, subject: <match>}`, so `when` points at the
-# formula signature (it already did) and `subject` at the match signature, where codegen said
-# `.[object(object)]` — an object of objects, which a `subject: demo:pr:*` string is not.
+# types were wrong. It emits `{subject: <match>, when: <formula>}` — subject first, and always,
+# since a condition without one is not installable — so `subject` points at the match
+# signature, where codegen said `.[object(object)]` (an object of objects, which a
+# `subject: demo:pr:*` string is not), and `when` at the formula signature, as it already did.
 context:
 - tony-format/context
 define:

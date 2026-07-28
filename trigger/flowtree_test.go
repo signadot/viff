@@ -59,7 +59,7 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
@@ -137,7 +137,7 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	// mirror a running process by hand, exactly as a Spawner would, and read the tree.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("never")},
+		Condition: Condition{Subject: prSubject("never")},
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "review $subject"},
 			OnDone: &Action{Spawn: &launch.Spec{Task: "merge $subject"}},

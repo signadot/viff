@@ -187,10 +187,11 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	}
 }
 
-// watchTriggerSubtree opens a subtree watch per (system,kind) the trigger's When READS and
-// fires it on each matching change. Asking the formula which subtrees it reads — the same
-// question a Monitor asks — means a When over several subtrees is watched correctly for
-// free, and there is no "exactly one match" restriction to enforce.
+// watchTriggerSubtree opens a subtree watch per (system,kind) the trigger's condition READS —
+// its When, or its Subject when there is no When — and fires it on each matching change. Asking
+// the formula which subtrees it reads — the same question a Monitor asks — means a When over
+// several subtrees is watched correctly for free, and there is no "exactly one match"
+// restriction to enforce.
 //
 // The watchers run under a context of this trigger's own, derived from bgctx, and its
 // cancel is registered under the trigger's name — so RemoveTrigger can stop exactly these
@@ -198,14 +199,15 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 // three subtrees refuses to watch) cancels the ones already opened rather than leaving a
 // half-installed trigger firing.
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
-	subtrees := t.Condition.When.Subtrees()
+	subtrees := t.Condition.dispatch().Subtrees()
 	if len(subtrees) == 0 {
-		return fmt.Errorf("subtree trigger %q: its when reads no subtree to watch", t.Name)
+		return fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
 	}
 	for _, st := range subtrees {
 		if st[0] == "" {
-			return fmt.Errorf("subtree trigger %q needs a system in its when (kind optional); "+
-				"a scoped engine opens no root watch, so there is nothing to watch without one", t.Name)
+			return fmt.Errorf("subtree trigger %q needs a system in its when — or in its subject, "+
+				"when that is what dispatches it (kind optional); a scoped engine opens no root "+
+				"watch, so there is nothing to watch without one", t.Name)
 		}
 	}
 	ctx, cancel := context.WithCancel(e.bgctx)

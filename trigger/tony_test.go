@@ -27,7 +27,7 @@ func TestCharterRoundTrip(t *testing.T) {
 		{
 			Name: "spawn-a-review",
 			Condition: Condition{
-				When: MatchWhen(Match{"system": "demo", "kind": "pr"}),
+				Subject: Match{"system": "demo", "kind": "pr"},
 			},
 			Gates: []Gate{{Name: "human", Mode: "ask"}},
 			Action: Action{Spawn: &launch.Spec{
@@ -37,7 +37,7 @@ func TestCharterRoundTrip(t *testing.T) {
 		{
 			Name: "quorum-gated",
 			Condition: Condition{
-				When: MatchWhen(Match{"system": "demo", "kind": "pr"}),
+				Subject: Match{"system": "demo", "kind": "pr"},
 			},
 			Gates: []Gate{{
 				Name:    "two-approvals",
@@ -64,6 +64,16 @@ func TestCharterRoundTrip(t *testing.T) {
 				if (got.Condition.When == nil) != (want.Condition.When == nil) {
 					t.Errorf("when survived differently\n%s", b)
 				}
+				// The subject has to survive — it is the one field a charter cannot be installed
+				// without — though not key-for-key: `id: "*"` renders as the address `demo:pr`
+				// and comes back with the wildcard as an unset dimension, which is the same
+				// match (ParseExpr). So compare what it MATCHES.
+				probe := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+				if len(got.Condition.Subject) == 0 {
+					t.Errorf("the subject did not survive\n%s", b)
+				} else if got.Condition.Subject.MatchRef(probe) != want.Condition.Subject.MatchRef(probe) {
+					t.Errorf("subject: got %v want %v\n%s", got.Condition.Subject, want.Condition.Subject, b)
+				}
 				if len(got.Gates) != len(want.Gates) {
 					t.Errorf("gates: got %d want %d\n%s", len(got.Gates), len(want.Gates), b)
 				}
@@ -80,20 +90,25 @@ func TestCharterRoundTrip(t *testing.T) {
 }
 
 // Optional charter fields must not appear when unset — a charter is written and read by
-// hand, so this is the difference between a readable document and a wall of nulls.
+// hand, so this is the difference between a readable document and a wall of nulls. `when` is
+// one of those now, and `subject` is not: the minimal charter is the one that carries only the
+// subject, and a charter missing it is not a terse document but an uninstallable one.
 func TestCharterOmitsUnsetFields(t *testing.T) {
 	b, err := codec.Marshal(Trigger{
 		Name:      "minimal",
-		Condition: Condition{When: MatchWhen(Match{})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
 	}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := string(b)
-	for _, gone := range []string{"gates:", "subject:", "spawn:", "patch:"} {
+	for _, gone := range []string{"gates:", "when:", "spawn:", "patch:"} {
 		if strings.Contains(got, gone) {
 			t.Errorf("unset field %q leaked into the charter:\n%s", gone, got)
 		}
+	}
+	if !strings.Contains(got, "subject:") {
+		t.Errorf("the required field did not survive rendering:\n%s", got)
 	}
 }
 

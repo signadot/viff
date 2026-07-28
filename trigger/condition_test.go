@@ -187,20 +187,28 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 		cond Condition
 		want string
 	}{
-		"missing when": {
-			Condition{}, "condition.when required",
+		// The required half. A trigger with no subject says what happened and never what it is
+		// about, and nothing else in it can answer that: the action has no target of its own.
+		"missing subject": {
+			Condition{}, "condition.subject required",
+		},
+		"empty subject": {
+			Condition{Subject: Match{}}, "condition.subject required",
 		},
 		"temporal when": {
-			Condition{When: &Formula{Op: OpUntil, Args: []*Formula{
+			Condition{Subject: mm("demo:pr:*"), When: &Formula{Op: OpUntil, Args: []*Formula{
 				matchFormula(Match{"system": "demo"}),
 				{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}},
 			}}},
 			"temporal",
 		},
 		"bad when match": {
-			Condition{When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
+			Condition{Subject: mm("demo:pr:*"), When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
 		},
-		"subject without kind": {
+		// A subject that has to SELECT — one whose firing is some other entity's change — must
+		// name a kind, because that is what the engine selects and spawns for. The same subject
+		// with no `when` beside it is fine (TestSubjectOnlyNeedsNoKind): nothing selects then.
+		"selecting subject without kind": {
 			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"system": "demo"}},
 			"must be an address",
 		},
@@ -211,7 +219,7 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 		// Only `id` globs. A "*" inside system or kind is a typo for the whole segment, and it
 		// would match nothing at all — the failure mode Validate exists to turn into an error.
 		"globbed kind": {
-			Condition{When: MatchWhen(Match{"system": "demo", "kind": "p*"})},
+			Condition{Subject: Match{"system": "demo", "kind": "p*"}},
 			"cannot glob",
 		},
 	}
@@ -226,6 +234,52 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 				t.Fatalf("error %q does not explain the problem (want mention of %q)", err, c.want)
 			}
 		})
+	}
+}
+
+// A subject with no `when` is the whole condition: it dispatches on changes to what it names,
+// so it is never asked to select a set out of the store and needs no definite kind. This is the
+// case the "must name a kind" rule must NOT catch — the ordinary rule that reacts to a system.
+func TestSubjectOnlyNeedsNoKind(t *testing.T) {
+	eng := New(entitytest.Store(t), process.AutoResolver{})
+	if err := eng.AddTrigger(Trigger{
+		Name:      "any-demo-change",
+		Condition: Condition{Subject: Match{"system": "demo"}},
+		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
+	}); err != nil {
+		t.Fatalf("a subject-only condition over a whole system must install: %v", err)
+	}
+}
+
+// One change, one subject. A subject-only trigger fires per change and acts on the entity that
+// changed, however wide its pattern — it must not read the pattern as a selection and sweep
+// every matching entity in the store. That distinction is the difference between "when a PR
+// opens, review it" and "when a PR opens, review all of them".
+func TestSubjectOnlyActsOnTheChangedEntity(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+
+	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	entitytest.Set(t, store, two, entity.Obj{"stage": "open"}.Payload())
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: prSubject("open")},
+		Action:    Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, one, entity.Obj{"stage": "open"}.Payload())
+	waitStage(t, store, one, "reviewing")
+
+	// The other open PR is untouched: it never changed, so no firing was ever about it.
+	if e, _, _ := store.Get(two); entity.Str(e.Payload, "stage") != "open" {
+		t.Fatalf("a subject-only trigger swept the store: demo:pr:2 = %#v", e.Payload)
 	}
 }
 

@@ -26,7 +26,7 @@ func TestBudgetNotConsumedByDenials(t *testing.T) {
 	eng.SetMaxFires(1)
 	eng.AddTrigger(Trigger{
 		Name:      "gated",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo"})},
+		Condition: Condition{Subject: Match{"system": "demo"}},
 		Gates:     []Gate{{Mode: "ask"}},
 		Action:    Action{},
 	})
@@ -73,12 +73,12 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "deploy",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}}},
 		Gates:     []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
 		Action:    setStage("deployed"),
 	})
@@ -104,11 +104,16 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
-	eng.AddTrigger(Trigger{
+	// A `when` of {} matches every change and names no system, which is what the guard is
+	// stated over. The subject names one entity, because a subject is required now and this
+	// trigger's whole job is to fire (or not) — Fired is all we observe.
+	if err := eng.AddTrigger(Trigger{
 		Name:      "greedy",
-		Condition: Condition{When: MatchWhen(Match{})}, // matches everything...
-		Action:    Action{},                            // no effect: firing is all we observe (via Fired)
-	})
+		Condition: Condition{Subject: mm("demo:x:1"), When: MatchWhen(Match{})},
+		Action:    Action{},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -144,12 +149,12 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
 		Name:      "ping",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "a"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "a"}}},
 		Action:    Action{Patch: entity.Obj{"phase": "b"}.Payload()},
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "pong",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "b"}})},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "b"}}},
 		Action:    Action{Patch: entity.Obj{"phase": "a"}.Payload()},
 	})
 
@@ -176,8 +181,8 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
 		Name:      "spin",
-		Condition: Condition{When: MatchWhen(Match{"system": "demo", "kind": "loop"})}, // any change re-matches
-		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()},                   // writes the SAME value back
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop"}}, // any change re-matches
+		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()},           // writes the SAME value back
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

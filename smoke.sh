@@ -152,7 +152,7 @@ step "trigger add + drive (reactive core)"
 # JSON *is* tony, not because anything sniffed it.
 v trigger add -f - >/dev/null <<'JSON' || die "trigger add failed"
 [ { "name": "smoke-advance",
-    "condition": { "when": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
+    "condition": { "subject": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "reviewed" } } } ]
 JSON
@@ -179,7 +179,7 @@ step "trigger add reads a .tony charter (suffix dispatch)"
 cat >"$tmp/charter.tony" <<'TONY'
 - name: smoke-advance-tony
   condition:
-    when:
+    subject:
       system: demo
       kind: pr
       fields:
@@ -250,7 +250,7 @@ ok "!glob subject selected hotfix-9 and left feature-9 alone"
 step "gate: an ask gate holds; answering it releases the action"
 v trigger add --file - >/dev/null <<'JSON' || die "gated charter add failed"
 [ { "name": "smoke-gated",
-    "condition": { "when": { "system": "demo", "kind": "release", "fields": { "stage": "open" } } },
+    "condition": { "subject": { "system": "demo", "kind": "release", "fields": { "stage": "open" } } },
     "gates":     [ { "name": "ship", "mode": "ask" } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON

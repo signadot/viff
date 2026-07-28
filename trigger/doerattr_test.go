@@ -47,7 +47,7 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{

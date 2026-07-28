@@ -20,8 +20,8 @@ func TestStartRestoresTheCharter(t *testing.T) {
 	if err := first.Eng.AddTrigger(trigger.Trigger{
 		Name: "review",
 		Condition: trigger.Condition{
-			When: trigger.MatchWhen(trigger.Match{"system": "demo", "kind": "pr",
-				"fields": map[string]any{"stage": "open"}}),
+			Subject: trigger.Match{"system": "demo", "kind": "pr",
+				"fields": map[string]any{"stage": "open"}},
 		},
 		Action: trigger.Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {
@@ -69,8 +69,8 @@ func TestStartRestoresGoals(t *testing.T) {
 		Triggers: []trigger.Trigger{{
 			Name: "ship-review",
 			Condition: trigger.Condition{
-				When: trigger.MatchWhen(trigger.Match{"system": "demo", "kind": "pr",
-					"fields": map[string]any{"stage": "open"}}),
+				Subject: trigger.Match{"system": "demo", "kind": "pr",
+					"fields": map[string]any{"stage": "open"}},
 			},
 			Action: trigger.Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
 		}},

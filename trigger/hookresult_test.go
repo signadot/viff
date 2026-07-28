@@ -63,7 +63,7 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
@@ -94,7 +94,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},
@@ -109,10 +109,10 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 	// an ordinary trigger matching that finding — no knowledge of processes at all
 	if err := eng.AddTrigger(Trigger{
 		Name: "escalate",
-		Condition: Condition{When: MatchWhen(Match{
+		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "pr",
 			"fields": map[string]any{"stage": "reviewed", "severity": "high"},
-		})},
+		}},
 		Action: Action{Patch: entity.Obj{"escalated": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger escalate: %v", err)
@@ -131,7 +131,7 @@ func TestHookUnresolvedReferenceFailsTheFiring(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{When: prWhen("open")},
+		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Task: "review $subject"},

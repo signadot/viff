@@ -86,7 +86,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "validate",
-		Condition: Condition{When: MatchWhen(Match{"system": "local", "kind": "file"})},
+		Condition: Condition{Subject: Match{"system": "local", "kind": "file"}},
 		Action:    Action{Spawn: &launch.Spec{Task: "validate $path"}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

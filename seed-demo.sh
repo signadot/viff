@@ -95,7 +95,7 @@ for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; don
 v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
 - name: demo-review
   condition:
-    when: { system: demo, kind: pr, fields: { stage: open } }
+    subject: { system: demo, kind: pr, fields: { stage: open } }
   gates:
   - { name: approval, mode: ask }
   action:
@@ -106,7 +106,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
 
 - name: demo-escalate
   condition:
-    when: { system: demo, kind: task, fields: { priority: high } }
+    subject: { system: demo, kind: task, fields: { priority: high } }
   action:
     patch: { stage: escalated }
 TONY
