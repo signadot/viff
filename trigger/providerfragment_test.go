@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,7 +114,7 @@ func TestInlineEligibleCarriesOnlyTheDriver(t *testing.T) {
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "auto"}
 
-	frag, ok := eng.selectProvider(p, entity.Ref{System: "change", Kind: "pr", ID: "inline"})
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, entity.Ref{System: "change", Kind: "pr", ID: "inline"})
 	if !ok {
 		t.Fatal("inline eligible did not select")
 	}
@@ -130,7 +131,7 @@ func TestAttributeOnlyProviderStillWorks(t *testing.T) {
 	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "claude"},
 		entity.Obj{"driver": "llm-claude", "tier": "premium"}.Payload())
 
-	frag, ok := eng.selectProvider(&launch.Provider{Capability: "review", Select: "auto"},
+	frag, ok := eng.selectProvider(launch.Spec{Provider: &launch.Provider{Capability: "review", Select: "auto"}},
 		entity.Ref{System: "change", Kind: "pr", ID: "old"})
 	if !ok {
 		t.Fatal("attribute-only provider did not select")
@@ -140,10 +141,11 @@ func TestAttributeOnlyProviderStillWorks(t *testing.T) {
 	}
 }
 
-// A doer whose tools share nothing with the spawn's does not launch. The spawn cannot be
-// narrowed to "no tools" — an empty list means ALL of them — so the firing fails rather than
-// handing the agent everything at the moment the two declarations agreed on nothing.
-func TestDisjointToolsDoesNotSpawn(t *testing.T) {
+// A doer whose tools share nothing with the spawn's is never offered. The spawn cannot be
+// narrowed to "no tools" — an empty list means ALL of them — so rather than resolve that at
+// launch, the doer is ineligible: it cannot be picked, cannot be voted for, and the empty
+// ballot says why.
+func TestDisjointToolsIsIneligible(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "shell"},
@@ -155,14 +157,22 @@ func TestDisjointToolsDoesNotSpawn(t *testing.T) {
 		return nil
 	})
 
-	a := Action{Spawn: &launch.Spec{
+	spawn := launch.Spec{
 		Task:     "treat it",
 		Tools:    []string{"read_file"}, // the spawn offers a tool the doer does not
+		Grant:    "read-only",
 		Provider: &launch.Provider{Capability: "treat", Select: "auto"},
-	}}
+	}
+	if options, _ := eng.eligibleProviders(spawn); len(options) != 0 {
+		t.Fatalf("eligible = %v, want none — the doer and the spawn share no tool", options)
+	}
+	if why := eng.whyNoEligible(spawn); !strings.Contains(why, "share no tool") {
+		t.Errorf("whyNoEligible = %q, want it to name the tool conflict", why)
+	}
+
 	subj := entity.Ref{System: "demo", Kind: "finding", ID: "d"}
-	if _, err := a.applyOne("treat", entity.Event{Ref: subj}, subj, eng); err == nil {
-		t.Fatal("a doer sharing no tool with its spawn launched; the empty intersection means ALL tools")
+	if _, err := (Action{Spawn: &spawn}).applyOne("treat", entity.Event{Ref: subj}, subj, eng); err != nil {
+		t.Fatalf("applyOne = %v; an unresolvable selection is a non-spawn, not a failure", err)
 	}
 	select {
 	case s := <-spawned:

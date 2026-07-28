@@ -21,7 +21,7 @@ func TestSelectProviderAuto(t *testing.T) {
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "1"}
 
-	frag, ok := eng.selectProvider(p, subj)
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj)
 	if !ok || frag.Driver != "gpt" {
 		t.Fatalf("auto select = (%+v, %v), want driver gpt, true", frag, ok)
 	}
@@ -37,7 +37,7 @@ func TestSelectProviderDefaultIsSilentAuto(t *testing.T) {
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "11"}
 
-	if frag, ok := eng.selectProvider(p, subj); !ok || frag.Driver != "gpt" {
+	if frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj); !ok || frag.Driver != "gpt" {
 		t.Fatalf("default select = (%+v, %v), want driver gpt, true", frag, ok)
 	}
 	if _, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))}); found {
@@ -58,7 +58,7 @@ func TestSelectProviderVotePlurality(t *testing.T) {
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "claude"}.Payload())
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "z"}, entity.Obj{"choice": "gpt"}.Payload())
 
-	frag, ok := eng.selectProvider(p, subj)
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj)
 	if !ok || frag.Driver != "claude" {
 		t.Fatalf("vote select = (%+v, %v), want driver claude, true", frag, ok)
 	}
@@ -75,7 +75,7 @@ func TestPluralityIgnoresIneligible(t *testing.T) {
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "rogue"}.Payload()) // ineligible
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "gpt"}.Payload())   // eligible → wins at need=1
 
-	frag, ok := eng.selectProvider(p, subj)
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj)
 	if !ok || frag.Driver != "gpt" {
 		t.Fatalf("select = (%+v, %v), want driver gpt, true — a rogue (ineligible) ballot must not win", frag, ok)
 	}
@@ -90,7 +90,7 @@ func TestSelectProviderAsk(t *testing.T) {
 	did := motionChannelID(providerSpecSeed(subj, p))
 
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Obj{"choice": "claude"}.Payload())
-	frag, ok := eng.selectProvider(p, subj)
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj)
 	if !ok || frag.Driver != "claude" {
 		t.Fatalf("ask select = (%+v, %v), want driver claude, true — the first pick decides", frag, ok)
 	}
@@ -109,13 +109,13 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "9"}
 
-	frag, ok := eng.selectProvider(p, subj)
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj)
 	if !ok || frag.Driver != "llm-claude" { // options sorted by id: claude, gpt → auto picks claude
 		t.Fatalf("registry auto select = (%+v, %v), want driver llm-claude, true", frag, ok)
 	}
 	// Read the filter off eligibleProviders rather than off a motion: an auto select opens
 	// none, and the eligible set is what the match produced regardless of which dial reads it.
-	options, _ := eng.eligibleProviders(p)
+	options, _ := eng.eligibleProviders(launch.Spec{Provider: p})
 	if len(options) != 2 || options[0] != "claude" || options[1] != "gpt" {
 		t.Fatalf("eligible options = %v, want [claude gpt] (the basic tier filtered out)", options)
 	}
@@ -133,7 +133,7 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 	done := make(chan struct{})
 	var frag launch.Fragment
 	var ok bool
-	go func() { frag, ok = eng.selectProvider(p, subj); close(done) }()
+	go func() { frag, ok = eng.selectProvider(launch.Spec{Provider: p}, subj); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -159,7 +159,7 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 
 	// Nothing registered: the answer is "go register a doer".
 	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}}
-	got := eng.whyNoEligible(p)
+	got := eng.whyNoEligible(launch.Spec{Provider: p})
 	if !strings.Contains(got, "no provider:review:* is registered") {
 		t.Errorf("empty registry: %q", got)
 	}
@@ -171,7 +171,7 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 	// the match is echoed in tony, as the charter spells it, not as Go prints a map.
 	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "cheapo"},
 		entity.Obj{"driver": "scripted", "tier": "basic"}.Payload())
-	got = eng.whyNoEligible(p)
+	got = eng.whyNoEligible(launch.Spec{Provider: p})
 	if !strings.Contains(got, "all 1 registered") {
 		t.Errorf("excluded: %q", got)
 	}
@@ -180,7 +180,7 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 	}
 
 	// Neither form declared: the spec itself is incomplete.
-	if got := eng.whyNoEligible(&launch.Provider{Select: "vote"}); !strings.Contains(got, "no eligible doers") {
+	if got := eng.whyNoEligible(launch.Spec{Provider: &launch.Provider{Select: "vote"}}); !strings.Contains(got, "no eligible doers") {
 		t.Errorf("empty provider: %q", got)
 	}
 }

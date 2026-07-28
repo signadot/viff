@@ -647,8 +647,15 @@ to choose, instead of one driver:
   action:
     spawn:
       task: "review $subject"
+      grant: read-only
       provider: { eligible: [gpt, claude], select: vote, need: 2 }
 ```
+
+The `grant:` is required here, and only here: a spawn that names one fixed driver may omit it,
+but a spawn that *selects* its doer must say what authority the selection happens within. A
+doer is an entity, and a doer may carry its own grant — which is safe only as a narrowing of
+something the charter declared. Write `grant: all` if you mean the selection to be unbounded;
+the point is that it be said rather than defaulted into.
 
 `select` is the same dial on the *who* axis: `auto` picks the first eligible by a rule, `ask`
 lets one person pick, `vote` lets the group pick. `ask` and `vote` raise the same kind of

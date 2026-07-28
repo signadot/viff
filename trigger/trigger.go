@@ -269,6 +269,19 @@ func (a Action) validate() error {
 		return fmt.Errorf("action has both `spawn` and `seq`: which one the sequence waits " +
 			"for would be a coin flip. Put the spawn in the sequence as its first element")
 	}
+	// A governed selection needs a ceiling to select within. A provider entity is an ordinary
+	// entity — anyone who can write one can create a doer — so a doer's `grant` is only safe
+	// as a NARROWING of something the charter declared. An omitted grant is not a small
+	// ceiling but an unbounded one (process.Launch.Grant nil = unbounded), which would make
+	// "a provider may only narrow" a check against everything. Refuse at install, where the
+	// charter's author is present to answer, rather than at fire time: `grant: all` is
+	// spellable precisely so a charter can SAY it means unbounded instead of omitting it.
+	if a.Spawn != nil && a.Spawn.Provider != nil && a.Spawn.Grant == "" {
+		return fmt.Errorf("spawn declares `provider:` but no `grant:`: a selected doer may " +
+			"carry its own grant, and that is only checkable against a ceiling the charter " +
+			"states. Add one (`grant: read-only`, `no-delegate`, `none`) — or `grant: all` to " +
+			"say the selection is deliberately unbounded")
+	}
 	for i, el := range a.Seq {
 		// The sequence owns each element's done slot — the list already says what comes
 		// next, so a second answer in the same place is a contradiction, not a composition.
@@ -393,7 +406,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	// lets one trigger route to a fixer and a memo-writer that differ in everything but the
 	// driver. Narrowing only — see launch.Spec.Overlay.
 	if spec.Provider != nil {
-		frag, ok := e.selectProvider(spec.Provider, subj)
+		frag, ok := e.selectProvider(spec, subj)
 		if !ok {
 			return nil, nil // no eligible doer / selection did not resolve — do not spawn
 		}

@@ -871,8 +871,9 @@ func refIDs(refs []entity.Ref) []string {
 // by construction and `gate approve` today is not.
 //
 // Orthogonal to the runner that then transports the chosen driver.
-func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (launch.Fragment, bool) {
-	options, frags := e.eligibleProviders(p)
+func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.Fragment, bool) {
+	p := spawn.Provider
+	options, frags := e.eligibleProviders(spawn)
 	if len(options) == 0 {
 		// A motion needs options, so there is no question to pose and nothing reaches the
 		// docket. That is indistinguishable from "the trigger never matched" unless we say
@@ -882,7 +883,7 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (launch.
 		// excludes everyone) and was the only one silent.
 		e.logger.Warn("provider selection has no eligible doer; no motion opened and nothing spawned",
 			"subject", subject.String(), "capability", p.Capability,
-			"select", p.Select, "why", e.whyNoEligible(p))
+			"select", p.Select, "why", e.whyNoEligible(spawn))
 		return launch.Fragment{}, false
 	}
 	// auto: a rule picks the first eligible doer immediately — and poses NOTHING. The docket
@@ -944,8 +945,32 @@ func fragmentFor(frags map[string]launch.Fragment, selected string) launch.Fragm
 	return launch.Fragment{Driver: selected}
 }
 
-// eligibleProviders resolves a Provider's selectable options to {option → fragment}, in a
-// deterministic order. Inline Eligible: the option IS the driver, and contributes nothing
+// eligibleProviders resolves a spawn's selectable options to {option → fragment}, in a
+// deterministic order — the candidates that both match and may run under this spawn.
+func (e *Engine) eligibleProviders(spawn launch.Spec) ([]string, map[string]launch.Fragment) {
+	var options []string
+	frags := map[string]launch.Fragment{}
+	for _, c := range e.providerCandidates(spawn) {
+		if c.refused != "" {
+			continue
+		}
+		options = append(options, c.id)
+		frags[c.id] = c.frag
+	}
+	return options, frags
+}
+
+// providerCandidate is one doer the selection considered, and — when it may not run under
+// this spawn — why not. Refusals are carried rather than dropped so whyNoEligible can explain
+// an empty ballot without re-deriving the reasoning that produced it.
+type providerCandidate struct {
+	id      string
+	frag    launch.Fragment
+	refused string // "" = eligible
+}
+
+// providerCandidates lists every doer the spawn's Provider names or matches, each marked
+// eligible or refused. Inline Eligible: the option IS the driver, and contributes nothing
 // else — an inline list is a list of names, and a name has no attributes to carry. Registry
 // Capability: list provider:<capability>:* whose attributes satisfy Match (a tony merge
 // match); the option is the provider id and the fragment is read off its payload.
@@ -955,21 +980,32 @@ func fragmentFor(frags map[string]launch.Fragment, selected string) launch.Fragm
 // launch.Fragment names). They are not separated, and should not be: `driver` was always both
 // — matchable and bound — and splitting them would make a provider entity a schema instead of
 // the free-form thing that lets a new attribute be invented without a code change.
-func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]launch.Fragment) {
+//
+// A refused candidate is INELIGIBLE, not trimmed. It never reaches a ballot, so a vote cannot
+// elect a doer that then fails to be seated — a decision with no seat, which no voter could
+// have known they were making. The alternative, quietly dropping the offending field and
+// running the doer anyway, would put a process under an envelope different from the one its
+// own entity states; process/authority.go was written to end exactly that.
+func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
+	p := spawn.Provider
 	if p == nil {
-		return nil, nil
+		return nil
 	}
-	var options []string
-	frags := map[string]launch.Fragment{}
-	add := func(opt string, f launch.Fragment) {
-		if _, seen := frags[opt]; seen {
+	ceiling, declared, ceilErr := process.NamedGrant(spawn.Grant)
+	var out []providerCandidate
+	seen := map[string]bool{}
+	add := func(id string, f launch.Fragment, payload entity.Payload) {
+		if seen[id] {
 			return
 		}
-		options = append(options, opt)
-		frags[opt] = f
+		seen[id] = true
+		out = append(out, providerCandidate{
+			id: id, frag: f,
+			refused: refuseProvider(f, payload, spawn, ceiling, declared, ceilErr),
+		})
 	}
 	for _, d := range p.Eligible {
-		add(d, launch.Fragment{Driver: d})
+		add(d, launch.Fragment{Driver: d}, nil)
 	}
 	if p.Capability != "" {
 		var pattern *ir.Node
@@ -982,10 +1018,61 @@ func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]lau
 			if pattern != nil && !providerMatches(en.Payload, pattern) {
 				continue
 			}
-			add(en.Ref.ID, providerFragment(en.Ref, en.Payload))
+			add(en.Ref.ID, providerFragment(en.Ref, en.Payload), en.Payload)
 		}
 	}
-	return options, frags
+	return out
+}
+
+// unhonoredProviderFields are the launch-spec fields a provider entity may NOT set. They are
+// refused rather than ignored: a doer whose entity says `vector: auto` and which then runs at
+// the charter's `ask` is a doer nobody described.
+//
+// `vector` is here because it is the one axis that can widen without touching authority — it
+// says whether a person sees an action at all, and `vector: auto` means "this firing already
+// answered its gates" (process/authority.go), which is the charter's claim to make. An
+// ordering over auto|ask|park that would let a doer TIGHTEN autonomy is a later question.
+// `resolver` and `environment` are here because neither has semantics to resolve to yet
+// (versed.launchOf), so honoring them would be a promise nothing keeps.
+var unhonoredProviderFields = []string{"vector", "resolver", "environment"}
+
+// refuseProvider reports why a doer may not run under this spawn, "" when it may. The three
+// refusals are the three ways a provider entity — an ordinary entity, writable by anyone who
+// can write entities — could otherwise obtain authority the charter never granted.
+func refuseProvider(f launch.Fragment, payload entity.Payload, spawn launch.Spec,
+	ceiling process.Grant, declared bool, ceilErr error) string {
+
+	for _, name := range unhonoredProviderFields {
+		if entity.Get(payload, name) != nil {
+			return fmt.Sprintf("it sets `%s`, which a provider may not: that field is the charter's", name)
+		}
+	}
+	if f.Grant != "" {
+		switch {
+		case ceilErr != nil:
+			return fmt.Sprintf("it declares a grant and the spawn's own grant %q does not resolve (%v)", spawn.Grant, ceilErr)
+		case !declared:
+			// Unreachable through AddTrigger, which requires a grant on any spawn carrying a
+			// provider. Kept because the reachable-today answer and the safe answer differ: an
+			// undeclared ceiling is UNBOUNDED (process.Launch.Grant nil), so taking it as the
+			// bound would make every provider grant a "narrowing" of everything.
+			return "it declares a grant and the spawn declares none, so there is no ceiling to check it against"
+		}
+		g, ok, err := process.NamedGrant(f.Grant)
+		if err != nil || !ok {
+			return fmt.Sprintf("its grant %q does not resolve (%v)", f.Grant, err)
+		}
+		if !ceiling.Subset(g) {
+			return fmt.Sprintf("its grant %q is not within the spawn's %q — a doer may narrow authority, never widen it",
+				f.Grant, spawn.Grant)
+		}
+	}
+	// Everything else the overlay itself can refuse — today, tool lists that share nothing.
+	// Asking Overlay rather than restating its rules keeps one answer to "may these compose".
+	if _, err := spawn.Overlay(f); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // providerFragment reads a provider entity's launch fragment off its payload. A provider
@@ -1004,12 +1091,21 @@ func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
 	return f
 }
 
-// whyNoEligible explains an empty eligible set in terms of what to go fix. The three
-// causes need different answers — register a doer, loosen the match, or write a provider
-// into the spec — and "no eligible doer" tells you which one to try only by accident.
-func (e *Engine) whyNoEligible(p *launch.Provider) string {
+// whyNoEligible explains an empty eligible set in terms of what to go fix. The four
+// causes need different answers — register a doer, loosen the match, narrow a doer (or widen
+// the spawn), or write a provider into the spec — and "no eligible doer" tells you which one
+// to try only by accident.
+func (e *Engine) whyNoEligible(spawn launch.Spec) string {
+	p := spawn.Provider
 	if p == nil {
 		return "the spawn declares no provider"
+	}
+	// Matched, and then refused for what it would run as. This is checked before the registry
+	// counts below because it is the only cause whose fix is in TWO places — the doer's entity
+	// or the spawn's own grant — so the message has to name both sides of the comparison.
+	if refused := refusedProviders(e.providerCandidates(spawn)); len(refused) > 0 {
+		return fmt.Sprintf("%d matching doer(s) may not run under this spawn: %s",
+			len(refused), strings.Join(refused, "; "))
 	}
 	if p.Capability == "" {
 		return "the spawn's provider lists no eligible doers and names no capability"
@@ -1025,6 +1121,17 @@ func (e *Engine) whyNoEligible(p *launch.Provider) string {
 	}
 	return fmt.Sprintf("all %d registered provider:%s:* were excluded by match %s",
 		registered, p.Capability, matchText(p.Match))
+}
+
+// refusedProviders renders the refused candidates as "<id>: <why>", for the message above.
+func refusedProviders(cands []providerCandidate) []string {
+	var out []string
+	for _, c := range cands {
+		if c.refused != "" {
+			out = append(out, c.id+": "+c.refused)
+		}
+	}
+	return out
 }
 
 // matchText renders a match pattern the way the charter that declared it is written, so
