@@ -384,15 +384,28 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	// The subject is the engine's to set, not the charter's: a process is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()
-	// who-axis: if the spawn declares a governed provider selection, resolve it and bind
-	// the chosen doer into Driver before spawn — no live swap (reassign = cancel+respawn).
-	// Orthogonal to the runner that then transports Driver.
+	// who-axis: if the spawn declares a governed provider selection, resolve it and overlay
+	// what the chosen doer contributes — driver, frame, tools, grant — before spawn. No live
+	// swap (reassign = cancel+respawn). Orthogonal to the runner that then transports Driver.
+	//
+	// The spawn is the base and the winner is the overlay, so the charter's spawn block is
+	// what a doer varies FROM rather than a set of fields one doer must satisfy: that is what
+	// lets one trigger route to a fixer and a memo-writer that differ in everything but the
+	// driver. Narrowing only — see launch.Spec.Overlay.
 	if spec.Provider != nil {
-		driver, ok := e.selectProvider(spec.Provider, subj)
+		frag, ok := e.selectProvider(spec.Provider, subj)
 		if !ok {
 			return nil, nil // no eligible doer / selection did not resolve — do not spawn
 		}
-		spec.Driver = driver
+		overlaid, err := spec.Overlay(frag)
+		if err != nil {
+			// The doer and the spawn agree on no tool. Failing the firing is the only safe
+			// answer, because the alternative spelling of "no tools" is an empty list, which
+			// means ALL of them — see launch.Spec.Overlay.
+			e.tracef("trigger %s: selected doer cannot be launched under this spawn (%v); not spawning", chain, err)
+			return nil, err
+		}
+		spec = overlaid
 	}
 	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the process
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards

@@ -848,8 +848,14 @@ func refIDs(refs []entity.Ref) []string {
 
 // ── the who-axis: governed provider selection ───────────────────────────────
 
-// selectProvider resolves the who-axis for a spawn whose Spec carries a Provider and
-// returns the chosen driver (bound into Spec.Driver before spawn — no live swap).
+// selectProvider resolves the who-axis for a spawn whose Spec carries a Provider and returns
+// the chosen doer as a launch.Fragment — overlaid onto the spawn before it launches (no live
+// swap).
+//
+// It returned a bare driver string until the fragment landed. That was proportionate when a
+// spawn was (id, task, driver); once a spawn could say frame/tools/grant, two doers could
+// still differ only by which runtime ran the prompt, which is the smaller half of what
+// distinguishes them. See docs/working/provider-selection.md.
 //
 // `ask` and `vote` reify a `select` motion — a motion over the eligible doers as options —
 // resolved through the SAME machinery as a whether-gate (openChannel/awaitMotion/
@@ -865,8 +871,8 @@ func refIDs(refs []entity.Ref) []string {
 // by construction and `gate approve` today is not.
 //
 // Orthogonal to the runner that then transports the chosen driver.
-func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string, bool) {
-	options, drivers := e.eligibleProviders(p)
+func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (launch.Fragment, bool) {
+	options, frags := e.eligibleProviders(p)
 	if len(options) == 0 {
 		// A motion needs options, so there is no question to pose and nothing reaches the
 		// docket. That is indistinguishable from "the trigger never matched" unless we say
@@ -877,7 +883,7 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 		e.logger.Warn("provider selection has no eligible doer; no motion opened and nothing spawned",
 			"subject", subject.String(), "capability", p.Capability,
 			"select", p.Select, "why", e.whyNoEligible(p))
-		return "", false
+		return launch.Fragment{}, false
 	}
 	// auto: a rule picks the first eligible doer immediately — and poses NOTHING. The docket
 	// is the votable, attributable surface; an auto pick has no voter and casts no ballot, so
@@ -890,11 +896,11 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 	// took — if they are wanted, they belong on the process entity.
 	//
 	// Not latching also retires a failure mode: a committed auto pick outlived the registry
-	// and went on naming a retired doer (what driverFor's fallback exists to absorb).
+	// and went on naming a retired doer (what fragmentFor's fallback exists to absorb).
 	// Re-deriving per firing is deterministic given the same registry — eligibleProviders
 	// sorts — and follows the registry when it changes.
 	if p.Select == "" || p.Select == "auto" {
-		return driverFor(drivers, options[0]), true
+		return fragmentFor(frags, options[0]), true
 	}
 
 	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subject, p))}
@@ -911,49 +917,59 @@ func (e *Engine) selectProvider(p *launch.Provider, subject entity.Ref) (string,
 		winner, witness, ok := e.awaitMotion(ctx, m)
 		if !ok {
 			e.tracef("select %s: %s ended before the motion closed", channelRef.ID, p.Select)
-			return "", false
+			return launch.Fragment{}, false
 		}
 		if winner == "" { // no pick (deadline default) — record it, do not spawn
 			e.commitMotion(channelRef, nil, "no-pick", nil)
-			return "", false
+			return launch.Fragment{}, false
 		}
 		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
 		if revoked {
 			e.tracef("select %s: revoked before commit → re-monitoring", channelRef.ID)
 			continue
 		}
-		return driverFor(drivers, eff), true
+		return fragmentFor(frags, eff), true
 	}
 }
 
-// driverFor maps a selected option to its driver; a prior selection no longer in the
-// registry falls back to the option id itself as the driver.
-func driverFor(drivers map[string]string, selected string) string {
-	if dr, ok := drivers[selected]; ok {
-		return dr
+// fragmentFor maps a selected option to what it contributes to the spawn; a prior selection
+// no longer in the registry falls back to the option id as the driver, contributing nothing
+// else. That fallback is why a retired doer degrades to today's behaviour rather than to an
+// empty envelope: a fragment that silently dropped a grant would widen, which is the one
+// direction this may never fail in.
+func fragmentFor(frags map[string]launch.Fragment, selected string) launch.Fragment {
+	if f, ok := frags[selected]; ok {
+		return f
 	}
-	return selected
+	return launch.Fragment{Driver: selected}
 }
 
-// eligibleProviders resolves a Provider's selectable options to {option → driver}, in a
-// deterministic order. Inline Eligible: the option IS the driver. Registry Capability:
-// list provider:<capability>:* whose attributes satisfy Match (a tony merge match); the
-// option is the provider id, the driver is its `driver` attribute (falling back to the id).
-func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]string) {
+// eligibleProviders resolves a Provider's selectable options to {option → fragment}, in a
+// deterministic order. Inline Eligible: the option IS the driver, and contributes nothing
+// else — an inline list is a list of names, and a name has no attributes to carry. Registry
+// Capability: list provider:<capability>:* whose attributes satisfy Match (a tony merge
+// match); the option is the provider id and the fragment is read off its payload.
+//
+// The payload is one namespace holding two kinds of key: SELECTION attributes (`tier`,
+// `risk`, `cost` — whatever the charter's Match talks about) and FRAGMENT fields (the four
+// launch.Fragment names). They are not separated, and should not be: `driver` was always both
+// — matchable and bound — and splitting them would make a provider entity a schema instead of
+// the free-form thing that lets a new attribute be invented without a code change.
+func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]launch.Fragment) {
 	if p == nil {
 		return nil, nil
 	}
 	var options []string
-	drivers := map[string]string{}
-	add := func(opt, driver string) {
-		if _, seen := drivers[opt]; seen {
+	frags := map[string]launch.Fragment{}
+	add := func(opt string, f launch.Fragment) {
+		if _, seen := frags[opt]; seen {
 			return
 		}
 		options = append(options, opt)
-		drivers[opt] = driver
+		frags[opt] = f
 	}
 	for _, d := range p.Eligible {
-		add(d, d)
+		add(d, launch.Fragment{Driver: d})
 	}
 	if p.Capability != "" {
 		var pattern *ir.Node
@@ -966,14 +982,26 @@ func (e *Engine) eligibleProviders(p *launch.Provider) ([]string, map[string]str
 			if pattern != nil && !providerMatches(en.Payload, pattern) {
 				continue
 			}
-			driver := entity.Str(en.Payload, "driver")
-			if driver == "" {
-				driver = en.Ref.ID
-			}
-			add(en.Ref.ID, driver)
+			add(en.Ref.ID, providerFragment(en.Ref, en.Payload))
 		}
 	}
-	return options, drivers
+	return options, frags
+}
+
+// providerFragment reads a provider entity's launch fragment off its payload. A provider
+// with no `driver` falls back to its own id, which is what let `provider:review:claude` mean
+// the claude driver before the field was conventional.
+func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
+	f := launch.Fragment{
+		Driver: entity.Str(payload, "driver"),
+		Frame:  entity.Str(payload, "frame"),
+		Grant:  entity.Str(payload, "grant"),
+		Tools:  entity.Strs(payload, "tools"),
+	}
+	if f.Driver == "" {
+		f.Driver = ref.ID
+	}
+	return f
 }
 
 // whyNoEligible explains an empty eligible set in terms of what to go fix. The three

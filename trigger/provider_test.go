@@ -21,9 +21,9 @@ func TestSelectProviderAuto(t *testing.T) {
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "1"}
 
-	driver, ok := eng.selectProvider(p, subj)
-	if !ok || driver != "gpt" {
-		t.Fatalf("auto select = (%q, %v), want (gpt, true)", driver, ok)
+	frag, ok := eng.selectProvider(p, subj)
+	if !ok || frag.Driver != "gpt" {
+		t.Fatalf("auto select = (%+v, %v), want driver gpt, true", frag, ok)
 	}
 	if _, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))}); found {
 		t.Fatal("auto select opened a motion; the docket is for questions someone is asked")
@@ -37,8 +37,8 @@ func TestSelectProviderDefaultIsSilentAuto(t *testing.T) {
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "11"}
 
-	if driver, ok := eng.selectProvider(p, subj); !ok || driver != "gpt" {
-		t.Fatalf("default select = (%q, %v), want (gpt, true)", driver, ok)
+	if frag, ok := eng.selectProvider(p, subj); !ok || frag.Driver != "gpt" {
+		t.Fatalf("default select = (%+v, %v), want driver gpt, true", frag, ok)
 	}
 	if _, found, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))}); found {
 		t.Fatal("an unset select opened a motion; it defaults to auto, which poses nothing")
@@ -58,9 +58,9 @@ func TestSelectProviderVotePlurality(t *testing.T) {
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "claude"}.Payload())
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "z"}, entity.Obj{"choice": "gpt"}.Payload())
 
-	driver, ok := eng.selectProvider(p, subj)
-	if !ok || driver != "claude" {
-		t.Fatalf("vote select = (%q, %v), want (claude, true)", driver, ok)
+	frag, ok := eng.selectProvider(p, subj)
+	if !ok || frag.Driver != "claude" {
+		t.Fatalf("vote select = (%+v, %v), want driver claude, true", frag, ok)
 	}
 }
 
@@ -75,9 +75,9 @@ func TestPluralityIgnoresIneligible(t *testing.T) {
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "rogue"}.Payload()) // ineligible
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "gpt"}.Payload())   // eligible → wins at need=1
 
-	driver, ok := eng.selectProvider(p, subj)
-	if !ok || driver != "gpt" {
-		t.Fatalf("select = (%q, %v), want (gpt, true) — a rogue (ineligible) ballot must not win", driver, ok)
+	frag, ok := eng.selectProvider(p, subj)
+	if !ok || frag.Driver != "gpt" {
+		t.Fatalf("select = (%+v, %v), want driver gpt, true — a rogue (ineligible) ballot must not win", frag, ok)
 	}
 }
 
@@ -90,9 +90,9 @@ func TestSelectProviderAsk(t *testing.T) {
 	did := motionChannelID(providerSpecSeed(subj, p))
 
 	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "reviewer"}, entity.Obj{"choice": "claude"}.Payload())
-	driver, ok := eng.selectProvider(p, subj)
-	if !ok || driver != "claude" {
-		t.Fatalf("ask select = (%q, %v), want (claude, true) — the first pick decides", driver, ok)
+	frag, ok := eng.selectProvider(p, subj)
+	if !ok || frag.Driver != "claude" {
+		t.Fatalf("ask select = (%+v, %v), want driver claude, true — the first pick decides", frag, ok)
 	}
 }
 
@@ -109,9 +109,9 @@ func TestSelectProviderRegistryMatch(t *testing.T) {
 	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}, Select: "auto"}
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "9"}
 
-	driver, ok := eng.selectProvider(p, subj)
-	if !ok || driver != "llm-claude" { // options sorted by id: claude, gpt → auto picks claude
-		t.Fatalf("registry auto select = (%q, %v), want (llm-claude, true)", driver, ok)
+	frag, ok := eng.selectProvider(p, subj)
+	if !ok || frag.Driver != "llm-claude" { // options sorted by id: claude, gpt → auto picks claude
+		t.Fatalf("registry auto select = (%+v, %v), want driver llm-claude, true", frag, ok)
 	}
 	// Read the filter off eligibleProviders rather than off a motion: an auto select opens
 	// none, and the eligible set is what the match produced regardless of which dial reads it.
@@ -131,16 +131,16 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 	subj := entity.Ref{System: "change", Kind: "pr", ID: "dl"}
 
 	done := make(chan struct{})
-	var driver string
+	var frag launch.Fragment
 	var ok bool
-	go func() { driver, ok = eng.selectProvider(p, subj); close(done) }()
+	go func() { frag, ok = eng.selectProvider(p, subj); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("selectProvider hung past its deadline (should default to no pick)")
 	}
-	if ok || driver != "" {
-		t.Fatalf("deadline select = (%q, %v), want (\"\", false) — no pick by the deadline", driver, ok)
+	if ok || !frag.IsZero() {
+		t.Fatalf("deadline select = (%+v, %v), want (zero, false) — no pick by the deadline", frag, ok)
 	}
 	// The channel records when it closes, so `verse docket` can show it.
 	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subj, p))})
