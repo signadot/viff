@@ -21,21 +21,25 @@ import (
 // ps moved off this group and onto `processes`: as a group alias `verse ps` was an error
 // ("no command provided"), which is not what anyone typing it expects. On the listing it
 // means what it means everywhere else.
+func processSubs() []*cli.Command {
+	return []*cli.Command{
+		procRunCmd(),
+		procGetCmd(),
+		procInboxCmd(),
+		procAttachCmd(),
+		procCancelCmd(),
+		procSayCmd(),
+		procVectorCmd(),
+		procAnswerCmd(true),
+		procAnswerCmd(false),
+		procDoCmd(),
+	}
+}
+
 func processCmd() *cli.Command {
 	return cli.NewCommand("process").
 		WithSynopsis("process — one process in the runtime (list them with `verse processes`)").
-		WithSubs(
-			procRunCmd(),
-			procGetCmd(),
-			procInboxCmd(),
-			procAttachCmd(),
-			procCancelCmd(),
-			procSayCmd(),
-			procVectorCmd(),
-			procAnswerCmd(true),
-			procAnswerCmd(false),
-			procDoCmd(),
-		)
+		WithSubs(processSubs()...)
 }
 
 // ── inbox (operator peek at a brokered process's queued worker control) ──────
@@ -398,7 +402,8 @@ func waitForResult(cc *cli.Context, id string, timeout time.Duration) error {
 
 func processesCmd() *cli.Command {
 	return collection("processes", "/processes",
-		"processes — list processes (also: ps; act on one with `verse process`)", "process").
+		"processes — list processes (also: ps; act on one with `verse process`)", "process",
+		processSubs()...).
 		WithAliases("ps")
 }
 

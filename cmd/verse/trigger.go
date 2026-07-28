@@ -12,15 +12,20 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
+func triggerSubs() []*cli.Command {
+	return []*cli.Command{triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd()}
+}
+
 func triggersCmd() *cli.Command {
 	return collection("triggers", "/triggers",
-		"triggers — list the installed charter (add or remove one with `verse trigger`)", "trigger")
+		"triggers — list the installed charter (add or remove one with `verse trigger`)", "trigger",
+		triggerSubs()...)
 }
 
 func triggerCmd() *cli.Command {
 	return cli.NewCommand("trigger").
 		WithSynopsis("trigger — one charter rule: add|show|remove (list them with `verse triggers`)").
-		WithSubs(triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd())
+		WithSubs(triggerSubs()...)
 }
 
 type triggerShowConfig struct{ *cli.Command }

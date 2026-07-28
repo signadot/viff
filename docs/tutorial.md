@@ -21,6 +21,10 @@ export VERSE_ADDR=localhost:9797     # where clients reach the verse (this is th
 ./verse up                           # docd-backed by default (see below)
 ```
 
+If you would rather see it working before reading about it, `./seed-demo.sh` in a second
+terminal installs the charter below, the entities it reacts to, and leaves one gate waiting
+for you — then prints what to type next. Everything it does, §2 does by hand.
+
 By default `up` is docd-backed: it brings up logd and docd on a fresh temp data dir
 (printed, and kept) via `o sys up`, and points the store at
 [docd](https://signadot.github.io/tony-format/docd/), the tony-format document store.
@@ -29,6 +33,11 @@ for you, but it is where verse's deeper properties come from — copy-on-write s
 conditional and coordinated writes, edge-faithful watches, compactions — and §10 draws
 that out. To use a durable dir rather than a fresh temp one, `--data <dir>`; to attach to an
 already-running docd, `--docd-addr <addr> --docd-mount-addr <addr>`.
+
+Hosting those daemons takes go-tony's `o`, and `up` resolves one itself: an `o` on your
+`PATH` built from the go-tony verse pins, else one it installs into `~/.verse/bin` (once per
+version). So `up` works from any directory, not only from a checkout — and `--o-bin <path>`
+names one explicitly. See [the reference](reference.md#the-o-binary).
 
 `up` decides two things for the whole runtime, because it hosts the process runtime and
 the clients don't.

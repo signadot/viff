@@ -17,22 +17,27 @@ import (
 // cost a rename rather than just adding a command. It was `goals` with a `goal` alias, so the
 // plural named the group AND the listing under it (`goals list`), which is precisely the
 // ambiguity the rule removes everywhere else.
+func goalSubs() []*cli.Command {
+	return []*cli.Command{
+		goalsAddCmd(),
+		goalsRemoveCmd(),
+		goalsPauseCmd(),
+		goalsResumeCmd(),
+		goalsCancelCmd(),
+		goalsSayCmd(),
+	}
+}
+
 func goalCmd() *cli.Command {
 	return cli.NewCommand("goal").
 		WithSynopsis("goal — one owning aggregate: owned triggers + done/fail latch + status (list them with `verse goals`)").
-		WithSubs(
-			goalsAddCmd(),
-			goalsRemoveCmd(),
-			goalsPauseCmd(),
-			goalsResumeCmd(),
-			goalsCancelCmd(),
-			goalsSayCmd(),
-		)
+		WithSubs(goalSubs()...)
 }
 
 func goalsCmd() *cli.Command {
 	return collection("goals", "/goals",
-		"goals — list goals with status / waitingOn / outcome (act on one with `verse goal`)", "goal")
+		"goals — list goals with status / waitingOn / outcome (act on one with `verse goal`)", "goal",
+		goalSubs()...)
 }
 
 type goalsAddConfig struct {

@@ -15,7 +15,8 @@ verse
        [--data <dir>]                        bring logd+docd up on <dir> (default: fresh temp dir)
        [--docd-addr host:port]               attach to a running docd (client face) …
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
-       [--o-bin path]                        the o binary to spawn daemons (default: go run pinned cmd/o)
+       [--o-bin path]                        the o binary to spawn daemons with (default: resolved —
+                                             see "The o binary" below)
        [--runner <url>]                      run processes on a remote process-control base URL …
        [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
                                              publishes each process's dialURL from it) …
@@ -28,6 +29,9 @@ verse
   watch  [--system --kind --since <rev>]     stream store changes (cursored)
 
   Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
+  The plural also answers to the singular's verbs — `verse entities get <ref>` is
+  `verse entity get <ref>` — so the second command is an edit of the first, not a retype.
+  Only the bare plural lists: `verse entities list` is an error naming `verse entities`.
 
   entities [--system <s>] [--kind <k>]       the store
   entity (e)  get <ref> · put <ref> <payload> · rm <ref>
@@ -114,6 +118,26 @@ The driver is chosen per spawn. A trigger's `spawn.driver`, `connect --driver`, 
 (`scripted`, or `llm` when creds are configured). Requesting `llm` with no configured creds
 fails that one process — status `failed`, with a message telling you to set the creds — and
 the engine keeps running.
+
+### The o binary
+
+`verse up` brings logd and docd up by running `o sys up`, so it needs an `o` — the
+[go-tony](https://signadot.github.io/tony-format/) CLI — and it finds one itself. In order:
+
+1. `--o-bin <path>`, which is an answer rather than a hint.
+2. `~/.verse/bin/<version>/o`, an `o` verse installed earlier at the version it pins.
+3. `o` on your `PATH`, **if** it was built from the pinned go-tony (verse reads that out of
+   the binary; nothing is run to ask it).
+4. otherwise `go install <pinned cmd/o>` into `~/.verse/bin/<version>/`, once per version.
+
+The version check at (3) is why an `o` you already have may be ignored: verse and `o` share
+the logd session protocol, and a skew does not fail cleanly — it reads as a store that will
+not talk, or as `o sys up` refusing a flag. With no `go` and no matching `o`, verse uses a
+skewed one and says so; with neither, it says what to do rather than spawning and waiting.
+
+The version verse pins is the one it was *built* against, read from its own build info, so
+an installed `verse` resolves the same way as one run out of a checkout. If you are working
+on go-tony itself, point `--o-bin` at your build — that flag exists to mean "this one".
 
 ## Representation
 

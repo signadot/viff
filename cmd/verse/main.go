@@ -172,11 +172,17 @@ func rootCmd() *cli.Command {
 		WithSynopsis("one CLI for the verse prototype").
 		WithDescription("`up` starts the daemon(s); every other subcommand is a client.").
 		WithOpts(gopts...).
-		// Each collection appears TWICE and means two different things: the plural lists it
-		// (`verse gates`), the singular acts on one member of it (`verse gate approve <id>`).
-		// They are listed as pairs so the rule is visible in the help rather than something
-		// you have to be told. `docket` and `providers` were already bare plurals; the rest
-		// spent their lives as `<group> list`, which is the same idea in more words.
+		// Each collection appears TWICE, and the two spellings are how you say the two
+		// things: the plural lists it (`verse gates`), the singular acts on one member of it
+		// (`verse gate approve <id>`). They are listed as pairs so the rule is visible in the
+		// help rather than something you have to be told. `docket` and `providers` were
+		// already bare plurals; the rest spent their lives as `<group> list`, which is the
+		// same idea in more words.
+		//
+		// The plural also ANSWERS to the singular's verbs (see dispatch), so the second
+		// command is an edit of the first rather than a retype: `verse entities`, up-arrow,
+		// `verse entities get demo:pr:1`. Only the bare plural lists, so there is still one
+		// listing and one name for it.
 		WithSubs(
 			upCmd(),
 			watchCmd(),
@@ -196,18 +202,24 @@ func rootCmd() *cli.Command {
 		)
 }
 
-// collection builds a bare plural command that lists one collection — `verse gates`,
+// collection builds a plural command that lists one collection — `verse gates`,
 // `verse flows` — which is also how the HTTP surface addresses it (GET /gates, GET /flows).
-func collection(name, route, synopsis, singular string) *cli.Command {
+// It also carries the SINGULAR's subcommands (see dispatch), so bare it lists and with a
+// verb it acts on one member.
+func collection(name, route, synopsis, singular string, subs ...*cli.Command) *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	return cli.NewCommandAt(&cfg.Command, name).
 		WithSynopsis(synopsis).
+		WithSubs(subs...).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
 				return err
 			}
-			if err := noArgs(name, singular, args); err != nil {
+			if handled, err := dispatch(cfg.Command, cc, args); handled {
+				return err
+			}
+			if err := noArgs(cfg.Command, name, singular, args); err != nil {
 				return err
 			}
 			resp, err := httpGet(route, nil)
@@ -218,24 +230,50 @@ func collection(name, route, synopsis, singular string) *cli.Command {
 		})
 }
 
-// noArgs refuses positionals on a command that takes none, and names the singular that does.
+// dispatch runs the singular's subcommand named by args[0], when the plural has one — so
+// `verse entities get demo:pr:1` is the same command as `verse entity get demo:pr:1`. It
+// reports whether it handled the args at all; nothing else here can, since a plural with
+// its own Run never reaches the library's own sub-dispatch.
 //
-// It is load-bearing for exactly the commands that moved: `gate list` → `gates` retires a
-// lot of muscle memory, and a listing that IGNORED its arguments would turn `verse goals add
-// ship-it` into a silent listing of your goals — the command doing something plausible
-// instead of saying it was the wrong command.
-func noArgs(name, singular string, args []string) error {
+// Why both spellings work: the plural is what you type to see what is there, and the
+// singular is what you type NEXT, about one of them. With the plural refusing verbs, that
+// second command was a retype rather than an edit of the line already in your shell
+// history — and the refusal was pure grammar, since there was exactly one command it could
+// have meant.
+//
+// The listing keeps its own bare name, so this does not put back the two-ways-to-list the
+// plural rename removed: `verse entities list` is still an error, and says so.
+func dispatch(cmd *cli.Command, cc *cli.Context, args []string) (bool, error) {
+	if len(args) == 0 {
+		return false, nil
+	}
+	sub := cmd.FindSub(cc, args[0])
+	if sub == nil {
+		return false, nil
+	}
+	return true, sub.Run(cc, args[1:])
+}
+
+// noArgs refuses a positional the plural cannot dispatch, and names what it could have been.
+//
+// A listing that IGNORED its arguments would turn a typo into a plausible answer:
+// `verse goals add-it ship` printing your goals reads as success at the wrong thing.
+func noArgs(cmd *cli.Command, name, singular string, args []string) error {
 	if len(args) == 0 {
 		return nil
 	}
-	// `verse goals list` is THE mistake this rename creates, and forwarding it to
+	// `verse goals list` is THE mistake the plural rename creates, and forwarding it to
 	// `verse goal list` would name a second command that does not exist either.
 	if args[0] == "list" {
 		return fmt.Errorf("%w: `verse %s list` was replaced by `verse %s` — the plural is the listing",
 			cli.ErrUsage, singular, name)
 	}
-	return fmt.Errorf("%w: %s takes no arguments — did you mean `verse %s %s`?",
-		cli.ErrUsage, name, singular, strings.Join(args, " "))
+	verbs := make([]string, 0, len(cmd.Children))
+	for _, c := range cmd.Children {
+		verbs = append(verbs, c.Name)
+	}
+	return fmt.Errorf("%w: verse %s: no such command %q — bare it lists, and it takes `verse %s`'s verbs (%s)",
+		cli.ErrUsage, name, args[0], singular, strings.Join(verbs, ", "))
 }
 
 // leaf builds a client subcommand that takes no positionals of its own but still

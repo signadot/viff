@@ -20,13 +20,21 @@ entity change ──▶ trigger matches ──▶ gate resolves ──▶ action
 go build -o verse ./cmd/verse     # or: make bin
 export VERSE_ADDR=localhost:9797
 ./verse up                        # engine + process runtime + store, in one process
+
+./seed-demo.sh                    # in another terminal: a charter, entities, a waiting gate
 ```
 
-`up` brings up logd and docd as children, so the store is durable from the first run. In
-another terminal, install a charter and drive it: `verse trigger add …`, `verse entity put …`,
-`verse gates`, `verse gate approve …`. The [tutorial](docs/tutorial.md) walks it end to
-end — charters, gates, processes, steering, human-executed dial-in processes, and
-federating your local working tree.
+`up` brings up logd and docd as children, so the store is durable from the first run — it
+resolves the `o` that hosts them itself (`--o-bin`, else a version-matched one on `PATH`,
+else installed into `~/.verse/bin`; see [the reference](docs/reference.md#the-o-binary)), so
+`up` works wherever you run it, not only in a checkout.
+
+`seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto reaction
+that has already happened and one gate waiting for you — then prints what to type next.
+Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse gates`,
+`verse gate approve …`. The [tutorial](docs/tutorial.md) walks it end to end — charters,
+gates, processes, steering, human-executed dial-in processes, and federating your local
+working tree.
 
 ## What's here
 

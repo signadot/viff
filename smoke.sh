@@ -91,6 +91,11 @@ step "entity put/get"
 v entity put demo:pr:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
 haskv "$(v entity get demo:pr:1)" stage open || die "entity get did not roundtrip"
 ok "demo:pr:1 = {stage:open}"
+# The plural answers to the singular's verbs too, so `verse entities` then `verse entities
+# get demo:pr:1` is an edit of the line already in your history rather than a retype. The
+# unit tests assert the command is REACHABLE; this asserts it still reaches the server.
+haskv "$(v entities get demo:pr:1)" stage open || die "the plural did not dispatch entity get"
+ok "verse entities get == verse entity get (the plural takes the singular's verbs)"
 
 # ── the representation: verse READS three dialects and WRITES two ────────────
 # The asymmetry is the design (see package codec): JSON input is parsed as tony, because

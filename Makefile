@@ -122,6 +122,12 @@ check: check-generate check-json ## every static check (what CI should run befor
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a free port)
 	@./smoke.sh
 
+# Note the difference from smoke: smoke builds its own binaries and its own server and
+# reaps both; this one writes into YOUR running verse and leaves it there to play with.
+.PHONY: seed-demo
+seed-demo: ## seed a RUNNING verse with a demo charter + entities (./seed-demo.sh --help)
+	@./seed-demo.sh
+
 # The representation is a DEFAULT, not a fixture: tony out of the box, JSON when asked for.
 # Running the suite only one way would let the other rot silently — and the JSON path is what
 # every existing client and `curl | jq` still uses. This is the target CI should call.

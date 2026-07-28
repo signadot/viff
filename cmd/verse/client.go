@@ -363,15 +363,25 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 
 // ── gate ─────────────────────────────────────────────────────────────────────
 
+// gateSubs is the group's verbs, built fresh per call: the singular and the plural each
+// hold their OWN instances (a Command is parented by whoever it is added to, and each
+// carries the flag values of the invocation), so the one thing shared is this list. That
+// is deliberate — a verb added here reaches both spellings, which is what
+// TestPluralsTakeTheSingularsVerbs pins. Same for the five below.
+func gateSubs() []*cli.Command {
+	return []*cli.Command{gateAnswerCmd(true), gateAnswerCmd(false)}
+}
+
 func gatesCmd() *cli.Command {
 	return collection("gates", "/gates",
-		"gates — list pending decisions across the fleet (answer one with `verse gate`)", "gate")
+		"gates — list pending decisions across the fleet (answer one with `verse gate`)", "gate",
+		gateSubs()...)
 }
 
 func gateCmd() *cli.Command {
 	return cli.NewCommand("gate").
 		WithSynopsis("gate — answer one human-in-the-loop decision (list them with `verse gates`)").
-		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false))
+		WithSubs(gateSubs()...)
 }
 
 // The answer to a gate is a VERB, so it is a command — `gate approve <id>` — rather than
@@ -443,10 +453,14 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 
 // ── entity ───────────────────────────────────────────────────────────────────
 
+func entitySubs() []*cli.Command {
+	return []*cli.Command{entityGetCmd(), entityPutCmd(), entityRmCmd()}
+}
+
 func entityCmd() *cli.Command {
 	return cli.NewCommand("entity").WithAliases("e").
 		WithSynopsis("entity — one entity in the store: get|put|rm <ref> (list them with `verse entities`)").
-		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd())
+		WithSubs(entitySubs()...)
 }
 
 type entityGetConfig struct{ *cli.Command }
@@ -621,6 +635,7 @@ func entitiesCmd() *cli.Command {
 	return cli.NewCommandAt(&cfg.Command, "entities").
 		WithSynopsis("entities — list the store [--system <s>] [--kind <k>] (get or put one with `verse entity`)").
 		WithOpts(opts...).
+		WithSubs(entitySubs()...).
 		WithRun(cfg.run)
 }
 
@@ -629,7 +644,10 @@ func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := noArgs("entities", "entity", args); err != nil {
+	if handled, err := dispatch(cfg.Command, cc, args); handled {
+		return err
+	}
+	if err := noArgs(cfg.Command, "entities", "entity", args); err != nil {
 		return err
 	}
 	q := url.Values{}

@@ -9,21 +9,26 @@ import (
 	"github.com/signadot/verse/api"
 )
 
+func flowSubs() []*cli.Command {
+	return []*cli.Command{
+		flowShowCmd(),
+		flowPauseCmd(),
+		flowResumeCmd(),
+		flowCancelCmd(),
+		flowSayCmd(),
+	}
+}
+
 func flowsCmd() *cli.Command {
 	return collection("flows", "/flows",
-		"flows — list the distinct subjects with in-flight processes (steer one with `verse flow`)", "flow")
+		"flows — list the distinct subjects with in-flight processes (steer one with `verse flow`)", "flow",
+		flowSubs()...)
 }
 
 func flowCmd() *cli.Command {
 	return cli.NewCommand("flow").
 		WithSynopsis("flow — steer live processes by the subject they are about (list them with `verse flows`)").
-		WithSubs(
-			flowShowCmd(),
-			flowPauseCmd(),
-			flowResumeCmd(),
-			flowCancelCmd(),
-			flowSayCmd(),
-		)
+		WithSubs(flowSubs()...)
 }
 
 type flowShowConfig struct{ *cli.Command }
