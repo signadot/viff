@@ -1,6 +1,6 @@
 # `verse expose`: a named, durable directory surface (reframing `connect`)
 
-Status: design note, not implemented. This reframes [`connect`](../connect.md) — it keeps the
+Status: design note, not implemented. This reframes [`connect`](../working/connect.md) — it keeps the
 federation mechanics (docd content controller, `dir-status`/`dir-content`) and changes what is
 *named*, what *persists*, and what is *automatic*.
 

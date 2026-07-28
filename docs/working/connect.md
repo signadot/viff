@@ -2,13 +2,13 @@
 
 How `connect` federates your working tree into the verse, and how it leans on docd's two
 faces to do it. This is the mechanics-and-docd view; for the general controller model see
-[writing a controller](controllers.md), and to run it first see
-[tutorial §8](tutorial.md#8-federate-your-local-working-tree).
+[writing a controller](../controllers.md), and to run it first see
+[tutorial §8](../tutorial.md#8-federate-your-local-working-tree).
 
 `connect` is a proof of concept of federation rather than its settled shape. It works, and
 the mechanics below are the real ones, but it fuses three separable things into one
 ephemeral session: the directory surface, the scope that isolates it, and a validator
-charter over it. [expose](roadmap/expose.md) is where that goes — the surface gets a name
+charter over it. [expose](../roadmap/expose.md) is where that goes — the surface gets a name
 and outlives the session, and the validator becomes a charter you opt into. Read this for
 how federation works today; read that for what it is becoming.
 
@@ -31,7 +31,7 @@ docd is the store daemon behind a durable verse (over logd). It exposes two netw
   (copy-on-write) writes; this is what `entity.OpenLogdStore`/`OpenScopedStore` connect to.
 - a mount (controller) face — where a controller mounts a subtree of the document
   tree to *own* it, serving reads/writes for that subtree on demand (docd composes the
-  mounted controller's response into the read). See [writing a controller](controllers.md).
+  mounted controller's response into the read). See [writing a controller](../controllers.md).
 
 `connect` uses both: the client face for metadata, the mount face for content.
 
@@ -74,7 +74,7 @@ mechanism to be made per-scope. So the index (which *must* be isolated per dev, 
 triggers react to) goes through scoped writes, while the content controller is a baseline
 mount whose per-session isolation comes from the nonce in `<scope>` rather than from COW.
 Two concurrent `connect`s therefore write to two isolated scopes but mount at two distinct,
-collision-free `dir-content-<nonce>` paths. (This is the crux [content federation](content-federation.md)
+collision-free `dir-content-<nonce>` paths. (This is the crux [content federation](../content-federation.md)
 explains in full.)
 
 ## Finding docd's faces
@@ -106,12 +106,12 @@ loop runs isolated in its own scope, off the shared baseline.
 
 Today only `read_file` resolves through the content controller. `list_dir` /
 `write_file` / `run_bash` still hit the local filesystem, so a fully-remote validator that
-needs those wants them federated too — the write path is [expose](roadmap/expose.md#the-write-half).
+needs those wants them federated too — the write path is [expose](../roadmap/expose.md#the-write-half).
 `--root` remains only as the non-federated, single-machine default (an agent reading its own
 working directory); a federated process never touches the server's disk for a file.
 
 ## See also
 
-- [content federation](content-federation.md) — why `connect` replaced `--root` (the wrong side, the wrong reach).
-- [writing a controller](controllers.md) — how to write a docd controller (the general form of the content controller).
-- [the overview](overview.md) — where connect sits in the whole system.
+- [content federation](../content-federation.md) — why `connect` replaced `--root` (the wrong side, the wrong reach).
+- [writing a controller](../controllers.md) — how to write a docd controller (the general form of the content controller).
+- [the overview](../overview.md) — where connect sits in the whole system.

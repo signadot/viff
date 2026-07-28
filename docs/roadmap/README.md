@@ -4,9 +4,16 @@ Design notes for work that is not built. Nothing in this directory describes cod
 can run; each note records a gap, a direction, and the reasoning that has survived so far.
 For what verse does today, go back up to [the docs index](../README.md).
 
-A note lands here when its subject does not exist in the tree — not when it is merely
-incomplete. A doc about something that runs, with a corner missing, stays in `docs/` and
-says which corner.
+This directory is meant to be read front to back, as one argument. That is what
+distinguishes it from [working/](../working/README.md), which holds undone design too: a
+roadmap note has been reconciled with the others — it agrees with them, cross-references
+instead of repeating, and has a place in the ordering under [the two
+threads](#the-two-threads). A note arrives here by being synthesized into that whole,
+which usually means editing an existing note rather than adding a file.
+
+Not existing yet is necessary but not sufficient. An idea, a half-design, or an argument
+still finding its shape belongs in `working/` until someone does the reconciling. A doc
+about something that runs, with a corner missing, stays in `docs/` and says which corner.
 
 ## The two threads
 

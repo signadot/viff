@@ -826,7 +826,7 @@ filesystem required.
 And it installs a scoped trigger that spawns a validator per file.
 
 It all lives in a nonce scope, isolated from baseline and from other devs, and on exit
-`connect` drops it. The mechanics are in [connect](connect.md).
+`connect` drops it. The mechanics are in [connect](working/connect.md).
 
 In terminal A, start the daemon. Configure LLM creds first (§1) so the validators can run
 as real agents:

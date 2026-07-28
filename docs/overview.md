@@ -110,7 +110,7 @@ reconcile at startup.
 `source` federates external state in. `verse connect` reflects a working tree into a scope,
 writing file metadata as entities and serving contents on demand through a docd controller,
 and the same pattern generalizes to git, GitHub and the rest. See [connect](working/connect.md),
-[sources](sources.md), and [content federation](working/content-federation.md).
+[sources](sources.md), and [content federation](content-federation.md).
 
 ## The load-bearing decisions
 

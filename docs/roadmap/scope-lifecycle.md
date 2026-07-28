@@ -93,5 +93,5 @@ auto-created on the first metadata write and auto-deleted on disconnect — the 
 
 The store seam (`Store.Scope` / `ScopeDeleter`) is unchanged; this is a registry + API layer above
 it. `connect`'s effective behavior (nonce scope, auto-drop) is unchanged — it simply stops being
-the sole owner of teardown. See also [connect](../connect.md) and
+the sole owner of teardown. See also [connect](../working/connect.md) and
 [deployment and steering](../deployment-and-steering.md).

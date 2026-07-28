@@ -77,9 +77,23 @@ the verse that owns it, through a docd controller.
 ## What is built, and what isn't
 
 Every doc in this directory describes something that runs, and says so where a corner of it
-does not. Every doc in [roadmap/](roadmap/README.md) describes something that does not exist
-yet. That is the only distinction the two directories carry, and it is checkable: if a note's
-subject has no code, it belongs in the roadmap.
+does not. A gap inside something that runs is recorded where it runs — the note stays here
+and names the missing corner.
+
+Design notes for work that is *not* built live in one of two places below, and the line
+between them is editorial rather than factual:
+
+- [roadmap/](roadmap/README.md) is a synthesized whole. It is read front to back, so its
+  notes agree with each other, cross-reference rather than repeat, and are ordered by what
+  unblocks what. Adding to it is an act of synthesis, not filing.
+- [working/](working/README.md) is everything else worth keeping in the repo to iterate on:
+  ideas, half-designs, an argument that has not finished arriving. No coherence is owed —
+  between two working notes, or between a working note and the roadmap.
+
+So there are two independent questions, not one. *Does it run?* decides `docs/` versus the
+other two. *Does it cohere with the rest of the plan yet?* decides `working/` versus
+`roadmap/`. A note is promoted by being written into the roadmap's argument — often merged
+into an existing note — which is why promotion is rarely a `git mv`.
 
 ## Elsewhere
 
