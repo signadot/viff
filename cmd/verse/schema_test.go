@@ -5,24 +5,25 @@ import (
 	"testing"
 )
 
-// `verse schema` prints the ROOT — the top-level paths and the shapes served there — because
-// that is the question someone typing it has: what is a verse. The flat set of thirty-odd
-// signature names is at GET /schema for anything resolving the graph; it is not an answer to
-// read.
-func TestSchemaPrintsTheRoot(t *testing.T) {
+// `verse schema` prints the WHOLE schema: the root, and then the shapes its values name. It
+// printed only the root for a while — eight references and none of the things referenced —
+// which made the command that exists to show you the schema show you an index of it.
+func TestSchemaPrintsTheWholeSchema(t *testing.T) {
 	serve(t)
 
 	out, err := runCLI(t, "schema")
 	if err != nil {
 		t.Fatalf("verse schema: %v", err)
 	}
-	if !strings.Contains(out, "name: verse-root") {
-		t.Errorf("verse schema did not print the root signature:\n%s", out)
-	}
-	for _, want := range []string{"entities: .[array(verse-entity)]", "status: .[verse-status]"} {
+	// The root, first, since it is what the rest is read from.
+	for _, want := range []string{"root:", "entities: .[array(verse-entity)]", "status: .[verse-status]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verse schema is missing %q:\n%s", want, out)
 		}
+	}
+	// And the shapes those references name, rather than the names alone.
+	if !strings.Contains(out, "signatures:") || !strings.Contains(out, "name: verse-instance") {
+		t.Errorf("verse schema printed the root without the signatures it names:\n%s", out)
 	}
 }
 

@@ -132,7 +132,8 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 // the impression of two tiers of schema where there is one.
 //
 // So: no origin metadata on the wire, and a curated-origin signature is indistinguishable from
-// a generated one — same place in the map, same keys.
+// a generated one — same place in the map, same keys. The document carries the root and the
+// signatures, both of which ARE schema; nothing else belongs beside them.
 func TestSchemaServesSignaturesWithoutOrigin(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -144,8 +145,8 @@ func TestSchemaServesSignaturesWithoutOrigin(t *testing.T) {
 		t.Fatalf("/schema has no signatures object")
 	}
 	for _, k := range doc.Fields {
-		if k.String != "signatures" {
-			t.Errorf("/schema publishes %q beside the signatures; the response is the schema, "+
+		if k.String != "signatures" && k.String != "root" {
+			t.Errorf("/schema publishes %q beside the schema; the response is the schema, "+
 				"not a report on where it came from", k.String)
 		}
 	}
@@ -194,14 +195,16 @@ func TestSchemaRefusesJSON(t *testing.T) {
 // name that did not exist. Nothing failed — a schema nobody resolves cannot fail — which is
 // exactly why it needs a test rather than a reader.
 //
-// It reads the ENDPOINT rather than the index, so it also covers verse-root, which is nothing
-// but references and is not in the index at all (the server synthesizes it).
+// It reads the ENDPOINT rather than the index, and it checks the ROOT too — which is nothing
+// but references, is not in the index at all (the server synthesizes it), and is the first
+// thing anyone reads. A dangling name there is a dead end on the front page.
 func TestEverySignatureReferenceResolves(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	sigs := ir.Get(published(t, ts, "/schema"), "signatures")
+	doc := published(t, ts, "/schema")
+	sigs := ir.Get(doc, "signatures")
 	if sigs == nil || sigs.Type != ir.ObjectType {
 		t.Fatalf("/schema has no signatures object")
 	}
@@ -212,22 +215,30 @@ func TestEverySignatureReferenceResolves(t *testing.T) {
 	// A reference is `verse-<name>`, optionally qualified by the context alias of the
 	// package that defines it (`launch:verse-launch-spec`). tony-base refs are external.
 	ref := regexp.MustCompile(`(?:[a-z0-9-]+:)?(verse-[a-z0-9-]+)`)
-	for i, f := range sigs.Fields {
-		body, err := codec.Marshal(sigs.Values[i], codec.Tony)
+	check := func(name string, n *ir.Node) {
+		body, err := codec.Marshal(n, codec.Tony)
 		if err != nil {
-			t.Fatalf("render %s: %v", f.String, err)
+			t.Fatalf("render %s: %v", name, err)
 		}
 		for _, m := range ref.FindAllStringSubmatch(string(body), -1) {
+			if m[1] == api.RootSignature {
+				continue // the root names itself, in its own signature block
+			}
 			if !known[m[1]] {
-				t.Errorf("signature %q references %q, which is not published", f.String, m[1])
+				t.Errorf("%s references %q, which is not published", name, m[1])
 			}
 		}
 	}
+	for i, f := range sigs.Fields {
+		check("signature "+f.String, sigs.Values[i])
+	}
+	check("the root", ir.Get(doc, "root"))
 }
 
 // verse-root is what a verse LOOKS LIKE: one object whose keys are the top-level paths and
 // whose values are the shapes served there. It is the entry point the schema did not have — a
-// flat set of named shapes answers "what is a verse-entity" and never "what is a verse".
+// flat set of named shapes answers "what is a verse-entity" and never "what is a verse" — so it
+// is published FIRST, above the signatures it names, rather than filed under `v` among them.
 //
 // The set is pinned exactly, in both directions, because it is derived: a new top-level GET
 // changes the front page of the API, and that should be a decision recorded here rather than
@@ -238,17 +249,22 @@ func TestRootSchemaIsTheTopLevelPathsAndTheirShapes(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// The CLI's path: `verse schema` is GET /schema/verse-root. It must be the same document
-	// the set publishes, not a second rendering of the same idea.
-	root := published(t, ts, "/schema/"+api.RootSignature)
-	inSet := ir.Get(ir.Get(published(t, ts, "/schema"), "signatures"), api.RootSignature)
-	if inSet == nil {
-		t.Fatal("verse-root is not in the published set")
+	doc := published(t, ts, "/schema")
+	if doc.Fields[0].String != "root" {
+		t.Errorf("/schema leads with %q; the root is what the document is read from",
+			doc.Fields[0].String)
 	}
-	byName, _ := codec.Marshal(root, codec.Tony)
-	inAll, _ := codec.Marshal(inSet, codec.Tony)
+	root := ir.Get(doc, "root")
+	if root == nil {
+		t.Fatal("/schema publishes no root")
+	}
+	// It resolves by name too, since it is a signature like any other and the values in it
+	// point at siblings. Both must be the same document, not two renderings of one idea.
+	inAll, _ := codec.Marshal(root, codec.Tony)
+	byName, _ := codec.Marshal(published(t, ts, "/schema/"+api.RootSignature), codec.Tony)
 	if string(byName) != string(inAll) {
-		t.Errorf("GET /schema/verse-root and the set disagree:\n%s\nvs\n%s", byName, inAll)
+		t.Errorf("GET /schema/verse-root and the root in the document disagree:\n%s\nvs\n%s",
+			byName, inAll)
 	}
 
 	want := map[string]string{

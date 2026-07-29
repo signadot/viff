@@ -67,10 +67,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, api.Routes{Routes: s.routes})
 }
 
-// serveSchema publishes every signature the runtime's types define, as one flat set keyed by
-// name, plus the synthesized verse-root. Where a signature came from — generated from a Go
-// struct, or hand-written because codegen cannot describe the type — is verse's problem and
-// stays out of the response.
+// serveSchema publishes the whole schema in one document: the synthesized root, then every
+// signature the runtime's types define, as a flat set keyed by name. Where a signature came
+// from — generated from a Go struct, or hand-written because codegen cannot describe the type —
+// is verse's problem and stays out of the response.
 func (s *Server) serveSchema(w http.ResponseWriter, r *http.Request) {
 	doc, err := schema.All(rootSignature(s.routes))
 	if err != nil {

@@ -165,28 +165,27 @@ func Curated() ([]string, error) {
 	return out, nil
 }
 
-// All returns the whole graph as one document: every signature under its name, and nothing
-// else. Curated and generated entries sit side by side, indistinguishable, which is the point —
-// a reader gets shapes to resolve, not a report on how verse arrived at them.
+// All returns the whole graph as one document: the root, then every signature under its name.
+// Curated and generated entries sit side by side, indistinguishable, which is the point — a
+// reader gets shapes to resolve, not a report on how verse arrived at them.
 //
-// synthesized carries signatures the CALLER built, indexed under their own names alongside the
-// rest. verse-root is the one: it describes the server's surface rather than a Go type, so it
-// is derived from a route table this package cannot see and must not pretend to have.
-func All(synthesized ...*ir.Node) (*ir.Node, error) {
+// root is what the API looks like keyed by top-level path, and it goes FIRST (`root` sorts
+// before `signatures`) because that is the order this document is read in: what a verse is,
+// then the shapes that answer it. It is a parameter rather than something this package builds
+// because it is derived from a route table only the server has — see versed's rootSignature.
+// Nil omits it, which is what a caller with no route table should say rather than inventing one.
+func All(root *ir.Node) (*ir.Node, error) {
 	once.Do(load)
 	if loadErr != nil {
 		return nil, loadErr
 	}
-	sigs := make(map[string]*ir.Node, len(byName)+len(synthesized))
+	sigs := make(map[string]*ir.Node, len(byName))
 	for n, d := range byName {
 		sigs[n] = d.DeepCopy() // parented into a new document; never hand out the index's node
 	}
-	for _, d := range synthesized {
-		if n := signatureName(d); n != "" {
-			sigs[n] = d
-		}
+	doc := map[string]*ir.Node{"signatures": ir.FromMap(sigs)}
+	if root != nil {
+		doc["root"] = root
 	}
-	return ir.FromMap(map[string]*ir.Node{
-		"signatures": ir.FromMap(sigs),
-	}), nil
+	return ir.FromMap(doc), nil
 }
