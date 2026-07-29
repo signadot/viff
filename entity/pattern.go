@@ -87,8 +87,8 @@ func (p Pattern) MatchRef(ref Ref) bool {
 
 // Select returns the refs of every stored entity the pattern picks: entities of
 // (System, Kind) whose payload satisfies every Fields entry.
-func (p Pattern) Select(store Store) []Ref {
-	ents := store.List(func(ref Ref) bool {
+func (p Pattern) Select(r Reader) []Ref {
+	ents := r.List(func(ref Ref) bool {
 		return ref.System == p.System && (p.Kind == "" || ref.Kind == p.Kind)
 	})
 	out := make([]Ref, 0, len(ents))

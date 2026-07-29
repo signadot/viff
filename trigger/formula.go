@@ -120,7 +120,7 @@ const (
 // holds — the witness: the fact refs whose presence satisfied it, for use as a commit
 // CAS precondition. Pessimistic: a formula not satisfied now is false (blocks). Only
 // the atom node is evaluated in this first pass; other ops block until implemented.
-func (f *Formula) Eval(store entity.Store) (bool, []entity.Ref) {
+func (f *Formula) Eval(r entity.Reader) (bool, []entity.Ref) {
 	if f == nil {
 		return false, nil
 	}
@@ -129,7 +129,7 @@ func (f *Formula) Eval(store entity.Store) (bool, []entity.Ref) {
 		if f.Req == nil {
 			return false, nil
 		}
-		return f.Req.eval(store)
+		return f.Req.eval(r)
 	default:
 		return false, nil // temporal operators arrive in later steps
 	}
@@ -141,7 +141,7 @@ func (f *Formula) Eval(store entity.Store) (bool, []entity.Ref) {
 // into their operands. A `deadline` leaf is a time derivation, not a store fact a producer
 // makes true, so it is omitted (as Subtrees omits it) — you don't "wait on" the clock as
 // unmet work. This is what a goal projects as its `waitingOn` status.
-func (f *Formula) Unmet(store entity.Store) []*Requirement {
+func (f *Formula) Unmet(r entity.Reader) []*Requirement {
 	if f == nil {
 		return nil
 	}
@@ -150,14 +150,14 @@ func (f *Formula) Unmet(store entity.Store) []*Requirement {
 		if f.Req == nil || f.Req.Kind == ReqDeadline {
 			return nil
 		}
-		if ok, _ := f.Req.eval(store); ok {
+		if ok, _ := f.Req.eval(r); ok {
 			return nil
 		}
 		return []*Requirement{f.Req}
 	default:
 		var out []*Requirement
 		for _, a := range f.Args {
-			out = append(out, a.Unmet(store)...)
+			out = append(out, a.Unmet(r)...)
 		}
 		return out
 	}
@@ -266,17 +266,17 @@ func (f *Formula) Subtrees() [][2]string {
 // eval evaluates a requirement against the store, returning satisfaction and the witness
 // refs. Only quorum is implemented; other kinds are stubs that block (their producers
 // are not built yet).
-func (r *Requirement) eval(store entity.Store) (bool, []entity.Ref) {
+func (r *Requirement) eval(src entity.Reader) (bool, []entity.Ref) {
 	switch r.Kind {
 	case ReqQuorum:
-		refs := r.Facts.Select(store)
+		refs := r.Facts.Select(src)
 		return len(refs) >= r.N, refs
 	case ReqFact, ReqMatch:
 		// presence: the fact holds iff a matching entity exists (quorum of 1). Used for
 		// oracle facts and, notably, the `deadline` leaf of an `until` — time as a fact.
 		// A match leaf reads the same way when evaluated as a store predicate rather than
 		// as an edge, so a `when` composes inside a temporal formula.
-		refs := r.Facts.Select(store)
+		refs := r.Facts.Select(src)
 		return len(refs) >= 1, refs
 	default:
 		return false, nil // judgment/ask/default: producers not built yet — they block

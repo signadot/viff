@@ -233,13 +233,17 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 					if ctx.Err() != nil {
 						return
 					}
+					// Fire on bgctx, not this trigger's ctx: a firing already under way — a
+					// posed gate, a spawned process — belongs to the work, not to the charter
+					// entry, and removing the trigger stops FURTHER firings rather than
+					// cancelling one in flight.
+					if t.Condition.On != nil {
+						e.dispatchEdge(e.bgctx, t, c) // once for the commit
+						continue
+					}
 					for _, ev := range c.Changes {
-						// Fire on bgctx, not this trigger's ctx: a firing already under way
-						// — a posed gate, a spawned process — belongs to the work, not to the
-						// charter entry, and removing the trigger stops FURTHER firings
-						// rather than cancelling one in flight. No ignition guard: this watch
-						// delivers exactly the slice the trigger named, so naming it was the
-						// opt-in.
+						// No ignition guard: this watch delivers exactly the slice the
+						// trigger named, so naming it was the opt-in.
 						e.dispatchOne(e.bgctx, t, ev, false)
 					}
 				}
@@ -408,9 +412,18 @@ func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	trigs := make([]Trigger, len(e.triggers))
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
+	// An `on` trigger is asked once about the whole commit; the rest are asked per change.
+	for i := range trigs {
+		if trigs[i].Condition.On != nil {
+			e.dispatchEdge(ctx, trigs[i], c)
+		}
+	}
 	for _, ev := range c.Changes {
 		e.reap(ev) // retire completed processes from their flow (store-driven bookkeeping)
 		for i := range trigs {
+			if trigs[i].Condition.On != nil {
+				continue // dispatched above, per commit
+			}
 			// The root loop guards ignition; a subtree watch does not (see dispatchOne).
 			e.dispatchOne(ctx, trigs[i], ev, true)
 		}
@@ -532,12 +545,20 @@ func summarize(parts []string) string {
 func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 	subjects := t.resolveSubject(ev, e.store)
 	if len(subjects) == 0 {
-		// e.g. a subject pattern that names nothing this firing is about — a process whose
-		// `flow` the pattern does not match, or a store selector that picks nothing.
+		// e.g. a subject pattern that names nothing this firing is about — a store selector
+		// that picks nothing.
 		e.tracef("fire %s on %s: subject resolved to nothing; not firing", t.Name, ev.Ref)
 		return
 	}
+	e.fireSubjects(ctx, t, ev, subjects)
+}
 
+// fireSubjects is the second half of a firing, shared by both dispatch rules: resolve the
+// gates conjunctively, then act on every subject that survives the budget. The subjects are
+// already settled by the time it is called — by resolveSubject for a per-change firing, by the
+// snapshot selection for an edge — which is what lets a gate name what it is deciding about
+// before anything acts.
+func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, subjects []entity.Ref) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	allProceed := true

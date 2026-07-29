@@ -580,7 +580,7 @@ func nodeInt(n *ir.Node) (int, error) {
 //
 // And `omitzero` is inert on a field whose type carries a custom codec, so a generated
 // Condition emitted `when: null` on every charter that names no when — the same shape as item
-// 12. Here, an absent When is simply absent. The Subject is emitted unconditionally, because a
+// 12. Here, an absent When (or On) is simply absent. The Subject is emitted unconditionally, because a
 // condition without one is not installable (Condition.validate) and hiding that in the
 // rendering would turn an install error into a document that reads fine.
 func (c Condition) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
@@ -590,6 +590,14 @@ func (c Condition) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		return nil, fmt.Errorf("condition.subject: %w", err)
 	}
 	kvs = append(kvs, ir.KeyVal{Key: ir.FromString("subject"), Val: s})
+	// `on` before `when`: cause then condition, which is the order they are read in.
+	if c.On != nil {
+		o, err := c.On.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("condition.on: %w", err)
+		}
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("on"), Val: o})
+	}
 	if c.When != nil {
 		w, err := c.When.ToTonyIR(opts...)
 		if err != nil {
@@ -608,6 +616,13 @@ func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	}
 	if node.Type != ir.ObjectType {
 		return fmt.Errorf("condition: want an object, got %v", node.Type)
+	}
+	if o := unwrap(ir.Get(node, "on")); o != nil && o.Type != ir.NullType {
+		var f Formula
+		if err := f.FromTonyIR(o, opts...); err != nil {
+			return fmt.Errorf("condition.on: %w", err)
+		}
+		c.On = &f
 	}
 	if w := unwrap(ir.Get(node, "when")); w != nil && w.Type != ir.NullType {
 		var f Formula

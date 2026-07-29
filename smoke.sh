@@ -239,6 +239,42 @@ done
 haskv "$(v entity get demo:task:feature-9)" stage open || die "the glob subject escalated a task it excludes"
 ok "!glob subject selected hotfix-9 and left feature-9 alone"
 
+# ── `on`: a cause as the RISING EDGE of a store predicate ────────────────────
+# The charters above dispatch on a change to their own subject. This one names its cause
+# separately: it fires at the commit where `on` first holds, having not held before, and acts
+# on whatever its subject selects then. Its own systems, so the charters above cannot reach it.
+#
+# The edge is the point, and it is what a unit test cannot check end to end: the write that
+# makes the predicate FALSE must not fire it, and the one that makes it true must.
+step "trigger with an \`on\` (a cause as a rising edge)"
+v trigger add -f - >/dev/null <<'JSON' || die "on-charter add failed"
+[ { "name": "smoke-on-green",
+    "condition": { "on":      { "system": "smokeci", "kind": "status", "value": { "state": "green" } },
+                   "subject": { "system": "demo", "kind": "build", "value": { "stage": "reviewed" } } },
+    "gates":     [],
+    "action":    { "patch": { "stage": "shipped" } } } ]
+JSON
+has "$(v trigger show smoke-on-green)" 'on' || die "the \`on\` did not survive install"
+ok "installed a charter with an \`on\`"
+v entity put demo:build:1 '{"stage":"reviewed"}' >/dev/null || die "entity put failed"
+# The cause does not hold: no edge, no firing.
+v entity put smokeci:status:build '{"state":"red"}' >/dev/null || die "entity put failed"
+sleep 1
+haskv "$(v entity get demo:build:1)" stage reviewed || die "fired before its cause held"
+ok "no firing while the cause is false"
+# ...and now it rises.
+v entity put smokeci:status:build '{"state":"green"}' >/dev/null || die "entity put failed"
+shippedb=
+for _ in $(seq 1 100); do
+	if haskv "$(v entity get demo:build:1 2>/dev/null || true)" stage shipped; then
+		shippedb=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$shippedb" ] || die "the rising edge did not fire"
+ok "the rising edge fired: demo:build:1 reviewed → shipped"
+
 # ── the human loop: an ask gate HOLDS, and answering it releases the action ───
 # The charters above prove the engine reacts on its own. This is the other half — the dial
 # turned down to `ask` — and it is the one surface with no unit-level end-to-end: the gate

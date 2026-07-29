@@ -300,12 +300,12 @@ func (m Match) MatchEvent(ev entity.Event) bool {
 //
 // The result is sorted by ref, so a fan-out acts on its members in a stable order (which
 // matters when a budget truncates it) and a formula's witness is a stable audit trail.
-func (m Match) Select(store entity.Store) []entity.Ref {
+func (m Match) Select(r entity.Reader) []entity.Ref {
 	p, err := m.pattern()
 	if err != nil {
 		return nil
 	}
-	refs := p.Select(store)
+	refs := p.Select(r)
 	if m.hasDim(mKeyID) {
 		kept := refs[:0]
 		for _, r := range refs {

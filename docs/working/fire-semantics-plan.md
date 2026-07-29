@@ -6,7 +6,8 @@ only what has to change and in what order. Section references of the form "desig
 there.
 
 Each phase is a merge to `main` and a push. `make test` and `./smoke.sh` must be green at the
-merge — baseline re-verified on `7c77701`: smoke passes, 33 checks.
+merge — baseline re-verified on `7c77701`: smoke passes, 33 checks (36 from phase 5,
+which adds three).
 
 **Standing decision: edge-faithful.** Where a choice arises between reporting a level exactly
 and reporting every transition, transitions win. A level can be recovered from the store at
@@ -205,6 +206,30 @@ Two paths coexist on purpose. The new one gets its own tests — the edge fires 
 re-fire while true, the level guard refuses a firing, `when` and the selection come from one
 snapshot — and the old one keeps every existing charter, including all of smoke's, on the code
 that already passes.
+
+**Landed.** `Condition.On` is a `*Formula`, the same type as `When`, because they are one
+grammar: a predicate over the store, asked twice for a cause and once for a condition.
+`Engine.dispatchEdge` is asked once per COMMIT rather than once per changed entity — `on` is a
+predicate over the whole store, so "did it change" is a question about the commit, and asking
+it per entity would answer it once for each. The edge is derived as `AsOf(C-1)` against
+`AsOf(C)` rather than from remembered state, so a replayed commit reaches the same verdict as
+the live one; and the guard and the selection come from the single `AsOf(C)`, which is where
+phase 1's snapshot finally earns its place.
+
+`Select` and `Eval` widened from `entity.Store` to `entity.Reader` — the seam phase 1 built for
+exactly this, and the reason a snapshot can stand in for the store without a second code path.
+
+Two properties an author has to know, both pinned: an edge does NOT re-fire while it stays true
+(a second PR reaching `reviewed` under an unchanged green CI is not a cause), and an `on`
+trigger does NOT act on the backlog (no rising edge to observe at install), which is the exact
+opposite of the level-triggered seed a subject-dispatched trigger gets. Both are consequences of
+`on` being an edge, and both are the kind of thing that is obvious once stated and baffling
+when met in the wild.
+
+Smoke gains a step, against the plan's expectation that it needed none: it is the only thing
+that exercises install-over-the-wire, and the edge is precisely what a unit test cannot check
+end to end — the write that makes the predicate false must not fire, the one that makes it true
+must.
 
 ### Phase 6 — the flip: no `on` means vacuous
 

@@ -43,6 +43,7 @@ signature:
 context:
 - tony-format/context
 define:
+  on: .[nullable(verse-formula)]
   subject: .[object(object)]
   when: .[nullable(verse-formula)]
 signature:

@@ -58,6 +58,27 @@ type Condition struct {
 	// otherwise the firing's own subject (a reflected process's `flow`) when it carries
 	// one, else the SET of matching entities in the store, one action per member.
 	Subject Match `tony:"field=subject"`
+	// On is the CAUSE, as a rising edge of a store predicate: the trigger fires at the commit
+	// where `on` first holds, having not held at the commit before. Optional.
+	//
+	// It is the same grammar as When and evaluated the same way — a predicate over the store,
+	// satisfied when something matching it exists — differing only in WHEN it is asked. `on`
+	// is asked twice, at C-1 and at C, and fires on ¬P → P. `when` is asked once, at C, and
+	// gates. Cause and condition, in one language, told apart by edge and level.
+	//
+	// A trigger carrying one dispatches by that rule and by nothing else: the subject is a
+	// selection over the store at C, one firing per member, and a change to a subject entity
+	// is not a cause. A trigger without one keeps the older dispatch (below), which is what
+	// every charter written so far relies on.
+	//
+	// Two consequences worth knowing before writing one. An EDGE DOES NOT RE-FIRE while it
+	// stays true: `on: {system: demo, kind: pr, value: {stage: reviewed}}` rises when the
+	// first PR reaches `reviewed` and says nothing about the second, because the predicate was
+	// already true. And an `on` trigger does NOT act on the backlog — installed over a verse
+	// where its predicate already holds, there is no rising edge to observe, where a
+	// subject-dispatched trigger acts on everything already standing (see the level-triggered
+	// seed in docs/change-events.md).
+	On *Formula `tony:"field=on,omitzero"`
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
 	// one change event; temporal operators relate the verse's evolution instead.
 	//
@@ -74,6 +95,9 @@ type Condition struct {
 // complexity hides, so a charter that cannot mean what it says fails at install rather than
 // silently matching nothing.
 func (c Condition) validate() error {
+	if err := c.validateOn(); err != nil {
+		return err
+	}
 	if len(c.Subject) == 0 {
 		return fmt.Errorf(`condition.subject required: a trigger has to say what it acts on, ` +
 			`because nothing else in it does — the action has no target of its own, and a when ` +
@@ -84,19 +108,27 @@ func (c Condition) validate() error {
 	if err := c.Subject.Validate(); err != nil {
 		return fmt.Errorf("condition.subject: %w", err)
 	}
-	if c.When == nil {
+	if c.On != nil {
+		// The cause is `on`, and validateOn has already checked what the edge rule reads. A
+		// `when` beside it is the level guard, checked below like any other.
+		if c.When == nil {
+			return nil
+		}
+	} else if c.When == nil {
 		// The subject is the cause too: this fires on changes to what it is about, one firing
 		// per change, so the subject is never asked to select a set out of the store and needs
 		// no definite kind. `{system: demo}` is a complete condition — every demo entity that
 		// changes, about the one that changed.
 		return nil
 	}
-	_, names := c.Subject.Names()
-	if !names && !c.Subject.Selects() {
-		return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or name ` +
-			`both a system and a kind when the condition has its own when: the change that fires ` +
-			`is not the subject then, so the subject has to select out of the store, and it has to ` +
-			`name a definite kind to select and spawn for`)
+	if c.On == nil {
+		_, names := c.Subject.Names()
+		if !names && !c.Subject.Selects() {
+			return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or name ` +
+				`both a system and a kind when the condition has its own when: the change that fires ` +
+				`is not the subject then, so the subject has to select out of the store, and it has to ` +
+				`name a definite kind to select and spawn for`)
+		}
 	}
 	if !c.When.IsMatchAtom() {
 		return fmt.Errorf("condition.when carries temporal operators, which are not evaluated " +
@@ -111,11 +143,49 @@ func (c Condition) validate() error {
 	return nil
 }
 
+// validateOn checks the cause half of the condition. An `on` trigger dispatches by the edge
+// rule, so what it needs is exactly what that rule reads: a predicate the store can answer at
+// two revisions, a subject that selects, and a system to watch.
+func (c Condition) validateOn() error {
+	if c.On == nil {
+		return nil
+	}
+	if !c.On.IsMatchAtom() {
+		return fmt.Errorf("condition.on carries temporal operators, which are not evaluated " +
+			"yet: `on` is a store predicate asked at two revisions, so it has to be answerable " +
+			"at one. Use a point-in-time match; temporal composition works in a gate's " +
+			"`formula` and a goal's `doneWhen`")
+	}
+	if err := c.On.Req.Facts.Validate(); err != nil {
+		return fmt.Errorf("condition.on: %w", err)
+	}
+	if c.On.Req.Facts.System() == "" {
+		return fmt.Errorf("condition.on needs a system: it names the subtree whose changes are " +
+			"the cause, and a watch path cannot be a wildcard (kind is optional)")
+	}
+	if c.On.Req.Facts.hasDim(mKeyOp) {
+		return fmt.Errorf("condition.on cannot take `op`: it is a predicate over STATE, asked " +
+			"at two revisions, and state has no op. A create is the rising edge of \"this " +
+			"exists\"; write that instead")
+	}
+	_, names := c.Subject.Names()
+	if !names && !c.Subject.Selects() {
+		return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or ` +
+			`name both a system and a kind when the condition has an ` + "`on`" + `: the cause is ` +
+			`not the subject then, so the subject selects out of the store, and it has to name a ` +
+			`definite kind to select and spawn for`)
+	}
+	return nil
+}
+
 // dispatch is the formula a change is tested against to fire this trigger: the When, or the
 // Subject itself when there is none. One accessor rather than a nil check at each of the three
 // call sites (edge match, subtree watch, ignition guard), so "an omitted when is the subject"
 // is stated once and cannot drift between them.
 func (c Condition) dispatch() *Formula {
+	if c.On != nil {
+		return c.On // the cause is named: it is what this trigger watches, and all it watches
+	}
 	if c.When != nil {
 		return c.When
 	}
@@ -144,7 +214,7 @@ func (t Trigger) opensTo(system string) bool {
 // resolveSubject names the entities this firing is about, at the instant it fires. It
 // yields 0, 1, or (once fan-out lands) N refs; a process/flow/goal always has exactly one
 // subject, so the engine acts once per resolved ref.
-func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Ref {
+func (t Trigger) resolveSubject(ev entity.Event, store entity.Reader) []entity.Ref {
 	m := t.Condition.Subject
 	if t.Condition.When == nil {
 		// No when: the subject is what dispatched this change (matchesEvent tested the event
