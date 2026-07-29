@@ -1,7 +1,9 @@
 package trigger
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -99,5 +101,95 @@ func TestConnectValidatorShapeLatches(t *testing.T) {
 	tr := Trigger{Name: "validate-abc", Condition: cond, Action: act}
 	if err := eng.AddTrigger(tr); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
+	}
+}
+
+// A firing whose work is already running does not ask again. The subject stays selected for as
+// long as the process runs — the write that would release it is what the process has not
+// finished doing — so every commit meanwhile re-selects it.
+//
+// spawnHooked has always refused the second process; what this pins is that the refusal now
+// happens BEFORE the gates, so a firing for work already under way does not put a question on
+// the docket or spend budget on its way to being told no.
+func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
+	store := entitytest.Store(t)
+	reg := process.NewRegistry()
+	eng := New(store, reg)
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+		return process.NewProcess(id, sup, blockForever{}, noExec{})
+	})
+
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	if err := eng.AddTrigger(Trigger{
+		Name: "review",
+		// Latches through its onDone — but the process blocks forever, so the latch never
+		// lands and the subject stays selected the whole time.
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
+			"value": map[string]any{"stage": "open"}}},
+		Gates: []Gate{{Name: "go", Mode: "ask"}},
+		Action: Action{
+			Spawn:  &launch.Spec{Task: "review $subject"},
+			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
+		},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+
+	// The first firing asks; approve it so the process starts.
+	var id string
+	deadline := time.After(3 * time.Second)
+	for id == "" {
+		if p := reg.Pending(); len(p) == 1 {
+			id = p[0].Question.ID
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("no gate question appeared")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	reg.Answer(id, process.Resolution{Proceed: true, By: "alice"})
+	waitFlow(t, eng, ref, 1)
+
+	fired := eng.Fired()
+	// Now stir the subtree while the process runs. The subject still matches — the latch is
+	// waiting on a completion that never comes — so every one of these re-selects it.
+	for i := range 4 {
+		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "other"},
+			entity.Obj{"stage": "closed", "n": i}.Payload())
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if p := reg.Pending(); len(p) != 0 {
+		t.Fatalf("asked again for work already running: %+v", p)
+	}
+	if now := eng.Fired(); now != fired {
+		t.Fatalf("budget spent %d more times on work already running", now-fired)
+	}
+	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:1"))); n != 1 {
+		t.Fatalf("%d processes for one subject, want 1", n)
+	}
+}
+
+// waitFlow blocks until the subject has n live processes.
+func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		if len(eng.matchFlow(Match{"system": ref.System, "kind": ref.Kind, "id": ref.ID})) == n {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for %d live process(es) about %s", n, ref)
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }

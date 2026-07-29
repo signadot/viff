@@ -272,13 +272,27 @@ entity" being taken seriously:
   with its own gates, budget and identity — where it used to gate once over a list. Without
   that, the gate arity change the plan predicted did not actually happen: the question still
   named a set.
-- **A subject can be re-fired while its own latch write is in flight.** Every commit
-  re-evaluates, and a member whose write has not landed is still selected. `claimFlight` holds
-  the (trigger, subject) pair for the duration of a firing, which is the same identity its
-  spawn id, gate and motion already use — so a re-evaluation about a subject already firing is
-  not a second firing. A residual remains and is correct: an evaluation at a commit where the
-  member genuinely still matches will act again, idempotently. The reconciler converges; it
-  does not minimise, and the budget counts work rather than distinct subjects.
+- **A subject can be re-fired while its own work is still under way.** Every commit
+  re-evaluates, and a member whose latch write has not landed is still selected. The guard is
+  two things, because a firing can outlive its own function call: `claimFlight` covers the
+  firing (gates being answered, action applied), and `working` covers what it STARTED — a
+  spawned process still running. Neither changes what runs, since `spawnHooked` already
+  refuses a second process under a live id; what they change is when the refusal happens, so a
+  firing for work already under way does not put a question on the docket or spend budget on
+  its way to being told no.
+
+  Both key on (trigger, subject), which is the identity the spawn id, the gate question and
+  the motion channel already use. A residual remains and is correct: an evaluation at a commit
+  where the member genuinely still matches, with nothing running, acts again — idempotently,
+  because the same patch computes the same value and a no-op write raises no commit
+  (`entity.TestSameValueWriteRaisesNoCommit`, which is where the termination argument is now
+  pinned). Note this is NOT a compare-and-swap result: `entity.Modify` retries on a failed
+  precondition, so it prevents lost updates, not repeated work.
+
+  The one shape neither guard covers: a patch that is not a function of the state it reads —
+  a `$reference` to something that moves — computes a different value each firing, which does
+  raise a commit, which re-evaluates. That is design §5.3's "a non-idempotent action has no
+  fixpoint", with a concrete shape.
 - **One commit can reach a trigger several times**, once per watched subtree. `firstSight` is
   a per-trigger watermark: one verdict per (trigger, commit).
 

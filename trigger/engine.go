@@ -515,10 +515,20 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, s
 // against — which is what lets a gate say what it is deciding about, and stops a long approval
 // sliding the answer underneath itself.
 func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj entity.Ref) {
-	// One firing at a time per subject. A firing takes time — a gate is answered by a person,
-	// a process runs — and every commit meanwhile re-selects the subject that the write which
-	// would release it has not yet been made about. Without this, a firing waiting on a gate
-	// is joined by another at every commit touching its subtree.
+	// One firing at a time per subject, for as long as the WORK lasts — which is two things,
+	// because a firing can outlive its own function call:
+	//
+	//   claimFlight  covers the firing itself: the gates being answered, the action applied.
+	//   working      covers what it started: a spawned process still running.
+	//
+	// Every commit meanwhile re-selects the subject, since the write that would release it is
+	// exactly what has not happened yet. Neither check changes what RUNS — spawnHooked already
+	// refuses a second process under a live id — but together they stop a firing for work
+	// already under way from posing a question and spending budget before being told so.
+	if e.working(t, subj) {
+		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
+		return
+	}
 	if !e.claimFlight(t.Name, subj) {
 		return
 	}
