@@ -319,6 +319,16 @@ func (m Match) Select(r entity.Reader) []entity.Ref {
 		//
 		// It is safe precisely because it is not a glob: a name cannot widen. `demo:pr:*`
 		// still selects what is there.
+		//
+		// Except when it is LEAVING. You may name something that does not exist yet; you may
+		// not name something on its way out. Without this a rule reacting to a departure could
+		// act on the departing entity, and since a patch over an absent entity CREATES, the
+		// removal landing first meant the rule resurrected it — stripped to whatever the rule
+		// wrote, and without the marker, so it came back as an ordinary live entity. React to a
+		// departure by writing somewhere else; the thing that is going is not a subject.
+		if e, ok, err := r.Get(ref); err == nil && ok && entity.Vanishing(e.Payload) {
+			return nil
+		}
 		return []entity.Ref{ref}
 	}
 	p, err := m.pattern()

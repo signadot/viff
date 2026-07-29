@@ -907,13 +907,21 @@ does.
 
 Three things follow, and the first is the one to know:
 
-**A vanishing entity is not selected.** A rule acts on what it selects — patches it, spawns
+**A vanishing entity is not a subject.** A rule acts on what it selects — patches it, spawns
 about it, raises a gate on it — and doing any of that to something on its way out is work about
 something that will not be there. So `subject: {system: demo, kind: pr}` skips it, and naming
-the marker is the opt-in that sees it again. A *named* subject (`demo:pr:1`) is unaffected:
-naming is addressing by identity, not selecting from what exists, so if you name a vanishing
-entity you meant that one. The raw listing (`verse entities`) shows it too — making the intent
-visible is the whole point; only the rule-facing selection hides it.
+the marker is the opt-in that sees it again — which is how the reaper works.
+
+A NAMED subject (`demo:pr:1`) is skipped too, and this is the one place naming does not beat
+selecting. You may name something that does not exist yet; you may not name something on its
+way out. Otherwise a rule reacting to a departure acts on the departing entity, and since a
+patch over an absent entity CREATES, a removal landing first means the rule RESURRECTS it —
+back as an ordinary live entity, stripped to whatever the rule wrote, with no marker on it.
+React to a departure by writing somewhere else: an audit record, an archive. The thing that is
+going is not a subject.
+
+The raw listing (`verse entities`) still shows it — making the intent visible is the whole
+point; only the rule-facing selection hides it.
 
 **The removal itself is inert.** When the entity finally goes, a predicate over it falls from
 true to false, and nothing fires on a falling edge. The reactive moment was the intent; the

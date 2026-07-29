@@ -160,3 +160,46 @@ func mustWriteNil(t *testing.T, store entity.Store, ref entity.Ref) {
 		t.Fatalf("remove %s: %v", ref, err)
 	}
 }
+
+// A NAMED subject is a set of one whether or not the entity exists — except when it is
+// leaving. Without this a rule reacting to a departure acts on the departing entity, and since
+// a patch over an absent entity CREATES, a removal landing first meant the rule RESURRECTED
+// it: back as an ordinary live entity, stripped to whatever the rule wrote, with no marker.
+//
+// Measured before the fix: `exists=true payload=map[farewell:noted]`.
+func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+
+	if err := eng.AddTrigger(Trigger{
+		Name: "farewell",
+		Condition: Condition{
+			On: MatchWhen(Match{"system": "demo", "kind": "pr",
+				"value": map[string]any{"verse": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
+			Subject: mm(ref.String()), // named — and leaving
+		},
+		Action: Action{Patch: entity.Obj{"farewell": "noted"}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	vanish(t, store, ref)
+	if _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // the removal
+		t.Fatalf("remove: %v", err)
+	}
+	time.Sleep(700 * time.Millisecond)
+
+	if e, ok, _ := store.Get(ref); ok {
+		t.Fatalf("a rule brought back an entity that had left: %v", entity.ToObj(e.Payload))
+	}
+	// A name that has NEVER existed is still nameable — the create amendment is intact.
+	fresh := entity.Ref{System: "demo", Kind: "report", ID: "1"}
+	if got := (Match{"system": "demo", "kind": "report", "id": "1"}).Select(store); len(got) != 1 || got[0] != fresh {
+		t.Fatalf("naming a never-written entity selected %v, want a set of one", got)
+	}
+}
