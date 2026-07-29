@@ -338,3 +338,51 @@ func TestRemovedFieldsAreInvisibleAtAnyDepth(t *testing.T) {
 		t.Fatalf("removing a nested field disturbed its neighbours: %+v", got)
 	}
 }
+
+// A write whose content is UNCHANGED produces no commit at all: the revision does not advance
+// and no observer hears anything, on either path.
+//
+// This is load-bearing for the trigger engine and worth pinning here rather than leaving as
+// prose. Every trigger is re-evaluated at every commit touching what it reads, so what stops a
+// rule running forever is that its own effect raises no further evaluation. A latching action
+// writes a new value ONCE — the next firing selects nothing — and an action that re-writes
+// what is already there is inert. Neither is a compare-and-swap result: entity.Modify's CAS
+// retries on failure, so it prevents lost updates, not repeated work. It is the substrate
+// declining to record a change that is not one.
+func TestSameValueWriteRaisesNoCommit(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	set(t, s, ref, Obj{"stage": "open"}.Payload())
+
+	root, unsubRoot := s.Observe()
+	defer unsubRoot()
+	sub, unsubSub, err := s.WatchSubtree("demo", "pr")
+	if err != nil {
+		t.Fatalf("WatchSubtree: %v", err)
+	}
+	defer unsubSub()
+	<-sub // the level-triggered seed
+	time.Sleep(200 * time.Millisecond)
+
+	before := s.Rev()
+	set(t, s, ref, Obj{"stage": "open"}.Payload()) // the same value, again
+	if after := s.Rev(); after != before {
+		t.Fatalf("revision advanced %d → %d for a write that changed nothing", before, after)
+	}
+	select {
+	case c := <-root:
+		t.Fatalf("the root watch reported a same-value write: rev=%d %+v", c.Rev, c.Changes)
+	case <-time.After(500 * time.Millisecond):
+	}
+	select {
+	case c := <-sub:
+		t.Fatalf("the subtree watch reported a same-value write: rev=%d %+v", c.Rev, c.Changes)
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	// A real change still does, so this is suppression and not a broken watch.
+	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
+	if ev := oneChange(t, root, "a real change"); Str(ev.To, "stage") != "reviewed" {
+		t.Fatalf("root watch missed a real change: %+v", ev)
+	}
+}
