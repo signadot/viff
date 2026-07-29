@@ -58,7 +58,7 @@ func urlFor(path string, q url.Values) string {
 }
 
 func httpGet(path string, q url.Values) (*http.Response, error) {
-	return http.Get(urlFor(path, q))
+	return verse.Get(urlFor(path, q))
 }
 
 // httpPost sends a document in the wire format (see wireFmt — the input format when verse
@@ -78,7 +78,7 @@ func httpPost(path string, body any) (*http.Response, error) {
 		return nil, err
 	}
 	setFormatHeaders(req, f)
-	return http.DefaultClient.Do(req)
+	return verse.Do(req)
 }
 
 // httpPostNode posts an already-built document. It exists so a command that has parsed a
@@ -96,7 +96,7 @@ func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
 		return nil, err
 	}
 	setFormatHeaders(req, f)
-	return http.DefaultClient.Do(req)
+	return verse.Do(req)
 }
 
 // setFormatHeaders declares what is being sent and what is wanted back. The Accept lists
@@ -182,7 +182,7 @@ func httpPut(path string, body any) (*http.Response, error) {
 		return nil, err
 	}
 	setFormatHeaders(req, f)
-	return http.DefaultClient.Do(req)
+	return verse.Do(req)
 }
 
 func httpDelete(path string, q url.Values) (*http.Response, error) {
@@ -190,7 +190,7 @@ func httpDelete(path string, q url.Values) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return http.DefaultClient.Do(req)
+	return verse.Do(req)
 }
 
 // decodeClose decodes a response into v, reading it in the format the response declared,
@@ -223,7 +223,7 @@ func httpPostURL(u string, body any) (*http.Response, error) {
 		return nil, err
 	}
 	setFormatHeaders(req, f)
-	return http.DefaultClient.Do(req)
+	return verse.Do(req)
 }
 
 // brokerClaim claims a process at its broker face as identity, returning the epoch (the
@@ -252,7 +252,7 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 func brokerInbox(base, id string, since, epoch int64) ([]api.InboxItem, int64, error) {
 	u := base + "/processes/" + id + "/inbox?since=" +
 		strconv.FormatInt(since, 10) + "&epoch=" + strconv.FormatInt(epoch, 10)
-	resp, err := http.Get(u)
+	resp, err := verse.Get(u)
 	if err != nil {
 		return nil, since, err
 	}

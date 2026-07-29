@@ -170,7 +170,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 	}.Encode()
 	deadline := time.After(30 * time.Second)
 	for {
-		if resp, err := http.Get(u); err == nil {
+		if resp, err := verse.Get(u); err == nil {
 			ready := resp.StatusCode == http.StatusOK
 			resp.Body.Close()
 			if ready {

@@ -563,7 +563,9 @@ func (s *Server) Handler() http.Handler {
 	rt.mount("/processes", ph)
 	rt.mount("/processes/", ph)
 	s.routes = rt.routes
-	return rt.mux
+	// Every answer says which verse gave it, and a client that cannot be talking to this one
+	// is turned away before any of the above runs. See versioned.
+	return versioned(rt.mux)
 }
 
 // ── scripted driver: the default process runtime driver ─────────────────────
