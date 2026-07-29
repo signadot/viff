@@ -145,7 +145,7 @@ func TestDashInTriggerNameStillDecodes(t *testing.T) {
 }
 
 // mirror publishes the chain and its root so "every process of this trigger" is a payload
-// predicate (equality — all `fields` can do) rather than a glob over ids.
+// predicate (a value, not a fragment of an id) rather than a glob over ids.
 func TestTriggerOf(t *testing.T) {
 	for chain, want := range map[string]string{
 		"review":                 "review",

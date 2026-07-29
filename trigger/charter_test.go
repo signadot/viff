@@ -38,7 +38,7 @@ func TestCharterSurvivesARestart(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -60,7 +60,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -81,7 +81,7 @@ func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
 	if err := eng.AddTrigger(trig); err != nil {
@@ -116,7 +116,7 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`{
 		name: hotfix,
 		condition: {
-			when:    {system: demo, kind: pr, fields: {stage: open}},
+			when:    {system: demo, kind: pr, value: {stage: open}},
 			subject: {system: demo, kind: pr, id: !glob "hotfix-*"},
 		},
 		gates:  [{name: approval, mode: ask}],
@@ -225,7 +225,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	eng := New(first, process.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -408,12 +408,12 @@ func shipGoal() GoalDef {
 		Subject: "demo:pr:1",
 		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
 			Kind:  ReqFact,
-			Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}},
+			Facts: Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}},
 		}},
 		Triggers: []Trigger{{
 			Name: "ship-review",
 			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
-				"fields": map[string]any{"stage": "open"}}},
+				"value": map[string]any{"stage": "open"}}},
 			Action: setStage("reviewing"),
 		}},
 	}

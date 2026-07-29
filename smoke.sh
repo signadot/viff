@@ -152,7 +152,7 @@ step "trigger add + drive (reactive core)"
 # JSON *is* tony, not because anything sniffed it.
 v trigger add -f - >/dev/null <<'JSON' || die "trigger add failed"
 [ { "name": "smoke-advance",
-    "condition": { "subject": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
+    "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "reviewed" } } } ]
 JSON
@@ -182,7 +182,7 @@ cat >"$tmp/charter.tony" <<'TONY'
     subject:
       system: demo
       kind: pr
-      fields:
+      value:
         stage: queued
   gates: []
   action:
@@ -216,7 +216,7 @@ step "trigger subject with an id operator (JSON spelling)"
 # was supposed to exclude would then be indistinguishable from one they had already moved.
 v trigger add -f - >/dev/null <<'JSON' || die "operator charter add failed"
 [ { "name": "smoke-hotfix-only",
-    "condition": { "when":    { "system": "demo", "kind": "note", "fields": { "seen": true } },
+    "condition": { "when":    { "system": "demo", "kind": "note", "value": { "seen": true } },
                    "subject": { "system": "demo", "kind": "task", "id": { "glob": "hotfix-*" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "escalated" } } } ]
@@ -250,7 +250,7 @@ ok "!glob subject selected hotfix-9 and left feature-9 alone"
 step "gate: an ask gate holds; answering it releases the action"
 v trigger add --file - >/dev/null <<'JSON' || die "gated charter add failed"
 [ { "name": "smoke-gated",
-    "condition": { "subject": { "system": "demo", "kind": "release", "fields": { "stage": "open" } } },
+    "condition": { "subject": { "system": "demo", "kind": "release", "value": { "stage": "open" } } },
     "gates":     [ { "name": "ship", "mode": "ask" } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON

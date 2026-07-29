@@ -76,7 +76,7 @@ Here's a tiny one-rule charter; save it as `charter.tony`:
 ```tony
 - name: review
   condition:
-    subject: { system: demo, kind: pr, fields: { stage: open } }
+    subject: { system: demo, kind: pr, value: { stage: open } }
   gates:
   - { name: approval, mode: ask }
   action:
@@ -323,7 +323,7 @@ process about that PR — then drive a change through review to trip it:
 verse trigger add -f - <<'TONY'
 - name: hold
   condition:
-    subject: { system: demo, kind: pr, fields: { stage: reviewed } }
+    subject: { system: demo, kind: pr, value: { stage: reviewed } }
   action:
     spawn: { driver: scripted, task: "sleep 60" }
 TONY
@@ -557,7 +557,7 @@ watches and resolves it itself:
 ```tony
 - name: merge
   condition:
-    subject: { system: change, kind: pr, fields: { stage: ready } }
+    subject: { system: change, kind: pr, value: { stage: ready } }
   gates:
   - { name: approvals, formula: !quorum 2 }
   action:
@@ -653,7 +653,7 @@ to choose, instead of one driver:
 ```tony
 - name: review
   condition:
-    subject: { system: change, kind: pr, fields: { stage: open } }
+    subject: { system: change, kind: pr, value: { stage: open } }
   action:
     spawn:
       task: "review $subject"

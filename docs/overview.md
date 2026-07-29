@@ -35,7 +35,7 @@ value. The entity store is the shared, observable, cursored log of these.
 
 A *trigger* is one charter rule: when the condition holds and its gates resolve, an action
 fires. It has a `condition` — the `subject` the firing is about, which is required, plus an
-optional `when` (a point-in-time match over system/kind/id/op/fields, or a temporal formula)
+optional `when` (a point-in-time match over system/kind/id/op/value, or a temporal formula)
 for when the cause is not the subject itself — a conjunctive list of `gates`, and an `action`.
 See [the trigger model](trigger-model.md).
 

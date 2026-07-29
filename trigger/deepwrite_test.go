@@ -25,7 +25,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 		Name: "ship",
 		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "pr",
-			"fields": map[string]any{"stage": "reviewed", "env": "prod"},
+			"value": map[string]any{"stage": "reviewed", "env": "prod"},
 		}},
 		Action: Action{},
 	}); err != nil {
@@ -79,7 +79,7 @@ func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 		Name: "announce",
 		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "task",
-			"fields": map[string]any{"stage": "ready"},
+			"value": map[string]any{"stage": "ready"},
 		}},
 		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
 	}); err != nil {

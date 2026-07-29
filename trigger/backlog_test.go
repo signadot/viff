@@ -34,7 +34,7 @@ func echoTrigger(name string) Trigger {
 		Name: name,
 		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "task",
-			"fields": map[string]any{"stage": "ready"},
+			"value": map[string]any{"stage": "ready"},
 		}},
 		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
 	}

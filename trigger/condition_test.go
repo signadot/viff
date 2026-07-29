@@ -30,7 +30,7 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -69,7 +69,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Spawn: &launch.Spec{Task: "follow up on $subject"}},
@@ -360,7 +360,7 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 // rather than exposing the internal parse node; the subject round-trips as its dimensions.
 func TestConditionJSONRoundTrip(t *testing.T) {
 	const in = `{"name":"reviewed","condition":{"when":{"system":"process","kind":"instance",` +
-		`"fields":{"status":"done"}},"subject":"demo:pr:*"},"action":{"patch":{"stage":"reviewed"}}}`
+		`"value":{"status":"done"}},"subject":"demo:pr:*"},"action":{"patch":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(in), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)

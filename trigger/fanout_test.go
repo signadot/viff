@@ -40,7 +40,7 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 		Name: "ship-all-reviewed",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -87,7 +87,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 		Name: "ship",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Spawn: &launch.Spec{Task: "ship $subject"}},
 	}); err != nil {
@@ -144,7 +144,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 		Name: "ship",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Spawn: &launch.Spec{Task: "ship $subject"}},
 	}); err != nil {
@@ -182,7 +182,7 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 		Name: "ship",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -217,7 +217,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 		Name: "ship",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -238,7 +238,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 func TestSubjectSelectionIsDeterministic(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "b", "a", "c")
-	m := Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}}
+	m := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}
 	want := []string{"demo:pr:a", "demo:pr:b", "demo:pr:c"}
 	for range 20 { // map iteration order varies per range, so repeat
 		refs := m.Select(store)
@@ -262,7 +262,7 @@ func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
 		Name: "ship",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Gates:  []Gate{{Name: "ship", Mode: "ask"}},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
@@ -402,7 +402,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "fields": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"), // acts on demo:pr flows only
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},

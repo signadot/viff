@@ -115,7 +115,7 @@ func TestMatchIDOperatorGrammar(t *testing.T) {
 	}
 }
 
-// The SET face has to apply the operator too. Select delegates system/kind/fields to the
+// The SET face has to apply the operator too. Select delegates system/kind/value to the
 // typed matcher and owns the id, so an operator that only worked on the event path would
 // silently widen every fan-out to the whole kind.
 func TestMatchOperatorSelects(t *testing.T) {
@@ -220,14 +220,14 @@ func TestUpstreamIgnoresUnknownTags(t *testing.T) {
 	}
 }
 
-// An operator inside `fields` WORKS. This test used to assert the opposite.
+// An operator inside `value` WORKS. This test used to assert the opposite.
 //
 // The old rule was that a payload predicate is equality-only, and an operator was refused
 // with a diagnostic saying so — because `{stage: !or [open, merged]}` would otherwise decode
 // to the list ["open","merged"] and the trigger would simply never fire. Refusing it was the
 // right answer while the predicate was a map of Go values. It is a tony match at the payload
 // root now, so the operator is not something to reject, it is the thing being evaluated.
-func TestMatchFieldsAcceptsOperators(t *testing.T) {
+func TestMatchValueAcceptsOperators(t *testing.T) {
 	ev := func(p entity.Obj) entity.Event {
 		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: p.Payload()}
 	}
@@ -237,17 +237,15 @@ func TestMatchFieldsAcceptsOperators(t *testing.T) {
 		miss  entity.Obj
 	}{
 		{
-			`{system: demo, fields: {stage: !or [open, merged]}}`,
+			`{system: demo, value: {stage: !or [open, merged]}}`,
 			entity.Obj{"stage": "merged"},
 			entity.Obj{"stage": "closed"},
 		},
 		{
-			`{fields: {stage: !glob "op*"}}`,
+			`{value: {stage: !glob "op*"}}`,
 			entity.Obj{"stage": "open"},
 			entity.Obj{"stage": "closed"},
 		},
-		{`{entity: {stage: !or [open, merged]}}`, // the alias too
-			entity.Obj{"stage": "open"}, entity.Obj{"stage": "closed"}},
 	}
 	for _, c := range cases {
 		m := mustMatch(t, c.src, codec.Tony)
@@ -259,20 +257,20 @@ func TestMatchFieldsAcceptsOperators(t *testing.T) {
 		}
 	}
 
-	// The tag-keyed form is NOT an operator here — inside fields it is an ordinary payload
-	// predicate on a key that happens to be spelled like one. That is the ambiguity, and
+	// The tag-keyed form is NOT an operator here — inside a payload predicate it is an
+	// ordinary field on a key that happens to be spelled like one. That is the ambiguity, and
 	// reading it as data is the only reading that cannot silently change a charter.
-	m := mustMatch(t, `{fields: {or: [open, merged]}}`, codec.Tony)
+	m := mustMatch(t, `{value: {or: [open, merged]}}`, codec.Tony)
 	f := m.Predicate()
 	if ir.Get(f, "or") == nil {
 		t.Errorf("a payload key named \"or\" was eaten: %#v", f)
 	}
 }
 
-// A payload predicate still works normally — the refusal above must not have made `fields`
-// harder to write.
-func TestMatchFieldsStillPlain(t *testing.T) {
-	m := mustMatch(t, `{system: demo, kind: pr, fields: {stage: open, n: 2}}`, codec.Tony)
+// A record predicate still works normally — the refusal above must not have made the ordinary
+// case harder to write.
+func TestMatchValueStillPlain(t *testing.T) {
+	m := mustMatch(t, `{system: demo, kind: pr, value: {stage: open, n: 2}}`, codec.Tony)
 	ev := entity.Event{
 		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
 		Op:  entity.Set, To: entity.Obj{"stage": "open", "n": int64(2)}.Payload(),
@@ -282,11 +280,10 @@ func TestMatchFieldsStillPlain(t *testing.T) {
 	}
 }
 
-// `payload` matches the payload ROOT, whatever shape it is. This is the dimension `fields`
-// could not be: its name promises fields, and the object check on it is what keeps a typo
-// like `fields: "stage=open"` an install error. `payload` promises nothing, so it can carry
-// the scalar, the list and the operator-over-one that a payload may now actually be.
-func TestMatchPayloadRootPredicate(t *testing.T) {
+// `value` matches the payload ROOT, whatever shape it is — the scalar, the list and the
+// operator-over-one that a payload may actually be, not only the record that almost every
+// charter writes.
+func TestMatchValueRootPredicate(t *testing.T) {
 	ev := func(v any) entity.Event {
 		return entity.Event{
 			Ref: entity.Ref{System: "demo", Kind: "count", ID: "1"},
@@ -298,14 +295,15 @@ func TestMatchPayloadRootPredicate(t *testing.T) {
 		match any
 		miss  any
 	}{
-		{`{system: demo, payload: 42}`, 42, 43},
-		{`{payload: true}`, true, false},
-		{`{payload: open}`, "open", "closed"},
-		{`{payload: !or [1, 2]}`, 2, 3},
-		{`{payload: !glob "hotfix-*"}`, "hotfix-9", "main"},
-		// The object form still works here — `payload` is the general spelling, not a
-		// different predicate.
-		{`{payload: {stage: open}}`, map[string]any{"stage": "open"}, map[string]any{"stage": "closed"}},
+		{`{system: demo, value: 42}`, 42, 43},
+		{`{value: true}`, true, false},
+		{`{value: open}`, "open", "closed"},
+		{`{value: !or [1, 2]}`, 2, 3},
+		{`{value: !glob "hotfix-*"}`, "hotfix-9", "main"},
+		// The object form is the same dimension, not a different predicate — and over an
+		// object a tony match is a SUBSET constraint, which is the one place the name `value`
+		// reads as more than it means.
+		{`{value: {stage: open}}`, map[string]any{"stage": "open"}, map[string]any{"stage": "closed"}},
 	}
 	for _, c := range cases {
 		m := mustMatch(t, c.src, codec.Tony)
@@ -318,31 +316,31 @@ func TestMatchPayloadRootPredicate(t *testing.T) {
 	}
 }
 
-// A scalar under `fields` is still an install error, and the error names the dimension that
-// does accept one. Losing that guard was the reason `payload` exists as its own key rather
-// than as a loosening of `fields`.
-func TestMatchFieldsStillRefusesANonObject(t *testing.T) {
-	got := matchErr(t, `{system: demo, fields: "stage=open"}`, codec.Tony)
-	if !strings.Contains(got, "payload") {
-		t.Errorf("the error should point at the dimension that accepts a root predicate: %q", got)
+// A SCALAR predicate installs, and it means the payload IS that scalar. This is the guard the
+// collapse to one dimension gave up, pinned as the behaviour that replaced it.
+//
+// `fields`/`entity` used to assert an object, so `fields: "stage=open"` — someone reaching for
+// an expression language — failed at install instead of matching nothing forever. Under
+// `value` it is a legitimate predicate on a string payload, and no static check can tell the
+// two apart: `value: open` is exactly what you write against an entity whose payload is a bare
+// state name. The assertion was not worth a second dimension either way, because it saw only
+// the wrong SHAPE and never `{stge: open}` — a misspelled key, the typo people actually make,
+// which matches nothing just as silently and which no shape check can catch.
+func TestMatchValueScalarIsTheWholePayload(t *testing.T) {
+	m := mustMatch(t, `{system: demo, value: "stage=open"}`, codec.Tony)
+	ev := func(v entity.Payload) entity.Event {
+		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: v}
+	}
+	if !m.MatchEvent(ev(entity.Val("stage=open"))) {
+		t.Error(`value: "stage=open" did not match the payload "stage=open"`)
+	}
+	if m.MatchEvent(ev(entity.Obj{"stage": "open"}.Payload())) {
+		t.Error(`value: "stage=open" wrongly matched the record {stage: open} — a scalar ` +
+			`predicate is the whole payload, not a field expression`)
 	}
 }
 
-// One predicate, one spelling. Two would be two predicates on the same value with no stated
-// way to combine them.
-func TestMatchRefusesTwoPayloadSpellings(t *testing.T) {
-	for _, src := range []string{
-		`{payload: 42, fields: {stage: open}}`,
-		`{fields: {stage: open}, entity: {stage: open}}`,
-		`{payload: 42, entity: {stage: open}}`,
-	} {
-		if got := matchErr(t, src, codec.Tony); !strings.Contains(got, "only one payload predicate") {
-			t.Errorf("%s: got %q", src, got)
-		}
-	}
-}
-
-// A patch against a non-object payload REPLACES it today: a trigger matching `payload: 42`
+// A patch against a non-object payload REPLACES it today: a trigger matching `value: 42`
 // and patching a field turns the entity into a record, and the 42 is gone. tony.Patch does
 // this silently, and it is reachable only because a payload can be a scalar at all.
 //
@@ -365,7 +363,7 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 	eng.ObserveScoped(ctx)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "milestone",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "count", "payload": int64(100)}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "count", "value": int64(100)}},
 		Action:    Action{Patch: entity.Obj{"note": "milestone"}.Payload()},
 	}); err != nil {
 		t.Fatalf("install: %v", err)
@@ -391,8 +389,8 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 }
 
 // The three null idioms have to survive PARSE AND VALIDATE, not just the matcher: `!not
-// {stage: null}` is a tagged object, and `fields` requires an object, so the object check
-// has to see through the tag. entity.TestNullPresenceAbsenceIdioms pins the semantics; this
+// {stage: null}` is a tagged object, so the codec must carry the tag through to tony.Match
+// rather than decoding it away. entity.TestNullPresenceAbsenceIdioms pins the semantics; this
 // pins that a charter can actually say them.
 func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 	ev := func(p entity.Obj) entity.Event {
@@ -410,11 +408,9 @@ func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 		src                                 string
 		wantAbsent, wantPresent, wantIsNull bool
 	}{
-		{`{system: demo, fields: {stage: null}}`, false, true, true},
-		{`{system: demo, fields: !not {stage: null}}`, true, false, false},
-		{`{system: demo, fields: {stage: !irtype null}}`, false, false, true},
-		// and the general spelling carries them identically
-		{`{system: demo, payload: !not {stage: null}}`, true, false, false},
+		{`{system: demo, value: {stage: null}}`, false, true, true},
+		{`{system: demo, value: !not {stage: null}}`, true, false, false},
+		{`{system: demo, value: {stage: !irtype null}}`, false, false, true},
 	}
 	for _, c := range cases {
 		m := mustMatch(t, c.src, codec.Tony)

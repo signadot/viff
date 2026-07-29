@@ -56,13 +56,10 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: ir.FromString(v)})
 		}
 	}
-	for _, k := range payloadKeys {
-		// The predicate goes back out as the node it is, operators and all — the same
-		// faithful-rendering rule the id/op dimensions follow above. Only one of the three
-		// spellings can be set (Validate), so this emits the one the author wrote.
-		if node, ok := fieldsNode(m[k]); ok {
-			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: node})
-		}
+	// The predicate goes back out as the node it is, operators and all — the same
+	// faithful-rendering rule the id/op dimensions follow above.
+	if node, ok := predicateNode(m[mKeyValue]); ok {
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyValue), Val: node})
 	}
 	if len(kvs) == 0 {
 		return ir.FromKeyVals(nil), nil // {} — the empty match, which matches everything
@@ -175,7 +172,7 @@ func matchFromObject(node *ir.Node) (Match, error) {
 			}
 			out[k] = val.String
 
-		case mKeyPayload, mKeyFields, mKeyEntity:
+		case mKeyValue:
 			// Kept as the NODE, not decoded to a map: a payload predicate is a tony match
 			// evaluated at the payload root, so any operator it carries has to survive to
 			// tony.Match. Decoding to map[string]any would drop the tag and silently turn

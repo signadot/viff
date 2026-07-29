@@ -100,7 +100,7 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 	st := entitytest.Store(t)
 	approvals := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: Match{"system": "motion", "kind": "vote", "fields": map[string]any{"choice": "approve"}},
+		Facts: Match{"system": "motion", "kind": "vote", "value": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
 	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Obj{"choice": "approve"}.Payload())

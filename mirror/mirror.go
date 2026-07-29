@@ -103,8 +103,9 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	// Where this process came from in the charter. `chain` is the spawning action's kpath
 	// inside its trigger (review, review.onDone, …) and `trigger` is its root segment,
-	// published separately because a payload predicate is equality-only: "every process of
-	// the review trigger" is then `fields: {trigger: review}` rather than a glob over ids.
+	// published separately because a payload predicate reads VALUES, not fragments of an id:
+	// "every process of the review trigger" is then `value: {trigger: review}` rather than a
+	// glob over ids.
 	if m.Chain != "" {
 		st["chain"] = m.Chain
 		st["trigger"] = TriggerOf(m.Chain)

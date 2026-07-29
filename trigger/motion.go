@@ -207,7 +207,7 @@ func optionFromFormula(id string, f *Formula) motionOption {
 func quorumFormula(mid, opt string, need int) *Formula {
 	return &Formula{Op: OpAtom, Req: &Requirement{
 		Kind: ReqQuorum, N: need,
-		Facts: Match{mKeySystem: "vote", mKeyKind: mid, mKeyFields: map[string]any{"choice": opt}},
+		Facts: Match{mKeySystem: "vote", mKeyKind: mid, mKeyValue: map[string]any{"choice": opt}},
 	}}
 }
 

@@ -73,12 +73,12 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "deploy",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "reviewed"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}},
 		Gates:     []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
 		Action:    setStage("deployed"),
 	})
@@ -149,12 +149,12 @@ func TestBudgetBoundsRunaway(t *testing.T) {
 	eng.SetMaxFires(5)
 	eng.AddTrigger(Trigger{
 		Name:      "ping",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "a"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "value": map[string]any{"phase": "a"}}},
 		Action:    Action{Patch: entity.Obj{"phase": "b"}.Payload()},
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "pong",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "fields": map[string]any{"phase": "b"}}},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "value": map[string]any{"phase": "b"}}},
 		Action:    Action{Patch: entity.Obj{"phase": "a"}.Payload()},
 	})
 

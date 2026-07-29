@@ -207,7 +207,7 @@ func (f *Formula) bind(motionID string) *Formula {
 			if choice == "" {
 				choice = "approve" // default quorum counts approvals; "reject" makes a deny-quorum
 			}
-			r.Facts = Match{mKeySystem: "vote", mKeyKind: motionID, mKeyFields: map[string]any{"choice": choice}}
+			r.Facts = Match{mKeySystem: "vote", mKeyKind: motionID, mKeyValue: map[string]any{"choice": choice}}
 		}
 		nf.Req = &r
 	}

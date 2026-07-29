@@ -30,7 +30,9 @@
 # trigger.Match — the selector grammar, and the most-authored type in the system. On the wire
 # it is EITHER an address string ("demo:pr:*") OR the object of dimensions below; the codec
 # emits the string form whenever the match carries only system/kind/id. The dimension values
-# are open because each may be a literal or a tony match operator (`id: !glob "hotfix-*"`).
+# are open because each may be a literal or a tony match operator (`id: !glob "hotfix-*"`),
+# and `value` — the payload predicate — is open in SHAPE as well: a payload is any tony value,
+# so a predicate over it may be a record, a scalar, a list, or an operator over one.
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
@@ -39,9 +41,7 @@ define:
   kind: .[string]
   id: .[tony-base:ir]
   op: .[tony-base:ir]
-  payload: .[tony-base:ir]
-  fields: .[object(tony-base:ir)]
-  entity: .[object(tony-base:ir)]
+  value: .[tony-base:ir]
 signature:
   name: verse-match
 ---

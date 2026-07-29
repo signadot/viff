@@ -20,7 +20,7 @@ import (
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
 		`"demo:pr:1"`,
-		`{"system":"demo","kind":"pr","fields":{"stage":"open"}}`,
+		`{"system":"demo","kind":"pr","value":{"stage":"open"}}`,
 		`{"system":"demo","kind":"pr","id":"*"}`,
 		`{}`,
 	} {
@@ -216,11 +216,12 @@ func TestGlobMatch(t *testing.T) {
 
 // A typo'd charter must fail loudly at parse rather than silently matching nothing.
 func TestMatchRejectsBadShape(t *testing.T) {
+	// A predicate of the wrong SHAPE is NOT here, and deliberately: `value` takes any tony
+	// value, so `{"value":"stage=open"}` is a legal predicate on a string payload rather than
+	// a typo verse can name. See TestMatchValueScalarIsTheWholePayload.
 	cases := map[string]string{
 		"unknown key":       `{"sytem":"demo"}`,
 		"non-string system": `{"system":{"a":1}}`,
-		"non-object fields": `{"system":"demo","fields":"stage=open"}`,
-		"fields and alias":  `{"system":"demo","fields":{"a":"b"},"entity":{"c":"d"}}`,
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -232,21 +233,21 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	}
 }
 
-// `entity` is accepted as an alias for `fields` (docs/trigger-model.md spells a Subject's
-// payload predicate that way), and both spellings must behave identically.
-func TestMatchEntityAliasesFields(t *testing.T) {
-	ev := entity.Event{
-		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
-		Op:  entity.Set, To: entity.Obj{"stage": "open"}.Payload(),
+// FieldString reads one literal string back out of the predicate — what the quorum machinery
+// asks of the facts match it built itself ("which choice does this count"). A predicate that
+// is not a record has no key to read, and an operator has no single value behind it, so both
+// answer "" rather than a guess.
+func TestMatchFieldString(t *testing.T) {
+	m := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}
+	if got := m.FieldString("stage"); got != "open" {
+		t.Errorf("FieldString(stage) = %q, want open", got)
 	}
-	for _, key := range []string{"fields", "entity"} {
-		m := Match{"system": "demo", "kind": "pr", key: map[string]any{"stage": "open"}}
-		if !m.MatchEvent(ev) {
-			t.Fatalf("%q spelling did not match", key)
-		}
-		if got := m.FieldString("stage"); got != "open" {
-			t.Fatalf("%q spelling: FieldString(stage) = %q", key, got)
-		}
+	if got := m.FieldString("absent"); got != "" {
+		t.Errorf("FieldString of an absent key = %q, want empty", got)
+	}
+	scalar := Match{"system": "demo", "value": "open"}
+	if got := scalar.FieldString("stage"); got != "" {
+		t.Errorf("FieldString of a scalar predicate = %q, want empty", got)
 	}
 }
 
@@ -264,14 +265,14 @@ func TestMatchEventDimensions(t *testing.T) {
 		{"system": "demo", "kind": "pr", "id": "1"},
 		{"system": "demo", "kind": "pr", "id": "*"},
 		{"op": "set"},
-		{"fields": map[string]any{"stage": "open"}},
+		{"value": map[string]any{"stage": "open"}},
 	}
 	no := []Match{
 		{"system": "other"},
 		{"kind": "issue"},
 		{"id": "2"},
 		{"op": "delete"},
-		{"fields": map[string]any{"stage": "closed"}},
+		{"value": map[string]any{"stage": "closed"}},
 		{"system": "demo", "kind": "pr", "id": "2"}, // one wrong dimension fails the conjunction
 	}
 	for _, m := range yes {
@@ -287,7 +288,7 @@ func TestMatchEventDimensions(t *testing.T) {
 }
 
 // Select is the SET face. The `id` dimension is owned by Match (entity.Pattern has none), so
-// it must be applied on top of the delegated system/kind/fields selection — including the "*"
+// it must be applied on top of the delegated system/kind/value selection — including the "*"
 // wildcard that flow addressing will use.
 func TestMatchSelect(t *testing.T) {
 	store := entitytest.Store(t)
@@ -307,7 +308,7 @@ func TestMatchSelect(t *testing.T) {
 	if n := count(Match{"system": "demo", "kind": "pr", "id": "2"}); n != 1 {
 		t.Errorf("one id: %d, want 1", n)
 	}
-	if n := count(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}); n != 2 {
+	if n := count(Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}); n != 2 {
 		t.Errorf("payload predicate: %d, want 2", n)
 	}
 	// system+kind pins the slice: a same-id entity in another system is not picked.

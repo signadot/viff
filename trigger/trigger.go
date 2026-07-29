@@ -221,10 +221,9 @@ type Action struct {
 	// mergeop operators (`!delete`, `!replace`, …) that a field overlay had no way to say.
 	//
 	// It replaced `set`, a shallow top-level overlay. The name went with the semantics:
-	// this deep-merges, deletes and replaces, and "set" describes one of those. (The read
-	// side keeps `fields` beside `payload` because requiring an object there is what makes
-	// `fields: "stage=open"` an install error; nothing here needs that guard — `patch: 42`
-	// is a legitimate whole-value replace.) See docs/trigger-model.md.
+	// this deep-merges, deletes and replaces, and "set" describes one of those. (Like the
+	// read side's `value`, it is unrestricted in shape: `patch: 42` is a legitimate
+	// whole-value replace, because a payload is any tony value.) See docs/trigger-model.md.
 	// Spelled entity.Payload, which is what it IS. That was impossible until go-tony
 	// v0.0.95: the resolver could not follow an alias ("Payload is not a named type"), so
 	// every schemagen'd field had to say *ir.Node and the domain vocabulary was absent from

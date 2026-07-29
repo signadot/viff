@@ -21,7 +21,7 @@ func TestStartRestoresTheCharter(t *testing.T) {
 		Name: "review",
 		Condition: trigger.Condition{
 			Subject: trigger.Match{"system": "demo", "kind": "pr",
-				"fields": map[string]any{"stage": "open"}},
+				"value": map[string]any{"stage": "open"}},
 		},
 		Action: trigger.Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {
@@ -64,13 +64,13 @@ func TestStartRestoresGoals(t *testing.T) {
 		DoneWhen: &trigger.Formula{Op: trigger.OpAtom, Req: &trigger.Requirement{
 			Kind: trigger.ReqFact,
 			Facts: trigger.Match{"system": "ci", "kind": "status",
-				"fields": map[string]any{"state": "green"}},
+				"value": map[string]any{"state": "green"}},
 		}},
 		Triggers: []trigger.Trigger{{
 			Name: "ship-review",
 			Condition: trigger.Condition{
 				Subject: trigger.Match{"system": "demo", "kind": "pr",
-					"fields": map[string]any{"stage": "open"}},
+					"value": map[string]any{"stage": "open"}},
 			},
 			Action: trigger.Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
 		}},

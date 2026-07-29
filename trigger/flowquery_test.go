@@ -132,7 +132,7 @@ func TestFlowAddressingByPayload(t *testing.T) {
 	spawnFP(t, eng, "p2", "demo:pr:2")
 	spawnFP(t, eng, "p3", "demo:pr:3")
 
-	open := Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}
+	open := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}
 	if n := eng.PauseFlow(open); n != 2 {
 		t.Fatalf("pausing every open PR's work signalled %d, want 2", n)
 	}

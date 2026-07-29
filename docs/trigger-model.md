@@ -46,7 +46,7 @@ it, and the action that fires.
 ```tony
 - name: review
   condition:
-    subject: { system: demo, kind: pr, fields: { stage: open } }   # what it is about
+    subject: { system: demo, kind: pr, value: { stage: open } }   # what it is about
   gates:
   - { name: approval, mode: ask }                                  # the guard
   action:                                                          # the consequence
@@ -169,7 +169,7 @@ It resolves in one of three ways, all the same match grammar:
 
 | condition | `subject` resolves to | example |
 |---|---|---|
-| no `when` | the entity that changed | `subject: {system: demo, kind: pr, fields: {stage: open}}` — a PR goes open, and the firing is about that PR |
+| no `when` | the entity that changed | `subject: {system: demo, kind: pr, value: {stage: open}}` — a PR goes open, and the firing is about that PR |
 | a `when`, and an address naming one entity (`demo:pr:1`) | that one entity, named — an action's `patch` *creates* it if absent | publishing a fact nothing has written yet |
 | a `when`, and a pattern — a glob (`demo:pr:*`, `demo:*:*`) or a `system`+`kind` selector with an optional payload predicate | the firing's OWN subject if it carries one (a reflected process's `flow`); else the set it selects from the store | the PR a completed process was about; or every reviewed PR |
 
@@ -195,7 +195,7 @@ rather than dropping it. Gates stay per firing — a broadcast asks once.
 
 This is why `subject` is bounded where a `when` formula ranges freely: it pins `system:kind`
 and predicates over the single entity's payload, rather than composing over time. "all open
-PRs" is just `{system: demo, kind: pr, entity: {stage: open}}`.
+PRs" is just `{system: demo, kind: pr, value: {stage: open}}`.
 
 ### The string form is an address, in one grammar
 
@@ -227,7 +227,7 @@ A selector subject is how one change advances a whole set:
 - name: ship-reviewed
   condition:
     when:    { system: ci, kind: status }
-    subject: { system: demo, kind: pr, fields: { stage: reviewed } }
+    subject: { system: demo, kind: pr, value: { stage: reviewed } }
   gates:
   - { name: ship, mode: ask }
   action:
@@ -297,25 +297,29 @@ name the subtree verse watches and the set it lists — they become a docd watch
 (`Formula.Subtrees`) and the store's `List` prefilter — and a watch path cannot be a
 predicate. Write the whole segment as `*` for "any", and put the operator on `id`.
 
-The payload predicate takes operators too. It is the same tony match, evaluated against the
-payload instead of the id, and it has two spellings with one meaning:
+The payload predicate takes operators too. It is `value`, one dimension: the same tony match,
+evaluated against the payload instead of the id.
 
 ```tony
-when: { system: demo, kind: pr,    fields:  { stage: !or [open, merged] } }  # a record's fields
-when: { system: demo, kind: pr,    fields:  { branch: !glob "hotfix-*" } }
-when: { system: demo, kind: count, payload: !or [10, 100] }                  # the payload ROOT
+when: { system: demo, kind: pr,    value: { stage: !or [open, merged] } }  # a record's fields
+when: { system: demo, kind: pr,    value: { branch: !glob "hotfix-*" } }
+when: { system: demo, kind: count, value: !or [10, 100] }                 # the payload ROOT
 ```
 
-`fields` is the object-shaped spelling — a predicate over a record's fields, which is what
-almost every charter matches. `payload` is the general one, a predicate on the payload
-*root*, for the entities whose payload is not a record at all (an entity's payload is any
-tony value: a count, a flag, a state name, a list). `entity` is accepted as another name for
-`fields`.
+`value` is open in shape because a payload is: an entity's payload is any tony value — a
+record, a count, a flag, a state name, a list — so a predicate over it may be any of those,
+or an operator over one. Almost every charter writes the record form; the rest are why the
+dimension is not called `fields`.
 
-Set one of them, not both — two predicates on the same value have no stated way to combine.
-`fields` must be an object; a scalar there is an install error pointing you at `payload`,
-which is what keeps a typo like `fields: "stage=open"` from becoming a predicate that quietly
-matches nothing.
+Over a record it is a **subset** constraint, as a tony match over an object always is: the
+fields you name must agree, and any others are ignored. Over a scalar there is nothing to be a
+subset of, so `value: 42` means the payload *is* 42.
+
+That cuts one way worth knowing: `value: "stage=open"` is a legal predicate — it matches an
+entity whose whole payload is the string `stage=open` — not an expression language. There used
+to be a `fields` dimension that asserted an object and made exactly that mistake an install
+error; it went away with the collapse to one name, because it caught only the wrong *shape*
+and never `{stge: open}`, the misspelled key that is the typo people actually make.
 
 Four semantics are worth knowing before you rely on one.
 
@@ -329,9 +333,9 @@ so the only thing it constrains is that the field is there. The three questions 
 different spellings:
 
 ```tony
-fields: { stage: null }            # stage is PRESENT, whatever its value
-fields: !not { stage: null }       # stage is ABSENT
-fields: { stage: !irtype null }    # stage is present AND its value is null
+value: { stage: null }            # stage is PRESENT, whatever its value
+value: !not { stage: null }       # stage is ABSENT
+value: { stage: !irtype null }    # stage is present AND its value is null
 ```
 
 An absent key is not a null one — the store records whether a field was cleared or never
@@ -463,7 +467,7 @@ hook: { chain: review.onDone, status: failed, err: "$data.severity is not presen
 
 It goes there rather than on the subject because it is a fact about that completion, and
 because putting an error into a field a charter matches on is exactly what makes
-`fields: {severity: high}` quietly stop matching.
+`value: {severity: high}` quietly stop matching.
 
 ### The answer contract
 
@@ -538,7 +542,7 @@ patched onto the subject is an ordinary fact, and an ordinary condition matches 
 knowledge of processes required:
 
 ```tony
-subject: { system: demo, kind: pr, fields: { stage: reviewed, severity: high } }
+subject: { system: demo, kind: pr, value: { stage: reviewed, severity: high } }
 ```
 
 Four semantics are worth knowing.
@@ -547,7 +551,7 @@ Four semantics are worth knowing.
 that reference's node, so a number stays a number and an object stays an object. A reference
 **embedded in text** interpolates and yields a string, because that is how it was written.
 The distinction is load-bearing: payload predicates are type-exact, so a `3` flattened to
-`"3"` is a value `fields: {count: 3}` does not match.
+`"3"` is a value `value: {count: 3}` does not match.
 
 ```tony
 patch: { count: $n }          # the number 3
@@ -616,7 +620,7 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
 ```tony
 - name: review
   condition:
-    subject: { system: demo, kind: pr, fields: { stage: open } }
+    subject: { system: demo, kind: pr, value: { stage: open } }
   gates:
   - { name: review, mode: ask }
   action:
@@ -702,13 +706,13 @@ verse:
 A join reads it at whatever depth it cares about:
 
 ```tony
-subject: { system: demo, kind: pr, fields: { verse: { review: { done: true } } } }
+subject: { system: demo, kind: pr, value: { verse: { review: { done: true } } } }
 ```
 
 One reserved name, not a family. The alternative — flat per-trigger keys like `review.step` —
 reserves an open-ended set of names out of a payload that is the author's own document. A
 single `verse` root reserves one name and documents once, the way `flow` is one reserved key
-on process entities. Nested predicates keep it readable, since `fields` matches structurally
+on process entities. Nested predicates keep it readable, since `value` matches structurally
 and so matches a payload carrying any amount of other content.
 
 `done` is published rather than derived because a match compares a value against a pattern,
@@ -747,11 +751,11 @@ layer, no new machinery.
 
 ```json
 { "name": "review",
-  "condition": { "subject": { "system": "demo", "kind": "pr", "fields": { "stage": "open" } } },
+  "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
   "gates":     [ { "name": "approval", "mode": "ask" } ],
   "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
 { "name": "reviewed",
-  "condition": { "when":    { "system": "process", "kind": "instance", "fields": { "status": "done" } },
+  "condition": { "when":    { "system": "process", "kind": "instance", "value": { "status": "done" } },
                  "subject": "demo:pr:*" },
   "action":    { "patch": { "stage": "reviewed" } } }
 ```

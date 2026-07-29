@@ -111,7 +111,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 		Name: "escalate",
 		Condition: Condition{Subject: Match{
 			"system": "demo", "kind": "pr",
-			"fields": map[string]any{"stage": "reviewed", "severity": "high"},
+			"value": map[string]any{"stage": "reviewed", "severity": "high"},
 		}},
 		Action: Action{Patch: entity.Obj{"escalated": true}.Payload()},
 	}); err != nil {

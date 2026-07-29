@@ -44,7 +44,7 @@ func prRef(id string) entity.Ref { return entity.Ref{System: "demo", Kind: "pr",
 // with no `when` beside it, their cause too. A field predicate rather than a bare kind, so
 // advancing the stage does not re-fire the trigger.
 func prSubject(stage string) Match {
-	return Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": stage}}
+	return Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": stage}}
 }
 
 // waitField polls until store[ref].Payload[key] == want, or fails after a deadline.

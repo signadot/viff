@@ -1350,7 +1350,7 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 // one an operator most needs to see — and a trace line is invisible to everything that reads
 // the verse. Written here rather than onto the SUBJECT because the failure is a fact about
 // this process's completion, not about the PR: the subject deliberately did not advance, and
-// putting an error in a field a charter matches on is what would make `fields: {stage: X}`
+// putting an error in a field a charter matches on is what would make `value: {stage: X}`
 // quietly stop matching.
 //
 // Writing to the process entity is safe despite the mirror owning that payload, because a

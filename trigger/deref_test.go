@@ -27,7 +27,7 @@ func derefRoot() entity.Payload {
 // A patch value that is exactly one reference resolves to that reference's NODE, so the
 // value keeps its type. This is the property string interpolation could not have, and the
 // reason it matters is the store's predicates are type-exact: a 3 written as "3" (or as 3.0)
-// is a value `fields: {count: 3}` does not match.
+// is a value `value: {count: 3}` does not match.
 func TestDerefWholeValueKeepsType(t *testing.T) {
 	root := derefRoot()
 	for _, tc := range []struct {

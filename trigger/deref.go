@@ -35,7 +35,7 @@ import (
 //
 // It is built by node rather than through entity.ToObj because a round-trip through Go
 // values does not preserve tony's numbers — an int 3 comes back a float64, and the store's
-// predicates are type-exact, so `patch: {n: $count}` would write a 3.0 that `fields: {n: 3}`
+// predicates are type-exact, so `patch: {n: $count}` would write a 3.0 that `value: {n: 3}`
 // then fails to match. Deep-copying the fields keeps both the type and the original
 // document's parent linkage intact.
 //

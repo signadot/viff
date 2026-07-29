@@ -11,7 +11,7 @@ import (
 // A charter comes back in ONE shape, whatever punctuation it was written with.
 //
 // It used to come back as a hybrid, and the hybrid was legible only if you knew the Go
-// types: `patch` and a match's `fields` are held as opaque tony documents, so they returned
+// types: `patch` and a match's `value` are held as opaque tony documents, so they returned
 // bracketed exactly as authored, while `condition`, `spawn` and `gates` — decoded into
 // structs, which have no layout to carry — returned in block form no matter what. So an
 // author who bracketed everything got braces on two fields and blocks on the rest, and the
@@ -27,7 +27,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 
 	// Everything bracketable, bracketed — including the two fields that used to keep it.
 	charter := `{ name: braced,
-	  condition: { subject: { system: demo, kind: pr, fields: { stage: open } } },
+	  condition: { subject: { system: demo, kind: pr, value: { stage: open } } },
 	  action: { patch: { stage: reviewing }, spawn: { driver: scripted, task: "echo hi" } } }`
 	resp, err := http.Post(ts.URL+"/triggers", "application/tony", strings.NewReader(charter))
 	if err != nil {

@@ -215,7 +215,7 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	channel := entity.Ref{System: "motion", Kind: "channel", ID: did}
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
-		Facts: Match{"system": "vote", "kind": did, "fields": map[string]any{"choice": "approve"}},
+		Facts: Match{"system": "vote", "kind": did, "value": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
 	alice := entity.Ref{System: "vote", Kind: did, ID: "alice"}
@@ -238,7 +238,7 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	// Fresh motion, a witness ballot retracted before commit → revoked, nothing written.
 	const did2 = "dtest2"
 	ch2 := entity.Ref{System: "motion", Kind: "channel", ID: did2}
-	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "vote", "kind": did2, "fields": map[string]any{"choice": "approve"}}, N: 2}}
+	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "vote", "kind": did2, "value": map[string]any{"choice": "approve"}}, N: 2}}
 	a2 := entity.Ref{System: "vote", Kind: did2, ID: "alice"}
 	b2 := entity.Ref{System: "vote", Kind: did2, ID: "bob"}
 	entitytest.Set(t, store, ch2, entity.Obj{"status": "open"}.Payload())

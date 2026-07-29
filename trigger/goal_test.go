@@ -16,7 +16,7 @@ import (
 func TestFormulaUnmet(t *testing.T) {
 	store := entitytest.Store(t)
 	f := &Formula{Op: OpUntil, Args: []*Formula{
-		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}}}},
+		{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}}}},
 		{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}}, // omitted from Unmet (a time derivation)
 	}}
 
@@ -50,11 +50,11 @@ func TestGoalDoneLatch(t *testing.T) {
 		Name:    "ship",
 		Subject: "change:pr:42",
 		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
-			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}},
+			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}},
 		}},
 		Triggers: []Trigger{{
 			Name:      "ship-review",
-			Condition: Condition{Subject: Match{"system": "change", "fields": map[string]any{"stage": "open"}}},
+			Condition: Condition{Subject: Match{"system": "change", "value": map[string]any{"stage": "open"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
 		}},
 	})
@@ -120,7 +120,7 @@ func TestGoalDeadlineFail(t *testing.T) {
 		Subject:  "change:pr:7",
 		Deadline: "40ms",
 		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
-			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}},
+			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}},
 		}},
 	}); err != nil {
 		t.Fatalf("AddGoal: %v", err)
@@ -154,7 +154,7 @@ func TestGoalDoneWinsDeadline(t *testing.T) {
 		Name:     "already",
 		Deadline: "20ms",
 		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
-			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "fields": map[string]any{"state": "green"}},
+			Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}},
 		}},
 	}); err != nil {
 		t.Fatalf("AddGoal: %v", err)
@@ -216,7 +216,7 @@ func TestGoalConcurrentLifecycle(t *testing.T) {
 				Name:    name,
 				Subject: "change:pr:" + strconv.Itoa(i),
 				DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
-					Kind: ReqFact, Facts: Match{"system": "ci", "kind": name, "fields": map[string]any{"state": "green"}},
+					Kind: ReqFact, Facts: Match{"system": "ci", "kind": name, "value": map[string]any{"state": "green"}},
 				}},
 				Deadline: "3s",
 			})

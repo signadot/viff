@@ -19,7 +19,7 @@ func TestCharterRoundTrip(t *testing.T) {
 		{
 			Name: "advance-on-review",
 			Condition: Condition{
-				When:    MatchWhen(Match{"system": "demo", "kind": "pr", "fields": map[string]any{"stage": "open"}}),
+				When:    MatchWhen(Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}),
 				Subject: Match{"system": "demo", "kind": "pr", "id": "*"},
 			},
 			Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},

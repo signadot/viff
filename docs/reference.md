@@ -162,7 +162,7 @@ What verse will not do is hand JSON back. `-o json`, `VERSE_FORMAT=json` and
 is built from them — `!quorum 2`, `!until [...]` — and JSON has no tag syntax, so
 rendering one means rewriting it as a single-key object: `{"quorum": 2}`. That is
 unambiguous where the surrounding keys are a closed set, and NOT unambiguous inside a
-match's `fields`, where a payload key may itself be named `or`. A rendering that is
+match's `value`, where a payload key may itself be named `or`. A rendering that is
 faithful for most of the model and quietly wrong for the rest is worse than one honestly
 not offered.
 
