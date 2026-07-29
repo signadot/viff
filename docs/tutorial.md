@@ -329,7 +329,9 @@ verse trigger add -f - <<'TONY'
   condition:
     subject: { system: demo, kind: pr, value: { stage: reviewed } }
   action:
-    spawn: { driver: scripted, task: "sleep 60" }
+    patch:  { stage: holding }
+    spawn:  { driver: scripted, task: "sleep 60" }
+    onDone: { patch: { stage: held } }
 TONY
 verse entity put demo:pr:2 '{stage: open}'      # open a change…
 verse gates                                     # …find its review gate, then:
@@ -338,9 +340,11 @@ verse flows
 # - demo:pr:2                                   ← a live 60s flow to steer
 ```
 
-`demo:pr:1` is not listed: `hold` was installed after that PR was already `reviewed`, and the
-engine reacts to changes rather than to standing state, so nothing ever fired for it — and its
-review process is long finished. A flow exists only while its processes run.
+`demo:pr:1` may be listed too, and briefly. Installing a trigger acts on the BACKLOG: a rule is
+a statement about the world, so a PR already sitting at `reviewed` matches the moment `hold`
+exists, without anyone re-touching it. Both PRs get a 60-second process; both are flows to
+steer. What ends them is the same thing that ends any rule — `hold` advances `stage` past
+`reviewed`, so neither PR is selected twice.
 
 The hold process's own completion re-sets the PR to `reviewed`, but that write changes nothing,
 and the engine reacts to real changes rather than to writes, so `hold` fires exactly once. No
@@ -663,6 +667,8 @@ to choose, instead of one driver:
       task: "review $subject"
       grant: read-only
       provider: { eligible: [gpt, claude], select: vote, need: 2 }
+    onDone:
+      patch: { stage: reviewed }
 ```
 
 The `grant:` is required here, and only here: a spawn that names one fixed driver may omit it,

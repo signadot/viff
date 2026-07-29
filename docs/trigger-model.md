@@ -48,11 +48,14 @@ it, and the action that fires.
 
 ```tony
 - name: review
+  # what it is about
   condition:
-    subject: { system: demo, kind: pr, value: { stage: open } }   # what it is about
+    subject: { system: demo, kind: pr, value: { stage: open } }
+  # the guard
   gates:
-  - { name: approval, mode: ask }                                  # the guard
-  action:                                                          # the consequence
+  - { name: approval, mode: ask }
+  # the consequence
+  action:
     patch: { stage: reviewing }
     spawn: { driver: scripted, task: "echo reviewing $subject" }
     onDone:
@@ -345,9 +348,12 @@ live on.
 `id` takes operators — the richer matching a plain glob cannot spell:
 
 ```tony
-subject: { system: demo, kind: pr, id: !glob "hotfix-*" }        # filepath globbing
-subject: { system: demo, kind: pr, id: !not "1" }                # everything but one
-subject: { system: demo, kind: pr, id: !or ["1", !glob "hf-*"] } # composed
+# filepath globbing
+subject: { system: demo, kind: pr, id: !glob "hotfix-*" }
+# everything but one
+subject: { system: demo, kind: pr, id: !not "1" }
+# composed
+subject: { system: demo, kind: pr, id: !or ["1", !glob "hf-*"] }
 ```
 
 In a JSON-shaped charter, write the operator as a single-key object — `{"id": {"glob":
@@ -363,9 +369,11 @@ The payload predicate takes operators too. It is `value`, one dimension: the sam
 evaluated against the payload instead of the id.
 
 ```tony
-when: { system: demo, kind: pr,    value: { stage: !or [open, merged] } }  # a record's fields
+# a record's fields
+when: { system: demo, kind: pr,    value: { stage: !or [open, merged] } }
 on:   { system: demo, kind: pr,    value: { branch: !glob "hotfix-*" } }
-when: { system: demo, kind: count, value: !or [10, 100] }                 # the payload ROOT
+# the payload ROOT
+when: { system: demo, kind: count, value: !or [10, 100] }
 ```
 
 `value` is open in shape because a payload is: an entity's payload is any tony value — a
@@ -395,9 +403,12 @@ so the only thing it constrains is that the field is there. The three questions 
 different spellings:
 
 ```tony
-value: { stage: null }            # stage is PRESENT, whatever its value
-value: !not { stage: null }       # stage is ABSENT
-value: { stage: !irtype null }    # stage is present AND its value is null
+# stage is PRESENT, whatever its value
+value: { stage: null }
+# stage is ABSENT
+value: !not { stage: null }
+# stage is present AND its value is null
+value: { stage: !irtype null }
 ```
 
 An absent key is not a null one — the store records whether a field was cleared or never
@@ -631,8 +642,10 @@ The distinction is load-bearing: payload predicates are type-exact, so a `3` fla
 `"3"` is a value `value: {count: 3}` does not match.
 
 ```tony
-patch: { count: $n }          # the number 3
-patch: { note: "saw $n" }     # the string "saw 3"
+# the number 3
+patch: { count: $n }
+# the string "saw 3"
+patch: { note: "saw $n" }
 ```
 
 *A composite has no text form.* `"saw $result"` where `$result` is an object is an error, not

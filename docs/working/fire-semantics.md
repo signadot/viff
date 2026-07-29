@@ -53,7 +53,8 @@ Nothing fires in either observation mode. In production (`ObserveScoped`) it is 
 ```tony
 condition:
   on:      { system: process, kind: instance, value: { status: done } }
-  when:    { system: demo, kind: notion, value: !or [ a, b ] }   # implicit exists
+  # implicit exists
+  when:    { system: demo, kind: notion, value: !or [ a, b ] }
   subject: demo:pr:*
 ```
 
