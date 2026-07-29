@@ -258,6 +258,43 @@ patch writes no key the subject's predicate constrains. Key sets are literal eve
 are templated, so the overlap is decidable, and it is exactly the check that would have caught
 connect before it diverged.
 
+**Landed.** `Engine.evaluate` is the only firing rule: vacuous `on` means the trigger is
+considered at every commit touching what it reads. `Trigger.reads` is that list (cause ∪
+condition ∪ subject), and it is both what a scoped engine watches and what `touches` skips on —
+one list, so "what it watches" and "what could change its answer" cannot drift apart. Gone with
+the old path: `matchesEvent`, `resolveSubject`, `dispatchOne`, `Condition.dispatch`, the
+ignition guard and `machinery`, `subjectLabel`/`summarize`, and the `op` dimension.
+
+Three things the plan did not foresee, all of them consequences of "a firing is about one
+entity" being taken seriously:
+
+- **A firing is now literally per subject.** `fireSubjects` starts one firing per member, each
+  with its own gates, budget and identity — where it used to gate once over a list. Without
+  that, the gate arity change the plan predicted did not actually happen: the question still
+  named a set.
+- **A subject can be re-fired while its own latch write is in flight.** Every commit
+  re-evaluates, and a member whose write has not landed is still selected. `claimFlight` holds
+  the (trigger, subject) pair for the duration of a firing, which is the same identity its
+  spawn id, gate and motion already use — so a re-evaluation about a subject already firing is
+  not a second firing. A residual remains and is correct: an evaluation at a commit where the
+  member genuinely still matches will act again, idempotently. The reconciler converges; it
+  does not minimise, and the budget counts work rather than distinct subjects.
+- **One commit can reach a trigger several times**, once per watched subtree. `firstSight` is
+  a per-trigger watermark: one verdict per (trigger, commit).
+
+**The latch lint warns, it does not refuse.** The plan had it fatal here. Made fatal, it
+refused a dozen test charters whose subject payload is deliberately untouched — sequence
+progress, provider selection, spawn ids — none of which is about dispatch. The charter is
+divergent as written and the operator hears so at install; making it fatal is a change to what
+INSTALLS, and this phase is already changing what FIRES. It becomes an error in phase 8, the
+same treatment the other lints get.
+
+`connect.go`'s validator is rewritten as the plan describes: `value: {validated: !not null}`
+selects the outstanding files, and `onDone: {patch: {validated: $hash}}` latches on the content
+hash the dir-status entity already carries — so a file is validated once per version rather
+than once per commit. `op: set` was standing in for "on the change rather than the state", and
+that is what had to be written down.
+
 Smoke's own charters need no edits, and it is worth saying why each one survives per-commit
 evaluation:
 

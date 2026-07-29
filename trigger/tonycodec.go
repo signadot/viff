@@ -45,7 +45,7 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Canonical dimension order, not map order: ir.FromMap sorts, and
 	// {fields, id, kind, system} reads worse than the order people write.
 	var kvs []ir.KeyVal
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID, mKeyOp} {
+	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
 		// An operator goes back out as a tag, which is how it was written in tony and the
 		// only faithful spelling — the tag-keyed input form is sugar, not a rendering.
 		if n := m.dim(k); n != nil {
@@ -74,9 +74,6 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 func (m Match) address() (string, bool) {
 	if m.HasPredicate() {
 		return "", false // no address spelling carries a payload predicate
-	}
-	if m.hasDim(mKeyOp) {
-		return "", false
 	}
 	// An operator has no address spelling. Rendering one as the string form would drop it
 	// — `{id: !glob "a/*"}` becoming "demo:pr" — which is the widest possible match wearing
@@ -155,7 +152,7 @@ func matchFromObject(node *ir.Node) (Match, error) {
 		k := key.String
 		val := unwrap(node.Values[i])
 		switch k {
-		case mKeySystem, mKeyKind, mKeyID, mKeyOp:
+		case mKeySystem, mKeyKind, mKeyID:
 			// A dimension is a closed grammar — a string, or an operator over one — so an
 			// object here is unambiguously the tag-keyed spelling of an operator and can
 			// be desugared without asking what the surrounding keys mean.

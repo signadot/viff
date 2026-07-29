@@ -112,7 +112,6 @@ const (
 	mKeySystem = "system"
 	mKeyKind   = "kind"
 	mKeyID     = "id"
-	mKeyOp     = "op"
 	mKeyValue  = "value" // the payload predicate: any tony match, at the payload root
 )
 
@@ -121,8 +120,18 @@ const (
 // (docs/trigger-model.md), an object is classified as a match or as a formula tag
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
-	mKeySystem: true, mKeyKind: true, mKeyID: true,
-	mKeyOp: true, mKeyValue: true,
+	mKeySystem: true, mKeyKind: true, mKeyID: true, mKeyValue: true,
+}
+
+// removedKeys are dimensions a match once had, named so a charter carrying one fails with an
+// explanation instead of "unknown key". `op` classified a CHANGE (set/delete); a match is now
+// asked only of STATE, at a revision, and state has no op. What it was used for has a
+// spelling: a create is the rising edge of "this exists" (`on`), and a delete is the rising
+// edge of the sink state that precedes removal.
+var removedKeys = map[string]string{
+	"op": "`op` classified a change, and a match is now evaluated against state at a revision, " +
+		"where nothing has one. For \"when this appears\", make it the cause: `on: {system: …, " +
+		"kind: …}` fires at the commit where it first exists",
 }
 
 // Validate reports whether the match carries only known dimensions of the right shape. It is
@@ -130,6 +139,9 @@ var matchKeys = map[string]bool{
 func (m Match) Validate() error {
 	var unknown []string
 	for k := range m {
+		if why, gone := removedKeys[k]; gone {
+			return fmt.Errorf("match: %q is no longer a dimension: %s", k, why)
+		}
 		if !matchKeys[k] {
 			unknown = append(unknown, k)
 		}
@@ -144,7 +156,7 @@ func (m Match) Validate() error {
 		return fmt.Errorf("match: unknown key(s) %s (want any of %s)",
 			strings.Join(unknown, ", "), strings.Join(known, ", "))
 	}
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID, mKeyOp} {
+	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
 		v, present := m[k]
 		if !present {
 			continue
@@ -289,10 +301,7 @@ func (m Match) MatchEvent(ev entity.Event) bool {
 	if err != nil {
 		return false
 	}
-	// `op` is applied twice when it is a plain string — once by the pattern, once here —
-	// which is the same answer either way. The second call is what an operator-valued `op`
-	// needs, since pattern() cannot carry one.
-	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID) && m.matchDim(mKeyOp, string(ev.Op))
+	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID)
 }
 
 // Select returns the refs of every stored entity the match picks — the SET face, used to
@@ -301,6 +310,17 @@ func (m Match) MatchEvent(ev entity.Event) bool {
 // The result is sorted by ref, so a fan-out acts on its members in a stable order (which
 // matters when a budget truncates it) and a formula's witness is a stable audit trail.
 func (m Match) Select(r entity.Reader) []entity.Ref {
+	if ref, names := m.Names(); names {
+		// A NAMED entity is a set of one whether or not it stands there yet. Selection asks
+		// what exists; naming asks for one thing by identity, and an action's `patch` on it
+		// brings it into being — which is how a trigger publishes a fact nothing has written
+		// before. Reading "every entity this selects" literally would have made that
+		// unspellable: the only way to create an entity would be to already have it.
+		//
+		// It is safe precisely because it is not a glob: a name cannot widen. `demo:pr:*`
+		// still selects what is there.
+		return []entity.Ref{ref}
+	}
 	p, err := m.pattern()
 	if err != nil {
 		return nil
@@ -328,7 +348,6 @@ func (m Match) pattern() (entity.Pattern, error) {
 	return entity.Pattern{
 		System:    m.System(),
 		Kind:      m.Kind(),
-		Op:        entity.Op(m.str(mKeyOp)),
 		Predicate: m.Predicate(),
 	}, nil
 }

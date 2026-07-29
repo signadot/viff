@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/mirror"
 )
 
 // CharterSystem/CharterKind name where the durable charter lives: trigger:rule:<name>, the
@@ -149,12 +148,4 @@ func ruleOf(ent entity.Entity) (Trigger, error) {
 			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
 	}
 	return t, nil
-}
-
-// machinery reports whether a system is the engine's OWN — process:* is reflected process
-// state, trigger:* is the charter it runs. Neither is in the default match set: a trigger
-// has to name the system in its `when` to react to it, so the loop cannot ignite on its own
-// machinery. Meta-observation stays possible, and stays deliberate.
-func machinery(system string) bool {
-	return system == mirror.System || system == CharterSystem
 }

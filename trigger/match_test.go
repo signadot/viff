@@ -264,14 +264,12 @@ func TestMatchEventDimensions(t *testing.T) {
 		{"system": "demo", "kind": "pr"},
 		{"system": "demo", "kind": "pr", "id": "1"},
 		{"system": "demo", "kind": "pr", "id": "*"},
-		{"op": "set"},
 		{"value": map[string]any{"stage": "open"}},
 	}
 	no := []Match{
 		{"system": "other"},
 		{"kind": "issue"},
 		{"id": "2"},
-		{"op": "delete"},
 		{"value": map[string]any{"stage": "closed"}},
 		{"system": "demo", "kind": "pr", "id": "2"}, // one wrong dimension fails the conjunction
 	}
@@ -346,8 +344,10 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 			overlap = append(overlap, k)
 		}
 	}
-	if len(overlap) != 1 || overlap[0] != "op" {
-		t.Fatalf("match keys overlap formula tags at %v; want exactly [op].\n"+
+	// None, now that `op` is gone: a match dimension and a formula tag are disjoint
+	// namespaces, and an object is classified as one or the other by its keys.
+	if len(overlap) != 0 {
+		t.Fatalf("match keys overlap formula tags at %v; want none.\n"+
 			"Either rename the new tag/dimension, or extend the ordered classification in "+
 			"Formula.UnmarshalJSON to disambiguate it (see docs/trigger-model.md).", overlap)
 	}

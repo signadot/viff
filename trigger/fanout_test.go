@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -60,9 +61,13 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "4"}); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("an unselected entity was acted on: %#v", e.Payload)
 	}
-	// Budget metering is per entity acted on, so three members are three.
-	if f := eng.Fired(); f != 3 {
-		t.Fatalf("fired = %d, want 3 (one per fanned-out subject)", f)
+	// Budget metering is per entity acted on, so three members cost at least three. It can
+	// cost MORE: each firing's write is a commit, which re-evaluates the trigger, and a member
+	// whose own write has not landed yet is still selected at that commit. The extra firing
+	// writes the same value, so nothing moves — the reconciler converges, it does not
+	// minimise — but the backstop counts the work, not the distinct subjects.
+	if f := eng.Fired(); f < 3 {
+		t.Fatalf("fired = %d, want at least 3 (one per selected subject)", f)
 	}
 }
 
@@ -89,7 +94,10 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
 			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
-		Action: Action{Spawn: &launch.Spec{Task: "ship $subject"}},
+		Action: Action{
+			Spawn:  &launch.Spec{Task: "ship $subject"},
+			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -100,12 +108,15 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 
 	seen := map[string]string{} // subject -> task
 	ids := map[string]bool{}
-	for range 3 {
+	// Until all three members have spawned, not exactly three sends: a re-evaluation about a
+	// member whose process is already live is deduped by spawnHooked and never reaches the
+	// spawner, but the count is about members, so count members.
+	for len(seen) < 3 {
 		select {
 		case s := <-got:
 			seen[s.spec.Subject] = s.spec.Task
 			ids[s.id] = true
-		case <-time.After(2 * time.Second):
+		case <-time.After(5 * time.Second):
 			t.Fatalf("only %d of 3 members spawned: %v", len(seen), seen)
 		}
 	}
@@ -146,7 +157,10 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
 			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
-		Action: Action{Spawn: &launch.Spec{Task: "ship $subject"}},
+		Action: Action{
+			Spawn:  &launch.Spec{Task: "ship $subject"},
+			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -250,13 +264,19 @@ func TestSubjectSelectionIsDeterministic(t *testing.T) {
 	}
 }
 
-// A broadcast raises ONE gate for the firing, not one per member — an operator approving "ship
-// every reviewed PR" answers a single question.
-func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
+// A gate is raised PER SUBJECT, not once for a whole broadcast. A firing is about one entity —
+// its spawn id, its gate question and its motion all key on that entity — so "ship every
+// reviewed PR" is three decisions, and presenting them as one was a summary standing in for
+// three (which is what `summarize` existed to render).
+//
+// This test asserted the opposite while a firing could be about a set. The regression is real
+// and user-visible: three PRs are three questions on the docket, and answering them one at a
+// time is the honest arity until `verse gate approve` grows a bulk form.
+func TestEachSubjectRaisesItsOwnGate(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "1", "2", "3")
 
-	asked := make(chan process.GateQuestion, 8)
+	asked := make(chan process.GateQuestion, 32)
 	eng := New(store, countingResolver{asked})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
@@ -274,12 +294,20 @@ func TestFanOutRaisesOneGatePerFiring(t *testing.T) {
 	eng.Start(ctx)
 	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
-	// All three members advance off one approval.
 	for _, id := range []string{"1", "2", "3"} {
 		waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: id}, "shipped")
 	}
-	if n := len(asked); n != 1 {
-		t.Fatalf("a broadcast posed %d gates, want 1 per firing", n)
+	// Each question names the one subject it decides about, and no question names a set.
+	subjects := map[string]bool{}
+	for len(asked) > 0 {
+		q := <-asked
+		if strings.Contains(q.Subject, ",") {
+			t.Fatalf("a gate question named several subjects: %q", q.Subject)
+		}
+		subjects[q.Subject] = true
+	}
+	if len(subjects) != 3 {
+		t.Fatalf("gates asked about %d distinct subjects, want 3: %v", len(subjects), subjects)
 	}
 }
 
@@ -429,40 +457,10 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	}
 }
 
-// A gate is raised once per FIRING, so under fan-out one "yes" moves every selected
-// subject. The label has to say that: showing only the first subject would let someone
-// approve "ship demo:pr:1" and actually ship twelve PRs.
-func TestSubjectLabelNamesTheWholeFiring(t *testing.T) {
-	ref := func(id string) entity.Ref { return entity.Ref{System: "demo", Kind: "pr", ID: id} }
-
-	cases := []struct {
-		name string
-		in   []entity.Ref
-		want string
-	}{
-		{"none", nil, ""},
-		{"one", []entity.Ref{ref("1")}, "demo:pr:1"},
-		{"a few, all named", []entity.Ref{ref("1"), ref("2")}, "demo:pr:1, demo:pr:2"},
-		{"at the cutoff", []entity.Ref{ref("1"), ref("2"), ref("3")}, "demo:pr:1, demo:pr:2, demo:pr:3"},
-		{
-			"beyond it, counted",
-			[]entity.Ref{ref("1"), ref("2"), ref("3"), ref("4"), ref("5")},
-			"demo:pr:1, demo:pr:2, demo:pr:3 (+2 more)",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := subjectLabel(c.in); got != c.want {
-				t.Errorf("subjectLabel = %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
-// The whole value of publishing a spawn id on the gate is that it is the SAME id the
-// spawn will use — an approver lining a gate up with the work it authorises. Two call
-// sites compute it (the gate in fire(), the spawn in apply()), so nothing but a test
-// stops them drifting into two schemes that merely look alike.
+// The whole value of publishing a spawn id on the gate is that it is the SAME id the spawn
+// will use — an approver lining a gate up with the work it authorises. Two call sites compute
+// it (the gate in fireOne, the spawn in apply), so nothing but a test stops them drifting into
+// two schemes that merely look alike. A firing is one subject now, so there is one id.
 func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 	refs := []entity.Ref{
 		{System: "demo", Kind: "pr", ID: "1"},
@@ -483,10 +481,4 @@ func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 		t.Errorf("a set-only trigger announced a spawn: %q", got)
 	}
 
-	// Fan-out: one gate, one id per member — each the id that member's spawn will use.
-	got := spawnLabel(trig, refs)
-	want := spawnID("review", refs[0]) + ", " + spawnID("review", refs[1])
-	if got != want {
-		t.Errorf("fan-out label = %q, want %q", got, want)
-	}
 }

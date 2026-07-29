@@ -163,11 +163,6 @@ func (c Condition) validateOn() error {
 		return fmt.Errorf("condition.on needs a system: it names the subtree whose changes are " +
 			"the cause, and a watch path cannot be a wildcard (kind is optional)")
 	}
-	if c.On.Req.Facts.hasDim(mKeyOp) {
-		return fmt.Errorf("condition.on cannot take `op`: it is a predicate over STATE, asked " +
-			"at two revisions, and state has no op. A create is the rising edge of \"this " +
-			"exists\"; write that instead")
-	}
 	_, names := c.Subject.Names()
 	if !names && !c.Subject.Selects() {
 		return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or ` +
@@ -176,73 +171,6 @@ func (c Condition) validateOn() error {
 			`definite kind to select and spawn for`)
 	}
 	return nil
-}
-
-// dispatch is the formula a change is tested against to fire this trigger: the When, or the
-// Subject itself when there is none. One accessor rather than a nil check at each of the three
-// call sites (edge match, subtree watch, ignition guard), so "an omitted when is the subject"
-// is stated once and cannot drift between them.
-func (c Condition) dispatch() *Formula {
-	if c.On != nil {
-		return c.On // the cause is named: it is what this trigger watches, and all it watches
-	}
-	if c.When != nil {
-		return c.When
-	}
-	return matchFormula(c.Subject)
-}
-
-// matchesEvent reports whether an observed change fires this trigger — the edge face of the
-// condition's dispatch formula. A temporal When has no edge and is resolved by Monitor instead.
-func (t Trigger) matchesEvent(ev entity.Event) bool {
-	return t.Condition.dispatch().MatchEvent(ev)
-}
-
-// opensTo reports whether the condition opts into the given system (used by the ignition
-// guard to require opt-in for the reflected process:* namespace). It asks which subtrees the
-// dispatch formula reads, so it holds for a temporal When over several systems too — and for
-// a subject-only trigger, whose subject is what it reads.
-func (t Trigger) opensTo(system string) bool {
-	for _, st := range t.Condition.dispatch().Subtrees() {
-		if st[0] == system {
-			return true
-		}
-	}
-	return false
-}
-
-// resolveSubject names the entities this firing is about, at the instant it fires. It
-// yields 0, 1, or (once fan-out lands) N refs; a process/flow/goal always has exactly one
-// subject, so the engine acts once per resolved ref.
-func (t Trigger) resolveSubject(ev entity.Event, store entity.Reader) []entity.Ref {
-	m := t.Condition.Subject
-	if t.Condition.When == nil {
-		// No when: the subject is what dispatched this change (matchesEvent tested the event
-		// against it), so the entity that changed is the one member of it this firing is about.
-		// One change, one subject — a subject-only trigger never sweeps the store, however wide
-		// its pattern. Stated on "there is no when" rather than on "the change happens to satisfy
-		// the subject", so that an explicit when over the subject's own kind keeps meaning the
-		// selection it means today.
-		return []entity.Ref{ev.Ref}
-	}
-	if ref, names := m.Names(); names {
-		return []entity.Ref{ref} // one entity, named — a `set` may bring it into existence
-	}
-	// A pattern (an id glob, or a system:kind selector) selects over the store: one action per
-	// member.
-	//
-	// It used to be short-circuited when the changed payload carried a `flow` field — the
-	// firing then resolved onto THAT ref alone, which is how a completed process advanced the
-	// one PR it was about. That is gone. A subject is what the charter says it is, and a
-	// payload field is not standing to redirect it: whether a firing acted on one entity or on
-	// a whole selected set turned on whether some entity happened to carry a key by that name,
-	// which no charter says and no reader of one could predict.
-	//
-	// What it did well — advancing exactly the subject a finished process was about — is what
-	// completion HOOKS do, and do exactly: the engine scopes a hook to that spawn's process
-	// (Engine.applyHook), a correlation the store cannot fake because the engine is what
-	// spawned it. A `when` over process:instance now sweeps, like any other selector.
-	return m.Select(store)
 }
 
 // Gate is one decision point on a trigger firing: a named mode, or a temporal Formula. A

@@ -46,7 +46,6 @@ func TestMatchOperatorSpellingsAgree(t *testing.T) {
 			`{"system":"demo","kind":"pr","id":{"glob":"hotfix-*"}}`,
 		},
 		{`{id: !not "1"}`, `{"id":{"not":"1"}}`},
-		{`{op: !or [set, delete]}`, `{"op":{"or":["set","delete"]}}`},
 		// Nested: the sugar is rewritten throughout the operand, not just at the top.
 		{`{id: !or ["1", !glob "hotfix-*"]}`, `{"id":{"or":["1",{"glob":"hotfix-*"}]}}`},
 	}

@@ -251,14 +251,26 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 	def := trigger.Trigger{
 		Name: "validate-" + scope,
 		Condition: trigger.Condition{
-			// Subject and cause in one: no `when`, so this fires on changes to the dir-status
-			// entities it is about, and each firing is about the one that changed — which is
-			// what the validator process is then tagged with.
+			// Every federated file that has not been validated yet. A trigger is evaluated at
+			// every commit touching what it reads, so the subject has to say what is still
+			// OUTSTANDING rather than what exists — otherwise each file is validated again at
+			// every save of any file, forever.
+			//
+			// `op: set` used to stand in for that: it made the rule fire on the change rather
+			// than on the state. A match is asked only of state now, so the outstanding-ness
+			// has to be written down, which is what `validated` is.
 			Subject: trigger.Match{
-				"system": source.System, "kind": statusKind, "op": string(entity.Set),
+				"system": source.System, "kind": statusKind,
+				"value": map[string]any{"validated": map[string]any{"not": nil}},
 			},
 		},
-		Action: trigger.Action{Spawn: &launch.Spec{Driver: cfg.Driver, Task: task}},
+		Action: trigger.Action{
+			Spawn: &launch.Spec{Driver: cfg.Driver, Task: task},
+			// The latch. `$hash` is the dir-status entity's own content hash (source.Meta), so
+			// the record says WHICH version was validated — worth more than a bare flag, and
+			// free, since bindings read the subject.
+			OnDone: &trigger.Action{Patch: entity.Obj{"validated": "$hash"}.Payload()},
+		},
 	}
 	node, err := codec.ToNode(def)
 	if err != nil {

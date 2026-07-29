@@ -99,18 +99,22 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	}
 }
 
-// The ignition guard: a reflected process:* change does NOT wake a default trigger,
-// so the loop cannot self-ignite on its own machinery — but ordinary changes do.
-func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
+// A trigger is reached only by commits touching what it READS — its cause, its condition and
+// its subject. That is what the ignition guard used to approximate: the engine's own
+// machinery (reflected process:* state, the durable trigger:* charter) was excluded from a
+// default match set, so a trigger had to opt in by naming it, and the loop could not ignite on
+// itself.
+//
+// The guard is gone because the rule makes it unnecessary rather than because the property
+// was dropped. A trigger names its subtrees and is evaluated at nothing else, so naming a
+// machinery system IS the opt-in — there is no default set left to exclude anything from.
+func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
-	// A `when` of {} matches every change and names no system, which is what the guard is
-	// stated over. The subject names one entity, because a subject is required now and this
-	// trigger's whole job is to fire (or not) — Fired is all we observe.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "greedy",
-		Condition: Condition{Subject: mm("demo:x:1"), When: MatchWhen(Match{})},
-		Action:    Action{},
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "x"}},
+		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -119,20 +123,20 @@ func TestIgnitionGuardSkipsProcessNamespace(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// a process:* change must be ignored by the (non-opted-in) greedy trigger
+	// A process:* change is not in anything this trigger reads, so it never reaches it.
 	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
-		t.Fatalf("greedy fired on a process:* change (fired=%d) — ignition guard failed", f)
+		t.Fatalf("fired on a process:* change it does not read (fired=%d)", f)
 	}
 
-	// an ordinary change still wakes it
+	// A change to what it does read wakes it.
 	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{}.Payload())
 	deadline := time.After(time.Second)
 	for eng.Fired() < 1 {
 		select {
 		case <-deadline:
-			t.Fatal("greedy did not fire on an ordinary change")
+			t.Fatal("did not fire on a change to what it reads")
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

@@ -86,7 +86,10 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
-		Action: Action{Spawn: &launch.Spec{Task: "follow up on $subject"}},
+		Action: Action{
+			Spawn:  &launch.Spec{Task: "follow up on $subject"},
+			OnDone: &Action{Patch: entity.Obj{"stage": "followed"}.Payload()},
+		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -266,11 +269,17 @@ func TestSubjectOnlyNeedsNoKind(t *testing.T) {
 	}
 }
 
-// One change, one subject. A subject-only trigger fires per change and acts on the entity that
-// changed, however wide its pattern — it must not read the pattern as a selection and sweep
-// every matching entity in the store. That distinction is the difference between "when a PR
-// opens, review it" and "when a PR opens, review all of them".
-func TestSubjectOnlyActsOnTheChangedEntity(t *testing.T) {
+// A subject is a SELECTION, always: the trigger acts on every entity its pattern names at the
+// commit, not only on the one that changed. That is the reconciler reading — a rule is a
+// statement about the world, so "which entities is it about" cannot depend on who happened to
+// be written last.
+//
+// This test asserted the opposite for as long as the subject was also the cause. The
+// difference it was drawing — "when a PR opens, review it" versus "review all of them" — is
+// real but is not a difference in dispatch: both settle in the same place, because the action
+// advances each PR out of the selection. What changed is how many firings it takes to get
+// there, not where it ends up.
+func TestSubjectIsASelectionNotTheChangedEntity(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 
@@ -289,13 +298,11 @@ func TestSubjectOnlyActsOnTheChangedEntity(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
+	// Writing pr:1 is the commit that gets the trigger evaluated; the firing is about every
+	// open PR at that commit, which is both of them.
 	entitytest.Set(t, store, one, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, one, "reviewing")
-
-	// The other open PR is untouched: it never changed, so no firing was ever about it.
-	if e, _, _ := store.Get(two); entity.Str(e.Payload, "stage") != "open" {
-		t.Fatalf("a subject-only trigger swept the store: demo:pr:2 = %#v", e.Payload)
-	}
+	waitStage(t, store, two, "reviewing")
 }
 
 // An empty `when` matches everything — parity with the old empty pattern list, so the
@@ -313,27 +320,28 @@ func TestEmptyWhenMatchesEverything(t *testing.T) {
 	}
 }
 
-// REGRESSION: `op` is both a match dimension and the verbose formula node's discriminator.
-// Branching on its presence — as the parser once did — decoded a match carrying `op: "set"`
-// as Formula{Op:"set"}, which matches nothing. That is exactly the shape verse connect's
-// per-file validator uses, so it silently never fired.
-func TestWhenWithOpDimensionIsAMatchNotAVerboseNode(t *testing.T) {
+// `op` is no longer a match dimension, and a charter carrying one is refused with an
+// explanation rather than an "unknown key". It classified a CHANGE (set/delete); a match is
+// now asked only of STATE, at a revision, where nothing has one.
+//
+// The name is kept in a removed-keys table for exactly this: the charters that used it were
+// written when it meant something, and their authors deserve to be told where the meaning
+// went — a create is the rising edge of "this exists", which is what `on` says.
+func TestOpIsNoLongerAMatchDimension(t *testing.T) {
 	const in = `{"system":"local","kind":"dir-status-abc","op":"set"}`
 	var f Formula
-	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err != nil {
-		t.Fatalf("unmarshal %s: %v", in, err)
-	}
-	if f.Op != OpAtom || !f.IsMatchAtom() {
-		t.Fatalf("parsed as %+v; a match carrying `op` must stay a match atom "+
-			"(it used to decode as Formula{Op:\"set\"} and match nothing)", f)
-	}
-	set := entity.Event{Ref: entity.Ref{System: "local", Kind: "dir-status-abc", ID: "a.go"}, Op: entity.Set}
-	del := entity.Event{Ref: set.Ref, Op: entity.Delete}
-	if !f.MatchEvent(set) {
-		t.Fatal("did not match the Set event it selects")
-	}
-	if f.MatchEvent(del) {
-		t.Fatal("matched a Delete event despite op=set")
+	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err == nil {
+		if err := f.Req.Facts.Validate(); err == nil {
+			t.Fatalf("a match carrying `op` was accepted: %+v", f)
+		} else if !strings.Contains(err.Error(), "on:") {
+			t.Errorf("the diagnostic does not say where `op` went: %v", err)
+		} else {
+			t.Log(err)
+		}
+	} else if !strings.Contains(err.Error(), "op") {
+		t.Fatalf("unmarshal failed for the wrong reason: %v", err)
+	} else {
+		t.Log(err)
 	}
 }
 

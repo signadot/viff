@@ -269,7 +269,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 		Action: Action{Seq: []Action{
 			{Spawn: &launch.Spec{Task: "one"}},
 			{Spawn: &launch.Spec{Task: "two"}},
-		}},
+		}, OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()}},
 	}
 	if err := eng.AddTrigger(tr); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

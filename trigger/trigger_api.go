@@ -41,6 +41,13 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := t.Action.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	// A WARNING, not a refusal, for now. The charter is divergent as written and the operator
+	// should hear so at install; but making it fatal is a change to what installs, and this
+	// phase is already changing what FIRES. It becomes an error once the tree and the docs
+	// carry no examples of the shape — see docs/working/fire-semantics-plan.md phase 8.
+	if err := checkLatch(t.Condition, t.Action); err != nil {
+		e.logger.Warn("trigger will re-spawn", "trigger", t.Name, "why", err.Error())
+	}
 	if err := t.Action.noNestedSeq(false); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}

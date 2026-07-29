@@ -76,12 +76,16 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 	got := map[string]launch.Spec{}
 	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "finding", ID: "1"}, entity.Obj{"risk": "low"}.Payload())
 	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "finding", ID: "2"}, entity.Obj{"risk": "high"}.Payload())
-	for range 2 {
+	// Read until both subjects have arrived rather than exactly twice: this charter spawns
+	// without a latch, so it is re-evaluated and spawns again at each commit touching
+	// demo:finding — which is what the install-time warning says about it. What the test is
+	// about is which fragment reaches which spawn, and that is per subject.
+	for len(got) < 2 {
 		select {
 		case s := <-specs:
 			got[s.Subject] = s
 		case <-time.After(2 * time.Second):
-			t.Fatalf("only %d of 2 spawns arrived: %+v", len(got), got)
+			t.Fatalf("only %d of 2 subjects spawned: %+v", len(got), got)
 		}
 	}
 

@@ -66,6 +66,24 @@ type Engine struct {
 	fired    int
 	maxFires int // 0 = unbounded (a runaway backstop, not a design limit)
 
+	// seen is the highest commit each trigger has been evaluated at — the watermark that
+	// makes one verdict per (trigger, commit). See firstSight.
+	seenMu sync.Mutex
+	seen   map[string]int64
+
+	// inflight holds the (trigger, subject) firings currently under way. A firing takes time
+	// — a gate is answered by a person, a spawn runs — and every commit meanwhile re-evaluates
+	// the trigger, which selects the same subject because the write that would take it out of
+	// the selection is exactly what has not happened yet. Without this, a firing waiting on a
+	// gate is joined by another at every commit that touches its subtree.
+	//
+	// It is the same identity as everything else a firing owns — its spawn id, its gate
+	// question, its motion channel are all functions of (trigger, subject) — which is what
+	// makes "a second firing about a subject already firing" the SAME firing rather than a new
+	// one to be deduplicated afterwards.
+	flightMu sync.Mutex
+	inflight map[string]bool
+
 	// Control plane — steering, serviced with strict priority over observation
 	// (see docs/deployment-and-steering.md). Closures run on the loop goroutine, so
 	// they serialize with dispatch and never race it; `paused`/`cursor` are
@@ -198,15 +216,19 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 // three subtrees refuses to watch) cancels the ones already opened rather than leaving a
 // half-installed trigger firing.
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
-	subtrees := t.Condition.dispatch().Subtrees()
+	// Everything the trigger READS, not just what dispatches it: a verdict is a function of
+	// its cause, its condition and its subject together, so a change to any of them can change
+	// it. This is the same list the commit skip is asked about (Trigger.reads), which is what
+	// keeps "what it watches" and "what could change its answer" from drifting apart.
+	subtrees := t.reads()
 	if len(subtrees) == 0 {
 		return fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
 	}
 	for _, st := range subtrees {
 		if st[0] == "" {
-			return fmt.Errorf("subtree trigger %q needs a system in its when — or in its subject, "+
-				"when that is what dispatches it (kind optional); a scoped engine opens no root "+
-				"watch, so there is nothing to watch without one", t.Name)
+			return fmt.Errorf("subtree trigger %q needs a system in its `on`, its `when` or its "+
+				"`subject` (kind optional); a scoped engine opens no root watch, so there is "+
+				"nothing to watch without one", t.Name)
 		}
 	}
 	ctx, cancel := context.WithCancel(e.bgctx)
@@ -237,15 +259,12 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 					// posed gate, a spawned process — belongs to the work, not to the charter
 					// entry, and removing the trigger stops FURTHER firings rather than
 					// cancelling one in flight.
-					if t.Condition.On != nil {
-						e.dispatchEdge(e.bgctx, t, c) // once for the commit
-						continue
-					}
-					for _, ev := range c.Changes {
-						// No ignition guard: this watch delivers exactly the slice the
-						// trigger named, so naming it was the opt-in.
-						e.dispatchOne(e.bgctx, t, ev, false)
-					}
+					//
+					// No skip check: this watch delivers only the subtrees the trigger reads,
+					// so arriving here IS the skip's answer. The per-commit watermark inside
+					// evaluate is what keeps several watched subtrees from evaluating one
+					// commit several times.
+					e.evaluate(e.bgctx, t, c)
 				}
 			}
 		}()
@@ -400,59 +419,27 @@ func (e *Engine) Resume() { e.do(func() { e.paused = false; e.tracef("resumed (c
 // inject a steer) until those get typed methods. Synchronous.
 func (e *Engine) Do(fn func()) { e.do(fn) }
 
-// dispatch matches one COMMIT against every trigger and fires the matches. Firing is off
-// the observe goroutine so a blocking gate (a human) never stalls the loop.
+// dispatch evaluates one COMMIT against every trigger. Firing is off the observe goroutine so
+// a blocking gate (a human) never stalls the loop.
 //
-// A commit is the unit that arrives; the entity is still the unit a trigger matches, so this
-// walks the commit's changes. Keeping the commit visible here — rather than unpacking it at
-// the store — is what lets a later rule ask a question ABOUT the commit (which entities
-// changed together, and at which revision) instead of only about one entity at a time.
+// The commit is the unit throughout: a trigger's rule is a question about the store at a
+// revision, not about one entity, so every trigger is asked once and the commit's changes are
+// only consulted to decide whether asking is worth it (Trigger.touches). Reaping still walks
+// them, because retiring a finished process IS per-entity bookkeeping.
 func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	e.trigMu.Lock()
 	trigs := make([]Trigger, len(e.triggers))
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
-	// An `on` trigger is asked once about the whole commit; the rest are asked per change.
-	for i := range trigs {
-		if trigs[i].Condition.On != nil {
-			e.dispatchEdge(ctx, trigs[i], c)
-		}
-	}
 	for _, ev := range c.Changes {
 		e.reap(ev) // retire completed processes from their flow (store-driven bookkeeping)
-		for i := range trigs {
-			if trigs[i].Condition.On != nil {
-				continue // dispatched above, per commit
-			}
-			// The root loop guards ignition; a subtree watch does not (see dispatchOne).
-			e.dispatchOne(ctx, trigs[i], ev, true)
+	}
+	for i := range trigs {
+		if !trigs[i].touches(c) {
+			continue // nothing it reads changed; the verdict cannot have (see touches)
 		}
+		e.evaluate(ctx, trigs[i], c)
 	}
-}
-
-// dispatchOne decides whether one trigger fires on one change, and fires it. It is THE
-// decision, in one place, for both ways a change reaches the engine: the root dispatch loop
-// walking a commit, and a per-trigger subtree watch. Those two used to carry a copy each,
-// which is how they came to disagree about the ignition guard and about budget — and the
-// disagreement was invisible, because a given engine only ever runs one of them.
-//
-// guard applies the IGNITION GUARD: the engine's own machinery — reflected process:* state,
-// and the durable trigger:* charter — is not in the default match set, so a trigger must opt
-// in (a match naming that system) to react to it and the loop cannot ignite on itself. Only
-// root observation needs it: a subtree watch delivers exactly the slice the trigger named, so
-// naming it IS the opt-in.
-func (e *Engine) dispatchOne(ctx context.Context, t Trigger, ev entity.Event, guard bool) {
-	if guard && machinery(ev.Ref.System) && !t.opensTo(ev.Ref.System) {
-		return
-	}
-	if !t.matchesEvent(ev) {
-		return
-	}
-	if e.overBudget() { // termination backstop: don't even pose gates once capped
-		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
-		return
-	}
-	go e.fire(ctx, t, ev) // off the observe goroutine: a gate must not stall it
 }
 
 // overBudget reports whether the fire budget is exhausted — a non-consuming check,
@@ -499,66 +486,45 @@ func (e *Engine) reserveN(n int) int {
 // a long approval then cannot slide it (and, under fan-out, cannot change the member set
 // between asking and acting), and a firing that resolves to nothing never troubles an
 // approver. Gates are per FIRING, not per subject — a broadcast raises one approval.
-// subjectLabel names what a firing is about, for a human being asked to approve it. A
-// broadcast resolves to many subjects and the gate is raised once for the whole firing, so
-// showing only the first would understate what a single "yes" sets in motion. Beyond a few
-// it summarises rather than filling the terminal with refs.
-func subjectLabel(subjects []entity.Ref) string {
-	parts := make([]string, len(subjects))
-	for i, s := range subjects {
-		parts[i] = s.String()
-	}
-	return summarize(parts)
-}
-
-// spawnLabel names the processes a firing WILL start if its gates pass. spawnID is a pure
+// spawnLabel names the process a firing WILL start if its gates pass. spawnID is a pure
 // function of the trigger name and the subject, both settled before the gate is raised, so
-// this is the very id the spawn will use — not a guess and not a second scheme. apply()
-// calls the same function, and a test pins the two together so they cannot drift apart.
+// this is the very id the spawn will use — not a guess and not a second scheme. apply() calls
+// the same function, and a test pins the two together so they cannot drift apart.
 //
-// Empty when the action has no spawn: a set-only trigger starts no process, and inventing
-// an id for one would be worse than saying nothing. Note the id is what the process WILL
-// be called — the gate may be denied, or a provider selection may fail to resolve a doer,
-// and then nothing by that name is ever created.
+// Empty when the action has no spawn: a set-only trigger starts no process, and inventing an
+// id for one would be worse than saying nothing. Note the id is what the process WILL be
+// called — the gate may be denied, or a provider selection may fail to resolve a doer, and
+// then nothing by that name is ever created.
 func spawnLabel(t Trigger, subjects []entity.Ref) string {
-	if t.Action.Spawn == nil {
+	if t.Action.Spawn == nil || len(subjects) == 0 {
 		return ""
 	}
-	parts := make([]string, len(subjects))
-	for i, s := range subjects {
-		parts[i] = spawnID(t.Name, s)
-	}
-	return summarize(parts)
+	return spawnID(t.Name, subjects[0])
 }
 
-// summarize renders a firing's set of refs/ids for a human: all of them while that is
-// still readable, then a count. The cutoff exists so a broadcast over a hundred PRs does
-// not fill the terminal, while a fan-out of two or three still reads exactly.
-func summarize(parts []string) string {
-	const show = 3
-	if len(parts) <= show {
-		return strings.Join(parts, ", ")
+func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, subjects []entity.Ref) {
+	for _, subj := range subjects {
+		go e.fireOne(ctx, t, ev, subj)
 	}
-	return strings.Join(parts[:show], ", ") + fmt.Sprintf(" (+%d more)", len(parts)-show)
 }
 
-func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
-	subjects := t.resolveSubject(ev, e.store)
-	if len(subjects) == 0 {
-		// e.g. a subject pattern that names nothing this firing is about — a store selector
-		// that picks nothing.
-		e.tracef("fire %s on %s: subject resolved to nothing; not firing", t.Name, ev.Ref)
+// fireOne is one firing: hold the subject, resolve the gates conjunctively, and act if they
+// all proceed.
+//
+// The subject is settled before any gate — selected from the snapshot the rule was evaluated
+// against — which is what lets a gate say what it is deciding about, and stops a long approval
+// sliding the answer underneath itself.
+func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj entity.Ref) {
+	// One firing at a time per subject. A firing takes time — a gate is answered by a person,
+	// a process runs — and every commit meanwhile re-selects the subject that the write which
+	// would release it has not yet been made about. Without this, a firing waiting on a gate
+	// is joined by another at every commit touching its subtree.
+	if !e.claimFlight(t.Name, subj) {
 		return
 	}
-	e.fireSubjects(ctx, t, ev, subjects)
-}
+	defer e.releaseFlight(t.Name, subj)
 
-// fireSubjects is the second half of a firing, shared by both dispatch rules: resolve the
-// gates conjunctively, then act on every subject that survives the budget. The subjects are
-// already settled by the time it is called — by resolveSubject for a per-change firing, by the
-// snapshot selection for an edge — which is what lets a gate name what it is deciding about
-// before anything acts.
-func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, subjects []entity.Ref) {
+	subjects := []entity.Ref{subj} // the gate and motion identities are over the firing's set
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	allProceed := true
@@ -590,19 +556,17 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, s
 		}
 		d := process.GateQuestion{
 			ID: gateID(t.Name, gname, subjects), Origin: t.Name, Mode: m, Gate: gname,
-			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, ev.Ref),
-			// What the approver is actually deciding about, and what saying yes starts.
-			// Gates are per FIRING, so a broadcast has many subjects and no single one is
-			// THE subject; name the whole set rather than picking one, since "ship all 12
-			// reviewed PRs" and "ship this PR" are very different things to be asked.
-			Subject: subjectLabel(subjects),
+			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, subj),
+			// What the approver is deciding about, and what saying yes starts. One subject,
+			// named exactly: the question is about this entity and no other.
+			Subject: subj.String(),
 			Spawns:  spawnLabel(t, subjects),
 		}
 		wg.Add(1)
 		go func(d process.GateQuestion, gname string) {
 			defer wg.Done()
 			res, err := e.resolver.Resolve(ctx, d, process.ToolUse{Name: "trigger:" + t.Name})
-			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, ev.Ref, proceedWord(res.Proceed), res.By)
+			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
 			if err != nil || !res.Proceed {
 				mu.Lock()
 				allProceed = false
@@ -615,18 +579,13 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, s
 	if !allProceed {
 		return // some gate denied — no budget consumed
 	}
-	// Consume budget only for a firing that actually proceeds, metered per subject acted on.
-	granted := e.reserveN(len(subjects))
-	if granted == 0 {
-		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
+	// Consume budget only for a firing that proceeds. One firing, one entity acted on, so the
+	// backstop's "meters entities acted on" and its implementation are now one statement.
+	if e.reserveN(1) == 0 {
+		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, subj)
 		return
 	}
-	if granted < len(subjects) {
-		e.tracef("budget allows %d of %d subjects for %s on %s; acting on the first %d",
-			granted, len(subjects), t.Name, ev.Ref, granted)
-		subjects = subjects[:granted]
-	}
-	e.tracef("fire %s on %s (%d subject(s): %v)", t.Name, ev.Ref, len(subjects), subjects)
+	e.tracef("fire %s on %s", t.Name, subj)
 	// A trigger firing has no privileged cause: the change that dispatched it is a doorbell,
 	// so the action's references read the subject (see refSource).
 	t.Action.apply(t.Name, ev, subjects, e, fromSubject)

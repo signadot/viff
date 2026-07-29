@@ -41,11 +41,15 @@ func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
 	}
 }
 
-// The property the deterministic id exists for, end to end: a trigger that fires repeatedly
-// about the same subject raises ONE question, and answering it releases the work. Before, each
-// firing posed a fresh id, so a re-evaluated trigger filled the docket with copies of one
-// decision — and, keyed by id, each new post displaced the last, leaving that firing blocked
-// on a question nothing could answer.
+// A trigger evaluated again and again about one subject raises ONE question, and answering it
+// releases the work. Two mechanisms hold that up and it is worth knowing both: a firing holds
+// its subject while it runs (Engine.claimFlight), so a re-evaluation about a subject already
+// firing is not a second firing; and a question's id is a function of (trigger, gate, subject),
+// so one posed anyway JOINS the standing question rather than displacing it.
+//
+// Before either, each firing posed a fresh counter-derived id — filling the docket with copies
+// of one decision, and, keyed by id, each new post displacing the last and leaving that firing
+// blocked on a question nothing could answer.
 func TestRepeatedFiringsShareOneGateQuestion(t *testing.T) {
 	store := entitytest.Store(t)
 	reg := process.NewRegistry()
@@ -54,11 +58,12 @@ func TestRepeatedFiringsShareOneGateQuestion(t *testing.T) {
 	ref := entity.Ref{System: "demo", Kind: "release", ID: "1"}
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
-		// No payload predicate: every write to the release re-fires, so the trigger is asked
-		// the same question again and again while the gate is still open.
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "release"}},
-		Gates:     []Gate{{Name: "approve", Mode: "ask"}},
-		Action:    Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+		// It latches on `stage`, so once shipped it stops selecting. Until then every write
+		// re-evaluates it and asks the same question again.
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "release",
+			"value": map[string]any{"stage": "open"}}},
+		Gates:  []Gate{{Name: "approve", Mode: "ask"}},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
