@@ -87,3 +87,94 @@ func TestChildModeFromAskAnswer(t *testing.T) {
 		t.Fatalf("child spawned with mode %s, want autonomous", gotMode)
 	}
 }
+
+// A re-posted question is JOINED, not duplicated: one docket entry, and one answer releases
+// every caller waiting on it. This is what makes a deterministic gate id safe — a poser that
+// re-asks about the same subject asks the standing question again rather than filling the
+// docket with copies of it.
+func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
+	r := NewRegistry()
+	const id = "trigger:ship:ship~deadbeef"
+	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask, Gate: "ship", Subject: "demo:pr:1"}
+
+	posts := 0
+	r.OnPost(func(Pending) { posts++ })
+
+	const n = 4
+	res := make(chan Resolution, n)
+	for range n {
+		go func() {
+			got, err := r.Resolve(context.Background(), q, ToolUse{Name: "trigger:ship"})
+			if err != nil {
+				t.Errorf("Resolve: %v", err)
+			}
+			res <- got
+		}()
+	}
+	// All four are waiting on ONE question.
+	waitFor(t, func() bool { return len(r.Pending()) == 1 && posts == 1 })
+
+	if !r.Answer(id, Resolution{Proceed: true, By: "alice"}) {
+		t.Fatal("Answer found no pending question")
+	}
+	for range n {
+		select {
+		case got := <-res:
+			if !got.Proceed || got.By != "alice" {
+				t.Fatalf("waiter got %+v, want alice/proceed", got)
+			}
+			if got.Question.Subject != "demo:pr:1" {
+				t.Fatalf("waiter lost the question: %+v", got.Question)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("a joined waiter was never released — the answer did not broadcast")
+		}
+	}
+	if p := r.Pending(); len(p) != 0 {
+		t.Fatalf("answered question still pending: %+v", p)
+	}
+	if posts != 1 {
+		t.Fatalf("the question was announced %d times, want 1 — a join is not a new question", posts)
+	}
+}
+
+// One waiter giving up does not take the question away from the others. Without the waiter
+// count, a cancelled caller would delete a question the rest are still blocked on, and they
+// would wait forever on something no longer answerable.
+func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
+	r := NewRegistry()
+	const id = "trigger:ship:ship~cafe"
+	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask}
+
+	stay := make(chan Resolution, 1)
+	go func() {
+		got, _ := r.Resolve(context.Background(), q, ToolUse{Name: "t"})
+		stay <- got
+	}()
+	waitFor(t, func() bool { return len(r.Pending()) == 1 })
+
+	leaving, cancel := context.WithCancel(context.Background())
+	left := make(chan struct{})
+	go func() {
+		_, _ = r.Resolve(leaving, q, ToolUse{Name: "t"})
+		close(left)
+	}()
+	waitFor(t, func() bool { return len(r.Pending()) == 1 })
+	cancel()
+	<-left
+
+	if p := r.Pending(); len(p) != 1 {
+		t.Fatalf("pending = %d after one waiter cancelled, want 1 (the other is still asking)", len(p))
+	}
+	if !r.Answer(id, Resolution{Proceed: true, By: "bob"}) {
+		t.Fatal("the question was taken off the docket by a departing waiter")
+	}
+	select {
+	case got := <-stay:
+		if !got.Proceed {
+			t.Fatalf("remaining waiter got %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("remaining waiter never released")
+	}
+}

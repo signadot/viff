@@ -210,6 +210,30 @@ func validTriggerName(name string) error {
 	return nil
 }
 
+// gateID makes the id of a trigger gate's question, deterministically from the trigger, the
+// gate, and WHAT THE FIRING IS ABOUT — never from a counter.
+//
+// A counter made every firing a new question, which was invisible while a firing needed a
+// fresh edge on the trigger's own subtree to happen at all. It stops being invisible the
+// moment a trigger is re-evaluated rather than re-edged: the same decision, about the same
+// subjects, lands on the docket again and again, and an approver answers a queue of identical
+// questions. Derived from the subjects instead, a re-firing poses the id already standing
+// there and JOINS it (process.Registry.Resolve) — one entry, one decision, delivered to every
+// firing waiting on it.
+//
+// It HASHES the subject list rather than spelling it: the id crosses a URL path and a command
+// line (see spawnID and safeSeg), and a broadcast's subject list is unbounded. Subjects arrive
+// sorted (Match.Select), so the same firing always hashes the same.
+func gateID(trigger, gate string, subjects []entity.Ref) string {
+	h := fnv.New32a()
+	for _, s := range subjects {
+		_, _ = h.Write([]byte(s.String()))
+		_, _ = h.Write([]byte{0}) // a separator no ref can hold, so [ab,c] and [a,bc] differ
+	}
+	return fmt.Sprintf("trigger:%s:%s%s%08x",
+		safeSeg(trigger), safeSeg(gate), process.GateSep, h.Sum32())
+}
+
 // safeSeg makes s usable as a single URL path segment: a process id routes through
 // /processes/{id}, which matches one segment, so characters that break a path
 // (slashes, fragment/query, whitespace) become '_'. It also strips process.GateSep,

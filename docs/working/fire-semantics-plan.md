@@ -152,6 +152,17 @@ Both are improvements under *today's* semantics too — a re-fire already duplic
 so this lands with no semantic change. Smoke's gated charter (`smoke.sh:250`) exercises exactly
 this path: one question, answered, released, gone from the docket.
 
+**Landed.** `gateID(trigger, gate, subjects)` replaces the counter, hashing the subject list
+because the id crosses a URL path and a command line and a broadcast's list is unbounded. A
+deterministic id is only safe once the registry JOINS a question already pending — `pending`
+is keyed by id, so a second post used to displace the first and leave that caller blocked on a
+question nothing could answer — so `process.Registry` now broadcasts one answer to every
+waiter and counts waiters, since one caller's cancellation must not take the question away
+from the others. The motion channel keys on the same thing; it keyed on the CAUSE, which put
+one firing's several subjects behind a single vote and two firings about the same subjects
+behind two. The tests had it backwards in the same way — their helper's doc said "subject"
+while they passed the changed entity — which is the mis-keying stated out loud.
+
 ### Phase 4 — sever the action from the cause
 
 `refRoot(ev, subject)` (`deref.go:44`) reads the subject instead of the changed entity, and the

@@ -43,24 +43,27 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	if existsWithin(store, merged, 100*time.Millisecond) {
 		t.Fatal("merged before any votes")
 	}
-	// One vote → still short of quorum(2). Votes go to THIS motion's log (vote:<did>:*).
-	pr := entity.Ref{System: "change", Kind: "pr", ID: "42"}
-	castVote(t, store, "merge", "approvals", pr, "alice")
+	// One vote → still short of quorum(2). Votes go to THIS motion's log (vote:<did>:*),
+	// which is keyed by the SUBJECT the firing is about, not by the change that dispatched it.
+	castVote(t, store, "merge", "approvals", merged, "alice")
 	if existsWithin(store, merged, 80*time.Millisecond) {
 		t.Fatal("merged at 1 vote (quorum is 2)")
 	}
 	// Quorum reached → fires.
-	castVote(t, store, "merge", "approvals", pr, "bob")
+	castVote(t, store, "merge", "approvals", merged, "bob")
 	if !existsWithin(store, merged, 2*time.Second) {
 		t.Fatal("did not fire after quorum reached")
 	}
 }
 
-// castBallot writes a voter's ballot into a motion's vote log (vote:<did>:<voter>),
-// where did is the deterministic motion id for (trigger, gate, subject).
+// castBallot writes a voter's ballot into a motion's vote log (vote:<did>:<voter>), where did
+// is the deterministic motion id for (trigger, gate, SUBJECTS) — what the firing is about, not
+// the entity whose change dispatched it. These used to be handed the cause, which is the
+// mis-keying the subject-keyed channel fixed: a completion trigger's motion belonged to the
+// process that finished rather than to the PR being decided about.
 func castBallot(t *testing.T, s entity.Store, tr, gate string, subject entity.Ref, voter, choice string) {
 	t.Helper()
-	did := motionChannelID(tr + "/" + gate + "/" + subject.String())
+	did := motionChannelID(gateID(tr, gate, []entity.Ref{subject}))
 	entitytest.Set(t, s, entity.Ref{System: "vote", Kind: did, ID: voter}, entity.Obj{"choice": choice, "by": voter}.Payload())
 }
 
@@ -86,8 +89,8 @@ func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 
 	pr := entity.Ref{System: "change", Kind: "pr", ID: "a"}
 	entitytest.Set(t, store, pr, entity.Obj{}.Payload())
-	castVote(t, store, "merge", "approvals", pr, "x")
-	castVote(t, store, "merge", "approvals", pr, "y")
+	castVote(t, store, "merge", "approvals", merged, "x")
+	castVote(t, store, "merge", "approvals", merged, "y")
 	if !existsWithin(store, merged, 2*time.Second) {
 		t.Fatal("did not proceed on quorum-before-deadline")
 	}
@@ -141,12 +144,12 @@ func TestTemporalDenyQuorum(t *testing.T) {
 	pr := entity.Ref{System: "change", Kind: "pr", ID: "d"}
 	entitytest.Set(t, store, pr, entity.Obj{}.Payload())
 	// One reject — short of the deny-quorum, and no approvals: stays open, must not fire.
-	castBallot(t, store, "merge", "approvals", pr, "alice", "reject")
+	castBallot(t, store, "merge", "approvals", merged, "alice", "reject")
 	if existsWithin(store, merged, 120*time.Millisecond) {
 		t.Fatal("fired at 1 reject and 0 approvals")
 	}
 	// Second reject reaches the deny-quorum → denied; the action never fires.
-	castBallot(t, store, "merge", "approvals", pr, "bob", "reject")
+	castBallot(t, store, "merge", "approvals", merged, "bob", "reject")
 	if existsWithin(store, merged, 500*time.Millisecond) {
 		t.Fatal("fired despite a reject-quorum — 'no' should deny")
 	}
@@ -335,7 +338,7 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 		t.Fatal("fired despite no quorum and a passed deadline")
 	}
 	// the motion should have closed by deadline default (deny).
-	did := motionChannelID("merge/g/" + entity.Ref{System: "change", Kind: "pr", ID: "dl"}.String())
+	did := motionChannelID(gateID("merge", "g", []entity.Ref{merged}))
 	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: did})
 	if entity.ToObj(ch.Payload)["outcome"] != "deny" {
 		t.Fatalf("motion outcome = %v, want deny (deadline default)", entity.ToObj(ch.Payload)["outcome"])

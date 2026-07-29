@@ -65,7 +65,6 @@ type Engine struct {
 	mu       sync.Mutex
 	fired    int
 	maxFires int // 0 = unbounded (a runaway backstop, not a design limit)
-	dc       int // motion counter for gate ids
 
 	// Control plane — steering, serviced with strict priority over observation
 	// (see docs/deployment-and-steering.md). Closures run on the loop goroutine, so
@@ -552,7 +551,7 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 			wg.Add(1)
 			go func(g Gate, gname string) {
 				defer wg.Done()
-				if !e.monitorGate(ctx, t, g, gname, ev) {
+				if !e.monitorGate(ctx, t, g, gname, ev, subjects) {
 					mu.Lock()
 					allProceed = false
 					mu.Unlock()
@@ -568,12 +567,8 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		if gname == "" {
 			gname = t.Name
 		}
-		e.mu.Lock()
-		e.dc++
-		id := fmt.Sprintf("trigger:%s:%s%s%d", t.Name, gname, process.GateSep, e.dc)
-		e.mu.Unlock()
 		d := process.GateQuestion{
-			ID: id, Origin: t.Name, Mode: m, Gate: gname,
+			ID: gateID(t.Name, gname, subjects), Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, ev.Ref),
 			// What the approver is actually deciding about, and what saying yes starts.
 			// Gates are per FIRING, so a broadcast has many subjects and no single one is
@@ -619,8 +614,18 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 // (revocable-until-commit + terminal-once). It returns whether the action should proceed
 // (false = ctx ended, or the gate committed a deny). If a revoke lands between
 // satisfaction and the commit, the CAS fails and it re-monitors.
-func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, ev entity.Event) bool {
-	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(t.Name + "/" + gname + "/" + ev.Ref.String())}
+func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, ev entity.Event, subjects []entity.Ref) bool {
+	// The channel is keyed by WHAT THE FIRING IS ABOUT, not by the entity whose change
+	// happened to dispatch it. Those differ whenever cause and subject come apart — a
+	// completion advancing the PR it carried, a broadcast over a selected set — and keying on
+	// the cause put two firings about the same subjects behind two separate votes while
+	// putting one firing's several subjects behind one. Both are wrong in the same way: a
+	// motion is a decision about the work, and the work is the subjects.
+	//
+	// Deterministic, like the gate id beside it, so a re-firing re-monitors the SAME channel
+	// and re-uses the ballots already cast there instead of asking the room again.
+	channelRef := entity.Ref{System: "motion", Kind: "channel",
+		ID: motionChannelID(gateID(t.Name, gname, subjects))}
 	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
 	// channel's vote log, and open a discoverable channel entity voters can find/observe.
 	m := e.compileFormula(g.Formula, channelRef, t, gname, ev)
