@@ -1088,7 +1088,7 @@ func (s *LogdStore) AsOf(rev int64, within ...[2]string) (Snapshot, error) {
 	// on a 300-commit verse, the whole root, the 300-entity slice the commits landed in, and a
 	// one-entity slice they never touched all cost ~73ms. So do not reach for this expecting a
 	// read to get cheaper. What makes a read cheap is not asking for one — see the roll-forward
-	// note in docs/working/fire-semantics.md.
+	// note in docs/working/firing-residual.md.
 	verse := map[string]*ir.Node{}
 	for _, st := range within {
 		path := seg(s.root) + "." + seg(st[0])

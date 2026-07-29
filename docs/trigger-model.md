@@ -966,9 +966,18 @@ A CYCLE across rules is not detected. Two triggers each writing what the other s
 sees it coming: every write is a real change, so the substrate's no-op suppression never
 engages; every firing completes, so the in-flight guards never engage; and the latch check
 passes, because both rules do advance their subject out of their own selection — into each
-other's. It is decidable for literal charters and the shape of the check is written up in
-`docs/working/fire-semantics.md` §5.3, along with the argument that a *paced* cycle — one
-passing through a ticker — is a control loop rather than a bug.
+other's. It is decidable for literal charters; the shape of the check, and the argument that a
+*paced* cycle — one passing through a ticker — is a control loop rather than a bug, are in
+[working/firing-residual.md](working/firing-residual.md). Everything else about whether a charter
+settles is in [convergence](convergence.md), including the two rules-level ambiguities that are
+warned about rather than refused.
+
+A guard about **nothing existing** has no spelling. A match asks what is there, so "an entity
+exists whose payload is not X" is sayable (`!not`) and "no entity matching M exists" — *ship when
+there is no open blocker* — is not. The model is existence-positive throughout, which is why
+[a departure is written down](#lifecycle-how-an-entity-leaves) rather than inferred; the same
+discipline answers a `when` about absence, by making the absence a positive fact somebody writes
+(a count, a summary entity). That is a discipline rather than a grammar.
 
 An operator on `system` or `kind` is refused for the structural reason given above, and
 recovering it needs either a full scan or expansion into N literal subtrees — a design
@@ -977,4 +986,5 @@ by name so it survives an insertion) are the better form on their own terms, but
 [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)'s `!key` segment
 has no defined semantics upstream yet.
 
-The substrate all of this leans on is [change events](change-events.md).
+The substrate all of this leans on is [change events](change-events.md); whether a charter
+written on it settles, and what per-commit evaluation costs, is [convergence](convergence.md).

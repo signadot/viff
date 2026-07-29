@@ -26,7 +26,9 @@ core of the model, and almost everything else is something a rule can reach.
 |---|---|
 | walk | [§2 install a charter and drive it](tutorial.md#2-install-a-charter-and-drive-it) · [§6 gates the group decides](tutorial.md#6-gates-the-group-decides--whether-and-who) · [§7 goals](tutorial.md#7-goals--give-a-flow-a-destination) |
 | read | [The trigger model](trigger-model.md) — the two grammars, and every field of a rule |
+| | [Convergence](convergence.md) — what ends a firing, what is checked at install, and what a read per commit costs |
 | | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
+| ahead | [Firing residual](working/firing-residual.md) — the cycle check and the clock it needs, and what `verse entity rm` should mean |
 
 ### Processes and autonomy
 

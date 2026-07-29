@@ -24,7 +24,7 @@ import (
 // wanted, and a reader of one could not tell. What it did well, advancing exactly the subject
 // a finished process was about, is what completion HOOKS do exactly: the engine scopes a hook
 // to that spawn's process, a correlation the store cannot fake because the engine spawned it.
-// See TestOnDoneAdvancesOnlyItsOwnSubject, and docs/working/fire-semantics.md §6.
+// See TestOnDoneAdvancesOnlyItsOwnSubject, and docs/trigger-model.md §Bindings.
 func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
