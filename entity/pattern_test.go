@@ -160,6 +160,64 @@ func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 	}
 }
 
+// At points the predicate at a place INSIDE the payload, so a predicate can be written about
+// a subtree without restating the shape above it. Rooted at `labels`, `{urgent: true}` is the
+// same question as `{labels: {urgent: true}}` asked at the root — and the equivalence is the
+// point: `verse watch --if-at labels --if '{urgent: true}'` must mean what a charter means.
+func TestMatchPayloadRootedAtAPath(t *testing.T) {
+	payload := Obj{"stage": "open", "labels": Obj{"urgent": true, "team": "core"}}.Payload()
+
+	rooted := Pattern{At: []string{"labels"}, Predicate: Obj{"urgent": true}.Payload()}
+	nested := Pattern{Predicate: Obj{"labels": Obj{"urgent": true}}.Payload()}
+	if !rooted.matchPayload(payload) {
+		t.Error("a predicate rooted at labels did not match the subtree it names")
+	}
+	if rooted.matchPayload(payload) != nested.matchPayload(payload) {
+		t.Error("rooting a predicate and nesting it disagree — they are the same question")
+	}
+	if (Pattern{At: []string{"labels"}, Predicate: Obj{"urgent": false}.Payload()}).matchPayload(payload) {
+		t.Error("a rooted predicate matched a subtree that contradicts it")
+	}
+
+	// The subtree need not be an object: rooted at a scalar, the predicate is a scalar match,
+	// which is the case an object-shaped predicate could not express at all.
+	if !(Pattern{At: []string{"stage"}, Predicate: Val("open")}).matchPayload(payload) {
+		t.Error("a scalar predicate did not match the scalar it was rooted at")
+	}
+
+	// Deeper than one segment, and rooted at the root by an empty path.
+	if !(Pattern{At: []string{"labels", "team"}, Predicate: Val("core")}).matchPayload(payload) {
+		t.Error("a two-segment path did not reach labels.team")
+	}
+	if !(Pattern{At: nil, Predicate: Obj{"stage": "open"}.Payload()}).matchPayload(payload) {
+		t.Error("an empty path must leave the predicate at the payload root")
+	}
+}
+
+// A path that leads nowhere is a NON-MATCH, not an error and not a wildcard — for the reason
+// an absent payload is one: a predicate that could not be evaluated has not been satisfied.
+// Both ways of leading nowhere are here, since a scalar in the way is the one a caller does
+// not think of.
+func TestMatchPayloadRootedAtAPathThatIsNotThere(t *testing.T) {
+	p := Pattern{At: []string{"labels", "urgent"}, Predicate: Val(true)}
+	for _, payload := range []Payload{
+		Obj{"stage": "open"}.Payload(),               // no labels at all
+		Obj{"labels": Obj{"team": "core"}}.Payload(), // labels, but no urgent
+		Obj{"labels": "urgent"}.Payload(),            // a scalar where the path descends
+		Val(42),                                      // a payload with no fields to speak of
+		nil,                                          // a delete
+	} {
+		if p.matchPayload(payload) {
+			t.Errorf("labels.urgent matched a payload that has no such place: %v", payload)
+		}
+	}
+	// And a path is never a filter of its own: with no predicate to root, everything matches,
+	// including a payload the path does not reach.
+	if !(Pattern{At: []string{"nowhere"}}).matchPayload(Obj{"stage": "open"}.Payload()) {
+		t.Error("a path without a predicate filtered something out")
+	}
+}
+
 // Presence, absence, and null-valued are three different questions, and each has its own
 // spelling. Getting them confused is easy — the first two look like the same syntax negated,
 // and the third looks like the first — so they are pinned together, in one place, with the

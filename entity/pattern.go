@@ -29,6 +29,22 @@ type Pattern struct {
 	// in the charter grammar, and naming the carrier after the sugar is how the general case
 	// stays invisible.
 	Predicate *ir.Node
+	// At roots the predicate INSIDE the payload, at this field path — empty (the usual case)
+	// evaluates it at the payload root. It is the same address a deep write takes
+	// (Ref.At/Path.Field, api.PutEntity.Field), read rather than written, so "the place a
+	// field lives" has one spelling whichever direction you are going.
+	//
+	// It is sugar, not reach: `At: ["labels"], Predicate: {urgent: true}` says what
+	// `Predicate: {labels: {urgent: true}}` says. What it buys is the ability to point the
+	// predicate at a place WITHOUT restating the shape above it — which matters most where
+	// the predicate is typed rather than written down (`verse watch --if-at labels --if
+	// '{urgent: true}'`), and where the subtree is not an object at all, so the predicate for
+	// it is a bare scalar match (`At: ["stage"], Predicate: !glob "op*"`).
+	//
+	// A path that does not lead anywhere — an absent field, or a scalar in the way — is a
+	// NON-MATCH, for the reason an absent payload is: a predicate that cannot be evaluated
+	// has not been satisfied.
+	At []string
 }
 
 // MatchEvent reports whether an observed change satisfies every non-empty
@@ -62,8 +78,10 @@ func (p Pattern) Select(store Store) []Ref {
 	return out
 }
 
-// matchPayload evaluates the payload predicate against the payload, as a tony match at its
-// root. No predicate matches everything, including a payload that is absent.
+// matchPayload evaluates the payload predicate against the payload, as a tony match at At
+// (the payload root, unless one was named). No predicate matches everything, including a
+// payload that is absent — At is only asked about once there is a predicate to root, so a
+// path is never a filter of its own.
 //
 // Everything else is tony.Match's semantics, deliberately, since a payload is a tony value
 // and a predicate is a tony match — having a second, nearly-identical comparison here is how
@@ -78,9 +96,22 @@ func (p Pattern) matchPayload(payload Payload) bool {
 	if p.Predicate == nil {
 		return true
 	}
-	if payload == nil {
-		return false // nothing to match against — a deleted entity, or an absent one
+	at := descend(payload, p.At)
+	if at == nil {
+		return false // nothing to match against — a deleted entity, an absent one, or no such field
 	}
-	ok, err := tony.Match(payload, p.Predicate)
+	ok, err := tony.Match(at, p.Predicate)
 	return err == nil && ok
+}
+
+// descend walks a payload to a field path, nil if it does not lead anywhere. Get answers nil
+// for a scalar as well as for an absent field, so a path THROUGH a non-object stops here
+// rather than needing a case of its own.
+func descend(payload Payload, field []string) Payload {
+	for _, f := range field {
+		if payload = Get(payload, f); payload == nil {
+			return nil
+		}
+	}
+	return payload
 }

@@ -675,19 +675,36 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 
 // watch streams store changes as SSE, catching up from ?since=<rev> first, then
 // live — the cursor model surfaced at the wire.
+//
+// What it delivers is an entity.Pattern: ?system/?kind name the entities, ?if is a tony
+// match over the payload, rooted at the field path in ?if-at. That is the SAME selector a
+// charter's `when` names, evaluated by the same code — so an operator can watch exactly what
+// a rule would fire on, and the two cannot answer differently.
+//
+// ?if arrives as TONY whatever the operator typed, because a GET carries no Content-Type to
+// declare a dialect in; the client parses in --ifmt and re-renders (see watchConfig.query).
 func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
+	q := r.URL.Query()
+	// Before NewSSE, which commits the response: a malformed predicate has to reach the
+	// client as a 400 it can report, not as a header'd stream that then says nothing.
+	pred, err := codec.ParseNodeOrNil([]byte(q.Get("if")), codec.Tony)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusBadRequest, "?if: "+err.Error())
+		return
+	}
 	sse, err := codec.NewSSE(w, r)
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	q := r.URL.Query()
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
-	sys, kind := q.Get("system"), q.Get("kind")
-	match := func(ev entity.Event) bool {
-		return (sys == "" || ev.Ref.System == sys) && (kind == "" || ev.Ref.Kind == kind)
-	}
+	match := entity.Pattern{
+		System:    q.Get("system"),
+		Kind:      q.Get("kind"),
+		Predicate: pred,
+		At:        q["if-at"],
+	}.MatchEvent
 
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
 	// captured live rather than lost in the gap. The catch-up and the live stream

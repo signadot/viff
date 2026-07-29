@@ -27,6 +27,11 @@ verse
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--system --kind --since <rev>]     stream store changes (cursored)
+         [--if <pattern>]                    only changes whose payload matches this tony
+                                             match — the predicate a charter's `when` spells
+                                             `value` (a delete has no payload, so it never
+                                             matches one)
+         [--if-at <field.path>]              root --if INSIDE the payload, at this path
 
   Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
   The plural also answers to the singular's verbs — `verse entities get <ref>` is

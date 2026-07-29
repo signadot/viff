@@ -305,6 +305,12 @@ type watchConfig struct {
 	// default= in the tag rather than a struct literal, so `verse watch --help` SAYS where
 	// the stream starts. A literal sets the same value and tells the reader nothing.
 	Since string `cli:"name=since default=0 desc='start from store revision (cursor); 0 = from the beginning'"`
+	// --if is the same predicate a charter's `when` carries in `value`, and means the same
+	// thing: a tony match over the payload, so it takes operators (`{stage: !or [open, merged]}`)
+	// and matches a payload that is not an object at all. A DELETE never matches one — there is
+	// no payload left to ask about — so a filtered watch is a stream of states, not of removals.
+	If   string `cli:"name=if desc='only changes whose payload matches this tony pattern (a delete never matches)'"`
+	IfAt string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
 }
 
 func watchCmd() *cli.Command {
@@ -319,16 +325,51 @@ func watchCmd() *cli.Command {
 		WithRun(cfg.run)
 }
 
-func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
-	if _, err := cfg.Parse(cc, args); err != nil {
-		return err
-	}
+// query renders the filters as the watch route's parameters.
+//
+// The predicate is parsed HERE, in --ifmt, and re-rendered as tony for the wire. Parsing it
+// first is what makes a typo a message about the pattern rather than a stream that silently
+// matches nothing; re-rendering is what lets `-i json` and `-i yaml` say the same predicate,
+// since a GET has no body and so no Content-Type to declare a dialect in. Tags survive the
+// round trip — `!glob "hotfix-*"` reaches the server as itself — which is the whole reason
+// the canonical form is tony rather than JSON.
+func (cfg *watchConfig) query() (url.Values, error) {
 	q := url.Values{"since": {cfg.Since}}
 	if cfg.System != "" {
 		q.Set("system", cfg.System)
 	}
 	if cfg.Kind != "" {
 		q.Set("kind", cfg.Kind)
+	}
+	if cfg.IfAt != "" && cfg.If == "" {
+		return nil, fmt.Errorf("%w: --if-at roots --if; pass a pattern to root", cli.ErrUsage)
+	}
+	if cfg.If != "" {
+		pattern, err := codec.ParseNode([]byte(cfg.If), inFmt())
+		if err != nil {
+			return nil, fmt.Errorf("--if: %w", err)
+		}
+		b, err := codec.NodeBytesWire(pattern, codec.Tony)
+		if err != nil {
+			return nil, fmt.Errorf("--if: %w", err)
+		}
+		q.Set("if", string(b))
+		// Segment per parameter, as `entity rm --at` sends its path: the wire takes the
+		// address as a list, so a field name is never re-split at the far end.
+		for _, f := range fieldPath(cfg.IfAt) {
+			q.Add("if-at", f)
+		}
+	}
+	return q, nil
+}
+
+func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
+	if _, err := cfg.Parse(cc, args); err != nil {
+		return err
+	}
+	q, err := cfg.query()
+	if err != nil {
+		return fmt.Errorf("watch: %w", err)
 	}
 	out, err := outFmt()
 	if err != nil {
