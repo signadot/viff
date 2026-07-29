@@ -86,10 +86,13 @@ Here's a tiny one-rule charter; save it as `charter.tony`:
       patch: { stage: reviewed }
 ```
 
-Read it in four parts. `condition` says what the rule is about — `subject` matches an opened
-`demo` PR, and since there is no separate `when`, that is the cause too: the rule fires on
-changes to what it is about, and each firing is about the PR that changed. `gates` is the
-guard: one gate named `approval`, in `ask` mode, so a human decides. `action` is the
+Read it in four parts. `condition` says what the rule is about — `subject` matches every opened
+`demo` PR, and with no `on` naming a cause, the rule is considered at every commit that touches
+what it reads. Each PR it selects is its own firing. Note the shape that makes it settle: the
+action advances `stage` past `open`, so a PR it has acted on is not selected again. (A rule
+that spawns and has no such latch is refused at install — see
+[the trigger model](trigger-model.md).) `gates` is the guard: one gate named `approval`, in
+`ask` mode, so a human decides. `action` is the
 consequence: mark the subject *reviewing* and spawn a review process. And `onDone` is a
 [completion hook](trigger-model.md#completion-hooks-one-trigger-chaining-visible) — when that process finishes, mark the subject
 *reviewed*. The whole chain reads top-to-bottom in one rule. Every field, and the grammars
@@ -192,8 +195,9 @@ Now watch it self-drive. In terminal A you'll see the stage advance twice:
 ```
 
 Each change is one line — flow form, so a watch stays greppable and one event never
-wraps into the next. (`op` is `set` for created-or-updated; see
-[the trigger model](trigger-model.md).) `to` is the entity's whole *level* state as of that
+wraps into the next. (`op` is `set` for created-or-updated. It is a fact about a CHANGE, which
+is why the /watch stream carries it and a trigger match no longer does — a match is asked of
+state, at a revision, where nothing has an op. See [the trigger model](trigger-model.md).) `to` is the entity's whole *level* state as of that
 commit, not the delta that was written, so a rule reading two fields still matches when only
 one of them was written.
 

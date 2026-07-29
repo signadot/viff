@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,5 +192,81 @@ func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 			t.Fatalf("timed out waiting for %d live process(es) about %s", n, ref)
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+// A SEQUENCE bounds itself, so the check does not demand a subject latch of one. startSeq
+// refuses to re-run a sequence that has completed for this subject at this shape, and that
+// claim is a fact in the store rather than a live-process check — so unlike a bare spawn it
+// survives the reap. Demanding a subject latch as well would be demanding the same guarantee
+// twice, and it is the shape half the sequence tests are written in.
+func TestLatchCheckLeavesSequencesAlone(t *testing.T) {
+	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}} // no predicate at all
+	seq := Action{Seq: []Action{{Spawn: &launch.Spec{Task: "one"}}, {Spawn: &launch.Spec{Task: "two"}}}}
+	if err := checkLatch(cond, seq); err != nil {
+		t.Fatalf("a sequence was asked to latch: %v", err)
+	}
+	// A bare spawn under the same subject is not excused.
+	if err := checkLatch(cond, Action{Spawn: &launch.Spec{Task: "one"}}); err == nil {
+		t.Fatal("a bare spawn with nothing to latch on was accepted")
+	}
+}
+
+// The check REFUSES now rather than warning, and it runs last so a charter that is wrong some
+// other way is told about that instead.
+func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
+	eng := New(entitytest.Store(t), process.AutoResolver{})
+	err := eng.AddTrigger(Trigger{
+		Name:      "spin",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action:    Action{Spawn: &launch.Spec{Task: "review $subject"}},
+	})
+	if err == nil {
+		t.Fatal("installed a charter that cannot stop spawning")
+	}
+	t.Log(err)
+
+	// A charter that is wrong in a STRUCTURAL way hears about that, not about latching —
+	// a nested sequence trips both checks, and only one of them is the answer.
+	err = eng.AddTrigger(Trigger{
+		Name:      "nested",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Action:    Action{Seq: []Action{{Seq: []Action{{Spawn: &launch.Spec{Task: "inner"}}}}}},
+	})
+	if err == nil {
+		t.Fatal("installed a nested sequence")
+	}
+	if !strings.Contains(err.Error(), "sequence inside a sequence") {
+		t.Fatalf("a nested sequence was reported as something else: %v", err)
+	}
+}
+
+// A narrow `on` SAMPLES, and the note says which of the two sentences the charter wrote.
+func TestSamplingAdvice(t *testing.T) {
+	ship := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}
+	// `on` covers only ci:status, and the subject reads demo:pr — so a PR arriving after the
+	// edge waits for CI to go red and green again.
+	narrow := Trigger{Name: "ship", Condition: Condition{
+		On:      MatchWhen(Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}}),
+		Subject: ship,
+	}}
+	notes := advise(narrow)
+	if len(notes) != 1 || !strings.Contains(notes[0], "demo:pr") {
+		t.Fatalf("no note about the subtree the cause does not cover: %v", notes)
+	}
+	t.Log(notes[0])
+
+	// No `on` at all: every commit re-evaluates, so nothing is sampled and there is nothing
+	// to say.
+	if notes := advise(Trigger{Name: "ship", Condition: Condition{Subject: ship}}); len(notes) != 0 {
+		t.Fatalf("advised a rule that samples nothing: %v", notes)
+	}
+	// An `on` that covers what the rule reads is not sampling either.
+	full := Trigger{Name: "ship", Condition: Condition{
+		On:      MatchWhen(Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}),
+		Subject: ship,
+	}}
+	if notes := advise(full); len(notes) != 0 {
+		t.Fatalf("advised a rule whose cause covers what it reads: %v", notes)
 	}
 }

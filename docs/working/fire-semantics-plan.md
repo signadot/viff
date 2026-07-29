@@ -363,3 +363,31 @@ or the other — which is what `patch_test.go:109` waits on. Then the doc pass:
 `trigger-model.md` (the subject-resolution table, §Broadcast, §`when`, naming-vs-selecting),
 `tutorial.md`, `change-events.md` (its edge-vs-level argument, and the `Rev` residual, now
 `Entities(C)` and load-bearing), `reference.md`, and the schema regen.
+
+**Landed.** The latch check REFUSES now, which is what phase 6 deferred: ten test charters had
+to grow a real latch first, since "once the tree is clean" was the condition. It runs last, so
+a charter wrong in some structural way is told about that instead — a nested sequence trips
+both checks and only one of them is the answer.
+
+Doing that found a gap in the check itself: **a sequence bounds itself.** `startSeq` refuses to
+re-run a sequence that has completed for a subject at a shape, and that claim is a fact in the
+store rather than a live-process check, so unlike a bare spawn it survives the reap. Demanding a
+subject latch of a seq was demanding the same guarantee twice — and it is the shape half the
+sequence tests are written in, which is how it surfaced.
+
+The sampling advice (§5.2) is a warning at install: when `on` does not cover a subtree the rule
+also reads, it names which of the two sentences the charter wrote. §5.4's conflict check is
+NOT built — it is subsumed by the cycle check design §5.3 now carries, and building the weaker
+one first would mean building it twice.
+
+The create amendment landed early, in phase 6, because the flip made it load-bearing rather
+than optional.
+
+Docs: `trigger-model.md` has the rule stated once at the top and everything else read off it —
+the subject-resolution table is two rows instead of three, §Broadcast is §"Acting on a set"
+with the gate arity corrected, §`when` is §"`on` and `when`", the `op` dimension is documented
+as removed-with-a-reason, and §"One event per entity" is §"The commit is the unit".
+`change-events.md` closes its transaction-scoped-reactivity residual — the framing it wanted is
+now the unit of observation — and its edge-on-real-change section says why that property became
+load-bearing. `tutorial.md` and `reference.md` follow. Schema regen: no diff, `on` was already
+generated in phase 5.

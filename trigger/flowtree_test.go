@@ -139,8 +139,11 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("never")},
 		Action: Action{
-			Spawn:  &launch.Spec{Task: "review $subject"},
-			OnDone: &Action{Spawn: &launch.Spec{Task: "merge $subject"}},
+			Spawn: &launch.Spec{Task: "review $subject"},
+			OnDone: &Action{
+				Spawn: &launch.Spec{Task: "merge $subject"},
+				Patch: entity.Obj{"stage": "merging"}.Payload(),
+			},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

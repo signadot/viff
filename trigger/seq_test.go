@@ -419,7 +419,10 @@ func TestSeqIndexOf(t *testing.T) {
 // The install-time rules, each with the reason it exists.
 func TestSeqValidation(t *testing.T) {
 	eng := New(entitytest.Store(t), process.AutoResolver{})
-	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}}
+	// A subject the action can advance past: these cases are about seq validation, and a
+	// charter that would re-spawn forever is a poor example to make them from.
+	cond := Condition{Subject: Match{"system": "demo", "kind": "pr",
+		"value": map[string]any{"stage": "open"}}}
 	cases := []struct {
 		name string
 		act  Action
@@ -454,7 +457,7 @@ func TestSeqValidation(t *testing.T) {
 		Condition: cond,
 		Action: Action{
 			Seq:    []Action{{Spawn: &launch.Spec{Task: "x"}}},
-			OnDone: &Action{Patch: entity.Obj{"done": true}.Payload()},
+			OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()},
 		},
 	}); err != nil {
 		t.Errorf("onDone with a seq and no spawn was rejected: %v", err)

@@ -85,8 +85,9 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		return p
 	})
 	if err := eng.AddTrigger(Trigger{
-		Name:      "validate",
-		Condition: Condition{Subject: Match{"system": "local", "kind": "file"}},
+		Name: "validate",
+		Condition: Condition{Subject: Match{"system": "local", "kind": "file",
+			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "validate $path"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "validated"}.Payload()},
@@ -99,7 +100,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 	entitytest.Set(t, store, entity.Ref{System: "local", Kind: "file", ID: "process/processd/daemon.go"},
-		entity.Obj{"path": "process/processd/daemon.go"}.Payload())
+		entity.Obj{"path": "process/processd/daemon.go", "stage": "open"}.Payload())
 
 	select {
 	case id := <-ids:

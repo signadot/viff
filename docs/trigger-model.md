@@ -24,19 +24,22 @@ matches.
 
 | concept | grammar | what it expresses |
 |---|---|---|
-| `subject` | match — point-in-time | the entities a firing is *about* — const system/kind plus an entity predicate, no temporal operators. Required |
+| `subject` | match — point-in-time | the entities a firing is *about*, selected at the commit. Required |
 | flow | match — point-in-time | which live processes to steer, by their subject |
-| `when` | formula — temporal | fire when the verse's evolution satisfies this — an edge on a match, or `until`/`deadline`/… |
+| `on` | formula — temporal | the **cause**: fire at the commit where this first holds, having not held before |
+| `when` | formula — temporal | the **condition**: this must hold at that commit for the firing to proceed |
 | gate | formula — temporal | proceed at a threshold — `quorum`/`fact`/`until`/`deadline` |
 | goal `doneWhen` | formula — temporal | done, latched, when the witness appears |
 
 The cut is: name entities at an instant and you want a match; relate the verse over time and
-you want a formula. `subject` and flow-addressing are point-in-time — a subject is named at the
-instant a firing happens, never accumulated — so they are plain matches (const system/kind
-preferred), and giving them a `deadline` or an `until` would be a category error. `when`,
-gates, and `doneWhen` all relate the verse's evolution, so they are formulas. `when` and a gate
-are the same grammar, differing only in consequence: a satisfied `when` fires, a satisfied gate
-proceeds. A `when` that watches a single change is just its atom form.
+you want a formula. `subject` and flow-addressing are point-in-time — a subject is selected at
+the commit a firing happens at, never accumulated — so they are plain matches, and giving them
+a `deadline` or an `until` would be a category error.
+
+`on`, `when`, gates and `doneWhen` all relate the verse's evolution, so they are formulas. `on`
+and `when` are the SAME predicate asked at different moments — `on` at C-1 and C, firing on
+¬P → P; `when` at C, gating — which is why they share a grammar and a type. Cause and
+condition, told apart by edge and level.
 
 ## The trigger
 
@@ -64,20 +67,37 @@ type Trigger struct {
     Action    Action      // patch / spawn — declarative data, no Go closure
 }
 
-// Condition is the ECA "cause". Subject and When are grouped, not nested, because the
-// Subject is resolved at the instant When fires — there is no subject before the match —
-// yet neither field owns the other. Two halves of "about Y, when X", in two DIFFERENT
-// grammars: Subject is point-in-time, When is temporal.
+// Condition is the ECA "cause": what fires, what must hold, and what it is about.
 type Condition struct {
-    Subject Match     // REQUIRED, point-in-time — the entities this firing is about
-    When    *Formula  // optional, temporal — fires when the verse's evolution satisfies this
+    Subject Match     // REQUIRED, point-in-time — the entities this firing acts on
+    On      *Formula  // optional — the CAUSE: a rising edge of a store predicate
+    When    *Formula  // optional — the CONDITION: must hold at the same commit
 }
 ```
 
-The rule above has no `when`, and that is the ordinary shape: **an omitted `when` is the
-subject**, so the trigger fires on changes to the thing it is about. A `when` is what you add
-when the cause and the subject come apart — a completion trigger that fires on a
-`process:instance` change but acts on the PR, or one change that advances a whole selected set.
+## The rule
+
+One sentence, and everything else in this document follows from it:
+
+> At each commit **C**, for each trigger: if `on` is vacuous or **¬on(C-1) ∧ on(C)**, and
+> `when` holds at **C**, fire once for **every entity `subject` selects at C**.
+
+Three things are worth reading off it before anything else.
+
+**A firing is about one entity.** N selected members are N firings, each with its own gate
+question, its own spawn id, its own budget. There is no firing "about a set".
+
+**Everything is read at one snapshot.** The condition and the selection both come from the
+store as it stood at C, so a firing cannot act on a member under a condition that had already
+stopped holding. The edge is C-1 against C rather than "what the engine saw last time", which
+is what makes a replayed commit — a catch-up, a restart — reach the same verdict as the live
+one.
+
+**A vacuous `on` is the ordinary shape.** The rule above has no `on`: it is considered at every
+commit touching anything it reads. What ends it is not the dispatcher but the charter — an
+action whose write takes its subject out of the selection fires once and then selects nothing,
+and one that writes the same value again produces no commit and so raises no next evaluation.
+Latch, or run at every commit; a spawning action that cannot latch is refused at install.
 
 A trigger is fully declarative, so a charter can be installed over the wire, persisted, or
 reflected as an entity, and the engine interprets it directly — there is no compiled form.
@@ -153,9 +173,9 @@ itself. Meta-observation stays possible, and stays deliberate.
 
 ## `subject` — what the firing is about, and required
 
-`subject` is a point-in-time `Match` — never a formula. It says what a firing acts on, resolved
-once, at the instant the trigger fires. There is no `until` or `deadline` here: a subject is
-*named*, not *awaited*.
+`subject` is a point-in-time `Match` — never a formula. It says what a firing acts on, selected
+once, from the store as it stood at the commit. There is no `until` or `deadline` here: a
+subject is *selected*, not *awaited*.
 
 It is the one field a condition cannot leave out, because nothing else in a trigger can answer
 for it. The action has no target of its own, and a `when` need not pin one kind: `{system:
@@ -165,33 +185,36 @@ is this rule about*. A rule that acts on whichever disjunct happened to fire is 
 anyone wrote down. So the subject is always stated, and everything else in the trigger is read
 relative to it.
 
-It resolves in one of three ways, all the same match grammar:
+It resolves in one of two ways, both the same match grammar:
 
-| condition | `subject` resolves to | example |
+| subject | resolves to | example |
 |---|---|---|
-| no `when` | the entity that changed | `subject: {system: demo, kind: pr, value: {stage: open}}` — a PR goes open, and the firing is about that PR |
-| a `when`, and an address naming one entity (`demo:pr:1`) | that one entity, named — an action's `patch` *creates* it if absent | publishing a fact nothing has written yet |
-| a `when`, and a pattern — a glob (`demo:pr:*`, `demo:*:*`) or a `system`+`kind` selector with an optional payload predicate | the set it selects from the store | every reviewed PR |
+| an address naming one entity (`demo:pr:1`) | that entity, whether or not it exists — an action's `patch` *creates* it | publishing a fact nothing has written yet |
+| a pattern — a glob (`demo:pr:*`), or a `system`+`kind` selector with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
 
-With no `when`, the subject is the cause as well: it is what dispatches, the change stream is
-per-entity, so a firing happens once per change and is about the entity that changed. It never
-sweeps the store, however wide the pattern — that is the difference between "when a PR opens,
-review it" and "when a PR opens, review all of them". Fan-out comes only from a pattern subject
-under an explicit `when`, which is the one dispatch path that resolves a set.
+A subject is always a SELECTION, never "the entity that changed". A rule is a statement about
+the world, so which entities it is about cannot depend on who happened to be written last —
+and there is no changed entity to inherit from anyway, since the rule is asked once per commit
+rather than once per change.
 
-Nothing selects in the no-`when` case, so the subject there need not name a kind:
-`{system: demo}` is a complete condition — every demo entity that changes, about the one that
-changed. Under a `when` it must name a definite `system` and `kind`, or one entity outright,
-since that is what the engine selects and spawns for.
+"When a PR opens, review it" and "review all of them" therefore settle in the same place: the
+action advances each PR out of the selection, so both end with every open PR reviewed. What
+differs is how many firings it takes to get there, not where it ends up.
 
-A pattern that names nothing the firing is about is a no-op — it never conjures an entity
-called `*`, nor misfires onto a flow it does not name.
+The NAMING case is the exception that proves it. A glob-free address is a set of one *whether
+or not the entity exists*, because naming is addressing by identity rather than selecting from
+what is there. Read "every entity this selects" literally and creating an entity would be
+unspellable: the only way to create one would be to already have it.
 
-The engine fans out one action, and one process, per resolved entity, and each is about
-exactly one subject. A *firing* can yield 0, 1, or N; a process, flow, or goal always has one
-subject. A fan-out's spawn id is derived from its subject, so a re-fire is idempotent per
-member, and the runaway backstop meters *entities acted on*, truncating a too-wide fan-out
-rather than dropping it. Gates stay per firing — a broadcast asks once.
+A subject must name a definite `system` and `kind`, or one entity outright, since that is what
+the engine selects and spawns for. A pattern that selects nothing is a no-op — it never
+conjures an entity called `*`.
+
+The engine starts one firing per selected entity, each about exactly one subject, and that
+identity is what every part of a firing keys on: its spawn id, its gate question, its motion
+channel, one unit of budget. A re-evaluation about a subject already firing — or already
+running work it started — is not a second firing, which is what keeps a rule waiting on a
+human from asking again at every commit.
 
 This is why `subject` is bounded where a `when` formula ranges freely: it pins `system:kind`
 and predicates over the single entity's payload, rather than composing over time. "all open
@@ -206,8 +229,8 @@ charter and `verse flow demo:pr:*` on the command line mean the same set, as the
 they should.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
-that fires on a `process:instance` change and acts on PRs acts on the PRs its own `subject`
-selects — every one of them — not on the one the completed process happened to name.
+whose cause is a `process:instance` change and which acts on PRs acts on the PRs its own
+`subject` selects — every one of them — not on the one the completed process happened to name.
 
 A `flow` field on the changed payload USED to short-circuit that: the firing resolved onto
 whatever ref it held, so a completed process advanced the single PR it was about. It is gone.
@@ -218,79 +241,108 @@ What it did well — advancing exactly the subject a finished process was about 
 [completion hooks](#completion-hooks-one-trigger-chaining-visible) do, and do exactly: the
 engine scopes a hook to *that* spawn's process, a correlation the store cannot fake because the
 engine is what spawned it. Reach for a hook when you mean "this process, this subject"; reach
-for a `when` when you mean "when any of these happens, act on that set".
+for an `on` when you mean "when this becomes true, act on that set".
 
 `flow` remains a convention published by `mirror.Reflect` and by a goal latch — the field IS
 the process's subject — read by the flow query and bindable as `$flow`. It is kept distinct
 from the reserved `$subject` binding, which is the firing's own resolved subject.
 
-The one distinction inside the address form is name vs select. A glob-free address
-*names* its entity, so an action's `patch` may bring it into existence — that is how a trigger
-publishes a fact nothing has written yet. A glob anywhere *selects* over what exists, so it
-can only act on entities that are really there (and can never conjure one called `*`).
+The one distinction inside the address form is name vs select, and it is the one place
+existence stops mattering. A glob-free address *names* its entity, so it is a set of one
+whether or not that entity is there and an action's `patch` may bring it into existence — that
+is how a trigger publishes a fact nothing has written yet. A glob anywhere *selects* over what
+exists, so it can only act on entities that are really there.
 
-### Broadcast: one firing, N subjects
+### Acting on a set
 
-A selector subject is how one change advances a whole set:
+A selector subject advances a whole set:
 
 ```tony
 - name: ship-reviewed
   condition:
-    when:    { system: ci, kind: status }
-    subject: { system: demo, kind: pr, value: { stage: reviewed } }
+    when:    { system: ci, kind: status, value: { state: green } }
+    subject: { system: demo, kind: pr,   value: { stage: reviewed } }
   gates:
   - { name: ship, mode: ask }
   action:
     patch: { stage: shipped }
 ```
 
-One CI change fires this once, one `ask` gate is raised for the *firing* (not one per PR),
-and then every reviewed PR advances. A `spawn` would give each member its own process,
-tagged with that member as its subject — so each is its own flow. Broadcast is a wider
-setting of the same selector, not a new mechanism.
+Every reviewed PR advances, while CI is green. Each is its OWN firing: its own `ask` gate, its
+own budget, and — with a `spawn` — its own process tagged with that member as its subject, so
+each is its own flow.
 
-Note that it takes a `when` to say this. Without one, the same subject would fire per change
-and act on the PR that changed; the `when` is what makes the cause a CI status and leaves the
-subject free to select.
+One gate per member is worth saying out loud, because it used to be one for the whole set. A
+firing is about one entity, so twelve reviewed PRs are twelve decisions; presenting them as one
+was a summary standing in for twelve. The honest arity costs an operator twelve answers until
+`verse gate approve` grows a bulk form.
 
-## `when` — what fires it, when that is not the subject
+Note what the `when` does here and what it does not. It is the CONDITION — while CI is green —
+and the rule is re-evaluated at every commit touching either subtree, so a PR reaching
+`reviewed` afterwards is picked up. Write `on` instead of `when` and you get the other
+sentence: fire once, at the moment CI went green, over whatever was reviewed *then*. Both are
+useful; they are different rules, and the engine warns at install when a narrow `on` leaves
+part of what the rule reads uncovered.
 
-A `when` is optional. Omitted, the subject is the cause: the trigger fires on changes to what
-it is about, which is what the ordinary rule wants. Write one when the cause and the subject
-come apart — a completion trigger firing on `process:instance` but acting on the PR it carried,
-a broadcast, or a rule watching one system to advance another.
+## `on` and `when` — the cause and the condition
 
-A `when` is a match: a point-in-time predicate over the verse. It ANDs its dimensions —
-`system` / `kind` / `id` / `op` (`set` for created-or-updated, or `delete`) / a payload
-predicate. Empty dimensions are wildcards, and `{}` matches everything.
+They are one predicate asked at two moments. `on` is asked at C-1 and at C and fires on the
+rising edge — ¬P → P. `when` is asked at C and gates. Both are optional; both are formulas over
+the store, with the same grammar.
+
+**`when` is the condition.** With no `on`, the trigger is considered at every commit touching
+anything it reads, and `when` says whether this is a moment to act. That is the reconciler
+shape: *while* this holds, act on what the subject selects.
+
+**`on` is the cause.** It narrows *when the rule is considered at all* to the instant its
+predicate becomes true, and two properties follow that an author has to know:
+
+- **An edge does not re-fire while it stays true.** `on: {system: demo, kind: pr, value:
+  {stage: reviewed}}` rises when the FIRST PR reaches `reviewed` and says nothing about the
+  second — the predicate never fell. There is no way to say "on each PR reaching reviewed";
+  that is what a subject plus a latch is for.
+- **An `on` trigger does not act on the backlog.** Installed over a verse where its predicate
+  already holds, there is no rising edge to observe. A subject-dispatched trigger does the
+  opposite, acting on everything already standing (see [level at open](#the-backlog)).
+
+A match is a predicate over the verse. It ANDs its dimensions — `system` / `kind` / `id` / a
+payload predicate. Empty dimensions are wildcards.
+
+There is no `op` dimension. It classified a CHANGE — `set` or `delete` — and a match is asked
+only of STATE now, at a revision, where nothing has one. A create is the rising edge of "this
+exists"; a delete is the rising edge of the [vanishing marker](#lifecycle-how-an-entity-leaves)
+that precedes removal. A charter carrying `op` is refused with that explanation rather than an
+"unknown key", because the charters that used it were written when it meant something.
 
 The address string is sugar for the identity dimensions, so `demo:pr:*` means
 `{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
 what reads back when you `verse trigger show` it: `demo:pr`. Same match, shorter spelling.
 
-Keep it small. The "when" is where complexity hides. Create and update are one `set`, so
-to fire "only the first time", match a state field your action then advances — a latch,
-rather than an edge (see [change events](change-events.md)). That applies just as much to a
-subject standing in for its own cause, since it is dispatched the same way.
+Keep it small. This is where complexity hides. To act "only the first time", match a state
+field your action then advances — a LATCH. That is not a nicety: a rule with no latch is
+considered at every commit touching what it reads, so the latch is what gives it an end state,
+and a spawning action that has none is refused at install.
 
+<a id="the-backlog"></a>
 **Installing a trigger fires it on what already matches.** A trigger's observation replays
-the slice it watches — its `when`, or its `subject` when there is no `when` — when it opens, so
-the backlog standing in the verse when you install the charter is acted on immediately; you do
-not have to re-touch each entity to announce a state it has held all along. The same property
+the slices it reads when it opens, so the backlog standing in the verse when you install the
+charter is acted on immediately; you do not have to re-touch each entity to announce a state it
+has held all along. (An `on` is the exception, and for the same reason it does not re-fire: a
+predicate that already holds has no rising edge.) The same property
 means the latch above is what stops an action re-running when the engine restarts over a verse
 still in the matching state; see
 [change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
 
-A `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language a
-gate formula uses), at which point it is watched over the verse's evolution rather than
-matched against one change. That is not evaluated yet; see [Limits today](#limits-today).
+`on` and `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language
+a gate formula uses), at which point they relate the verse's evolution rather than being asked
+at a revision. That is not evaluated yet; see [Limits today](#limits-today).
 
 ## What a match can say
 
 The leaf is a real tony match, evaluated by `tony.Match`, on every dimension a filter can
 live on.
 
-`id` and `op` take operators — the richer matching a plain glob cannot spell:
+`id` takes operators — the richer matching a plain glob cannot spell:
 
 ```tony
 subject: { system: demo, kind: pr, id: !glob "hotfix-*" }        # filepath globbing
@@ -312,7 +364,7 @@ evaluated against the payload instead of the id.
 
 ```tony
 when: { system: demo, kind: pr,    value: { stage: !or [open, merged] } }  # a record's fields
-when: { system: demo, kind: pr,    value: { branch: !glob "hotfix-*" } }
+on:   { system: demo, kind: pr,    value: { branch: !glob "hotfix-*" } }
 when: { system: demo, kind: count, value: !or [10, 100] }                 # the payload ROOT
 ```
 
@@ -364,8 +416,14 @@ operator over a payload needs tony.
 ## `gates` — whether it proceeds
 
 A list of gates, all of which must resolve to proceed (conjunctive) before the action fires.
-Gates are per *firing*, so a broadcast asks once, not once per subject. Each is
-`{ name: …, mode: auto|ask|park }`. An empty list fires with no approval.
+Gates are per *firing*, and a firing is about one entity — so a rule selecting twelve PRs asks
+twelve questions. Each is `{ name: …, mode: auto|ask|park }`. An empty list fires with no
+approval.
+
+The question's id is a function of (trigger, gate, subject), which is what makes a re-evaluated
+rule ask ONCE: a firing that finds its question already standing joins it rather than posting a
+copy, and one answer releases everyone waiting. A rule waiting on a human is therefore not a
+rule filling the docket.
 
 Multiple gates model multi-approval — a deploy needing both a security and a release-manager
 sign-off is two `ask` gates. A gate can also carry a `formula` the verse resolves itself — a
@@ -444,8 +502,8 @@ that PR's stage rather than the process's.
 
 That is what an action is about, and it used to read the CHANGED payload instead — which is
 the same thing only while the subject and the cause are the same entity. The moment they came
-apart, a broadcast bound `$stage` off a CI status and wrote it onto a PR: fields with no
-meaning on the entity being acted on.
+apart, a rule bound `$stage` off a CI status and wrote it onto a PR: fields with no meaning on
+the entity being acted on.
 
 A completion **hook** is the exception, and not an arbitrary one: it is downstream of a
 process, so it reads that process's payload — `$status`, `$result`, `$data`, `$err`, `$flow`,
@@ -786,43 +844,42 @@ layer, no new machinery.
   "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
   "gates":     [ { "name": "approval", "mode": "ask" } ],
   "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
-{ "name": "reviewed",
-  "condition": { "when":    { "system": "process", "kind": "instance", "value": { "status": "done" } },
-                 "subject": "demo:pr:*" },
-  "action":    { "patch": { "stage": "reviewed" } } }
+{ "name": "ship-green",
+  "condition": { "on":      { "system": "ci",   "kind": "status", "value": { "state": "green" } },
+                 "subject": { "system": "demo", "kind": "pr", "value": { "stage": "reviewed" } } },
+  "action":    { "patch": { "stage": "shipped" } } }
 ```
 
-`reviewed` reads as it means: *when a process completes, about the PR it carried, set
-reviewed*. Its `subject` is a plain pattern — `demo:pr:*` matched against the process's own
-subject — in the same address grammar as everywhere else.
+`review` reads as *while a PR is open, review it*: no cause named, so it is considered at every
+commit touching `demo:pr`, and its patch advances each PR past `open` so it settles. Note that
+its spawn is allowed only BECAUSE of that patch — a spawning action with nothing to latch on is
+refused.
 
-## One event per entity
+`ship-green` reads as *at the moment CI goes green, ship everything reviewed*. It fires once,
+at the edge, over the set as it then stood. Written with `when` instead of `on` it would say
+*while* CI is green, and pick up a PR reviewed afterwards.
 
-None of this needs a match to "select one entity" — it needs the change stream to be
-per-entity, and it is. A docd commit is atomic across many branches, but `LogdStore`
-normalises each commit into one `Event` per entity at path-depth `system/kind/id`. So a
-firing is driven by one event → one `Ref` → the change a firing dispatches on is exactly one
-entity: a subject-only trigger's subject is well-defined *structurally*, not by constraining
-the pattern. One commit that
-changes `…:a` and `…:b` yields two events, two firings, and subjects `a` and `b`, with no
-fan-out logic. The known cost, recorded in [change events](change-events.md): transaction
-atomicity is flattened — the reactive grain is the entity, not the commit.
+## The commit is the unit
 
-## Limits today
+A trigger's rule is a question about the store at a revision, not about one entity, so it is
+asked once per COMMIT. A docd commit is atomic across many branches, and `LogdStore` reports
+it whole: one `Commit`, carrying one change per entity at path-depth `system/kind/id`.
 
-A temporal `when` is not evaluated yet, and is rejected at install with an error that says
-so: a temporal when has no change to dispatch on, so it needs a long-lived monitor over the
-subtrees it reads. Use a point-in-time match in a `when`; temporal composition works today in
-a gate's `formula` and a goal's `doneWhen`.
+That framing has to come from the store, because it cannot be recovered downstream. Changes of
+one commit share a revision, but a consumer reading them one at a time cannot tell whether the
+next belongs to the same commit without waiting for the one after it — while the store, which
+built them from a single delta, knows exactly.
 
-An operator on `system` or `kind` is refused for the structural reason given above, and
-recovering it needs either a full scan or expansion into N literal subtrees — a design
-question rather than a port. Keyed sequence steps (`review.seq(lint)`, addressing an element
-by name so it survives an insertion) are the better form on their own terms, but
-[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)'s `!key` segment
-has no defined semantics upstream yet.
+What the engine does with the changes is decide whether asking is worth it: a trigger is
+skipped at a commit that touched none of the subtrees it reads. That skip is exact rather than
+a heuristic. If nothing it reads changed then `on(C) = on(C-1)` — no edge — and a vacuous rule
+would evaluate the same predicates over the same state and write the same values, which produce
+no commit. Either way, indistinguishable from not running, which is what makes per-commit
+evaluation affordable.
 
-The substrate all of this leans on is [change events](change-events.md).
+The residual recorded in [change events](change-events.md) is closed by this: `Rev` used to be
+the only trace that a set of changes were one transaction, and nothing grouped by it. Now the
+grouping is the unit of dispatch.
 
 ## Lifecycle: how an entity leaves
 
@@ -875,3 +932,28 @@ removes it. A patch of `null` at the root is the removal:
 
 Which is what makes this a convention rather than a mechanism: nothing in the engine knows how
 to reap. A charter says when, and what grace period, and whether anything should happen first.
+
+## Limits today
+
+A temporal `on` or `when` is not evaluated yet, and is rejected at install with an error that
+says so: both are asked of the store at a revision, so they have to be answerable at one. Use a
+point-in-time match; temporal composition works today in a gate's `formula` and a goal's
+`doneWhen`.
+
+A CYCLE across rules is not detected. Two triggers each writing what the other selects on
+(`{stage: a} → b` beside `{stage: b} → a`) run until the runaway budget stops them, and nothing
+sees it coming: every write is a real change, so the substrate's no-op suppression never
+engages; every firing completes, so the in-flight guards never engage; and the latch check
+passes, because both rules do advance their subject out of their own selection — into each
+other's. It is decidable for literal charters and the shape of the check is written up in
+`docs/working/fire-semantics.md` §5.3, along with the argument that a *paced* cycle — one
+passing through a ticker — is a control loop rather than a bug.
+
+An operator on `system` or `kind` is refused for the structural reason given above, and
+recovering it needs either a full scan or expansion into N literal subtrees — a design
+question rather than a port. Keyed sequence steps (`review.seq(lint)`, addressing an element
+by name so it survives an insertion) are the better form on their own terms, but
+[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)'s `!key` segment
+has no defined semantics upstream yet.
+
+The substrate all of this leans on is [change events](change-events.md).

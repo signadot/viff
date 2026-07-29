@@ -41,13 +41,6 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := t.Action.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
-	// A WARNING, not a refusal, for now. The charter is divergent as written and the operator
-	// should hear so at install; but making it fatal is a change to what installs, and this
-	// phase is already changing what FIRES. It becomes an error once the tree and the docs
-	// carry no examples of the shape — see docs/working/fire-semantics-plan.md phase 8.
-	if err := checkLatch(t.Condition, t.Action); err != nil {
-		e.logger.Warn("trigger will re-spawn", "trigger", t.Name, "why", err.Error())
-	}
 	if err := t.Action.noNestedSeq(false); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
@@ -55,6 +48,21 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 		if _, err := g.mode(); err != nil {
 			return err
 		}
+	}
+	// LAST, and fatal. A charter that cannot stop spawning is refused rather than logged: it
+	// is not a style question but a rule with no end state, and the operator installing it is
+	// the one person positioned to fix it.
+	//
+	// Last so that a charter which is wrong in some other way is told about THAT. A nested
+	// sequence also fails this check, and "your action re-spawns" would be a true answer to
+	// the wrong question.
+	if err := checkLatch(t.Condition, t.Action); err != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
+	// Advisory checks: a charter can mean what it says and still not mean what its author
+	// intended. These name it and install it anyway.
+	for _, w := range advise(t) {
+		e.logger.Warn("charter", "trigger", t.Name, "note", w)
 	}
 	e.trigMu.Lock()
 	for _, existing := range e.triggers {

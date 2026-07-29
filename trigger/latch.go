@@ -9,8 +9,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// checkLatch reports a spawning action that can never stop spawning. It is advisory today —
-// AddTrigger logs it — and is meant to become a refusal once nothing in the tree trips it.
+// checkLatch refuses a spawning action that can never stop spawning.
 //
 // A trigger is evaluated at every commit that touches what it reads, so what ends a firing is
 // not the dispatcher but the charter. A store write ends itself: rewriting the same value
@@ -56,20 +55,17 @@ func checkLatch(c Condition, a Action) error {
 		"advance the subject past the state that asked for it", keyList(reads))
 }
 
-// spawns reports whether an action starts a process anywhere in its own tree — directly, or
-// through a sequence element. A hook's spawn is NOT counted: a hook runs once per completion
-// of the thing above it, so it is bounded by that thing rather than by the subject predicate.
-func spawns(a Action) bool {
-	if a.Spawn != nil {
-		return true
-	}
-	for _, el := range a.Seq {
-		if spawns(el) {
-			return true
-		}
-	}
-	return false
-}
+// spawns reports whether an action starts a process that only the SUBJECT PREDICATE can bound.
+// Two kinds of spawn are excluded, both because something else already bounds them:
+//
+// A HOOK's spawn runs once per completion of the thing above it, so it is bounded by that.
+//
+// A SEQUENCE's spawns are bounded by the sequence's own durable claim: startSeq refuses to
+// re-run a sequence that has completed for this subject at this shape, and that claim is a
+// fact in the store rather than a live-process check, so it survives the reap. A seq is the
+// answer to this problem one level down, which is why demanding a subject latch of it as well
+// would be demanding the same guarantee twice.
+func spawns(a Action) bool { return a.Spawn != nil }
 
 // collectWrites gathers the top-level keys an action writes anywhere in its tree — its own
 // patch, its sequence elements, and its completion hooks. Hooks count because they are how the

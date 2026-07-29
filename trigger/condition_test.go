@@ -83,8 +83,9 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
-			Subject: mm("demo:pr:*"),
+			When: MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			// A predicate the action advances past, so the rule has an end state.
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "follow up on $subject"},

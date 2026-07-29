@@ -54,17 +54,19 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 		if err := eng.AddTrigger(Trigger{
 			Name:      "treat-" + risk,
 			Condition: Condition{Subject: Match{"system": "demo", "kind": "finding", "value": map[string]any{"risk": risk}}},
-			Action: Action{Spawn: &launch.Spec{
-				Task:  "treat $subject",
-				Frame: "a frame the doer overrides",
-				Tools: []string{"read_file", "list_dir", "write_file", "run_bash"},
-				Grant: "no-delegate",
-				Provider: &launch.Provider{
-					Capability: "treat",
-					Match:      map[string]any{"risk": risk},
-					Select:     "auto",
-				},
-			}},
+			Action: Action{
+				OnDone: &Action{Patch: entity.Obj{"risk": "treated"}.Payload()},
+				Spawn: &launch.Spec{
+					Task:  "treat $subject",
+					Frame: "a frame the doer overrides",
+					Tools: []string{"read_file", "list_dir", "write_file", "run_bash"},
+					Grant: "no-delegate",
+					Provider: &launch.Provider{
+						Capability: "treat",
+						Match:      map[string]any{"risk": risk},
+						Select:     "auto",
+					},
+				}},
 		}); err != nil {
 			t.Fatalf("AddTrigger %s: %v", risk, err)
 		}

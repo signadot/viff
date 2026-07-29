@@ -117,7 +117,7 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 		name: hotfix,
 		condition: {
 			when:    {system: demo, kind: pr, value: {stage: open}},
-			subject: {system: demo, kind: pr, id: !glob "hotfix-*"},
+			subject: {system: demo, kind: pr, id: !glob "hotfix-*", value: {stage: open}},
 		},
 		gates:  [{name: approval, mode: ask}],
 		action: {

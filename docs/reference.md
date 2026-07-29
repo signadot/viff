@@ -85,9 +85,9 @@ Flags may appear before or after positionals (`gate approve <id> --say ok` works
 ### Selecting by what an entity says
 
 `--system` and `--kind` narrow by where an entity lives. `--if` narrows by what it says: a
-tony match against the payload, which is the same predicate a charter's `when` carries in
-`value`. So `verse entities --if X` lists exactly what `verse watch --if X` streams, and both
-name what a rule with that `when` would fire on.
+tony match against the payload, which is the same predicate a charter carries in `value` — in
+its `subject`, its `on` or its `when`. So `verse entities --if X` lists exactly what
+`verse watch --if X` streams, and both name what a rule with that predicate would select.
 
 ```sh
 verse entities --if '{stage: !or [open, merged]}'   # an operator, not just equality

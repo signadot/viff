@@ -214,7 +214,10 @@ func TestOnHookPerProcess(t *testing.T) {
 // AddTrigger rejects a completion hook with no spawn to complete, at any nesting depth.
 func TestOnHookValidation(t *testing.T) {
 	eng := New(entitytest.Store(t), process.AutoResolver{})
-	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}}
+	// A subject the action can advance past: these cases are about onX validation, and a
+	// charter that would re-spawn forever is a poor example to make them from.
+	cond := Condition{Subject: Match{"system": "demo", "kind": "pr",
+		"value": map[string]any{"stage": "open"}}}
 
 	if err := eng.AddTrigger(Trigger{
 		Name: "a", Condition: cond,
@@ -235,7 +238,7 @@ func TestOnHookValidation(t *testing.T) {
 		Name: "c", Condition: cond,
 		Action: Action{
 			Spawn:  &launch.Spec{Task: "t"},
-			OnDone: &Action{Patch: entity.Obj{"x": "1"}.Payload()},
+			OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()},
 		},
 	}); err != nil {
 		t.Fatalf("valid onDone rejected: %v", err)

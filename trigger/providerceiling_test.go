@@ -17,12 +17,16 @@ func TestSpawnWithProviderRequiresAGrant(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	tr := Trigger{
-		Name:      "treat",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "finding"}},
-		Action: Action{Spawn: &launch.Spec{
-			Task:     "treat $subject",
-			Provider: &launch.Provider{Capability: "treat", Select: "auto"},
-		}},
+		Name: "treat",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "finding",
+			"value": map[string]any{"stage": "open"}}},
+		Action: Action{
+			Spawn: &launch.Spec{
+				Task:     "treat $subject",
+				Provider: &launch.Provider{Capability: "treat", Select: "auto"},
+			},
+			OnDone: &Action{Patch: entity.Obj{"stage": "treated"}.Payload()},
+		},
 	}
 	err := eng.AddTrigger(tr)
 	if err == nil {

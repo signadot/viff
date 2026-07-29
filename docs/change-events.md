@@ -153,11 +153,23 @@ one shape.
 The diff makes the subtree watch edge-on-real-change: an entity whose reconstructed content
 is unchanged emits nothing, so a write that changes no content is *not a reactive edge*.
 That is what keeps a reactive re-write from looping: a trigger whose effect re-touches its own
-cause — e.g. a `reviewed` rule re-setting a PR that is already `reviewed` when the process it
-spawned completes — writes the *same value*, so no edge fires and the trigger does not re-run.
-No charter latch is required for that case; the substrate reacts to changes, not to writes. (The
-engine's per-trigger subtree watch is the production path — `versed` runs `ObserveScoped`; the
-root-watch `Start`/`Since` dispatch loop is dormant and does not yet diff.)
+cause writes the *same value*, so no edge fires and the trigger does not re-run.
+
+**This is now load-bearing rather than merely convenient.** A trigger is evaluated at every
+commit that touches what it reads, so what ends a rule is that its own effect raises no further
+evaluation: a latching action writes a new value once and then selects nothing, and one
+re-writing what is already there is inert. Measured, and pinned by
+`entity.TestSameValueWriteRaisesNoCommit`: the revision does not advance and neither watch
+reports anything. Note it is not a compare-and-swap result — `entity.Modify` retries on a failed
+precondition, so it prevents lost updates rather than repeated work. The substrate simply
+declines to record a change that is not one.
+
+**One commit in, one commit out.** The subtree watch used to coalesce a burst — apply every
+queued delta, diff once — which is exact for a level and lossy for an EDGE: a value written at
+one commit and overwritten at the next left only the later one, and a transition the stream
+never reported cannot be recovered downstream. Since a trigger's cause is a rising edge, that
+is a firing that never happens, so the coalescing is gone and the cost is a subtree walk per
+commit rather than per burst.
 
 ## The seed is replayed: a subtree watch is level-triggered at the open
 
@@ -204,8 +216,9 @@ isn't; `{system:"demo"}` matches every demo entity), but because dispatch is
 per-entity-edge. A broad pattern simply fans out to one independent firing per matching
 change.
 
-The subtlety (and its cost). This normalisation is deliberately lossy in one way: the
-reactive grain is the entity, not the transaction. A commit that atomically sets
+The subtlety (and its cost), as it stood when this was written — see Residuals, where it is
+now closed. This normalisation was deliberately lossy in one way: the reactive grain was the
+entity, not the transaction. A commit that atomically sets
 `demo:pr:1` *and* `demo:pr:2` surfaces as two independent events; the engine dispatches
 them one at a time and fires each trigger with its own subject. The shared `Rev` is the
 *only* trace that they were one tx — and nothing in the engine groups by `Rev`. So a
@@ -260,16 +273,15 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
 
 ## Residuals (punted, by design)
 
-- Transaction-scoped reactivity (subtle — may need cleaning up). The per-entity
-  normalisation above flattens a multi-branch commit into independent per-entity events
-  (sharing a `Rev`), so triggers react at *entity* grain, never at *transaction* grain.
-  This keeps every subject/flow/goal well-defined, but an atomic multi-entity write can't
-  be reacted to as a unit — there is no "these changed together in one tx" trigger. The
-  raw material to recover it is already present (events of a commit share a `Rev`), but the
-  engine has no commit-grouped dispatch mode, and `entity.Event` carries no "N of a commit"
-  framing. Revisit if a charter ever needs cross-entity transactional reactions; until
-  then it is an unadvertised, load-bearing assumption worth naming rather than a settled
-  design.
+- ~~Transaction-scoped reactivity.~~ **CLOSED.** The framing this called for is now the unit
+  of observation: `Observe`, `Since` and `WatchSubtree` all deliver an `entity.Commit`
+  (`{Rev, Changes}`), and the trigger engine is asked once per commit rather than once per
+  change. It had to come from the store, exactly as this residual suspected the raw material
+  was there but unusable: changes of one commit share a `Rev`, but a consumer reading them one
+  at a time cannot tell whether the next belongs to the same commit without waiting for the one
+  after it — while the store, which built them from a single delta, knows. The per-entity
+  normalisation below is unchanged; what changed is that it is now reported inside its
+  transaction rather than instead of it.
 - **Cheap re-entry suppression** — for the *observer*. The write side is settled: a
   create-only write is `entity.Created()`, a conditional patch that fails if anything is
   already there, checked with the write in one step. What is still missing is the event
