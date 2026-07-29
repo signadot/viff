@@ -1,0 +1,213 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
+)
+
+// --if/--if-at as the operator meets them: `watch` renders them into its query (tested here
+// against watchConfig, which is where the rendering happens), and `entities` sends the same
+// pair to the listing route (tested end to end, against a real verse).
+
+// query renders the predicate as tony whatever dialect it was typed in, because a GET has no
+// body and so no Content-Type to declare one with. JSON is the case that matters: --ifmt json
+// is what the tutorial suggests for pasting patterns, and a client that passed the text
+// straight through would be asking the server to guess.
+func TestWatchQueryRendersThePredicateAsTony(t *testing.T) {
+	defer func(f string) { g.IFmt = f }(g.IFmt)
+
+	want := entity.Obj{"stage": "open"}.Payload()
+	for _, c := range []struct{ ifmt, pattern string }{
+		{"tony", "{stage: open}"},
+		{"json", `{"stage": "open"}`},
+		{"yaml", "stage: open"},
+	} {
+		t.Run(c.ifmt, func(t *testing.T) {
+			g.IFmt = c.ifmt
+			cfg := &watchConfig{Since: "0", If: c.pattern}
+			q, err := cfg.query()
+			if err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			got, err := codec.ParseNode([]byte(q.Get("if")), codec.Tony)
+			if err != nil {
+				t.Fatalf("the server would not parse %q: %v", q.Get("if"), err)
+			}
+			// Compared as a MATCH rather than as bytes: the point is that the server asks the
+			// same question, not that the rendering is character-for-character anything.
+			if !(entity.Pattern{Predicate: got}).MatchEvent(entity.Event{
+				Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: want,
+			}) {
+				t.Errorf("--ifmt %s: %q reached the wire as %q, which does not match %v",
+					c.ifmt, c.pattern, q.Get("if"), want)
+			}
+		})
+	}
+}
+
+// A tag is the reason the canonical form is tony rather than JSON: `!glob` is not JSON, and
+// an operator is most of what makes the predicate a match instead of a bag of equalities. It
+// has to survive the parse-and-re-render the wire format costs.
+func TestWatchQueryKeepsOperators(t *testing.T) {
+	defer func(f string) { g.IFmt = f }(g.IFmt)
+	g.IFmt = "tony"
+
+	cfg := &watchConfig{Since: "0", If: `{id: !glob "hotfix-*"}`}
+	q, err := cfg.query()
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !strings.Contains(q.Get("if"), "!glob") {
+		t.Fatalf("the operator did not survive: %q", q.Get("if"))
+	}
+}
+
+// --if-at goes on the wire a SEGMENT AT A TIME, as `entity rm --at` sends its path: the
+// address is a list there, so a field name is never re-split at the far end.
+func TestWatchQuerySendsThePathBySegment(t *testing.T) {
+	defer func(f string) { g.IFmt = f }(g.IFmt)
+	g.IFmt = "tony"
+
+	cfg := &watchConfig{Since: "0", If: "true", IfAt: "labels.urgent"}
+	q, err := cfg.query()
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if got := q["if-at"]; len(got) != 2 || got[0] != "labels" || got[1] != "urgent" {
+		t.Errorf("if-at = %v, want [labels urgent]", got)
+	}
+}
+
+// --if-at names where a predicate is rooted, so without one it roots nothing. Sending it
+// alone would be a filter that reads as narrowing and does not narrow — the store answers the
+// same stream with it and without it — so it is a usage error, said before anything is sent.
+func TestWatchRejectsAPathWithoutAPredicate(t *testing.T) {
+	cfg := &watchConfig{Since: "0", IfAt: "labels"}
+	_, err := cfg.query()
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("--if-at alone gave %v, want a usage error", err)
+	}
+}
+
+// A predicate that does not parse is the operator's typo, and it is caught HERE rather than
+// becoming a stream that silently matches nothing.
+func TestWatchRejectsAMalformedPredicate(t *testing.T) {
+	defer func(f string) { g.IFmt = f }(g.IFmt)
+	g.IFmt = "tony"
+
+	cfg := &watchConfig{Since: "0", If: "{stage: "}
+	if _, err := cfg.query(); err == nil {
+		t.Fatal("a malformed --if was accepted")
+	}
+}
+
+// runPlural drives `verse entities …` through the PLURAL's own Run, rather than walking to the
+// leaf as runCLI does. The walk is what makes runCLI usable for the leaves, and it is also
+// what makes it blind here: a flag on a group, and a group's decision about what to do with a
+// flag meant for its subcommand, both happen in the parent's Parse — which the walk skips.
+func runPlural(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	cc := &cli.Context{
+		Out: nopCloser{&out}, Err: nopCloser{&errOut},
+		In: io.NopCloser(strings.NewReader("")), Go: t.Context(),
+	}
+	cmd := rootCmd()
+	g.Addr = testAddr // after rootCmd, which re-reads it from the config layers
+	sub := cmd.FindSub(cc, "entities")
+	if sub == nil {
+		t.Fatal("no `entities` command")
+	}
+	// Run FIRST — see runCLI: `return out.String(), sub.Run(...)` would snapshot the buffer
+	// before the command wrote to it.
+	err := sub.Run(cc, args)
+	return out.String(), err
+}
+
+// `verse entities --if` lists by what an entity SAYS. It is the same filter `verse watch --if`
+// streams by, and the reason to have it on the listing too is that the two answer different
+// questions about one selector: what is true now, and what becomes true next.
+func TestEntitiesFiltersOnThePayload(t *testing.T) {
+	serve(t)
+	for _, e := range []struct{ ref, payload string }{
+		{"demo:pr:1", `{stage: open, labels: {urgent: true}}`},
+		{"demo:pr:2", `{stage: merged, labels: {urgent: false}}`},
+		{"demo:pr:3", `{stage: open}`},
+	} {
+		if _, err := runCLI(t, "entity", "put", e.ref, e.payload); err != nil {
+			t.Fatalf("put %s: %v", e.ref, err)
+		}
+	}
+
+	out, err := runPlural(t, "--if", "{stage: open}")
+	if err != nil {
+		t.Fatalf("entities --if: %v", err)
+	}
+	if !strings.Contains(out, "demo:pr:1") || !strings.Contains(out, "demo:pr:3") {
+		t.Errorf("--if {stage: open} did not list the open PRs:\n%s", out)
+	}
+	if strings.Contains(out, "demo:pr:2") {
+		t.Errorf("--if {stage: open} listed the merged PR:\n%s", out)
+	}
+
+	// Rooted at a path, and the entity that has no such path is not listed.
+	out, err = runPlural(t, "--if", "{urgent: true}", "--if-at", "labels")
+	if err != nil {
+		t.Fatalf("entities --if-at: %v", err)
+	}
+	if !strings.Contains(out, "demo:pr:1") {
+		t.Errorf("--if-at labels did not list the urgent PR:\n%s", out)
+	}
+	if strings.Contains(out, "demo:pr:2") || strings.Contains(out, "demo:pr:3") {
+		t.Errorf("--if-at labels listed an entity that does not satisfy it:\n%s", out)
+	}
+}
+
+// `verse entities` and `verse entity put` both take an --if, and they mean different things:
+// a filter on the listing, a precondition on the write. They do not collide, because a parent
+// stops parsing flags at its first positional — so `entities put …` hands the whole tail,
+// flags included, to `put`.
+//
+// This is the pin for that, and it is worth pinning rather than trusting: if the parent ever
+// swallowed the flag, the precondition would not fail — it would VANISH, and a guarded write
+// would silently become an unguarded one.
+func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
+	store := serve(t)
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	if _, err := runCLI(t, "entity", "put", "demo:pr:1", `{stage: open}`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// A precondition that does NOT hold. Through the plural, with the flag after the
+	// positionals, exactly as someone would type it.
+	if _, err := runPlural(t, "put", "demo:pr:1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
+		t.Error("a put whose --if does not hold was reported as succeeding")
+	}
+	if got := payloadOf(t, store, ref)["stage"]; got != "open" {
+		t.Fatalf("stage = %v, want open — the precondition was dropped and the write went through", got)
+	}
+
+	// And one that does hold still writes, so the pin is not just "everything fails".
+	if _, err := runPlural(t, "put", "demo:pr:1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
+		t.Fatalf("a put whose --if holds was refused: %v", err)
+	}
+	if got := payloadOf(t, store, ref)["stage"]; got != "reviewed" {
+		t.Fatalf("stage = %v, want reviewed", got)
+	}
+}
+
+// --if-at roots --if on the listing too, so alone it is the same usage error it is on watch.
+func TestEntitiesRejectAPathWithoutAPredicate(t *testing.T) {
+	serve(t)
+	if _, err := runPlural(t, "--if-at", "labels"); !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("--if-at alone gave %v, want a usage error", err)
+	}
+}

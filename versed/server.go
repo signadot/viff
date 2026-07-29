@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -673,24 +674,40 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 	return s.Store
 }
 
-// watch streams store changes as SSE, catching up from ?since=<rev> first, then
-// live — the cursor model surfaced at the wire.
+// queryPattern reads the selector a read-plane route was given: ?system/?kind name the
+// entities, ?if is a tony match over the payload, rooted at the field path in ?if-at (one
+// parameter per segment, so a field name is never re-split here).
 //
-// What it delivers is an entity.Pattern: ?system/?kind name the entities, ?if is a tony
-// match over the payload, rooted at the field path in ?if-at. That is the SAME selector a
-// charter's `when` names, evaluated by the same code — so an operator can watch exactly what
-// a rule would fire on, and the two cannot answer differently.
+// It is one function because the streaming face and the listing face must name the SAME set —
+// `verse watch --if X` and `verse entities --if X` differ in when they answer, not in what
+// they pick. And what they build is an entity.Pattern, which is what a charter's `when` also
+// becomes, so an operator can list or watch exactly what a rule would fire on.
 //
 // ?if arrives as TONY whatever the operator typed, because a GET carries no Content-Type to
-// declare a dialect in; the client parses in --ifmt and re-renders (see watchConfig.query).
+// declare a dialect in; the client parses in --ifmt and re-renders (see payloadFilter.apply).
+func queryPattern(q url.Values) (entity.Pattern, error) {
+	pred, err := codec.ParseNodeOrNil([]byte(q.Get("if")), codec.Tony)
+	if err != nil {
+		return entity.Pattern{}, fmt.Errorf("?if: %w", err)
+	}
+	return entity.Pattern{
+		System:    q.Get("system"),
+		Kind:      q.Get("kind"),
+		Predicate: pred,
+		At:        q["if-at"],
+	}, nil
+}
+
+// watch streams store changes as SSE, catching up from ?since=<rev> first, then
+// live — the cursor model surfaced at the wire. What it delivers is queryPattern's selector.
 func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	q := r.URL.Query()
 	// Before NewSSE, which commits the response: a malformed predicate has to reach the
 	// client as a 400 it can report, not as a header'd stream that then says nothing.
-	pred, err := codec.ParseNodeOrNil([]byte(q.Get("if")), codec.Tony)
+	pat, err := queryPattern(q)
 	if err != nil {
-		codec.HTTPError(w, r, http.StatusBadRequest, "?if: "+err.Error())
+		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	sse, err := codec.NewSSE(w, r)
@@ -699,12 +716,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
-	match := entity.Pattern{
-		System:    q.Get("system"),
-		Kind:      q.Get("kind"),
-		Predicate: pred,
-		At:        q["if-at"],
-	}.MatchEvent
+	match := pat.MatchEvent
 
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
 	// captured live rather than lost in the gap. The catch-up and the live stream
@@ -746,14 +758,25 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// listEntities answers the store as it stands, narrowed by queryPattern's selector — the same
+// one /watch streams, so a listing and a stream never disagree about what a filter names.
+//
+// The ref dimensions go to the store as List's prefilter, which is where they belong: they
+// are the ones a store can apply for itself. The payload predicate is answered here, because
+// answering it needs the payload — so the split is what the store can do, not a second
+// opinion about the selector.
 func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	sys, kind := q.Get("system"), q.Get("kind")
-	ents := s.scopedStore(r).List(func(ref entity.Ref) bool {
-		return (sys == "" || ref.System == sys) && (kind == "" || ref.Kind == kind)
-	})
+	pat, err := queryPattern(r.URL.Query())
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+	ents := s.scopedStore(r).List(pat.MatchRef)
 	out := make([]map[string]any, 0, len(ents))
 	for _, e := range ents {
+		if !pat.MatchEntity(e) {
+			continue
+		}
 		out = append(out, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
 	}
 	writeOut(w, r, http.StatusOK, out)

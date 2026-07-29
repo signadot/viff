@@ -27,11 +27,7 @@ verse
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--system --kind --since <rev>]     stream store changes (cursored)
-         [--if <pattern>]                    only changes whose payload matches this tony
-                                             match — the predicate a charter's `when` spells
-                                             `value` (a delete has no payload, so it never
-                                             matches one)
-         [--if-at <field.path>]              root --if INSIDE the payload, at this path
+         [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 
   Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
   The plural also answers to the singular's verbs — `verse entities get <ref>` is
@@ -39,6 +35,7 @@ verse
   Only the bare plural lists: `verse entities list` is an error naming `verse entities`.
 
   entities [--system <s>] [--kind <k>]       the store
+           [--if <pat>] [--if-at <path>]     … only those whose payload matches (see below)
   entity (e)  get <ref> · put <ref> <payload> · rm <ref>
           put/rm [--at <field.path>]         write or remove INSIDE the payload, not the whole entity
           put [--create|--update]            only if nothing is there yet · only if something is
@@ -81,6 +78,29 @@ verse
 ```
 
 Flags may appear before or after positionals (`gate approve <id> --say ok` works).
+
+### Selecting by what an entity says
+
+`--system` and `--kind` narrow by where an entity lives. `--if` narrows by what it says: a
+tony match against the payload, which is the same predicate a charter's `when` carries in
+`value`. So `verse entities --if X` lists exactly what `verse watch --if X` streams, and both
+name what a rule with that `when` would fire on.
+
+```sh
+verse entities --if '{stage: !or [open, merged]}'   # an operator, not just equality
+verse entities --if '{urgent: true}' --if-at labels # rooted inside the payload
+verse watch --system demo --if '{stage: open}'      # the same selector, as it happens
+```
+
+`--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a
+subtree need not restate the shape above it — `--if-at labels --if '{urgent: true}'` is
+`--if '{labels: {urgent: true}}'`. It also reaches a subtree that is not an object, where the
+predicate is a bare scalar match. A path that leads nowhere — an absent field, or a scalar in
+the way — does not match, and neither does a delete on `watch`, which has no payload left to
+ask about. The pattern is read in `--ifmt` and sent as tony, so operators and tags survive.
+
+Note `entity put --if`, which is a different `--if`: a precondition on a write, not a filter
+on a read. `verse entities put <ref> <payload> --if <pattern>` is the put's.
 
 ## Configuration
 

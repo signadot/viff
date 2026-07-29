@@ -47,20 +47,42 @@ type Pattern struct {
 	At []string
 }
 
-// MatchEvent reports whether an observed change satisfies every non-empty
-// dimension: system/kind/op, plus exact equality for each Fields entry against
-// the changed payload.
+// MatchEvent reports whether an observed CHANGE satisfies every non-empty dimension:
+// system/kind/op, plus the payload predicate against the changed payload.
+//
+// A delete carries no payload, so it never satisfies a predicate: a filtered stream is one of
+// states, not of removals.
 func (p Pattern) MatchEvent(ev Event) bool {
-	if p.System != "" && p.System != ev.Ref.System {
-		return false
-	}
-	if p.Kind != "" && p.Kind != ev.Ref.Kind {
+	if !p.MatchRef(ev.Ref) {
 		return false
 	}
 	if p.Op != "" && p.Op != ev.Op {
 		return false
 	}
 	return p.matchPayload(ev.To)
+}
+
+// MatchEntity reports whether a STORED entity satisfies the pattern — the same question
+// MatchEvent asks of a change, minus Op, which a thing that merely stands there cannot
+// answer.
+//
+// It is the whole question, ref dimensions included, even where a caller has already narrowed
+// by ref: MatchRef is a PREFILTER the store can apply cheaply (Store.List takes exactly that
+// callback), not a shortcut that lets the route decide half the predicate itself.
+func (p Pattern) MatchEntity(e Entity) bool {
+	return p.MatchRef(e.Ref) && p.matchPayload(e.Payload)
+}
+
+// MatchRef applies the dimensions an ADDRESS can answer — system and kind — with an empty
+// dimension a wildcard. It is what a store's List prefilter takes.
+//
+// Select does NOT use it, and the difference is deliberate rather than an oversight: there,
+// an empty System selects nothing, because a trigger's match always names one and a match
+// that lost its system must not quietly become a whole-verse sweep. Here an empty dimension
+// is an operator declining to filter, which is the opposite intent.
+func (p Pattern) MatchRef(ref Ref) bool {
+	return (p.System == "" || p.System == ref.System) &&
+		(p.Kind == "" || p.Kind == ref.Kind)
 }
 
 // Select returns the refs of every stored entity the pattern picks: entities of

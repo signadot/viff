@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,11 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 )
+
+// The read plane's payload filter, on both faces it wears: /watch streams the changes that
+// match, /entities lists the state that does. They are one selector (queryPattern) asked at
+// two times, and the tests below are deliberately paired so that a divergence shows up as one
+// of them going red on its own.
 
 // sentinel is written LAST, so a test knows the stream has delivered everything it is going
 // to the moment it sees it. Reading "until the sentinel" rather than "until nothing arrives
@@ -145,6 +151,101 @@ func TestWatchRootsThePredicateAtAPath(t *testing.T) {
 	deep := url.Values{"if": {"true"}, "if-at": {"labels", "urgent"}}
 	if got := watchRefs(t, deep); !sameRefs(got, "demo:pr:1") {
 		t.Errorf("?if-at labels&if-at=urgent delivered %v, want only the urgent PR", got)
+	}
+}
+
+// listRefs writes the fixture, lists /entities with the given filters, and returns the refs it
+// answered with, sorted — the listing route promises a set, not an order.
+func listRefs(t *testing.T, q url.Values) []string {
+	t.Helper()
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, e := range fixture {
+		ref, err := entity.ParseRef(e.ref)
+		if err != nil {
+			t.Fatalf("%s: %v", e.ref, err)
+		}
+		entitytest.Set(t, srv.Store, ref, e.payload)
+	}
+
+	resp, err := http.Get(ts.URL + "/entities?" + q.Encode())
+	if err != nil {
+		t.Fatalf("entities: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("entities: %s", resp.Status)
+	}
+	var listed []struct {
+		Ref string `tony:"field=ref"`
+	}
+	decodeResp(t, resp, &listed)
+	refs := make([]string, 0, len(listed))
+	for _, e := range listed {
+		refs = append(refs, e.Ref)
+	}
+	sort.Strings(refs)
+	return refs
+}
+
+// The listing takes the same filter the stream does, and picks the same entities by it. What
+// differs is only WHEN the question is asked — of the state as it stands here, of each change
+// as it happens there — which is why both faces are pinned against one fixture.
+func TestListEntitiesFiltersOnThePayload(t *testing.T) {
+	all := []string{"demo:pr:1", "demo:pr:2", "demo:pr:3", sentinel.String()}
+	if got := listRefs(t, url.Values{}); !sameRefs(got, all...) {
+		t.Fatalf("an unfiltered listing gave %v, want the whole fixture", got)
+	}
+	if got := listRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got,
+		"demo:pr:1", "demo:pr:3", sentinel.String()) {
+		t.Errorf("?if {stage: open} listed %v, want the open ones", got)
+	}
+	if got := listRefs(t, url.Values{"if": {"{stage: !or [open, merged]}"}}); !sameRefs(got, all...) {
+		t.Errorf("?if with !or listed %v, want all of them", got)
+	}
+	if got := listRefs(t, url.Values{"if": {"{stage: closed}"}}); len(got) != 0 {
+		t.Errorf("?if {stage: closed} listed %v, want nothing", got)
+	}
+	// The ref dimensions still narrow, and they compose with the predicate rather than
+	// replacing it — the store applies them as List's prefilter, the payload is answered here,
+	// and the answer must be the conjunction either way.
+	if got := listRefs(t, url.Values{"system": {"other"}, "if": {"{stage: open}"}}); len(got) != 0 {
+		t.Errorf("?system other listed %v, want nothing — no entity of that system exists", got)
+	}
+	if got := listRefs(t, url.Values{"kind": {"pr"}, "if": {"{sentinel: true}"}}); !sameRefs(got, sentinel.String()) {
+		t.Errorf("?kind + ?if listed %v, want the one entity satisfying both", got)
+	}
+}
+
+// Rooting works the same on the listing as on the stream, including the part that is easy to
+// get wrong: an entity the path does not reach (demo:pr:3 has no labels) is not listed.
+func TestListEntitiesRootsThePredicateAtAPath(t *testing.T) {
+	q := url.Values{"if": {"{urgent: true}"}, "if-at": {"labels"}}
+	if got := listRefs(t, q); !sameRefs(got, "demo:pr:1", sentinel.String()) {
+		t.Errorf("?if-at labels listed %v, want the urgent ones", got)
+	}
+	deep := url.Values{"if": {"false"}, "if-at": {"labels", "urgent"}}
+	if got := listRefs(t, deep); !sameRefs(got, "demo:pr:2") {
+		t.Errorf("?if-at labels&if-at=urgent listed %v, want the one that is not urgent", got)
+	}
+}
+
+// The listing rejects a malformed predicate rather than answering the unfiltered store, which
+// would be a filter that failed OPEN — the operator sees more than they asked for and has no
+// way to know the filter never ran.
+func TestListEntitiesRejectsAMalformedPredicate(t *testing.T) {
+	ts := httptest.NewServer(testServer(t).Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/entities?" + url.Values{"if": {"{stage: "}}.Encode())
+	if err != nil {
+		t.Fatalf("entities: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a malformed ?if answered %s, want 400", resp.Status)
 	}
 }
 

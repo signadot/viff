@@ -296,6 +296,51 @@ func streamFmt(resp *http.Response) codec.Format {
 	return codec.Tony
 }
 
+// ── the payload filter (--if / --if-at) ──────────────────────────────────────
+
+// filterBy renders --if / --if-at into a read-plane query.
+//
+// Two commands select entities by what they SAY rather than only by where they live: `watch`
+// streams the changes, `entities` lists the state. They mean exactly the same thing by the
+// pair, so it is rendered in one place here and read back in one place at the far end
+// (versed.queryPattern) — a filter that named different sets depending on which command you
+// reached for would be worse than not having it.
+//
+// Each command declares the two fields itself rather than embedding a shared struct, because
+// cli.StructOpts skips embedded fields (that is how it ignores *cli.Command): a shared struct
+// would carry the tags and declare no flags at all. What is shared is the meaning, which is
+// this function.
+//
+// The predicate is parsed HERE, in --ifmt, and re-rendered as tony for the wire. Parsing it
+// first is what makes a typo a message about the pattern rather than a request that silently
+// matches nothing; re-rendering is what lets `-i json` and `-i yaml` say the same predicate,
+// since a GET has no body and so no Content-Type to declare a dialect in. Tags survive the
+// round trip — `!glob "hotfix-*"` reaches the server as itself — which is the whole reason
+// the canonical form is tony rather than JSON.
+func filterBy(q url.Values, pattern, at string) error {
+	if at != "" && pattern == "" {
+		return fmt.Errorf("%w: --if-at roots --if; pass a pattern to root", cli.ErrUsage)
+	}
+	if pattern == "" {
+		return nil
+	}
+	node, err := codec.ParseNode([]byte(pattern), inFmt())
+	if err != nil {
+		return fmt.Errorf("--if: %w", err)
+	}
+	b, err := codec.NodeBytesWire(node, codec.Tony)
+	if err != nil {
+		return fmt.Errorf("--if: %w", err)
+	}
+	q.Set("if", string(b))
+	// Segment per parameter, as `entity rm --at` sends its path: the wire takes the address
+	// as a list, so a field name is never re-split at the far end.
+	for _, f := range fieldPath(at) {
+		q.Add("if-at", f)
+	}
+	return nil
+}
+
 // ── watch ────────────────────────────────────────────────────────────────────
 
 type watchConfig struct {
@@ -325,14 +370,8 @@ func watchCmd() *cli.Command {
 		WithRun(cfg.run)
 }
 
-// query renders the filters as the watch route's parameters.
-//
-// The predicate is parsed HERE, in --ifmt, and re-rendered as tony for the wire. Parsing it
-// first is what makes a typo a message about the pattern rather than a stream that silently
-// matches nothing; re-rendering is what lets `-i json` and `-i yaml` say the same predicate,
-// since a GET has no body and so no Content-Type to declare a dialect in. Tags survive the
-// round trip — `!glob "hotfix-*"` reaches the server as itself — which is the whole reason
-// the canonical form is tony rather than JSON.
+// query renders the filters as the watch route's parameters. The cursor is watch's own; the
+// rest is the selector every read-plane route takes.
 func (cfg *watchConfig) query() (url.Values, error) {
 	q := url.Values{"since": {cfg.Since}}
 	if cfg.System != "" {
@@ -341,24 +380,8 @@ func (cfg *watchConfig) query() (url.Values, error) {
 	if cfg.Kind != "" {
 		q.Set("kind", cfg.Kind)
 	}
-	if cfg.IfAt != "" && cfg.If == "" {
-		return nil, fmt.Errorf("%w: --if-at roots --if; pass a pattern to root", cli.ErrUsage)
-	}
-	if cfg.If != "" {
-		pattern, err := codec.ParseNode([]byte(cfg.If), inFmt())
-		if err != nil {
-			return nil, fmt.Errorf("--if: %w", err)
-		}
-		b, err := codec.NodeBytesWire(pattern, codec.Tony)
-		if err != nil {
-			return nil, fmt.Errorf("--if: %w", err)
-		}
-		q.Set("if", string(b))
-		// Segment per parameter, as `entity rm --at` sends its path: the wire takes the
-		// address as a list, so a field name is never re-split at the far end.
-		for _, f := range fieldPath(cfg.IfAt) {
-			q.Add("if-at", f)
-		}
+	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
+		return nil, err
 	}
 	return q, nil
 }
@@ -665,6 +688,15 @@ type entitiesConfig struct {
 	*cli.Command
 	System string `cli:"name=system desc='filter by entity system'"`
 	Kind   string `cli:"name=kind desc='filter by entity kind'"`
+	// The same pair `watch` takes, meaning the same thing (filterBy) — the listing and the
+	// stream are one selector asked at two times.
+	//
+	// `entity put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
+	// flags at its first positional, so `entities put <ref> <payload> --if <pattern>` hands
+	// the flag to `put`, where it is a precondition rather than a filter. Pinned by
+	// TestEntitiesPutKeepsItsOwnIf.
+	If   string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
+	IfAt string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
 }
 
 func entitiesCmd() *cli.Command {
@@ -674,7 +706,7 @@ func entitiesCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "entities").
-		WithSynopsis("entities — list the store [--system <s>] [--kind <k>] (get or put one with `verse entity`)").
+		WithSynopsis("entities — list the store [--system <s>] [--kind <k>] [--if <pattern>] (get or put one with `verse entity`)").
 		WithOpts(opts...).
 		WithSubs(entitySubs()...).
 		WithRun(cfg.run)
@@ -697,6 +729,9 @@ func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
 	}
 	if cfg.Kind != "" {
 		q.Set("kind", cfg.Kind)
+	}
+	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
+		return fmt.Errorf("entities: %w", err)
 	}
 	resp, err := httpGet("/entities", q)
 	if err != nil {
