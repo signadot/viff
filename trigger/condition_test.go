@@ -16,16 +16,23 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-// The COMPLETION PATTERN, which is what the Condition restructure exists to make readable:
-// "when a process completes, about the PR it carried, set reviewed". The subject is the
-// process's flow, not the process — expressed as a Subject, where it used to need an
-// action-level setRef compensating for $subject being wired to the matched entity.
-func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
+// A `when` over process:instance SWEEPS its subject: the firing acts on every entity the
+// subject selects, not on the one the completed process happened to name.
+//
+// That `flow` redirect is gone. It read one field of the changed payload and let it decide
+// whether a firing was about one entity or a whole set — a charter could not say which it
+// wanted, and a reader of one could not tell. What it did well, advancing exactly the subject
+// a finished process was about, is what completion HOOKS do exactly: the engine scopes a hook
+// to that spawn's process, a correlation the store cannot fake because the engine spawned it.
+// See TestOnDoneAdvancesOnlyItsOwnSubject, and docs/working/fire-semantics.md §6.
+func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
 
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewing"}.Payload())
+	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	entitytest.Set(t, store, one, entity.Obj{"stage": "reviewing"}.Payload())
+	entitytest.Set(t, store, two, entity.Obj{"stage": "reviewing"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
@@ -42,12 +49,15 @@ func TestCompletionPatternAdvancesTheCarriedSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// A completed process carrying the PR as its flow — exactly what mirror.Reflect writes.
-	entitytest.Set(t, store, mirror.Ref("rev-1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
+	// One completed process, carrying pr:1 as its flow — exactly what mirror.Reflect writes.
+	entitytest.Set(t, store, mirror.Ref("rev-1"), entity.Obj{"status": "done", "flow": one.String()}.Payload())
 
-	waitStage(t, store, pr, "reviewed")
+	// BOTH advance. The `flow` field names pr:1 and no longer narrows anything.
+	waitStage(t, store, one, "reviewed")
+	waitStage(t, store, two, "reviewed")
 
-	// The process entity itself must NOT have been advanced — the firing was about the PR.
+	// The process entity itself is still not advanced — the firing is about the subject the
+	// charter named, which is what the Subject/When split has always been for.
 	if e, _, _ := store.Get(mirror.Ref("rev-1")); entity.ToObj(e.Payload)["stage"] != nil {
 		t.Fatalf("the action was applied to the matched entity, not the subject: %#v", e.Payload)
 	}
@@ -65,7 +75,11 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 		return nil
 	})
 
+	// Seeded, because the subject SELECTS from the store: with the `flow` redirect gone, a
+	// pattern subject acts on what is really there.
 	pr := entity.Ref{System: "demo", Kind: "pr", ID: "7"}
+	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewing"}.Payload())
+
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
@@ -101,7 +115,7 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 		Op:  entity.Set,
 		To:  entity.Obj{"subject": "change:pr:42", "flow": "change:pr:42"}.Payload(),
 	}
-	b := bindingFor(ev, ev.Ref)
+	b := bindingFor(ev.To, ev.Ref)
 	if got := b["subject"]; got != ev.Ref.String() {
 		t.Fatalf("$subject = %q; a payload field named \"subject\" shadowed the reserved binding "+
 			"(want %q)", got, ev.Ref)
@@ -111,8 +125,9 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	}
 }
 
-// A goal latch publishes `flow` alongside `subject`, so a trigger reacting to it names the
-// goal's subject the same way a process completion does: a `subject` pattern matched against `flow`.
+// A goal latch publishes `flow` alongside `subject`. It no longer redirects a reacting
+// trigger's subject — nothing does, see TestCompletionWhenSweepsItsSubject — but it is still
+// the goal's own subject, readable as $flow by an action and by the flow query.
 func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
@@ -163,8 +178,8 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// No `flow` field: the demo:pr:* subject has nothing to match, so nothing fires (and, because
-	// the subject resolves before any gate, no gate is posed either).
+	// Nothing in the store matches demo:pr:*, so the subject selects nothing and nothing fires
+	// — and, because the subject resolves before any gate, no gate is posed either.
 	entitytest.Set(t, store, mirror.Ref("p1"), entity.Obj{"status": "done"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {

@@ -158,20 +158,21 @@ func (t Trigger) resolveSubject(ev entity.Event, store entity.Store) []entity.Re
 	if ref, names := m.Names(); names {
 		return []entity.Ref{ref} // one entity, named — a `set` may bring it into existence
 	}
-	// A pattern (an id glob, or a system:kind selector). If the firing event carries its OWN
-	// subject — a reflected process's `flow` — the pattern resolves against THAT one ref: a
-	// process about demo:pr:1, matched by a `demo:pr:*` subject, advances demo:pr:1. The pattern
-	// both names which flows this trigger acts on and picks the specific one — no back-reference
-	// to a prior trigger, just the subject grammar applied to the process's subject. Otherwise
-	// the pattern selects over the store (broadcast, one action per member).
-	if flow := entity.Str(ev.To, "flow"); flow != "" {
-		fref, err := entity.ParseRef(flow)
-		if err != nil || !m.MatchRef(fref) {
-			return nil // the carried subject is unresolvable, or isn't what this trigger acts on
-		}
-		return []entity.Ref{fref}
-	}
-	return m.Select(store) // a selection over what exists — one action per member
+	// A pattern (an id glob, or a system:kind selector) selects over the store: one action per
+	// member.
+	//
+	// It used to be short-circuited when the changed payload carried a `flow` field — the
+	// firing then resolved onto THAT ref alone, which is how a completed process advanced the
+	// one PR it was about. That is gone. A subject is what the charter says it is, and a
+	// payload field is not standing to redirect it: whether a firing acted on one entity or on
+	// a whole selected set turned on whether some entity happened to carry a key by that name,
+	// which no charter says and no reader of one could predict.
+	//
+	// What it did well — advancing exactly the subject a finished process was about — is what
+	// completion HOOKS do, and do exactly: the engine scopes a hook to that spawn's process
+	// (Engine.applyHook), a correlation the store cannot fake because the engine is what
+	// spawned it. A `when` over process:instance now sweeps, like any other selector.
+	return m.Select(store)
 }
 
 // Gate is one decision point on a trigger firing: a named mode, or a temporal Formula. A
@@ -383,10 +384,10 @@ func (a Action) noNestedSeq(inSeq bool) error {
 // one member's bad reference must not stop the others — but the error is reported rather
 // than only traced, so a caller that has somewhere to record it (a completion hook, which
 // knows the process it belongs to) can persist it instead of dropping it into the log.
-func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine) error {
+func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine, src refSource) error {
 	var first error
 	for _, subj := range subjects {
-		h, err := a.applyOne(chain, ev, subj, e)
+		h, err := a.applyOne(chain, ev, subj, e, src)
 		if err != nil {
 			if first == nil {
 				first = err
@@ -396,7 +397,7 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 		// A sequence starts once the carrier's own write has landed. It cannot also have
 		// spawned (validate rejects spawn+seq), so there is nothing in flight to race.
 		if len(a.Seq) > 0 && h == nil {
-			e.startSeq(chain, a, ev, subj)
+			e.startSeq(chain, a, ev, subj, src)
 		}
 	}
 	return first
@@ -406,7 +407,10 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 // spawned process (nil when the action starts none) and the write's error, which is what lets
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
-func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine) (process.Handle, error) {
+func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine, src refSource) (process.Handle, error) {
+	// What $references read: the cause's payload for a hook, the subject's own otherwise.
+	// Resolved once, so a patch and a spawn in one action cannot disagree about what $x means.
+	root := e.refPayload(ev, subj, src)
 	if a.Patch != nil {
 		// Resolve $references against the payload that fired this action, so a patch can
 		// write a value it read (a completed process's $result, a nested $verse.review.done)
@@ -415,7 +419,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 		// distinguishes an absent key from a null one, so omitting it would launder "the
 		// process never said" into "the process said nothing", which a match reads as a
 		// different fact.
-		patch, err := expandPatch(a.Patch, refRoot(ev, subj))
+		patch, err := expandPatch(a.Patch, refRoot(root, subj))
 		if err != nil {
 			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
 			return nil, err
@@ -431,7 +435,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	if a.Spawn == nil {
 		return nil, nil
 	}
-	spec := a.Spawn.Bind(bindingFor(ev, subj))
+	spec := a.Spawn.Bind(bindingFor(root, subj))
 	// The subject is the engine's to set, not the charter's: a process is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()

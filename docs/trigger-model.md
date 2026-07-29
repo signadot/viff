@@ -171,7 +171,7 @@ It resolves in one of three ways, all the same match grammar:
 |---|---|---|
 | no `when` | the entity that changed | `subject: {system: demo, kind: pr, value: {stage: open}}` — a PR goes open, and the firing is about that PR |
 | a `when`, and an address naming one entity (`demo:pr:1`) | that one entity, named — an action's `patch` *creates* it if absent | publishing a fact nothing has written yet |
-| a `when`, and a pattern — a glob (`demo:pr:*`, `demo:*:*`) or a `system`+`kind` selector with an optional payload predicate | the firing's OWN subject if it carries one (a reflected process's `flow`); else the set it selects from the store | the PR a completed process was about; or every reviewed PR |
+| a `when`, and a pattern — a glob (`demo:pr:*`, `demo:*:*`) or a `system`+`kind` selector with an optional payload predicate | the set it selects from the store | every reviewed PR |
 
 With no `when`, the subject is the cause as well: it is what dispatches, the change stream is
 per-entity, so a firing happens once per change and is about the entity that changed. It never
@@ -205,14 +205,24 @@ wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo
 charter and `verse flow demo:pr:*` on the command line mean the same set, as they read like
 they should.
 
-There is no deferred `$var` form. A completion trigger — one that fires on a `process:instance`
-change but acts on the PR — does not reach back into the payload for a reference: its `subject`
-is a plain pattern (`"demo:pr:*"`) that the firing matches against the process's OWN subject (its
-`flow`). The pattern both picks the one flow it names and filters out the flows it does not — the
-same address grammar as everything else, no back-reference, no second string form. `flow` is a
-convention published by `mirror.Reflect` and by a goal latch — the field IS the process's
-subject — kept distinct from the reserved `$subject` binding, which is the firing's own
-resolved subject.
+There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
+that fires on a `process:instance` change and acts on PRs acts on the PRs its own `subject`
+selects — every one of them — not on the one the completed process happened to name.
+
+A `flow` field on the changed payload USED to short-circuit that: the firing resolved onto
+whatever ref it held, so a completed process advanced the single PR it was about. It is gone.
+Whether a firing acted on one entity or on a whole set turned on whether some entity happened
+to carry a key by that name, which no charter says and no reader of one could predict.
+
+What it did well — advancing exactly the subject a finished process was about — is what
+[completion hooks](#completion-hooks-one-trigger-chaining-visible) do, and do exactly: the
+engine scopes a hook to *that* spawn's process, a correlation the store cannot fake because the
+engine is what spawned it. Reach for a hook when you mean "this process, this subject"; reach
+for a `when` when you mean "when any of these happens, act on that set".
+
+`flow` remains a convention published by `mirror.Reflect` and by a goal latch — the field IS
+the process's subject — read by the flow query and bindable as `$flow`. It is kept distinct
+from the reserved `$subject` binding, which is the firing's own resolved subject.
 
 The one distinction inside the address form is name vs select. A glob-free address
 *names* its entity, so an action's `patch` may bring it into existence — that is how a trigger
@@ -427,11 +437,20 @@ the depth axis, and it has its own section below.
 
 ### Bindings
 
-Every field of the changed payload is bound by name (`$stage`, `$path`, …), plus `$subject`
-— the *resolved* subject. So `review $subject` in a spawn's task names the PR the firing is
-about, even when the entity that fired was a process, not the PR. A completion hook also
-reads the finished process's payload: `$status`, `$result`, `$data`, `$err`, `$flow`,
-`$chain`.
+Every field of **the subject's** payload is bound by name (`$stage`, `$path`, …), plus
+`$subject` — the resolved subject. So `review $subject` in a spawn's task names the PR the
+firing is about, even when the entity that fired was a process, not the PR, and `$stage` is
+that PR's stage rather than the process's.
+
+That is what an action is about, and it used to read the CHANGED payload instead — which is
+the same thing only while the subject and the cause are the same entity. The moment they came
+apart, a broadcast bound `$stage` off a CI status and wrote it onto a PR: fields with no
+meaning on the entity being acted on.
+
+A completion **hook** is the exception, and not an arbitrary one: it is downstream of a
+process, so it reads that process's payload — `$status`, `$result`, `$data`, `$err`, `$flow`,
+`$chain` — which is exactly what a hook exists for. (The engine synthesizes that payload
+rather than reading it back, because the mirror may not have written the terminal facts yet.)
 
 Those last four are what a process leaves behind, and they answer different questions:
 

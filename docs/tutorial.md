@@ -860,10 +860,15 @@ everything else composes:
 - name: on-ship
   condition:
     when:    { system: goal, kind: done }
-    subject: change:pr:*
+    subject: change:pr:42
   action:
     patch: { stage: shipped }
 ```
+
+Name the subject, rather than writing `change:pr:*` and expecting the latch to narrow it. A
+subject is what the charter says: a pattern here would ship every `change:pr` in the verse,
+because nothing in the latch redirects it. (`goal:done` does carry the goal's subject as
+`flow`, readable as `$flow` in an action — but it names the subject, it does not choose it.)
 
 And because a goal's owned triggers spawn processes tracked as flows, a goal *is* a flow with
 a destination — steer it with the very same verbs from §4, keyed by the goal:

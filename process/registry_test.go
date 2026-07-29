@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -97,8 +98,8 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	const id = "trigger:ship:ship~deadbeef"
 	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask, Gate: "ship", Subject: "demo:pr:1"}
 
-	posts := 0
-	r.OnPost(func(Pending) { posts++ })
+	var posts atomic.Int32
+	r.OnPost(func(Pending) { posts.Add(1) })
 
 	const n = 4
 	res := make(chan Resolution, n)
@@ -111,8 +112,14 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 			res <- got
 		}()
 	}
-	// All four are waiting on ONE question.
-	waitFor(t, func() bool { return len(r.Pending()) == 1 && posts == 1 })
+	// All four are waiting on ONE question. Wait on the waiter count, not on Pending(): a
+	// joiner that has not arrived yet would otherwise be answered before it joined, and would
+	// then post the id afresh — correct behaviour (the question it wanted was already gone)
+	// but not what this test is about.
+	waitFor(t, func() bool { return r.waiterCount(id) == n })
+	if p := r.Pending(); len(p) != 1 {
+		t.Fatalf("%d questions on the docket for one id: %+v", len(p), p)
+	}
 
 	if !r.Answer(id, Resolution{Proceed: true, By: "alice"}) {
 		t.Fatal("Answer found no pending question")
@@ -133,8 +140,8 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	if p := r.Pending(); len(p) != 0 {
 		t.Fatalf("answered question still pending: %+v", p)
 	}
-	if posts != 1 {
-		t.Fatalf("the question was announced %d times, want 1 — a join is not a new question", posts)
+	if posts.Load() != 1 {
+		t.Fatalf("the question was announced %d times, want 1 — a join is not a new question", posts.Load())
 	}
 }
 
@@ -151,7 +158,7 @@ func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 		got, _ := r.Resolve(context.Background(), q, ToolUse{Name: "t"})
 		stay <- got
 	}()
-	waitFor(t, func() bool { return len(r.Pending()) == 1 })
+	waitFor(t, func() bool { return r.waiterCount(id) == 1 })
 
 	leaving, cancel := context.WithCancel(context.Background())
 	left := make(chan struct{})
@@ -159,7 +166,7 @@ func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 		_, _ = r.Resolve(leaving, q, ToolUse{Name: "t"})
 		close(left)
 	}()
-	waitFor(t, func() bool { return len(r.Pending()) == 1 })
+	waitFor(t, func() bool { return r.waiterCount(id) == 2 })
 	cancel()
 	<-left
 

@@ -341,3 +341,47 @@ func TestAdoptChainSurvivesAMissingCharter(t *testing.T) {
 		t.Errorf("process not adopted when its chain did not resolve: subject = %q", got)
 	}
 }
+
+// A hook is scoped to its own spawn, which is the correlation the `flow` redirect used to
+// stand in for — and it is exact where that was a guess: the engine spawned the process, so it
+// knows which subject the process is about without reading anything out of a payload.
+//
+// TestOnHookPerProcess is the other half of this (two processes, one subject, each hook fires
+// its own). Here it is two subjects: a completion must advance the one its process was about
+// and leave the other alone. A `when` over process:instance cannot say that any more — it
+// sweeps — so this is where "this process, this subject" now lives.
+func TestOnHookDoesNotCrossSubjects(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+		return startHookProc(store, id, spec)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "open"}.Payload())
+
+	eng.spawnHooked("pa", launch.Spec{Subject: prRef("1").String(), Task: "a"},
+		&Action{OnDone: &Action{Patch: entity.Obj{"from": "a"}.Payload()}}, "pa")
+	eng.spawnHooked("pb", launch.Spec{Subject: prRef("2").String(), Task: "b"},
+		&Action{OnDone: &Action{Patch: entity.Obj{"from": "b"}.Payload()}}, "pb")
+
+	waitField(t, store, prRef("1"), "from", "a")
+	waitField(t, store, prRef("2"), "from", "b")
+	// Decisive: each landed only its own. A hook that fired about the wrong subject would
+	// have overwritten one of these with the other's value.
+	if got := entityField(t, store, prRef("1"), "from"); got != "a" {
+		t.Fatalf("pr:1 from = %q, want a — a hook crossed subjects", got)
+	}
+	if got := entityField(t, store, prRef("2"), "from"); got != "b" {
+		t.Fatalf("pr:2 from = %q, want b — a hook crossed subjects", got)
+	}
+}
+
+func entityField(t *testing.T, store entity.Store, ref entity.Ref, key string) string {
+	t.Helper()
+	e, _, _ := store.Get(ref)
+	return entity.Str(e.Payload, key)
+}

@@ -43,7 +43,7 @@ const (
 )
 
 // startSeq begins carrier's sequence about subj, unless one is already running for it.
-func (e *Engine) startSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref) {
+func (e *Engine) startSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref, src refSource) {
 	// CLAIM FIRST, then decide — not the other way round, and not because it reads better.
 	// Checking `done` before claiming leaves a window: a firing reads "not done", the run
 	// already in progress finishes and RELEASES, and the reader then wins a free claim and
@@ -70,7 +70,7 @@ func (e *Engine) startSeq(chain string, carrier Action, ev entity.Event, subj en
 		seqSteps: len(carrier.Seq),
 		seqShape: shape,
 	})
-	e.advanceSeq(chain, carrier, 0, ev, subj)
+	e.advanceSeq(chain, carrier, 0, ev, subj, src)
 }
 
 // advanceSeq runs elements from i onward until one SPAWNS — at which point the sequence waits
@@ -80,10 +80,10 @@ func (e *Engine) startSeq(chain string, carrier Action, ev entity.Event, subj en
 // ordered writes, and an element that starts no process completes immediately. Without the
 // loop such an element would stall the sequence forever, waiting for a completion that no
 // process will ever report.
-func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event, subj entity.Ref) {
+func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event, subj entity.Ref, src refSource) {
 	for ; i < len(carrier.Seq); i++ {
 		el := carrier.Seq[i]
-		h, err := el.applyOne(seqChain(chain, i), ev, subj, e)
+		h, err := el.applyOne(seqChain(chain, i), ev, subj, e, src)
 		if err != nil {
 			// A failed write ends the sequence where it stands. The step count is left at the
 			// last element that really completed, so the facts do not claim progress that did
@@ -97,7 +97,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event
 		}
 		e.publishSeq(chain, subj, entity.Obj{seqStep: i + 1})
 	}
-	e.finishSeq(chain, carrier, ev, subj)
+	e.finishSeq(chain, carrier, ev, subj, src)
 }
 
 // finishSeq latches `done` and fires the carrier's own onDone — the hook that means "after the
@@ -107,12 +107,12 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event
 // and never one field of a payload against another: a join written as `step == steps` cannot
 // be expressed, and one written as `step: 3` silently stops meaning "finished" the moment the
 // sequence gains an element.
-func (e *Engine) finishSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref) {
+func (e *Engine) finishSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref, src refSource) {
 	e.publishSeq(chain, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
 	e.releaseRun(chain, subj)
 	if carrier.OnDone != nil {
 		hook := chain + "." + "onDone"
-		if err := carrier.OnDone.apply(hook, ev, []entity.Ref{subj}, e); err != nil {
+		if err := carrier.OnDone.apply(hook, ev, []entity.Ref{subj}, e, src); err != nil {
 			// Record it against the process whose completion got us here. A sequence can also
 			// finish without one — every element being a bare patch completes immediately — and
 			// then ev is the original triggering change, whose ref is the subject rather than a
@@ -153,7 +153,9 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 		return true
 	}
 	e.publishSeq(carrierChain, subj, entity.Obj{seqStep: idx + 1})
-	e.advanceSeq(carrierChain, *carrier, idx+1, ev, subj)
+	// A resumed sequence is downstream of the process that just completed, so its elements
+	// read that process's facts — $result and the rest — exactly as a hook does.
+	e.advanceSeq(carrierChain, *carrier, idx+1, ev, subj, fromCause)
 	return true
 }
 

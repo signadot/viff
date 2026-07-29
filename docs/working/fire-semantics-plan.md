@@ -174,6 +174,27 @@ redirect, and the completion pattern moves to hooks in `trigger-model.md` and `t
 Smoke uses neither — its charters have no `$` references and no `when` over `process:*` — so it
 stays green without edits.
 
+**Landed.** `refSource` names the two answers to "where do this action's references read
+from", because there turned out to be two and the plan assumed one. A trigger firing reads the
+SUBJECT — the change that dispatched it is a doorbell and may name an entirely different
+entity, whose fields have no meaning on the entity being acted on. A completion hook (and a
+sequence element one drives) reads the CAUSE, because $result/$err/$data are exactly what a
+hook exists for — and because `Engine.procEvent` synthesizes that payload rather than reading
+it back, since the mirror may not have written the terminal facts yet. So it is not merely a
+different entity to read, it is a payload only the engine has, which is why this could not be
+one rule.
+
+Where the subject IS the changed entity the event already carries its whole level state, so
+that is used directly — exact at the commit, and no read. Otherwise the subject is read from
+the store, which is CURRENT rather than as-of-the-commit: the one place this is looser than
+the model wants, and it tightens for free in phase 6 when a firing carries the snapshot it was
+evaluated against.
+
+The redirect is gone, and with it the correlation it gave. What replaces it is hooks, which are
+exact — and the tests say so in both directions: a `when` over process:instance now advances
+every PR its subject selects (`TestCompletionWhenSweepsItsSubject`), while a hook advances the
+one its own process was about and leaves the other alone (`TestOnHookDoesNotCrossSubjects`).
+
 ### Phase 5 — `on` arrives, additively
 
 `Condition` gains `On`, and a trigger **that has one** dispatches by the new rule: `¬on(C-1) ∧

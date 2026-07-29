@@ -120,3 +120,16 @@ func (r *Registry) Pending() []Pending {
 	}
 	return out
 }
+
+// waiterCount reports how many callers are blocked on a question (0 if it is not pending).
+// It exists for tests that need to wait until every joiner has actually joined — the count is
+// the only observable that says so, and Pending() cannot: one waiter and four look identical
+// on the docket, which is exactly the point of joining.
+func (r *Registry) waiterCount(id string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if pq, ok := r.pending[id]; ok {
+		return pq.waiters
+	}
+	return 0
+}

@@ -257,27 +257,26 @@ func safeSeg(s string) string {
 // payloadBinding binds each field of the changed payload by its name (e.g. $flow, $stage,
 // $path). It carries no $subject: resolving a Subject expression ("$flow") needs these
 // bindings, so the subject cannot be among them without circularity.
-func payloadBinding(ev entity.Event) launch.Binding {
+func payloadBinding(payload entity.Payload) launch.Binding {
 	b := launch.Binding{}
 	// Fields of an object payload only: a scalar payload (42, true) has no named parts to
 	// bind, so a template's $vars simply find nothing rather than binding the whole value
 	// to some invented name.
-	for k, v := range entity.ToObj(ev.To) {
+	for k, v := range entity.ToObj(payload) {
 		b[k] = fmt.Sprint(v)
 	}
 	return b
 }
 
-// bindingFor builds the template binding for a firing: the changed payload's fields, plus
-// $subject — the RESOLVED subject the action is about, which coincides with the matched ref
-// only when no Subject was declared.
+// bindingFor builds the template binding for an action: the fields of the payload its
+// references read (see refSource), plus $subject — the RESOLVED subject it is about.
 //
 // $subject is set LAST, deliberately: it is the one reserved binding, and a payload field
 // happening to be called "subject" must not shadow it. (It used to be set first and
 // overwritten, which is why a goal:done fact carrying a `subject` field silently redirected
 // $subject — see goal.go, which now also publishes `flow` for that job.)
-func bindingFor(ev entity.Event, subject entity.Ref) launch.Binding {
-	b := payloadBinding(ev)
+func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
+	b := payloadBinding(payload)
 	b["subject"] = subject.String()
 	return b
 }

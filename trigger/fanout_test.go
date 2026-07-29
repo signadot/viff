@@ -390,10 +390,15 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	waitStage(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "noted")
 }
 
-// A completion trigger's subject pattern FILTERS which flows it acts on: a process whose flow
-// is not what the subject names is a no-op — never a misfire onto the wrong entity. This is the
-// filter the old `$flow` deref lacked (it advanced whatever the payload carried, unconstrained).
-func TestSubjectPatternFiltersTheFlow(t *testing.T) {
+// A subject selects what its pattern names and nothing else — including when the change that
+// dispatched the firing points somewhere else entirely.
+//
+// This replaces a test of the `flow` redirect, which asserted the filtering half of it: a
+// process whose flow was not a demo:pr was a no-op. With the redirect gone the payload has no
+// say at all, and the property that remains is the plainer one — a subject is what the charter
+// says. The entity the process named is untouched not because it was filtered out, but because
+// the charter never named it.
+func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	store := entitytest.Store(t)
 	other := entity.Ref{System: "other", Kind: "thing", ID: "1"}
 	entitytest.Set(t, store, other, entity.Obj{"stage": "x"}.Payload())
@@ -403,7 +408,7 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 		Name: "reviewed",
 		Condition: Condition{
 			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
-			Subject: mm("demo:pr:*"), // acts on demo:pr flows only
+			Subject: mm("demo:pr:*"), // acts on demo:pr, whatever the cause carries
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {
@@ -413,14 +418,14 @@ func TestSubjectPatternFiltersTheFlow(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// A completed process whose flow is NOT a demo:pr — the subject pattern doesn't name it.
+	// A completed process whose payload names `other` — which the subject does not select.
 	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
 		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
 	time.Sleep(50 * time.Millisecond) // give a wrong action time to land, if it were going to
 	if e, _, _ := store.Get(other); entity.ToObj(e.Payload)["stage"] != "x" {
-		t.Fatalf("acted on a flow the subject doesn't name: %s = %#v", other, e.Payload)
+		t.Fatalf("acted on an entity the subject does not name: %s = %#v", other, e.Payload)
 	}
 }
 

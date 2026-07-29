@@ -1,11 +1,15 @@
 package trigger
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/process"
 )
 
 // derefRoot is the payload the reference tests resolve against.
@@ -190,7 +194,7 @@ func TestExpandPatchConstantIsUnchanged(t *testing.T) {
 // the store's predicates are type-exact.
 func TestRefRootPreservesNumberTypes(t *testing.T) {
 	ev := entity.Event{To: entity.Obj{"count": 3}.Payload()}
-	root := refRoot(ev, entity.Ref{System: "demo", Kind: "pr", ID: "1"})
+	root := refRoot(ev.To, entity.Ref{System: "demo", Kind: "pr", ID: "1"})
 	n := entity.Get(root, "count")
 	if n == nil || n.Int64 == nil || *n.Int64 != 3 {
 		t.Fatalf("count did not survive as an integer: %v", n)
@@ -204,7 +208,7 @@ func TestRefRootPreservesNumberTypes(t *testing.T) {
 // rule bindingFor states for the spawn side.
 func TestRefRootSubjectWins(t *testing.T) {
 	ev := entity.Event{To: entity.Obj{"subject": "demo:pr:999"}.Payload()}
-	root := refRoot(ev, entity.Ref{System: "demo", Kind: "pr", ID: "1"})
+	root := refRoot(ev.To, entity.Ref{System: "demo", Kind: "pr", ID: "1"})
 	if s := entity.Str(root, "subject"); s != "demo:pr:1" {
 		t.Errorf("subject = %q, want the resolved subject demo:pr:1", s)
 	}
@@ -214,11 +218,83 @@ func TestRefRootSubjectWins(t *testing.T) {
 // whole value to an invented name — the rule payloadBinding already states for the spawn side.
 func TestRefRootScalarPayload(t *testing.T) {
 	ev := entity.Event{To: ir.FromInt(42)}
-	root := refRoot(ev, entity.Ref{System: "demo", Kind: "count", ID: "1"})
+	root := refRoot(ev.To, entity.Ref{System: "demo", Kind: "count", ID: "1"})
 	if _, err := expandString("$anything", root); err == nil {
 		t.Error("a reference into a scalar payload should error")
 	}
 	if s := entity.Str(root, "subject"); s != "demo:count:1" {
 		t.Errorf("$subject must still resolve for a scalar payload, got %q", s)
+	}
+}
+
+// An action's references read the SUBJECT, not the change that dispatched the firing. Those
+// are the same entity for an ordinary rule, and different the moment a `when` puts the cause
+// somewhere else — where binding off the cause meant writing a CI status's fields onto a PR.
+func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+
+	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewed", "branch": "hotfix-9"}.Payload())
+
+	if err := eng.AddTrigger(Trigger{
+		Name: "ship",
+		Condition: Condition{
+			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+		},
+		// $branch is a field of the PR. The CI status has no such field — and carries a
+		// `branch` of its own precisely to catch a binding that read the cause instead.
+		Action: Action{Patch: entity.Obj{"shipped": "$branch"}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"},
+		entity.Obj{"state": "green", "branch": "main"}.Payload())
+
+	deadline := time.After(3 * time.Second)
+	for {
+		e, _, _ := store.Get(pr)
+		got := entity.Str(e.Payload, "shipped")
+		if got == "hotfix-9" {
+			return // bound from the subject
+		}
+		if got == "main" {
+			t.Fatalf("$branch bound from the CAUSE (the ci status), not the subject")
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the trigger never wrote `shipped`: %#v", e.Payload)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// The ordinary rule is unaffected: with no `when`, the subject IS the changed entity, so its
+// references read the event's own level payload — no store read, and exact at the commit.
+func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+
+	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	if err := eng.AddTrigger(Trigger{
+		Name:      "note",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action:    Action{Patch: entity.Obj{"noted": "$branch", "stage": "seen"}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, pr, entity.Obj{"stage": "open", "branch": "hotfix-9"}.Payload())
+	waitStage(t, store, pr, "seen")
+	if e, _, _ := store.Get(pr); entity.Str(e.Payload, "noted") != "hotfix-9" {
+		t.Fatalf("noted = %q, want hotfix-9", entity.Str(e.Payload, "noted"))
 	}
 }

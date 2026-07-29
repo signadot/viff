@@ -56,8 +56,9 @@ const (
 // its terminal latch, in one record. goal:done / goal:failed are the ordinary fact a charter
 // trigger may match ({system:"goal", kind:"done"|"failed"}) to advance a subject — emergent,
 // opt-in; the goal never sets a subject field itself. Such a trigger names the goal's subject
-// with a `subject` pattern matched against the goal:done fact's `flow` (see commitGoal) — the
-// same way a process-completion trigger names the PR its process carried.
+// in its own `subject`, like any other trigger: name it outright (`subject: change:pr:42`, the
+// same ref the goal was created with) rather than leaving a pattern to be narrowed by the
+// latch, which is what the fact's `flow` field used to do and no longer does.
 //
 // The definition sits on the SAME entity as the status rather than beside it, because a goal
 // that is recorded but not pursued, or pursued from a definition whose status record has gone,
@@ -392,9 +393,10 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	}
 
 	// The monotonic latch fact a charter may react to. It carries the goal's subject under
-	// BOTH `flow` and `subject`: `flow` is what a reacting trigger's `subject` pattern is matched
-	// against (`"subject": "demo:pr:*"`, exactly as a process-completion trigger does —
-	// mirror.Reflect publishes the same `flow` convention), while `subject` remains for display.
+	// BOTH `flow` and `subject`: `flow` is the convention mirror.Reflect also publishes, read
+	// by the flow query and bindable as `$flow`; `subject` remains for display. Neither
+	// REDIRECTS a reacting trigger any more — a subject is what that trigger's own charter
+	// says — but `$flow` is how such a trigger writes the goal's subject into what it does.
 	// A trigger cannot
 	// use `$subject` for this: that is the reserved binding for the firing's OWN resolved
 	// subject, which for a goal:done change is the latch entity itself.

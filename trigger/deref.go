@@ -31,7 +31,29 @@ import (
 // long-standing "$name" spelling IS that kpath at depth one, so this does not add a grammar;
 // it stops truncating the one already there at the first segment.
 
-// refRoot is what a reference resolves against: the changed payload's fields, plus $subject.
+// refSource says where an action's $references read their fields from. There are exactly two
+// answers, and which one applies is a property of WHY the action is running.
+type refSource int
+
+const (
+	// fromSubject — a trigger firing. The change that dispatched it is a doorbell and may
+	// name an entirely different entity (a CI status, a note, a process), whose fields have
+	// no meaning on the subject being acted on. So references read the SUBJECT's own payload.
+	//
+	// This is the half of "sever the action from the cause" that a charter can see: a trigger
+	// used to bind $stage from whatever changed, which read correctly only while the subject
+	// and the cause happened to be the same entity.
+	fromSubject refSource = iota
+	// fromCause — a completion hook, or a sequence element one drives. The action is
+	// downstream of a PROCESS, and $result / $err / $data are exactly the facts it exists to
+	// read. The engine synthesizes that payload (Engine.procEvent) rather than reading the
+	// store, because the mirror may not have written the terminal facts yet — so this is not
+	// merely a different entity to read, it is a payload only the engine has.
+	fromCause
+)
+
+// refRoot is what a reference resolves against: the fields of the payload named by src, plus
+// $subject.
 //
 // It is built by node rather than through entity.ToObj because a round-trip through Go
 // values does not preserve tony's numbers — an int 3 comes back a float64, and the store's
@@ -41,9 +63,9 @@ import (
 //
 // $subject is set LAST, the same rule bindingFor states: it is the one reserved reference,
 // and a payload field that happens to be called "subject" must not shadow it.
-func refRoot(ev entity.Event, subject entity.Ref) entity.Payload {
+func refRoot(payload entity.Payload, subject entity.Ref) entity.Payload {
 	fields := map[string]*ir.Node{}
-	for k, v := range entity.Fields(ev.To) { // nil for a scalar payload — no named parts
+	for k, v := range entity.Fields(payload) { // nil for a scalar payload — no named parts
 		fields[k] = v.DeepCopy()
 	}
 	fields["subject"] = ir.FromString(subject.String())
@@ -221,6 +243,31 @@ func expandInto(n entity.Payload, root entity.Payload) error {
 		v.CloneTo(n)
 		n.Parent, n.ParentField, n.ParentIndex = parent, field, index
 		return nil
+	}
+	return nil
+}
+
+// refPayload answers what an action's $references read, for one subject.
+//
+// fromCause hands back the cause's payload — a hook's process, which the engine may hold
+// facts about that the store does not yet (Engine.procEvent).
+//
+// fromSubject reads the SUBJECT. When the subject IS the entity that changed, the event
+// already carries its whole level state as of the dispatching commit, so that is used
+// directly: exact, and free. When they differ — a trigger whose cause is a CI status and
+// whose subject is a PR — the subject is read from the store. That read is CURRENT rather
+// than as-of-the-commit, which is the one place this is looser than the model wants; it
+// tightens for free once a firing carries the snapshot it was evaluated against, and doing it
+// here would mean a whole-verse read per subject.
+func (e *Engine) refPayload(ev entity.Event, subj entity.Ref, src refSource) entity.Payload {
+	if src == fromCause {
+		return ev.To
+	}
+	if ev.Ref == subj {
+		return ev.To
+	}
+	if ent, ok, err := e.store.Get(subj); err == nil && ok {
+		return ent.Payload
 	}
 	return nil
 }

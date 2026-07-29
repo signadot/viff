@@ -606,7 +606,9 @@ func (e *Engine) fire(ctx context.Context, t Trigger, ev entity.Event) {
 		subjects = subjects[:granted]
 	}
 	e.tracef("fire %s on %s (%d subject(s): %v)", t.Name, ev.Ref, len(subjects), subjects)
-	t.Action.apply(t.Name, ev, subjects, e)
+	// A trigger firing has no privileged cause: the change that dispatched it is a doorbell,
+	// so the action's references read the subject (see refSource).
+	t.Action.apply(t.Name, ev, subjects, e, fromSubject)
 }
 
 // monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the
@@ -1359,7 +1361,7 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
-	if err := hook.apply(chain, ev, []entity.Ref{subj}, e); err != nil {
+	if err := hook.apply(chain, ev, []entity.Ref{subj}, e, fromCause); err != nil {
 		e.recordHookFailure(mirror.Ref(fp.id), chain, err)
 	}
 }
