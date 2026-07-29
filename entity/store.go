@@ -53,6 +53,19 @@ type Store interface {
 	Since(from int64) (evs []Event, ok bool)
 	// Rev returns the current store revision.
 	Rev() int64
+	// AsOf returns a Snapshot: a read-only view fixed at one revision, so every read of it
+	// answers as of that commit and no later write is visible to any of them.
+	//
+	// It is what makes a rule about the verse evaluable AT a change rather than merely after
+	// one. Asking "does this condition hold" and "which entities does this select" of the
+	// same snapshot makes them answers about one world; asking them of the live store makes
+	// them two reads with a window between, which a concurrent commit can slide through — so
+	// a firing could act on a member under a condition that had already stopped holding.
+	//
+	// An out-of-range or no-longer-retained revision is an ERROR here, at the point the
+	// snapshot is taken, rather than a quietly-current answer later. That is the same reason
+	// Since reports ok=false rather than returning what it happens to still have.
+	AsOf(rev int64) (Snapshot, error)
 	// List enumerates the stored entities whose ref satisfies pred (nil = all). This is
 	// the query that stands in for a namespace: "everything in system X", "everything
 	// touching prod". A Go predicate is a placeholder for a match expression — a

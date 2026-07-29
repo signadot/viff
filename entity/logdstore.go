@@ -678,6 +678,12 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		// the gap alone.
 		doc := ir.Null()
 		prev := map[Ref]Payload{}
+		// rev is the commit the reconstructed doc now stands at, stamped on every event the
+		// next diff emits. Without it a subtree event carried no revision at all while a root
+		// event carried its commit — the same stream, one half of it unable to say WHEN.
+		// Nothing downstream could then ask a question about a change at the commit it
+		// happened at, which is the whole affordance AsOf exists to offer.
+		var rev int64
 		send := func(e Event) bool {
 			select {
 			case out <- e:
@@ -687,6 +693,9 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 			}
 		}
 		apply := func(ev *logdapi.WatchEvent) {
+			if ev.Commit > rev {
+				rev = ev.Commit
+			}
 			switch {
 			case ev.State != nil:
 				doc = stateDoc(ev.State, segs) // full current state of the subtree
@@ -700,18 +709,27 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		}
 		// emitDiff reconstructs the entity set from doc and emits the diff vs the last
 		// snapshot. Returns false if the consumer went away (ctx done) mid-send.
+		//
+		// Every event carries `rev`, the commit the doc stands at. Under a COALESCED burst
+		// (see the drain below) that is the LATEST commit the diff includes, not necessarily
+		// the one each entity changed at — the burst is applied and then diffed once, so the
+		// intermediate states are never reconstructed and there is nothing finer to report.
+		// That is exact for a level ("this is the entity, as of rev") and lossy for an edge:
+		// a value that appears and disappears inside one burst leaves no trace in the diff at
+		// all. Which is the right trade while consumers read levels, and is the thing to
+		// revisit before anything reads this stream for transitions.
 		emitDiff := func() bool {
 			cur := entitiesFromDoc(doc, s.root, system, kind)
 			for ref, p := range cur {
 				if old, ok := prev[ref]; !ok || !reflect.DeepEqual(old, p) {
-					if !send(Event{Ref: ref, Op: Set, To: p}) {
+					if !send(Event{Ref: ref, Op: Set, To: p, Rev: rev}) {
 						return false
 					}
 				}
 			}
 			for ref := range prev {
 				if _, ok := cur[ref]; !ok {
-					if !send(Event{Ref: ref, Op: Delete}) {
+					if !send(Event{Ref: ref, Op: Delete, Rev: rev}) {
 						return false
 					}
 				}
@@ -1037,6 +1055,41 @@ func (s *LogdStore) Since(from int64) ([]Event, bool) {
 			}
 		}
 	}
+}
+
+// AsOf returns a snapshot of the whole verse as it stood at rev — one MatchAt over the root,
+// which docd answers across base and every logd-backed mount at the same commit (they share
+// logd's commit sequence), so the snapshot is consistent across mounts and not merely
+// per-path.
+//
+// It reads the WHOLE root rather than deferring per-ref reads, because the point of a
+// snapshot is that two reads of it cannot disagree; a lazy snapshot issuing MatchAt per
+// question would be consistent too, but would put a round trip on every predicate a rule
+// evaluates. See docSnapshot.
+//
+// A revision the store cannot answer at — out of range, or beyond current — is an error,
+// unlike docAt's replay base, which degrades to an empty document because the replay
+// carries every commit it needs. Here there is nothing to make up the difference: a
+// snapshot that quietly read current state instead would be indistinguishable from one that
+// worked, at exactly the moment being at the right commit is the whole requirement.
+func (s *LogdStore) AsOf(rev int64) (Snapshot, error) {
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	node, err := s.sess.MatchAt(ctx, seg(s.root), rev)
+	if err != nil {
+		if isNotFound(err) {
+			// The root has never been written at that commit — an empty verse, which is a
+			// real state and not a failure to read. (A never-written verse is the case a
+			// fresh store is in, and a rule evaluated against it selects nothing.)
+			return docSnapshot{root: s.root, rev: rev, doc: ir.FromMap(map[string]*ir.Node{})}, nil
+		}
+		return nil, fmt.Errorf("read verse at rev %d: %w", rev, err)
+	}
+	return docSnapshot{
+		root: s.root,
+		rev:  rev,
+		doc:  ir.FromMap(map[string]*ir.Node{s.root: node}),
+	}, nil
 }
 
 // docAt reads the whole watched document as it stood at commit, root key and all — the base

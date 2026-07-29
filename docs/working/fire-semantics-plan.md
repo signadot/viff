@@ -79,9 +79,10 @@ question each time.
 Two store-side additions, both prerequisites for anything above them.
 
 **A read at a revision** — enough to evaluate a predicate and a selection against `store@C`,
-and against `store@(C-1)` for an edge. Both backends. The watch layer already maintains a
-per-subtree document and the snapshot before it (`WatchSubtree`), so the shape exists even
-though the interface does not.
+and against `store@(C-1)` for an edge. One implementation, not two: `LogdStore` is the only
+`Store`, and a scope is a copy-on-write child of it, so a scope snapshots its own view for
+free. The watch layer already maintains a per-subtree document and the snapshot before it
+(`WatchSubtree`), so the shape exists even though the interface does not.
 
 **A commit number on a subtree watch.** `WatchSubtree`'s `emitDiff` sends
 `Event{Ref, Op, To}` and sets no `Rev` (`logdstore.go:705`), so the production path —
@@ -92,6 +93,14 @@ commit it is.
 
 Nothing calls either yet. Store-level tests; smoke untouched, which is the point of doing it
 first.
+
+**Landed.** `entity.Reader` (the read half of a `Store`) and `entity.Snapshot` (a `Reader`
+fixed at a revision), `Store.AsOf(rev)`, and `docSnapshot` — one `MatchAt` over the root, which
+docd answers across base and every mount at the same commit, with both reads then pure
+functions of that document so two reads of one snapshot cannot disagree. `WatchSubtree` stamps
+`Rev`. The coalescing residual is recorded on `emitDiff` rather than fixed: a burst is applied
+then diffed once, so the stamp is the latest commit the diff includes — exact for a level,
+lossy for an edge, which is phase 2's question.
 
 ### Phase 2 — the engine dispatches a commit
 

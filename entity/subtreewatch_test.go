@@ -163,3 +163,62 @@ func TestWatchSubtreeAppearAndDeleteAfterSeeding(t *testing.T) {
 		t.Fatalf("event = %s %v, want %s delete", ev.Ref, ev.Op, seeded)
 	}
 }
+
+// A subtree event says WHEN it happened. It carried no revision at all until the model
+// needed to ask questions at a commit: the root watch stamped one and the subtree watch did
+// not, so the production observation path — which is the subtree one — could report a change
+// without being able to say which commit it belonged to.
+//
+// The load-bearing part is the last assertion: the revision an event carries is one AsOf
+// accepts, and reading the entity back there yields what the event said. An event and a
+// snapshot taken at its revision are then two views of one moment rather than two moments.
+func TestSubtreeWatchStampsTheCommit(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	set(t, s, ref, Obj{"stage": "open"}.Payload())
+
+	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	if err != nil {
+		t.Fatalf("WatchSubtree: %v", err)
+	}
+	defer unsub()
+
+	// The replayed seed is a change like any other and carries the commit it stands at.
+	seed := nextEvent(t, ch, "the replayed seed")
+	if seed.Rev == 0 {
+		t.Fatal("the replayed seed carries no revision")
+	}
+
+	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
+	ev := nextEvent(t, ch, "the update")
+	if ev.Rev == 0 {
+		t.Fatal("a subtree event carries no revision")
+	}
+	if ev.Rev < seed.Rev {
+		t.Fatalf("revision went backwards: seed %d, then %d", seed.Rev, ev.Rev)
+	}
+
+	// The revision is a real commit: a snapshot there reads what the event reported.
+	snap, err := s.AsOf(ev.Rev)
+	if err != nil {
+		t.Fatalf("AsOf the event's rev %d: %v", ev.Rev, err)
+	}
+	e, ok, err := snap.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("snapshot at the event's rev: ok=%v err=%v", ok, err)
+	}
+	if got, want := ToObj(e.Payload)["stage"], ToObj(ev.To)["stage"]; got != want {
+		t.Fatalf("at rev %d the entity is %v, but the event said %v", ev.Rev, got, want)
+	}
+
+	// A delete carries one too — it is the same stream, and a disappearance happens at a
+	// commit as much as an appearance does.
+	remove(t, s, ref)
+	del := nextEvent(t, ch, "the delete")
+	if del.Op != Delete {
+		t.Fatalf("event = %v, want delete", del.Op)
+	}
+	if del.Rev < ev.Rev {
+		t.Fatalf("delete revision %d is behind the update's %d", del.Rev, ev.Rev)
+	}
+}
