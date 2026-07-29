@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/fatih/color v1.19.0
 	github.com/scott-cotton/cli v0.2.4
-	github.com/signadot/tony-format/go-tony v0.0.109
+	github.com/signadot/tony-format/go-tony v0.0.110
 )
 
 require (

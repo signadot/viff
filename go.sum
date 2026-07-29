@@ -33,6 +33,8 @@ github.com/signadot/tony-format/go-tony v0.0.108 h1:2dtW2w/WgYvSOhemh5u3NgAJGqyS
 github.com/signadot/tony-format/go-tony v0.0.108/go.mod h1:juZ6dERF8lBGAAxMhb7L4vZZzPo0MlcaPI+OrXbGS+k=
 github.com/signadot/tony-format/go-tony v0.0.109 h1:CobNKSVnx8Zf2tAsuRHQtXOhqTAdylf/nUq3TXuA760=
 github.com/signadot/tony-format/go-tony v0.0.109/go.mod h1:juZ6dERF8lBGAAxMhb7L4vZZzPo0MlcaPI+OrXbGS+k=
+github.com/signadot/tony-format/go-tony v0.0.110 h1:rC5IyF91VRcnp3A9H31M82cN3uEXNpJbnRUGolK0YSI=
+github.com/signadot/tony-format/go-tony v0.0.110/go.mod h1:juZ6dERF8lBGAAxMhb7L4vZZzPo0MlcaPI+OrXbGS+k=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=

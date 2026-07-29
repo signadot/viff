@@ -66,7 +66,13 @@ type Store interface {
 	// An out-of-range or no-longer-retained revision is an ERROR here, at the point the
 	// snapshot is taken, rather than a quietly-current answer later. That is the same reason
 	// Since reports ok=false rather than returning what it happens to still have.
-	AsOf(rev int64) (Snapshot, error)
+	//
+	// `within` narrows what the snapshot holds to the given (system, kind) subtrees — kind ""
+	// meaning a whole system, no arguments meaning the whole verse. It is not a filter for
+	// convenience: reading the whole verse costs more as the verse GROWS, so a caller
+	// evaluating a rule at every commit pays for entities the rule cannot see. Pass the
+	// subtrees the predicates read and the cost stops depending on everything else.
+	AsOf(rev int64, within ...[2]string) (Snapshot, error)
 	// List enumerates the stored entities whose ref satisfies pred (nil = all). This is
 	// the query that stands in for a namespace: "everything in system X", "everything
 	// touching prod". A Go predicate is a placeholder for a match expression — a

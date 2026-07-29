@@ -1070,24 +1070,80 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 // carries every commit it needs. Here there is nothing to make up the difference: a
 // snapshot that quietly read current state instead would be indistinguishable from one that
 // worked, at exactly the moment being at the right commit is the whole requirement.
-func (s *LogdStore) AsOf(rev int64) (Snapshot, error) {
+func (s *LogdStore) AsOf(rev int64, within ...[2]string) (Snapshot, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	node, err := s.sess.MatchAt(ctx, seg(s.root), rev)
+	if len(within) == 0 {
+		node, err := s.matchAt(ctx, seg(s.root), rev)
+		if err != nil {
+			return nil, err
+		}
+		return docSnapshot{root: s.root, rev: rev,
+			doc: ir.FromMap(map[string]*ir.Node{s.root: nodeOrEmpty(node)})}, nil
+	}
+	// One read per named subtree, assembled into the same root-rooted shape.
+	//
+	// It bounds what crosses the wire, and — measured — that is ALL it does. A read costs what
+	// it costs to replay the log to that commit, which is independent of the path asked for:
+	// on a 300-commit verse, the whole root, the 300-entity slice the commits landed in, and a
+	// one-entity slice they never touched all cost ~73ms. So do not reach for this expecting a
+	// read to get cheaper. What makes a read cheap is not asking for one — see the roll-forward
+	// note in docs/working/fire-semantics.md.
+	verse := map[string]*ir.Node{}
+	for _, st := range within {
+		path := seg(s.root) + "." + seg(st[0])
+		if st[1] != "" {
+			path += "." + seg(st[1])
+		}
+		node, err := s.matchAt(ctx, path, rev)
+		if err != nil {
+			return nil, err
+		}
+		if node == nil {
+			continue // nothing stands in that slice at that commit
+		}
+		graftAt(verse, st, node)
+	}
+	return docSnapshot{root: s.root, rev: rev,
+		doc: ir.FromMap(map[string]*ir.Node{s.root: ir.FromMap(verse)})}, nil
+}
+
+// matchAt reads one path at a revision, reporting "nothing there" as a nil node rather than an
+// error — a never-written slice is a real state, and a rule evaluated against it selects
+// nothing.
+func (s *LogdStore) matchAt(ctx context.Context, path string, rev int64) (*ir.Node, error) {
+	node, err := s.sess.MatchAt(ctx, path, rev)
 	if err != nil {
 		if isNotFound(err) {
-			// The root has never been written at that commit — an empty verse, which is a
-			// real state and not a failure to read. (A never-written verse is the case a
-			// fresh store is in, and a rule evaluated against it selects nothing.)
-			return docSnapshot{root: s.root, rev: rev, doc: ir.FromMap(map[string]*ir.Node{})}, nil
+			return nil, nil
 		}
-		return nil, fmt.Errorf("read verse at rev %d: %w", rev, err)
+		return nil, fmt.Errorf("read %s at rev %d: %w", path, rev, err)
 	}
-	return docSnapshot{
-		root: s.root,
-		rev:  rev,
-		doc:  ir.FromMap(map[string]*ir.Node{s.root: node}),
-	}, nil
+	return node, nil
+}
+
+func nodeOrEmpty(n *ir.Node) *ir.Node {
+	if n == nil {
+		return ir.FromMap(map[string]*ir.Node{})
+	}
+	return n
+}
+
+// graftAt places a subtree read at (system, kind) — or at (system, "") — into the verse map
+// being assembled, merging with a sibling kind already grafted under the same system.
+func graftAt(verse map[string]*ir.Node, st [2]string, node *ir.Node) {
+	if st[1] == "" {
+		verse[st[0]] = node
+		return
+	}
+	kinds := map[string]*ir.Node{}
+	if cur, ok := verse[st[0]]; ok && cur != nil && cur.Type == ir.ObjectType {
+		for i, f := range cur.Fields {
+			kinds[f.String] = cur.Values[i]
+		}
+	}
+	kinds[st[1]] = node
+	verse[st[0]] = ir.FromMap(kinds)
 }
 
 // docAt reads the whole watched document as it stood at commit, root key and all — the base

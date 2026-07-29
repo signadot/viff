@@ -165,6 +165,44 @@ Is the settled store a function of (charter, input commits), or of how firings i
 Under this rule, three sources — one of which the rule removes outright compared with the
 looser reading it replaced.
 
+### 5.0 The cost of asking: a read per commit
+
+Before the ambiguity argument, the thing that decides whether any of this is affordable.
+
+`evaluate` takes a snapshot per commit, and a snapshot is a store read. Measured on a
+300-commit verse against a locally-launched logd:
+
+| what is read | cost |
+| --- | --- |
+| the whole verse | ~73 ms |
+| the 300-entity slice the commits landed in | ~74 ms |
+| a ONE-entity slice the commits never touched | ~73 ms |
+
+The path makes no difference, because the cost is not the document — it is replaying the log to
+that commit. `AsOf(rev/2)` costs half of `AsOf(head)` on the same store, which is the tell. A
+CURRENT read costs the same as a historical one, so this is not about asking for history.
+
+None of that is unreasonable for what it is: four layers (client, server, docd, logd), an index
+lookup and a disk read, with goroutine synchronisation on two of the links, and no read cache
+yet. It is in the same order as a loopback SQL query. And it is BOUNDED — logd snapshots every
+`MaxCommits` (default 1000, configurable at launch), so a read costs distance-from-snapshot
+rather than distance-from-genesis, and the curve is a sawtooth rather than a ramp.
+
+What does not work is asking once per commit. Half a tooth of replay, per commit, is hundreds
+of times the work of the alternative — and the alternative is already in the tree: `Since`
+reads the document ONCE at its floor and rolls it forward with the deltas it is replaying,
+precisely so a catch-up is one read rather than one per event. It then throws away everything
+but the per-entity payloads, and the evaluator re-derives the same documents with a read apiece.
+
+**The fix is to carry the rolled-forward document rather than re-read it**: a floor plus a
+bounded window of deltas, advanced as commits are consumed in order. Then `store@C` is the last
+snapshot plus one delta, and `store@(C-1)` — which an `on` edge needs — is the one already in
+hand, so an edge costs nothing at all. A cursor older than the floor falls back to the read
+path, which is the low-watermark discipline `Since` already has.
+
+Not built. Nothing above depends on it being built: the model is correct as it stands and the
+cost is a constant factor on observation, which is the part of this the store owns.
+
 ### 5.1 The snapshot removes the read-skew source
 
 `when(store@C)` and `e ∈ store@C` are the same snapshot, so a firing cannot act on a member

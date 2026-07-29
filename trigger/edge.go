@@ -42,7 +42,11 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	if !e.firstSight(t.Name, c.Rev) {
 		return
 	}
-	now, err := e.store.AsOf(c.Rev)
+	// Scoped to what this rule reads. This bounds what crosses the wire and does NOT make the
+	// read cheaper: a read costs the log replay to that commit whatever path it names (see
+	// LogdStore.AsOf). The cost of evaluating per commit is the read itself.
+	reads := t.reads()
+	now, err := e.store.AsOf(c.Rev, reads...)
 	if err != nil {
 		e.tracef("%s: cannot read the verse at rev %d (%v); not firing", t.Name, c.Rev, err)
 		return
@@ -55,7 +59,7 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 		// this is the state as of the commit before C whether or not C-1 is itself a commit.
 		// Deriving the edge from the store instead of from engine memory is what makes a
 		// replayed commit (a catch-up, a restart) reach the same verdict as the live one.
-		before, err := e.store.AsOf(c.Rev - 1)
+		before, err := e.store.AsOf(c.Rev-1, reads...)
 		if err != nil {
 			e.tracef("%s: cannot read the verse at rev %d (%v); not firing", t.Name, c.Rev-1, err)
 			return
