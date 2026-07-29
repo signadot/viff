@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -86,42 +87,57 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	}
 }
 
-// A curated signature is a human's claim about the code; a generated one is derived from it.
-// The endpoint reports which is which, and this pins the rule that decides: curated wins only
-// where codegen produced nothing usable (an empty `define`), never over a real description.
-func TestCuratedSignaturesAreReportedAndOnlyFillGaps(t *testing.T) {
-	cur, err := schema.Curated()
+// The endpoint serves ONE flat set of signatures. Whether a signature was generated from a Go
+// struct or hand-written in curated.tony is verse's bookkeeping — it used to be published as a
+// top-level `curated:` list beside the shapes, which asked every reader to hold a distinction
+// they cannot act on: the two kinds resolve identically, and "this one is hand-written" is not
+// a caveat a caller can do anything with. It is a provenance note about our build, and it left
+// the impression of two tiers of schema where there is one.
+//
+// So: no origin metadata on the wire, and a curated-origin signature is indistinguishable from
+// a generated one — same place in the map, same keys.
+func TestSchemaServesSignaturesWithoutOrigin(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/schema")
 	if err != nil {
-		t.Fatalf("curated: %v", err)
+		t.Fatalf("get /schema: %v", err)
 	}
-	isCurated := map[string]bool{}
-	for _, n := range cur {
-		isCurated[n] = true
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	// trigger.Match has a hand-written codec, so codegen emits `define: {}` for it — the
-	// curated description must win, or the most-authored type in the system publishes as
-	// having no shape.
-	if !isCurated["verse-match"] {
-		t.Error("verse-match should be curated: codegen describes it as empty")
-	}
-	// A type codegen describes properly must NOT be curated.
-	if isCurated["verse-spawn"] {
-		t.Error("verse-spawn is generated; a curated entry must not shadow it")
+	doc, err := codec.ParseNode(body, codec.Tony)
+	if err != nil {
+		t.Fatalf("parse /schema: %v", err)
 	}
 
-	// And every curated name resolves, with a non-empty description.
-	for _, n := range cur {
-		d, ok, err := schema.Get(n)
-		if err != nil || !ok {
-			t.Errorf("curated %q does not resolve (err=%v)", n, err)
+	sigs := ir.Get(doc, "signatures")
+	if sigs == nil || sigs.Type != ir.ObjectType {
+		t.Fatalf("/schema has no signatures object")
+	}
+	for _, k := range doc.Fields {
+		if k.String != "signatures" {
+			t.Errorf("/schema publishes %q beside the signatures; the response is the schema, "+
+				"not a report on where it came from", k.String)
+		}
+	}
+
+	// verse-match is curated (trigger.Match has a hand-written codec, so codegen emits an
+	// empty `define` for it) and verse-spawn is generated. Both must arrive the same way,
+	// with a real shape — which is also what the curated-wins rule buys: without it
+	// verse-match, the most-authored type in the system, would publish as having no shape.
+	for _, n := range []string{"verse-match", "verse-spawn"} {
+		d := ir.Get(sigs, n)
+		if d == nil {
+			t.Errorf("%s is not published", n)
 			continue
 		}
-		// An EMPTY define can be the honest answer: trigger.Formula emits a tag
-		// (`!quorum 2`), not a field map, so any field list would describe a shape that
-		// never appears on the wire — which is precisely what codegen produced for it. The
-		// description lives in curated.tony's prose in those cases.
-		if def := ir.Get(d, "define"); def != nil && def.Type != ir.ObjectType {
-			t.Errorf("curated %q has a define that is not an object", n)
+		if def := ir.Get(d, "define"); def == nil || def.Type != ir.ObjectType || len(def.Fields) == 0 {
+			t.Errorf("%s is served without a shape", n)
 		}
 	}
 }
@@ -178,27 +194,6 @@ func TestEverySignatureReferenceResolves(t *testing.T) {
 			if !known[m[1]] {
 				t.Errorf("signature %q references %q, which is not published", n, m[1])
 			}
-		}
-	}
-}
-
-// The upgrade that retired two curated entries: entity.Entity and Event are GENERATED now,
-// because go-tony v0.0.93 consults TextMarshaler when typing a struct field, so `ref` is
-// described as the string its generated code has always emitted rather than as an int.
-func TestEntitySignaturesAreGeneratedNotCurated(t *testing.T) {
-	cur, err := schema.Curated()
-	if err != nil {
-		t.Fatalf("curated: %v", err)
-	}
-	for _, n := range cur {
-		if n == "verse-entity" || n == "verse-event" {
-			t.Errorf("%s is curated again — if codegen regressed, say so here rather than "+
-				"letting a hand-written signature quietly stand in for a generated one", n)
-		}
-	}
-	for _, n := range []string{"verse-entity", "verse-event"} {
-		if _, ok, _ := schema.Get(n); !ok {
-			t.Errorf("%s is not published at all", n)
 		}
 	}
 }

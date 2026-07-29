@@ -57,6 +57,31 @@ func TestCuratedSetEqualsCustomCodecTypes(t *testing.T) {
 	}
 }
 
+// The upgrade that retired two curated entries: entity.Entity and Event are GENERATED now,
+// because go-tony v0.0.93 consults TextMarshaler when typing a struct field, so `ref` is
+// described as the string its generated code has always emitted rather than as an int.
+//
+// TestCuratedSetEqualsCustomCodecTypes would catch a curated entry reappearing here only if
+// nobody also declared codec=custom on the type. This names the two by hand because they are
+// the cases where that already happened once.
+func TestEntitySignaturesAreGeneratedNotCurated(t *testing.T) {
+	cur, err := Curated()
+	if err != nil {
+		t.Fatalf("curated: %v", err)
+	}
+	for _, n := range cur {
+		if n == "verse-entity" || n == "verse-event" {
+			t.Errorf("%s is curated again — if codegen regressed, say so here rather than "+
+				"letting a hand-written signature quietly stand in for a generated one", n)
+		}
+	}
+	for _, n := range []string{"verse-entity", "verse-event"} {
+		if _, ok, _ := Get(n); !ok {
+			t.Errorf("%s is not published at all", n)
+		}
+	}
+}
+
 var customCodecRe = regexp.MustCompile(`//tony:schemagen=([a-z0-9-]+)[^\n]*\bcodec=custom\b`)
 
 // customCodecSignatures returns the signature names declared with codec=custom under root.
