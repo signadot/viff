@@ -353,7 +353,9 @@ survives the charter codec, so it is writable over the wire and not only in Go.
 
 Still open, and deliberately not decided here: `verse entity rm` hard-deletes. The mechanism
 exists and nothing enters the sink state except a charter. Making `rm` two-phase changes what
-an operator's command does, which is not this phase's call.
+an operator's command does, which is not this phase's call — see
+[delete-intent-fixes.md](delete-intent-fixes.md), which carries that question, the resurrection
+hazard found while probing it, and the two gaps a grace period runs into.
 
 ### Phase 8 — the grammar and the docs settle
 
