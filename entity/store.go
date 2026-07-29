@@ -43,14 +43,15 @@ type Store interface {
 	// When err != nil, ok is meaningless: nothing is known about the entity. A caller
 	// that genuinely does not care may discard it, but has to say so.
 	Get(ref Ref) (Entity, bool, error)
-	// Observe returns a channel of live change events (from now) and an unsubscribe
-	// func — a low-latency hint, not the source of truth: it may drop under
-	// backpressure. Correctness comes from the revision cursor + Since.
-	Observe() (<-chan Event, func())
-	// Since returns retained changes with Rev > from, in order. ok is false when
-	// `from` is older than the retained/durable window — the caller must resync from
-	// current state. This is the cursor-based catch-up (a docd query by revision).
-	Since(from int64) (evs []Event, ok bool)
+	// Observe returns a channel of live commits (from now) and an unsubscribe func — a
+	// low-latency hint, not the source of truth: it may drop under backpressure, marking
+	// the next delivered commit with a Gap. Correctness comes from the revision cursor +
+	// Since.
+	Observe() (<-chan Commit, func())
+	// Since returns retained commits with Rev > from, in order. ok is false when `from` is
+	// older than the retained/durable window — the caller must resync from current state.
+	// This is the cursor-based catch-up (a docd query by revision).
+	Since(from int64) (commits []Commit, ok bool)
 	// Rev returns the current store revision.
 	Rev() int64
 	// AsOf returns a Snapshot: a read-only view fixed at one revision, so every read of it
@@ -80,7 +81,13 @@ type Store interface {
 	// stands in the slice as Set events, then streams changes. A rule is a statement about
 	// the world, and a trigger installed over a populated verse should act on the entities
 	// that already match it rather than waiting for each to be re-touched.
-	WatchSubtree(system, kind string) (<-chan Event, func(), error)
+	//
+	// It is EDGE-FAITHFUL: one commit in, at most one commit out, never several folded
+	// together. A watch that coalesced a burst would be exact for a level and lossy for an
+	// edge — a value that appeared and disappeared across two commits of one burst would
+	// leave no trace in the merged diff — and a consumer cannot recover a transition the
+	// stream never reported.
+	WatchSubtree(system, kind string) (<-chan Commit, func(), error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
 	// This is the seam for local-dev / sandbox federation — a developer's working tree

@@ -288,7 +288,7 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 	}
 	sub, cancel := context.WithCancel(ctx)
 	defer cancel()
-	events := make(chan entity.Event, 64)
+	events := make(chan entity.Commit, 64)
 	seen := map[[2]string]bool{} // one watch per distinct subtree (options often share the vote log)
 	for _, o := range m.options {
 		if o.formula == nil {

@@ -58,7 +58,7 @@ func (m *Monitor) Watch(ctx context.Context) <-chan State {
 			return true
 		}
 
-		events := make(chan entity.Event, 64)
+		events := make(chan entity.Commit, 64)
 		for _, st := range m.formula.Subtrees() {
 			ch, unsub, err := m.store.WatchSubtree(st[0], st[1])
 			if err != nil {
@@ -104,15 +104,15 @@ func (m *Monitor) Await(ctx context.Context) (witness []entity.Ref, ok bool) {
 	return nil, false
 }
 
-func drain(ctx context.Context, in <-chan entity.Event, out chan<- entity.Event) {
+func drain(ctx context.Context, in <-chan entity.Commit, out chan<- entity.Commit) {
 	for {
 		select {
-		case ev, ok := <-in:
+		case c, ok := <-in:
 			if !ok {
 				return
 			}
 			select {
-			case out <- ev:
+			case out <- c:
 			case <-ctx.Done():
 				return
 			}

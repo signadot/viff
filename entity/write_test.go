@@ -172,8 +172,8 @@ func TestEventIsLevelNotDelta(t *testing.T) {
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 
 	select {
-	case ev := <-ch:
-		got := ToObj(ev.To)
+	case c := <-ch:
+		got := ToObj(c.Changes[0].To)
 		if got["stage"] != "reviewed" {
 			t.Fatalf("event missed the change it reports: %+v", got)
 		}
@@ -196,7 +196,8 @@ func TestEventLevelsAtItsOwnCommit(t *testing.T) {
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("deployed")})
 
-	evs, ok := s.Since(first)
+	commits, ok := s.Since(first)
+	evs := changes(commits)
 	if !ok || len(evs) != 2 {
 		t.Fatalf("Since = %d events ok=%v, want 2", len(evs), ok)
 	}
@@ -242,7 +243,8 @@ func TestSinceLevelsFromTheStart(t *testing.T) {
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 
-	evs, ok := s.Since(start)
+	commits, ok := s.Since(start)
+	evs := changes(commits)
 	if !ok || len(evs) != 2 {
 		t.Fatalf("Since(%d) = %d events ok=%v, want 2", start, len(evs), ok)
 	}

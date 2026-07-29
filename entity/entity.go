@@ -123,3 +123,29 @@ type Event struct {
 	Rev int64 `tony:"field=rev"`
 	Gap int   `tony:"field=gap,omitzero"` // >0: this many events dropped before this one (a slow observer)
 }
+
+// Commit is one atomic change to the verse: a revision, and every entity it changed. It is
+// the unit of OBSERVATION, where Event is the unit of change — a store writes many branches
+// in one transaction, and the entities of that transaction share a revision and are true
+// together or not at all.
+//
+// Observation is framed this way because the framing cannot be recovered downstream. Events
+// of one commit share a Rev, but a consumer reading them one at a time cannot tell whether
+// the next one belongs to the same commit without waiting for the one after it — so a stream
+// of events can only be regrouped by guessing, while the store, which built them from a
+// single delta, knows exactly. Giving each consumer the grouping means none of them has to
+// invent it, and it is what lets a question be asked AT a commit (Store.AsOf) rather than
+// after some part of one.
+//
+// Changes may be empty: a commit that changed nothing this consumer can see (a subtree watch
+// whose slice was untouched, or a re-established watch whose diff closed to nothing) still
+// happened, and saying so is how a cursor advances without inventing changes.
+type Commit struct {
+	// Rev is the revision this commit landed at — the cursor a consumer tracks.
+	Rev int64
+	// Changes are the per-entity changes of this commit, each carrying Rev.
+	Changes []Event
+	// Gap is >0 when commits were dropped before this one (a slow observer). The consumer
+	// recovers them with Since; see Store.Observe.
+	Gap int
+}

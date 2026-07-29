@@ -158,13 +158,8 @@ func TestLogdStore_Remove(t *testing.T) {
 	if _, ok, _ := s.Get(ref); ok {
 		t.Fatal("entity still present after being removed")
 	}
-	select {
-	case ev := <-ch:
-		if ev.Op != Delete || ev.Ref != ref {
-			t.Fatalf("event = %#v, want a Delete for %s", ev, ref)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("no event after a removal")
+	if ev := oneChange(t, ch, "the removal"); ev.Op != Delete || ev.Ref != ref {
+		t.Fatalf("event = %#v, want a Delete for %s", ev, ref)
 	}
 }
 
@@ -245,11 +240,11 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 
 	var first []Event
 	eventually(t, "Since to replay both writes", func() bool {
-		ev, ok := s.Since(start)
-		if !ok || len(ev) < 2 {
+		commits, ok := s.Since(start)
+		if !ok || len(changes(commits)) < 2 {
 			return false
 		}
-		first = ev
+		first = changes(commits)
 		return true
 	})
 	for _, e := range first {
@@ -258,7 +253,8 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 		}
 	}
 	// idempotent: a second identical query yields the same events, unchanged Op.
-	second, ok := s.Since(start)
+	secondCommits, ok := s.Since(start)
+	second := changes(secondCommits)
 	if !ok || len(second) != len(first) {
 		t.Fatalf("Since not idempotent: first=%d second=%d", len(first), len(second))
 	}
@@ -306,8 +302,8 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				evs, ok := s.Since(start)
-				results[i] = result{evs, ok}
+				commits, ok := s.Since(start)
+				results[i] = result{changes(commits), ok}
 			}(i)
 		}
 		wg.Wait()
@@ -384,9 +380,11 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 	timeout := time.After(3 * time.Second)
 	for len(seen) < len(refs) {
 		select {
-		case ev := <-ch:
-			if ev.Ref.ID != "" {
-				seen[ev.Ref.String()] = true
+		case c := <-ch:
+			for _, ev := range c.Changes {
+				if ev.Ref.ID != "" {
+					seen[ev.Ref.String()] = true
+				}
 			}
 		case <-timeout:
 			t.Fatalf("observer saw %d/%d changes: %v", len(seen), len(refs), seen)
@@ -396,12 +394,12 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 	// Since replays the whole window from before the writes.
 	var evs []Event
 	eventually(t, "Since to replay all writes", func() bool {
-		got, ok := s.Since(start)
+		commits, ok := s.Since(start)
 		if !ok {
 			return false
 		}
-		evs = got
-		return len(got) >= len(refs)
+		evs = changes(commits)
+		return len(evs) >= len(refs)
 	})
 	// Every write is present and in ascending commit order.
 	last := int64(-1)

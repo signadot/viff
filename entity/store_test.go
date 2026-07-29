@@ -86,7 +86,7 @@ func TestObserveDeliversChanges(t *testing.T) {
 
 	want := []Op{Set, Set, Delete}
 	for i, w := range want {
-		ev := <-ch
+		ev := oneChange(t, ch, "the observed change")
 		if ev.Op != w || ev.Ref != ref {
 			t.Fatalf("event %d = %+v, want op %s ref %s", i, ev, w, ref)
 		}
@@ -126,14 +126,20 @@ func TestRevAndSince(t *testing.T) {
 	}
 
 	// From the start both replay, in order; from mid only the second; from current, nothing.
-	evs, ok := s.Since(start)
+	commits, ok := s.Since(start)
+	evs := changes(commits)
 	if !ok || len(evs) != 2 || Str(evs[0].To, "stage") != "open" || Str(evs[1].To, "stage") != "reviewed" {
 		t.Fatalf("Since(start) = %+v ok=%v", evs, ok)
 	}
 	if evs[0].Rev >= evs[1].Rev {
 		t.Fatalf("replay is not ordered: %d then %d", evs[0].Rev, evs[1].Rev)
 	}
-	if evs, ok := s.Since(mid); !ok || len(evs) != 1 || Str(evs[0].To, "stage") != "reviewed" {
+	// Two writes are two commits, not one holding both: a commit is a transaction, and
+	// these were not written together.
+	if len(commits) != 2 {
+		t.Fatalf("Since(start) = %d commits, want 2 (one per write)", len(commits))
+	}
+	if evs, ok := s.Since(mid); !ok || len(changes(evs)) != 1 || Str(changes(evs)[0].To, "stage") != "reviewed" {
 		t.Fatalf("Since(mid) = %+v ok=%v", evs, ok)
 	}
 	if evs, ok := s.Since(end); !ok || len(evs) != 0 {
@@ -190,8 +196,8 @@ func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 	deadline := time.After(10 * time.Second)
 	for {
 		select {
-		case ev := <-ch:
-			if ev.Gap > 0 {
+		case c := <-ch:
+			if c.Gap > 0 {
 				return
 			}
 		case <-deadline:
@@ -213,4 +219,37 @@ func TestNamespaceIsAQuery(t *testing.T) {
 	if len(prodTouching) != 1 || prodTouching[0].Ref.ID != "1" {
 		t.Fatalf("prod-touching query wrong: %+v", prodTouching)
 	}
+}
+
+// changes flattens commits to the per-entity changes they carry, in order. Most of this
+// package's tests are about what a change SAYS — its op, its level payload, the revision it
+// happened at — rather than about which commit carried it, so they read the stream flat and
+// stay written the way they were.
+func changes(commits []Commit) []Event {
+	var out []Event
+	for _, c := range commits {
+		out = append(out, c.Changes...)
+	}
+	return out
+}
+
+// oneChange takes the next commit off a stream and returns its single change, failing if the
+// commit carries any other number. The writes in these tests touch one entity each, so a
+// commit holding two is a surprise worth stopping on rather than an event worth picking.
+func oneChange(t *testing.T, ch <-chan Commit, why string) Event {
+	t.Helper()
+	select {
+	case c, ok := <-ch:
+		if !ok {
+			t.Fatalf("commit stream closed waiting for %s", why)
+		}
+		if len(c.Changes) != 1 {
+			t.Fatalf("commit %d carries %d changes waiting for %s, want 1: %+v",
+				c.Rev, len(c.Changes), why, c.Changes)
+		}
+		return c.Changes[0]
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for %s", why)
+	}
+	return Event{}
 }

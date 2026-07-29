@@ -133,15 +133,17 @@ func TestReflectProjectsProcessState(t *testing.T) {
 	deadline := time.After(2 * time.Second)
 	for !sawCompleted {
 		select {
-		case ev := <-ch:
-			if ev.Ref != ref {
-				continue
-			}
-			if ev.Op == entity.Set && entity.ToObj(ev.To)["status"] == "running" {
-				sawRunning = true
-			}
-			if ev.To != nil && entity.ToObj(ev.To)["status"] == "done" {
-				sawCompleted = true
+		case c := <-ch:
+			for _, ev := range c.Changes {
+				if ev.Ref != ref {
+					continue
+				}
+				if ev.Op == entity.Set && entity.ToObj(ev.To)["status"] == "running" {
+					sawRunning = true
+				}
+				if ev.To != nil && entity.ToObj(ev.To)["status"] == "done" {
+					sawCompleted = true
+				}
 			}
 		case <-deadline:
 			t.Fatalf("timed out; sawRunning=%v sawCompleted=%v", sawRunning, sawCompleted)

@@ -730,14 +730,20 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	ch, unsub := store.Observe()
 	defer unsub()
 
+	// The wire is a stream of EVENTS, not commits: a reader of /watch is watching entities,
+	// and the commit framing is the store's way of saying which changes were atomic — a fact
+	// this surface has never carried and nothing consuming it asks for. So a commit is
+	// flattened here, in commit order, and its Rev rides each event as it always did.
 	last := since
-	if evs, ok := store.Since(since); ok {
-		for _, ev := range evs {
-			if match(ev) {
-				_ = sse.Send(ev)
+	if commits, ok := store.Since(since); ok {
+		for _, c := range commits {
+			for _, ev := range c.Changes {
+				if match(ev) {
+					_ = sse.Send(ev)
+				}
 			}
-			if ev.Rev > last {
-				last = ev.Rev
+			if c.Rev > last {
+				last = c.Rev
 			}
 		}
 	}
@@ -747,18 +753,25 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case ev, ok := <-ch:
+		case c, ok := <-ch:
 			if !ok {
 				return
 			}
-			if ev.Rev != 0 && ev.Rev <= last {
+			if c.Rev != 0 && c.Rev <= last {
 				continue // already delivered by the catch-up (overlap window)
 			}
-			if ev.Gap > 0 || match(ev) {
-				_ = sse.Send(ev)
+			// A dropped commit is reported once, as a gap marker, not once per event it
+			// held — the count is in commits and saying otherwise would overstate it.
+			if c.Gap > 0 {
+				_ = sse.Send(entity.Event{Rev: c.Rev, Gap: c.Gap})
 			}
-			if ev.Rev > last {
-				last = ev.Rev
+			for _, ev := range c.Changes {
+				if match(ev) {
+					_ = sse.Send(ev)
+				}
+			}
+			if c.Rev > last {
+				last = c.Rev
 			}
 		}
 	}

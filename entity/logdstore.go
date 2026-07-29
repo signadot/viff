@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -73,11 +74,11 @@ func IsMountOwned(system, kind string) bool {
 	return false
 }
 
-// observer is one live subscriber: a buffered channel plus the count of events dropped
-// while it was full, flushed to it as a gap marker before its next delivery so a drop is
-// never silent (the consumer recovers the gap via Since).
+// observer is one live subscriber: a buffered channel plus the count of COMMITS dropped
+// while it was full, carried on its next delivery so a drop is never silent (the consumer
+// recovers the gap via Since).
 type observer struct {
-	ch      chan Event
+	ch      chan Commit
 	dropped int
 }
 
@@ -645,7 +646,7 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 // the engine restarts over a verse still in that state. The latch idiom answers it — match
 // a field the action advances (see docs/change-events.md) — and it is the same discipline a
 // re-entry already needs.
-func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), error) {
+func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), error) {
 	// The path as segments as well as a kpath: the two watch event shapes are rooted
 	// differently and the document has to hold one of them (see stateDoc).
 	segs := []string{s.root, system}
@@ -662,7 +663,7 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		cancel()
 		return nil, nil, err
 	}
-	out := make(chan Event, 256)
+	out := make(chan Commit, 256)
 	go func() {
 		defer close(out)
 		// doc is the watched subtree as a root-rooted document, maintained by APPLYING
@@ -684,9 +685,9 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 		// Nothing downstream could then ask a question about a change at the commit it
 		// happened at, which is the whole affordance AsOf exists to offer.
 		var rev int64
-		send := func(e Event) bool {
+		send := func(c Commit) bool {
 			select {
-			case out <- e:
+			case out <- c:
 				return true
 			case <-ctx.Done():
 				return false
@@ -708,34 +709,43 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 			}
 		}
 		// emitDiff reconstructs the entity set from doc and emits the diff vs the last
-		// snapshot. Returns false if the consumer went away (ctx done) mid-send.
+		// snapshot as ONE commit, stamped with the revision the doc now stands at. Returns
+		// false if the consumer went away (ctx done) mid-send.
 		//
-		// Every event carries `rev`, the commit the doc stands at. Under a COALESCED burst
-		// (see the drain below) that is the LATEST commit the diff includes, not necessarily
-		// the one each entity changed at — the burst is applied and then diffed once, so the
-		// intermediate states are never reconstructed and there is nothing finer to report.
-		// That is exact for a level ("this is the entity, as of rev") and lossy for an edge:
-		// a value that appears and disappears inside one burst leaves no trace in the diff at
-		// all. Which is the right trade while consumers read levels, and is the thing to
-		// revisit before anything reads this stream for transitions.
+		// It is called once per watch event, never once per burst. Coalescing — apply N
+		// deltas, diff once — used to make a rapid N-file write cost one diff instead of N,
+		// and it is exact for a LEVEL, since the merged diff still reports each entity's
+		// current state. It is lossy for an EDGE: a value that appears at one commit and
+		// disappears at the next leaves no trace in a diff spanning both, and a transition the
+		// stream never reported cannot be recovered downstream. So the diff is per commit, and
+		// the cost is a subtree walk per commit rather than per burst.
+		//
+		// A commit that changes nothing in this slice emits nothing rather than an empty
+		// commit: this watch reports one subtree, and a consumer of it has no use for the
+		// revisions where its slice stood still.
 		emitDiff := func() bool {
 			cur := entitiesFromDoc(doc, s.root, system, kind)
+			var changes []Event
 			for ref, p := range cur {
 				if old, ok := prev[ref]; !ok || !reflect.DeepEqual(old, p) {
-					if !send(Event{Ref: ref, Op: Set, To: p, Rev: rev}) {
-						return false
-					}
+					changes = append(changes, Event{Ref: ref, Op: Set, To: p, Rev: rev})
 				}
 			}
 			for ref := range prev {
 				if _, ok := cur[ref]; !ok {
-					if !send(Event{Ref: ref, Op: Delete, Rev: rev}) {
-						return false
-					}
+					changes = append(changes, Event{Ref: ref, Op: Delete, Rev: rev})
 				}
 			}
 			prev = cur
-			return true
+			if len(changes) == 0 {
+				return true
+			}
+			// Stable order, so a consumer acting per entity does so deterministically and a
+			// test can say what it expects. Map iteration above is not.
+			sort.Slice(changes, func(i, j int) bool {
+				return changes[i].Ref.String() < changes[j].Ref.String()
+			})
+			return send(Commit{Rev: rev, Changes: changes})
 		}
 		backoff := 100 * time.Millisecond
 		for {
@@ -756,32 +766,13 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Event, func(), err
 					if ev.ReplayComplete {
 						continue // live watch: no replay phase to complete
 					}
+					// One event in, one diff out. There is no burst-coalescing here: see
+					// emitDiff on why a merged diff is exact for a level and lossy for an
+					// edge.
 					apply(ev)
-					// Coalesce a burst: apply any already-queued events too (each must be
-					// applied to keep doc consistent), then emit one diff — a rapid N-file
-					// connect costs one diff, not N.
-					closed := false
-				drain:
-					for {
-						select {
-						case ev2, ok2 := <-w.Events():
-							if !ok2 {
-								closed = true
-								break drain
-							}
-							if !ev2.ReplayComplete {
-								apply(ev2)
-							}
-						default:
-							break drain
-						}
-					}
 					if !emitDiff() {
 						w.Close()
 						return
-					}
-					if closed {
-						break pump // watch ended mid-burst; re-establish
 					}
 				}
 			}
@@ -957,11 +948,11 @@ func (e errString) Error() string { return string(e) }
 // the contract says, it is a low-latency hint that drops under backpressure; correctness comes
 // from the cursor + Since. Today the only observer is the /watch debug stream (decision:
 // an active whole-verse watch is transient and retries on a membership_changed force-end).
-func (s *LogdStore) Observe() (<-chan Event, func()) {
+func (s *LogdStore) Observe() (<-chan Commit, func()) {
 	s.mu.Lock()
 	id := s.nextID
 	s.nextID++
-	o := &observer{ch: make(chan Event, 256)}
+	o := &observer{ch: make(chan Commit, 256)}
 	s.subs[id] = o
 	if len(s.subs) == 1 && s.watchCancel == nil {
 		s.startRootWatchLocked() // first observer: bring the live root watch up
@@ -996,17 +987,21 @@ func (s *LogdStore) startRootWatchLocked() {
 	go s.runWatch(wctx, w)
 }
 
-// Since replays changes with Rev > from using a native logd FromCommit watch (a
-// query by revision), returning them in commit order. It is a pure read — it derives
-// each event's Op from the delta alone (a tombstone is Delete, any value is Set) and
-// mutates no store state, so repeated or concurrent calls are consistent. This is
-// what keeps a hold costing a cursor rather than a growing buffer.
+// Since replays commits with Rev > from using a native logd FromCommit watch (a
+// query by revision), in commit order. It is a pure read — it derives each event's Op from
+// the delta alone (a tombstone is Delete, any value is Set) and mutates no store state, so
+// repeated or concurrent calls are consistent. This is what keeps a hold costing a cursor
+// rather than a growing buffer.
+//
+// One replayed delta is one Commit, so a catch-up delivers the same framing the live stream
+// does and a consumer cannot tell which it is reading — which is the point: the two paths
+// exist to recover each other.
 //
 // ok is false when the caller must resync from current state: the replay could not
 // be established, or `from` predates this store's low-watermark (openCommit) — logd
 // silently under-delivers a compacted range rather than erroring, so a cursor older
 // than what this instance has observed cannot be served safely.
-func (s *LogdStore) Since(from int64) ([]Event, bool) {
+func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 	s.ensureSynced() // seed the low-watermark for a store that isn't being Observed
 	s.mu.Lock()
 	low := s.openCommit
@@ -1037,7 +1032,7 @@ func (s *LogdStore) Since(from int64) ([]Event, bool) {
 	// live one it may be recovering.
 	doc := s.docAt(ctx, from)
 
-	var out []Event
+	var out []Commit
 	for {
 		select {
 		case <-ctx.Done():
@@ -1051,7 +1046,10 @@ func (s *LogdStore) Since(from int64) ([]Event, bool) {
 			}
 			if ev.Patch != nil {
 				doc = applyDelta(doc, ev.Patch)
-				out = append(out, s.eventsFromDelta(ev.Commit, ev.Patch, doc)...)
+				out = append(out, Commit{
+					Rev:     ev.Commit,
+					Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc),
+				})
 			}
 		}
 	}
@@ -1154,9 +1152,7 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		s.doc = applyDelta(s.doc, ev.Patch)
 		doc := s.doc
 		s.mu.Unlock()
-		for _, e := range s.eventsFromDelta(ev.Commit, ev.Patch, doc) {
-			s.emit(e)
-		}
+		s.emit(Commit{Rev: ev.Commit, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)})
 	}
 }
 
@@ -1229,23 +1225,29 @@ func applyDelta(doc, patch *ir.Node) *ir.Node {
 	return doc
 }
 
-// emit broadcasts to observers, non-blocking with drop-and-gap accounting — the
-// the contract Observe documents (drops are recovered by consumers via Since).
-func (s *LogdStore) emit(e Event) {
+// emit broadcasts one commit to observers, non-blocking with drop-and-gap accounting — the
+// contract Observe documents (drops are recovered by consumers via Since).
+//
+// A commit is dropped or delivered WHOLE. Dropping part of one would hand a consumer a
+// transaction with entities missing and no way to know it, which is the one shape the
+// framing exists to prevent; the gap count is therefore in commits, not entities.
+func (s *LogdStore) emit(c Commit) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, o := range s.subs {
 		if o.dropped > 0 {
+			gapped := c
+			gapped.Gap = o.dropped
 			select {
-			case o.ch <- Event{Op: e.Op, Gap: o.dropped}:
+			case o.ch <- gapped:
 				o.dropped = 0
 			default:
 				o.dropped++
-				continue
 			}
+			continue
 		}
 		select {
-		case o.ch <- e:
+		case o.ch <- c:
 		default:
 			o.dropped++
 		}

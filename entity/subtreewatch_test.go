@@ -7,27 +7,46 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// nextEvent takes the next event off a subtree watch, failing if none arrives.
-func nextEvent(t *testing.T, ch <-chan Event, why string) Event {
-	t.Helper()
-	select {
-	case ev, ok := <-ch:
-		if !ok {
-			t.Fatalf("subtree watch closed waiting for %s", why)
-		}
-		return ev
-	case <-time.After(3 * time.Second):
-		t.Fatalf("timed out waiting for %s", why)
-	}
-	return Event{}
+// watch reads a subtree watch one CHANGE at a time, over a stream that delivers one COMMIT
+// at a time. The two differ wherever a commit carries several entities — the level-triggered
+// seed is exactly that, one commit replaying the whole slice — so these tests, which are
+// about what each change says, buffer a commit's changes and take them in turn.
+type watch struct {
+	ch  <-chan Commit
+	buf []Event
 }
 
-// noEvent asserts the watch stays quiet for a grace period.
-func noEvent(t *testing.T, ch <-chan Event, why string) {
+func reader(ch <-chan Commit) *watch { return &watch{ch: ch} }
+
+// next takes the next change, pulling a fresh commit when the current one is spent.
+func (w *watch) next(t *testing.T, why string) Event {
 	t.Helper()
+	for len(w.buf) == 0 {
+		select {
+		case c, ok := <-w.ch:
+			if !ok {
+				t.Fatalf("subtree watch closed waiting for %s", why)
+			}
+			w.buf = c.Changes
+		case <-time.After(3 * time.Second):
+			t.Fatalf("timed out waiting for %s", why)
+		}
+	}
+	ev := w.buf[0]
+	w.buf = w.buf[1:]
+	return ev
+}
+
+// quiet asserts the watch stays silent for a grace period — nothing buffered, nothing
+// arriving.
+func (w *watch) quiet(t *testing.T, why string) {
+	t.Helper()
+	if len(w.buf) > 0 {
+		t.Fatalf("unexpected change %s (%s): %+v", w.buf[0].Ref, why, w.buf[0].To)
+	}
 	select {
-	case ev := <-ch:
-		t.Fatalf("unexpected event %s (%s): %+v", ev.Ref, why, ev.To)
+	case c := <-w.ch:
+		t.Fatalf("unexpected commit %d (%s): %+v", c.Rev, why, c.Changes)
 	case <-time.After(300 * time.Millisecond):
 	}
 }
@@ -49,10 +68,11 @@ func TestWatchSubtreeLevelsFieldsWrittenBeforeTheWatch(t *testing.T) {
 		t.Fatalf("watch subtree: %v", err)
 	}
 	defer unsub()
+	r := reader(ch)
 
 	// The open replays what already stands there — level-triggered, so a watcher does not
 	// have to have been listening when the entity was written.
-	ev := nextEvent(t, ch, "the replay of what already stood there")
+	ev := r.next(t, "the replay of what already stood there")
 	if ev.Ref != ref || ev.Op != Set {
 		t.Fatalf("replayed event = %s %v, want %s set", ev.Ref, ev.Op, ref)
 	}
@@ -60,10 +80,10 @@ func TestWatchSubtreeLevelsFieldsWrittenBeforeTheWatch(t *testing.T) {
 		t.Fatalf("replayed To = %v, want the whole entity", got)
 	}
 	// Once. The slice is replayed at the open, not re-announced afterwards.
-	noEvent(t, ch, "the slice replayed twice")
+	r.quiet(t, "the slice replayed twice")
 
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
-	ev = nextEvent(t, ch, "the deep write of stage")
+	ev = r.next(t, "the deep write of stage")
 	if ev.Ref != ref || ev.Op != Set {
 		t.Fatalf("event = %s %v, want %s set", ev.Ref, ev.Op, ref)
 	}
@@ -89,19 +109,20 @@ func TestWatchSubtreeLevelsAcrossSeveralDeepWrites(t *testing.T) {
 		t.Fatalf("watch subtree: %v", err)
 	}
 	defer unsub()
+	r := reader(ch)
 
-	if ev := nextEvent(t, ch, "the replay"); ToObj(ev.To)["note"] != "write the doc" {
+	if ev := r.next(t, "the replay"); ToObj(ev.To)["note"] != "write the doc" {
 		t.Fatalf("replayed To = %v, want the note", ToObj(ev.To))
 	}
 
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("queued")})
-	ev := nextEvent(t, ch, "stage=queued")
+	ev := r.next(t, "stage=queued")
 	if got := ToObj(ev.To); got["note"] != "write the doc" || got["stage"] != "queued" {
 		t.Fatalf("after first deep write, To = %v, want note+stage", got)
 	}
 
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("ready")})
-	ev = nextEvent(t, ch, "stage=ready")
+	ev = r.next(t, "stage=ready")
 	if got := ToObj(ev.To); got["note"] != "write the doc" || got["stage"] != "ready" {
 		t.Fatalf("after second deep write, To = %v, want note+stage=ready", got)
 	}
@@ -118,13 +139,14 @@ func TestWatchSubtreeSystemWideLevelsFromInitialState(t *testing.T) {
 		t.Fatalf("watch subtree: %v", err)
 	}
 	defer unsub()
+	r := reader(ch)
 
-	if ev := nextEvent(t, ch, "the replay"); ev.Ref != ref {
+	if ev := r.next(t, "the replay"); ev.Ref != ref {
 		t.Fatalf("replayed ref = %s, want %s", ev.Ref, ref)
 	}
 
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
-	ev := nextEvent(t, ch, "the deep write of stage")
+	ev := r.next(t, "the deep write of stage")
 	if ev.Ref != ref {
 		t.Fatalf("event ref = %s, want %s", ev.Ref, ref)
 	}
@@ -148,18 +170,19 @@ func TestWatchSubtreeAppearAndDeleteAfterSeeding(t *testing.T) {
 		t.Fatalf("watch subtree: %v", err)
 	}
 	defer unsub()
+	r := reader(ch)
 
-	if ev := nextEvent(t, ch, "the replay"); ev.Ref != seeded || ev.Op != Set {
+	if ev := r.next(t, "the replay"); ev.Ref != seeded || ev.Op != Set {
 		t.Fatalf("replayed event = %s %v, want %s set", ev.Ref, ev.Op, seeded)
 	}
 
 	fresh := Ref{System: "demo", Kind: "pr", ID: "2"}
 	set(t, s, fresh, Obj{"stage": "open"}.Payload())
-	if ev := nextEvent(t, ch, "the new entity"); ev.Ref != fresh || ev.Op != Set {
+	if ev := r.next(t, "the new entity"); ev.Ref != fresh || ev.Op != Set {
 		t.Fatalf("event = %s %v, want %s set", ev.Ref, ev.Op, fresh)
 	}
 	remove(t, s, seeded)
-	if ev := nextEvent(t, ch, "the removal"); ev.Ref != seeded || ev.Op != Delete {
+	if ev := r.next(t, "the removal"); ev.Ref != seeded || ev.Op != Delete {
 		t.Fatalf("event = %s %v, want %s delete", ev.Ref, ev.Op, seeded)
 	}
 }
@@ -182,15 +205,16 @@ func TestSubtreeWatchStampsTheCommit(t *testing.T) {
 		t.Fatalf("WatchSubtree: %v", err)
 	}
 	defer unsub()
+	r := reader(ch)
 
 	// The replayed seed is a change like any other and carries the commit it stands at.
-	seed := nextEvent(t, ch, "the replayed seed")
+	seed := r.next(t, "the replayed seed")
 	if seed.Rev == 0 {
 		t.Fatal("the replayed seed carries no revision")
 	}
 
 	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
-	ev := nextEvent(t, ch, "the update")
+	ev := r.next(t, "the update")
 	if ev.Rev == 0 {
 		t.Fatal("a subtree event carries no revision")
 	}
@@ -214,11 +238,87 @@ func TestSubtreeWatchStampsTheCommit(t *testing.T) {
 	// A delete carries one too — it is the same stream, and a disappearance happens at a
 	// commit as much as an appearance does.
 	remove(t, s, ref)
-	del := nextEvent(t, ch, "the delete")
+	del := r.next(t, "the delete")
 	if del.Op != Delete {
 		t.Fatalf("event = %v, want delete", del.Op)
 	}
 	if del.Rev < ev.Rev {
 		t.Fatalf("delete revision %d is behind the update's %d", del.Rev, ev.Rev)
+	}
+}
+
+// EDGE-FAITHFUL: one commit in, one commit out. The watch used to coalesce a burst — apply
+// every queued delta, then diff once — which is exact for a level and lossy for an edge: a
+// value written at one commit and overwritten at the next left only the later one in a merged
+// diff, and the transition between them could not be recovered by anyone reading the stream.
+//
+// Written as a burst on purpose: the writes go in back to back so the watcher has several
+// deltas queued when it wakes, which is precisely the case the coalescing existed for.
+func TestWatchSubtreeDoesNotCoalesceCommits(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+
+	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	if err != nil {
+		t.Fatalf("WatchSubtree: %v", err)
+	}
+	defer unsub()
+
+	stages := []string{"open", "reviewing", "reviewed", "merged"}
+	for _, st := range stages {
+		set(t, s, ref, Obj{"stage": st}.Payload())
+	}
+
+	// Every transition is reported, in order, one commit each — none merged away.
+	var got []string
+	var revs []int64
+	deadline := time.After(5 * time.Second)
+	for len(got) < len(stages) {
+		select {
+		case c, ok := <-ch:
+			if !ok {
+				t.Fatal("watch closed early")
+			}
+			if len(c.Changes) != 1 {
+				t.Fatalf("commit %d carries %d changes, want 1 — these writes were separate "+
+					"transactions: %+v", c.Rev, len(c.Changes), c.Changes)
+			}
+			got = append(got, Str(c.Changes[0].To, "stage"))
+			revs = append(revs, c.Rev)
+		case <-deadline:
+			t.Fatalf("saw %v, want %v — a transition was coalesced away", got, stages)
+		}
+	}
+	for i, want := range stages {
+		if got[i] != want {
+			t.Fatalf("transition %d = %q, want %q (saw %v)", i, got[i], want, got)
+		}
+	}
+	// Distinct commits, ascending: each write is its own revision, and the stream says so.
+	for i := 1; i < len(revs); i++ {
+		if revs[i] <= revs[i-1] {
+			t.Fatalf("revisions not ascending: %v", revs)
+		}
+	}
+}
+
+// A commit that changes nothing in the watched slice emits nothing. The watch reports one
+// subtree; a consumer of it has no use for the revisions where its slice stood still.
+func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
+	s := openStore(t)
+	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	if err != nil {
+		t.Fatalf("WatchSubtree: %v", err)
+	}
+	defer unsub()
+	r := reader(ch)
+
+	set(t, s, Ref{System: "demo", Kind: "task", ID: "a"}, Obj{"n": 1}.Payload())
+	set(t, s, Ref{System: "other", Kind: "pr", ID: "b"}, Obj{"n": 2}.Payload())
+	r.quiet(t, "writes to slices this watch does not cover")
+
+	set(t, s, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
+	if ev := r.next(t, "a write to the watched slice"); ev.Ref.ID != "1" {
+		t.Fatalf("event = %s, want demo:pr:1", ev.Ref)
 	}
 }

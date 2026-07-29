@@ -134,8 +134,8 @@ func storeOverDocd(t *testing.T) (*LogdStore, *docdserver.Server) {
 func sinceReplays(t *testing.T, s *LogdStore, from int64) ([]Event, bool, time.Duration) {
 	t.Helper()
 	start := time.Now()
-	evs, ok := s.Since(from)
-	return evs, ok, time.Since(start)
+	commits, ok := s.Since(from)
+	return changes(commits), ok, time.Since(start)
 }
 
 func hasRef(evs []Event, ref Ref) bool {

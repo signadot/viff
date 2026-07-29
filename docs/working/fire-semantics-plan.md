@@ -8,6 +8,12 @@ there.
 Each phase is a merge to `main` and a push. `make test` and `./smoke.sh` must be green at the
 merge — baseline re-verified on `7c77701`: smoke passes, 33 checks.
 
+**Standing decision: edge-faithful.** Where a choice arises between reporting a level exactly
+and reporting every transition, transitions win. A level can be recovered from the store at
+any time; a transition the stream never reported cannot be recovered by anyone. This settles
+the coalescing question phase 1 left open (phase 2 below), and it is the reason `on` can be an
+edge at all.
+
 ## 1. The work, by area
 
 **Store.** A snapshot read at a commit — evaluate a predicate and a selection against
@@ -116,14 +122,25 @@ whole model leans on for affordability (design §3). It is where the two paths c
 every phase after it is written once instead of twice. And it is behaviour-preserving, so
 smoke is a real oracle for it, which is not true of any phase after phase 5.
 
-**It also forces a question the current code answers implicitly: coalescing.** `WatchSubtree`
-applies a burst of watch events and emits **one** diff (`logdstore.go:741` — "a rapid N-file
-connect costs one diff, not N"), so a single diff can span several commits. That is exactly
-right for a level and lossy for an edge: a predicate that rises and falls inside one burst
-leaves `on(C-1)` and `on(C_batch)` both false, and the firing that should have happened never
-does. The store keeps the document per applied delta, so evaluating each commit inside a burst
-is available — it just means not discarding the intermediate states. Deciding this here, while
-the answer is still only about shape, is much cheaper than discovering it under phase 6.
+**It also forces the coalescing question, and edge-faithful settles it.** `WatchSubtree`
+applied a burst of watch events and emitted **one** diff ("a rapid N-file connect costs one
+diff, not N"), so a single diff could span several commits — exact for a level, lossy for an
+edge, since a predicate that rises and falls inside one burst leaves no trace in the merged
+diff and the firing that should have happened never does. Under the standing decision the
+coalescing goes: one commit in, one commit out. The cost is a subtree walk per commit rather
+than per burst.
+
+**Landed.** `entity.Commit{Rev, Changes, Gap}` is the unit of observation — `Observe`,
+`Since`, and `WatchSubtree` all deliver it — because the framing cannot be recovered
+downstream: events of one commit share a Rev, but a consumer reading them one at a time cannot
+tell whether the next belongs to the same commit without waiting for the one after, while the
+store, which built them from a single delta, knows exactly. `Engine.dispatchOne` is the firing
+decision in ONE place for both ways a change reaches the engine (the root loop walking a
+commit, and a per-trigger subtree watch), where each used to carry a copy — which is how they
+came to disagree about the ignition guard and about budget, invisibly, since an engine only
+ever runs one of them. Observation still has two suppliers, and that is inherent: a scoped
+engine opens no root watch, so per-trigger observation means per-trigger delivery. What
+converges is the decision, which is what had to be written once.
 
 ### Phase 3 — gate and motion identity key on the subject
 

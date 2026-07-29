@@ -224,24 +224,25 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 				select {
 				case <-ctx.Done():
 					return
-				case ev, ok := <-ch:
+				case c, ok := <-ch:
 					if !ok {
 						return
 					}
-					// A cancel and a pending event are both ready: select picks either, so
+					// A cancel and a pending commit are both ready: select picks either, so
 					// removal has to be checked, not merely selected on, or a removed
-					// trigger can still fire once on an event that raced it.
+					// trigger can still fire once on a commit that raced it.
 					if ctx.Err() != nil {
 						return
 					}
-					if !t.matchesEvent(ev) || e.overBudget() {
-						continue
+					for _, ev := range c.Changes {
+						// Fire on bgctx, not this trigger's ctx: a firing already under way
+						// — a posed gate, a spawned process — belongs to the work, not to the
+						// charter entry, and removing the trigger stops FURTHER firings
+						// rather than cancelling one in flight. No ignition guard: this watch
+						// delivers exactly the slice the trigger named, so naming it was the
+						// opt-in.
+						e.dispatchOne(e.bgctx, t, ev, false)
 					}
-					// Fire on bgctx, not this trigger's ctx: a firing already under way —
-					// a posed gate, a spawned process — belongs to the work, not to the
-					// charter entry, and removing the trigger stops FURTHER firings rather
-					// than cancelling one in flight.
-					go e.fire(e.bgctx, t, ev) // off the watcher goroutine: a gate must not stall it
 				}
 			}
 		}()
@@ -289,7 +290,7 @@ func (e *Engine) stopWatchers(name string) {
 	}
 }
 
-func (e *Engine) loop(ctx context.Context, ch <-chan entity.Event, unsub func()) {
+func (e *Engine) loop(ctx context.Context, ch <-chan entity.Commit, unsub func()) {
 	defer close(e.stopped) // unblock any do() waiting once the loop is gone
 	defer unsub()
 	for {
@@ -316,42 +317,42 @@ func (e *Engine) loop(ctx context.Context, ch <-chan entity.Event, unsub func())
 			return
 		case fn := <-e.control:
 			fn()
-		case ev, ok := <-ch:
+		case c, ok := <-ch:
 			if !ok {
 				return
 			}
-			e.consume(ctx, ev)
+			e.consume(ctx, c)
 		}
 	}
 }
 
-// consume treats a live change as a low-latency doorbell, not the source of truth:
+// consume treats a live commit as a low-latency doorbell, not the source of truth:
 // if it is anywhere ahead of the cursor, reconcile the whole gap from the store via
 // catchUp (Since). This keeps the engine correct without trusting live contiguity
 // or assuming the backend's revisions are dense — logd commits are monotonic but
 // sparse. All the cursor ever asks is "greater than".
-func (e *Engine) consume(ctx context.Context, ev entity.Event) {
-	if ev.Rev > e.cursor {
+func (e *Engine) consume(ctx context.Context, c entity.Commit) {
+	if c.Rev > e.cursor {
 		e.catchUp(ctx)
 	}
 }
 
-// catchUp replays changes since the cursor from the store (a revision query), in
+// catchUp replays commits since the cursor from the store (a revision query), in
 // order — the cursor-based catch-up that makes a hold cost a cursor, not a buffer.
 // If the cursor is older than the store's retained window, it resyncs to current.
 func (e *Engine) catchUp(ctx context.Context) {
-	evs, ok := e.store.Since(e.cursor)
+	commits, ok := e.store.Since(e.cursor)
 	if !ok {
 		e.tracef("cursor %d older than store window; resync to current", e.cursor)
 		e.cursor = e.store.Rev()
 		return
 	}
-	for _, ev := range evs {
-		if ev.Rev <= e.cursor {
+	for _, c := range commits {
+		if c.Rev <= e.cursor {
 			continue // Since is ordered and monotonic; skip anything not ahead
 		}
-		e.cursor = ev.Rev
-		e.dispatch(ctx, ev)
+		e.cursor = c.Rev
+		e.dispatch(ctx, c)
 	}
 }
 
@@ -396,33 +397,50 @@ func (e *Engine) Resume() { e.do(func() { e.paused = false; e.tracef("resumed (c
 // inject a steer) until those get typed methods. Synchronous.
 func (e *Engine) Do(fn func()) { e.do(fn) }
 
-// dispatch matches one change against every trigger and fires the matches. Firing
-// is off the observe goroutine so a blocking gate (a human) never stalls the loop.
-func (e *Engine) dispatch(ctx context.Context, ev entity.Event) {
-	e.reap(ev) // retire completed processes from their flow (store-driven bookkeeping)
+// dispatch matches one COMMIT against every trigger and fires the matches. Firing is off
+// the observe goroutine so a blocking gate (a human) never stalls the loop.
+//
+// A commit is the unit that arrives; the entity is still the unit a trigger matches, so this
+// walks the commit's changes. Keeping the commit visible here — rather than unpacking it at
+// the store — is what lets a later rule ask a question ABOUT the commit (which entities
+// changed together, and at which revision) instead of only about one entity at a time.
+func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	e.trigMu.Lock()
 	trigs := make([]Trigger, len(e.triggers))
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
-	for i := range trigs {
-		t := trigs[i]
-		// Ignition guard: the engine's own machinery — reflected process:* state, and the
-		// durable trigger:* charter — is not in the default match set; a trigger must opt
-		// in (a Match naming that system) to react to it, so the loop cannot ignite on
-		// itself. Only the root loop needs the guard: a subtree watch delivers exactly the
-		// slice the trigger named, so naming it IS the opt-in.
-		if machinery(ev.Ref.System) && !t.opensTo(ev.Ref.System) {
-			continue
+	for _, ev := range c.Changes {
+		e.reap(ev) // retire completed processes from their flow (store-driven bookkeeping)
+		for i := range trigs {
+			// The root loop guards ignition; a subtree watch does not (see dispatchOne).
+			e.dispatchOne(ctx, trigs[i], ev, true)
 		}
-		if !t.matchesEvent(ev) {
-			continue
-		}
-		if e.overBudget() { // termination backstop: don't even pose gates once capped
-			e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
-			continue
-		}
-		go e.fire(ctx, t, ev)
 	}
+}
+
+// dispatchOne decides whether one trigger fires on one change, and fires it. It is THE
+// decision, in one place, for both ways a change reaches the engine: the root dispatch loop
+// walking a commit, and a per-trigger subtree watch. Those two used to carry a copy each,
+// which is how they came to disagree about the ignition guard and about budget — and the
+// disagreement was invisible, because a given engine only ever runs one of them.
+//
+// guard applies the IGNITION GUARD: the engine's own machinery — reflected process:* state,
+// and the durable trigger:* charter — is not in the default match set, so a trigger must opt
+// in (a match naming that system) to react to it and the loop cannot ignite on itself. Only
+// root observation needs it: a subtree watch delivers exactly the slice the trigger named, so
+// naming it IS the opt-in.
+func (e *Engine) dispatchOne(ctx context.Context, t Trigger, ev entity.Event, guard bool) {
+	if guard && machinery(ev.Ref.System) && !t.opensTo(ev.Ref.System) {
+		return
+	}
+	if !t.matchesEvent(ev) {
+		return
+	}
+	if e.overBudget() { // termination backstop: don't even pose gates once capped
+		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, ev.Ref)
+		return
+	}
+	go e.fire(ctx, t, ev) // off the observe goroutine: a gate must not stall it
 }
 
 // overBudget reports whether the fire budget is exhausted — a non-consuming check,
@@ -1551,22 +1569,24 @@ func (e *Engine) reap(ev entity.Event) {
 // it is race-free for a fast process — the property reapOnDone's live-from-now bus lacks. The
 // atomic retire makes it and the reapOnDone backstop exactly-once. Replayed old terminals are
 // harmless: retire finds no live entry for a process this engine never tracked.
-func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Event, unsub func()) {
+func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub func()) {
 	defer unsub()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case ev, ok := <-ch:
+		case c, ok := <-ch:
 			if !ok {
 				return
 			}
-			status := entity.Str(ev.To, "status")
-			if !process.TerminalStatus(status) {
-				continue
-			}
-			if fp, ok := e.retire(ev.Ref.ID); ok {
-				e.applyHook(fp, process.Status(status), ev)
+			for _, ev := range c.Changes {
+				status := entity.Str(ev.To, "status")
+				if !process.TerminalStatus(status) {
+					continue
+				}
+				if fp, ok := e.retire(ev.Ref.ID); ok {
+					e.applyHook(fp, process.Status(status), ev)
+				}
 			}
 		}
 	}
