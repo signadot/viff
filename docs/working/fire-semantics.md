@@ -207,6 +207,48 @@ A non-vacuous `on` fires once per transition, so it is bounded by construction. 
 store write the substrate does most of that: a write of the same value produces no commit,
 hence no next evaluation, so an idempotent action converges even without a latch.
 
+### The cycle, which is the one that actually bites
+
+The loop above is a single rule failing to settle, and it is easy to spot. The reachable one
+is a CYCLE ACROSS RULES, and nothing in the model sees it:
+
+```tony
+- name: fwd    { subject: {system: demo, kind: pr, value: {stage: a}}, action: {patch: {stage: b}} }
+- name: back   { subject: {system: demo, kind: pr, value: {stage: b}}, action: {patch: {stage: a}} }
+```
+
+Each writes exactly what the other selects on. Measured, with the runaway backstop set to 40:
+the engine fires 40 times and stops there, having written 40-odd commits — without a budget it
+does not stop at all. The degenerate one-rule version is a patch with no fixpoint over its own
+subject (`patch: {a: $b, b: $a}`), which behaves identically.
+
+Every protection misses it, and misses it correctly:
+
+- the substrate's no-op suppression never engages, because each write is a REAL change;
+- `claimFlight` and `working` never engage, because each firing genuinely completes;
+- the latch lint passes, because both rules DO write a field their subject reads. It asks
+  whether a rule advances its subject out of its own selection, and both do — into each
+  other's.
+
+It is decidable for literal charters, which is what makes it worth naming rather than merely
+regretting. Build the graph over triggers where `T₁ → T₂` when applying T₁'s patch to a state
+satisfying T₁'s subject can produce a state satisfying T₂'s. A cycle is a possible loop: a
+cycle of length ≥ 2 over constant patches always is, since if the two wrote the same value
+there would be no second firing. A SELF-edge is only a loop when the patch is templated —
+a constant one is inert on its second application, which is the ordinary converging rule.
+
+The residual, as always, is templates and operators: a patch whose values are computed can
+satisfy a predicate the key-level check cannot see through. So the graph is a warning, like
+§5.4, not a proof.
+
+Two smaller things this exposes about the backstop. `maxFires` defaults to UNBOUNDED and
+nothing in `versed` sets it, so the protection that stopped the measurement above is not on in
+production. And it is one counter for the whole engine rather than per trigger, so a single
+looping rule exhausts the budget for every other rule as well — it wedges the verse rather
+than the charter that is misbehaving.
+
+### The spawn
+
 A **spawn has no idempotence to appeal to.** It is not a store write, so nothing about it is
 inert on repetition, and dedupe is against live processes only (`engine.go:1182`) — once a
 process is reaped, the next commit spawns again. Rather than document that asymmetry, remove

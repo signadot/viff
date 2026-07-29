@@ -289,10 +289,14 @@ entity" being taken seriously:
   pinned). Note this is NOT a compare-and-swap result: `entity.Modify` retries on a failed
   precondition, so it prevents lost updates, not repeated work.
 
-  The one shape neither guard covers: a patch that is not a function of the state it reads —
-  a `$reference` to something that moves — computes a different value each firing, which does
-  raise a commit, which re-evaluates. That is design §5.3's "a non-idempotent action has no
-  fixpoint", with a concrete shape.
+  The one shape neither guard covers is a CYCLE: two rules each writing what the other selects
+  on (`{stage: a} → b` beside `{stage: b} → a`). Every write is a real change, so the
+  substrate's suppression never engages; every firing completes, so the guards never engage;
+  and the latch lint passes, since both rules do advance their subject out of their own
+  selection — into each other's. Measured, it spins until the runaway budget stops it. See
+  design §5.3, which now carries the shape and a decidable check for it, and two things it
+  exposed about the backstop: `maxFires` defaults to unbounded and nothing in `versed` sets
+  it, and it is one counter for the whole engine, so a single looping rule wedges every other.
 - **One commit can reach a trigger several times**, once per watched subtree. `firstSight` is
   a per-trigger watermark: one verdict per (trigger, commit).
 
