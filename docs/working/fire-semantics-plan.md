@@ -331,6 +331,30 @@ is an ordinary trigger. This is an entity-lifecycle change the trigger model *co
 than produces, so it can land on its own track — anywhere after phase 5, and before any charter
 wants to react to a removal.
 
+**Landed.** The marker is `verse.meta.vanishing`, its value the instant the intent was
+recorded, and charters match its PRESENCE — which is what leaves room for it to grow into a
+record (who asked, why, a grace period) without rewriting every charter that matched a value.
+
+The reserved root gained structure rather than a sibling: `verse.charter.<trigger>` for what
+the engine records about RULES acting on an entity, `verse.meta` for what verse records about
+the ENTITY. Flat, they collided — a trigger *named* `vanishing` would have written its sequence
+progress exactly where the marker goes — and they grow differently, a key per rule against a
+field per lifecycle concern.
+
+The sigil question is deferred, with the answer measured so it need not be re-derived: `@verse`,
+`~verse`, `$verse` all parse unquoted, address through kpath and round-trip through the yaml
+renderer. **`.verse` does not** — kpath reads `.verse.meta.vanishing` back as
+`verse.meta.vanishing`, dropping the sigil silently rather than refusing it, which is the worst
+of the available failures.
+
+Checked rather than assumed: an action CAN remove an entity (`patch: null` at the root), so
+"the reaper is an ordinary trigger" is true rather than aspirational — and `patch: null`
+survives the charter codec, so it is writable over the wire and not only in Go.
+
+Still open, and deliberately not decided here: `verse entity rm` hard-deletes. The mechanism
+exists and nothing enters the sink state except a charter. Making `rm` two-phase changes what
+an operator's command does, which is not this phase's call.
+
 ### Phase 8 — the grammar and the docs settle
 
 The install-time lints from design §5.2 (a narrow `on` samples rather than reconciles) and

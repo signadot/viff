@@ -291,7 +291,7 @@ func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
 	if err != nil || !ok {
 		return seqProgress{}
 	}
-	p := entity.Get(entity.Get(ent.Payload, VerseRoot), trigger)
+	p := entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), trigger)
 	if p == nil {
 		return seqProgress{}
 	}

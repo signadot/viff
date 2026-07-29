@@ -18,23 +18,33 @@ import (
 // idempotence stands: between two elements NO process is live, so a registry-only check has a
 // hole at exactly every step boundary, which is where a re-fire is most likely to land.
 //
-// Everything lands under one reserved root on the subject, keyed by trigger:
+// Everything lands under the reserved root on the subject, in its charter half, keyed by
+// trigger:
 //
 //	verse:
-//	  review:
-//	    step:  2         elements completed
-//	    steps: 3         len(seq), known at install
-//	    shape: "1f2c…"   hash of the declared sequence
-//	    done:  true      latched when step reaches steps
+//	  charter:
+//	    review:
+//	      step:  2         elements completed
+//	      steps: 3         len(seq), known at install
+//	      shape: "1f2c…"   hash of the declared sequence
+//	      done:  true      latched when step reaches steps
 //
 // One reserved name rather than a family of flat keys, because the payload is the AUTHOR's
-// document — `flow` on a process entity is the same kind of reservation. See docs/trigger-model.md.
+// document — `flow` on a process entity is the same kind of reservation. The `charter` half
+// keeps rule bookkeeping apart from what verse records about the ENTITY (verse.meta, where the
+// lifecycle marker lives): they grow differently — a key per rule against a field per lifecycle
+// concern — and flat they collided, since a trigger NAMED `vanishing` would have written its
+// progress exactly where the marker goes. See entity.ReservedRoot and docs/trigger-model.md.
 
-// VerseRoot is the reserved payload key the engine publishes its own bookkeeping under. It is
-// the one name a charter may not use for its own data.
-const VerseRoot = "verse"
+// VerseRoot and CharterKey address the engine's own bookkeeping: verse.charter.<trigger>. The
+// reservation is the ENTITY's (entity.ReservedRoot), aliased here because the charter grammar
+// is what a reader of this package is looking for.
+const (
+	VerseRoot  = entity.ReservedRoot
+	CharterKey = entity.CharterKey
+)
 
-// Progress field names under verse.<trigger>.
+// Progress field names under verse.charter.<trigger>.
 const (
 	seqStep  = "step"
 	seqSteps = "steps"
@@ -190,7 +200,7 @@ func (e *Engine) seqFacts(chain string, subj entity.Ref) entity.Payload {
 	if err != nil || !ok {
 		return nil
 	}
-	return entity.Get(entity.Get(ent.Payload, VerseRoot), mirror.TriggerOf(chain))
+	return entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), mirror.TriggerOf(chain))
 }
 
 // shapeMatches reports whether the sequence a subject is partway through is still the one the
@@ -208,7 +218,7 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 // action's own write does, which is exactly why `patch` had to replace `set`: a shallow
 // overlay here would replace the whole `verse` key and erase a sibling trigger's progress.
 func (e *Engine) publishSeq(chain string, subj entity.Ref, fields entity.Obj) {
-	patch := entity.Obj{VerseRoot: entity.Obj{mirror.TriggerOf(chain): fields}}.Payload()
+	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
 	if err := e.patchEntity(subj, patch); err != nil {
 		e.tracef("seq %s: publishing progress on %s failed: %v", chain, subj, err)
 	}

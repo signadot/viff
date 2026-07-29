@@ -715,17 +715,20 @@ on the subject under one reserved `verse` root as each element completes:
 
 ```tony
 verse:
-  review:            # keyed by trigger
-    step:  2         # how many elements have completed
-    steps: 3         # len(seq), known at install
-    shape: "a3f1…"   # hash of the declared shape, known at install
-    done:  true      # latched when step reaches steps
+  charter:             # what the engine records about RULES acting on this entity
+    review:            # keyed by trigger
+      step:  2         # how many elements have completed
+      steps: 3         # len(seq), known at install
+      shape: "a3f1…"   # hash of the declared shape, known at install
+      done:  true      # latched when step reaches steps
+  meta:                # what verse records about the ENTITY itself
+    vanishing: "2026-07-29T13:04:05Z"   # the intent to remove it — see Lifecycle
 ```
 
 A join reads it at whatever depth it cares about:
 
 ```tony
-subject: { system: demo, kind: pr, value: { verse: { review: { done: true } } } }
+subject: { system: demo, kind: pr, value: { verse: { charter: { review: { done: true } } } } }
 ```
 
 One reserved name, not a family. The alternative — flat per-trigger keys like `review.step` —
@@ -733,6 +736,16 @@ reserves an open-ended set of names out of a payload that is the author's own do
 single `verse` root reserves one name and documents once, the way `flow` is one reserved key
 on process entities. Nested predicates keep it readable, since `value` matches structurally
 and so matches a payload carrying any amount of other content.
+
+The two halves under it are separated because they grow differently — `charter` gains a key per
+rule, `meta` a field per lifecycle concern — and because flat they collided: a trigger *named*
+`vanishing` would have written its progress exactly where the lifecycle marker goes.
+
+(The name is plain `verse` and that is not settled. A sigil would say "reserved" at a glance and
+give the word back to authors — `@verse`, `~verse` and `$verse` all parse unquoted, address
+through kpath and round-trip through the yaml renderer. `.verse` does not, and is the one to
+avoid: kpath reads `.verse.meta.vanishing` back as `verse.meta.vanishing`, dropping the sigil
+silently rather than refusing it.)
 
 `done` is published rather than derived because a match compares a value against a pattern,
 never one field of a payload against another. A join spelled `step == steps` is not
@@ -810,3 +823,55 @@ by name so it survives an insertion) are the better form on their own terms, but
 has no defined semantics upstream yet.
 
 The substrate all of this leans on is [change events](change-events.md).
+
+## Lifecycle: how an entity leaves
+
+An entity does not simply disappear. The intent to remove it is written first, as
+`verse.meta.vanishing` — the instant it was recorded — and the removal follows separately.
+
+That order exists because of what a cause is. A trigger fires on the rising edge of a store
+predicate: *something matching this now exists*. There is no way to say the negative — a match
+asks what is there, so "this stopped existing" has no spelling. Writing the intent down turns
+the negative into a positive, and a departure becomes an ordinary rising edge:
+
+```tony
+- name: note-departures
+  condition:
+    on:      { system: demo, kind: pr, value: { verse: { meta: { vanishing: null } } } }
+    subject: audit:record:latest
+  action:
+    patch: { saw: "a departure" }
+```
+
+Match the marker's PRESENCE (`vanishing: null` is tony's present-any-value idiom), not its
+value. The value is a timestamp today and may grow into a record — who asked, why, a grace
+period — and a charter that matched on a particular value would have to be rewritten when it
+does.
+
+Three things follow, and the first is the one to know:
+
+**A vanishing entity is not selected.** A rule acts on what it selects — patches it, spawns
+about it, raises a gate on it — and doing any of that to something on its way out is work about
+something that will not be there. So `subject: {system: demo, kind: pr}` skips it, and naming
+the marker is the opt-in that sees it again. A *named* subject (`demo:pr:1`) is unaffected:
+naming is addressing by identity, not selecting from what exists, so if you name a vanishing
+entity you meant that one. The raw listing (`verse entities`) shows it too — making the intent
+visible is the whole point; only the rule-facing selection hides it.
+
+**The removal itself is inert.** When the entity finally goes, a predicate over it falls from
+true to false, and nothing fires on a falling edge. The reactive moment was the intent; the
+removal is bookkeeping.
+
+**The reaper is an ordinary trigger.** It selects what is leaving — by naming the marker — and
+removes it. A patch of `null` at the root is the removal:
+
+```tony
+- name: reap
+  condition:
+    subject: { system: demo, kind: pr, value: { verse: { meta: { vanishing: null } } } }
+  action:
+    patch: null
+```
+
+Which is what makes this a convention rather than a mechanism: nothing in the engine knows how
+to reap. A charter says when, and what grace period, and whether anything should happen first.

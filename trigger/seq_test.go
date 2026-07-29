@@ -41,7 +41,7 @@ func seqFacts(t *testing.T, store entity.Store, ref entity.Ref, trig string) ent
 	if !ok {
 		return nil
 	}
-	return entity.Get(entity.Get(e.Payload, VerseRoot), trig)
+	return entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), trig)
 }
 
 // The elements run IN ORDER, one process at a time, each id naming its position in the
@@ -118,7 +118,7 @@ func TestSeqPublishesProgress(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
-		f := entity.Get(entity.Get(p, VerseRoot), "review")
+		f := entity.Get(entity.Get(entity.Get(p, VerseRoot), CharterKey), "review")
 		d := entity.Get(f, seqDone)
 		return d != nil && d.Bool
 	}, "verse.review.done latched")
@@ -280,7 +280,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 		t.Error("an untouched subject reads as already done")
 	}
 	if err := eng.patchEntity(ref, entity.Obj{
-		VerseRoot: entity.Obj{"review": entity.Obj{seqStep: 2, seqDone: true, seqShape: shape}},
+		VerseRoot: entity.Obj{CharterKey: entity.Obj{"review": entity.Obj{seqStep: 2, seqDone: true, seqShape: shape}}},
 	}.Payload()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
-		v := entity.Get(p, VerseRoot)
+		v := entity.Get(entity.Get(p, VerseRoot), CharterKey)
 		for _, n := range []string{"alpha", "beta"} {
 			d := entity.Get(entity.Get(v, n), seqDone)
 			if d == nil || !d.Bool {

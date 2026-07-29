@@ -87,12 +87,26 @@ func (p Pattern) MatchRef(ref Ref) bool {
 
 // Select returns the refs of every stored entity the pattern picks: entities of
 // (System, Kind) whose payload satisfies every Fields entry.
+//
+// An entity marked VANISHING is skipped unless the predicate asks about the marker. A rule
+// acts on what it selects — patches it, spawns about it, raises a gate on it — and doing any
+// of that to an entity on its way out is work about something that will not be there. Naming
+// the marker is the opt-in, which is what lets a reaper select exactly the entities leaving;
+// see VanishingField.
+//
+// A NAMED subject is not affected, because it does not come through here: naming an entity is
+// addressing it by identity, not selecting from what exists (see trigger.Match.Select). If you
+// name a retiring entity, you meant that one.
 func (p Pattern) Select(r Reader) []Ref {
 	ents := r.List(func(ref Ref) bool {
 		return ref.System == p.System && (p.Kind == "" || ref.Kind == p.Kind)
 	})
+	skipVanishing := !namesVanishing(p.Predicate)
 	out := make([]Ref, 0, len(ents))
 	for _, e := range ents {
+		if skipVanishing && Vanishing(e.Payload) {
+			continue
+		}
 		if p.matchPayload(e.Payload) {
 			out = append(out, e.Ref)
 		}
