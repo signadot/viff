@@ -1,10 +1,13 @@
 # CURATED signatures — hand-written, not generated.
 #
-# Every signature here describes a type tony-codegen cannot describe correctly today. They
-# are kept separate from the generated files, and reported separately by the endpoint, so a
-# reader can tell which part of the published schema is derived from the code and which part
-# is a human's claim about it. A curated signature can drift from the code; a generated one
-# cannot. That difference is worth surfacing rather than hiding behind a uniform document.
+# Every signature here describes a type tony-codegen cannot describe correctly today. They are
+# kept in this file rather than mixed into the generated ones because a curated signature can
+# drift from the code and a generated one cannot, so the two need different upkeep — a test
+# holds this set equal to the types declaring `codec=custom` (schema/curated_test.go).
+#
+# That difference is OURS, not the reader's: the endpoint serves one flat set and says nothing
+# about where a signature came from. It used to publish a `curated:` list beside the shapes,
+# which asked every caller to hold a distinction they cannot act on.
 #
 # These describe I/O SHAPES, which is what tony-codegen generates and what this endpoint
 # publishes. A tony schema can also validate, through an `accept:` clause, and none of these

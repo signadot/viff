@@ -163,8 +163,8 @@ type FlowSteer struct {
 	By      string `tony:"field=by,omitzero"`
 }
 
-// Route is one entry of the API's own route table (`GET /api`): a method and path, and the
-// signature names of what it accepts and returns.
+// Route is one entry of the API's own route table (`GET /api`): a method and path, the
+// signature names of what it accepts and returns, and how many of them come back.
 //
 // An empty Request is a route with no body (a GET, or a control POST that takes none). An
 // empty Response means the response shape is NOT YET a named type — most handlers still
@@ -172,13 +172,54 @@ type FlowSteer struct {
 // naming work visible in the published artifact rather than hiding it behind a claim like
 // "returns an open value", which would be true of anything and useful about nothing.
 //
+// Response names ONE document; a name is all it can carry. Returns says how many arrive and by
+// what means, because the name alone could not: `GET /triggers` published `response:
+// verse-trigger` while its body is an ARRAY of them, and `GET /watch` published the same claim
+// for a thing that is not a document at all but an SSE stream of them. Both read as "returns a
+// verse-trigger" / "returns a verse-event", which is wrong in the way a published signature
+// must never be wrong — confidently, in the artifact that exists to be trusted about the wire.
+//
+// Returns is also what makes the ROOT SCHEMA derivable (see versed's rootSignature): a
+// top-level path returning one document types as that signature, a listing as
+// `array(<signature>)`, and a stream as neither, since no tony type describes a sequence of
+// SSE frames.
+//
 //tony:schemagen=verse-route,notag
 type Route struct {
-	Method   string `tony:"field=method"`
-	Path     string `tony:"field=path"`
-	Request  string `tony:"field=request,omitzero"`
+	Method  string `tony:"field=method"`
+	Path    string `tony:"field=path"`
+	Request string `tony:"field=request,omitzero"`
+	// Response is a signature name, or a tony base type where that is the whole truth:
+	// `GET /flows` answers with the subjects that have live work, which are addresses, so its
+	// response is `string` and there is nothing further to name.
 	Response string `tony:"field=response,omitzero"`
+	Returns  string `tony:"field=returns,omitzero"`
 }
+
+// The values of Route.Returns: how many Response documents come back, and by what means.
+//
+// Empty is the fourth case and means nothing worth naming came back — a route that answers
+// with no body, or one whose shape is not named yet. Every route with a Response has one of
+// these, and a route without one has neither (TestEveryRouteSaysWhatItReturns).
+const (
+	// ReturnsOne is one document, alone, as the body.
+	ReturnsOne = "one"
+	// ReturnsList is an array of them.
+	ReturnsList = "list"
+	// ReturnsStream is a sequence of them over server-sent events — frames, not a document,
+	// so the body has no tony type even though each frame's payload does.
+	ReturnsStream = "stream"
+)
+
+// RootSignature is the name of the signature describing the verse ROOT: one object whose keys
+// are the top-level paths and whose values are the shapes served there.
+//
+// It is not a Go type and not in any package's generated schema — the server DERIVES it from
+// its own route table (see versed's rootSignature), so it cannot describe a surface that is not
+// served. The name lives here, with the table it is derived from, because the server that
+// publishes it and the client that asks for it (`verse schema`) must agree on it, and two
+// spellings of one wire name is the kind of drift this package exists to prevent.
+const RootSignature = "verse-root"
 
 // Routes is the whole table, as served.
 //

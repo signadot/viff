@@ -24,6 +24,9 @@ verse
                                              (/broker/<nonce>); all default off (local in-process
                                              supervisor). See docs/process-control.md.
   status                                     engine/store snapshot
+  schema [<name>]                            what a verse looks like: the top-level paths and the
+                                             shapes served there. A name prints that one signature,
+                                             so the root's references are followable
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--system --kind --since <rev>]     stream store changes (cursored)

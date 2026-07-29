@@ -99,6 +99,7 @@ define:
   path: .[string]
   request: .[string]
   response: .[string]
+  returns: .[string]
 signature:
   name: verse-route
 ---

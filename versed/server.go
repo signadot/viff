@@ -495,67 +495,71 @@ func (s *Server) Start(ctx context.Context) {
 // deliberately distinct routes.
 func (s *Server) Handler() http.Handler {
 	rt := &router{mux: http.NewServeMux()}
-	// observation (read plane)
-	rt.handle("GET /status", s.status, "", "verse-status")
-	rt.handle("GET /watch", s.watch, "", "verse-event")
-	rt.handle("GET /entities", s.listEntities, "", "")
-	rt.handle("GET /entity", s.getEntity, "", "verse-entity")
-	rt.handle("GET /gates", s.listGates, "", "")
-	rt.handle("GET /flows", s.listFlows, "", "")
-	rt.handle("GET /flow/tree", s.flowTree, "", "verse-flow-tree")
-	rt.handle("GET /triggers", s.listTriggers, "", "verse-trigger")
-	rt.handle("GET /triggers/{name}", s.getTrigger, "", "verse-trigger")
-	rt.handle("GET /goals", s.listGoals, "", "verse-goal")
+	// observation (read plane). The response of every route is declared as one/list/stream
+	// (or nothing), which is what the published table needs to be right about a listing and
+	// what the root schema is derived from — see rootSignature.
+	rt.handle("GET /status", s.status, "", one("verse-status"))
+	rt.handle("GET /watch", s.watch, "", stream("verse-event"))
+	rt.handle("GET /entities", s.listEntities, "", list("verse-entity"))
+	rt.handle("GET /entity", s.getEntity, "", one("verse-entity"))
+	rt.handle("GET /gates", s.listGates, "", nothing)
+	// The distinct subjects with live work — addresses, so a list of plain strings rather
+	// than of anything verse names. That is the whole shape, so it is published.
+	rt.handle("GET /flows", s.listFlows, "", list("string"))
+	rt.handle("GET /flow/tree", s.flowTree, "", list("verse-flow-tree"))
+	rt.handle("GET /triggers", s.listTriggers, "", list("verse-trigger"))
+	rt.handle("GET /triggers/{name}", s.getTrigger, "", one("verse-trigger"))
+	rt.handle("GET /goals", s.listGoals, "", list("verse-goal"))
 	// the API describing itself: the route table, and the signatures it points at
-	rt.handle("GET /api", s.serveAPI, "", "verse-routes")
-	rt.handle("GET /schema", s.serveSchema, "", "")
-	rt.handle("GET /schema/{name}", s.serveSignature, "", "")
+	rt.handle("GET /api", s.serveAPI, "", one("verse-routes"))
+	rt.handle("GET /schema", s.serveSchema, "", nothing)
+	rt.handle("GET /schema/{name}", s.serveSignature, "", nothing)
 	// mutation + control (out-of-band from observation; priority-serviced)
-	rt.handle("POST /entity", s.putEntity, "verse-put-entity", "verse-entity")
-	rt.handle("DELETE /entity", s.deleteEntity, "", "")
-	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", "")
-	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", "")
-	rt.handle("POST /goals", s.addGoal, "verse-goal", "")
-	rt.handle("DELETE /goals/{name}", s.removeGoal, "", "")
-	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", "verse-steered")
-	rt.handle("POST /goal/resume", s.goalResume, "verse-goal-steer", "verse-steered")
-	rt.handle("POST /goal/cancel", s.goalCancel, "verse-goal-steer", "verse-steered")
-	rt.handle("POST /goal/say", s.goalSay, "verse-goal-steer", "verse-steered")
-	rt.handle("POST /scope/delete", s.deleteScope, "", "")
-	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", "")
-	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", "verse-steered")
-	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", "verse-steered")
-	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", "verse-steered")
-	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", "verse-steered")
+	rt.handle("POST /entity", s.putEntity, "verse-put-entity", one("verse-entity"))
+	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
+	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", nothing)
+	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", nothing)
+	rt.handle("POST /goals", s.addGoal, "verse-goal", nothing)
+	rt.handle("DELETE /goals/{name}", s.removeGoal, "", nothing)
+	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", one("verse-steered"))
+	rt.handle("POST /goal/resume", s.goalResume, "verse-goal-steer", one("verse-steered"))
+	rt.handle("POST /goal/cancel", s.goalCancel, "verse-goal-steer", one("verse-steered"))
+	rt.handle("POST /goal/say", s.goalSay, "verse-goal-steer", one("verse-steered"))
+	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
+	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
+	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", one("verse-steered"))
+	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", one("verse-steered"))
+	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", one("verse-steered"))
+	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", one("verse-steered"))
 	// process runtime (proc) — mounted; serves /processes[/{id}[/…]]. versed intercepts the
 	// two READ routes to union the local runtime with the active runner's own processes
 	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
 	// control) falls through to the local runtime.
 	ph := s.Procd.Handler()
-	rt.handle("GET /processes", s.listProcesses, "", "verse-instance")
-	rt.handle("POST /processes", s.spawnProcess, "verse-spawn", "verse-spawned")
-	rt.handle("GET /processes/{id}", s.getProcess, "", "verse-instance")
-	rt.handle("GET /processes/{id}/inbox", s.processInbox, "", "verse-inbox-item")
+	rt.handle("GET /processes", s.listProcesses, "", list("verse-instance"))
+	rt.handle("POST /processes", s.spawnProcess, "verse-spawn", one("verse-spawned"))
+	rt.handle("GET /processes/{id}", s.getProcess, "", one("verse-instance"))
+	rt.handle("GET /processes/{id}/inbox", s.processInbox, "", list("verse-inbox-item"))
 	rt.handle("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.processEvents(w, r, ph)
-	}, "", "verse-frame")
+	}, "", stream("verse-frame"))
 	// cancel/say are runner-agnostic: local processes go to the runtime, brokered/remote
 	// ones to the runner's handle — so `process cancel`/`say` work wherever a process runs.
 	rt.handle("POST /processes/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "cancel")
-	}, "", "")
+	}, "", nothing)
 	rt.handle("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "say")
-	}, "verse-say", "")
+	}, "verse-say", nothing)
 	rt.handle("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "resolve")
-	}, "verse-resolve", "")
+	}, "verse-resolve", nothing)
 	// re-vector (slide autonomy on a running process) — runner-agnostic like cancel/say: a
 	// local process is served by the runtime mount (processd's setVector), a brokered/remote
 	// one goes to the runner handle's SetVector.
 	rt.handle("PUT /processes/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "vector")
-	}, "verse-set-vector", "")
+	}, "verse-set-vector", nothing)
 	rt.mount("/processes", ph)
 	rt.mount("/processes/", ph)
 	s.routes = rt.routes

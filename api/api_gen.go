@@ -1006,6 +1006,11 @@ func (s *Route) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["response"] = ir.FromString(string(s.Response))
 	}
 
+	// Field: Returns
+	if s.Returns != "" {
+		irMap["returns"] = ir.FromString(string(s.Returns))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -1063,6 +1068,12 @@ func (s *Route) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "response", fieldNodeUnwrapped.Type)
 			}
 			s.Response = string(fieldNodeUnwrapped.String)
+		case "returns":
+			// Field: Returns
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "returns", fieldNodeUnwrapped.Type)
+			}
+			s.Returns = string(fieldNodeUnwrapped.String)
 		}
 	}
 

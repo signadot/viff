@@ -198,6 +198,7 @@ func rootCmd() *cli.Command {
 			connectCmd(),
 			disconnectCmd(),
 			statusCmd(),
+			schemaCmd(),
 			downCmd(),
 		)
 }

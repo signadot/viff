@@ -168,14 +168,23 @@ func Curated() ([]string, error) {
 // All returns the whole graph as one document: every signature under its name, and nothing
 // else. Curated and generated entries sit side by side, indistinguishable, which is the point —
 // a reader gets shapes to resolve, not a report on how verse arrived at them.
-func All() (*ir.Node, error) {
+//
+// synthesized carries signatures the CALLER built, indexed under their own names alongside the
+// rest. verse-root is the one: it describes the server's surface rather than a Go type, so it
+// is derived from a route table this package cannot see and must not pretend to have.
+func All(synthesized ...*ir.Node) (*ir.Node, error) {
 	once.Do(load)
 	if loadErr != nil {
 		return nil, loadErr
 	}
-	sigs := make(map[string]*ir.Node, len(byName))
+	sigs := make(map[string]*ir.Node, len(byName)+len(synthesized))
 	for n, d := range byName {
 		sigs[n] = d.DeepCopy() // parented into a new document; never hand out the index's node
+	}
+	for _, d := range synthesized {
+		if n := signatureName(d); n != "" {
+			sigs[n] = d
+		}
 	}
 	return ir.FromMap(map[string]*ir.Node{
 		"signatures": ir.FromMap(sigs),
