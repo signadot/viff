@@ -241,6 +241,38 @@ The residual, as always, is templates and operators: a patch whose values are co
 satisfy a predicate the key-level check cannot see through. So the graph is a warning, like
 §5.4, not a proof.
 
+#### A cycle is not wrong; an UNPACED cycle is
+
+Worth separating before the check above hardens into a refusal. A cycle is how you write a
+control loop — poll, compare, correct, poll again — and a charter that could not express one
+would be missing something. What makes the two above pathological is not that they cycle but
+that they cycle *at the speed of the store*, which is to say at no declared rate at all.
+
+The rule that distinguishes them is the one synchronous digital design already uses: a
+combinational loop is an error, and a cycle through a register is a state machine. The register
+here is a TICKER — a cause that advances on a clock rather than on the last write. Then the
+check is not "no cycles" but **every cycle passes through a ticker**, which is decidable on the
+same graph and permits the useful shape while still refusing the runaway.
+
+It buys more than permission. A paced cycle has a rate an operator can read off the charter,
+and a cost bounded by (rules × rate) rather than by how fast the store accepts writes — which
+would let `maxFires` go back to being a runaway backstop instead of the only thing standing
+between a charter and a spin.
+
+The wrinkle, and it is not visible until you try to write one: **a ticker needs to say
+"changed", and `on` can only say "became true".** A monotonic counter rises once and stays
+risen; one entity per tick leaves "a tick exists" true forever. So a ticker has to produce a
+rise AND a fall, which means either
+
+  - the tick is a fact that gets CONSUMED — it appears, the rule fires, it is removed — which
+    is the sink state (§3) doing double duty and is the answer most in the grain; or
+  - `on` grows a form meaning "this changed" rather than "this became true", which is
+    precisely the change-edge the re-modelling removed, re-admitted in a narrow place.
+
+The first is worth trying before the second. Noting it here because the choice belongs to
+whoever builds the ticker, and it is easier to make before there is a cycle check to argue
+with.
+
 Two smaller things this exposes about the backstop. `maxFires` defaults to UNBOUNDED and
 nothing in `versed` sets it, so the protection that stopped the measurement above is not on in
 production. And it is one counter for the whole engine rather than per trigger, so a single
