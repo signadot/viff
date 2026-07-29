@@ -9,14 +9,17 @@ import (
 
 // schemaCmd prints the schema verse publishes about itself.
 //
-// Bare, it prints the WHOLE thing: the root — an object whose keys are the top level of the API
-// and whose values are the shapes served there — and then every signature those values name. It
-// is one document because that is the question being asked. It printed only the root for a
-// while, which answered "what is a verse" and left the shapes it named a second lookup away, so
-// the command that exists to show you the schema showed you eight references to it.
+// Bare, it prints the WHOLE thing: one tony schema whose `define` opens with the root — the
+// top-level paths and the shape served at each — and then every definition those shapes name.
+// It printed only the root for a while, which answered "what is a verse" and left everything it
+// named a lookup away, so the command that exists to show you the schema showed you an index.
 //
-// With a name, it prints that one signature — `verse schema verse-entity` — for when you know
+// With a name, it prints that one definition — `verse schema verse-entity` — for when you know
 // what you are looking for and do not want the other thirty.
+//
+// This asks a running verse, which is the convenient way to ask and not the only one: the
+// schema is assembled in package schema from the generated and curated parts, so it can be had
+// with no server at all. That is deliberate — see the package doc there.
 func schemaCmd() *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	return cli.NewCommandAt(&cfg.Command, "schema").
@@ -32,7 +35,7 @@ func schemaCmd() *cli.Command {
 			case 1:
 				path += "/" + args[0]
 			default:
-				return fmt.Errorf("%w: schema takes one signature name at most (got %q) — bare it prints all of them",
+				return fmt.Errorf("%w: schema takes one definition name at most (got %q) — bare it prints all of them",
 					cli.ErrUsage, strings.Join(args, " "))
 			}
 			resp, err := httpGet(path, nil)

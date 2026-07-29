@@ -124,31 +124,35 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	}
 }
 
-// The endpoint serves ONE flat set of signatures. Whether a signature was generated from a Go
-// struct or hand-written in curated.tony is verse's bookkeeping — it used to be published as a
-// top-level `curated:` list beside the shapes, which asked every reader to hold a distinction
-// they cannot act on: the two kinds resolve identically, and "this one is hand-written" is not
-// a caveat a caller can do anything with. It is a provenance note about our build, and it left
-// the impression of two tiers of schema where there is one.
+// The endpoint serves ONE schema. Whether a definition was generated from a Go struct or
+// hand-written in curated.tony is verse's bookkeeping — it used to be published as a top-level
+// `curated:` list beside the shapes, which asked every reader to hold a distinction they cannot
+// act on: the two kinds resolve identically, and "this one is hand-written" is not a caveat a
+// caller can do anything with. It is a provenance note about our build, and it left the
+// impression of two tiers of schema where there is one.
 //
-// So: no origin metadata on the wire, and a curated-origin signature is indistinguishable from
-// a generated one — same place in the map, same keys. The document carries the root and the
-// signatures, both of which ARE schema; nothing else belongs beside them.
-func TestSchemaServesSignaturesWithoutOrigin(t *testing.T) {
+// So: no origin metadata on the wire, and a curated definition is indistinguishable from a
+// generated one — same namespace, same shape, same place.
+func TestSchemaServesOneDocumentWithoutOrigin(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
 	doc := published(t, ts, "/schema")
-	sigs := ir.Get(doc, "signatures")
-	if sigs == nil || sigs.Type != ir.ObjectType {
-		t.Fatalf("/schema has no signatures object")
+	defs := ir.Get(doc, "define")
+	if defs == nil || defs.Type != ir.ObjectType {
+		t.Fatalf("/schema has no define")
 	}
 	for _, k := range doc.Fields {
-		if k.String != "signatures" && k.String != "root" {
+		switch k.String {
+		case "context", "define", "signature":
+		default:
 			t.Errorf("/schema publishes %q beside the schema; the response is the schema, "+
 				"not a report on where it came from", k.String)
 		}
+	}
+	if n := ir.Get(ir.Get(doc, "signature"), "name"); n == nil || n.String != schema.Name {
+		t.Errorf("/schema is not named %q", schema.Name)
 	}
 
 	// verse-match is curated (trigger.Match has a hand-written codec, so codegen emits an
@@ -156,14 +160,40 @@ func TestSchemaServesSignaturesWithoutOrigin(t *testing.T) {
 	// with a real shape — which is also what the curated-wins rule buys: without it
 	// verse-match, the most-authored type in the system, would publish as having no shape.
 	for _, n := range []string{"verse-match", "verse-spawn"} {
-		d := ir.Get(sigs, n)
+		d := ir.Get(defs, n)
 		if d == nil {
 			t.Errorf("%s is not published", n)
 			continue
 		}
-		if def := ir.Get(d, "define"); def == nil || def.Type != ir.ObjectType || len(def.Fields) == 0 {
+		if d.Type != ir.ObjectType || len(d.Fields) == 0 {
 			t.Errorf("%s is served without a shape", n)
 		}
+	}
+}
+
+// The schema is obtainable WITHOUT the server — that is the point of assembling it in package
+// schema rather than deriving it from a route table. What the endpoint serves must therefore be
+// what the package holds, byte for byte, or "read it from the package" is advice that leads
+// somewhere else than the API does.
+func TestTheServedSchemaIsThePackagesSchema(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	offline, err := schema.Global()
+	if err != nil {
+		t.Fatalf("schema.Global: %v", err)
+	}
+	want, err := codec.Marshal(offline, codec.Tony)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	got, err := codec.Marshal(published(t, ts, "/schema"), codec.Tony)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("GET /schema and schema.Global() differ:\n%s\nvs\n%s", got, want)
 	}
 }
 
@@ -187,134 +217,131 @@ func TestSchemaRefusesJSON(t *testing.T) {
 	}
 }
 
-// Every signature a published signature REFERENCES must itself be published.
+// Every name a definition REFERENCES must itself be defined, and no reference may still be
+// QUALIFIED. Both halves are the folding's correctness condition: thirty documents with their
+// own contexts become one namespace, so `launch:verse-launch-spec` has to come out the other
+// side as verse-launch-spec, resolvable beside everything else.
 //
-// This is the invariant that a dangling cross-package reference violates, and one was live
-// until go-tony v0.0.93: `verse-action` referred to `launch:spec` while the signature it
-// meant is named `verse-launch-spec`, so anything resolving the published schema followed a
-// name that did not exist. Nothing failed — a schema nobody resolves cannot fail — which is
-// exactly why it needs a test rather than a reader.
-//
-// It reads the ENDPOINT rather than the index, and it checks the ROOT too — which is nothing
-// but references, is not in the index at all (the server synthesizes it), and is the first
-// thing anyone reads. A dangling name there is a dead end on the front page.
-func TestEverySignatureReferenceResolves(t *testing.T) {
+// The dangling half is not hypothetical. It was live until go-tony v0.0.93: `verse-action`
+// referred to `launch:spec` while the signature it meant is named `verse-launch-spec`, so
+// anything resolving the published schema followed a name that did not exist. Nothing failed —
+// a schema nobody resolves cannot fail — which is exactly why it needs a test and not a reader.
+func TestEveryReferenceResolvesUnqualified(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	doc := published(t, ts, "/schema")
-	sigs := ir.Get(doc, "signatures")
-	if sigs == nil || sigs.Type != ir.ObjectType {
-		t.Fatalf("/schema has no signatures object")
+	defs := ir.Get(published(t, ts, "/schema"), "define")
+	if defs == nil || defs.Type != ir.ObjectType {
+		t.Fatalf("/schema has no define")
 	}
 	known := map[string]bool{}
-	for _, f := range sigs.Fields {
+	for _, f := range defs.Fields {
 		known[f.String] = true
 	}
-	// A reference is `verse-<name>`, optionally qualified by the context alias of the
-	// package that defines it (`launch:verse-launch-spec`). tony-base refs are external.
-	ref := regexp.MustCompile(`(?:[a-z0-9-]+:)?(verse-[a-z0-9-]+)`)
-	check := func(name string, n *ir.Node) {
-		body, err := codec.Marshal(n, codec.Tony)
+	// A reference is `verse-<name>`, with the alias of whatever schema it came from if it is
+	// still qualified — which, after folding, it must not be. tony-base refs are external.
+	ref := regexp.MustCompile(`([a-z0-9-]+:)?(verse-[a-z0-9-]+)`)
+	for i, f := range defs.Fields {
+		body, err := codec.Marshal(defs.Values[i], codec.Tony)
 		if err != nil {
-			t.Fatalf("render %s: %v", name, err)
+			t.Fatalf("render %s: %v", f.String, err)
 		}
 		for _, m := range ref.FindAllStringSubmatch(string(body), -1) {
-			if m[1] == api.RootSignature {
-				continue // the root names itself, in its own signature block
+			if m[1] != "" {
+				t.Errorf("%s references %s%s — one schema has one namespace, so folding should "+
+					"have dissolved the alias", f.String, m[1], m[2])
 			}
-			if !known[m[1]] {
-				t.Errorf("%s references %q, which is not published", name, m[1])
+			if !known[m[2]] {
+				t.Errorf("%s references %q, which is not defined", f.String, m[2])
 			}
 		}
 	}
-	for i, f := range sigs.Fields {
-		check("signature "+f.String, sigs.Values[i])
-	}
-	check("the root", ir.Get(doc, "root"))
 }
 
-// verse-root is what a verse LOOKS LIKE: one object whose keys are the top-level paths and
-// whose values are the shapes served there. It is the entry point the schema did not have — a
-// flat set of named shapes answers "what is a verse-entity" and never "what is a verse" — so it
-// is published FIRST, above the signatures it names, rather than filed under `v` among them.
+// THE WALK. The root says what a verse looks like — `entities: .[array(verse-entity)]` — and
+// the server says what it serves. Neither is derived from the other any more, which is what
+// makes the schema readable without a running verse, and which is also what lets them drift.
+// So they are held together here, in both directions:
 //
-// The set is pinned exactly, in both directions, because it is derived: a new top-level GET
-// changes the front page of the API, and that should be a decision recorded here rather than
-// something that happens to appear. Each absence below is a RULE, not an oversight — see
-// rootSignature.
-func TestRootSchemaIsTheTopLevelPathsAndTheirShapes(t *testing.T) {
+//   - every key in the root names a bare top-level path this server answers, with the shape it
+//     answers in. A root that describes a path nobody serves is a promise; a wrong type is
+//     worse than none, since the whole value of publishing a shape is being right about it.
+//   - every bare top-level GET that returns a NAMED document appears in the root. Otherwise a
+//     new noun joins the API and the schema quietly goes on describing the old surface.
+//
+// A route whose response is unnamed (GET /gates, still map literals) or a stream (GET /watch)
+// is exempt in the second direction, and root.tony says why for each.
+func TestTheRootIsTheServedSurface(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	doc := published(t, ts, "/schema")
-	if doc.Fields[0].String != "root" {
-		t.Errorf("/schema leads with %q; the root is what the document is read from",
-			doc.Fields[0].String)
+	resp, err := ts.Client().Get(ts.URL + "/api")
+	if err != nil {
+		t.Fatalf("get /api: %v", err)
 	}
-	root := ir.Get(doc, "root")
-	if root == nil {
-		t.Fatal("/schema publishes no root")
-	}
-	// It resolves by name too, since it is a signature like any other and the values in it
-	// point at siblings. Both must be the same document, not two renderings of one idea.
-	inAll, _ := codec.Marshal(root, codec.Tony)
-	byName, _ := codec.Marshal(published(t, ts, "/schema/"+api.RootSignature), codec.Tony)
-	if string(byName) != string(inAll) {
-		t.Errorf("GET /schema/verse-root and the root in the document disagree:\n%s\nvs\n%s",
-			byName, inAll)
+	defer resp.Body.Close()
+	var table api.Routes
+	if err := codec.Decode(resp.Body, &table, codec.Tony); err != nil {
+		t.Fatalf("decode route table: %v", err)
 	}
 
-	want := map[string]string{
-		"api":       ".[verse-routes]",
-		"entities":  ".[array(verse-entity)]",
-		"entity":    ".[verse-entity]",
-		"flows":     ".[array(string)]",
-		"goals":     ".[array(verse-goal)]",
-		"processes": ".[array(verse-instance)]",
-		"status":    ".[verse-status]",
-		"triggers":  ".[array(verse-trigger)]",
-	}
-	def := ir.Get(root, "define")
-	if def == nil || def.Type != ir.ObjectType {
-		t.Fatal("verse-root has no define")
-	}
-	got := map[string]string{}
-	for i, f := range def.Fields {
-		got[f.String] = def.Values[i].String
-	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("root[%s] = %q, want %q", k, got[k], v)
+	// What the SERVER says: the shape at each bare top-level path it answers, spelled as the
+	// type expression the schema would use for it.
+	served := map[string]string{}
+	for _, rt := range table.Routes {
+		path, ok := topLevel(rt.Path)
+		if !ok || rt.Method != http.MethodGet || rt.Response == "" {
+			continue
 		}
-		delete(got, k)
-	}
-	for k, v := range got {
-		t.Errorf("root publishes %s: %s — a new top-level path belongs in this test, since it "+
-			"changes what a verse is said to look like", k, v)
+		switch rt.Returns {
+		case api.ReturnsOne:
+			served[path] = ".[" + rt.Response + "]"
+		case api.ReturnsList:
+			served[path] = ".[array(" + rt.Response + ")]"
+		}
 	}
 
-	// The exclusions, each for its own reason:
-	//   watch  — an SSE stream, not a document; no tony type says "a sequence of frames".
-	//   gates  — its rows are still map literals, so there is no named shape to point at.
-	//   schema — likewise: this document's own shape is not a named type.
-	//   flow, gate, goal, scope — no bare GET. /flow/tree and the steers are things you do to
-	//                             a verse, and GET /api is where the whole surface lives.
-	for _, k := range []string{"watch", "gates", "schema", "flow", "gate", "goal", "scope"} {
-		if _, ok := got[k]; ok {
-			continue // already reported above
+	// What the SCHEMA says, read from the package rather than the endpoint: the walk is what
+	// the API does to the schema, so the schema is the side that must not come from the API.
+	root, ok, err := schema.Root()
+	if err != nil || !ok {
+		t.Fatalf("schema.Root: ok=%v err=%v", ok, err)
+	}
+	for i, f := range root.Fields {
+		path, want := f.String, root.Values[i].String
+		got, ok := served[path]
+		if !ok {
+			t.Errorf("the root describes %q, which this verse does not serve as a bare GET "+
+				"returning a named document", path)
+			continue
 		}
-		if v := ir.Get(def, k); v != nil {
-			t.Errorf("root publishes %s: %s — see rootSignature for why it should not", k, v.String)
+		if got != want {
+			t.Errorf("the root types %s as %s; GET /%s answers %s", path, want, path, got)
 		}
+		delete(served, path)
+	}
+	for path, typ := range served {
+		t.Errorf("GET /%s answers %s and the root does not mention it — a new top-level path "+
+			"belongs in schema/root.tony, which is what says what a verse looks like", path, typ)
 	}
 }
 
-// A GET on a bare top-level path is what the root is made of, so the predicate deciding it is
-// worth pinning on its own: the difference between /processes and /processes/{id} is the
-// difference between the root having a key and the route table owning it.
+// topLevel reports the single path segment of a bare top-level route, and whether the path is
+// one. "/entities" is; "/flow/tree", "/processes/{id}" and "/" are not. It lives with the walk
+// because the walk is the only thing that asks: the schema names the paths, and this is how the
+// route table's spelling of one is compared with it.
+func topLevel(path string) (string, bool) {
+	seg, _, more := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	if seg == "" || more || strings.ContainsAny(seg, "{}") {
+		return "", false
+	}
+	return seg, true
+}
+
+// The difference between /processes and /processes/{id} is the difference between the root
+// having a key and the route table owning it, so the predicate deciding it is pinned on its own.
 func TestTopLevelIsABarePathSegment(t *testing.T) {
 	for _, c := range []struct {
 		path string

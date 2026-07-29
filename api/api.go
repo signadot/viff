@@ -179,10 +179,11 @@ type FlowSteer struct {
 // verse-trigger" / "returns a verse-event", which is wrong in the way a published signature
 // must never be wrong — confidently, in the artifact that exists to be trusted about the wire.
 //
-// Returns is also what makes the ROOT SCHEMA derivable (see versed's rootSignature): a
-// top-level path returning one document types as that signature, a listing as
-// `array(<signature>)`, and a stream as neither, since no tony type describes a sequence of
-// SSE frames.
+// Returns is also what makes a route COMPARABLE to the schema. The root (schema/root.tony)
+// types each top-level path — `entities: .[array(verse-entity)]` — and is written by hand,
+// beholden to no route table; a route's response and returns together say the same thing in the
+// same terms, which is what lets a test hold the two accounts of one surface equal. See
+// TestTheRootIsTheServedSurface.
 //
 //tony:schemagen=verse-route,notag
 type Route struct {
@@ -210,16 +211,6 @@ const (
 	// so the body has no tony type even though each frame's payload does.
 	ReturnsStream = "stream"
 )
-
-// RootSignature is the name of the signature describing the verse ROOT: one object whose keys
-// are the top-level paths and whose values are the shapes served there.
-//
-// It is not a Go type and not in any package's generated schema — the server DERIVES it from
-// its own route table (see versed's rootSignature), so it cannot describe a surface that is not
-// served. The name lives here, with the table it is derived from, because the server that
-// publishes it and the client that asks for it (`verse schema`) must agree on it, and two
-// spellings of one wire name is the kind of drift this package exists to prevent.
-const RootSignature = "verse-root"
 
 // Routes is the whole table, as served.
 //

@@ -5,15 +5,16 @@
 # drift from the code and a generated one cannot, so the two need different upkeep — a test
 # holds this set equal to the types declaring `codec=custom` (schema/curated_test.go).
 #
-# That difference is OURS, not the reader's: the endpoint serves one flat set and says nothing
-# about where a signature came from. It used to publish a `curated:` list beside the shapes,
-# which asked every caller to hold a distinction they cannot act on.
+# That difference is OURS, not the reader's. These documents are FOLDED with the generated ones
+# into a single schema (see the package doc), which says nothing about where any definition came
+# from. It used to publish a `curated:` list beside the shapes, which asked every caller to hold
+# a distinction they cannot act on.
 #
-# These describe I/O SHAPES, which is what tony-codegen generates and what this endpoint
-# publishes. A tony schema can also validate, through an `accept:` clause, and none of these
-# carry one — generated or curated. That is not a gap to close here: codegen's business is
-# marshalling and unmarshalling, and an acceptance criterion is a separate thing to author
-# deliberately if a consumer ever needs one.
+# These describe I/O SHAPES, which is what tony-codegen generates and what the assembled schema
+# defines. A tony schema can also validate, through an `accept:` clause, and none of these carry
+# one — generated or curated. That is not a gap to close here: codegen's business is marshalling
+# and unmarshalling, and an acceptance criterion is a separate thing to author deliberately if a
+# consumer ever needs one.
 #
 # It does mean a wrong `define` is wrong as DOCUMENTATION rather than as enforcement —
 # nothing is rejected because of it. Which is exactly why it is worth correcting: describing

@@ -26,7 +26,7 @@ verse
   status                                     engine/store snapshot
   schema [<name>]                            the whole schema: the root — what a verse looks like,
                                              by top-level path — then every shape it names.
-                                             A name prints just that one signature
+                                             A name prints just that one definition
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--system --kind --since <rev>]     stream store changes (cursored)

@@ -1,0 +1,40 @@
+# THE ROOT — what a verse looks like, by top-level path.
+#
+# This is the one part of the schema that no Go type declares. Every other definition is the
+# wire shape of a struct somewhere (generated) or a correction to one (curated.tony); this one
+# says what the surface IS: the top-level paths, and the shape served at each.
+#
+# It is HAND-WRITTEN, and that is the trade. It used to be derived from versed's route table,
+# which made it unable to lie and also made the whole schema unobtainable without a server —
+# you could not read what a verse looks like without running one. Now the schema stands alone
+# and the API is what has to agree with it, which is a test (TestTheRootIsTheServedSurface)
+# rather than a construction.
+#
+# A key is a BARE top-level path — entities, not flow/tree or processes/{id}/inbox. One level
+# down belongs to the route table at GET /api, which is the complete surface; this is the root.
+#
+# What is missing, and why:
+#
+#   gates   — its rows are still assembled as map literals, so there is no named shape to point
+#             at. Typing it `object` would be a claim true of anything. It appears here the day
+#             its handler answers in a named type.
+#   watch   — a stream of server-sent events, not a document. The frames carry verse-event, but
+#             the WIRE form of the stream is not described yet; that is worth adding, and this
+#             is where it goes when it is.
+#   schema  — this document's own shape, which is likewise not a named type.
+#
+# The control plane is absent by construction: POST /flow/pause is something you DO to a verse,
+# not part of what one looks like.
+context:
+- tony-format/context
+define:
+  api: .[verse-routes]
+  entities: .[array(verse-entity)]
+  entity: .[verse-entity]
+  flows: .[array(string)]
+  goals: .[array(verse-goal)]
+  processes: .[array(verse-instance)]
+  status: .[verse-status]
+  triggers: .[array(verse-trigger)]
+signature:
+  name: root

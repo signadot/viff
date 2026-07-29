@@ -510,10 +510,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /triggers", s.listTriggers, "", list("verse-trigger"))
 	rt.handle("GET /triggers/{name}", s.getTrigger, "", one("verse-trigger"))
 	rt.handle("GET /goals", s.listGoals, "", list("verse-goal"))
-	// the API describing itself: the route table, and the signatures it points at
+	// the API describing itself: the route table, and the schema its entries name
 	rt.handle("GET /api", s.serveAPI, "", one("verse-routes"))
 	rt.handle("GET /schema", s.serveSchema, "", nothing)
-	rt.handle("GET /schema/{name}", s.serveSignature, "", nothing)
+	rt.handle("GET /schema/{name}", s.serveDefinition, "", nothing)
 	// mutation + control (out-of-band from observation; priority-serviced)
 	rt.handle("POST /entity", s.putEntity, "verse-put-entity", one("verse-entity"))
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)

@@ -15,28 +15,28 @@ func TestSchemaPrintsTheWholeSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verse schema: %v", err)
 	}
-	// The root, first, since it is what the rest is read from.
-	for _, want := range []string{"root:", "entities: .[array(verse-entity)]", "status: .[verse-status]"} {
+	// The root, first inside the define, since it is what the rest is read from.
+	for _, want := range []string{"define:", "root:", "entities: .[array(verse-entity)]", "status: .[verse-status]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verse schema is missing %q:\n%s", want, out)
 		}
 	}
 	// And the shapes those references name, rather than the names alone.
-	if !strings.Contains(out, "signatures:") || !strings.Contains(out, "name: verse-instance") {
-		t.Errorf("verse schema printed the root without the signatures it names:\n%s", out)
+	if !strings.Contains(out, "verse-instance:") || !strings.Contains(out, "name: verse\n") {
+		t.Errorf("verse schema printed the root without the definitions it names:\n%s", out)
 	}
 }
 
 // The root is all references, so they have to be followable — otherwise it names shapes an
 // operator has no way to look up, and printing it is a dead end.
-func TestSchemaPrintsOneSignatureByName(t *testing.T) {
+func TestSchemaPrintsOneDefinitionByName(t *testing.T) {
 	serve(t)
 
 	out, err := runCLI(t, "schema", "verse-entity")
 	if err != nil {
 		t.Fatalf("verse schema verse-entity: %v", err)
 	}
-	if !strings.Contains(out, "name: verse-entity") {
+	if !strings.HasPrefix(strings.TrimSpace(out), "verse-entity:") || !strings.Contains(out, "ref: .[string]") {
 		t.Errorf("verse schema verse-entity printed something else:\n%s", out)
 	}
 }
