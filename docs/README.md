@@ -39,6 +39,7 @@ drive a local agent, a remote one, and a human.
 |---|---|
 | walk | [§3 processes](tutorial.md#3-processes) · [§5 human-executed processes](tutorial.md#5-human-executed-processes-dial-in) |
 | read | [Process control](process-control.md) — the base-URL contract and the dial-in protocol |
+| | [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides, and promotes what is not its to decide |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 

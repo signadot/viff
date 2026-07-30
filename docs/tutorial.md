@@ -159,7 +159,7 @@ The `review` trigger fires but its gate is `ask`, so it blocks:
 ```sh
 verse gates
 # - gate: approval
-#   id: trigger:review:approval~1
+#   id: trigger:review:approval~44926489
 #   mode: ASK
 #   origin: review
 #   reason: "trigger review gate approval on demo:pr:1"
@@ -178,12 +178,14 @@ the gate is raised even though nothing is running yet. (`where: engine` gates ha
 running.)
 
 Approve it, using the `id` from `verse gates` (the flag can come after the id — the
-CLI handles that). The id is `trigger:<trigger>:<gate>~n` — a trigger can have
-several named gates, which is why the gate's name is part of it:
+CLI handles that). The id is `trigger:<trigger>:<gate>~<subjects>` — a trigger can have
+several named gates, which is why the gate's name is part of it, and the suffix is derived
+from the firing's subjects rather than counted, so one decision re-reached is the same
+question and not a second one:
 
 ```sh
-verse gate approve trigger:review:approval~1
-# approved trigger:review:approval~1
+verse gate approve trigger:review:approval~44926489
+# approved trigger:review:approval~44926489
 ```
 
 Now watch it self-drive. In terminal A you'll see the stage advance twice:
