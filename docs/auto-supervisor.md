@@ -194,7 +194,7 @@ Same dial, moved earlier: the cheapest promotion is the one that skips the asses
 ## Drive it
 
 The supervisor's own run needs model credentials (`verse up` reads them — see
-[§1 of the tutorial](tutorial.md#1-build-and-start)). The *routing* needs none: a `review` is
+[§1 of the tutorial](tutorial.md#1-start)). The *routing* needs none: a `review` is
 an ordinary fact, so you can write one yourself and watch where it goes. Start with one the
 supervisor cleared inside its remit:
 
@@ -248,7 +248,7 @@ ends `landed`, `closed`, or waiting at a gate.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor
   wrote it, which is weaker than what the *whether* axis already gives a human: a `!quorum`
   gate keeps an attributable, retractable ballot per voter ([§6 of the
-  tutorial](tutorial.md#6-gates-the-group-decides--whether-and-who)). An agent casting a
+  tutorial](tutorial.md#5-gates-and-the-docket)). An agent casting a
   ballot on that same surface is what the reserved `!judgment` requirement kind is for, and
   it is a stub — so today an agent cannot be one of two approvals, only the thing that decides
   whether the one approval is needed.

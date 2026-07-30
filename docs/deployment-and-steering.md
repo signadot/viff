@@ -2,7 +2,7 @@
 
 One invariant shapes verse's surface, and it is worth having before you read the HTTP routes
 or the CLI: *steering outranks observation.* An intervention that lands late is an
-intervention defeated. [Tutorial §4](tutorial.md#4-steer-flows) drives it from the operator's
+intervention defeated. [Tutorial §3](tutorial.md#steering) drives it from the operator's
 side; this is why it is built the way it is.
 
 ## Two planes
@@ -67,5 +67,5 @@ reached through a client rather than embedded, the process runtime is already an
 and read plane, and [process control](process-control.md) already runs a process off-box.
 Splitting them is a deployment change, not a redesign.
 
-Next: [the reference](reference.md#commands) for the commands this shape produces, and
+Next: [the reference](reference/README.md#commands) for the commands this shape produces, and
 [connect](working/connect.md) for how a developer's working tree joins a running verse.

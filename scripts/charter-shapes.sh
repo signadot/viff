@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+#
+# charter-shapes.sh — the coarse-grained shapes a charter rule comes in, one command each,
+# so you can install one, make it fire, and read what it did.
+#
+# Every rule verse runs has the same four parts (condition / gates / action, under a name).
+# What varies is which parts are present, and the variations below are the ones that change
+# how a rule BEHAVES rather than what it is about. Each acts on its own kind — demo:latch:*,
+# demo:seq:* — so several can stand at once without arguing over an entity.
+#
+#   ./scripts/charter-shapes.sh                   list the shapes
+#   ./scripts/charter-shapes.sh show    <shape>   print the rule, without installing it
+#   ./scripts/charter-shapes.sh install <shape>   install it (idempotent: it re-installs)
+#   ./scripts/charter-shapes.sh drive   <shape>   write the entity that makes it fire
+#   ./scripts/charter-shapes.sh run     <shape>   install, then drive
+#   ./scripts/charter-shapes.sh remove  [shape]   uninstall one, or all of them
+#   ./scripts/charter-shapes.sh clean             uninstall all, and delete the entities they acted on
+#
+# Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR (the verse to
+# talk to). --scope <name> works on every subcommand.
+set -euo pipefail
+
+# The scripts live in scripts/ and act on the checkout above them: the `./verse` a
+# build produces is at the root, and so is the reader's cwd.
+cd "$(cd "$(dirname "$0")/.." && pwd)"
+
+SHAPES=(patch latch ask seq when on vote)
+
+describe() {
+	case "$1" in
+	patch) echo "condition + patch. No process at all: a rule can be pure state." ;;
+	latch) echo "spawn + onDone. The shape that settles — the action advances the subject out of its own selection." ;;
+	ask) echo "one ask gate. The firing waits for a person (verse gates)." ;;
+	seq) echo "seq of two steps, with an onFailed off-ramp. The depth axis." ;;
+	when) echo "a condition on ANOTHER entity: act on these, while that holds." ;;
+	on) echo "a cause: fire on the rising edge, not while it stays true (and no backlog)." ;;
+	vote) echo "a gate formula the verse resolves itself: a quorum, on the docket." ;;
+	esac
+}
+
+# The rule, as tony. `show` prints it and `install` pipes it in — one source, so what you
+# read is what runs.
+shape_tony() {
+	case "$1" in
+	patch)
+		cat <<-'TONY'
+			- name: shape-patch
+			  condition:
+			    subject: { system: demo, kind: patch, value: { stage: open } }
+			  action:
+			    patch: { stage: triaged }
+		TONY
+		;;
+	latch)
+		cat <<-'TONY'
+			- name: shape-latch
+			  condition:
+			    subject: { system: demo, kind: latch, value: { stage: open } }
+			  action:
+			    patch:  { stage: reviewing }
+			    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 2" }
+			    onDone: { patch: { stage: reviewed } }
+		TONY
+		;;
+	ask)
+		cat <<-'TONY'
+			- name: shape-ask
+			  condition:
+			    subject: { system: demo, kind: ask, value: { stage: open } }
+			  gates:
+			  - { name: approval, mode: ask }
+			  action:
+			    patch:  { stage: reviewing }
+			    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 2" }
+			    onDone: { patch: { stage: reviewed } }
+		TONY
+		;;
+	seq)
+		cat <<-'TONY'
+			- name: shape-seq
+			  condition:
+			    subject: { system: demo, kind: seq, value: { stage: ready } }
+			  action:
+			    seq:
+			    - spawn: { driver: scripted, task: "echo lint $subject" }
+			    - spawn:    { driver: scripted, task: "echo test $subject" }
+			      onFailed: { patch: { stage: broken } }
+			    onDone:
+			      patch: { stage: built }
+		TONY
+		;;
+	when)
+		cat <<-'TONY'
+			- name: shape-when
+			  condition:
+			    subject: { system: demo, kind: when, value: { stage: ready } }
+			    when:    { system: ci, kind: status, id: shapes, value: { state: green } }
+			  action:
+			    patch: { stage: shipped }
+		TONY
+		;;
+	on)
+		cat <<-'TONY'
+			- name: shape-on
+			  condition:
+			    subject: { system: demo, kind: on, value: { stage: waiting } }
+			    on:      { system: ci, kind: status, id: release, value: { state: green } }
+			  action:
+			    patch: { stage: released }
+		TONY
+		;;
+	vote)
+		cat <<-'TONY'
+			- name: shape-vote
+			  condition:
+			    subject: { system: demo, kind: vote, value: { stage: shipped } }
+			  gates:
+			  - { name: approvals, formula: !quorum 2 }
+			  action:
+			    patch: { stage: merged }
+		TONY
+		;;
+	esac
+}
+
+step() { printf '\n\033[1m# %s\033[0m\n' "$*"; }
+ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+die() {
+	printf '  \033[31m✗ %s\033[0m\n' "$*" >&2
+	exit 1
+}
+
+scope=()
+args=()
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--scope)
+		scope=(--scope "$2")
+		shift
+		;;
+	--scope=*) scope=(--scope "${1#*=}") ;;
+	-h | --help)
+		sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+		exit 0
+		;;
+	*) args+=("$1") ;;
+	esac
+	shift
+done
+set -- "${args[@]+"${args[@]}"}"
+
+BIN=${VERSE:-}
+if [ -z "$BIN" ]; then
+	if [ -x ./verse ]; then
+		BIN=./verse
+	elif command -v verse >/dev/null 2>&1; then
+		BIN=verse
+	else
+		die "no verse binary — build one (go build -o verse ./cmd/verse) or set VERSE=<path>"
+	fi
+fi
+v() { "$BIN" "${scope[@]}" "$@"; }
+
+known() {
+	for s in "${SHAPES[@]}"; do [ "$s" = "$1" ] && return 0; done
+	return 1
+}
+need_shape() {
+	[ -n "${1:-}" ] || die "which shape? (${SHAPES[*]})"
+	known "$1" || die "no shape %q — try: ${SHAPES[*]}"
+}
+up_or_die() {
+	v status >/dev/null 2>&1 ||
+		die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\`"
+}
+
+install_shape() {
+	v trigger remove "shape-$1" >/dev/null 2>&1 || true # idempotent: add refuses a duplicate
+	shape_tony "$1" | v trigger add -f - >/dev/null || die "installing shape-$1 failed"
+	ok "installed shape-$1 — $(describe "$1")"
+}
+
+# What makes each shape fire. Most are one put; the two that read a second entity need the
+# world put in the right order, which is itself the point of those shapes.
+drive_shape() {
+	case "$1" in
+	patch) v entity put demo:patch:1 '{stage: open, title: "a triage"}' >/dev/null ;;
+	latch) v entity put demo:latch:1 '{stage: open, title: "a review"}' >/dev/null ;;
+	ask) v entity put demo:ask:1 '{stage: open, title: "a gated review"}' >/dev/null ;;
+	seq) v entity put demo:seq:1 '{stage: ready, title: "a build"}' >/dev/null ;;
+	when)
+		v entity put demo:when:1 '{stage: ready, title: "a release"}' >/dev/null
+		v entity put ci:status:shapes '{state: green}' >/dev/null
+		;;
+	on)
+		# An edge has to RISE, so drop it first: a `ci:status:release` left green by an
+		# earlier run is a predicate that never becomes true again, and the rule that reads
+		# it would look broken rather than edge-triggered.
+		v entity put ci:status:release '{state: red}' >/dev/null
+		v entity put demo:on:1 '{stage: waiting, title: "an edge"}' >/dev/null
+		sleep 1
+		v entity put ci:status:release '{state: green}' >/dev/null
+		;;
+	vote) v entity put demo:vote:1 '{stage: shipped, title: "a merge"}' >/dev/null ;;
+	esac
+	ok "drove shape-$1"
+}
+
+# What to look at once it has fired — different per shape, because what a shape DOES is
+# visible in a different place: a gate, the docket, a flow, or just the entity.
+next_steps() {
+	local sub="demo:$1:1" c="$BIN"
+	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
+	printf '\nwhat it did:\n\n  %s entity get %s\n' "$c" "$sub"
+	case "$1" in
+	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id>\n' "$c" "$c" ;;
+	vote) printf '  %s docket                 ← it is waiting for a tally\n  %s vote <motion> approve --as alice\n  %s vote <motion> approve --as bob\n' "$c" "$c" "$c" ;;
+	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
+	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
+	esac
+	printf '\n'
+}
+
+cmd=${1:-list}
+[ $# -gt 0 ] && shift || true
+
+case "$cmd" in
+list)
+	printf '\nthe shapes a rule comes in:\n\n'
+	for s in "${SHAPES[@]}"; do printf '  \033[1m%-6s\033[0m %s\n' "$s" "$(describe "$s")"; done
+	printf '\n  %s show <shape> · install <shape> · drive <shape> · run <shape> · remove [shape]\n\n' "$0"
+	;;
+show)
+	need_shape "${1:-}"
+	shape_tony "$1"
+	;;
+install)
+	need_shape "${1:-}"
+	up_or_die
+	step "install"
+	install_shape "$1"
+	;;
+drive)
+	need_shape "${1:-}"
+	up_or_die
+	step "drive"
+	drive_shape "$1"
+	next_steps "$1"
+	;;
+run)
+	need_shape "${1:-}"
+	up_or_die
+	step "install"
+	install_shape "$1"
+	step "drive"
+	drive_shape "$1"
+	next_steps "$1"
+	;;
+remove)
+	up_or_die
+	step "remove"
+	if [ -n "${1:-}" ]; then
+		need_shape "$1"
+		v trigger remove "shape-$1" >/dev/null 2>&1 && ok "removed shape-$1" || ok "shape-$1 was not installed"
+	else
+		for s in "${SHAPES[@]}"; do v trigger remove "shape-$s" >/dev/null 2>&1 || true; done
+		ok "removed every shape trigger"
+	fi
+	;;
+clean)
+	up_or_die
+	step "clean"
+	for s in "${SHAPES[@]}"; do
+		v trigger remove "shape-$s" >/dev/null 2>&1 || true
+		v entity rm "demo:$s:1" >/dev/null 2>&1 || true
+	done
+	v entity rm ci:status:shapes >/dev/null 2>&1 || true
+	v entity rm ci:status:release >/dev/null 2>&1 || true
+	ok "every shape trigger and the entities they acted on are gone"
+	;;
+*)
+	die "unknown command %q (try --help)" "$cmd"
+	;;
+esac

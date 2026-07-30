@@ -9,7 +9,7 @@ controller-served subtree is indistinguishable from logd: `demo:*`/`process:*` r
 logd, `local:dir-content-*` (and, ahead, `git:*`, `k8s:*`) resolve to a controller, with no
 store rewrite.
 
-You can see one running in [tutorial §8](tutorial.md#8-federate-your-local-working-tree),
+You can see one running in [reference/connect.md](reference/connect.md),
 where `verse connect` mounts the content controller over your working tree.
 
 Two things are built as controllers today: the content controller (`source/content.go`

@@ -161,6 +161,75 @@ func TestOnDoesNotFireOnTheBacklog(t *testing.T) {
 	}
 }
 
+// A cause that PINS THE ENTITY is still read as a predicate over its payload. Naming the id
+// is how you say "this CI status, not any of them", and it used to cost the rest of the
+// match: a definite system+kind+id was treated as an entity NAMED rather than selected, and a
+// named match is a set of one whether or not it exists — so `{state: green}` was dropped and
+// the predicate meant "ci:status:release is there at all".
+//
+// Both faces of that were broken, in opposite directions. As an `on` it never fired: the
+// predicate held from the moment the entity appeared, so the edge had risen before anyone
+// could see it fall. As a `when` (below) it fired when it should have blocked.
+func TestOnWithAPinnedIDReadsItsPredicate(t *testing.T) {
+	store := entitytest.Store(t)
+	reviewed := prs(t, store, "reviewed", "1")
+	rel := entity.Ref{System: "ci", Kind: "status", ID: "release"}
+
+	eng := New(store, process.AutoResolver{})
+	if err := eng.AddTrigger(Trigger{
+		Name: "ship",
+		Condition: Condition{
+			On:      MatchWhen(Match{"system": "ci", "kind": "status", "id": "release", "value": map[string]any{"state": "green"}}),
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+		},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	// The entity exists, and the predicate does NOT hold: no edge.
+	entitytest.Set(t, store, rel, entity.Obj{"state": "red"}.Payload())
+	time.Sleep(200 * time.Millisecond)
+	if f := eng.Fired(); f != 0 {
+		t.Fatalf("fired %d times while the pinned cause was red", f)
+	}
+	// Now it holds — that is the edge.
+	entitytest.Set(t, store, rel, entity.Obj{"state": "green"}.Payload())
+	waitStage(t, store, reviewed[0], "shipped")
+}
+
+// The `when` face of the same thing: a condition pinned to one entity blocks while that
+// entity's payload does not satisfy it. Existence is not the predicate.
+func TestWhenWithAPinnedIDBlocksOnItsPredicate(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, process.AutoResolver{})
+	if err := eng.AddTrigger(Trigger{
+		Name: "ship",
+		Condition: Condition{
+			When:    MatchWhen(Match{"system": "ci", "kind": "status", "id": "build", "value": map[string]any{"state": "green"}}),
+			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+		},
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	ci(t, store, "red")
+	one := prs(t, store, "reviewed", "1")[0]
+	time.Sleep(300 * time.Millisecond)
+	if e, _, _ := store.Get(one); entity.ToObj(e.Payload)["stage"] != "reviewed" {
+		t.Fatalf("shipped while the pinned condition was red: %#v", e.Payload)
+	}
+	ci(t, store, "green")
+	waitStage(t, store, one, "shipped")
+}
+
 // A trigger with no `on` keeps the older dispatch exactly — the two rules coexist, which is
 // what lets every charter written so far keep running while the new one is exercised.
 func TestSubjectDispatchIsUnchangedAlongsideOn(t *testing.T) {

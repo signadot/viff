@@ -125,8 +125,18 @@ smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a 
 # Note the difference from smoke: smoke builds its own binaries and its own server and
 # reaps both; this one writes into YOUR running verse and leaves it there to play with.
 .PHONY: seed-demo
-seed-demo: ## seed a RUNNING verse with a demo charter + entities (./seed-demo.sh --help)
-	@./seed-demo.sh
+seed-demo: ## seed a RUNNING verse with a demo charter + entities (./scripts/seed-demo.sh --help)
+	@./scripts/seed-demo.sh
+
+# The two the tutorial drives, split so each section seeds only what it is about: a world of
+# entities with nothing reacting to them, and the rules that react, one shape at a time.
+.PHONY: seed-entities
+seed-entities: ## seed a RUNNING verse with a world of entities and no charter (tutorial §2)
+	@./scripts/seed-entities.sh
+
+.PHONY: shapes
+shapes: ## list the charter shapes (./scripts/charter-shapes.sh run <shape> to install and fire one)
+	@./scripts/charter-shapes.sh
 
 # The representation is a DEFAULT, not a fixture: tony out of the box, JSON when asked for.
 # Running the suite only one way would let the other rot silently — and the JSON path is what

@@ -548,7 +548,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj e
 			wg.Add(1)
 			go func(g Gate, gname string) {
 				defer wg.Done()
-				if !e.monitorGate(ctx, t, g, gname, ev, subjects) {
+				if !e.monitorGate(ctx, t, g, gname, subjects) {
 					mu.Lock()
 					allProceed = false
 					mu.Unlock()
@@ -606,7 +606,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj e
 // (revocable-until-commit + terminal-once). It returns whether the action should proceed
 // (false = ctx ended, or the gate committed a deny). If a revoke lands between
 // satisfaction and the commit, the CAS fails and it re-monitors.
-func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, ev entity.Event, subjects []entity.Ref) bool {
+func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, subjects []entity.Ref) bool {
 	// The channel is keyed by WHAT THE FIRING IS ABOUT, not by the entity whose change
 	// happened to dispatch it. Those differ whenever cause and subject come apart — a
 	// completion advancing the PR it carried, a broadcast over a selected set — and keying on
@@ -620,7 +620,12 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 		ID: motionChannelID(gateID(t.Name, gname, subjects))}
 	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
 	// channel's vote log, and open a discoverable channel entity voters can find/observe.
-	m := e.compileFormula(g.Formula, channelRef, t, gname, ev)
+	// It is displayed under the same subject the channel is keyed by, for the same reason.
+	var subject entity.Ref
+	if len(subjects) > 0 {
+		subject = subjects[0]
+	}
+	m := e.compileFormula(g.Formula, channelRef, t, gname, subject)
 	e.openChannel(m)
 	for {
 		winner, witness, ok := e.awaitMotion(ctx, m)

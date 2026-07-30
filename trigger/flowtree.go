@@ -166,6 +166,11 @@ func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
 		// it holds — otherwise a finished sequence would render under a root marked `pending`,
 		// which is the tree lying about the one thing it is for.
 		applySeqProgress(&root, e.seqProgressFor(subject, name))
+		// …and the hooks under it were derived against the status it had BEFORE that
+		// correction, which is the same lie one level down: a finished sequence's `onDone`
+		// rendered `pending` while the patch it applied was already on the subject. Re-derive
+		// them against the corrected status rather than restating the inference here.
+		e.reviseHooks(&root, name, run, &t.Action)
 		out = append(out, root)
 	}
 	sort.Slice(bare, func(i, j int) bool { return bare[i].ID < bare[j].ID })
@@ -238,6 +243,43 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 		n.Children = append(n.Children, e.node(chain+"."+h.field, h.field, run, h.act, n.Status))
 	}
 	return n
+}
+
+// reviseHooks rebuilds a node's completion-hook children against the node's CURRENT status.
+// It exists for the one node whose status is settled after its children were built — a `seq`
+// carrier, whose own status comes from the sequence's progress facts rather than from a
+// process of its own. Rebuilding rather than patching keeps one inference: whatever `node`
+// decides an unrun hook means under a terminal parent is what a carrier's hook means too.
+func (e *Engine) reviseHooks(n *FlowNode, chain string, run map[string]entity.Entity, act *Action) {
+	if act == nil {
+		return
+	}
+	for i := range n.Children {
+		c := &n.Children[i]
+		if c.Kind == "seq" || c.Kind == "process" {
+			continue
+		}
+		h := hookAction(act, c.Kind)
+		if h == nil {
+			continue
+		}
+		*c = e.node(chain+"."+c.Kind, c.Kind, run, h, n.Status)
+	}
+}
+
+// hookAction returns the action a hook field names, or nil for a field that is not one.
+func hookAction(act *Action, field string) *Action {
+	switch field {
+	case "onDone":
+		return act.OnDone
+	case "onFailed":
+		return act.OnFailed
+	case "onCancelled":
+		return act.OnCancelled
+	case "onOrphaned":
+		return act.OnOrphaned
+	}
+	return nil
 }
 
 // nodeFrom projects a mirrored process onto a node. The mirror is an index, not a warehouse,

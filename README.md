@@ -21,20 +21,21 @@ go build -o verse ./cmd/verse     # or: make bin
 export VERSE_ADDR=localhost:9797
 ./verse up                        # engine + process runtime + store, in one process
 
-./seed-demo.sh                    # in another terminal: a charter, entities, a waiting gate
+./scripts/seed-demo.sh            # in another terminal: a charter, entities, a waiting gate
 ```
 
 `up` brings up logd and docd as children, so the store is durable from the first run — it
 resolves the `o` that hosts them itself (`--o-bin`, else a version-matched one on `PATH`,
-else installed into `~/.verse/bin`; see [the reference](docs/reference.md#the-o-binary)), so
+else installed into `~/.verse/bin`; see [the reference](docs/reference/up.md#the-o-binary)), so
 `up` works wherever you run it, not only in a checkout.
 
-`seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto reaction
-that has already happened and one gate waiting for you — then prints what to type next.
-Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse gates`,
-`verse gate approve …`. The [tutorial](docs/tutorial.md) walks it end to end — charters,
-gates, processes, steering, human-executed dial-in processes, and federating your local
-working tree.
+`scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
+reaction that has already happened and one gate waiting for you — then prints what to type
+next. Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse gates`,
+`verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
+`scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
+shapes a rule comes in, one command each). The tutorial walks the lot in five sections —
+entities, processes, and the charters that relate them.
 
 ## What's here
 
@@ -69,11 +70,14 @@ is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the
   load-bearing decisions. Read this first.
-- [Tutorial](docs/tutorial.md) — hands-on, zero to a running, steerable flow, plus dial-in
-  processes and local-tree federation.
+- [Tutorial](docs/tutorial.md) — hands-on, in five sections: entities, processes, and the
+  charters that relate them, each with a script that seeds it.
 - [Trigger model](docs/trigger-model.md) — the two grammars a charter is written in, and
   what every field of a rule means.
-- [Reference](docs/reference.md) — the command surface, the config layers, and what verse
-  reads and writes.
+- [Reference](docs/reference/README.md) — the command surface, the config layers, and a
+  per-topic deep end: [starting a verse](docs/reference/up.md),
+  [entities](docs/reference/entities.md), [processes](docs/reference/processes.md),
+  [connect and scopes](docs/reference/connect.md), [goals](docs/reference/goals.md),
+  [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a
   cluster.

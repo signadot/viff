@@ -267,6 +267,21 @@ func (m Match) Names() (entity.Ref, bool) {
 	if r.System == "" || r.Kind == "" || r.ID == "" {
 		return entity.Ref{}, false
 	}
+	// A PAYLOAD PREDICATE makes it a selection, whatever the three segments say. Naming is by
+	// identity alone — that is what lets a named subject be a set of one whether or not the
+	// entity exists — and the moment a match says what the entity must LOOK like, that
+	// answer is no longer available: an entity that is not there does not satisfy
+	// `{state: green}`, and one that is there might not either.
+	//
+	// Without this, a match's predicate was silently dropped wherever the three segments were
+	// definite, and the failure was quiet in both directions. As a `when`, `{system: ci, kind:
+	// status, id: build, value: {state: green}}` asked only whether ci:status:build EXISTED, so
+	// a rule guarded on green fired on red. As an `on`, it was worse than wrong: the predicate
+	// held from the moment the entity appeared, so the edge had already risen and the rule
+	// never fired at all.
+	if m.HasPredicate() {
+		return entity.Ref{}, false
+	}
 	// An operator on any segment is a selection, whatever the other two say. This cannot
 	// fire today (ID() is "" for an operator, so the check above already caught it) and is
 	// kept because the consequence of getting it wrong is not a failed match but a CREATED

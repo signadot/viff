@@ -1,7 +1,7 @@
 # Named persistent channels
 
 Status: idea, not designed. It comes out of the flow tree —
-[`verse flow show`](../tutorial.md#4-steer-flows), and the chain addressing behind it in
+[`verse flow show`](../reference/processes.md#steering), and the chain addressing behind it in
 [chains and ids](../trigger-model.md#chains-and-ids). Once processes hang
 off an address, the obvious next relation is what they are saying to each other, and through
 what.

@@ -127,6 +127,52 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 	}
 }
 
+// A `seq` carrier's own hooks read against the status the SEQUENCE gave it. The carrier
+// spawns nothing, so its status arrives from the progress facts after its children were
+// built — and a tree that did not revisit them showed a finished sequence's `onDone` as
+// `pending` while the patch it applied was already on the subject.
+func TestFlowTreeSeqCarrierHooks(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := treeEngine(t, store)
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "build",
+		Condition: Condition{Subject: prSubject("open")},
+		Action: Action{
+			Seq: []Action{
+				{Spawn: &launch.Spec{Task: "lint $subject"}},
+				{Spawn: &launch.Spec{Task: "test $subject"},
+					OnFailed: &Action{Patch: entity.Obj{"stage": "broken"}.Payload()}},
+			},
+			OnDone:   &Action{Patch: entity.Obj{"stage": "built"}.Payload()},
+			OnFailed: &Action{Patch: entity.Obj{"stage": "broken"}.Payload()},
+		},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	waitField(t, store, prRef("1"), "stage", "built") // only the carrier's onDone writes this
+
+	tree := onlyTree(t, eng, "demo:pr:1")
+	done, ok := find(tree.Roots, "build.onDone")
+	if !ok {
+		t.Fatalf("carrier onDone missing from tree %+v", tree.Roots)
+	}
+	if done.Status != StatusApplied {
+		t.Errorf("carrier onDone status = %q; want %q — the sequence finished and it wrote `built`",
+			done.Status, StatusApplied)
+	}
+	// And the branch the sequence's outcome did not answer to is dead, not waiting.
+	failed, ok := find(tree.Roots, "build.onFailed")
+	if !ok {
+		t.Fatalf("carrier onFailed missing from tree %+v", tree.Roots)
+	}
+	if failed.Status != StatusSkipped {
+		t.Errorf("carrier onFailed status = %q; want %q", failed.Status, StatusSkipped)
+	}
+}
+
 // While a chain is still moving, the branch below it is PENDING (it may yet run) — the
 // distinction from skipped is the whole reason both statuses exist.
 func TestFlowTreePendingWhileRunning(t *testing.T) {

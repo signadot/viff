@@ -168,6 +168,9 @@ func TestMatchNames(t *testing.T) {
 		`{"system":"demo","kind":"pr"}`,                 // no id
 		`{"system":"demo","kind":"pr","id":"*"}`,        // explicit wildcard
 		`{"system":"demo","kind":"pr","id":"hotfix-*"}`, // a glob is never a name
+		// …and neither is a match that says what the entity must LOOK like. Naming is by
+		// identity alone, because that is the case whose answer does not depend on the store.
+		`{"system":"demo","kind":"pr","id":"1","value":{"stage":"open"}}`,
 	}
 	for _, in := range no {
 		var m Match
@@ -409,6 +412,13 @@ func TestFactSelFromRefIsAMatch(t *testing.T) {
 	}
 	if m := factSelFromRef("ci"); m.System() != "ci" || m.Kind() != "" {
 		t.Fatalf("factSelFromRef(\"ci\") = %#v", m)
+	}
+	// A THIRD segment is an id, as it is everywhere else a ref is written. Folding it into
+	// the kind gave a requirement selecting kind "status:green", which nothing can be — so
+	// `!fact ci:status:green` installed, read back verbatim, and waited forever.
+	m = factSelFromRef("ci:status:green")
+	if m.System() != "ci" || m.Kind() != "status" || m.ID() != "green" {
+		t.Fatalf("factSelFromRef(\"ci:status:green\") = %#v", m)
 	}
 }
 

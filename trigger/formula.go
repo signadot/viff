@@ -74,12 +74,22 @@ func (f *Formula) IsMatchAtom() bool {
 	return f != nil && f.Op == OpAtom && f.Req != nil && f.Req.Kind == ReqMatch
 }
 
-// factSelFromRef parses "system:kind" (or "system") into a fact-selecting Match.
+// factSelFromRef parses "system", "system:kind" or "system:kind:id" into a fact-selecting
+// Match — the same three segments an entity ref has, so `!fact ci:status:green` names the
+// entity a reader thinks it names.
+//
+// It used to stop at two, folding everything after the first colon into the KIND. That did
+// not fail: it produced a requirement selecting kind "status:green", which no entity can have
+// (a kind holds no colon), so the leaf was simply never satisfied — a gate that installs,
+// round-trips, reads correctly, and waits forever.
 func factSelFromRef(s string) Match {
-	parts := strings.SplitN(s, ":", 2)
+	parts := strings.SplitN(s, ":", 3)
 	fs := Match{mKeySystem: parts[0]}
-	if len(parts) == 2 {
+	if len(parts) > 1 && parts[1] != "" {
 		fs[mKeyKind] = parts[1]
+	}
+	if len(parts) > 2 && parts[2] != "" {
+		fs[mKeyID] = parts[2]
 	}
 	return fs
 }
@@ -263,20 +273,40 @@ func (f *Formula) Subtrees() [][2]string {
 	return out
 }
 
+// existing keeps the refs that actually stand in the store.
+//
+// A requirement is about what IS there — that is the whole meaning of a fact leaf, and of the
+// witness a commit is guarded by. Selection alone does not answer that, because a match that
+// NAMES one entity is deliberately a set of one whether or not it exists: an action's `patch`
+// on a named subject is how a trigger publishes a fact nothing has written yet. That
+// affordance belongs to a subject and to nothing else, so `!fact ci:status:green` — a fully
+// qualified name — must be asked of the store rather than granted by its own spelling.
+//
+// A read that errors drops the ref: an unanswerable read is not evidence that a fact holds.
+func existing(src entity.Reader, refs []entity.Ref) []entity.Ref {
+	out := refs[:0]
+	for _, ref := range refs {
+		if _, ok, err := src.Get(ref); err == nil && ok {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
 // eval evaluates a requirement against the store, returning satisfaction and the witness
 // refs. Only quorum is implemented; other kinds are stubs that block (their producers
 // are not built yet).
 func (r *Requirement) eval(src entity.Reader) (bool, []entity.Ref) {
 	switch r.Kind {
 	case ReqQuorum:
-		refs := r.Facts.Select(src)
+		refs := existing(src, r.Facts.Select(src))
 		return len(refs) >= r.N, refs
 	case ReqFact, ReqMatch:
 		// presence: the fact holds iff a matching entity exists (quorum of 1). Used for
 		// oracle facts and, notably, the `deadline` leaf of an `until` — time as a fact.
 		// A match leaf reads the same way when evaluated as a store predicate rather than
 		// as an edge, so a `when` composes inside a temporal formula.
-		refs := r.Facts.Select(src)
+		refs := existing(src, r.Facts.Select(src))
 		return len(refs) >= 1, refs
 	default:
 		return false, nil // judgment/ask/default: producers not built yet — they block

@@ -10,7 +10,7 @@ it *is* — its driver, its standing instructions, the tools it works with, the 
 runs under — overlaid onto the spawn that selected it.
 
 This note is the deep-dive. For the walk, see
-[tutorial §6](tutorial.md#6-gates-the-group-decides--whether-and-who); for where `spawn` sits
+[tutorial §5](tutorial.md#the-same-machinery-answers-who); for where `spawn` sits
 inside a rule, [the trigger model](trigger-model.md).
 
 ## The registry

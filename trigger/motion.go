@@ -137,10 +137,15 @@ func stringsNode(ss []string) *ir.Node {
 // `proceed` option (waits until it holds). An `until[left, right]` is `proceed` (left) plus
 // `deny` (right) — where right is either a store condition (deny when it holds) or a deadline
 // (deny defaults when the clock strikes). Left/proceed wins a tie.
-func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, ev entity.Event) *motion {
+// The subject is the FIRING's subject, not the ref of the change that dispatched it — the
+// same distinction the channel id already makes one line up in monitorGate. A motion is a
+// decision about the work, and the work is the subject; keying the id on one and displaying
+// the other let `verse docket` name the doorbell (and name nothing at all on a replay, where
+// a level-triggered firing has no dispatching event to speak of).
+func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, subject entity.Ref) *motion {
 	f = f.bind(channel.ID)
 	m := &motion{
-		channel: channel, subject: ev.Ref.String(), axis: "whether",
+		channel: channel, subject: subject.String(), axis: "whether",
 		trigger: t.Name, gate: gname,
 	}
 	if f != nil && f.Op == OpUntil && len(f.Args) == 2 {

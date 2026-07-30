@@ -1,7 +1,7 @@
 # Process control: a base-URL contract for running and governing processes
 
 The contract behind `verse up --runner <url>` and `verse up --broker`. Walk it first in
-[tutorial §5](tutorial.md#5-human-executed-processes-dial-in), where a human executes a
+[reference/processes.md](reference/processes.md#executing-one-by-hand), where a human executes a
 process by dialing in; this is the seam that makes that work. It builds on
 [external processes](external-processes.md) (design D, detached-core-first) and makes its
 "wrapping and enforcing the verse invariants" concrete.

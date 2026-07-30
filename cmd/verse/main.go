@@ -1,6 +1,6 @@
 // Command verse is the single CLI for the verse prototype: `up` starts the
 // daemon(s); every other subcommand is a client that connects to a running verse.
-// See docs/reference.md for the command tree, and docs/deployment-and-steering.md for
+// See docs/reference/README.md for the command tree, and docs/deployment-and-steering.md for
 // the plane split it encodes.
 package main
 

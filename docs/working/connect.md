@@ -3,7 +3,7 @@
 How `connect` federates your working tree into the verse, and how it leans on docd's two
 faces to do it. This is the mechanics-and-docd view; for the general controller model see
 [writing a controller](../controllers.md), and to run it first see
-[tutorial §8](../tutorial.md#8-federate-your-local-working-tree).
+[reference/connect.md](../reference/connect.md).
 
 `connect` is a proof of concept of federation rather than its settled shape. It works, and
 the mechanics below are the real ones, but it fuses three separable things into one

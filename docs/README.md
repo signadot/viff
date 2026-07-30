@@ -3,19 +3,33 @@
 Everything here describes what verse does today. Design notes for work that is not built
 live in [roadmap/](roadmap/README.md).
 
-Three docs stand on their own, and the rest are deep-dives on one subject each.
+Three things stand on their own, and the rest are deep-dives on one subject each.
 
 - [Overview](overview.md) — the architecture, the model, and the load-bearing decisions.
   Read this first.
-- [Tutorial](tutorial.md) — zero to a running, steerable, self-driving flow, in ten sections.
-- [Reference](reference.md) — the command surface, the config layers, and what verse reads
-  and writes.
+- [Tutorial](tutorial.md) — five sections you drive: entities, processes, and the charters
+  that relate them. Each has a script that seeds it in one command.
+- [Reference](reference/README.md) — the flat command surface, and a file per topic for the
+  detail the tutorial skips.
 
 ## By subject
 
 Each subject below pairs the part of the tutorial that walks it with the notes that explain
 it. Walk first if you want to see the thing move; read first if you want to know why it is
 shaped that way. Where a subject has unbuilt work, the last row points into the roadmap.
+
+### Entities and the store
+
+Everything coordinates through one observable, cursored entity store. Its change model is
+what makes the reactive loop converge.
+
+| | |
+|---|---|
+| walk | [§2 entities](tutorial.md#2-entities) |
+| read | [reference/entities.md](reference/entities.md) — refs, merging writes, conditional writes, selection, watching |
+| | [reference/store.md](reference/store.md) — what the store guarantees, and the entity grain the engine reacts at |
+| | [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain costs |
+| ahead | [Named persistent channels](roadmap/channel-observe.md) — an idea, not yet a design |
 
 ### Charters and triggers
 
@@ -24,11 +38,13 @@ core of the model, and almost everything else is something a rule can reach.
 
 | | |
 |---|---|
-| walk | [§2 install a charter and drive it](tutorial.md#2-install-a-charter-and-drive-it) · [§6 gates the group decides](tutorial.md#6-gates-the-group-decides--whether-and-who) · [§7 goals](tutorial.md#7-goals--give-a-flow-a-destination) |
+| walk | [§4 charters](tutorial.md#4-charters--relating-entities-to-processes) · [§5 gates and the docket](tutorial.md#5-gates-and-the-docket) |
 | read | [The trigger model](trigger-model.md) — the two grammars, and every field of a rule |
 | | [Convergence](convergence.md) — what ends a firing, what is checked at install, and what a read per commit costs |
 | | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
+| | [reference/goals.md](reference/goals.md) — a target over the reactive substrate (being redesigned) |
 | ahead | [Firing residual](working/firing-residual.md) — the cycle check and the clock it needs, and what `verse entity rm` should mean |
+| | [Dynamic charter](roadmap/dynamic-charter.md) — where goals are headed |
 
 ### Processes and autonomy
 
@@ -37,8 +53,9 @@ drive a local agent, a remote one, and a human.
 
 | | |
 |---|---|
-| walk | [§3 processes](tutorial.md#3-processes) · [§5 human-executed processes](tutorial.md#5-human-executed-processes-dial-in) |
-| read | [Process control](process-control.md) — the base-URL contract and the dial-in protocol |
+| walk | [§3 processes](tutorial.md#3-processes) |
+| read | [reference/processes.md](reference/processes.md) — the whole surface: drivers and vectors, gates, the mirror, steering, and executing one by hand |
+| | [Process control](process-control.md) — the base-URL contract and the dial-in protocol |
 | | [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides, and promotes what is not its to decide |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
@@ -50,19 +67,8 @@ intervention defeated.
 
 | | |
 |---|---|
-| walk | [§4 steer flows](tutorial.md#4-steer-flows) |
+| walk | [§3 steering](tutorial.md#steering) |
 | read | [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs a cursor rather than a buffer |
-
-### The store
-
-Everything coordinates through one observable, cursored entity store. Its change model is
-what makes the reactive loop converge.
-
-| | |
-|---|---|
-| walk | [§10 what this is and isn't yet](tutorial.md#10-what-this-is-and-isnt-yet) |
-| read | [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain costs |
-| ahead | [Named persistent channels](roadmap/channel-observe.md) — an idea, not yet a design |
 
 ### Federation: bringing the outside in
 
@@ -71,7 +77,7 @@ the verse that owns it, through a docd controller.
 
 | | |
 |---|---|
-| walk | [§8 federate your local working tree](tutorial.md#8-federate-your-local-working-tree) · [§9 scopes](tutorial.md#9-scopes) |
+| walk | [reference/connect.md](reference/connect.md) — federating a tree, and scopes |
 | read | [verse connect and docd](working/connect.md) — the mechanics, through docd's two faces |
 | | [Content federation](content-federation.md) — why `connect` replaced `--root` |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |

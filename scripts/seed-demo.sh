@@ -12,16 +12,18 @@
 # talks to YOUR verse, and leaves what it writes behind for you to play with.
 #
 #   ./verse up                       # in another terminal (or: make seed-demo)
-#   ./seed-demo.sh
-#   ./seed-demo.sh --scope me        # …into a copy-on-write scope instead of baseline
-#   ./seed-demo.sh --clean           # remove what a previous run seeded
+#   ./scripts/seed-demo.sh
+#   ./scripts/seed-demo.sh --scope me        # …into a copy-on-write scope instead of baseline
+#   ./scripts/seed-demo.sh --clean           # remove what a previous run seeded
 #
 # Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR (the verse to
 # seed, default: verse's own default). Both are the CLI's own knobs; nothing here is a
 # second configuration.
 set -euo pipefail
 
-cd "$(cd "$(dirname "$0")" && pwd)"
+# The scripts live in scripts/ and act on the checkout above them: the `./verse` a
+# build produces is at the root, and so is the reader's cwd.
+cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 clean=false
 scope=()
@@ -31,7 +33,7 @@ while [ $# -gt 0 ]; do
 	--scope) scope=(--scope "$2"); shift ;;
 	--scope=*) scope=(--scope "${1#*=}") ;;
 	-h | --help)
-		sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*)

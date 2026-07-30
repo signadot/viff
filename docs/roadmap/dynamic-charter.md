@@ -19,7 +19,7 @@ Nothing here needs a new mechanism, which is what makes it worth writing down.
 A charter is *data*, so an agent can emit one — a trigger is a tony document, and
 `verse trigger add` is how it lands. Installation is already a runtime act, not a deploy.
 
-A [goal](../tutorial.md#7-goals--give-a-flow-a-destination) already owns a bundle of triggers,
+A [goal](../reference/goals.md) already owns a bundle of triggers,
 holds a live status, and reaps them on a terminal. That is exactly the lifetime a
 per-change charter wants: authored for this change, alive while the change is, gone when it
 lands. The tutorial already names the missing piece as "an optional plan that generates the

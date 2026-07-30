@@ -16,7 +16,7 @@ workaround today; the vector ordering is the smallest and the least certain.
 
 **The gap.** A human *is* a provider. The dial-in broker already runs a process a person
 executes ([process control](../process-control.md),
-[tutorial §5](../tutorial.md#5-human-executed-processes-dial-in)), so "this finding needs a
+[reference/processes.md](../reference/processes.md#executing-one-by-hand)), so "this finding needs a
 person" ought to be a selection whose winner happens to be human — over the same votable,
 attributable surface as every other who-question — rather than a gate, or a separate rule
 whose whole job is to route to people.

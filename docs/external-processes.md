@@ -8,7 +8,7 @@ semantics when available — stdout, stderr, exit, maybe stdin and a pty; (4) ke
 on the long-term radar.
 
 Design D below is what got built; [process control](process-control.md) is the resulting
-contract, and [tutorial §5](tutorial.md#5-human-executed-processes-dial-in) drives it.
+contract, and [reference/processes.md](reference/processes.md#executing-one-by-hand) drives it.
 
 ## The key observation: a process is already a contract, not a runtime
 

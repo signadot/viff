@@ -112,6 +112,32 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 	}
 }
 
+// A fact leaf that NAMES one entity is asked of the store, not granted by its own spelling.
+//
+// `!fact ci:status:green` parses to a match with all three segments definite, and such a
+// match deliberately *names* rather than selects — a set of one whether or not the entity
+// exists, which is how a trigger's subject can publish a fact nothing has written yet. As a
+// requirement that is exactly backwards: the fact would hold from the moment the charter was
+// written, so the gate would proceed before CI had said anything at all.
+func TestFormulaEvalNamedFactNeedsTheEntity(t *testing.T) {
+	st := entitytest.Store(t)
+	green := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: factSelFromRef("ci:status:green")}}
+
+	if ok, _ := green.Eval(st); ok {
+		t.Fatal("a named fact held with nothing in the store")
+	}
+	entitytest.Set(t, st, entity.Ref{System: "ci", Kind: "status", ID: "green"}, entity.Obj{"ok": true}.Payload())
+	ok, witness := green.Eval(st)
+	if !ok || len(witness) != 1 || witness[0].ID != "green" {
+		t.Fatalf("named fact = (%v, %v), want (true, [ci:status:green])", ok, witness)
+	}
+	// …and it goes back to unsatisfied when the fact does, like every other leaf.
+	entitytest.Remove(t, st, entity.Ref{System: "ci", Kind: "status", ID: "green"})
+	if ok, _ := green.Eval(st); ok {
+		t.Fatal("a named fact still held after the entity was removed")
+	}
+}
+
 // A stubbed requirement kind (no producer yet) blocks — it never satisfies.
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
 	st := entitytest.Store(t)

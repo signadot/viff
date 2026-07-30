@@ -2,7 +2,7 @@
 
 Status: design note, not implemented. This records a gap and a direction; nothing here is
 built yet. The one existing instance to generalize is `connect`'s scope teardown, which
-[tutorial §9](../tutorial.md#9-scopes) drives.
+[reference/connect.md](../reference/connect.md#scopes) drives.
 
 ## The gap
 

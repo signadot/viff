@@ -155,6 +155,44 @@ func TestTemporalDenyQuorum(t *testing.T) {
 	}
 }
 
+// The open channel names the FIRING's subject — what the room is deciding about — and not
+// the entity whose change dispatched it. The two come apart here exactly as they do in a
+// charter (`subject` acts on one entity, `when` reads another), and they came apart worse on
+// a REPLAY: a level-triggered firing has no dispatching event at all, so `verse docket` named
+// the subject `::` for every motion a restart or a fresh install raised.
+func TestMotionChannelNamesTheSubject(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, denyResolver{})
+	merged := entity.Ref{System: "result", Kind: "merged", ID: "s"}
+	eng.AddTrigger(Trigger{
+		Name:      "merge",
+		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
+		Gates: []Gate{{Name: "approvals", Mode: "ask",
+			Formula: &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}}}},
+		Action: Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, entity.Ref{System: "change", Kind: "pr", ID: "s"}, entity.Obj{}.Payload())
+
+	// The channel is keyed by (trigger, gate, subjects) — the same id the ballots are cast
+	// into — so finding it at all is half the assertion; what it SAYS is the other half.
+	channel := entity.Ref{System: "motion", Kind: "channel",
+		ID: motionChannelID(gateID("merge", "approvals", []entity.Ref{merged}))}
+	if !existsWithin(store, channel, 2*time.Second) {
+		t.Fatal("no channel opened for the formula gate")
+	}
+	ent, ok, err := store.Get(channel)
+	if err != nil || !ok {
+		t.Fatalf("get channel: ok=%v err=%v", ok, err)
+	}
+	if got := entity.Str(ent.Payload, "subject"); got != merged.String() {
+		t.Errorf("channel subject = %v, want %q (the firing's subject, not its cause)", got, merged)
+	}
+}
+
 // quorumUntilDeadline builds `quorum(n over motion/vote) until (deadline fact exists)`.
 func quorumUntilDeadline(n int) *Formula {
 	return &Formula{Op: OpUntil, Args: []*Formula{
