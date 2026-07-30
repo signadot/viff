@@ -149,8 +149,13 @@ recursion inside a stratum is exactly what is allowed.
 
 So strata **localize** firing-residual §1 rather than replace it. The graph to search shrinks from
 the whole charter to one stratum, and the edges that were undecidable are the ones that stop
-existing. The ticker is still wanted — for the paced control loop within a stratum, and for the
-reaper's grace period, which was always the same piece of work.
+existing.
+
+What is left is answered at runtime rather than at install: [cycle throttle](cycle-throttle.md)
+bounds a firing's causal depth by the size of its stratum, which is exactly as precise as
+searching the chain for a repeated trigger. Strata are what make that bound tight — a chain
+crossing a level can never come back, so the counter resets at every crossing and the cap is
+max|stratum| rather than the whole charter.
 
 ## The three install checks
 
