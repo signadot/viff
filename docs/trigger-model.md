@@ -454,8 +454,8 @@ apply. `patch: { tmp: !delete null }` removes a key, which is something no amoun
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
 `derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It is
-addressed `<system>.<kind>`, its content may reference its own subject and nothing else
-(`$subject` and its parts, but not `$subject.commit`), and the derived entity's
+addressed `<system>.<kind>`, its content may reference its own subject and — at or below its
+own level — other entities, and the derived entity's
 id is the engine's, a function of (rule, subject). It is only installable inside a declared
 level ordering, where it must land strictly above the rule that writes it: see
 [strata](strata.md).
@@ -532,88 +532,59 @@ write — so `.value` and `.commit` fail there by name rather than resolving to 
 spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no text
 form and its top-level fields are already bound by name.
 
-### `!read` — the one reference that reaches another entity
+### `!get-path` and `!list-paths` — reaching another entity
 
-Everything above reads the firing's own subject, or the process that just finished. `!read`
-reaches an entity neither of those is:
+Everything above reads the firing's own subject, or the process that just finished. These two
+reach an entity neither of those is:
 
 ```tony
 action:
   patch:
-    repo: !read { system: git, kind: repo, id: $subject.value.head }
-    # or the address form, since expansion runs first:
-    also: !read "git:repo:$subject.value.head"
+    repo:     !get-path { system: git, kind: repo, id: $subject.value.head }
+    branch:   !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
+    branches: !list-paths { system: git, kind: repo, id: "*", path: branch }
+    # the string form addresses an entity and stops there
+    also:     !get-path "git:repo:$subject.value.head"
 ```
 
-It resolves to that entity's payload, read at the commit that caused the firing — the same rule
-`$subject.value` follows, and for the same gate reason.
+**One grammar, split by cardinality, and the names say which.** A verse is one document —
+`{system: {kind: {id: payload}}}` — so an entity address is a path prefix, and `path:` continues
+it into the payload. `!get-path` answers with one node; `!list-paths` answers with a list, and is
+where the globs live. They mirror go-tony's own split, where `GetKPath` returns one node and
+rejects a wildcard outright while `ListKPath` collects.
 
-**It names exactly one entity.** All three segments, no payload predicate — `Match.Names`, which
-already draws that line. The id may be a reference; the system and kind may not, and must be
-literal. Naming is what makes this a lookup rather than a query: no ordering to define, no "it
-matched three", no cost that grows with the verse.
+Which one you get is legible in the charter rather than inferred from whether some id happened to
+contain a `*`: `!get-path` **refuses** a globbing id or a wildcard path, and names the tag that
+answers that question instead.
 
-**It copies, and does not track.** The entity is read once. If it changes afterwards nothing
+| | |
+|---|---|
+| `system`, `kind` | always literal — no reference, no glob |
+| `id` | literal, a `$reference`, or (list only) a glob |
+| `path` | a kpath into the payload; wildcards are list-only. Omitted, you get the whole payload |
+
+The string form stops at the entity, because an id may itself contain dots and
+`"git:repo:abc.branch"` has no unambiguous split. Going deeper is the object form's `path:`.
+
+**Read at the commit that caused the firing**, the same rule `$subject.value` follows and for the
+same gate reason.
+
+**They copy, and do not track.** Whatever is read is read once. If it changes afterwards nothing
 re-runs — this rule fires again only when its own subject changes, or when an `on`/`when` it
-carries covers the target. Copying is the point; add the `on` if you want to follow it.
+carries covers the target. Add the `on` if you want to follow it.
 
-**A missing target fails the firing**, as any unresolved reference does, so that "nothing is
-there" cannot launder into "something is there, and it is nothing".
+**A missing `!get-path` target fails the firing**, as any unresolved reference does, so that
+"nothing is there" cannot launder into "something is there, and it is nothing". An empty
+`!list-paths` is an empty **list** — "which one" has an answer or it does not, while "all of them"
+of nothing is legitimately nothing.
 
-**Inside a `derive` it must resolve at or below the rule's own stratum** — see
-[strata](strata.md), where that rule is the whole of what `!read` costs. In a `patch` it is
+**Inside a `derive` they must resolve at or below the rule's own stratum** — see
+[strata](strata.md), where that is the whole of what they cost. In a `patch` they are
 unconstrained.
 
-The tag is the whole spelling: a plain `{read: …}` key is ordinary data and stays that way,
-which is deliberate — `{read: true}` under a permissions field is far too plausible a payload to
-turn silently into a lookup. That does mean a JSON-shaped charter cannot write one, since JSON
-has no tags.
-
-That is what an action is about, and it used to read the CHANGED payload instead — which is
-the same thing only while the subject and the cause are the same entity. The moment they came
-apart, a rule bound `$stage` off a CI status and wrote it onto a PR: fields with no meaning on
-the entity being acted on.
-
-A completion **hook** is the exception, and not an arbitrary one: it is downstream of a
-process, so it reads that process's payload — `$status`, `$result`, `$data`, `$err`, `$flow`,
-`$chain` — which is exactly what a hook exists for. (The engine synthesizes that payload
-rather than reading it back, because the mirror may not have written the terminal facts yet.)
-
-Those last four are what a process leaves behind, and they answer different questions:
-
-| field | what it is |
-|---|---|
-| `status` | that the process **stopped** — `done`, `failed`, `cancelled`, `orphaned` |
-| `result` | the driver's final answer, as text, always present |
-| `data` | that answer parsed, **only when it is an object or a list** — absent otherwise |
-| `err` | why it failed: infrastructure, a driver error, a declared `fail` |
-
-`status: done` means the process stopped, not that the work succeeded. An agent asked to
-review a file it cannot open will stop and say so in prose, and that is an ordinary
-completion — its only structural exits are "keep going" and "stop". The `fail` tool gives it
-a third, which is what `err` records, but a model can still stop without reaching for it.
-
-So do not read success off `status`. **A hook that advances state should name evidence**:
-
-```tony
-onDone: { patch: { stage: reviewed, severity: $data.severity } }
-```
-
-An agent that failed cannot produce `$data.severity`, so the firing fails and the subject
-does not advance — no detection of the lie required, and no reliance on the agent reporting
-its own failure honestly. A hook spelled `patch: {stage: reviewed}` advances on a bare claim.
-This is the same discipline a goal already follows: `doneWhen` latches on a witness in the
-store, never on a process saying it finished.
-
-A hook's failure is recorded against the process whose completion fired it, under `hook`:
-
-```tony
-hook: { chain: review.onDone, status: failed, err: "$data.severity is not present …" }
-```
-
-It goes there rather than on the subject because it is a fact about that completion, and
-because putting an error into a field a charter matches on is exactly what makes
-`value: {severity: high}` quietly stop matching.
+The tag is the whole spelling: a plain `{get-path: …}` key is ordinary data and stays that way,
+since a magic key would turn a payload somebody wrote into a lookup nobody asked for. That does
+mean a JSON-shaped charter cannot write one, JSON having no tags.
 
 ### The answer contract
 

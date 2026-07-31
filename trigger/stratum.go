@@ -562,7 +562,7 @@ func (e *Engine) checkLevels(t Trigger) (bool, error) {
 			"it is acting at a level it did not declare",
 			subjectText(t.Condition.Subject), st.Name, matchesText(st.Match))
 	}
-	// A `!read` inside a DERIVE must resolve at or below this rule's own level. Derive
+	// A path read inside a DERIVE must resolve at or below this rule's own level. Derive
 	// inertness rests on the levels above being unable to influence what a derive writes, and a
 	// read reaching upward is precisely how they would: the thing above changes, the derive
 	// writes different bytes, the level above wakes, and it goes round — across a level, which

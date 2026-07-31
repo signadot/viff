@@ -42,7 +42,7 @@ core of the model, and almost everything else is something a rule can reach.
 | read | [The trigger model](trigger-model.md) — the two grammars, and every field of a rule |
 | | [Convergence](convergence.md) — what ends a firing, what is checked at install, and what a read per commit costs |
 | | [The cycle throttle](cycle-throttle.md) — how a runaway across rules is caught at runtime, and why a paced cycle is not one |
-| | [Strata](strata.md) — a declared level ordering, `derive`, the write that is not the subject, and where a `!read` inside one may reach |
+| | [Strata](strata.md) — a declared level ordering, `derive`, the write that is not the subject, and where a path read inside one may reach |
 | | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
 | | [reference/goals.md](reference/goals.md) — a target over the reactive substrate (being redesigned) |
 | ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse entity rm` should mean |

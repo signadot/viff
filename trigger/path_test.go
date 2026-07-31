@@ -7,30 +7,36 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
 )
 
-// read builds a `!read` node. The tag is the whole of the spelling — a plain `{read: …}` key
-// is ORDINARY DATA and stays that way, which is deliberate: `{read: true}` under a permissions
-// field is far too plausible a payload to quietly turn into a lookup.
-func read(addr any) entity.Payload { return entity.Val(addr).WithTag("!" + ReadTag) }
+// get / list build the two tags. The tag is the whole of the spelling — a plain `{get-path: …}`
+// key is ORDINARY DATA and stays that way, which is deliberate: a magic key turns a payload
+// somebody wrote into a lookup nobody asked for.
+func get(addr any) entity.Payload  { return entity.Val(addr).WithTag("!" + GetPathTag) }
+func list(addr any) entity.Payload { return entity.Val(addr).WithTag("!" + ListPathsTag) }
 
 func readAction(addr any) Action {
-	return Action{Patch: entity.Obj{"why": read(addr)}.Payload()}
+	return Action{Patch: entity.Obj{"why": get(addr)}.Payload()}
 }
 
-// A `!read` names ONE entity: all three segments, literal system and kind, no predicate. Each
-// refusal is at install, because every one of them is a question with no single answer to write.
-func TestReadMustNameOneEntity(t *testing.T) {
+// `!get-path` names ONE node: all three segments, literal system and kind, no predicate, and
+// nothing that could name several — a globbing id or a wildcard path is the LIST form's
+// business, and saying so points at the tag that answers it.
+func TestGetPathMustNameOneNode(t *testing.T) {
 	eng, _ := newEng(t)
 	bad := map[string]any{
 		"no id":            entity.Obj{"system": "git", "kind": "repo"},
-		"a wildcard id":    entity.Obj{"system": "git", "kind": "repo", "id": "*"},
+		"a globbing id":    entity.Obj{"system": "git", "kind": "repo", "id": "*"},
+		"a wildcard path":  entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "labels.*"},
 		"no kind":          entity.Obj{"system": "git", "id": "abc"},
 		"a predicate":      entity.Obj{"system": "git", "kind": "repo", "id": "abc", "value": entity.Obj{"x": 1}},
 		"an unknown key":   entity.Obj{"system": "git", "kind": "repo", "id": "abc", "branch": "main"},
+		"a globbing kind":  entity.Obj{"system": "git", "kind": "*", "id": "abc"},
 		"a glob on kind":   entity.Obj{"system": "git", "kind": "re*", "id": "abc"},
 		"a ref for system": entity.Obj{"system": "$subject.system", "kind": "repo", "id": "abc"},
 		"a short address":  "git:repo",
@@ -50,6 +56,7 @@ func TestReadMustNameOneEntity(t *testing.T) {
 		"the object form":       entity.Obj{"system": "git", "kind": "repo", "id": "abc"},
 		"the address form":      "git:repo:abc",
 		"a reference id":        entity.Obj{"system": "git", "kind": "repo", "id": "$subject.value.head"},
+		"a payload path":        entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "branch"},
 		"a reference in a addr": "git:repo:$subject.value.head",
 	}
 	for why, addr := range ok {
@@ -75,7 +82,7 @@ func TestReadCopiesAnotherEntity(t *testing.T) {
 			"stage": "read",
 			// The id is a reference, which is the whole reason a read is worth having: the
 			// address is as dynamic as anyone needs, while what is checked at install stays put.
-			"repo": read(entity.Obj{"system": "git", "kind": "repo", "id": "$subject.value.head"}),
+			"repo": get(entity.Obj{"system": "git", "kind": "repo", "id": "$subject.value.head"}),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -104,7 +111,7 @@ func TestReadOfSomethingAbsentFailsTheFiring(t *testing.T) {
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage": "read",
-			"repo":  read("git:repo:nope"),
+			"repo":  get("git:repo:nope"),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -137,7 +144,7 @@ func TestReadAnswersAtTheCausingCommit(t *testing.T) {
 		Gates:     []Gate{{Mode: "ask"}},
 		Action: Action{Patch: entity.Obj{
 			"stage": "read",
-			"repo":  read("git:repo:abc"),
+			"repo":  get("git:repo:abc"),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -179,7 +186,7 @@ func TestReadInADeriveMustBeAtOrBelow(t *testing.T) {
 			Name: name, Stratum: stratum,
 			Condition: Condition{Subject: Match{"system": subjSys, "kind": "thing"}},
 			Action: Action{Derive: entity.Obj{"do": entity.Obj{"approve": entity.Obj{
-				"why": read(addr),
+				"why": get(addr),
 			}}}.Payload()},
 		}
 	}
@@ -214,7 +221,7 @@ func TestReadInAPatchIsUnconstrained(t *testing.T) {
 		Name:      "reads-up",
 		Stratum:   "low",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    Action{Patch: entity.Obj{"why": read("signadot:feature:1")}.Payload()},
+		Action:    Action{Patch: entity.Obj{"why": get("signadot:feature:1")}.Payload()},
 	}); err != nil {
 		t.Fatalf("a patch reading a higher level was refused: %v", err)
 	}
@@ -226,7 +233,7 @@ func TestReadInAPatchIsUnconstrained(t *testing.T) {
 func TestReadInAHookHasNoCommit(t *testing.T) {
 	eng, _ := newEng(t)
 	oc := occasion{} // what applyHook builds: the process event, and no commit
-	_, err := eng.resolveRead(read("git:repo:abc"), nil, oc)
+	_, err := eng.resolveRead(get("git:repo:abc"), nil, oc)
 	if err == nil {
 		t.Fatal("a read resolved with no causing commit")
 	}
@@ -251,9 +258,9 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 	}
 	oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}}
 	patch := entity.Obj{
-		"a": read("git:repo:a"),
-		"b": read("git:repo:b"),
-		"c": read("git:repo:c"),
+		"a": get("git:repo:a"),
+		"b": get("git:repo:b"),
+		"c": get("git:repo:c"),
 	}.Payload()
 	out, err := expandPatch(patch, refRoot(nil, subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0)),
 		eng.readerFor(oc))
@@ -288,4 +295,139 @@ func (c *countingStore) asOf() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.n
+}
+
+// `!get-path` with a `path:` reaches into the payload rather than taking all of it. That is
+// what makes the pair one grammar: a verse is one document, an entity address is a path prefix,
+// and `path:` continues it.
+func TestGetPathReachesIntoThePayload(t *testing.T) {
+	eng, store := newEng(t)
+	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+		entity.Obj{"branch": "main", "meta": entity.Obj{"tags": []any{"v1", "v2"}}}.Payload())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "deep",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: Action{Patch: entity.Obj{
+			"stage":  "read",
+			"branch": get(entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "branch"}),
+			"second": get(entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "meta.tags[1]"}),
+		}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	waitStage(t, store, ref, "read")
+	got, _, _ := store.Get(ref)
+	obj := entity.ToObj(got.Payload)
+	if obj["branch"] != "main" {
+		t.Errorf("branch = %v, want \"main\"", obj["branch"])
+	}
+	if obj["second"] != "v2" {
+		t.Errorf("second = %v, want \"v2\" — an index into the payload", obj["second"])
+	}
+}
+
+// `!list-paths` is where the globs live, on the id and on the path alike. It answers with a
+// list, in the selection's order, which Match.Select sorts by ref.
+func TestListPathsCollects(t *testing.T) {
+	eng, store := newEng(t)
+	for _, r := range []struct{ id, branch string }{{"c", "three"}, {"a", "one"}, {"b", "two"}} {
+		entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: r.id},
+			entity.Obj{"branch": r.branch}.Payload())
+	}
+	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "other", ID: "x"},
+		entity.Obj{"branch": "not-a-repo"}.Payload())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "collect",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: Action{Patch: entity.Obj{
+			"stage":    "read",
+			"branches": list(entity.Obj{"system": "git", "kind": "repo", "id": "*", "path": "branch"}),
+			"nothing":  list(entity.Obj{"system": "git", "kind": "repo", "id": "zz-*", "path": "branch"}),
+		}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	waitStage(t, store, ref, "read")
+	got, _, _ := store.Get(ref)
+
+	branches := entity.Get(got.Payload, "branches")
+	if branches == nil || branches.Type != ir.ArrayType {
+		t.Fatalf("branches is not a list: %v", branches)
+	}
+	var vals []string
+	for _, v := range branches.Values {
+		vals = append(vals, v.String)
+	}
+	// Sorted by ref, not by the order they were written — a list written into an entity has to
+	// be deterministic, or a re-derive writes a real change every lap.
+	if strings.Join(vals, ",") != "one,two,three" {
+		t.Fatalf("branches = %v, want [one two three] — the selection's order, sorted by ref", vals)
+	}
+	// The kind is literal, so `git:other:x` is not in the selection however its payload looks.
+	if len(vals) != 3 {
+		t.Fatalf("the list crossed a kind: %v", vals)
+	}
+	// Empty is a LIST, where an absent get-path is a failure.
+	nothing := entity.Get(got.Payload, "nothing")
+	if nothing == nil || nothing.Type != ir.ArrayType || len(nothing.Values) != 0 {
+		t.Fatalf("a list matching nothing should be an empty list, got %v", nothing)
+	}
+}
+
+// A wildcard PATH collects within each payload, which is the case GetKPath refuses outright
+// ("any field .* in get") and ListKPath is for.
+func TestListPathsWildcardPath(t *testing.T) {
+	eng, store := newEng(t)
+	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+		entity.Obj{"labels": entity.Obj{"a": "one", "b": "two"}}.Payload())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "labels",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: Action{Patch: entity.Obj{
+			"stage": "read",
+			"all":   list(entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "labels.*"}),
+		}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	waitStage(t, store, ref, "read")
+	got, _, _ := store.Get(ref)
+	all := entity.Get(got.Payload, "all")
+	if all == nil || all.Type != ir.ArrayType || len(all.Values) != 2 {
+		t.Fatalf("a wildcard path did not collect the fields: %v", all)
+	}
+}
+
+// Both tags are constrained inside a derive, by the same rule and the same check.
+func TestListPathsInADeriveMustBeAtOrBelow(t *testing.T) {
+	eng, _ := newEng(t)
+	withStrata(t, eng,
+		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
+		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
+	)
+	err := eng.AddTrigger(Trigger{
+		Name: "lists-up", Stratum: "low",
+		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Action: Action{Derive: entity.Obj{"signadot": entity.Obj{"feature": entity.Obj{
+			"why": list(entity.Obj{"system": "signadot", "kind": "other", "id": "*"}),
+		}}}.Payload()},
+	})
+	if err == nil {
+		t.Fatal("a derive listed a higher level, which is how a cycle crosses a level")
+	}
 }

@@ -231,7 +231,7 @@ type occasion struct {
 	// down the action tree and the whole point is that the copies agree.
 	//
 	// One per FIRING rather than one per reference: Store.AsOf answers by replaying the log to
-	// that commit, so an action with three `!read`s would otherwise pay three replays to learn
+	// that commit, so an action with three path reads would otherwise pay three replays to learn
 	// three things about one world — and, worse, could learn them about three different ones if
 	// the replays were not pinned to the same revision. They are, so this is about cost; but
 	// the cost is the kind that is discovered in production rather than in a test.
@@ -377,14 +377,14 @@ func (a *Action) hasHooks() bool {
 func (a Action) validate() error {
 	// The derive's own shape and its content rule. Checked here so it runs over every action in
 	// the tree — validate recurses into a sequence's elements and a hook's action — while WHERE
-	// a derive may land, and where a `!read` inside one may reach, are checked once per rule
+	// a derive may land, and where a path read inside one may reach, are checked once per rule
 	// against the strata (stratum.go).
 	if err := a.validateDerive(); err != nil {
 		return err
 	}
-	// A `!read` anywhere in this action, patch or derive: it must NAME one entity, and its
-	// system and kind must be literal. Both are what make it a lookup rather than a query, and
-	// the second is what leaves the level check something to read at install.
+	// A path read anywhere in this action, patch or derive: its shape, and the two segments the
+	// level check reads. `!get-path` additionally refuses anything that could name several
+	// things, which is what tells it apart from `!list-paths`.
 	for _, p := range []entity.Payload{a.Patch, a.Derive} {
 		if _, err := readTargets(p); err != nil {
 			return err

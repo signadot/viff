@@ -160,22 +160,22 @@ charter and the id is injective in the subject, which retires
 It also forbids rollups: fifty features cannot feed one `do:approve`. The level above reads the
 *set* instead. That is the trade single-writer is bought with.
 
-## `!read` inside a derive
+## Path reads inside a derive
 
-[`!read`](trigger-model.md#read--the-one-reference-that-reaches-another-entity) lets an action
-copy an entity that is not its subject, and it is the one thing the ordering has to constrain,
-because it breaks the fact the section above rests on: that a reference cannot reach another
-entity at all.
+[`!get-path` and `!list-paths`](trigger-model.md#get-path-and-list-paths--reaching-another-entity)
+let an action copy an entity that is not its subject, and they are the one thing the ordering has
+to constrain — because they break the fact the section above rests on: that a reference cannot
+reach another entity at all.
 
-**A `!read` inside a derive must resolve at or below the rule's own stratum.** An entity at or
+**A path read inside a derive must resolve at or below the rule's own stratum.** An entity at or
 below is written only by rules at that level, or derived into from below it — never from above —
 so the levels above still cannot influence what a derive writes, and inertness holds exactly.
 Reading upward would give it away: the thing above changes, the derive writes different bytes,
 the level above wakes, and round it goes across a level.
 
-It is checked at install, by the same containment the level checks use — a `!read` names a system
-and a kind, a stratum's `match` constrains a system and a kind. A read naming a target in no
-stratum is refused too: no level, so "at or below" has no answer.
+It is checked at install, by the same containment the level checks use — a path read names a
+system and a kind, a stratum's `match` constrains a system and a kind. A read naming a target in
+no stratum is refused too: no level, so "at or below" has no answer.
 
 In a plain `patch` none of this applies, because nothing downstream depends on a patch being
 reproducible. A rule may read any level it likes and write it to its own subject.

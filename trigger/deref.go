@@ -326,11 +326,11 @@ func expandPatch(p entity.Payload, root entity.Payload, read readFn) (entity.Pay
 	return cp, nil
 }
 
-// readFn answers a `!read`. It is a parameter rather than a method on the engine because two
+// readFn answers a path read. It is a parameter rather than a method on the engine because two
 // callers legitimately have none: expanding a read's own ADDRESS (a read inside a read would
 // make how many entities a firing touches a question only the store could answer), and any
 // caller that has no firing behind it. A nil reader reports the tag rather than ignoring it —
-// silently writing a `!read` node into an entity is exactly the shape of failure this whole
+// silently writing a tagged node into an entity is exactly the shape of failure this whole
 // package refuses elsewhere.
 type readFn func(node *ir.Node, root entity.Payload) (entity.Payload, error)
 
@@ -341,13 +341,13 @@ func expandInto(n entity.Payload, root entity.Payload, read readFn) error {
 	if n == nil {
 		return nil
 	}
-	// A `!read` replaces itself with what it names. Checked before the type switch because the
+	// A path read replaces itself with what it names. Checked before the type switch because the
 	// tag rides on the ADDRESS — an object or a string — and either would otherwise be walked
 	// as ordinary content.
-	if isRead(n) {
+	if pathKind(n) != "" {
 		if read == nil {
-			return fmt.Errorf("!read is not available here: it reads an entity at the commit that " +
-				"caused a firing, so it needs one")
+			return fmt.Errorf("!%s is not available here: it reads at the commit that caused a "+
+				"firing, so it needs one", pathKind(n))
 		}
 		v, err := read(n, root)
 		if err != nil {
