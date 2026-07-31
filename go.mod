@@ -1,6 +1,6 @@
 module github.com/signadot/verse
 
-go 1.25.1
+go 1.26
 
 require (
 	github.com/fatih/color v1.19.0

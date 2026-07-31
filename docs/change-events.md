@@ -133,7 +133,15 @@ maintains the watched slice as a document, applies each event to it
 Patch, replace for a State — opaquely, whatever ops it carries), and reads entities out
 of the *reconstructed object*, diffing against the last snapshot for per-entity
 `Set`/`Delete`. tony owns patch semantics (merge vs `!replace` vs `!delete`/`!insert`,
-field order); verse applies them and never depends on the wire shape of a diff. This is
+field order); verse applies them and never depends on the wire shape of a diff.
+
+That diff compares payloads with `ir.Node.DeepEqual`, and the choice is load-bearing rather
+than stylistic: a node carries `Parent`/`ParentIndex`/`ParentField`, which say where it sits
+in the document rather than what it holds, and a document rebuilt from a fresh read wires
+those up anew. `reflect.DeepEqual` compares them and so calls a value unequal to itself;
+ir's `DeepEqual` documents that it does not. Under `reflect` every entity in a slice diffed
+as changed after any resync, so re-establishing a watch re-emitted the whole slice and every
+trigger over it fired again for nothing. This is
 what `LogdStore.WatchSubtree` does — and now also what the root watch and the `Since`
 replay do, to level their payloads (`applyDelta`). The residual: those two still take the
 *set of changed refs* from the delta's structure (`walkEntities`) rather than from a diff of
@@ -187,6 +195,13 @@ workaround for the substrate, not work anyone wanted to do.
 A *re-established* watch does not replay: a reconnect's `State` is diffed against the
 snapshot the previous one left, so it emits only the gap. Replay is a property of the open,
 not of the `State` event.
+
+That is also what makes a watch able to heal itself. A subtree watch re-establishes after an
+interval of silence as well as after an end it was told about — because a watch can stop for
+reasons the consumer never hears (logd drops a watcher whose buffer it cannot drain), and a
+consumer that can only ever be told waits forever whenever the telling is what breaks. The
+resync costs one `State` and, since the diff is against the snapshot already held, emits
+nothing at all when the slice merely happened to be idle.
 
 `Observe` (the root watch) stays "from now" and does not replay — it is the whole-verse
 doorbell behind the debug stream, and its consumer, the dispatch loop, starts from

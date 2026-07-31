@@ -88,7 +88,7 @@ One sentence, and everything else in this document follows from it:
 Three things are worth reading off it before anything else.
 
 **A firing is about one entity.** N selected members are N firings, each with its own gate
-question, its own spawn id, its own budget. There is no firing "about a set".
+question and its own spawn id. There is no firing "about a set".
 
 **Everything is read at one snapshot.** The condition and the selection both come from the
 store as it stood at C, so a firing cannot act on a member under a condition that had already
@@ -215,7 +215,7 @@ conjures an entity called `*`.
 
 The engine starts one firing per selected entity, each about exactly one subject, and that
 identity is what every part of a firing keys on: its spawn id, its gate question, its motion
-channel, one unit of budget. A re-evaluation about a subject already firing — or already
+channel, its place in a causal chain. A re-evaluation about a subject already firing — or already
 running work it started — is not a second firing, which is what keeps a rule waiting on a
 human from asking again at every commit.
 
@@ -271,9 +271,8 @@ A selector subject advances a whole set:
     patch: { stage: shipped }
 ```
 
-Every reviewed PR advances, while CI is green. Each is its OWN firing: its own `ask` gate, its
-own budget, and — with a `spawn` — its own process tagged with that member as its subject, so
-each is its own flow.
+Every reviewed PR advances, while CI is green. Each is its OWN firing: its own `ask` gate and —
+with a `spawn` — its own process tagged with that member as its subject, so each is its own flow.
 
 One gate per member is worth saying out loud, because it used to be one for the whole set. A
 firing is about one entity, so twelve reviewed PRs are twelve decisions; presenting them as one
@@ -961,16 +960,17 @@ says so: both are asked of the store at a revision, so they have to be answerabl
 point-in-time match; temporal composition works today in a gate's `formula` and a goal's
 `doneWhen`.
 
-A CYCLE across rules is not detected. Two triggers each writing what the other selects on
-(`{stage: a} → b` beside `{stage: b} → a`) run until the runaway budget stops them, and nothing
-sees it coming: every write is a real change, so the substrate's no-op suppression never
-engages; every firing completes, so the in-flight guards never engage; and the latch check
-passes, because both rules do advance their subject out of their own selection — into each
-other's. It is decidable for literal charters; the shape of the check, and the argument that a
-*paced* cycle — one passing through a ticker — is a control loop rather than a bug, are in
-[working/firing-residual.md](working/firing-residual.md). Everything else about whether a charter
-settles is in [convergence](convergence.md), including the two rules-level ambiguities that are
-warned about rather than refused.
+A CYCLE across rules is caught at runtime, not at install. Two triggers each writing what the
+other selects on (`{stage: a} → b` beside `{stage: b} → a`) defeat every install-time
+protection — every write is a real change, so the substrate's no-op suppression never engages;
+every firing completes, so the in-flight guards never engage; and the latch check passes, because
+both rules do advance their subject out of their own selection, into each other's. What catches
+it is [the cycle throttle](cycle-throttle.md): a write made during a firing carries the causal
+depth of the chain that produced it, and a chain deeper than the installed trigger count has
+necessarily repeated a rule. A *paced* cycle — one passing through a process, the world, or a
+decision somebody answers — is a control loop rather than a bug, and never trips. Everything else
+about whether a charter settles is in [convergence](convergence.md), including the one
+rules-level ambiguity that is warned about rather than refused.
 
 A guard about **nothing existing** has no spelling. A match asks what is there, so "an entity
 exists whose payload is not X" is sayable (`!not`) and "no entity matching M exists" — *ship when

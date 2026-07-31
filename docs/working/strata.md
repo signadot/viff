@@ -4,7 +4,12 @@ Status: design note, nothing here runs. It proposes two things that only make se
 new action face (`derive`, which writes somewhere other than the subject) and a level ordering
 that says where such a write may land.
 
-## Two gaps, and they have one answer
+One of the two gaps it was written to answer has since been closed by other means — the cycle
+across rules is caught at runtime by [the cycle throttle](../cycle-throttle.md) — so what strata
+would still buy is the first gap below, plus a tighter bound on the second. The note is kept with
+its original argument, and the passages that turned on the cycle being unchecked are marked.
+
+## Two gaps, and one answer to the first
 
 **An action has exactly one write target.** `Action.Patch` goes to the condition's subject and
 nowhere else — "it has no target of its own: what an action acts on is the Condition's Subject"
@@ -12,16 +17,19 @@ nowhere else — "it has no target of its own: what an action acts on is the Con
 process and let an agent write it. Every cross-entity write in the model is therefore opaque to
 install-time analysis: an agent did it, and nothing can check what.
 
-**Nothing sees a cycle across rules.** [Convergence](../convergence.md#the-cycle-which-is-the-one-that-is-not-checked)
-names this as the one hazard every existing protection misses, and misses correctly:
-no-op suppression never engages because each write is a real change, the in-flight guards never
-engage because each firing genuinely completes, and the latch check passes because both rules do
-write a field their subject reads — into each other's selection.
-[Firing residual §1](firing-residual.md#1-the-cycle-check-and-the-clock-it-needs) proposes
-recovering it by *inferring* a graph over triggers, which is decidable for literal patches and
-best-effort through templates.
+**A cycle across rules defeats every INSTALL-time protection.**
+[Convergence](../convergence.md#the-cycle-and-how-it-is-caught) has the shape: no-op suppression
+never engages because each write is a real change, the in-flight guards never engage because each
+firing genuinely completes, and the latch check passes because both rules do write a field their
+subject reads — into each other's selection. When this note was written nothing caught it at all,
+and the proposal was to recover it by *inferring* a graph over triggers — decidable for literal
+patches, best-effort through templates.
 
-The answer to both is to let the charter's author declare an ordering, and to make the writes
+**That second gap is closed, and not this way.** The cycle throttle catches it at runtime, on
+causal depth, which is exact where the graph would have been a warning. So the answer below
+answers the FIRST gap; what it still offers the second is a tighter bound, not the detection.
+
+The answer to the first is to let the charter's author declare an ordering, and to make the writes
 that cross it checkable.
 
 ## The shape
@@ -142,20 +150,21 @@ warning rather than a proof — cannot hide an edge.
 
 ## What it does not earn
 
-The `fwd`/`back` pair from [convergence](../convergence.md#the-cycle-which-is-the-one-that-is-not-checked)
+The `fwd`/`back` pair from [convergence](../convergence.md#the-cycle-and-how-it-is-caught)
 survives intact if both rules sit in one stratum and both patch their own subject. Level
-discipline satisfied, still runs until the backstop. This is stratified Datalog's bargain:
-recursion inside a stratum is exactly what is allowed.
+discipline satisfied, and it still cycles. This is stratified Datalog's bargain: recursion inside
+a stratum is exactly what is allowed.
 
-So strata **localize** firing-residual §1 rather than replace it. The graph to search shrinks from
-the whole charter to one stratum, and the edges that were undecidable are the ones that stop
-existing.
+So strata never claimed to replace the cycle check, and what does replace it is the
+[cycle throttle](../cycle-throttle.md), which bounds a firing's causal depth by the number of
+installed triggers.
 
-What is left is answered at runtime rather than at install: [cycle throttle](cycle-throttle.md)
-bounds a firing's causal depth by the size of its stratum, which is exactly as precise as
-searching the chain for a repeated trigger. Strata are what make that bound tight — a chain
-crossing a level can never come back, so the counter resets at every crossing and the cap is
-max|stratum| rather than the whole charter.
+**What strata would still buy it is a tighter bound.** A chain that crosses a level can never come
+back — a derive strictly increases level and nothing writes downward — so the counter could reset
+at every crossing and the cap would be max|stratum| rather than the whole charter. That is the
+same well-foundedness the install checks below rest on, spent a second time. It is a tightening,
+not a prerequisite: with no strata declared there is one implicit stratum and the cap is the
+installed trigger count, which is a usable bound today.
 
 ## The three install checks
 

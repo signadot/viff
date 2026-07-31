@@ -6,43 +6,32 @@ that a charter settles in [convergence](../convergence.md). What is here is what
 name as missing, gathered in one place so the next person does not have to reconstruct why each
 was left.
 
-Nothing here is a design owed to anything else here, but two of them turn out to be the same
-piece of work, which is the reason to keep them in one file: **the cycle check and the grace
-period both want a clock**, and neither can be built without deciding what a tick is.
+Nothing here is a design owed to anything else here.
 
-## 1. The cycle check, and the clock it needs
+## 1. Time as a cause: the clock a ticker would be
 
-The gap: two rules each writing what the other selects on run until the runaway budget stops
-them, and nothing sees it coming ([convergence §the cycle](../convergence.md#the-cycle-which-is-the-one-that-is-not-checked)
-has the shape and why every existing protection misses it).
+**The cycle check that used to head this list is built**, and not as the graph proposed here. It
+runs at runtime, on causal depth: every write an engine makes during a firing carries how far it
+stands from the external write that started the chain, and a chain deeper than the installed
+trigger count has necessarily repeated a rule. See [the cycle throttle](../cycle-throttle.md).
 
-**The check.** Build a graph over triggers where T₁ → T₂ when applying T₁'s patch to a state
-satisfying T₁'s subject can produce a state satisfying T₂'s. A cycle is a possible loop. A cycle
-of length ≥ 2 over constant patches always is — if the two wrote the same value there would be
-no second firing. A SELF-edge is only a loop when the patch is templated; a constant one is inert
-on its second application, which is the ordinary converging rule. The residual, as always, is
-templates and operators: a patch whose values are computed can satisfy a predicate the key-level
-check cannot see through. So the graph is a warning, not a proof — the same standing as the
-[sampling](../convergence.md#a-narrow-on-samples-a-vacuous-on-reconciles) advice.
+What that settles is worth stating, because it decides the shape of what is left. The rule the
+graph was reaching for — *a cycle is not wrong; an UNPACED cycle is*, a combinational loop being
+an error where a cycle through a register is a state machine — survives intact and is what the
+throttle implements. But pacing turns out to be a property of how a chain RUNS, not of how it is
+written: a chain breaks wherever real time enters, through a spawned process, through the world
+via the mirror, through a decision somebody answers. So the check needed neither the graph nor
+the ticker, and a static analysis over templated patches — always a warning rather than a proof —
+is not worth building now that a dynamic one is exact.
 
-**A cycle is not wrong; an UNPACED cycle is.** This has to be settled before the check hardens
-into a refusal. A cycle is how you write a control loop — poll, compare, correct, poll again —
-and a charter that could not express one would be missing something. What makes the pair above
-pathological is not that it cycles but that it cycles *at the speed of the store*, which is to
-say at no declared rate at all.
+**A ticker is still wanted, for the other two faces of time.** "Time as a cause" was one question
+with three: a cycle check, a grace period, and a temporal condition. The first is answered; the
+other two are not, and both want the same missing thing.
 
-The rule that distinguishes them is the one synchronous digital design already uses: a
-combinational loop is an error, and a cycle through a register is a state machine. The register
-here is a TICKER — a cause that advances on a clock rather than on the last write. Then the check
-is not "no cycles" but **every cycle passes through a ticker**, decidable on the same graph,
-permitting the useful shape while still refusing the runaway. It buys more than permission: a
-paced cycle has a rate an operator can read off the charter, and a cost bounded by (rules × rate)
-rather than by how fast the store accepts writes.
-
-**The wrinkle, and it is not visible until you try to write a ticker: a ticker needs to say
-"changed", and `on` can only say "became true".** A monotonic counter rises once and stays risen;
-one entity per tick leaves "a tick exists" true forever. So a ticker has to produce a rise AND a
-fall, which means either
+The wrinkle, not visible until you try to write a ticker: **a ticker needs to say "changed", and
+`on` can only say "became true".** A monotonic counter rises once and stays risen; one entity per
+tick leaves "a tick exists" true forever. So a ticker has to produce a rise AND a fall, which
+means either
 
 - the tick is a fact that gets CONSUMED — it appears, the rule fires, it is removed — which is
   the [vanishing marker](../trigger-model.md#lifecycle-how-an-entity-leaves) doing double duty,
@@ -50,32 +39,19 @@ fall, which means either
 - `on` grows a form meaning "this changed" rather than "this became true", which is precisely
   the change-edge the re-modelling removed, re-admitted in a narrow place.
 
-The first is worth trying before the second. The choice belongs to whoever builds the ticker, and
-it is easier to make before there is a cycle check to argue with.
-
-**The ticker has a second customer** — the reaper's grace period, §5 below — so whoever builds it
-should read that first.
+The first is worth trying before the second. Its customer is the reaper's grace period, §4 below.
 
 Adjacent, and probably the same work: a temporal `on` or `when` is refused at install today.
 `ReqDeadline` exists as a formula leaf but `Requirement.eval` falls through to `default` and
 BLOCKS (`formula.go`), so a deadline in a condition never holds; it is resolved by the motion
-monitor, in a gate, which is a different path entirely. "Time as a cause" is one question with
-three faces: a ticker, a grace period, and a temporal condition.
+monitor, in a gate, which is a different path entirely.
 
-## 2. The runaway backstop
+## 2. The read per commit: carry the document, do not re-read it
 
-Small, decided, undone. `maxFires` defaults to UNBOUNDED and nothing in `versed` sets it, so the
-protection that stops a cycle in a test is not on in production. And it is one counter for the
-whole engine rather than per trigger, so one looping rule wedges the verse rather than the
-charter that is misbehaving. Both want fixing whatever happens to §1, and neither is a design
-question.
-
-## 3. The read per commit: carry the document, do not re-read it
-
-Measured numbers and why they are what they are:
+Why it costs what it does:
 [convergence §the cost of asking](../convergence.md#the-cost-of-asking-a-read-per-commit). A
-snapshot read costs the log replay to that commit (~73 ms on a 300-commit verse), the path asked
-for makes no difference, and the commit skip is what keeps this affordable in practice.
+snapshot read costs the log replay to that commit, the path asked for makes no difference, and
+the commit skip is what keeps this affordable in practice.
 
 The fix is to carry the rolled-forward document rather than re-read it: a floor plus a bounded
 window of deltas, advanced as commits are consumed in order. Then `store@C` is the last snapshot
@@ -99,13 +75,19 @@ whole-verse read per subject, which is why the looseness is documented rather th
 a per-subtree roll-forward will want. If this never lands, `within` is a candidate for removal,
 since measurement says bounding the path is all it does.
 
-## 4. Two triggers, one field
+## 3. Two triggers, one field
 
-Deliberately not built, and the reason is worth keeping: it is subsumed by §1's graph, and
-building the weaker check first means building it twice. The shape and its decidability are in
+Still not built, and the reason has changed. It used to be that the cycle graph would subsume it,
+so building the weaker check first meant building it twice. The cycle check went the other way —
+dynamic, on causal depth — and does NOT subsume this: two rules writing one field with different
+values settle wherever the last write lands, without any chain growing, so nothing trips. It is
+now an independent piece of work.
+
+It is also the one source with no principled fix once detected: a charter that means two things
+is one only its author can settle. The shape and its decidability are in
 [convergence §two triggers, one field](../convergence.md#two-triggers-one-field).
 
-## 5. What `verse entity rm` should mean
+## 4. What `verse entity rm` should mean
 
 The lifecycle mechanism runs — intent written before removal, a vanishing entity is not a
 subject, the reaper is an ordinary trigger
@@ -173,7 +155,7 @@ That needs `Get` (or a sibling) to stop collapsing the two, which is store work,
 doing only if answer (2) wins. Under (1) nothing hard-deletes and the ordered case is the only
 case.
 
-## 6. Does the grammar grow ∄?
+## 5. Does the grammar grow ∄?
 
 The model is existence-positive throughout: a match asks what is there, so *"no entity matching
 M exists"* — "ship when there is no open blocker" — has no spelling. A leaf's `!not` negates a
@@ -184,7 +166,7 @@ The same discipline answers a guard about nothing existing — a count, a summar
 is a discipline rather than a grammar, and it is the kind of thing better decided than
 discovered at the first guard that wants ∄.
 
-## 7. Bulk gate answers
+## 6. Bulk gate answers
 
 A firing is about one entity, so fifty reviewed PRs are fifty questions where a summary used to
 stand in for the set. That is the honest arity, and it is the right change; it costs an operator

@@ -6,21 +6,17 @@ the dispatcher decides when a rule stops, so the charter has to. This note is th
 it does — what makes a firing end, what makes the settled store a function of (charter, inputs)
 rather than of how firings interleave, and what per-commit evaluation costs to run.
 
-Two of the sources of ambiguity below are checked at install, one is warned about, and two are
-neither. That is the honest state, and the unchecked ones are named rather than hidden.
+Of the sources of ambiguity below, two are checked at install, one is warned about, one is caught
+at runtime, and one is neither. That is the honest state, and the unchecked one is named rather
+than hidden.
 
 ## The cost of asking: a read per commit
 
 First the thing that decides whether any of the rest is affordable.
 
-`Engine.evaluate` takes a snapshot per commit, and a snapshot is a store read. Measured on a
-300-commit verse against a locally-launched logd:
-
-| what is read | cost |
-| --- | --- |
-| the whole verse | ~73 ms |
-| the 300-entity slice the commits landed in | ~74 ms |
-| a ONE-entity slice the commits never touched | ~73 ms |
+`Engine.evaluate` takes a snapshot per commit, and a snapshot is a store read. Measured against a
+locally-launched logd, reading the whole verse, reading the one slice the commits landed in, and
+reading a slice they never touched all cost the SAME.
 
 The path makes no difference, because the cost is not the document — it is replaying the log to
 that commit. `AsOf(rev/2)` costs half of `AsOf(head)` on the same store, which is the tell. A
@@ -28,11 +24,13 @@ CURRENT read costs the same as a historical one, so this is not about asking for
 `within` argument on `AsOf` bounds what crosses the wire and, measured, does nothing else; the
 comment on it says so rather than claiming a speedup it does not deliver.
 
-None of that is unreasonable for what it is: four layers (client, server, docd, logd), an index
-lookup and a disk read, with goroutine synchronisation on two of the links, and no read cache.
-It is in the same order as a loopback SQL query. And it is BOUNDED — logd snapshots every
-`MaxCommits` (default 1000, configurable at launch), so a read costs distance-from-snapshot
-rather than distance-from-genesis, and the curve is a sawtooth rather than a ramp.
+Absolute figures are deliberately not recorded: they belong to the substrate and move with it —
+logd's throughput is actively worked on — and a doc asserting last month's milliseconds would be
+read as a promise. What holds across those changes is the shape. A read is four layers (client,
+server, docd, logd), an index lookup and a disk read, in the same order as a loopback SQL query.
+And it is BOUNDED — logd snapshots every `MaxCommits` (default 1000, configurable at launch), so
+a read costs distance-from-snapshot rather than distance-from-genesis, and the curve is a sawtooth
+rather than a ramp.
 
 **What keeps this affordable in practice is not asking.** A trigger is skipped at a commit that
 touched none of the subtrees it reads, and the skip is exact rather than a heuristic — see
@@ -64,7 +62,7 @@ the subject ref is settled before any gate, so however long a human takes over a
 decision and the action are about the same entity — but the value interpolated into a patch is
 current rather than as-of-C. Reading it from the snapshot instead would mean holding the
 evaluated document through the firing, which is the same work as
-[the roll-forward](working/firing-residual.md#3-the-read-per-commit-carry-the-document-do-not-re-read-it)
+[the roll-forward](working/firing-residual.md#2-the-read-per-commit-carry-the-document-do-not-re-read-it)
 and tightens for free with it.
 
 ## What ends a firing
@@ -131,10 +129,10 @@ of the two sentences was written and how to get the other (drop the `on`, keep t
 a `when`). It is a warning rather than an error because both sentences are legitimate; it is
 decidable because `Formula.Subtrees` already computes those sets.
 
-## The cycle, which is the one that is not checked
+## The cycle, and how it is caught
 
 A single rule failing to settle is easy to spot. The reachable failure is a CYCLE ACROSS RULES,
-and nothing in the model sees it:
+which every protection described above misses:
 
 ```tony
 - name: fwd
@@ -149,37 +147,25 @@ and nothing in the model sees it:
     patch: { stage: a }
 ```
 
-Each writes exactly what the other selects on. Measured, with the runaway backstop set to 40:
-the engine fires 40 times and stops there, having written 40-odd commits. Without a budget it
-does not stop.
+Each writes exactly what the other selects on, and each protection above misses it correctly. The
+substrate's no-op suppression never engages, because each write is a REAL change. `claimFlight`
+and `working` never engage, because each firing genuinely completes. And the latch check passes,
+because both rules DO write a field their subject reads — it asks whether a rule advances its
+subject out of its own selection, and both do, into each other's.
 
-**This is now checked, at runtime, and the backstop it describes is gone.** The charter above
-stops after three firings and names both rules in the log. What follows in this section is the
-reasoning that led there and is kept for it; where it says nothing sees the cycle, read *nothing
-saw it*. See [working/cycle-throttle.md](working/cycle-throttle.md) for the mechanism —
-every write an engine makes during a firing carries the causal depth of the chain that produced
-it, and a chain deeper than the installed trigger count has necessarily repeated a rule.
+It is caught at RUNTIME, by [the cycle throttle](cycle-throttle.md): every write an engine makes
+during a firing carries the causal depth of the chain that produced it, and a chain deeper than
+the installed trigger count has necessarily repeated a rule. The charter above stops after three
+firings and names both rules in the log.
 
-Every protection above misses it, and misses it correctly. The substrate's no-op suppression
-never engages, because each write is a REAL change. `claimFlight` and `working` never engage,
-because each firing genuinely completes. And the latch check passes, because both rules DO write
-a field their subject reads — it asks whether a rule advances its subject out of its own
-selection, and both do, into each other's.
-
-Two things about that backstop followed, and both were true of it: `maxFires` defaulted to
-UNBOUNDED and nothing in `versed` set it, so the protection that stopped the measurement above
-was not on in production; and it was one counter for the whole engine rather than per trigger, so
-a single looping rule would exhaust the budget for every other rule as well. **It has since been
-removed**, for a third reason the first two only hint at: it bounded an engine's lifetime rather
-than any loop, so once a *paced* cycle became a legitimate thing to write, any finite budget was a
-timer on the charter's death rather than a safety limit.
-
-That a paced cycle — one passing through a clock, a process, or a decision rather than through
-the last write — is a control loop rather than a bug is exactly why the check is not "no cycles",
-and it is why the check is dynamic rather than the install-time graph
-[working/firing-residual.md](working/firing-residual.md) proposed: pacing is a property of how a
-chain runs, not of how it is written. A cycle through a gate never trips, however many laps it
-runs; an unpaced one stops after the trigger count and is reported by name.
+The check is dynamic rather than an install-time graph over the charter, and that is the whole
+reason it can tell a runaway from a control loop instead of refusing both. A cycle is how you
+write a control loop; what makes the pair above pathological is not that it cycles but that it
+cycles at the speed of the store. Pacing is a property of how a chain RUNS — it breaks wherever
+real time enters, through a spawned process, through the world, through a decision somebody
+answers — not of how the charter is written, so no static analysis of the rules could distinguish
+them. A cycle through a gate never trips, however many laps it runs; an unpaced one stops after
+the trigger count and is reported by name.
 
 ## Two triggers, one field
 
@@ -189,8 +175,8 @@ different values, settle wherever the last write lands. Not introduced by per-co
 
 It is decidable for literal patches (intersecting selections on system/kind plus comparable
 predicates, then same-path-different-value) and undecidable through templates, so it could be a
-warning at install. It is not built, deliberately: it is subsumed by the cycle check above, and
-building the weaker one first would mean building it twice.
+warning at install. It is not built. The cycle throttle does not subsume it: two rules disagreeing
+about a field settle wherever the last write lands, without any chain growing, so nothing trips.
 
 This is the one source with no principled fix even once detected. Two rules disagreeing about a
 field is a charter that means two things, and only its author can say which.
@@ -203,8 +189,6 @@ of how firings interleave — except in two named places: a cycle across rules, 
 settle at all, and two rules writing one field, which settles arbitrarily. Neither is a property
 of the model; both are properties of a charter, which is where they belong.
 
-Of the two, the cycle is now **detected and stopped** — at runtime, by causal depth rather than
-by the install-time analysis this section once expected, which is what lets it tell a runaway
-from a control loop instead of refusing both. Two rules writing one field remains undetected and
-has no principled fix even once found: a charter that means two things is one only its author can
-settle.
+Of the two, the cycle is **detected and stopped**, by causal depth at runtime. Two rules writing
+one field is undetected and has no principled fix even once found: a charter that means two things
+is one only its author can settle.
