@@ -49,6 +49,20 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 			return err
 		}
 	}
+	// LEVEL DISCIPLINE: a subject inside its stratum's pattern, a derive inside some strictly
+	// higher one's. Syntactic like the rest, and neither reads the store.
+	//
+	// Before the latch check for the reason that check gives for being last — a charter wrong in
+	// some other way should be told about THAT — and a rule acting outside the level it declared
+	// is another way, and a more specific one.
+	//
+	// The verdict is held rather than acted on, because a rule whose stratum is not installed yet
+	// is not refused (see below) and must still face every check that does not depend on the
+	// ordering.
+	ok, levelErr := e.checkLevels(t)
+	if levelErr != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, levelErr)
+	}
 	// LAST, and fatal. A charter that cannot stop spawning is refused rather than logged: it
 	// is not a style question but a rule with no end state, and the operator installing it is
 	// the one person positioned to fix it.
@@ -59,17 +73,42 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := checkLatch(t.Condition, t.Action); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	// A rule naming a stratum that is not installed yet is HELD rather than refused: a rule and
+	// a stratum are separate entities, either can arrive first, and making that order matter is
+	// exactly what one-entity-per-rule exists to avoid. It is written down and installed when
+	// its stratum arrives — having passed everything above, so holding defers the ORDERING
+	// question and nothing else.
+	if !ok {
+		// The name is unique across the WHOLE charter, held rules included — otherwise two
+		// installs of one name would both be waiting, and whichever stratum arrived first
+		// would decide which rule the name meant.
+		e.trigMu.Lock()
+		if err := e.nameTaken(t.Name); err != nil {
+			e.trigMu.Unlock()
+			return err
+		}
+		e.pending = append(e.pending, t)
+		e.trigMu.Unlock()
+		if durable {
+			if err := e.persist(t); err != nil {
+				e.unhold(t.Name)
+				return err
+			}
+		}
+		e.logger.Warn("rule held: it names a stratum that is not installed",
+			"trigger", t.Name, "stratum", t.Stratum,
+			"note", "it is written down and will install when the stratum arrives; it does not fire until then")
+		return nil
+	}
 	// Advisory checks: a charter can mean what it says and still not mean what its author
 	// intended. These name it and install it anyway.
 	for _, w := range advise(t) {
 		e.logger.Warn("charter", "trigger", t.Name, "note", w)
 	}
 	e.trigMu.Lock()
-	for _, existing := range e.triggers {
-		if existing.Name == t.Name {
-			e.trigMu.Unlock()
-			return fmt.Errorf("trigger %q already exists (remove it first)", t.Name)
-		}
+	if err := e.nameTaken(t.Name); err != nil {
+		e.trigMu.Unlock()
+		return err
 	}
 	e.triggers = append(e.triggers, t)
 	e.trigMu.Unlock()
@@ -122,6 +161,19 @@ func (e *Engine) RemoveTrigger(name string) bool {
 		e.forgetShapes(name)
 		e.stopWatchers(name)
 	}
+	// A HELD rule is removable too, and by the same name: it was written down, so leaving it
+	// behind would install it the moment its stratum arrived — a rule coming back to life
+	// after an operator removed it, which is the failure deleting the charter entity exists
+	// to prevent, one step earlier.
+	var np []Trigger
+	for _, t := range e.pending {
+		if t.Name == name {
+			found = true
+			continue
+		}
+		np = append(np, t)
+	}
+	e.pending = np
 	e.trigMu.Unlock()
 	if found {
 		e.forget(name) // the durable copy — off the charter lock, since it is a store write
@@ -185,6 +237,17 @@ func spawnID(chain string, ref entity.Ref) string {
 	_, _ = h.Write([]byte(s))
 	return fmt.Sprintf("%s%s%s%s%08x", chain, ChainSep, safe, hashSep, h.Sum32())
 }
+
+// deriveID is the id of the entity a firing derives: a function of (rule, subject) and nothing
+// else, which is what makes a re-fire idempotent and what retires "two triggers, one field" for
+// everything derived — rule names are unique across the charter and the id is injective in the
+// subject, so no two rules and no two subjects can address the same derived entity.
+//
+// It is spawnID's rule, deliberately: a derived entity and a spawned process are the same object
+// in different clothes — a thing brought into being by one firing, about exactly one subject —
+// and giving them two id schemes would be two answers to one question. They cannot collide: a
+// process id addresses a process, a derived id addresses an entity at <system>:<kind>.
+func deriveID(chain string, ref entity.Ref) string { return spawnID(chain, ref) }
 
 // chainOf splits a spawn id back into its chain and the (safeSeg'd) subject it is about.
 // Not the inverse of spawnID — safeSeg is lossy and the hash is not a ref — but the chain
@@ -318,6 +381,12 @@ func desugarPatches(a *Action) {
 	}
 	if a.Patch != nil {
 		a.Patch = desugar(a.Patch)
+	}
+	// A derive is a patch on the derived entity, so it carries the same operators and needs
+	// the same desugaring — otherwise `{"tmp": {"delete": null}}` in a .json charter would
+	// reach the store as a literal object where the .tony spelling wrote a deletion.
+	if a.Derive != nil {
+		a.Derive = desugar(a.Derive)
 	}
 	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
 		desugarPatches(h)

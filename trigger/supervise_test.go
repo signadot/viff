@@ -198,7 +198,7 @@ func docCharter(t *testing.T, path, named string) []Trigger {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	for _, blk := range charterBlocks(string(src)) {
-		trigs, ok, timedOut := parseWithin(blk.text, 5*time.Second)
+		trigs, _, ok, timedOut := parseWithin(blk.text, 5*time.Second)
 		if timedOut {
 			t.Fatalf("%s:%d: parsing this block does not terminate", path, blk.line)
 		}

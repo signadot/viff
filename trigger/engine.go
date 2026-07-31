@@ -147,6 +147,17 @@ type Engine struct {
 	// added/removed at runtime (over the wire) while the loop dispatches.
 	trigMu sync.Mutex
 
+	// strata is the declared level ordering — few, changing rarely, where rules are many and
+	// change often. Guarded by trigMu with the charter it orders, because every level check
+	// reads both and a check split across two locks would be answering about two different
+	// charters. See stratum.go.
+	strata []Stratum
+	// pending holds rules whose `stratum:` names one that is not installed yet: written down,
+	// not firing, waiting. A rule and a stratum are separate entities and either can be
+	// installed first, so refusing here would make the ORDER of two independent writes matter
+	// — which is the property one-entity-per-rule exists to avoid. Promoted by addStratum.
+	pending []Trigger
+
 	// goals: named goal aggregates, each owning a bundle of triggers + a done/fail
 	// lifecycle monitor (see goal.go). Guarded independently of the charter.
 	goalsMu sync.Mutex

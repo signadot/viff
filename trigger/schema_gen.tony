@@ -4,6 +4,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 - launch: github.com/signadot/verse/launch
 define:
+  derive: .[tony-base:ir]
   onCancelled: .[nullable(verse-action)]
   onDone: .[nullable(verse-action)]
   onFailed: .[nullable(verse-action)]
@@ -87,6 +88,7 @@ define:
   condition: !verse-condition null
   gates: .[array(verse-trigger-gate)]
   name: .[string]
+  stratum: .[string]
 signature:
   name: verse-trigger
 ---
@@ -100,3 +102,12 @@ define:
   triggers: .[array(verse-trigger)]
 signature:
   name: verse-goal
+---
+context:
+- tony-format/context
+define:
+  level: .[int]
+  match: .[array(object)]
+  name: .[string]
+signature:
+  name: verse-stratum

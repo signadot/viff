@@ -456,6 +456,11 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Name
 	irMap["name"] = ir.FromString(string(s.Name))
 
+	// Field: Stratum
+	if s.Stratum != "" {
+		irMap["stratum"] = ir.FromString(string(s.Stratum))
+	}
+
 	// Field: Condition
 	node, err = s.Condition.ToTonyIR(opts...)
 	if err != nil {
@@ -522,6 +527,12 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
 			s.Name = string(fieldNodeUnwrapped.String)
+		case "stratum":
+			// Field: Stratum
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "stratum", fieldNodeUnwrapped.Type)
+			}
+			s.Stratum = string(fieldNodeUnwrapped.String)
 		case "condition":
 			// Field: Condition
 			if err := s.Condition.FromTonyIR(fieldNode, opts...); err != nil {
@@ -702,6 +713,11 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["patch"] = s.Patch
 	}
 
+	// Field: Derive (optional)
+	if s.Derive != nil {
+		irMap["derive"] = s.Derive
+	}
+
 	// Field: Spawn (optional)
 	if s.Spawn != nil {
 		node, err = s.Spawn.ToTonyIR(opts...)
@@ -798,6 +814,12 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Patch = fieldNode
 			} else {
 				s.Patch = fieldNodeUnwrapped
+			}
+		case "derive":
+			if gomap.GetUnmapComments(opts...) {
+				s.Derive = fieldNode
+			} else {
+				s.Derive = fieldNodeUnwrapped
 			}
 		case "spawn":
 			// Field: Spawn

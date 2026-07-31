@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -119,43 +117,44 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	// A charter file may hold one trigger, a list of them, or several documents separated
-	// by `---`. Shape comes from the parsed document, not from a leading character: tony
-	// writes a list either as `[a, b]` or as a block `- a`, so the old "starts with [" test
-	// would read a perfectly good block list as a single trigger.
-	docs, err := codec.ParseNodes(data, srcFmt)
+	// by `---` — and, since rules declare the stratum they live in, the strata themselves.
+	defs, err := charterDefs(data, srcFmt)
 	if err != nil {
 		return fmt.Errorf("trigger add: %w", err)
-	}
-	var defs []*ir.Node
-	for _, doc := range docs {
-		doc = codec.Unwrap(doc)
-		if doc == nil || doc.Type == ir.NullType {
-			continue // a trailing `---`, or an empty document
-		}
-		if doc.Type == ir.ArrayType {
-			for _, elem := range doc.Values {
-				defs = append(defs, elem)
-			}
-			continue
-		}
-		defs = append(defs, doc)
 	}
 	if len(defs) == 0 {
 		return fmt.Errorf("trigger add: no trigger found in the input")
 	}
 
+	// STRATA FIRST, whatever order the file put them in. A rule naming a stratum that is not
+	// installed yet is HELD rather than refused — which is right, because two independent
+	// installs must not depend on their order — but a file is not two independent installs. It
+	// is one document whose author wrote both, and silently leaving half of it dormant because
+	// of how it was laid out would be the tool making the author responsible for something it
+	// knows perfectly well.
+	var strata, rules []*ir.Node
 	for _, def := range defs {
-		resp, err := httpPostNode("/triggers", def)
-		if err != nil {
-			return fmt.Errorf("trigger add: %w", err)
+		switch defKind(def) {
+		case defStratum:
+			strata = append(strata, def)
+		case defTrigger:
+			rules = append(rules, def)
+		default:
+			return fmt.Errorf("trigger add: a definition is %s: a trigger has a `condition`, "+
+				"a stratum has a `level` and a `match`", defUnknown)
 		}
-		if resp.StatusCode != http.StatusCreated {
-			msg, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return fmt.Errorf("trigger add: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
-		}
-		resp.Body.Close()
 	}
-	fmt.Fprintf(cc.Out, "installed %d trigger(s)\n", len(defs))
+	if err := postDefs(cc, "/strata", strata); err != nil {
+		return fmt.Errorf("trigger add: installing strata: %w", err)
+	}
+	if err := postDefs(cc, "/triggers", rules); err != nil {
+		return fmt.Errorf("trigger add: %w", err)
+	}
+	switch {
+	case len(strata) == 0:
+		fmt.Fprintf(cc.Out, "installed %d trigger(s)\n", len(rules))
+	default:
+		fmt.Fprintf(cc.Out, "installed %d stratum(a) and %d trigger(s)\n", len(strata), len(rules))
+	}
 	return nil
 }

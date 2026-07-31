@@ -31,7 +31,12 @@ import (
 //
 //tony:schemagen=verse-trigger,notag
 type Trigger struct {
-	Name      string    `tony:"field=name"`
+	Name string `tony:"field=name"`
+	// Stratum names the level this rule lives in — a trigger:strata:<name> entity carrying
+	// the pattern its subject must fall inside, and the level a derive must climb above.
+	// Empty is the IMPLICIT stratum: unordered, checked against nothing, which is exactly
+	// what every rule written before strata existed means. See stratum.go.
+	Stratum   string    `tony:"field=stratum,omitzero"`
 	Condition Condition `tony:"field=condition"`
 	Gates     []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
 	Action    Action    `tony:"field=action"`
@@ -228,7 +233,21 @@ type Action struct {
 	// every schemagen'd field had to say *ir.Node and the domain vocabulary was absent from
 	// exactly the declarations a reader of the schema reads. Fixed, so the name is back.
 	Patch entity.Payload `tony:"field=patch,omitzero"`
-	Spawn *launch.Spec   `tony:"field=spawn,omitzero"`
+
+	// Derive writes an entity that is NOT the subject — the one thing a patch cannot do, and
+	// the reason the level ordering exists. It is addressed <system>.<kind>, exactly two
+	// levels, and everything below is payload; the derived entity's id is the engine's (a
+	// function of rule and subject), as a spawn's is, so a re-fire is idempotent and no two
+	// rules can ever address the same derived entity.
+	//
+	// Its content is LITERAL — no $references, refused at install. That is what makes the
+	// level check a static match of a document against a pattern rather than an analysis of
+	// what a template might produce, and what makes a rule reading a HIGHER level inert: the
+	// same bytes at the same address is a no-op, which the store already ends. See
+	// stratum.go and docs/working/strata.md.
+	Derive entity.Payload `tony:"field=derive,omitzero"`
+
+	Spawn *launch.Spec `tony:"field=spawn,omitzero"`
 
 	// Seq runs its elements IN ORDER, each starting when the previous one completes. It is
 	// the only construct the model needed for sequencing, because parallelism already has
@@ -296,6 +315,12 @@ func (a *Action) hasHooks() bool {
 // hook needs a process to complete, so any onX requires a spawn; each hook is itself an action
 // and is validated recursively.
 func (a Action) validate() error {
+	// The derive's own shape and its literal-content rule. Checked here so it runs over every
+	// action in the tree — validate recurses into a sequence's elements and a hook's action —
+	// while WHERE a derive may land is checked once per rule, against the strata (stratum.go).
+	if err := a.validateDerive(); err != nil {
+		return err
+	}
 	// A hook needs something that can COMPLETE. That used to mean a spawn; a sequence
 	// completes too, when its last element does.
 	if a.hasHooks() && a.Spawn == nil && len(a.Seq) == 0 {
@@ -432,6 +457,30 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 			// a state the trigger FAILED to establish is worse than no process at all, and it
 			// would be the harder failure to read afterwards.
 			e.tracef("trigger %s: patch on %s failed (%v); not spawning", chain, subj, err)
+			return nil, err
+		}
+	}
+	// DERIVATIONS, after the subject's own write and before the spawn — a derive is state, and
+	// a process started about a state the trigger failed to establish is the same failure the
+	// patch above already refuses to create.
+	//
+	// No expansion: the content is literal, checked at install (validateDerive). What the engine
+	// adds is the linkage — which subject this derivation is about — on the precedent the spawn
+	// below sets for its own subject.
+	for _, d := range a.derives() {
+		ref := entity.Ref{System: d.System, Kind: d.Kind, ID: deriveID(chainID(chain), subj)}
+		payload, err := deriveLinkage(d.Payload, chain, subj)
+		if err != nil {
+			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
+			return nil, err
+		}
+		// ev.Rev as the parent, exactly as the subject patch above: the derived entity is what
+		// wakes the higher stratum's rule, so this is where a cascade's causal chain crosses a
+		// level. Losing it would not loosen the throttle's bound — a chain never returns to a
+		// stratum it has left, so a per-segment count still trips — but it would truncate the
+		// report, which names the rules that looped by walking back parents (causal.go).
+		if err := e.patchEntity(chain, ev.Rev, ref, payload); err != nil {
+			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err
 		}
 	}

@@ -86,3 +86,22 @@ define:
   subject: !verse-match null
 signature:
   name: verse-condition
+---
+# trigger.Stratum — one level of the declared ordering. Two of its three fields codegen gets
+# right; `match` is the correction. It is a UNION of match patterns, written bare when there
+# is one and as a list when there are several, so the wire form is either a match or an array
+# of them. codegen saw the Go slice and said `.[array(object)]`, which describes neither the
+# bare form nor the address-string spelling a match may itself take.
+#
+# `level` orders and `name` addresses: the entity is trigger:strata:<name>, so two strata
+# cannot share a name by construction, and sharing a LEVEL is refused at install because the
+# number is the whole ordering.
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  name: .[string]
+  level: .[int]
+  match: .[tony-base:ir]
+signature:
+  name: verse-stratum

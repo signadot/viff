@@ -509,6 +509,13 @@ func (s *Server) Start(ctx context.Context) {
 	// is created on demand (verse connect) and a scoped store reads baseline layered
 	// underneath, so restoring one means enumerating scopes and reading only the scope's own
 	// layer — the same gap scoped resume has (see reconcileClaims).
+	// The ORDERING first: a rule names the stratum it lives in, and one restored before its
+	// stratum is held rather than installed — correct, and it would then only start firing when
+	// something happened to touch the stratum again. Loading strata first makes the restart what
+	// it should be, an install over a verse that has moved on.
+	if err := s.Eng.LoadStrata(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: strata: %v\n", err)
+	}
 	if err := s.Eng.LoadCharter(); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
 	}
@@ -538,6 +545,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /flow/tree", s.flowTree, "", list("verse-flow-tree"))
 	rt.handle("GET /triggers", s.listTriggers, "", list("verse-trigger"))
 	rt.handle("GET /triggers/{name}", s.getTrigger, "", one("verse-trigger"))
+	rt.handle("GET /strata", s.listStrata, "", list("verse-stratum"))
+	rt.handle("GET /strata/{name}", s.getStratum, "", one("verse-stratum"))
 	rt.handle("GET /goals", s.listGoals, "", list("verse-goal"))
 	// the API describing itself: the route table, and the schema its entries name
 	rt.handle("GET /api", s.serveAPI, "", one("verse-routes"))
@@ -548,6 +557,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
 	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", nothing)
 	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", nothing)
+	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
+	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
 	rt.handle("POST /goals", s.addGoal, "verse-goal", nothing)
 	rt.handle("DELETE /goals/{name}", s.removeGoal, "", nothing)
 	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", one("verse-steered"))
@@ -1473,6 +1484,80 @@ func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── strata: the declared level ordering the charter is checked against ────────────
+
+// listStrata returns the installed strata, ordered by level.
+func (s *Server) listStrata(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		writeOut(w, r, http.StatusOK, []trigger.Stratum{})
+		return
+	}
+	writeOut(w, r, http.StatusOK, eng.Strata())
+}
+
+func (s *Server) getStratum(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		http.NotFound(w, r)
+		return
+	}
+	st, ok := eng.Stratum(r.PathValue("name"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeOut(w, r, http.StatusOK, st)
+}
+
+// addStratum installs one stratum. Its refusals — a name already taken, a LEVEL already taken,
+// a pattern overlapping another stratum's — are all 400s: each is a property of the charter the
+// client sent, and each is fixable by sending a different one.
+func (s *Server) addStratum(w http.ResponseWriter, r *http.Request) {
+	var st trigger.Stratum
+	if err := codec.Read(r, &st); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	eng := s.Eng
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		if s.ctx == nil {
+			http.Error(w, "engine not started", http.StatusServiceUnavailable)
+			return
+		}
+		eng = s.scopeEngine(scope)
+	}
+	if err := eng.AddStratum(st); err != nil {
+		code := http.StatusBadRequest
+		if errors.Is(err, trigger.ErrCharter) {
+			code = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), code)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+// removeStratum removes one. A stratum still holding rules is a CONFLICT rather than a 404 or a
+// bad request: the request names something real and is well formed, and what refuses it is the
+// state of the charter — which the client can fix by removing those rules.
+func (s *Server) removeStratum(w http.ResponseWriter, r *http.Request) {
+	eng := s.engFor(r.URL.Query().Get("scope"))
+	if eng == nil {
+		http.NotFound(w, r)
+		return
+	}
+	err := eng.RemoveStratum(r.PathValue("name"))
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, trigger.ErrNoStratum):
+		http.NotFound(w, r)
+	default:
+		http.Error(w, err.Error(), http.StatusConflict)
+	}
 }
 
 // ── goals: an owning aggregate (owned triggers + done/fail latches + status) ──────

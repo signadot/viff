@@ -35,6 +35,7 @@ define:
   goals: .[array(verse-goal)]
   processes: .[array(verse-instance)]
   status: .[verse-status]
+  strata: .[array(verse-stratum)]
   triggers: .[array(verse-trigger)]
 signature:
   name: root

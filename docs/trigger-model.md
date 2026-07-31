@@ -451,6 +451,12 @@ triggers writing under one key do not clobber each other, and the
 apply. `patch: { tmp: !delete null }` removes a key, which is something no amount of setting
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
+`derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It is
+addressed `<system>.<kind>`, its content is literal (no `$references`), and the derived entity's
+id is the engine's, a function of (rule, subject). It is only installable inside a declared
+level ordering, where it must land strictly above the rule that writes it: see
+[strata](strata.md).
+
 `spawn` launches a process from a `launch.Spec` — or, instead of a fixed `driver`, a governed
 `provider` selection of the doer. The spawned process is tagged with the subject, which is
 what makes it part of that subject's flow.
@@ -959,6 +965,10 @@ A temporal `on` or `when` is not evaluated yet, and is rejected at install with 
 says so: both are asked of the store at a revision, so they have to be answerable at one. Use a
 point-in-time match; temporal composition works today in a gate's `formula` and a goal's
 `doneWhen`.
+
+A rule may declare the STRATUM it lives in, and then its subject must fall inside that stratum's
+pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer:
+a charter with no `stratum:` anywhere behaves exactly as it always has. See [strata](strata.md).
 
 A CYCLE across rules is caught at runtime, not at install. Two triggers each writing what the
 other selects on (`{stage: a} → b` beside `{stage: b} → a`) defeat every install-time
