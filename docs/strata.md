@@ -173,10 +173,12 @@ $ verse stratum remove sdlc    # refused while rules live there
 
 ## Corners
 
-**A misspelled `stratum:` is silent.** An unknown field on a rule is dropped at decode, so
-`startum: sdlc` installs into the implicit stratum and reports success — the one field that says
-which guarantees apply is exactly what a typo discards. A misspelled field on a *stratum* is
-refused, which is the shape the rule side should grow.
+**A misspelled field is named, to a depth.** An unknown field decodes silently — gomap ignores
+what it does not recognise — so `startum: sdlc` would install into the implicit stratum and report
+success, discarding the one field that says which guarantees apply. `verse trigger add` refuses
+it, and likewise an unknown field in a `condition`, in an `action`, or in a sequence element or
+completion hook below one. It stops where the shape stops being the charter's: a `spawn` is a
+launch spec, and a `patch` or `derive` payload has the author's own keys in it.
 
 **How a derived entity leaves is unspecified.** Nothing reaps derived entities unless a charter
 says to. Note that the [subject-side protection](trigger-model.md#lifecycle-how-an-entity-leaves)

@@ -1,8 +1,14 @@
 # Strata: a declared level ordering, so cross-entity writes are checkable
 
-Status: design note, nothing here runs. It proposes two things that only make sense together — a
-new action face (`derive`, which writes somewhere other than the subject) and a level ordering
-that says where such a write may land.
+Status: **built** — see [strata](../strata.md) for what runs, and [the plan](strata-plan.md) for
+what was decided along the way. This note is kept because the argument is not in the code: why
+the ordering is declared rather than inferred, why a derive's content is literal, and what the
+whole thing does not buy.
+
+It proposed two things that only make sense together — a new action face (`derive`, which writes
+somewhere other than the subject) and a level ordering that says where such a write may land.
+Both shipped, with one shape changed: the note takes a stratum's number as its identity, and it
+is the name, for the reasons [the plan](strata-plan.md) records.
 
 It was written to answer the two gaps below, and the second of them — a cycle across rules — is
 now caught at runtime by [the cycle throttle](../cycle-throttle.md). So what strata would still

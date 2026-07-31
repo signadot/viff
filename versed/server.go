@@ -1429,8 +1429,21 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 }
 
 func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
+	// Read as a DOCUMENT first, so an unknown field can be named. Decoding drops one silently
+	// — gomap ignores what it does not recognise — and the fields it would drop are the ones
+	// that say what the rule is allowed to do: `startum:` installs unstratified, `derve:` is a
+	// derivation that never happens. Both report success. See trigger.CheckFields.
+	node, err := codec.ReadNode(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := trigger.CheckFields(node); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	var d trigger.Trigger
-	if err := codec.Read(r, &d); err != nil {
+	if err := codec.FromNode(node, &d); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

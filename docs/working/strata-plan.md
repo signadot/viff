@@ -1,8 +1,26 @@
 # Strata: what to build, in what order
 
-Status: implementation plan for [strata](strata.md), which is a design note and does not run.
-This adds nothing to that argument; it says where the code goes, what each step can be tested
-against, and which decisions have to be made before the first line rather than during it.
+Status: **done**, all four phases bar the last, which was optional and is not worth doing yet
+(see below). What runs is documented in [strata](../strata.md); this stays as the record of what
+was decided and why, including the three things the plan was wrong about.
+
+**Where it differed from the plan, in the building:**
+
+- *The file form needs no fan-out change at all.* The CLI branches on `ArrayType`, and a tagged
+  list is still an array. What phase 3 actually needed was classifying a mixed charter file by
+  field — a rule has a `condition`, a stratum has a `level` and a `match` — so one file can hold
+  both and the CLI sends the strata first.
+- *`Matches` cannot be generated.* tony-codegen resolves a named slice type as an int, so
+  `Stratum` has a hand-written codec and a curated schema signature, like every other
+  `codec=custom` type in the package. The check that holds those two sets equal
+  (`schema/curated_test.go`) caught the omission.
+- *The level check goes BEFORE the latch check, not after.* Latch is documented as deliberately
+  last so a charter wrong in some other way is told about that; a rule acting outside its
+  declared level is another way, and a more specific one. Holding a rule happens after both, so
+  what holding defers is the ordering question and nothing else.
+
+It said where the code goes, what each step could be tested against, and which decisions had to
+be made before the first line rather than during it.
 
 The staging principle throughout: **the existing suite is the oracle.** Every step until the
 last is additive, and a charter with no strata declared must behave exactly as it does today —
@@ -266,14 +284,15 @@ Refuse it at install: `derive` is the whole reason the ordering exists, and lett
 under an unordered rule gives back the unchecked cross-entity write in the first release that has
 the feature. Declaring a stratum is what buys a derive, which is the trade the design is.
 
-## Still open when this is picked up
+## How the open questions closed
 
-- **What a derive's first key names** — match or stratum name. Top of this document; decide before
-  phase 2, not during.
-- **A rule whose `stratum:` names nothing installed** — refused or dormant. The argument leans
-  dormant. Phase 3's emit order means a *file* never produces one, so this only bites ad-hoc
-  single-rule installs.
-- **Whether to add the field-set check** that makes a misspelled `stratum:` an error. Cheap, and
-  the only thing standing between a typo and a silently unstratified rule.
-- **Whether phase 4 is worth doing at all.** It buys detection speed, not a smaller bound. Leave
-  it until a real charter is slow to trip.
+- **What a derive's first key names** — the MATCH, as the note took it. A derive says where its
+  write lands, and a reader does not have to hold the stratum table in their head to see it.
+- **A rule whose `stratum:` names nothing installed** — HELD, as the argument leaned. It has
+  passed every other check first, so what is deferred is the ordering question alone.
+- **The field-set check** — built, and wider than planned: an unknown field is named at the top
+  level of a rule, in its condition, and anywhere in its action tree. It stops where the shape
+  stops being the charter's (a spawn is a launch spec; a patch payload is the author's).
+- **Phase 4, the throttle tightening** — NOT built, and the reason stands: it buys detection
+  speed, not a smaller worst case. Nothing has been slow to trip. The causal link across a
+  crossing IS carried, so it stays a policy change at the cap rather than a re-plumbing.

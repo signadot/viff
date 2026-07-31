@@ -383,6 +383,96 @@ step "status"
 has "$(v status)" 'triggers' || die "status missing engine counts"
 ok "status reports engine counts"
 
+# ── strata: a declared level ordering, and a derive that crosses it ──────────
+# The one path the unit tests cannot cover: a charter file holding BOTH strata and rules,
+# fanned out by the CLI (strata first), installed over the wire, and firing across a level.
+step "strata + derive (a write that is not the subject)"
+cat >"$tmp/strata.tony" <<'TONY'
+- name: smoke-observe
+  level: 0
+  match: "smokegh"
+- name: smoke-sdlc
+  level: 10
+  match: "smokesd"
+---
+- name: smoke-derive
+  stratum: smoke-observe
+  condition:
+    subject:
+      system: smokegh
+      kind: issue
+      value:
+        label: urgent
+  action:
+    patch:
+      triaged: true
+    derive:
+      smokesd:
+        feature:
+          priority: urgent
+- name: smoke-consume
+  stratum: smoke-sdlc
+  condition:
+    subject:
+      system: smokesd
+      kind: feature
+      value:
+        priority: urgent
+  action:
+    patch:
+      stage: awaiting-approval
+TONY
+v trigger add --file "$tmp/strata.tony" >/dev/null || die "mixed strata+rules charter did not install"
+has "$(v strata)" 'smoke-sdlc' || die "the ordering did not install"
+ok "one file installs strata and rules, strata first"
+
+v entity put smokegh:issue:1 '{"label":"urgent"}' >/dev/null || die "entity put failed"
+derived=
+for _ in $(seq 1 100); do
+	out=$(v entities 2>/dev/null || true)
+	if has "$out" 'smokesd:feature:'; then
+		derived=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$derived" ] || die "the derive never landed"
+ok "a rule at level 0 wrote an entity at level 10"
+
+# The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
+dref=$(v entities | grep -o 'smokesd:feature:[^ "]*' | head -1)
+haskv "$(v entity get "$dref")" priority urgent || die "the derived entity lost its literal content"
+has "$(v entity get "$dref")" 'smokegh:issue:1' || die "the derived entity does not record its subject"
+ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
+
+# And the level above acted on it, which is the whole point of the ordering.
+crossed=
+for _ in $(seq 1 100); do
+	if haskv "$(v entity get "$dref" 2>/dev/null || true)" stage awaiting-approval; then
+		crossed=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$crossed" ] || die "the stratum above did not act on what was derived"
+ok "the cascade crossed the level"
+
+# The refusals, over the wire: a derive that does not climb, and a stratum with rules in it.
+v trigger add -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb was accepted"
+- name: smoke-downward
+  stratum: smoke-sdlc
+  condition:
+    subject: { system: smokesd, kind: feature }
+  action:
+    derive:
+      smokegh:
+        issue:
+          a: 1
+TONY
+ok "a derive landing at or below its own level is refused at install"
+v stratum remove smoke-observe >/dev/null 2>&1 && die "removed a stratum still holding rules"
+ok "removing a stratum with rules in it is refused"
+
 # ── restart: the charter is durable ──────────────────────────────────────────
 # The rules installed above are entities (trigger:rule:<name>), so a second `up` over the
 # same data dir comes back running the same program. This is the one check that exercises
@@ -403,6 +493,8 @@ for _ in $(seq 1 300); do
 done
 [ -n "$ready" ] || { tail -20 "$tmp/server2.log" >&2; die "server never became ready after restart" ; }
 has "$(v triggers)" 'smoke-advance' || die "the charter did not survive the restart"
+has "$(v strata)" 'smoke-sdlc' || die "the ordering did not survive the restart"
+has "$(v triggers)" 'smoke-derive' || die "a stratified rule did not survive the restart"
 ok "the installed charter is listed again after a restart"
 # And it is live, not merely listed: a PR that opens only now still advances.
 v entity put demo:pr:restart '{"stage":"open"}' >/dev/null || die "post-restart put failed"

@@ -582,3 +582,36 @@ func waitCount(t *testing.T, s entity.Store, system, kind string, want int) {
 		}
 	}
 }
+
+// An unknown field decodes silently — gomap ignores what it does not recognise and has no
+// strict-unmap option — so the field that says which guarantees apply is exactly what a
+// misspelling discards. This is the check at the decode boundary that names it instead.
+func TestUnknownRuleFieldsAreNamed(t *testing.T) {
+	bad := map[string]entity.Obj{
+		"a misspelled stratum": {"name": "r", "startum": "observe", "condition": entity.Obj{"subject": "gh:issue:*"}},
+		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh:issue:*"}, "action": entity.Obj{"derve": entity.Obj{"a": entity.Obj{"b": entity.Obj{}}}}},
+		"one in a condition":   {"name": "r", "condition": entity.Obj{"subjekt": "gh:issue:*"}},
+		"one in a hook":        {"name": "r", "condition": entity.Obj{"subject": "gh:issue:*"}, "action": entity.Obj{"onDone": entity.Obj{"patsh": entity.Obj{}}}},
+		"one in a seq element": {"name": "r", "condition": entity.Obj{"subject": "gh:issue:*"}, "action": entity.Obj{"seq": []any{entity.Obj{"patsh": entity.Obj{}}}}},
+	}
+	for why, doc := range bad {
+		if err := CheckFields(doc.Payload()); err == nil {
+			t.Errorf("%s was accepted; it would install as a rule that does less than it says", why)
+		}
+	}
+	// And the shapes a real charter comes in are untouched.
+	ok := entity.Obj{
+		"name": "r", "stratum": "observe",
+		"condition": entity.Obj{"subject": "gh:issue:*", "when": entity.Obj{}, "on": entity.Obj{}},
+		"gates":     []any{entity.Obj{"mode": "ask"}},
+		"action": entity.Obj{
+			"patch":  entity.Obj{"stage": "x"},
+			"derive": entity.Obj{"sig": entity.Obj{"feature": entity.Obj{"a": 1}}},
+			"seq":    []any{entity.Obj{"patch": entity.Obj{"a": 1}}},
+			"onDone": entity.Obj{"patch": entity.Obj{"b": 2}},
+		},
+	}
+	if err := CheckFields(ok.Payload()); err != nil {
+		t.Fatalf("a well-formed rule was refused: %v", err)
+	}
+}

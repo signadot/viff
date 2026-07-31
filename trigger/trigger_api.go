@@ -3,7 +3,10 @@ package trigger
 import (
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strings"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/verse/entity"
@@ -236,6 +239,87 @@ func spawnID(chain string, ref entity.Ref) string {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(s))
 	return fmt.Sprintf("%s%s%s%s%08x", chain, ChainSep, safe, hashSep, h.Sum32())
+}
+
+// CheckFields reports a field name a rule does not have, before the rule is decoded.
+//
+// It exists because an unknown field DECODES SILENTLY: gomap ignores what it does not
+// recognise and has no strict-unmap option, so `startum: sdlc` installs cleanly into the
+// implicit stratum and reports success — the one field that says which guarantees apply is
+// exactly what a misspelling discards. Every field below has that character to some degree
+// (`derve:` is a derive that never happens, `gatse:` an approval nobody is asked for), and the
+// failure is always the same shape: the charter does less than it says, quietly.
+//
+// It is a check at the DECODE BOUNDARY rather than in the codec, because the codec is
+// generated. Depth stops where the shape stops being this package's: a spawn is a launch.Spec,
+// and a patch or a derive is an arbitrary payload whose keys are the author's.
+func CheckFields(node *ir.Node) error {
+	return checkFields(node, "trigger", map[string]bool{
+		"name": true, "stratum": true, "condition": true, "gates": true, "action": true,
+	}, func(field string, val *ir.Node) error {
+		switch field {
+		case "condition":
+			return checkFields(val, "condition", map[string]bool{
+				"subject": true, "on": true, "when": true,
+			}, nil)
+		case "action":
+			return checkAction(val)
+		}
+		return nil
+	})
+}
+
+// checkAction is CheckFields for an action, recursing where an action nests one: a sequence's
+// elements and the four completion hooks, each of which is a full action.
+func checkAction(node *ir.Node) error {
+	return checkFields(node, "action", map[string]bool{
+		"patch": true, "derive": true, "spawn": true, "seq": true,
+		"onDone": true, "onFailed": true, "onCancelled": true, "onOrphaned": true,
+	}, func(field string, val *ir.Node) error {
+		switch field {
+		case "seq":
+			if val.Type != ir.ArrayType {
+				return nil // shape is validate's to report, in its own words
+			}
+			for i, el := range val.Values {
+				if err := checkAction(unwrap(el)); err != nil {
+					return fmt.Errorf("seq[%d]: %w", i, err)
+				}
+			}
+		case "onDone", "onFailed", "onCancelled", "onOrphaned":
+			if err := checkAction(val); err != nil {
+				return fmt.Errorf("%s: %w", field, err)
+			}
+		}
+		return nil
+	})
+}
+
+// checkFields names any key outside the known set, and descends where descend says to.
+func checkFields(node *ir.Node, what string, known map[string]bool, descend func(string, *ir.Node) error) error {
+	node = unwrap(node)
+	if node == nil || node.Type != ir.ObjectType {
+		return nil // not an object: the decoder's complaint to make, in its own terms
+	}
+	for i, field := range node.Fields {
+		name := field.String
+		if !known[name] {
+			want := make([]string, 0, len(known))
+			for k := range known {
+				want = append(want, k)
+			}
+			sort.Strings(want)
+			return fmt.Errorf("%s has no field %q (want any of %s) — an unknown field decodes "+
+				"silently, so this would install as a rule that does less than it says",
+				what, name, strings.Join(want, ", "))
+		}
+		if descend != nil {
+			if err := descend(name, unwrap(node.Values[i])); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // deriveID is the id of the entity a firing derives: a function of (rule, subject) and nothing
