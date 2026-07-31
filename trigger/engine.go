@@ -554,7 +554,7 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 		// The causing commit rides ALONGSIDE the causal parent rather than replacing it: parent
 		// is zeroed when this firing begins a fresh chain, and c is the commit that caused it
 		// either way. See occasion.
-		oc := occasion{commit: c, parent: parent}
+		oc := occasion{commit: c, parent: parent, snap: &snapCache{}}
 		if e.throttled(t, subj, parent) {
 			if e.tripPace <= 0 {
 				continue // no pace configured: refuse outright, and the chain ends here

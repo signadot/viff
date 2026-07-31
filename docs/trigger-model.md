@@ -532,6 +532,43 @@ write — so `.value` and `.commit` fail there by name rather than resolving to 
 spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no text
 form and its top-level fields are already bound by name.
 
+### `!read` — the one reference that reaches another entity
+
+Everything above reads the firing's own subject, or the process that just finished. `!read`
+reaches an entity neither of those is:
+
+```tony
+action:
+  patch:
+    repo: !read { system: git, kind: repo, id: $subject.value.head }
+    # or the address form, since expansion runs first:
+    also: !read "git:repo:$subject.value.head"
+```
+
+It resolves to that entity's payload, read at the commit that caused the firing — the same rule
+`$subject.value` follows, and for the same gate reason.
+
+**It names exactly one entity.** All three segments, no payload predicate — `Match.Names`, which
+already draws that line. The id may be a reference; the system and kind may not, and must be
+literal. Naming is what makes this a lookup rather than a query: no ordering to define, no "it
+matched three", no cost that grows with the verse.
+
+**It copies, and does not track.** The entity is read once. If it changes afterwards nothing
+re-runs — this rule fires again only when its own subject changes, or when an `on`/`when` it
+carries covers the target. Copying is the point; add the `on` if you want to follow it.
+
+**A missing target fails the firing**, as any unresolved reference does, so that "nothing is
+there" cannot launder into "something is there, and it is nothing".
+
+**Inside a `derive` it must resolve at or below the rule's own stratum** — see
+[strata](strata.md), where that rule is the whole of what `!read` costs. In a `patch` it is
+unconstrained.
+
+The tag is the whole spelling: a plain `{read: …}` key is ordinary data and stays that way,
+which is deliberate — `{read: true}` under a permissions field is far too plausible a payload to
+turn silently into a lookup. That does mean a JSON-shaped charter cannot write one, since JSON
+has no tags.
+
 That is what an action is about, and it used to read the CHANGED payload instead — which is
 the same thing only while the subject and the cause are the same entity. The moment they came
 apart, a rule bound `$stage` off a CI status and wrote it onto a PR: fields with no meaning on

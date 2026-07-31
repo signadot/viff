@@ -157,7 +157,7 @@ func TestExpandPatchPreservesTagsAndNesting(t *testing.T) {
 	}.Payload()
 	entity.Get(patch, "tmp").Tag = "!delete"
 
-	got, err := expandPatch(patch, derefRoot())
+	got, err := expandPatch(patch, derefRoot(), nil)
 	if err != nil {
 		t.Fatalf("expandPatch: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestExpandPatchPreservesTagsAndNesting(t *testing.T) {
 // costs nothing and cannot fail.
 func TestExpandPatchConstantIsUnchanged(t *testing.T) {
 	patch := entity.Obj{"stage": "reviewed", "n": 7}.Payload()
-	got, err := expandPatch(patch, derefRoot())
+	got, err := expandPatch(patch, derefRoot(), nil)
 	if err != nil {
 		t.Fatalf("expandPatch: %v", err)
 	}

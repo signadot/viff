@@ -315,28 +315,53 @@ func scalarText(n entity.Payload) (string, bool) {
 // A patch is not a plain map: it carries the mergeop tags (`!delete`, `!replace`) that give
 // it its write semantics, and field order besides. Rebuilding would mean re-deriving both,
 // and a dropped tag turns a deletion into a write of null.
-func expandPatch(p entity.Payload, root entity.Payload) (entity.Payload, error) {
+func expandPatch(p entity.Payload, root entity.Payload, read readFn) (entity.Payload, error) {
 	if p == nil {
 		return nil, nil
 	}
 	cp := p.DeepCopy()
-	if err := expandInto(cp, root); err != nil {
+	if err := expandInto(cp, root, read); err != nil {
 		return nil, err
 	}
 	return cp, nil
 }
 
+// readFn answers a `!read`. It is a parameter rather than a method on the engine because two
+// callers legitimately have none: expanding a read's own ADDRESS (a read inside a read would
+// make how many entities a firing touches a question only the store could answer), and any
+// caller that has no firing behind it. A nil reader reports the tag rather than ignoring it —
+// silently writing a `!read` node into an entity is exactly the shape of failure this whole
+// package refuses elsewhere.
+type readFn func(node *ir.Node, root entity.Payload) (entity.Payload, error)
+
 // expandInto rewrites string leaves in place. Only VALUES are expanded: a reference in a key
 // would make the patch's shape depend on the payload, and the shape is what a reader of the
 // charter is entitled to know without running it.
-func expandInto(n entity.Payload, root entity.Payload) error {
+func expandInto(n entity.Payload, root entity.Payload, read readFn) error {
 	if n == nil {
+		return nil
+	}
+	// A `!read` replaces itself with what it names. Checked before the type switch because the
+	// tag rides on the ADDRESS — an object or a string — and either would otherwise be walked
+	// as ordinary content.
+	if isRead(n) {
+		if read == nil {
+			return fmt.Errorf("!read is not available here: it reads an entity at the commit that " +
+				"caused a firing, so it needs one")
+		}
+		v, err := read(n, root)
+		if err != nil {
+			return err
+		}
+		parent, field, index := n.Parent, n.ParentField, n.ParentIndex
+		v.DeepCopy().CloneTo(n)
+		n.Parent, n.ParentField, n.ParentIndex = parent, field, index
 		return nil
 	}
 	switch n.Type {
 	case ir.ObjectType, ir.ArrayType:
 		for _, v := range n.Values {
-			if err := expandInto(v, root); err != nil {
+			if err := expandInto(v, root, read); err != nil {
 				return err
 			}
 		}

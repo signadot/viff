@@ -17,6 +17,7 @@ package trigger
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -225,7 +226,40 @@ type occasion struct {
 	// change costs a read at a revision.
 	commit entity.Commit
 	parent int64
+	// snap is the firing's snapshot of the verse at that commit, taken at most once and shared
+	// by everything in the action that needs one. A pointer, because an occasion is copied
+	// down the action tree and the whole point is that the copies agree.
+	//
+	// One per FIRING rather than one per reference: Store.AsOf answers by replaying the log to
+	// that commit, so an action with three `!read`s would otherwise pay three replays to learn
+	// three things about one world — and, worse, could learn them about three different ones if
+	// the replays were not pinned to the same revision. They are, so this is about cost; but
+	// the cost is the kind that is discovered in production rather than in a test.
+	snap *snapCache
 }
+
+// snapCache is a snapshot taken lazily and at most once. A charter that never reads at a
+// revision never takes one.
+type snapCache struct {
+	once sync.Once
+	snap entity.Snapshot
+	err  error
+}
+
+// snapshot returns the firing's view of the verse at the commit that caused it.
+func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
+	if oc.commit.Rev == 0 {
+		return nil, fmt.Errorf("this firing has no causing commit to read at — it was woken by a " +
+			"process finishing rather than by a write, so there is no revision to be as of")
+	}
+	if oc.snap == nil {
+		return e.store.AsOf(oc.commit.Rev) // no cache wired: correct, just unshared
+	}
+	oc.snap.once.Do(func() { oc.snap.snap, oc.snap.err = e.store.AsOf(oc.commit.Rev) })
+	return oc.snap.snap, oc.snap.err
+}
+
+// Action is what a trigger does when it fires
 
 // Action is what a trigger does when it fires and its gates proceed — declarative data,
 // not a Go closure: optionally set fields on an entity (a state transition) and/or spawn a
@@ -341,11 +375,20 @@ func (a *Action) hasHooks() bool {
 // hook needs a process to complete, so any onX requires a spawn; each hook is itself an action
 // and is validated recursively.
 func (a Action) validate() error {
-	// The derive's own shape and its literal-content rule. Checked here so it runs over every
-	// action in the tree — validate recurses into a sequence's elements and a hook's action —
-	// while WHERE a derive may land is checked once per rule, against the strata (stratum.go).
+	// The derive's own shape and its content rule. Checked here so it runs over every action in
+	// the tree — validate recurses into a sequence's elements and a hook's action — while WHERE
+	// a derive may land, and where a `!read` inside one may reach, are checked once per rule
+	// against the strata (stratum.go).
 	if err := a.validateDerive(); err != nil {
 		return err
+	}
+	// A `!read` anywhere in this action, patch or derive: it must NAME one entity, and its
+	// system and kind must be literal. Both are what make it a lookup rather than a query, and
+	// the second is what leaves the level check something to read at install.
+	for _, p := range []entity.Payload{a.Patch, a.Derive} {
+		if _, err := readTargets(p); err != nil {
+			return err
+		}
 	}
 	// A hook needs something that can COMPLETE. That used to mean a spawn; a sequence
 	// completes too, when its last element does.
@@ -473,7 +516,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			e.tracef("trigger %s: %v; not spawning", chain, err)
 			return nil, err
 		}
-		patch, err := expandPatch(a.Patch, refRoot(root, sn))
+		patch, err := expandPatch(a.Patch, refRoot(root, sn), e.readerFor(oc))
 		if err != nil {
 			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
 			return nil, err

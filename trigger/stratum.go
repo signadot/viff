@@ -562,6 +562,37 @@ func (e *Engine) checkLevels(t Trigger) (bool, error) {
 			"it is acting at a level it did not declare",
 			subjectText(t.Condition.Subject), st.Name, matchesText(st.Match))
 	}
+	// A `!read` inside a DERIVE must resolve at or below this rule's own level. Derive
+	// inertness rests on the levels above being unable to influence what a derive writes, and a
+	// read reaching upward is precisely how they would: the thing above changes, the derive
+	// writes different bytes, the level above wakes, and it goes round — across a level, which
+	// is the cycle the ordering exists to exclude. At or below cannot do that, because an entity
+	// there is written only by rules at that level or derived into from below it.
+	//
+	// A patch is unconstrained: nothing downstream depends on a patch being reproducible.
+	for _, d := range t.Action.allDerives() {
+		targets, err := readTargets(d.Payload)
+		if err != nil {
+			return false, err // shape; Action.validate says it better, but this path sees hooks too
+		}
+		for _, rt := range targets {
+			at := e.stratumFor(Match{mKeySystem: rt.System, mKeyKind: rt.Kind})
+			if at == nil {
+				return false, fmt.Errorf("derive into %s reads %s, which is in no stratum: a read "+
+					"inside a derive has to be at or below the rule's own level, and an entity "+
+					"outside the ordering has no level to compare. Put it in a stratum, or move the "+
+					"read into the `patch`, where nothing constrains it", d.addr(), rt)
+			}
+			if at.Level > st.Level {
+				return false, fmt.Errorf("derive into %s reads %s, which is in stratum %q (level %d), "+
+					"above %q (level %d): a derive may READ at or below its own level and no higher. "+
+					"Reading upward is how a level above would change what this derive writes, and a "+
+					"derive that writes something new every lap wakes that level again — a cycle "+
+					"across a level, which is what the ordering rules out. A `patch` may read it",
+					d.addr(), rt, at.Name, at.Level, st.Name, st.Level)
+			}
+		}
+	}
 	above := e.strataAbove(st.Level)
 	for _, d := range t.Action.allDerives() {
 		target := Match{mKeySystem: d.System, mKeyKind: d.Kind}
@@ -779,7 +810,7 @@ func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion
 	// Against a root holding ONLY the subject, not the payload that fired the action: a derive
 	// reaches its own subject and nothing else, and that is structural here rather than a rule
 	// enforced only at install.
-	expanded, err := expandPatch(payload, refRoot(nil, sn))
+	expanded, err := expandPatch(payload, refRoot(nil, sn), e.readerFor(oc))
 	if err != nil {
 		return nil, err
 	}
