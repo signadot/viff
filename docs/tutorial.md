@@ -442,6 +442,57 @@ predicate that already holds never rose.
 When you mean "whenever this holds", write `when`. The engine warns at install when a narrow
 `on` leaves part of what the rule reads uncovered — which is exactly the case above.
 
+### derive — writing something that is not the subject
+
+Every rule so far acts on its `subject` and nothing else. That is deliberate — it is what
+makes a firing checkable — but it means the only way a charter could bring an entity into
+being *elsewhere* was to spawn an agent and let it write, which puts the write beyond anything
+install-time analysis can see.
+
+`derive` is that write, said in the charter. And because a charter that can write anywhere can
+write in a circle, it comes with the thing that bounds it: a **stratum**, a declared level.
+
+```tony
+- name: shapes-source
+  level: 0
+  match: demo
+- name: shapes-derived
+  level: 10
+  match: derived
+---
+- name: shape-derive
+  stratum: shapes-source
+  condition:
+    subject: { system: demo, kind: derive, value: { stage: open } }
+  action:
+    patch: { stage: raised }
+    derive:
+      derived:
+        feature:
+          priority: urgent
+          about: $subject
+```
+
+```sh
+./scripts/charter-shapes.sh run derive
+verse strata                                                  # the ordering
+verse entity get derived:feature:shape-derive@demo:derive:1
+```
+
+Two rules, checked at install and neither reading the store: a rule's **subject** must be
+inside its own stratum, and a **derive** must land in a strictly higher one. A charter file may
+hold both strata and rules — `verse trigger add` installs the ordering first.
+
+The derived entity's id is the *engine's*, a function of (rule, subject), so the rule name and
+the subject are both in it: no two rules can ever address the same derived entity, and a
+re-fire writes the same address rather than a second thing. The engine also records what it is
+about, at `verse.meta.derivedFrom`.
+
+Declaring nothing is a complete answer — every other shape here has no `stratum:` and is
+checked against nothing, which is exactly how charters behaved before strata existed. The one
+thing an unstratified rule may not do is `derive`, because "strictly above" has no answer for a
+rule with no level. See [strata](strata.md).
+
 ### The rest of the grammar
 
 Rules install and read back in tony, so inspecting one is a round trip rather than a second
@@ -452,10 +503,12 @@ verse trigger add -f charter.tony    # or: cat charter.tony | verse trigger add 
 verse triggers
 verse trigger show shape-latch
 verse trigger remove shape-latch
+verse strata                         # and `verse stratum show|remove` for one of them
 ```
 
-A charter is durable — each rule is an entity (`trigger:rule:<name>`), so the program a verse
-comes back up running is the one it went down with. Every field, both grammars, the answer
+A charter is durable — each rule is an entity (`trigger:rule:<name>`), and each stratum is one
+too (`trigger:strata:<name>`), so the program a verse comes back up running is the one it went
+down with. Every field, both grammars, the answer
 contract a spawn can demand of an agent, chains and ids, and what a match can say are in
 [the trigger model](trigger-model.md).
 
@@ -559,6 +612,12 @@ or `unachievable`. *Being redesigned — read it as what runs today, not as wher
 **Reflecting external systems** — [sources](sources.md). Git, GitHub, Linear into an owned
 slice of the verse, on webhook-as-hint plus poll-reconcile. *Designed, not built; the git
 Source is next.*
+
+**Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
+only climb, and the two install checks that follow — plus a plain statement of what it does not
+buy, since a charter under strata still does not converge and was never going to. *Left to do:
+fencing a spawned agent's writes to its own level and above, which is
+[authority](roadmap/authority.md)'s.*
 
 **The store underneath** — [reference/store.md](reference/store.md) and
 [change events](change-events.md). Where verse's deeper properties come from: copy-on-write

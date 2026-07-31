@@ -9,11 +9,17 @@ consider adding
 - name: urgent-label
   stratum: observe
   condition:
-    subject: { system: gh, kind: issue, value: { label: urgent } }
+    subject: { system: gh, kind: issue, value: { labels: { urgent: null, linear: null } }
   action:
-    patch: { triaged: true }
+    patch: {
+
+          
+          
+        
+    }
     derive:
-      signadot:
-        feature:
-          priority: urgent
+      system: signadot
+      kind: feature
+      id: $subject.value.labels.linear
+      priority: urgent
 ```

@@ -44,7 +44,9 @@ condition, told apart by edge and level.
 ## The trigger
 
 A rule has four parts: a name, the condition that causes it, the gates that guard
-it, and the action that fires.
+it, and the action that fires. A fifth is optional — `stratum:`, the declared level it lives
+in, which constrains what its subject may be and where a `derive` may land ([strata](strata.md)).
+Omitted, it is unconstrained, which is what every rule here means.
 
 ```tony
 - name: review

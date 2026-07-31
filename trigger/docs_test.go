@@ -52,7 +52,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			// comment following a flow collection (`a: {} # c`), which is a shape a charter is
 			// naturally written in and which therefore reached the docs. A hang here is a
 			// failure like any other rather than a suite that never finishes.
-			trigs, strata, ok, timedOut := parseWithin(blk.text, 5*time.Second)
+			trigs, nodes, strata, ok, timedOut := parseWithin(blk.text, 5*time.Second)
 			if timedOut {
 				t.Errorf("%s:%d: parsing this block does not terminate — a reader who pastes "+
 					"it gets a hung client:\n\n%s", filepath.Base(path), blk.line, indent(blk.text))
@@ -70,6 +70,16 @@ func TestDocCharartersInstall(t *testing.T) {
 				if err := eng.addStratum(s, false); err != nil {
 					t.Errorf("%s:%d: stratum %q does not install:\n  %v\n\n%s",
 						filepath.Base(path), blk.line, s.Name, err, indent(blk.text))
+				}
+			}
+			// The field check, which is the SERVER's and not addTrigger's: an unknown field
+			// decodes silently, so a doc charter carrying one installs cleanly here and is
+			// refused over the wire — which is the one way this test could pass while the
+			// thing it documents does not work.
+			for i, node := range nodes {
+				if err := CheckFields(node); err != nil {
+					t.Errorf("%s:%d: charter %q would be refused by `verse trigger add`:\n  %v\n\n%s",
+						filepath.Base(path), blk.line, trigs[i].Name, err, indent(blk.text))
 				}
 			}
 			for _, tr := range trigs {
@@ -141,22 +151,23 @@ func heredocs(src string, at func(int) int) []block {
 // parseWithin is parseBlock, bounded. The goroutine it abandons on a timeout is the price
 // of reporting a hang instead of becoming one; a hung parse holds one goroutine until the test
 // binary exits.
-func parseWithin(text string, d time.Duration) (trigs []Trigger, strata []Stratum, ok, timedOut bool) {
+func parseWithin(text string, d time.Duration) (trigs []Trigger, nodes []*ir.Node, strata []Stratum, ok, timedOut bool) {
 	type result struct {
 		trigs  []Trigger
+		nodes  []*ir.Node
 		strata []Stratum
 		ok     bool
 	}
 	done := make(chan result, 1)
 	go func() {
-		ts, ss, k := parseBlock(text)
-		done <- result{ts, ss, k}
+		ts, ns, ss, k := parseBlock(text)
+		done <- result{ts, ns, ss, k}
 	}()
 	select {
 	case r := <-done:
-		return r.trigs, r.strata, r.ok, false
+		return r.trigs, r.nodes, r.strata, r.ok, false
 	case <-time.After(d):
-		return nil, nil, false, true
+		return nil, nil, nil, false, true
 	}
 }
 
@@ -166,7 +177,7 @@ func parseWithin(text string, d time.Duration) (trigs []Trigger, strata []Stratu
 // It reports false for anything that is not a charter — which is most blocks, and is the point:
 // a fragment, an entity payload and a goal record all fail to be a trigger with a subject. A
 // block of ONLY strata is not a charter either; there would be no rule to check against it.
-func parseBlock(text string) ([]Trigger, []Stratum, bool) {
+func parseBlock(text string) ([]Trigger, []*ir.Node, []Stratum, bool) {
 	for _, f := range []codec.Format{codec.Tony, codec.JSON} {
 		defs, err := codec.ParseNodes([]byte(text), f)
 		if err != nil {
@@ -188,20 +199,21 @@ func parseBlock(text string) ([]Trigger, []Stratum, bool) {
 			}
 			flat = append(flat, doc)
 		}
-		trigs, strata, ok := classify(flat)
+		trigs, nodes, strata, ok := classify(flat)
 		if ok {
-			return trigs, strata, true
+			return trigs, nodes, strata, true
 		}
 	}
-	return nil, nil, false
+	return nil, nil, nil, false
 }
 
 // classify sorts a block's definitions into rules and strata, and reports false the moment one
 // is neither. Told apart by decoding: a stratum refuses a field it does not know (so a rule
 // fails to be one), and a rule without a subject is not installable (so a stratum fails to be
 // one).
-func classify(defs []*ir.Node) ([]Trigger, []Stratum, bool) {
+func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, bool) {
 	var trigs []Trigger
+	var nodes []*ir.Node
 	var strata []Stratum
 	for _, def := range defs {
 		var s Stratum
@@ -212,11 +224,12 @@ func classify(defs []*ir.Node) ([]Trigger, []Stratum, bool) {
 		var t Trigger
 		if err := t.FromTonyIR(def); err == nil && isCharter([]Trigger{t}) {
 			trigs = append(trigs, t)
+			nodes = append(nodes, def) // kept for the field check, which reads the DOCUMENT
 			continue
 		}
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
-	return trigs, strata, len(trigs) > 0
+	return trigs, nodes, strata, len(trigs) > 0
 }
 
 // isOrdering reports whether this decoded as a real stratum — a name and a pattern, which a
