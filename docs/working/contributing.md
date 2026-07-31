@@ -57,8 +57,9 @@ actually driven. The message says what moved; the breaking half is generated, ne
 (`Breaks:` is defined [below](#say-what-you-held-yourself-to)):
 
 ```sh
+fmt='%h %s ::%(trailers:key=Breaks,valueonly,separator=%x20)'         # :: ends the subject
 prev=$(git tag -l --sort=v:refname 'dogfood/verse-dev.*' | tail -1)   # v: sorts .10 after .2
-git log --grep='^Breaks:' --format='%h %s%n  %(trailers:key=Breaks,valueonly)' "$prev"..HEAD
+git log --format="$fmt" "$prev"..HEAD | grep -v '::$'                 # drop the trailerless
 git tag -a dogfood/verse-dev.4        # paste that in, add a sentence of what moved
 git push origin dogfood/verse-dev.4   # tags are NOT pushed by a bare git push
 ```
@@ -190,9 +191,14 @@ Trailers rather than prose, because the log becomes queryable — which is what 
 message above generatable:
 
 ```sh
-git log --grep='^Tier: contract' --format='%h %s'                    # every break, ever
-git log --grep='^Breaks:' --format='%h %s%n  %(trailers:key=Breaks,valueonly)' A..B
+fmt='%h %s ::%(trailers:key=Breaks,valueonly,separator=%x20)'
+git log --format="$fmt" | grep -v '::$'            # every break, ever
+git log --format="$fmt" A..B | grep -v '::$'       # the breaks between two points
 ```
+
+Match on the *parsed* trailer, not `--grep='^Breaks:'`: `--grep` searches the whole message,
+so it also matches a body that merely talks about the convention — as this note's own landing
+commit does.
 
 These describe the *diff*, not the author. Most commits here are co-authored by an agent and
 that changes nothing — except that an agent will happily write a confident body about work it
