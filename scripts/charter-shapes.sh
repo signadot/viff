@@ -24,7 +24,12 @@ set -euo pipefail
 # build produces is at the root, and so is the reader's cwd.
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-SHAPES=(patch latch ask seq when on vote)
+SHAPES=(patch latch ask seq when on vote derive)
+
+# The strata the `derive` shape declares. They are named here because removing one is REFUSED
+# while a rule still names it — so the teardown has to go rule-first, which is that refusal
+# doing its job rather than getting in the way.
+DERIVE_STRATA=(shapes-source shapes-derived)
 
 describe() {
 	case "$1" in
@@ -35,6 +40,7 @@ describe() {
 	when) echo "a condition on ANOTHER entity: act on these, while that holds." ;;
 	on) echo "a cause: fire on the rising edge, not while it stays true (and no backlog)." ;;
 	vote) echo "a gate formula the verse resolves itself: a quorum, on the docket." ;;
+	derive) echo "an action that writes an entity which is NOT its subject, and a declared ordering saying where that may land." ;;
 	esac
 }
 
@@ -109,6 +115,36 @@ shape_tony() {
 			    patch: { stage: released }
 		TONY
 		;;
+	derive)
+		cat <<-'TONY'
+			# A charter file may hold strata as well as rules; `verse trigger add` sorts them
+			# and installs the ordering first. A rule's subject must be inside its own
+			# stratum, and a derive must land in a strictly higher one — both checked at
+			# install, neither reading the store.
+			- name: shapes-source
+			  level: 0
+			  match: demo
+			- name: shapes-derived
+			  level: 10
+			  match: derived
+			---
+			- name: shape-derive
+			  stratum: shapes-source
+			  condition:
+			    subject: { system: demo, kind: derive, value: { stage: open } }
+			  action:
+			    patch: { stage: raised }
+			    derive:
+			      derived:
+			        feature:
+			          priority: urgent
+			          # A derive may reference its own subject and nothing else — which is
+			          # what lets its content be checked at install and what keeps a re-fire
+			          # a no-op. `.value` reads at the commit that caused the firing.
+			          about: $subject
+			          from: $subject.value.title
+		TONY
+		;;
 	vote)
 		cat <<-'TONY'
 			- name: shape-vote
@@ -174,8 +210,18 @@ up_or_die() {
 		die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\`"
 }
 
+# remove_shape takes a shape out, whatever it declared. A shape is usually one rule; `derive`
+# also brings an ordering, and the ordering goes LAST because a stratum still holding rules
+# refuses to be removed.
+remove_shape() {
+	v trigger remove "shape-$1" >/dev/null 2>&1 || true
+	if [ "$1" = derive ]; then
+		for st in "${DERIVE_STRATA[@]}"; do v stratum remove "$st" >/dev/null 2>&1 || true; done
+	fi
+}
+
 install_shape() {
-	v trigger remove "shape-$1" >/dev/null 2>&1 || true # idempotent: add refuses a duplicate
+	remove_shape "$1" # idempotent: add refuses a duplicate, of a rule or of a stratum
 	shape_tony "$1" | v trigger add -f - >/dev/null || die "installing shape-$1 failed"
 	ok "installed shape-$1 — $(describe "$1")"
 }
@@ -202,6 +248,7 @@ drive_shape() {
 		v entity put ci:status:release '{state: green}' >/dev/null
 		;;
 	vote) v entity put demo:vote:1 '{stage: shipped, title: "a merge"}' >/dev/null ;;
+	derive) v entity put demo:derive:1 '{stage: open, title: "a feature request"}' >/dev/null ;;
 	esac
 	ok "drove shape-$1"
 }
@@ -217,6 +264,12 @@ next_steps() {
 	vote) printf '  %s docket                 ← it is waiting for a tally\n  %s vote <motion> approve --as alice\n  %s vote <motion> approve --as bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
+	derive)
+		printf '  %s entity get derived:feature:shape-derive@demo:derive:1\n' "$c"
+		printf '  %s strata                 ← the ordering it was checked against\n' "$c"
+		printf '\n  the derived id is the ENGINE'"'"'s — f(rule, subject) — so the rule name and the\n'
+		printf '  subject are both in it, and no two rules can ever address the same entity.\n'
+		;;
 	esac
 	printf '\n'
 }
@@ -227,7 +280,7 @@ cmd=${1:-list}
 case "$cmd" in
 list)
 	printf '\nthe shapes a rule comes in:\n\n'
-	for s in "${SHAPES[@]}"; do printf '  \033[1m%-6s\033[0m %s\n' "$s" "$(describe "$s")"; done
+	for s in "${SHAPES[@]}"; do printf '  \033[1m%-7s\033[0m %s\n' "$s" "$(describe "$s")"; done
 	printf '\n  %s show <shape> · install <shape> · drive <shape> · run <shape> · remove [shape]\n\n' "$0"
 	;;
 show)
@@ -261,9 +314,9 @@ remove)
 	step "remove"
 	if [ -n "${1:-}" ]; then
 		need_shape "$1"
-		v trigger remove "shape-$1" >/dev/null 2>&1 && ok "removed shape-$1" || ok "shape-$1 was not installed"
+		remove_shape "$1" && ok "removed shape-$1" || ok "shape-$1 was not installed"
 	else
-		for s in "${SHAPES[@]}"; do v trigger remove "shape-$s" >/dev/null 2>&1 || true; done
+		for s in "${SHAPES[@]}"; do remove_shape "$s"; done
 		ok "removed every shape trigger"
 	fi
 	;;
@@ -271,11 +324,14 @@ clean)
 	up_or_die
 	step "clean"
 	for s in "${SHAPES[@]}"; do
-		v trigger remove "shape-$s" >/dev/null 2>&1 || true
+		remove_shape "$s"
 		v entity rm "demo:$s:1" >/dev/null 2>&1 || true
 	done
 	v entity rm ci:status:shapes >/dev/null 2>&1 || true
 	v entity rm ci:status:release >/dev/null 2>&1 || true
+	# The derived entity is addressed by the ENGINE — id = f(rule, subject) — so it is named
+	# here rather than guessed at: nothing else in the verse knows to clean it up.
+	v entity rm 'derived:feature:shape-derive@demo:derive:1' >/dev/null 2>&1 || true
 	ok "every shape trigger and the entities they acted on are gone"
 	;;
 *)
