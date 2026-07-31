@@ -249,7 +249,14 @@ func (e *Engine) throttled(t Trigger, subj entity.Ref, parent int64) bool {
 		e.tracef("chain from rev %d tripped again at %s on %s", root, t.Name, subj)
 		return true
 	}
-	e.logger.Warn("cycle: rules kept firing each other past the point where one must have repeated",
+	// INFO, not Warn. A cycle that trips is a charter doing something the model allows and the
+	// throttle then paces — recursion inside a stratum is exactly what a level ordering permits
+	// (stratum.go), and a loop through the world is the shape a person would draw on a
+	// whiteboard. What the report is FOR is telling someone which rules were firing each other,
+	// not telling them something is broken; a charter can loop deliberately and run this way for
+	// as long as it likes. Warn is for the things an operator has to act on — a write that did
+	// not land, a rule held for a stratum that never arrives.
+	e.logger.Info("cycle: rules kept firing each other past the point where one must have repeated",
 		"cycle", strings.Join(append(names, t.Name), " → "),
 		"subject", subj.String(), "depth", depth, "cap", cap,
 		"from", root, "complete", complete)

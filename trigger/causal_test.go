@@ -445,7 +445,10 @@ func TestTripReportsTheCycleByName(t *testing.T) {
 	var cycles []string
 	var complete []bool
 	for _, r := range logged {
-		if r.Level != slog.LevelWarn {
+		// INFO, and the level is pinned deliberately: a tripped cycle is a charter doing
+		// something the model allows and the throttle then paces, not something an operator
+		// has to act on. Warn is for a write that did not land.
+		if r.Level != slog.LevelInfo {
 			continue
 		}
 		var c string

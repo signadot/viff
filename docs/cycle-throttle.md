@@ -112,12 +112,19 @@ block the very firing that supersedes it.
 forever, so the trip walks the chain back and names the rules that were firing each other:
 
 ```
-WARN cycle: rules kept firing each other past the point where one must have repeated
+INFO cycle: rules kept firing each other past the point where one must have repeated
      cycle="fwd → back → fwd → back" subject=demo:pr:1 depth=3 cap=2 from=4 complete=true
 ```
 
 Both rules appear twice, which is the finding: one of them ran a second time about the same
-subject. It is reported once per chain — keyed on the chain's root, so the same pair looping from
+subject.
+
+**INFO rather than WARN**, because a tripped cycle is not per se a fault. Recursion inside a
+[stratum](strata.md) is exactly what a level ordering permits, a loop through the world is the
+shape a person would draw on a whiteboard, and a charter may go on looping deliberately for as
+long as it likes once paced. The report says which rules are doing it; whether that is a problem
+is the reader's call. Warn is kept for what an operator has to act on — a write that did not
+land, a rule held for a stratum that never arrives. It is reported once per chain — keyed on the chain's root, so the same pair looping from
 a different origin is news again — and `complete` says whether the walk reached the beginning or
 ran out of retained history rather than presenting a partial chain as whole.
 
