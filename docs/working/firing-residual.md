@@ -10,23 +10,20 @@ Nothing here is a design owed to anything else here.
 
 ## 1. Time as a cause: the clock a ticker would be
 
-**The cycle check that used to head this list is built**, and not as the graph proposed here. It
-runs at runtime, on causal depth: every write an engine makes during a firing carries how far it
+"Time as a cause" is one question with three faces: a cycle check, a grace period, and a temporal
+condition. **The first is answered and needed no clock**; the other two are open and both want the
+same missing thing.
+
+The cycle check runs at runtime, on causal depth — a write made during a firing carries how far it
 stands from the external write that started the chain, and a chain deeper than the installed
-trigger count has necessarily repeated a rule. See [the cycle throttle](../cycle-throttle.md).
-
-What that settles is worth stating, because it decides the shape of what is left. The rule the
-graph was reaching for — *a cycle is not wrong; an UNPACED cycle is*, a combinational loop being
-an error where a cycle through a register is a state machine — survives intact and is what the
-throttle implements. But pacing turns out to be a property of how a chain RUNS, not of how it is
-written: a chain breaks wherever real time enters, through a spawned process, through the world
-via the mirror, through a decision somebody answers. So the check needed neither the graph nor
-the ticker, and a static analysis over templated patches — always a warning rather than a proof —
-is not worth building now that a dynamic one is exact.
-
-**A ticker is still wanted, for the other two faces of time.** "Time as a cause" was one question
-with three: a cycle check, a grace period, and a temporal condition. The first is answered; the
-other two are not, and both want the same missing thing.
+trigger count has necessarily repeated a rule ([the cycle throttle](../cycle-throttle.md)). It is
+worth knowing why that route was taken, because it is what removes the clock from this face of the
+problem. The distinction to draw is *a cycle is not wrong; an UNPACED cycle is* — a combinational
+loop being an error where a cycle through a register is a state machine — and pacing turns out to
+be a property of how a chain RUNS rather than of how it is written: a chain breaks wherever real
+time enters, through a spawned process, through the world via the mirror, through a decision
+somebody answers. So no ticker had to exist first, and no static analysis over the charter can
+draw the distinction at all — through templated patches it could only ever have warned.
 
 The wrinkle, not visible until you try to write a ticker: **a ticker needs to say "changed", and
 `on` can only say "became true".** A monotonic counter rises once and stays risen; one entity per
@@ -77,11 +74,9 @@ since measurement says bounding the path is all it does.
 
 ## 3. Two triggers, one field
 
-Still not built, and the reason has changed. It used to be that the cycle graph would subsume it,
-so building the weaker check first meant building it twice. The cycle check went the other way —
-dynamic, on causal depth — and does NOT subsume this: two rules writing one field with different
-values settle wherever the last write lands, without any chain growing, so nothing trips. It is
-now an independent piece of work.
+Not built, and it stands on its own: the cycle check does not reach it. Two rules writing one
+field with different values settle wherever the last write lands, without any chain growing, so
+nothing trips — depth catches a loop, not a disagreement.
 
 It is also the one source with no principled fix once detected: a charter that means two things
 is one only its author can settle. The shape and its decidability are in

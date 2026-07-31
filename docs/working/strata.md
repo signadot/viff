@@ -4,10 +4,10 @@ Status: design note, nothing here runs. It proposes two things that only make se
 new action face (`derive`, which writes somewhere other than the subject) and a level ordering
 that says where such a write may land.
 
-One of the two gaps it was written to answer has since been closed by other means — the cycle
-across rules is caught at runtime by [the cycle throttle](../cycle-throttle.md) — so what strata
-would still buy is the first gap below, plus a tighter bound on the second. The note is kept with
-its original argument, and the passages that turned on the cycle being unchecked are marked.
+It was written to answer the two gaps below, and the second of them — a cycle across rules — is
+now caught at runtime by [the cycle throttle](../cycle-throttle.md). So what strata would still
+buy is the first gap outright, and a tighter bound on the second rather than the detection of it.
+The rest of the argument is unaffected: nothing here rests on the cycle being unchecked.
 
 ## Two gaps, and one answer to the first
 
