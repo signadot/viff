@@ -184,7 +184,7 @@ func TestDisjointToolsIsIneligible(t *testing.T) {
 	}
 
 	subj := entity.Ref{System: "demo", Kind: "finding", ID: "d"}
-	if _, err := (Action{Spawn: &spawn}).applyOne("treat", entity.Event{Ref: subj}, subj, eng, fromSubject); err != nil {
+	if _, err := (Action{Spawn: &spawn}).applyOne("treat", occasion{ev: entity.Event{Ref: subj}}, subj, eng, fromSubject); err != nil {
 		t.Fatalf("applyOne = %v; an unresolvable selection is a non-spawn, not a failure", err)
 	}
 	select {

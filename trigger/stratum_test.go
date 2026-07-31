@@ -263,16 +263,29 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 			t.Errorf("%s was refused: %v", why, err)
 		}
 	}
-	// $subject is a ref STRING, not a record, so there is nothing to descend into. Refused
-	// here rather than at fire time, where it would be a firing that failed for a reason the
-	// charter's author is no longer present to hear.
+	// The parts of $subject, which are all admissible in a derive EXCEPT the one that is a
+	// function of the firing's occasion rather than of the subject.
+	for _, part := range []string{"ref", "system", "kind", "id", "value", "value.stage"} {
+		if err := eng.AddTrigger(Trigger{
+			Name:      "part-" + strings.ReplaceAll(part, ".", "-"),
+			Stratum:   "observe",
+			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+			Action:    deriveAction("signadot", "feature", entity.Obj{"x": "$subject." + part}),
+		}); err != nil {
+			t.Errorf("$subject.%s was refused in a derive: %v", part, err)
+		}
+	}
+	// $subject.commit is refused, and it is the interesting one: it varies with WHEN the
+	// firing happened, so a read from a higher level changes what the derive writes — which
+	// is a cross-level cycle, the thing the ordering exists to rule out.
 	if err := eng.AddTrigger(Trigger{
-		Name:      "subject-field",
+		Name:      "subject-commit",
 		Stratum:   "observe",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"id": "$subject.id"}),
+		Action:    deriveAction("signadot", "feature", entity.Obj{"at": "$subject.commit"}),
 	}); err == nil {
-		t.Error("$subject.id was accepted; it has no spelling and would fail at fire time")
+		t.Error("$subject.commit was accepted in a derive; an upward read would then change " +
+			"what it writes, and the loop that follows crosses a level")
 	}
 }
 
@@ -747,4 +760,109 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 			"written without its parent starts a fresh chain, and the throttle's report would "+
 			"name the crossing as the origin", deepest)
 	}
+}
+
+// $subject's parts, in a SPAWN string. Spawn templates do not go through the reference
+// machinery at all — launch.Bind is a flat ReplaceAll — so the dotted forms only work if
+// bindingFor publishes them as keys. Forgetting that does not error: `$subject.id` substitutes
+// the bare key and leaves the text "demo:pr:1.id", which is why this is pinned.
+func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
+	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.Ref{System: "demo", Kind: "pr", ID: "1"})
+	spec := launch.Spec{Task: "review $subject.id in $subject.system ($subject) at $stage"}
+	got := spec.Bind(b).Task
+	if want := "review 1 in demo (demo:pr:1) at open"; got != want {
+		t.Fatalf("task = %q, want %q", got, want)
+	}
+}
+
+// The record's parts resolve in a patch, and the bare form still means the address — which is
+// what keeps every charter written before the record existed meaning what it meant.
+func TestSubjectPartsResolveInAPatch(t *testing.T) {
+	root := refRoot(entity.Obj{"stage": "open"}.Payload(),
+		subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "7"}, entity.Obj{"stage": "open"}.Payload(), 42))
+	for ref, want := range map[string]string{
+		"$subject":             "demo:pr:7",
+		"$subject.ref":         "demo:pr:7",
+		"$subject.system":      "demo",
+		"$subject.kind":        "pr",
+		"$subject.id":          "7",
+		"$subject.commit":      "42",
+		"$subject.value.stage": "open",
+	} {
+		got, err := expandString(ref, root)
+		if err != nil {
+			t.Errorf("%s: %v", ref, err)
+			continue
+		}
+		if txt, _ := scalarText(got); txt != want {
+			t.Errorf("%s = %q, want %q", ref, txt, want)
+		}
+	}
+}
+
+// $subject.value reads the subject AS OF THE COMMIT THAT CAUSED THE FIRING, not as of the
+// moment the action runs.
+//
+// The difference is a gate. A firing held for an approval acts whenever the answer comes, and
+// the subject may have moved on meanwhile — so a late read would write from a state nobody
+// evaluated, and the model's rule is that a firing is settled at one snapshot. Here the gate is
+// answered only after the subject has been changed underneath it, and the patch must still
+// carry what was true when the rule fired.
+func TestSubjectValueReadsAtTheCausingCommit(t *testing.T) {
+	store := entitytest.Store(t)
+	release := make(chan struct{})
+	eng := New(store, blockingResolver{release: release})
+	if err := eng.AddTrigger(Trigger{
+		Name:      "record",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Gates:     []Gate{{Mode: "ask"}},
+		Action:    Action{Patch: entity.Obj{"sawStage": "$subject.value.stage", "sawAt": "$subject.commit"}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	// Let the firing reach its gate, then move the subject on underneath it.
+	time.Sleep(150 * time.Millisecond)
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "moved-on"}.Payload())
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+
+	deadline := time.After(3 * time.Second)
+	for {
+		e, ok, _ := store.Get(ref)
+		if ok {
+			if saw := entity.ToObj(e.Payload)["sawStage"]; saw != nil {
+				if saw != "open" {
+					t.Fatalf("$subject.value.stage = %v, want \"open\" — it was read at the "+
+						"moment the gate was answered rather than at the commit that caused "+
+						"the firing", saw)
+				}
+				return
+			}
+		}
+		select {
+		case <-deadline:
+			e, _, _ := store.Get(ref)
+			t.Fatalf("the gated firing never landed its patch; have %+v", entity.ToObj(e.Payload))
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// blockingResolver holds every gate until release is closed, then proceeds — standing in for
+// the approval that takes long enough for the world to move.
+type blockingResolver struct{ release chan struct{} }
+
+func (r blockingResolver) Resolve(ctx context.Context, q process.GateQuestion, tu process.ToolUse) (process.Resolution, error) {
+	select {
+	case <-r.release:
+	case <-ctx.Done():
+		return process.Resolution{}, ctx.Err()
+	}
+	return process.Resolution{Proceed: true, By: "test"}, nil
 }

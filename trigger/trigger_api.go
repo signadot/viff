@@ -439,7 +439,22 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 // $subject — see goal.go, which now also publishes `flow` for that job.)
 func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	b := payloadBinding(payload)
-	b["subject"] = subject.String()
+	b[refSubject] = subject.String()
+	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
+	// reference machinery — launch.Bind is a flat ReplaceAll over this map. Without them
+	// `task: "approve $subject.id"` would substitute the bare key and leave the text
+	// "gh:issue:1.id": wrong, and silently so, which is the worst way for a template to fail.
+	//
+	// launch.expand sorts its keys longest-first, so the dotted key wins over the bare one.
+	// That sort was written for an unrelated reason and is what makes this work at all.
+	//
+	// `value` is absent on purpose: it is a payload, which has no text form, and the payload's
+	// own top-level fields are already flat here ($stage). `commit` is absent because a spawn
+	// is not where provenance belongs and a firing may have none.
+	b[refSubject+"."+subjPartRef] = subject.String()
+	b[refSubject+"."+subjPartSystem] = subject.System
+	b[refSubject+"."+subjPartKind] = subject.Kind
+	b[refSubject+"."+subjPartID] = subject.ID
 	return b
 }
 

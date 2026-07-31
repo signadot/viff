@@ -709,52 +709,51 @@ func (a Action) validateDerive() error {
 	return nil
 }
 
-// refSubject is the one reference a derive may carry: the resolved subject, as the ref string
-// the engine already writes into the linkage.
+// A derive may reference its SUBJECT and nothing else — every part of it, including the
+// subject's state, but not the occasion of the firing.
 //
-// It is admitted where every other reference is refused because it is fixed by the same pair the
-// derived entity's ADDRESS is fixed by. Re-firing a rule about a subject therefore writes
-// identical bytes at an identical address, which is the property the read side leans on — a rule
-// may read any level, because the extra firings a read causes cannot change what it writes. A
-// reference to $result or a payload field would break exactly that, since its value moves as
-// rules fire.
+// The line is not "identity, never state", which is where this started and which was too
+// strict. What the ordering actually needs is content THE LEVELS ABOVE CANNOT INFLUENCE, and a
+// reference cannot reach another entity at all: it reads the firing's own subject, or a
+// process's result. Nothing above can write the subject — a patch touches only its own subject
+// and a derive only climbs — so an upward read that wakes the rule without changing the subject
+// resolves $subject.value to the same bytes, writes them to the same address, and dies as a
+// no-op. That is the property "reads may go anywhere" rests on, and $subject.value keeps it.
 //
-// $subject resolves to the whole ref ("gh:issue:1"), which is a Match address as it stands and a
-// flat binding for a spawn at the level above ("approve $pr", after `pr: $subject`). $subject.id
-// is NOT a spelling — the reference is a string, not a record — and is refused here rather than
-// failing at fire time.
-const refSubject = "subject"
+// $subject.commit does not, and it is the one part refused here. It is a function of WHEN the
+// firing happened rather than of the subject, so a read from above changes it:
+//
+//	L (level 0, subject S, reads D)   derive: { at: $subject.commit }
+//	H (level 10, subject D)           patch:  { seen: true }
+//
+//	S changes → L derives D{at: 100} → H patches D → L's read wakes it at commit 102 →
+//	D{at: 102}, a real change → H fires → …
+//
+// Unbounded, across a level, paced only by the throttle — the cycle the ordering exists to rule
+// out, and it would cost the read side its freedom (`read at your level or below` would have to
+// come back). The engine's own linkage stays commit-free for exactly this reason: recording the
+// causing commit at verse.meta.derivedFrom would reintroduce the loop from inside the engine.
+func deriveMayReference(ref string) bool {
+	if ref == refSubject {
+		return true
+	}
+	switch subjectPart(ref) {
+	case subjPartRef, subjPartSystem, subjPartKind, subjPartID, subjPartValue:
+		return true
+	}
+	return false
+}
 
 // firstBadRef reports the first $reference in a subtree that a derive may not carry, or "" when
-// every reference in it is $subject. It reuses the token rule the expander does (refAt), so what
-// counts as a reference here is exactly what would be expanded at fire time — a literal dollar
-// ("$5") is neither, and never was.
+// every one of them is admissible.
 func firstBadRef(n entity.Payload) string {
-	if n == nil {
-		return ""
-	}
-	switch n.Type {
-	case ir.ObjectType, ir.ArrayType:
-		for _, v := range n.Values {
-			if r := firstBadRef(v); r != "" {
-				return r
-			}
+	bad := ""
+	eachRef(n, func(ref string) {
+		if bad == "" && !deriveMayReference(ref) {
+			bad = ref
 		}
-	case ir.StringType:
-		s := n.String
-		for i := 0; i < len(s); i++ {
-			if s[i] != '$' {
-				continue
-			}
-			if l := refAt(s[i:]); l > 0 {
-				if ref := s[i+1 : i+l]; ref != refSubject {
-					return s[i : i+l]
-				}
-				i += l - 1
-			}
-		}
-	}
-	return ""
+	})
+	return bad
 }
 
 // deriveFromField is where the engine records what a derived entity is about, under the reserved
@@ -765,15 +764,22 @@ func firstBadRef(n entity.Payload) string {
 // one is the Condition's answer, not something the charter should be trusted to interpolate.
 const deriveFromField = "derivedFrom"
 
-// deriveContent resolves what a derive writes: $subject expanded, then the engine's linkage
-// merged in.
-//
-// It expands against a root holding ONLY the subject — refRoot(nil, subj) — rather than against
-// the payload that fired the action. That makes the reference universe structural instead of
-// merely checked: a reference install would have refused cannot resolve here either, it fails the
-// firing by name, and the two ends cannot drift apart if one of them is ever relaxed.
-func deriveContent(payload entity.Payload, chain string, subj entity.Ref) (entity.Payload, error) {
-	expanded, err := expandPatch(payload, refRoot(nil, subj))
+// deriveContent resolves what a derive writes: its $subject references expanded, then the
+// engine's linkage merged in.
+func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion, subj entity.Ref) (entity.Payload, error) {
+	// The wants are read off the derive itself, and `commit` is cleared whatever it asked for:
+	// install refuses $subject.commit here, and clearing it means the reference cannot resolve
+	// either. Two ends saying the same thing, so relaxing one alone cannot open the other.
+	w := wantsOf(payload)
+	w.commit = false
+	sn, err := e.subjectFor(oc, subj, w)
+	if err != nil {
+		return nil, err
+	}
+	// Against a root holding ONLY the subject, not the payload that fired the action: a derive
+	// reaches its own subject and nothing else, and that is structural here rather than a rule
+	// enforced only at install.
+	expanded, err := expandPatch(payload, refRoot(nil, sn))
 	if err != nil {
 		return nil, err
 	}

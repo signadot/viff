@@ -452,8 +452,8 @@ apply. `patch: { tmp: !delete null }` removes a key, which is something no amoun
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
 `derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It is
-addressed `<system>.<kind>`, its content may reference the firing's identity but never its
-state (`$subject`, and nothing else), and the derived entity's
+addressed `<system>.<kind>`, its content may reference its own subject and nothing else
+(`$subject` and its parts, but not `$subject.commit`), and the derived entity's
 id is the engine's, a function of (rule, subject). It is only installable inside a declared
 level ordering, where it must land strictly above the rule that writes it: see
 [strata](strata.md).
@@ -516,6 +516,19 @@ Every field of **the subject's** payload is bound by name (`$stage`, `$path`, �
 `$subject` — the resolved subject. So `review $subject` in a spawn's task names the PR the
 firing is about, even when the entity that fired was a process, not the PR, and `$stage` is
 that PR's stage rather than the process's.
+
+`$subject` is a record, and the bare form is its address — so everything written before it had
+parts still means what it meant:
+
+| `$subject` | the whole ref, `demo:pr:1` |
+| `$subject.ref` `.system` `.kind` `.id` | the address, and its three segments |
+| `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
+| `$subject.commit` | that commit's revision |
+
+A completion hook has no causing commit — it is woken by a process finishing rather than by a
+write — so `.value` and `.commit` fail there by name rather than resolving to a silent zero. In a
+spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no text
+form and its top-level fields are already bound by name.
 
 That is what an action is about, and it used to read the CHANGED payload instead — which is
 the same thing only while the subject and the cause are the same entity. The moment they came

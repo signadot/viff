@@ -551,7 +551,10 @@ func spawnLabel(t Trigger, subjects []entity.Ref) string {
 func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, subjects []entity.Ref) {
 	for _, subj := range subjects {
 		parent := e.causeFor(t, c, subj)
-		ev := entity.Event{Rev: parent}
+		// The causing commit rides ALONGSIDE the causal parent rather than replacing it: parent
+		// is zeroed when this firing begins a fresh chain, and c is the commit that caused it
+		// either way. See occasion.
+		oc := occasion{commit: c, parent: parent}
 		if e.throttled(t, subj, parent) {
 			if e.tripPace <= 0 {
 				continue // no pace configured: refuse outright, and the chain ends here
@@ -559,15 +562,15 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 			// Pace it: hold the firing for D and then let it through, so a tripped chain
 			// runs at a dull steady rate rather than at the speed of the store. The wait is
 			// in this goroutine, not on the dispatch path — see pauseFor.
-			go func(subj entity.Ref, ev entity.Event) {
+			go func(subj entity.Ref, oc occasion) {
 				if !e.pauseFor(ctx, subj, e.tripPace) {
 					return
 				}
-				e.fireOne(ctx, t, ev, subj)
-			}(subj, ev)
+				e.fireOne(ctx, t, oc, subj)
+			}(subj, oc)
 			continue
 		}
-		go e.fireOne(ctx, t, ev, subj)
+		go e.fireOne(ctx, t, oc, subj)
 	}
 }
 
@@ -577,7 +580,7 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 // The subject is settled before any gate — selected from the snapshot the rule was evaluated
 // against — which is what lets a gate say what it is deciding about, and stops a long approval
 // sliding the answer underneath itself.
-func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj entity.Ref) {
+func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entity.Ref) {
 	// One firing at a time per subject, for as long as the WORK lasts — which is two things,
 	// because a firing can outlive its own function call:
 	//
@@ -661,7 +664,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj e
 	//
 	// A trigger firing has no privileged cause: the change that dispatched it is a doorbell,
 	// so the action's references read the subject (see refSource).
-	t.Action.apply(t.Name, ev, subjects, e, fromSubject)
+	t.Action.apply(t.Name, oc, subjects, e, fromSubject)
 }
 
 // monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the
@@ -1419,7 +1422,11 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
-	if err := hook.apply(chain, ev, []entity.Ref{subj}, e, fromCause); err != nil {
+	// A hook has no causing commit — it is woken by a process finishing rather than by a
+	// write, which is exactly why its chain starts again (causal.go). So the occasion carries
+	// the process event for its references and nothing for $subject.value/$subject.commit,
+	// which then fail by name rather than resolving to a silent zero.
+	if err := hook.apply(chain, occasion{ev: ev}, []entity.Ref{subj}, e, fromCause); err != nil {
 		e.recordHookFailure(mirror.Ref(fp.id), chain, err)
 	}
 }

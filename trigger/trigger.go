@@ -201,6 +201,32 @@ func (g Gate) mode() (process.Mode, error) {
 	return ParseMode(m)
 }
 
+// occasion is what an action needs to know about the firing it is running for. It exists
+// because two revisions live here that are easy to conflate, and conflating them is a real bug
+// rather than a tidiness question:
+//
+//	parent — the causal PARENT, for the throttle: the commit this firing's writes descend from.
+//	         It is deliberately 0 when the firing begins a fresh chain — a gate paced it, or the
+//	         waking commit did not change this subject (see causeFor).
+//	commit — the commit that CAUSED this firing. Never zeroed for pacing: a gated firing still
+//	         happened because of one particular commit, and that commit is the state the rule
+//	         was evaluated against, which is what $subject.value must be read at and what
+//	         $subject.commit names.
+//
+// Before this they were one field and `parent` won, so a firing held at a gate reported no
+// causing commit at all.
+type occasion struct {
+	// ev is the CHANGE, carried for a completion hook, whose references read the process's
+	// payload rather than the subject's (see refSource). Zero for a subject-dispatched firing,
+	// where the change is a doorbell and nothing reads it.
+	ev entity.Event
+	// commit is the causing commit, with its per-entity changes — so a subject that was itself
+	// changed by it yields its payload at C for free, and only a fan-out member that did NOT
+	// change costs a read at a revision.
+	commit entity.Commit
+	parent int64
+}
+
 // Action is what a trigger does when it fires and its gates proceed — declarative data,
 // not a Go closure: optionally set fields on an entity (a state transition) and/or spawn a
 // process (a launch.Spec). The engine interprets it via apply.
@@ -407,10 +433,10 @@ func (a Action) noNestedSeq(inSeq bool) error {
 // one member's bad reference must not stop the others — but the error is reported rather
 // than only traced, so a caller that has somewhere to record it (a completion hook, which
 // knows the process it belongs to) can persist it instead of dropping it into the log.
-func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *Engine, src refSource) error {
+func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engine, src refSource) error {
 	var first error
 	for _, subj := range subjects {
-		h, err := a.applyOne(chain, ev, subj, e, src)
+		h, err := a.applyOne(chain, oc, subj, e, src)
 		if err != nil {
 			if first == nil {
 				first = err
@@ -420,7 +446,7 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 		// A sequence starts once the carrier's own write has landed. It cannot also have
 		// spawned (validate rejects spawn+seq), so there is nothing in flight to race.
 		if len(a.Seq) > 0 && h == nil {
-			e.startSeq(chain, a, ev, subj, src)
+			e.startSeq(chain, a, oc, subj, src)
 		}
 	}
 	return first
@@ -430,10 +456,10 @@ func (a Action) apply(chain string, ev entity.Event, subjects []entity.Ref, e *E
 // spawned process (nil when the action starts none) and the write's error, which is what lets
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
-func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engine, src refSource) (process.Handle, error) {
+func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (process.Handle, error) {
 	// What $references read: the cause's payload for a hook, the subject's own otherwise.
 	// Resolved once, so a patch and a spawn in one action cannot disagree about what $x means.
-	root := e.refPayload(ev, subj, src)
+	root := e.refPayload(oc.ev, subj, src)
 	if a.Patch != nil {
 		// Resolve $references against the payload that fired this action, so a patch can
 		// write a value it read (a completed process's $result, a nested $verse.review.done)
@@ -442,7 +468,12 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 		// distinguishes an absent key from a null one, so omitting it would launder "the
 		// process never said" into "the process said nothing", which a match reads as a
 		// different fact.
-		patch, err := expandPatch(a.Patch, refRoot(root, subj))
+		sn, err := e.subjectFor(oc, subj, wantsOf(a.Patch))
+		if err != nil {
+			e.tracef("trigger %s: %v; not spawning", chain, err)
+			return nil, err
+		}
+		patch, err := expandPatch(a.Patch, refRoot(root, sn))
 		if err != nil {
 			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
 			return nil, err
@@ -452,7 +483,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 		// no engine-caused cause — a completion hook, whose event comes off a process finishing
 		// (procEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
 		// the chain starts again. See causal.go.
-		if err := e.patchEntity(chain, ev.Rev, subj, patch); err != nil {
+		if err := e.patchEntity(chain, oc.parent, subj, patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a process started about
 			// a state the trigger FAILED to establish is worse than no process at all, and it
 			// would be the harder failure to read afterwards.
@@ -470,7 +501,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	// for its own subject.
 	for _, d := range a.derives() {
 		ref := entity.Ref{System: d.System, Kind: d.Kind, ID: deriveID(chainID(chain), subj)}
-		payload, err := deriveContent(d.Payload, chain, subj)
+		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
 		if err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err
@@ -480,7 +511,7 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 		// level. Losing it would not loosen the throttle's bound — a chain never returns to a
 		// stratum it has left, so a per-segment count still trips — but it would truncate the
 		// report, which names the rules that looped by walking back parents (causal.go).
-		if err := e.patchEntity(chain, ev.Rev, ref, payload); err != nil {
+		if err := e.patchEntity(chain, oc.parent, ref, payload); err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err
 		}

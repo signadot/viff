@@ -94,9 +94,9 @@ Two constraints, and they are the whole proposal:
 
 ## `derive`: literal content, engine identity
 
-> Shipped with one line moved: the content may carry `$subject`. See the note at the end of the
-> next section — the requirement was never literalness as such, but that the content be fixed by
-> the same pair the address is fixed by.
+> Shipped with the constraint relaxed twice. A derive may reference its own SUBJECT — every
+> part of it but `$subject.commit`. See the note at the end of the next section: the requirement
+> was never literalness, but that the levels above cannot influence what a derive writes.
 
 The address is exactly two levels of nesting — `<system>.<kind>` — and everything below is
 payload. Nothing deeper is address, so there is no boundary to find, which is what makes the
@@ -142,21 +142,38 @@ constraint would have to come back — *read at your level or below* — and the
 recording here, because "let a derive interpolate `$result`" will look like an innocent
 convenience the first time someone wants it.
 
-**It was wanted the first time somebody wrote an example, and the answer is sharper than
-this paragraph.** What is
-actually required is not that the content be literal but that it be **fixed by the same pair the
-ADDRESS is fixed by**, which is (rule, subject). `$subject` is; `$result` is not. So `$subject` is
-admitted and everything else is refused, and the read side keeps its inertness exactly — a re-fire
-still writes identical bytes at an identical address. The rule as shipped is *a derive may
-reference the firing's identity, never its state*, and this paragraph's version of it was the
-special case where the identity happens to be spelled out by hand.
+**It was wanted the first time somebody wrote an example, and twice the answer was sharper than
+the paragraph above.**
+
+The first correction: what is required is not that the content be literal but that it be fixed by
+the same pair the ADDRESS is fixed by, which is (rule, subject). That admitted `$subject` and
+refused everything else.
+
+The second correction went further, and is the one that stands. A reference **cannot reach
+another entity at all** — it reads the firing's own subject, or a process's result — and nothing
+above can write the subject, since a patch touches only its own subject and a derive only climbs.
+So the levels above cannot influence what a derive writes, whatever it references about its
+subject, and `$subject.value` is admissible too. The rule is *a derive may reference its subject
+and nothing else*.
+
+**Except `$subject.commit`**, which is the exact edge the read side turns on. It is a function of
+WHEN the firing happened rather than of the subject, so a read from above does change it:
+
+	L (level 0, subject S, reads D)   derive: { at: $subject.commit }
+	H (level 10, subject D)           patch:  { seen: true }
+
+	S changes → L derives D{at: 100} → H patches D → L's read wakes it at commit 102 →
+	D{at: 102}, a real change → H fires → …
+
+Unbounded, across a level, paced only by the throttle — and it would cost the read side its
+freedom, since *read at your level or below* would have to come back. So `.commit` is refused in a
+derive, and the engine's own linkage stays commit-free for the identical reason: recording the
+causing commit at `verse.meta.derivedFrom` would reintroduce the loop from inside the engine.
 
 The convenience is real rather than cosmetic: `$subject` resolves to the whole ref, so a derive
 can put the address under a key of the author's choosing, and a spawn at the level above binds a
-top-level field flatly (`task: "approve $pr"` after `pr: $subject`). The linkage at
-`verse.meta.derivedFrom` is nested, and a spawn's strings take the older flat substitution — so
-without this the effectuate stratum could read which PR it was about but not easily hand it to an
-agent.
+top-level field flatly (`task: "approve $pr"` after `pr: $subject`). The linkage is nested, and a
+spawn's strings take the older flat substitution.
 
 ## What this earns, stated exactly
 

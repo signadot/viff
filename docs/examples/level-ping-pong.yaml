@@ -63,16 +63,21 @@
       signadot:
         feature:
           priority: urgent
-          # $subject is the ONE reference a derive may carry, and it resolves to the whole
-          # ref — "gh:issue:1" — which is a match address as it stands. It is admitted where
-          # $result is refused because it is fixed by (rule, subject), the same pair the
-          # derived entity's ADDRESS is fixed by: so a re-fire still writes identical bytes
-          # to an identical address, and a rule reading a higher level stays inert.
+          # A derive may reference its SUBJECT and nothing else. $subject is the whole ref
+          # — "gh:issue:1", a match address as it stands — and .system/.kind/.id/.value are
+          # its parts. Safe here because nothing at a higher level can write the subject, so
+          # an upward read cannot change what this derive writes: same bytes, same address,
+          # a no-op the store ends by itself.
+          #
+          # $subject.commit is the one part refused in a derive: it varies with WHEN the
+          # firing happened, so a read from above WOULD change it, and the loop that follows
+          # crosses a level.
           #
           # Under a key of your choosing, so a spawn at the level above can bind it flatly
           # (`task: "approve $what"`). The engine also records it at verse.meta.derivedFrom,
           # nested, where a spawn's older flat substitution cannot reach it.
           what: $subject
+          stage: $subject.value.stage
 
 # ── the coupling: a lower lap re-ignites the upper cycle ─────────────────────
 # The subject is at level 10 (this rule's own), and the `on` reads level 0. A read

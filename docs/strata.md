@@ -75,21 +75,45 @@ level depend on a state that rules change as they fire, which is not a level.
 The address is exactly two levels — `<system>.<kind>` — and everything under it is payload.
 Nothing deeper is address, so there is no boundary to find.
 
-**The content may reference the firing's identity, and never its state.** In practice that means
-one reference, `$subject`, and every other is refused at install.
+**A derive may reference its subject, and nothing else.** `$subject` and its parts resolve;
+every other reference is refused at install.
 
-The line is where it is because of what a re-fire has to be. A derived entity's *address* is a
-function of (rule, subject); `$subject` is fixed by that same pair; so firing a rule again about
-the same subject writes identical bytes to an identical address, which the store ends as a no-op.
-That is what makes reading *upward* safe — a rule may `on` or `when` anything at any level,
-because the extra firings a read causes cannot change what gets written. A reference to `$result`
-or to a payload field moves as rules fire, so a derive carrying one would turn exactly that read
-into a live cycle. It is also what keeps the level check a static match of a document against a
-pattern rather than a guess at what a template will produce.
+The line is where it is because of what a re-fire has to be. A reference cannot reach another
+entity at all — it reads the firing's own subject, or a process's result — and nothing above can
+write the subject, since a patch touches only its own subject and a derive only climbs. So an
+upward read that wakes the rule without changing the subject resolves to the same bytes, writes
+them to the same address, and dies as a no-op. That is what makes reading upward safe: a rule may
+`on` or `when` anything at any level, because the extra firings a read causes cannot change what
+gets written.
 
-`$subject` resolves to the whole ref — `"gh:issue:1"` — which is a match address as it stands,
-and a flat binding for a spawn at the level above. `$subject.id` has no spelling: the reference is
-a string, not a record.
+**`$subject.commit` is the exception, and it is refused in a derive.** It is a function of *when*
+the firing happened rather than of the subject, so a read from above does change it — and a
+derive that writes something new on every lap wakes the level above, which wakes the rule again:
+a cycle across a level, which is the one thing the ordering exists to rule out. The same reason
+keeps the engine's own linkage commit-free.
+
+The parts:
+
+| reference | resolves to |
+|---|---|
+| `$subject` | the whole ref, `"gh:issue:1"` — a match address as it stands |
+| `$subject.ref` `.system` `.kind` `.id` | the address, and its three segments |
+| `$subject.value` | the subject's payload **at the commit that caused the firing** |
+| `$subject.commit` | that commit's revision — not in a derive |
+
+`$subject.value` reads at the causing commit rather than at the moment the action runs, and the
+difference is a gate: a firing held for an approval acts whenever the answer comes, and reading
+late would write from a state nobody evaluated. It costs nothing when the causing commit changed
+the subject, which is the ordinary rule about the entity that changed; a fan-out member the commit
+did not touch is read at that revision, which the store answers by replaying its log.
+
+A completion hook has neither. It is woken by a process finishing rather than by a write — which
+is why its chain starts again — so there is no revision to read at or to name, and both fail by
+name rather than resolving to a silent zero.
+
+In a spawn's strings the identity parts work too (`task: "approve $subject.id"`), because those
+are published as flat bindings. `.value` is not: a payload has no text form, and the subject's own
+top-level fields are already flat there (`$stage`).
 
 **The identity is the engine's.** The derived entity's id is a function of (rule, subject), and
 the engine writes the subject linkage itself, at `verse.meta.derivedFrom`:

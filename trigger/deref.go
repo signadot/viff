@@ -63,13 +63,115 @@ const (
 //
 // $subject is set LAST, the same rule bindingFor states: it is the one reserved reference,
 // and a payload field that happens to be called "subject" must not shadow it.
-func refRoot(payload entity.Payload, subject entity.Ref) entity.Payload {
+func refRoot(payload entity.Payload, subject *ir.Node) entity.Payload {
 	fields := map[string]*ir.Node{}
 	for k, v := range entity.Fields(payload) { // nil for a scalar payload — no named parts
 		fields[k] = v.DeepCopy()
 	}
-	fields["subject"] = ir.FromString(subject.String())
+	fields[refSubject] = subject
 	return ir.FromMap(fields)
+}
+
+// The reserved reference and its parts. $subject is a RECORD, and the parts fall in two
+// groups that the rest of the model treats differently:
+//
+//	ref system kind id   IDENTITY — which entity this firing is about
+//	value commit         the FIRING — what was true, and when
+//
+// The bare `$subject` resolves to `ref` (see deref), so every charter written before the record
+// existed means exactly what it meant: the address, as a string.
+const (
+	refSubject     = "subject"
+	subjPartRef    = "ref"
+	subjPartSystem = "system"
+	subjPartKind   = "kind"
+	subjPartID     = "id"
+	// value is the subject's payload AT THE COMMIT THAT CAUSED THE FIRING, not at the moment
+	// the action runs. Those differ by however long a gate took to answer, and reading late
+	// would let an approval that took a day act on a state nobody evaluated — the model's rule
+	// is that a firing is settled at one snapshot, and this is that rule reaching references.
+	subjPartValue = "value"
+	// commit is the revision of that same causing commit.
+	subjPartCommit = "commit"
+)
+
+// subjectNode assembles the record $subject resolves to. value and commit are omitted when the
+// firing did not ask for them, which is what keeps a charter that never mentions them from
+// paying for a snapshot read.
+func subjectNode(subj entity.Ref, value entity.Payload, commit int64) *ir.Node {
+	fields := map[string]*ir.Node{
+		subjPartRef:    ir.FromString(subj.String()),
+		subjPartSystem: ir.FromString(subj.System),
+		subjPartKind:   ir.FromString(subj.Kind),
+		subjPartID:     ir.FromString(subj.ID),
+	}
+	if value != nil {
+		fields[subjPartValue] = value.DeepCopy()
+	}
+	if commit > 0 {
+		fields[subjPartCommit] = ir.FromInt(commit)
+	}
+	return ir.FromMap(fields)
+}
+
+// subjectWants is what a firing needs about its subject beyond identity. Identity is free —
+// three segments already in hand — while `value` may cost a read at a revision, which the store
+// answers by replaying its log to that commit (entity/logdstore.go). So it is asked for rather
+// than always supplied.
+type subjectWants struct{ value, commit bool }
+
+// wantsOf reports which costly parts a document references.
+func wantsOf(p entity.Payload) subjectWants {
+	var w subjectWants
+	eachRef(p, func(ref string) {
+		switch {
+		case ref == refSubject+"."+subjPartCommit:
+			w.commit = true
+		case subjectPart(ref) == subjPartValue:
+			w.value = true
+		}
+	})
+	return w
+}
+
+// subjectPart reports which part of $subject a reference names, or "" when it is not a subject
+// reference at all. `subject.value.stage` and `subject.value[0]` both name `value`: what follows
+// is a path INTO the part, not another part.
+func subjectPart(ref string) string {
+	rest, ok := strings.CutPrefix(ref, refSubject+".")
+	if !ok {
+		return ""
+	}
+	if i := strings.IndexAny(rest, ".["); i >= 0 {
+		return rest[:i]
+	}
+	return rest
+}
+
+// eachRef calls fn for every $reference in a document, using the same token rule the expander
+// does (refAt) — so what is counted here is exactly what would be expanded, and a literal
+// dollar ("$5") is neither.
+func eachRef(n entity.Payload, fn func(string)) {
+	if n == nil {
+		return
+	}
+	switch n.Type {
+	case ir.ObjectType, ir.ArrayType:
+		for _, v := range n.Values {
+			eachRef(v, fn)
+		}
+	case ir.StringType:
+		s := n.String
+		for i := 0; i < len(s); i++ {
+			if s[i] != '$' {
+				continue
+			}
+			if l := refAt(s[i:]); l > 0 {
+				fn(s[i+1 : i+l])
+				i += l - 1
+			}
+		}
+	}
 }
 
 // refAt reports the length of the reference token at the start of s, or 0 when what follows
@@ -120,6 +222,13 @@ func identPart(c byte) bool { return identStart(c) || (c >= '0' && c <= '9') }
 // that difference too (a match spells the three cases apart — see docs/trigger-model.md).
 // So an absent reference is an error and a null one resolves to null.
 func deref(root entity.Payload, ref string) (entity.Payload, error) {
+	// The bare `$subject` IS the address: it resolved to the ref string long before $subject
+	// was a record, and every charter written since means that. Mapping it onto `.ref` here
+	// keeps one spelling for one thing rather than making the old form a special case of the
+	// record that authors have to know about.
+	if ref == refSubject {
+		ref = refSubject + "." + subjPartRef
+	}
 	n, err := root.GetKPath(ref)
 	if err != nil {
 		return nil, fmt.Errorf("$%s: %w", ref, err)
@@ -245,6 +354,74 @@ func expandInto(n entity.Payload, root entity.Payload) error {
 		return nil
 	}
 	return nil
+}
+
+// subjectFor resolves the $subject record for one firing, reading only what the action asked
+// for.
+//
+// The costly part is `value`, and where it comes from is the whole point: the payload AS OF THE
+// CAUSING COMMIT. When the event IS about this subject that payload is already in hand (ev.To)
+// and costs nothing — which is the common case, one changed entity waking a rule about itself.
+// A fan-out is where it matters: the members that did NOT change would otherwise be read at
+// whatever the store says now, so a firing about a set would mix one member's state at C with
+// another's at some later commit. That is the inconsistency Store.AsOf exists to remove.
+func (e *Engine) subjectFor(oc occasion, subj entity.Ref, w subjectWants) (*ir.Node, error) {
+	var value entity.Payload
+	var commit int64
+	if w.value {
+		v, err := e.subjectValueAt(oc, subj)
+		if err != nil {
+			return nil, err
+		}
+		value = v
+	}
+	if w.commit {
+		if oc.commit.Rev == 0 {
+			return nil, fmt.Errorf("$%s.%s: this firing has no causing commit — a completion "+
+				"hook is woken by a process finishing rather than by a write, which is why its "+
+				"chain starts again (see causal.go). There is no revision to name",
+				refSubject, subjPartCommit)
+		}
+		commit = oc.commit.Rev
+	}
+	return subjectNode(subj, value, commit), nil
+}
+
+// subjectValueAt reads the subject's payload at the commit that caused the firing.
+func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, error) {
+	// Free when the causing commit changed this subject, which is the ordinary rule about the
+	// entity that changed: the payload at C is already in the commit.
+	for _, ch := range oc.commit.Changes {
+		if ch.Ref == subj && ch.To != nil {
+			return ch.To, nil
+		}
+	}
+	if oc.commit.Rev == 0 {
+		return nil, fmt.Errorf("$%s.%s: this firing has no causing commit to read at — a "+
+			"completion hook is woken by a process finishing rather than by a write, so there "+
+			"is no revision at which to pin the subject's state",
+			refSubject, subjPartValue)
+	}
+	// A fan-out member the commit did not touch. THIS is the read that was silently at "now"
+	// before: one firing about a set would mix one member's state at C with another's at
+	// whatever the store had reached by the time the action ran.
+	snap, err := e.store.AsOf(oc.commit.Rev)
+	if err != nil {
+		return nil, fmt.Errorf("$%s.%s: reading %s at commit %d: %w",
+			refSubject, subjPartValue, subj, oc.commit.Rev, err)
+	}
+	ent, ok, err := snap.Get(subj)
+	if err != nil {
+		return nil, fmt.Errorf("$%s.%s: reading %s at commit %d: %w",
+			refSubject, subjPartValue, subj, oc.commit.Rev, err)
+	}
+	if !ok {
+		// Absent at C is a real state, not a failure: a named subject may be written by the
+		// very action about to fire. Null, so `$subject.value` resolves and a path into it
+		// does not.
+		return ir.Null(), nil
+	}
+	return ent.Payload, nil
 }
 
 // refPayload answers what an action's $references read, for one subject.

@@ -13,19 +13,22 @@ import (
 )
 
 // derefRoot is the payload the reference tests resolve against.
+//
+// It goes through refRoot rather than writing `subject` by hand, because $subject is a RECORD
+// now and the bare form is the record's `ref`. A fixture that spelled it as a string would be
+// testing a shape the engine never builds.
 func derefRoot() entity.Payload {
-	return entity.Obj{
-		"result":  "SHIPIT",
-		"status":  "done",
-		"count":   3,
-		"ratio":   1.5,
-		"ok":      true,
-		"nul":     nil,
-		"subject": "demo:pr:1",
-		"verse":   entity.Obj{"review": entity.Obj{"done": true, "step": 2}},
-		"list":    []any{"a", "b"},
-		"obj":     entity.Obj{"k": "v"},
-	}.Payload()
+	return refRoot(entity.Obj{
+		"result": "SHIPIT",
+		"status": "done",
+		"count":  3,
+		"ratio":  1.5,
+		"ok":     true,
+		"nul":    nil,
+		"verse":  entity.Obj{"review": entity.Obj{"done": true, "step": 2}},
+		"list":   []any{"a", "b"},
+		"obj":    entity.Obj{"k": "v"},
+	}.Payload(), subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0))
 }
 
 // A patch value that is exactly one reference resolves to that reference's NODE, so the
@@ -190,16 +193,28 @@ func TestExpandPatchConstantIsUnchanged(t *testing.T) {
 	}
 }
 
+// resolvedSubject asks the root what `$subject` means, which is the contract — the record
+// behind it is an implementation detail, and reading the field directly would test that
+// instead.
+func resolvedSubject(t *testing.T, root entity.Payload) string {
+	t.Helper()
+	v, err := expandString("$subject", root)
+	if err != nil {
+		t.Fatalf("$subject did not resolve: %v", err)
+	}
+	return v.String
+}
+
 // refRoot must not round-trip through Go values: that turns a tony int into a float64, and
 // the store's predicates are type-exact.
 func TestRefRootPreservesNumberTypes(t *testing.T) {
 	ev := entity.Event{To: entity.Obj{"count": 3}.Payload()}
-	root := refRoot(ev.To, entity.Ref{System: "demo", Kind: "pr", ID: "1"})
+	root := refRoot(ev.To, subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0))
 	n := entity.Get(root, "count")
 	if n == nil || n.Int64 == nil || *n.Int64 != 3 {
 		t.Fatalf("count did not survive as an integer: %v", n)
 	}
-	if s := entity.Str(root, "subject"); s != "demo:pr:1" {
+	if s := resolvedSubject(t, root); s != "demo:pr:1" {
 		t.Errorf("subject = %q, want demo:pr:1", s)
 	}
 }
@@ -208,8 +223,8 @@ func TestRefRootPreservesNumberTypes(t *testing.T) {
 // rule bindingFor states for the spawn side.
 func TestRefRootSubjectWins(t *testing.T) {
 	ev := entity.Event{To: entity.Obj{"subject": "demo:pr:999"}.Payload()}
-	root := refRoot(ev.To, entity.Ref{System: "demo", Kind: "pr", ID: "1"})
-	if s := entity.Str(root, "subject"); s != "demo:pr:1" {
+	root := refRoot(ev.To, subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0))
+	if s := resolvedSubject(t, root); s != "demo:pr:1" {
 		t.Errorf("subject = %q, want the resolved subject demo:pr:1", s)
 	}
 }
@@ -218,11 +233,11 @@ func TestRefRootSubjectWins(t *testing.T) {
 // whole value to an invented name — the rule payloadBinding already states for the spawn side.
 func TestRefRootScalarPayload(t *testing.T) {
 	ev := entity.Event{To: ir.FromInt(42)}
-	root := refRoot(ev.To, entity.Ref{System: "demo", Kind: "count", ID: "1"})
+	root := refRoot(ev.To, subjectNode(entity.Ref{System: "demo", Kind: "count", ID: "1"}, nil, 0))
 	if _, err := expandString("$anything", root); err == nil {
 		t.Error("a reference into a scalar payload should error")
 	}
-	if s := entity.Str(root, "subject"); s != "demo:count:1" {
+	if s := resolvedSubject(t, root); s != "demo:count:1" {
 		t.Errorf("$subject must still resolve for a scalar payload, got %q", s)
 	}
 }
