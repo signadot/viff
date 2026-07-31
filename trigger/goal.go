@@ -245,7 +245,7 @@ func (e *Engine) RemoveGoal(name string) bool {
 	}
 	g.cancel()
 	e.reapGoalTriggers(g)
-	if _, err := e.store.Write(entity.Write{
+	if _, _, err := e.store.Write(entity.Write{
 		At: goalRef(name).At(), Value: nil,
 		When: []entity.Require{{Pattern: entity.Obj{"terminal": false}.Payload()}},
 	}); err != nil {
@@ -380,7 +380,7 @@ func (e *Engine) commitGoal(g *Goal, outcome string, witness []entity.Ref) {
 	// with the payload unescaped would execute the goal's own charter against its record.
 	// Modify does this for its callers; this is a read-modify-write by hand (the CAS is on
 	// terminal=false, not on unchanged), so it does its own.
-	committed, err := e.store.Write(entity.Write{
+	committed, _, err := e.store.Write(entity.Write{
 		At: ref.At(), Value: entity.AsData(next.Payload()),
 		When: []entity.Require{{Pattern: entity.Obj{"terminal": false}.Payload()}},
 	})

@@ -30,36 +30,74 @@ the revision of the commit that woke it, and stamps depth+1 on every write it ma
 whose revision is not in the map is external — a person, a process, a mirror — and starts a
 fresh chain at zero.
 
-**The cap is the number of triggers in the stratum.** A chain that never repeats a trigger
-visits at most |stratum| of them, so a chain longer than that has necessarily repeated one.
-Depth > |stratum| ⟺ some trigger fired twice in one chain. The cap is therefore exactly as
-precise as searching the chain for a repeat would be, at the cost of an integer. Nothing has to
-be detected; the counter *is* the detection.
+**The cap is the number of triggers in the stratum, and the argument is pigeonhole.** A chain is
+a path — a firing, the commit it wrote, the firing that commit woke — and each hop on that path is
+one trigger firing, drawn from the |stratum| triggers installed. A path of more than |stratum|
+hops has therefore used some trigger twice. Depth > |stratum| ⟺ some trigger fired twice on this
+path.
 
-### Why the trigger name alone is enough
+Two things about that argument are what make the counter cheap, and both are worth saying rather
+than leaving to be noticed. It assumes **nothing** about what a firing writes, what a trigger
+selects, or how the engine's own machinery fans out — pigeonhole does not care, so no later
+change to any of those can quietly invalidate the bound. And a commit that wakes several triggers
+branches the chain into several paths, each counted separately, which is exactly what a depth
+stamped on a write and inherited by its readers measures. The cap is as precise as searching the
+chain for a repeated name would be, at the cost of an integer. Nothing has to be detected; the
+counter *is* the detection.
 
-The obvious objection is a trigger that legitimately appears twice in one chain about *different*
-subjects — a transitive closure walking up a dependency tree. Keying the chain on (trigger,
-subject) instead would answer it and would destroy the bound, since the chain length would then
-be limited by the number of subjects rather than the number of rules.
+### A repeat is a repeat on one subject — nearly always
 
-It does not arise, for a structural reason. **The match grammar has no joins.** A `Match` selects
-on an entity's own system, kind, id and value; a `Formula` composes matches with
-quorum/fact/until/deadline. Nothing correlates one entity's field with another's. So within a
-stratum, where an action writes only its subject, a write to S can never bring S′ into a
-trigger's selection — a repeat of trigger T in a chain is necessarily a repeat on the same
-subject.
+Pigeonhole says a chain past the cap repeated a trigger. It does not say the repeat is a *cycle*,
+and that gap is where a false trip would live: a trigger can appear twice about *different*
+subjects — a transitive closure walking up a dependency tree — and stopping that would be wrong.
+Keying the chain on (trigger, subject) would tell the two apart and would destroy the bound, since
+the length would then be limited by the number of subjects rather than the number of rules.
 
-The token therefore carries the trigger name and nothing else, and loses no precision doing it.
-(The chain of names is still worth carrying, but for the diagnostic rather than for the decision
-— see *what tripping does*.)
+It is nearly ruled out structurally. **The match grammar has no joins.** A `Match` selects on an
+entity's own system, kind, id and value; a `Formula` composes matches with
+quorum/fact/until/deadline. Nothing correlates one entity's field with another's. So where an
+action writes only its subject, a write to S can never bring S′ into a trigger's selection, and a
+repeat of trigger T is necessarily a repeat on the same subject.
 
-### Bursts need no special case
+*Nearly*, because a firing writes more than its subject. It also writes engine machinery — a
+motion channel, a sequence claim, a goal record, a hook-failure fact — and nothing stops a charter
+from installing a trigger whose subject selects those. Then T can recur about a machinery entity
+rather than about S, and the repeat is a walk rather than a loop.
 
-Depth is not rate. A mirror landing two hundred GitHub entities is two hundred external writes,
-each starting its own chain at zero; even folded into one commit it is one chain of length 1
-fanning out to two hundred firings. Width, not depth. The throttle never sees a burst, and
-nothing has to recognize one.
+That costs precision and not soundness, which is precisely why the bound above is argued by
+pigeonhole and not by this section. The counter still means what it says — *this trigger ran twice
+on one causal path* — which is worth reporting either way; and reaching the false case needs a
+legitimate chain longer than the entire charter. So the token carries the trigger name and nothing
+else. (The chain of names is still worth carrying, but for the diagnostic rather than for the
+decision — see *what tripping does*.)
+
+### Bursts need no special case — WRONG, and here is what they need
+
+The original claim, kept because the correction is only legible against it:
+
+> Depth is not rate. A mirror landing two hundred GitHub entities is two hundred external writes,
+> each starting its own chain at zero; even folded into one commit it is one chain of length 1
+> fanning out to two hundred firings. Width, not depth. The throttle never sees a burst, and
+> nothing has to recognize one.
+
+The conclusion is right and the reasoning does not reach it. Built and measured, a burst of 30
+external writes **tripped 17 times**.
+
+What the argument misses is that **a firing is woken by a commit, not by a subject**, and the
+firing rule re-selects the whole subject set at every commit. So a rule acting on member A writes
+A; that commit re-evaluates the rule, which selects B — already matching, never *brought into*
+selection by anything, so the no-joins argument above is untouched and still true — and fires
+about B off A's commit. Counted naively that is a repeat of the trigger one hop deeper, and a
+fan-out over n members walks itself up to depth n. Width turns into depth after all.
+
+The fix is to make the chain what the previous section already assumed it was: **per subject**. A
+firing inherits the waking commit's depth only when that commit CHANGED the subject it is about,
+and otherwise begins a fresh chain. Nothing is lost, because a real loop advances its own subject
+every lap — that is what makes it a loop — and the pigeonhole cap still holds over a same-subject
+chain, since it is still one firing per hop drawn from the same |stratum| triggers.
+
+So the section title stands and its body did not: the throttle never sees a burst, but only
+because the chain is keyed to the subject rather than to the commit.
 
 ### Pacing breaks the chain, so a control loop never trips
 
@@ -68,7 +106,14 @@ Everywhere real time enters, it does not survive:
 
 - through a **spawned process**, whose writes arrive later through the API as external;
 - through the **world**, where an effector's write returns via the mirror as external;
-- through a **ticker**, whose tick is a machinery write with no chain.
+- through a **ticker**, whose tick is a machinery write with no chain;
+- through a **blocking gate** — an ask, a park, a temporal formula — which was missing from this
+  list and belongs on it. A person answering an approval paces a cycle exactly as a clock would,
+  and a cycle running at the speed of human approval is a control loop by this note's own
+  standard. Without it, the `fwd`/`back` pair with an ask on each climbs 1, 2, 3 and trips: the
+  one false trip the design would otherwise admit, and it is constructible in four lines of
+  charter. So a firing that will wait on a decision begins a fresh chain, for the check and for
+  its writes alike.
 
 So a paced cycle restarts at depth 0 on every lap and never trips, while an unpaced one climbs
 1, 2, 3 and hits the cap. That is firing residual §1's rule — *a combinational loop is an error,

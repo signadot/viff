@@ -422,7 +422,12 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
 			return nil, err
 		}
-		if err := e.patchEntity(subj, patch); err != nil {
+		// ev.Rev is the commit that woke this firing, and carrying it into the write is what
+		// makes the resulting commit a HOP rather than a fresh cause. It is 0 for a firing with
+		// no engine-caused cause — a completion hook, whose event comes off a process finishing
+		// (procEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
+		// the chain starts again. See causal.go.
+		if err := e.patchEntity(chain, ev.Rev, subj, patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a process started about
 			// a state the trigger FAILED to establish is worse than no process at all, and it
 			// would be the harder failure to read afterwards.

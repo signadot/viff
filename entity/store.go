@@ -25,11 +25,17 @@ type Store interface {
 	// single commit. Creating, updating, deleting, patching one field, and claiming an
 	// address are all this call with different arguments — see Write's own doc.
 	//
-	// Returns (committed, err). committed == false means a precondition did not hold: the
-	// world said no, which is a normal answer and not an error. err means the store could
+	// Returns (committed, rev, err). committed == false means a precondition did not hold:
+	// the world said no, which is a normal answer and not an error. err means the store could
 	// not answer at all — a write over a network, through mounts owned by other processes,
 	// can fail, and a caller told otherwise reports success for work that did not happen.
-	Write(w Write) (committed bool, err error)
+	//
+	// rev is the revision the write landed at, and is meaningful ONLY when committed is true;
+	// a write that did not happen has no revision and reports zero. It is the same number the
+	// change stream will carry for this write (Commit.Rev), which is what makes it useful:
+	// without it a writer cannot correlate its own write with the commit it later observes,
+	// and so cannot tell a change it caused from one it merely saw.
+	Write(w Write) (committed bool, rev int64, err error)
 	// Get returns an entity by ref: ok reports whether it exists, err reports whether
 	// the read could be performed at all.
 	//

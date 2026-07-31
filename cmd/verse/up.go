@@ -179,7 +179,14 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
-	if cfg.Runner != "" {         // run processes on a remote runner instead of in-process
+	// The cycle throttle's pace. Refused at startup rather than defaulted, because a server
+	// running at a rate nobody asked for is exactly what the setting exists to prevent.
+	if d, set, err := appCfg.TripPace(); err != nil {
+		return err
+	} else if set {
+		srv.SetTripPace(d)
+	}
+	if cfg.Runner != "" { // run processes on a remote runner instead of in-process
 		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}
 	if cfg.Broker { // run processes on an in-process dial-in broker, hosted on the broker face

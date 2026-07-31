@@ -26,5 +26,6 @@ define:
   format: !verse-format null
   llm: !verse-llm null
   scope: .[string]
+  tripDuration: .[string]
 signature:
   name: verse-config

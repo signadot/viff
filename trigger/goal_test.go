@@ -198,6 +198,19 @@ func TestGoalTerminalOnce(t *testing.T) {
 // Concurrent add / drive / list / steer / remove across many goals — run under -race to
 // exercise the goalsMu→trigMu→flowsMu lock ordering and the terminal-once commit for hangs,
 // deadlocks, and data races.
+//
+// THE TIME CONSTANTS HERE ARE NOT ARBITRARY, and both were wrong. Every store operation is one
+// round trip to logd, and a session serves them ONE AT A TIME — measured, 24 concurrent reads
+// take 24× a single read, and breadth is irrelevant (the whole verse, one kinded slice and one
+// Get all cost the same, since the cost is the round trip). A goal's lifecycle spends of the
+// order of ten round trips, so this test's 24 goals are ~240 serialized operations: ~3ms each
+// normally, ~12.6ms each under -race, which is 0.7s against 3s.
+//
+// So the old 3s wait failed under -race for a reason that had nothing to do with what this test
+// is for. Worse, the old 3s DEADLINE gave it a way to pass for the wrong reason: when the watch
+// is slow, the deadline fires, its re-check finds the fact, and the goal latches done anyway —
+// so a completely broken watch would still have produced the done facts this asserts on. The
+// deadline is now far out of reach, which makes the assertion mean "the watch delivered".
 func TestGoalConcurrentLifecycle(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
@@ -218,7 +231,7 @@ func TestGoalConcurrentLifecycle(t *testing.T) {
 				DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{
 					Kind: ReqFact, Facts: Match{"system": "ci", "kind": name, "value": map[string]any{"state": "green"}},
 				}},
-				Deadline: "3s",
+				Deadline: "60s", // unreachable: the WATCH must be what commits, not the clock
 			})
 			// Concurrent readers/steerers racing the lifecycle.
 			eng.Goals()
@@ -234,12 +247,14 @@ func TestGoalConcurrentLifecycle(t *testing.T) {
 	}
 	wg.Wait()
 
-	// The goals we drove (not removed) must all reach done within the deadline window.
+	// The goals we drove (not removed) must all reach done — off the watch, well before the
+	// deadline could rescue them. The window is sized for ~240 serialized round trips under
+	// -race with room to spare, not tuned to what a passing run happens to take.
 	for i := 0; i < n; i++ {
 		if i%3 == 0 {
 			continue
 		}
-		if !existsWithin(store, goalDoneRef("g"+strconv.Itoa(i)), 3*time.Second) {
+		if !existsWithin(store, goalDoneRef("g"+strconv.Itoa(i)), 30*time.Second) {
 			t.Fatalf("goal g%d never latched done", i)
 		}
 	}

@@ -115,7 +115,7 @@ func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
 	defer ts.Close()
 	// Write something, so the verse is non-empty and the queried paths are genuinely absent
 	// rather than absent-because-nothing-exists.
-	if _, err := srv.Store.Write(entity.Write{
+	if _, _, err := srv.Store.Write(entity.Write{
 		At:    entity.Ref{System: "demo", Kind: "pr", ID: "1"}.At(),
 		Value: entity.Obj{"stage": "open"}.Payload(),
 	}); err != nil {

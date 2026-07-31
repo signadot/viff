@@ -78,15 +78,13 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	if len(subjects) == 0 {
 		return // nothing to act on at this commit
 	}
-	if e.overBudget() {
-		e.tracef("budget exhausted (%d); not firing %s at rev %d", e.maxFires, t.Name, c.Rev)
-		return
-	}
 	e.tracef("fire %s at rev %d (%d subject(s))", t.Name, c.Rev, len(subjects))
 	// The commit stands in for the change an older firing carried: it names WHERE this
 	// happened, which is what a gate's reason and a trace read. There is no cause entity to
 	// hand on — that is the point of the rule — so the action's references read the subject.
-	e.fireSubjects(ctx, t, entity.Event{Rev: c.Rev}, subjects)
+	//
+	// The commit is also what the cycle throttle reads, per subject — see fireSubjects.
+	e.fireSubjects(ctx, t, c, subjects)
 }
 
 // firstSight reports whether this is the first time the trigger has been evaluated at rev, and

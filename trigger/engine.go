@@ -49,6 +49,25 @@ type flowProc struct {
 }
 
 // Engine runs the ECA loop over an entity-verse.
+//
+// ONE BASELINE ENGINE PER STORE. Everything the engine knows about what it has already done is
+// per-engine and in memory — the per-trigger watermark (seen), the in-flight firings (inflight),
+// the live process registry, the fire budget — and every one of them reads a write this engine
+// did not make as somebody else's business. That is right for a scope and wrong for a peer:
+//
+//   - A SCOPED engine composes, structurally. Store.Scope's contract is that writes land in the
+//     overlay while reads see the baseline layered with the scope, so the causal edge runs one
+//     way only: baseline writes are visible to the scope, scope writes are invisible to the
+//     baseline. There is nothing for the two to disagree about.
+//   - TWO BASELINE engines on one store do not compose. Each governs its own firings and neither
+//     can see the other's, so A's write is external to B and B's to A: an A→B→A loop is bounded
+//     by neither budget, and a trigger installed on both is evaluated — and fired — twice per
+//     commit, once against each watermark.
+//
+// Nothing in the tree runs two peers on one baseline today. This is the constraint that breaks
+// if something starts to, and the causal-depth throttle designed in
+// docs/working/cycle-throttle.md inherits it exactly: a chain that runs between two peer engines
+// is throttled by neither, because each sees only its own half of it.
 type Engine struct {
 	store    entity.Store
 	resolver process.Resolver // answers trigger ASK/PARK gates
@@ -62,14 +81,37 @@ type Engine struct {
 	logger *slog.Logger
 	clock  func() time.Time // the system clock (injectable for tests); nil = time.Now
 
-	mu       sync.Mutex
-	fired    int
-	maxFires int // 0 = unbounded (a runaway backstop, not a design limit)
+	mu    sync.Mutex
+	fired int // entities acted on, for the trace and for tests; see countFire
 
 	// seen is the highest commit each trigger has been evaluated at — the watermark that
 	// makes one verdict per (trigger, commit). See firstSight.
 	seenMu sync.Mutex
 	seen   map[string]int64
+
+	// causes places the commits this engine wrote in their causal chains: revision → how far
+	// it stands from the external write that started it, and what wrote it. A commit that is
+	// not here was caused by somebody else, which is the answer for a person, a process, a
+	// mirror, a peer, and a restart alike. Written by a firing's store (see causal.go), read
+	// per commit on the dispatch path — so it is guarded on its own rather than behind the
+	// loop, which firings do not run on.
+	chainMu sync.Mutex
+	causes  map[int64]link
+	trips   int // firings refused for running past the depth bound (see throttled)
+	// reported holds the chain roots already named in a report, so a runaway that keeps being
+	// re-ignited from the same origin is described once rather than at the rate the store
+	// accepts writes. Keyed by root and not by trigger: it is the CHAIN that has been
+	// explained, and the same pair of rules looping from a different origin is news again.
+	reported map[int64]bool
+	// tripPace is D: how long a tripped firing waits before proceeding. 0 refuses it outright.
+	// Set once at startup (SetTripPace) and read on the firing path.
+	tripPace time.Duration
+
+	// pacing holds the subjects with a tripped firing waiting out D, so a write to one of them
+	// can tell it the chain broke. It holds only what is WAITING — entries are removed as each
+	// firing gives up or proceeds — so it does not grow with the verse.
+	pacingMu sync.Mutex
+	pacing   map[entity.Ref][]chan struct{}
 
 	// inflight holds the (trigger, subject) firings currently under way. A firing takes time
 	// — a gate is answered by a person, a spawn runs — and every commit meanwhile re-evaluates
@@ -136,6 +178,8 @@ func New(store entity.Store, resolver process.Resolver) *Engine {
 		control:  make(chan func(), 64),
 		stopped:  make(chan struct{}),
 		live:     map[string]flowProc{},
+		causes:   map[int64]link{},
+		tripPace: DefaultTripPace,
 		goals:    map[string]*Goal{},
 		shapes:   map[string]string{},
 		watchers: map[string]func(){},
@@ -143,14 +187,13 @@ func New(store entity.Store, resolver process.Resolver) *Engine {
 }
 
 func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
-func (e *Engine) SetMaxFires(n int)    { e.maxFires = n }
 
 // SetLogger redirects engine logging. Debug carries dispatch detail (off by default),
 // Warn carries misconfiguration an operator must act on.
 func (e *Engine) SetLogger(l *slog.Logger) { e.logger = l }
 func (e *Engine) Store() entity.Store      { return e.store }
 
-// Fired reports how many times a trigger has fired (the trace/budget counter).
+// Fired reports how many entities triggers have acted on — the trace counter.
 func (e *Engine) Fired() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -432,7 +475,8 @@ func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
 	for _, ev := range c.Changes {
-		e.reap(ev) // retire completed processes from their flow (store-driven bookkeeping)
+		e.reap(ev)             // retire completed processes from their flow (store-driven bookkeeping)
+		e.subjectMoved(ev.Ref) // a paced firing about this entity is now stale; let it go
 	}
 	for i := range trigs {
 		if !trigs[i].touches(c) {
@@ -442,39 +486,27 @@ func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	}
 }
 
-// overBudget reports whether the fire budget is exhausted — a non-consuming check,
-// so a firing that never proceeds (a denied gate) does not burn a slot.
-func (e *Engine) overBudget() bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.maxFires > 0 && e.fired >= e.maxFires
-}
-
-// reserveN consumes budget for n subject-actions and returns how many were granted (0..n).
-// Called only once a firing has passed its gates, so the backstop bounds actions taken, not
-// attempts.
+// countFire records that one entity was acted on. It is a counter and nothing more: what
+// bounds a runaway is the cycle throttle (causal.go), which recognizes the loop rather than
+// running out of a number.
 //
-// The budget meters ENTITIES ACTED ON, not firings: one firing that fans out over 50
-// subjects is 50 actions, because that is what the backstop exists to bound (a runaway does
-// its damage per entity). It is partially satisfiable, so a fan-out wider than the remaining
-// budget acts on as many members as it can rather than being dropped whole — the cap is a
-// safety limit, not a transaction boundary.
-func (e *Engine) reserveN(n int) int {
+// There WAS a budget here — maxFires, engine-wide, cumulative, never reset — and it was the
+// only thing standing between a rule soup and a store filling up. It is gone, for two reasons
+// beyond redundancy. It bounded an engine's LIFETIME rather than any loop, so one looping rule
+// exhausted the allowance for every other rule and the engine then stopped firing everything,
+// permanently. And a paced cycle is now a legitimate thing to write — a control loop through a
+// gate or a ticker — which burns such a budget every lap, so any finite setting was a timer on
+// the charter's death rather than a safety limit.
+//
+// What it also bounded, and nothing does now, is fan-out WIDTH: one firing over 200 members is
+// 200 actions, and depth correctly sees that as width. If that wants bounding it belongs per
+// firing, refused loudly, because width is a property of a firing and not of an engine's
+// lifetime. Nothing in the tree ever set the budget (it defaulted to unbounded and no server
+// configured it), so removing it changes no deployed behaviour.
+func (e *Engine) countFire() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.maxFires <= 0 { // unbounded
-		e.fired += n
-		return n
-	}
-	room := e.maxFires - e.fired
-	if room <= 0 {
-		return 0
-	}
-	if room < n {
-		n = room
-	}
-	e.fired += n
-	return n
+	e.fired++
+	e.mu.Unlock()
 }
 
 // fire names what the firing is about, resolves the trigger's gates (conjunctively), and
@@ -502,8 +534,28 @@ func spawnLabel(t Trigger, subjects []entity.Ref) string {
 	return spawnID(t.Name, subjects[0])
 }
 
-func (e *Engine) fireSubjects(ctx context.Context, t Trigger, ev entity.Event, subjects []entity.Ref) {
+// fireSubjects starts one firing per selected member, settling first what each one's causal
+// chain is and whether it may run at all (see causeFor and throttled — the throttle is asked
+// per SUBJECT, because a chain is per subject).
+func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, subjects []entity.Ref) {
 	for _, subj := range subjects {
+		parent := e.causeFor(t, c, subj)
+		ev := entity.Event{Rev: parent}
+		if e.throttled(t, subj, parent) {
+			if e.tripPace <= 0 {
+				continue // no pace configured: refuse outright, and the chain ends here
+			}
+			// Pace it: hold the firing for D and then let it through, so a tripped chain
+			// runs at a dull steady rate rather than at the speed of the store. The wait is
+			// in this goroutine, not on the dispatch path — see pauseFor.
+			go func(subj entity.Ref, ev entity.Event) {
+				if !e.pauseFor(ctx, subj, e.tripPace) {
+					return
+				}
+				e.fireOne(ctx, t, ev, subj)
+			}(subj, ev)
+			continue
+		}
 		go e.fireOne(ctx, t, ev, subj)
 	}
 }
@@ -589,13 +641,13 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, ev entity.Event, subj e
 	if !allProceed {
 		return // some gate denied — no budget consumed
 	}
-	// Consume budget only for a firing that proceeds. One firing, one entity acted on, so the
-	// backstop's "meters entities acted on" and its implementation are now one statement.
-	if e.reserveN(1) == 0 {
-		e.tracef("budget exhausted (%d); not firing %s on %s", e.maxFires, t.Name, subj)
-		return
-	}
+	// Counted only for a firing that proceeds, so a denied gate leaves no trace of a firing
+	// that did not happen. One firing, one entity acted on.
+	e.countFire()
 	e.tracef("fire %s on %s", t.Name, subj)
+	// ev.Rev is this firing's place in its causal chain, settled by causeFor before the firing
+	// started — including whether a gate paces it. Nothing here needs to revisit that.
+	//
 	// A trigger firing has no privileged cause: the change that dispatched it is a doorbell,
 	// so the action's references read the subject (see refSource).
 	t.Action.apply(t.Name, ev, subjects, e, fromSubject)
@@ -762,7 +814,7 @@ func (e *Engine) commitMotionAtomic(ref entity.Ref, outcome string, witness []en
 		return o, false // already committed — terminal-once
 	}
 	when := append([]entity.Require{{Pattern: entity.Obj{"status": "open"}.Payload()}}, wpre...)
-	committed, err := e.store.Write(entity.Write{
+	committed, _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
 		Value: closedMotion(cur.Payload, outcome, witness),
 		When:  when,
@@ -1628,13 +1680,22 @@ func (e *Engine) modify(ref entity.Ref, fn func(entity.Payload) entity.Payload) 
 // modify logs; a request does (installing a goal), and a caller that can refuse the whole
 // operation should not have to read the log to find out that it half-happened.
 func (e *Engine) modifyErr(ref entity.Ref, fn func(entity.Payload) entity.Payload) error {
+	return e.modifyOn(e.store, ref, fn)
+}
+
+// modifyOn is modifyErr through a NAMED store rather than the engine's own — which is how an
+// action's write reaches the store that stamps its causal chain (see caused). The engine's
+// machinery keeps passing e.store and so stays outside every chain, deliberately: a motion
+// ledger, a charter record and a reaped status are bookkeeping about a firing, not the state
+// transition the firing exists to make, and only the latter can wake the rule that closes a loop.
+func (e *Engine) modifyOn(s entity.Store, ref entity.Ref, fn func(entity.Payload) entity.Payload) error {
 	parent := e.bgctx
 	if parent == nil {
 		parent = context.Background() // not started (a direct call in a test)
 	}
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
-	return entity.Modify(ctx, e.store, ref, fn)
+	return entity.Modify(ctx, s, ref, fn)
 }
 
 // write applies a value at a path. A failed write is LOGGED, at Warn: the engine is
@@ -1642,7 +1703,7 @@ func (e *Engine) modifyErr(ref entity.Ref, fn func(entity.Payload) entity.Payloa
 // that did not land is exactly the thing an operator must not have to infer from the
 // absence of what should have happened next.
 func (e *Engine) write(at entity.Path, v entity.Payload) {
-	if _, err := e.store.Write(entity.Write{At: at, Value: v}); err != nil {
+	if _, _, err := e.store.Write(entity.Write{At: at, Value: v}); err != nil {
 		e.logger.Warn("write failed; the reaction did not land", "at", at.String(), "err", err)
 	}
 }
@@ -1670,9 +1731,15 @@ func proceedWord(ok bool) string {
 // overlay replaced whichever top-level key it touched. The error is captured out of the
 // closure because Modify's fn cannot fail; fn may run more than once under retry, so the last
 // run's verdict is the one that stands.
-func (e *Engine) patchEntity(ref entity.Ref, patch entity.Payload) error {
+//
+// THIS IS THE ACTION'S WRITE, and so the one place a causal chain is carried forward. chain
+// names the firing (its trigger, then any hook or sequence descent) and parent is the revision
+// of the commit that woke it — 0 when nothing this engine wrote did, which is how a chain
+// begins. Every other write the engine makes goes through e.store and stays outside every
+// chain; see modifyOn for why that is the right cut rather than an omission.
+func (e *Engine) patchEntity(chain string, parent int64, ref entity.Ref, patch entity.Payload) error {
 	var perr error
-	e.modify(ref, func(cur entity.Payload) entity.Payload {
+	if err := e.modifyOn(e.caused(chain, parent), ref, func(cur entity.Payload) entity.Payload {
 		// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a nil
 		// doc, and null is what "nothing there yet" means in tony anyway. This is what keeps
 		// a named subject's patch CREATING the entity, as the old `set` did.
@@ -1685,6 +1752,13 @@ func (e *Engine) patchEntity(ref entity.Ref, patch entity.Payload) error {
 			return cur // leave it exactly as it was
 		}
 		return out
-	})
+	}); err != nil {
+		// The store failing is not the patch failing, and only the second is returned (a firing
+		// stops on a patch it could not resolve). Reported here rather than swallowed, and named
+		// by chain, because a state transition that did not land is the thing an operator would
+		// otherwise have to infer from the absence of whatever it was supposed to wake.
+		e.logger.Warn("patch did not land; the firing's state transition was lost",
+			"chain", chain, "ref", ref.String(), "err", err)
+	}
 	return perr
 }

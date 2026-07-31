@@ -24,7 +24,7 @@ func conditionalCommit(t *testing.T, s Store) {
 		"bob":   map[string]any{"choice": "approve"},
 	}.Payload()}
 
-	committed, err := s.Write(Write{
+	committed, _, err := s.Write(Write{
 		At:    ch.At(),
 		Value: Obj{"status": "closed", "outcome": "proceed", "gate": "approvals"}.Payload(),
 		When:  []Require{stillOpen, witness},
@@ -38,7 +38,7 @@ func conditionalCommit(t *testing.T, s Store) {
 	}
 
 	// terminal-once: status is now "closed", so the same precondition fails.
-	committed2, err := s.Write(Write{
+	committed2, _, err := s.Write(Write{
 		At:    ch.At(),
 		Value: Obj{"status": "closed", "outcome": "deny"}.Payload(),
 		When:  []Require{stillOpen, witness},
@@ -68,7 +68,7 @@ func conditionalCommitRevoke(t *testing.T, s Store) {
 		"bob":   map[string]any{"choice": "approve"}, // bob never voted → precondition fails
 	}.Payload()}
 
-	committed, err := s.Write(Write{
+	committed, _, err := s.Write(Write{
 		At:    ch.At(),
 		Value: Obj{"status": "closed", "outcome": "proceed"}.Payload(),
 		When:  []Require{stillOpen, witness},
@@ -94,12 +94,12 @@ func claimCreateOnly(t *testing.T, store Store) {
 	t.Helper()
 	claim := Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}
 
-	won, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "first"}.Payload(), When: []Require{Created()}})
+	won, _, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "first"}.Payload(), When: []Require{Created()}})
 	if err != nil || !won {
 		t.Fatalf("first claim: committed=%v err=%v; want the create to win", won, err)
 	}
 	// the echo: same address, same deterministic id, and it must lose
-	won, err = store.Write(Write{At: claim.At(), Value: Obj{"by": "second"}.Payload(), When: []Require{Created()}})
+	won, _, err = store.Write(Write{At: claim.At(), Value: Obj{"by": "second"}.Payload(), When: []Require{Created()}})
 	if err != nil {
 		t.Fatalf("second claim: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 	claim := Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}
 	take := func() bool {
 		t.Helper()
-		won, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "runner"}.Payload(), When: []Require{Created()}})
+		won, _, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "runner"}.Payload(), When: []Require{Created()}})
 		if err != nil {
 			t.Fatalf("claim: %v", err)
 		}
@@ -148,7 +148,7 @@ func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 func TestPresencePatternDoesNotMatchAbsent(t *testing.T) {
 	store := openStore(t)
 	missing := Ref{System: "run", Kind: "claim", ID: "nothing-here"}
-	ok, err := store.Write(Write{
+	ok, _, err := store.Write(Write{
 		At: Ref{System: "x", Kind: "y", ID: "z"}.At(), Value: Obj{"a": 1}.Payload(),
 		When: []Require{{At: missing.At(), Pattern: Obj{"status": "open"}.Payload()}},
 	})

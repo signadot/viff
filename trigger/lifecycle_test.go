@@ -156,7 +156,7 @@ func TestVanishingIsARisingEdge(t *testing.T) {
 
 func mustWriteNil(t *testing.T, store entity.Store, ref entity.Ref) {
 	t.Helper()
-	if _, err := store.Write(entity.Write{At: ref.At()}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil {
 		t.Fatalf("remove %s: %v", ref, err)
 	}
 }
@@ -189,7 +189,7 @@ func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 	eng.Start(ctx)
 
 	vanish(t, store, ref)
-	if _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // the removal
+	if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // the removal
 		t.Fatalf("remove: %v", err)
 	}
 	time.Sleep(700 * time.Millisecond)

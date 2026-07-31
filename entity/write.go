@@ -124,7 +124,7 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 			next = fn(cur.Payload)
 			next = withRemovals(next, cur.Payload)
 		}
-		ok, err := s.Write(Write{At: ref.At(), Value: AsData(next), When: []Require{when}})
+		ok, _, err := s.Write(Write{At: ref.At(), Value: AsData(next), When: []Require{when}})
 		if err != nil {
 			return err
 		}

@@ -180,9 +180,17 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	}
 }
 
-// The runaway backstop meters ENTITIES ACTED ON, not firings — a fan-out over more members
-// than the budget allows is truncated rather than dropped whole, and stops at the cap.
-func TestFanOutBudgetMetersEntities(t *testing.T) {
+// A FAN-OUT ACTS ON EVERY MEMBER, AND WIDTH IS NOT DEPTH. One rising edge selects ten entities
+// and all ten advance — no member is dropped, and the cycle throttle does not read a wide firing
+// as a deep one.
+//
+// This was TestFanOutBudgetMetersEntities, and it asserted the opposite: that a fan-out wider
+// than the fire budget was TRUNCATED to the cap, acting on 4 of 10. The budget is gone (see
+// countFire), so truncation is gone with it, and what is left is the property worth pinning.
+// This is also the design note's burst case at its exact shape — one chain of length 1 fanning
+// out to n firings (docs/working/cycle-throttle.md) — and the per-subject chain rule is what
+// keeps the ninth member from reading as the ninth hop of a runaway.
+func TestFanOutActsOnEveryMemberWithoutTripping(t *testing.T) {
 	store := entitytest.Store(t)
 	ids := make([]string, 0, 10)
 	for i := range 10 {
@@ -191,7 +199,6 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 	prs(t, store, "reviewed", ids...)
 
 	eng := New(store, process.AutoResolver{})
-	eng.SetMaxFires(4) // fewer than the 10 members
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
@@ -207,18 +214,25 @@ func TestFanOutBudgetMetersEntities(t *testing.T) {
 	eng.Start(ctx)
 	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
 
-	time.Sleep(400 * time.Millisecond)
-	if f := eng.Fired(); f != 4 {
-		t.Fatalf("fired = %d, want exactly the cap of 4 (metered per entity, truncated not dropped)", f)
-	}
-	shipped := 0
-	for _, id := range ids {
-		if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); entity.ToObj(e.Payload)["stage"] == "shipped" {
-			shipped++
+	eventuallyN(t, "all 10 members to advance", func() bool {
+		shipped := 0
+		for _, id := range ids {
+			if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); entity.ToObj(e.Payload)["stage"] == "shipped" {
+				shipped++
+			}
 		}
+		return shipped == len(ids)
+	})
+	// At LEAST one firing per member, and generally more: each member's write is a commit that
+	// re-evaluates the rule, and a member whose own write has not landed yet is still selected,
+	// so it is fired for again. Those extra firings write the same value and produce no commit,
+	// which is how this settles — the ordinary convergence story, not a fault. It is only
+	// visible now because the old fire budget capped this test at 4 and hid it.
+	if f := eng.Fired(); f < len(ids) {
+		t.Fatalf("fired = %d, want at least %d — every member of the set must be acted on", f, len(ids))
 	}
-	if shipped != 4 {
-		t.Fatalf("%d entities advanced, want 4 — a truncated fan-out must still act on what it reserved", shipped)
+	if n := eng.tripCount(); n != 0 {
+		t.Fatalf("a fan-out over %d members tripped %d times; width is not depth", len(ids), n)
 	}
 }
 

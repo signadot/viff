@@ -218,7 +218,7 @@ func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]e
 				continue // immutable commit, or unchanged ref/head
 			}
 		}
-		if _, err := store.Write(entity.Write{At: ref.At(), Value: p.Payload()}); err != nil {
+		if _, _, err := store.Write(entity.Write{At: ref.At(), Value: p.Payload()}); err != nil {
 			return fmt.Errorf("reflecting %s: %w", ref, err)
 		}
 	}
@@ -228,7 +228,7 @@ func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]e
 		}
 		if _, want := desired[ref]; !want {
 			// a deleted branch/tag tombstones its git:ref entity
-			if _, err := store.Write(entity.Write{At: ref.At()}); err != nil {
+			if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil {
 				return fmt.Errorf("tombstoning %s: %w", ref, err)
 			}
 		}

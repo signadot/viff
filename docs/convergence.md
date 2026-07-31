@@ -153,21 +153,33 @@ Each writes exactly what the other selects on. Measured, with the runaway backst
 the engine fires 40 times and stops there, having written 40-odd commits. Without a budget it
 does not stop.
 
+**This is now checked, at runtime, and the backstop it describes is gone.** The charter above
+stops after three firings and names both rules in the log. What follows in this section is the
+reasoning that led there and is kept for it; where it says nothing sees the cycle, read *nothing
+saw it*. See [working/cycle-throttle.md](working/cycle-throttle.md) for the mechanism —
+every write an engine makes during a firing carries the causal depth of the chain that produced
+it, and a chain deeper than the installed trigger count has necessarily repeated a rule.
+
 Every protection above misses it, and misses it correctly. The substrate's no-op suppression
 never engages, because each write is a REAL change. `claimFlight` and `working` never engage,
 because each firing genuinely completes. And the latch check passes, because both rules DO write
 a field their subject reads — it asks whether a rule advances its subject out of its own
 selection, and both do, into each other's.
 
-Two things about the backstop follow, and both are as they are today: `maxFires` defaults to
-UNBOUNDED and nothing in `versed` sets it, so the protection that stopped the measurement above
-is not on in production; and it is one counter for the whole engine rather than per trigger, so
-a single looping rule would exhaust the budget for every other rule as well.
+Two things about that backstop followed, and both were true of it: `maxFires` defaulted to
+UNBOUNDED and nothing in `versed` set it, so the protection that stopped the measurement above
+was not on in production; and it was one counter for the whole engine rather than per trigger, so
+a single looping rule would exhaust the budget for every other rule as well. **It has since been
+removed**, for a third reason the first two only hint at: it bounded an engine's lifetime rather
+than any loop, so once a *paced* cycle became a legitimate thing to write, any finite budget was a
+timer on the charter's death rather than a safety limit.
 
-The check is decidable for literal charters, and a *paced* cycle — one passing through a clock
-rather than through the last write — is a control loop rather than a bug, so the check to want
-is not "no cycles". Both, and the ticker they need, are written up in
-[working/firing-residual.md](working/firing-residual.md).
+That a paced cycle — one passing through a clock, a process, or a decision rather than through
+the last write — is a control loop rather than a bug is exactly why the check is not "no cycles",
+and it is why the check is dynamic rather than the install-time graph
+[working/firing-residual.md](working/firing-residual.md) proposed: pacing is a property of how a
+chain runs, not of how it is written. A cycle through a gate never trips, however many laps it
+runs; an unpaced one stops after the trigger count and is reported by name.
 
 ## Two triggers, one field
 
@@ -188,6 +200,11 @@ field is a charter that means two things, and only its author can say which.
 With one snapshot per commit and every action's effect either a store write or a spawn the
 install-time check has bounded, **the settled store is a function of (charter, inputs)** — not
 of how firings interleave — except in two named places: a cycle across rules, which does not
-settle at all and is not yet detected, and two rules writing one field, which settles
-arbitrarily. Both are decidable for literal charters. Neither is a property of the model; both
-are properties of a charter, which is where they belong.
+settle at all, and two rules writing one field, which settles arbitrarily. Neither is a property
+of the model; both are properties of a charter, which is where they belong.
+
+Of the two, the cycle is now **detected and stopped** — at runtime, by causal depth rather than
+by the install-time analysis this section once expected, which is what lets it tell a runaway
+from a control loop instead of refusing both. Two rules writing one field remains undetected and
+has no principled fix even once found: a charter that means two things is one only its author can
+settle.

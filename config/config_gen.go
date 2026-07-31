@@ -54,6 +54,11 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["llm"] = node
 	}
 
+	// Field: TripDuration
+	if s.TripDuration != "" {
+		irMap["tripDuration"] = ir.FromString(string(s.TripDuration))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -109,6 +114,12 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.LLM.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "llm", err)
 			}
+		case "tripDuration":
+			// Field: TripDuration
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "tripDuration", fieldNodeUnwrapped.Type)
+			}
+			s.TripDuration = string(fieldNodeUnwrapped.String)
 		}
 	}
 

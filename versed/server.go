@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/api"
@@ -73,6 +74,10 @@ type Server struct {
 	// scope is dropped (disconnect).
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// tripPace is the cycle throttle's D, applied to every engine this server owns. Guarded by
+	// scopeMu because scopeEngine reads it when it builds a scope's engine, lazily.
+	tripPace    time.Duration
+	tripPaceSet bool
 
 	// brokers are worker-facing handlers hosted under /broker/<nonce> (see BrokerHandler).
 	// The nonce is a capability: knowing the URL is the grant to dial in as that runner's
@@ -83,6 +88,27 @@ type Server struct {
 	// routes is the published route table, filled in by Handler as it registers each
 	// route — never maintained separately. See routes.go.
 	routes []api.Route
+}
+
+// SetTripPace sets the cycle throttle's pace D on this server's engines — the baseline one now,
+// and every scope engine as it is created. Zero refuses a tripped firing outright instead of
+// pacing it. Unset leaves each engine on trigger.DefaultTripPace.
+//
+// It is here rather than a NewWithStore argument because a scope engine is built lazily, on first
+// use, and a pace applied only to the baseline would leave a developer's federated scope running
+// a different policy from the verse it overlays.
+func (s *Server) SetTripPace(d time.Duration) {
+	s.scopeMu.Lock()
+	s.tripPace, s.tripPaceSet = d, true
+	engs := make([]*trigger.Engine, 0, len(s.scopeEngs))
+	for _, se := range s.scopeEngs {
+		engs = append(engs, se.eng)
+	}
+	s.scopeMu.Unlock()
+	s.Eng.SetTripPace(d)
+	for _, e := range engs {
+		e.SetTripPace(d)
+	}
 }
 
 // scopeEngine is a per-scope engine plus the cancel that stops it (on scope delete).
@@ -333,7 +359,7 @@ func (s *Server) reconcileProcesses() {
 // not land leaves the verse claiming something untrue about a process, and the operator
 // deserves to see that at the point it happens rather than to deduce it later.
 func (s *Server) write(at entity.Path, v entity.Payload) {
-	if _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
+	if _, _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: reconcile: write %s: %v\n", at, err)
 	}
 }
@@ -438,6 +464,9 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 	}
 	scoped := s.Store.Scope(scope)
 	eng := trigger.New(scoped, s.Reg)
+	if s.tripPaceSet { // same throttle policy as the baseline it overlays (see SetTripPace)
+		eng.SetTripPace(s.tripPace)
+	}
 	// Scoped agents read file content through the verse (the connect content
 	// controller), so a validator isn't tied to the machine holding the files.
 	content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
@@ -836,7 +865,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(q["field"]...)}); err != nil {
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(q["field"]...)}); err != nil {
 		http.Error(w, "entity remove failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -867,7 +896,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := s.scopedStore(r)
-	committed, err := store.Write(entity.Write{At: ref.At(body.Field...), Value: body.Payload, When: when})
+	committed, _, err := store.Write(entity.Write{At: ref.At(body.Field...), Value: body.Payload, When: when})
 	if err != nil {
 		http.Error(w, "entity write failed: "+err.Error(), http.StatusBadGateway)
 		return

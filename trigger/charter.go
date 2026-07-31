@@ -73,7 +73,7 @@ func (e *Engine) persist(t Trigger) error {
 		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
 	ref := CharterRef(t.Name)
-	if _, err := e.store.Write(entity.Write{
+	if _, _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
 		Value: entity.Obj{specField: entity.Raw(doc)}.Payload(),
 	}); err != nil {

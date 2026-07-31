@@ -58,7 +58,7 @@ func StoreAt(t testing.TB, addr string) *entity.LogdStore {
 // where, and hears about it if that did not happen.
 func Set(t testing.TB, s entity.Store, ref entity.Ref, p entity.Payload) {
 	t.Helper()
-	if _, err := s.Write(entity.Write{At: ref.At(), Value: p}); err != nil {
+	if _, _, err := s.Write(entity.Write{At: ref.At(), Value: p}); err != nil {
 		t.Fatalf("write %s: %v", ref, err)
 	}
 }
@@ -67,7 +67,7 @@ func Set(t testing.TB, s entity.Store, ref entity.Ref, p entity.Payload) {
 // the point is that nothing stands there afterwards.
 func Remove(t testing.TB, s entity.Store, ref entity.Ref) {
 	t.Helper()
-	if _, err := s.Write(entity.Write{At: ref.At()}); err != nil {
+	if _, _, err := s.Write(entity.Write{At: ref.At()}); err != nil {
 		t.Fatalf("remove %s: %v", ref, err)
 	}
 }

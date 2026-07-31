@@ -75,7 +75,7 @@ func (e *Engine) startSeq(chain string, carrier Action, ev entity.Event, subj en
 		e.releaseRun(chain, subj)
 		return
 	}
-	e.publishSeq(chain, subj, entity.Obj{
+	e.publishSeq(chain, ev.Rev, subj, entity.Obj{
 		seqStep:  0,
 		seqSteps: len(carrier.Seq),
 		seqShape: shape,
@@ -105,7 +105,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event
 		if h != nil {
 			return // in flight; its completion resumes us
 		}
-		e.publishSeq(chain, subj, entity.Obj{seqStep: i + 1})
+		e.publishSeq(chain, ev.Rev, subj, entity.Obj{seqStep: i + 1})
 	}
 	e.finishSeq(chain, carrier, ev, subj, src)
 }
@@ -118,7 +118,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, ev entity.Event
 // be expressed, and one written as `step: 3` silently stops meaning "finished" the moment the
 // sequence gains an element.
 func (e *Engine) finishSeq(chain string, carrier Action, ev entity.Event, subj entity.Ref, src refSource) {
-	e.publishSeq(chain, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
+	e.publishSeq(chain, ev.Rev, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
 	e.releaseRun(chain, subj)
 	if carrier.OnDone != nil {
 		hook := chain + "." + "onDone"
@@ -162,7 +162,7 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 		e.releaseRun(carrierChain, subj)
 		return true
 	}
-	e.publishSeq(carrierChain, subj, entity.Obj{seqStep: idx + 1})
+	e.publishSeq(carrierChain, ev.Rev, subj, entity.Obj{seqStep: idx + 1})
 	// A resumed sequence is downstream of the process that just completed, so its elements
 	// read that process's facts — $result and the rest — exactly as a hook does.
 	e.advanceSeq(carrierChain, *carrier, idx+1, ev, subj, fromCause)
@@ -217,9 +217,16 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 // publishSeq patches progress under the reserved root. It goes through the same patch path an
 // action's own write does, which is exactly why `patch` had to replace `set`: a shallow
 // overlay here would replace the whole `verse` key and erase a sibling trigger's progress.
-func (e *Engine) publishSeq(chain string, subj entity.Ref, fields entity.Obj) {
+//
+// It carries the firing's causal chain for the same reason (see causal.go): progress lands on
+// the SUBJECT, under a root a charter can match on — `$verse.review.done` is a documented thing
+// to write a rule about — so a progress write can wake a rule exactly as an action's own write
+// can, and a hop it did not count would be a hop the throttle cannot see. parent is 0 wherever
+// the sequence resumed off a process completing, which is the world coming back and the right
+// place for a chain to end.
+func (e *Engine) publishSeq(chain string, parent int64, subj entity.Ref, fields entity.Obj) {
 	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
-	if err := e.patchEntity(subj, patch); err != nil {
+	if err := e.patchEntity(chain, parent, subj, patch); err != nil {
 		e.tracef("seq %s: publishing progress on %s failed: %v", chain, subj, err)
 	}
 }
@@ -349,7 +356,7 @@ func chainUnder(prefix, target string) bool {
 func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
 	ref := mirror.ClaimRef(spawnID(chainID(chain), subj))
 	payload := entity.Obj{"flow": subj.String(), "chain": chain}.Payload()
-	won, err := e.store.Write(entity.Write{At: ref.At(), Value: payload, When: []entity.Require{entity.Created()}})
+	won, _, err := e.store.Write(entity.Write{At: ref.At(), Value: payload, When: []entity.Require{entity.Created()}})
 	if err != nil {
 		e.tracef("seq %s: claiming %s failed: %v", chain, ref, err)
 		return false

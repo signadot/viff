@@ -204,7 +204,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 					created++
 				}
 				ref := entity.Ref{System: source.System, Kind: statusKind, ID: rel}
-				if _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj(meta).Payload()}); err != nil {
+				if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj(meta).Payload()}); err != nil {
 					fmt.Fprintf(cc.Err, "connect: publishing %s: %v\n", ref, err)
 				}
 			}
@@ -214,7 +214,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 			if _, ok := cur[rel]; !ok {
 				removed++
 				ref := entity.Ref{System: source.System, Kind: statusKind, ID: rel}
-				if _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // nil value removes it
+				if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // nil value removes it
 					fmt.Fprintf(cc.Err, "connect: removing %s: %v\n", ref, err)
 				}
 				delete(prev, rel)

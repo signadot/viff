@@ -36,7 +36,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	eng.Start(ctx)
 
 	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	if _, err := store.Write(entity.Write{
+	if _, _, err := store.Write(entity.Write{
 		At:    entity.Path{Ref: ref},
 		Value: entity.Obj{"stage": "open", "env": "prod"}.Payload(),
 	}); err != nil {
@@ -48,7 +48,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	}
 
 	// Reach the matching state by writing ONE field.
-	if _, err := store.Write(entity.Write{At: ref.At("stage"), Value: ir.FromString("reviewed")}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: ref.At("stage"), Value: ir.FromString("reviewed")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,7 +92,7 @@ func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 
 	eng.ObserveScoped(t.Context())
 
-	if _, err := store.Write(entity.Write{At: ref.At("stage"), Value: ir.FromString("ready")}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: ref.At("stage"), Value: ir.FromString("ready")}); err != nil {
 		t.Fatal(err)
 	}
 

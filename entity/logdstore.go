@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +20,40 @@ import (
 // Log-backed entities are stored at <root>.<system>.<kind>.<id>, so a single watch on
 // the root observes the whole (historied) verse.
 const DefaultRoot = "verse"
+
+// subtreeHealAfter and subtreeHealMax bound how long a subtree watch can be DEAD WITHOUT
+// KNOWING IT before it re-establishes itself.
+//
+// A watch can end for reasons the client did not cause: logd drops a watcher whose buffer it
+// cannot drain, because Broadcast runs on the committing goroutine and will not block on a slow
+// consumer (server/watch.go, "fail it loudly"). Since go-tony v0.0.112 that arrives as a proper
+// terminal watch event carrying a resume commit, so the ordinary path below — the events channel
+// closing, and the re-watch that follows — learns about it promptly and this timer never fires.
+//
+// It exists for the case where nothing arrives to be learned from. Before v0.0.112 the failure
+// was sent as an ERROR RESPONSE stamped with the watch's id, and libctl routes anything without
+// an Event to its table of in-flight REQUESTS, where a watch id has not appeared since its own
+// request completed — so it was logged as "dropping response with no matching request" and
+// dropped. The watch was then ORPHANED: gone on the server, alive here, its channel silent
+// forever, and a trigger over that slice quietly stopped firing with no error anywhere a charter
+// author would see. Measured against a server of that vintage, a slice taking sustained writes
+// stalled partway through and never moved again.
+//
+// That specific hole is closed upstream. This stays because the shape of it is not specific: a
+// consumer that can only ever be told is a consumer that waits forever whenever the telling is
+// what breaks. So the watch does not only wait — a whole interval of silence, from a slice that
+// may merely be idle or from one whose watch is gone, is answered by re-establishing, whose
+// State resyncs the document and whose diff against the last snapshot emits whatever was missed.
+// The interval DOUBLES while nothing arrives, to subtreeHealMax, so an idle slice settles into a
+// cheap heartbeat rather than paying a full State every interval; any event resets it.
+//
+// Vars, not consts, so a test can shorten them: the failure they answer takes thousands of
+// writes to provoke, and waiting out the production interval to observe the cure would make
+// the test useless.
+var (
+	subtreeHealAfter = 30 * time.Second
+	subtreeHealMax   = 5 * time.Minute
+)
 
 // MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
 // disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
@@ -373,9 +406,13 @@ func isNotFound(err error) bool {
 // to cost the same as a read (see go-tony bvm163tyh12krwcqcsn0), which on a growing log is
 // most of what a write cost.
 //
-// There is no commit number in the result because libctl discards it (PatchResult.Commit is
-// dropped by doPatch), and a fabricated one is worse than none.
-func (s *LogdStore) Write(w Write) (bool, error) {
+// The commit the write landed at is REPORTED, not inferred: both Patch and PatchIf answer with
+// a PatchResult whose Commit is the transaction's own commit number, in the same sequence the
+// root watch stamps on the change stream. That correspondence is what lets a writer recognize
+// its own write when it comes back around as an observation. (This used to say libctl discarded
+// the number; it has not since go-tony v0.0.85-ish, and a caller reading the old comment would
+// conclude the correlation was impossible.)
+func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	path := s.writePath(w.At)
@@ -384,23 +421,24 @@ func (s *LogdStore) Write(w Write) (bool, error) {
 		node = ir.Null() // remove whatever stands there
 	}
 	if len(w.When) == 0 {
-		if _, err := s.sess.Patch(ctx, path, node); err != nil {
-			return false, fmt.Errorf("write %s: %w", w.At, err)
+		res, err := s.sess.Patch(ctx, path, node)
+		if err != nil {
+			return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 		}
-		return true, nil
+		return true, res.Commit, nil
 	}
 	pre := make([]pathPattern, 0, len(w.When))
 	for _, r := range w.When {
 		pre = append(pre, pathPattern{at: r.path(w), pattern: r.Pattern})
 	}
-	_, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
+	res, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
-		return false, nil // a precondition did not hold — a revoke, or already committed
+		return false, 0, nil // a precondition did not hold — a revoke, or already committed
 	}
 	if err != nil {
-		return false, fmt.Errorf("write %s: %w", w.At, err)
+		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 	}
-	return true, nil
+	return true, res.Commit, nil
 }
 
 // writePath renders a path as a kpath: the entity's path, then a segment per field.
@@ -727,7 +765,15 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 			cur := entitiesFromDoc(doc, s.root, system, kind)
 			var changes []Event
 			for ref, p := range cur {
-				if old, ok := prev[ref]; !ok || !reflect.DeepEqual(old, p) {
+				// ir.Node.DeepEqual, NOT reflect.DeepEqual. A node carries structural
+				// metadata — Parent, ParentIndex, ParentField — that says where it sits in
+				// the document rather than what it holds, and a document rebuilt from a fresh
+				// read wires that up anew. reflect compares it; ir's DeepEqual documents that
+				// it does not. With reflect, every entity in a slice compared UNEQUAL to the
+				// identical value after a resync, so re-establishing a watch re-emitted the
+				// whole slice as changed — measured, twenty entities delivered forty events —
+				// and every trigger over it would have fired again for nothing.
+				if old, ok := prev[ref]; !ok || !old.DeepEqual(p) {
 					changes = append(changes, Event{Ref: ref, Op: Set, To: p, Rev: rev})
 				}
 			}
@@ -748,6 +794,12 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 			return send(Commit{Rev: rev, Changes: changes})
 		}
 		backoff := 100 * time.Millisecond
+		// A watch can die WITHOUT SAYING SO, and then this loop would wait on a channel
+		// nothing will ever send to again. See subtreeHealAfter: the heal timer is what
+		// bounds how long that can last.
+		heal := time.NewTimer(subtreeHealAfter)
+		defer heal.Stop()
+		healAfter := subtreeHealAfter
 		for {
 			// Drain the current watch until it ends. A clean end is a force-end
 			// (a mount/unmount overlapping this subtree changed membership →
@@ -759,10 +811,27 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 				case <-ctx.Done():
 					w.Close()
 					return
+				case <-heal.C:
+					// Quiet for a whole interval. Either the slice is idle — in which case
+					// re-establishing costs one State and emits nothing — or the watch is
+					// dead and this is the only thing that will ever notice. Back off while
+					// nothing changes, so an idle slice does not pay this every interval.
+					healAfter = min(healAfter*2, subtreeHealMax)
+					heal.Reset(healAfter)
+					break pump
 				case ev, ok := <-w.Events():
 					if !ok {
 						break pump // watch ended; re-establish
 					}
+					// It is alive: hold the heal off, and forget any backoff it accrued.
+					healAfter = subtreeHealAfter
+					if !heal.Stop() {
+						select {
+						case <-heal.C:
+						default:
+						}
+					}
+					heal.Reset(healAfter)
 					if ev.ReplayComplete {
 						continue // live watch: no replay phase to complete
 					}
@@ -785,6 +854,15 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 				return
 			}
 			for {
+				// RE-WATCH AND RECONCILE, rather than resuming from the commit the ended
+				// event names. logd offers an exact resume point (WatchEndedError.Commit) and
+				// libctl's own doc says who it is for: "a snapshot-diffing consumer needs
+				// neither and can just re-watch and reconcile against its last snapshot."
+				// That is precisely this watch — emitDiff holds prev and reports the
+				// difference — and measured, the choice is not close. Resuming replays the
+				// missed deltas one at a time into a stream that is already the bottleneck: a
+				// 2000-entity slice reached 894 of 2000 in three minutes. Re-initializing
+				// sends ONE State carrying net state, and the same slice completed in 32s.
 				nw, err := s.sess.Watch(ctx, path, &libctl.WatchOptions{})
 				if err == nil {
 					w = nw

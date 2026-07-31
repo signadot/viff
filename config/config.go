@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/format"
@@ -54,6 +55,36 @@ type Config struct {
 	Scope  string       `tony:"field=scope,omitzero"`
 	Format FormatConfig `tony:"field=format,omitzero"`
 	LLM    LLMConfig    `tony:"field=llm,omitzero"`
+	// TripDuration is D for the cycle throttle: how long a firing waits when its causal chain
+	// has run past the point where some rule must have fired twice about one subject. Empty
+	// means the default; "0" REFUSES the firing instead of pacing it, which stops a runaway
+	// dead rather than letting it hum.
+	//
+	// A duration string ("1s", "500ms"). Server-side, read by `verse up`.
+	TripDuration string `tony:"field=tripDuration,omitzero"`
+}
+
+// TripPace resolves TripDuration: the duration, whether it was SET at all, and any parse error.
+//
+// The default is not decided here. An unset value reports set=false and the engine keeps its own
+// default (trigger.DefaultTripPace), so the number lives with the behaviour it paces rather than
+// being duplicated into a config package that would then have to be kept in step with it.
+//
+// A malformed value is an ERROR rather than a silent fallback, because a server that quietly ran
+// at a pace nobody asked for is how a charter comes to hammer a store with an operator believing
+// otherwise.
+func (c Config) TripPace() (d time.Duration, set bool, err error) {
+	if c.TripDuration == "" {
+		return 0, false, nil
+	}
+	d, err = time.ParseDuration(c.TripDuration)
+	if err != nil {
+		return 0, false, fmt.Errorf("tripDuration %q: %w", c.TripDuration, err)
+	}
+	if d < 0 {
+		return 0, false, fmt.Errorf("tripDuration %q: must not be negative", c.TripDuration)
+	}
+	return d, true, nil
 }
 
 // FormatConfig selects the representation. Three knobs rather than one because wanting tony

@@ -59,23 +59,23 @@ func TestWriteCreateAndUpdate(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
 
-	if ok, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload(), When: []Require{Updated()}}); err != nil || ok {
+	if ok, _, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload(), When: []Require{Updated()}}); err != nil || ok {
 		t.Fatalf("update of an absent entity: committed=%v err=%v, want refused", ok, err)
 	}
 	if _, ok, _ := s.Get(ref); ok {
 		t.Fatal("a refused update created the entity")
 	}
 
-	if ok, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload(), When: []Require{Created()}}); err != nil || !ok {
+	if ok, _, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload(), When: []Require{Created()}}); err != nil || !ok {
 		t.Fatalf("create of an absent entity: committed=%v err=%v, want committed", ok, err)
 	}
-	if ok, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "hijacked"}.Payload(), When: []Require{Created()}}); err != nil || ok {
+	if ok, _, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "hijacked"}.Payload(), When: []Require{Created()}}); err != nil || ok {
 		t.Fatalf("create of an existing entity: committed=%v err=%v, want refused", ok, err)
 	}
 	if got := readObj(t, s, ref); got["stage"] != "open" {
 		t.Fatalf("a refused create wrote anyway: %+v", got)
 	}
-	if ok, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "reviewed"}.Payload(), When: []Require{Updated()}}); err != nil || !ok {
+	if ok, _, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "reviewed"}.Payload(), When: []Require{Updated()}}); err != nil || !ok {
 		t.Fatalf("update of an existing entity: committed=%v err=%v, want committed", ok, err)
 	}
 	if got := readObj(t, s, ref); got["stage"] != "reviewed" {
@@ -91,10 +91,10 @@ func TestWriteConditionOnAField(t *testing.T) {
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload()})
 
 	at := ref.At("owner")
-	if ok, _ := s.Write(Write{At: at, Value: ir.FromString("alice"), When: []Require{Created()}}); !ok {
+	if ok, _, _ := s.Write(Write{At: at, Value: ir.FromString("alice"), When: []Require{Created()}}); !ok {
 		t.Fatal("claiming an unset field lost")
 	}
-	if ok, _ := s.Write(Write{At: at, Value: ir.FromString("bob"), When: []Require{Created()}}); ok {
+	if ok, _, _ := s.Write(Write{At: at, Value: ir.FromString("bob"), When: []Require{Created()}}); ok {
 		t.Fatal("claiming a set field won — the field is not a claim")
 	}
 	if got := readObj(t, s, ref); got["owner"] != "alice" {
@@ -111,7 +111,7 @@ func TestRequireDefaultsToTheWritesPath(t *testing.T) {
 	mustWrite(t, s, Write{At: Path{Ref: gate}, Value: Obj{"open": true}.Payload()})
 
 	// One condition about the write's own path (absent), one about somewhere else.
-	ok, err := s.Write(Write{
+	ok, _, err := s.Write(Write{
 		At:    Path{Ref: ref},
 		Value: Obj{"stage": "open"}.Payload(),
 		When: []Require{
@@ -124,7 +124,7 @@ func TestRequireDefaultsToTheWritesPath(t *testing.T) {
 	}
 
 	// The same write again: its own-path condition now fails, though the other still holds.
-	ok, err = s.Write(Write{
+	ok, _, err = s.Write(Write{
 		At:    Path{Ref: ref},
 		Value: Obj{"stage": "again"}.Payload(),
 		When: []Require{
@@ -139,7 +139,7 @@ func TestRequireDefaultsToTheWritesPath(t *testing.T) {
 
 func mustWrite(t *testing.T, s Store, w Write) {
 	t.Helper()
-	ok, err := s.Write(w)
+	ok, _, err := s.Write(w)
 	if err != nil || !ok {
 		t.Fatalf("write %s: committed=%v err=%v", w.At, ok, err)
 	}

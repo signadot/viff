@@ -205,7 +205,7 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 // because its index could not be updated. What it costs is that the entity can lag the
 // process it mirrors — the index is a projection, and the read plane remains the record.
 func write(store entity.Store, id string, st entity.Obj) {
-	if _, err := store.Write(entity.Write{At: Ref(id).At(), Value: st.Payload()}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: Ref(id).At(), Value: st.Payload()}); err != nil {
 		return
 	}
 }
