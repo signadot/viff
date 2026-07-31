@@ -615,3 +615,66 @@ func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 		t.Fatalf("a well-formed rule was refused: %v", err)
 	}
 }
+
+// The causal chain crosses the level. A derive is written with the firing's own commit as its
+// parent, so the rule woken at the level ABOVE continues the chain rather than starting one.
+//
+// This is the one thing here that would fail quietly: losing the link does not loosen the
+// throttle's bound — a chain never returns to a stratum it has left, so a per-segment count
+// still trips — but it truncates the report that names the rules which looped, so a cascade
+// would be described as though it began at the crossing.
+//
+// It takes THREE hops to see, and the shorter version of this test is worthless: an absent
+// parent reads as depth 0, so a derive stamped with no parent still lands at depth 1 when the
+// thing that woke it was an external write. The chain has to be deep enough on the low side
+// that a lost link shows up as a shortfall.
+func TestTheCausalChainCrossesTheLevel(t *testing.T) {
+	eng, store := newEng(t)
+	withStrata(t, eng,
+		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
+		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
+	)
+	// gh:issue:1 stage a → b (depth 1), b → derive (depth 2), and the level above acts off
+	// the derive (depth 3).
+	for _, tr := range []Trigger{{
+		Name:      "advance",
+		Stratum:   "low",
+		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "value": map[string]any{"stage": "a"}}},
+		Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
+	}, {
+		Name:      "derives",
+		Stratum:   "low",
+		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "value": map[string]any{"stage": "b"}}},
+		Action:    deriveAction("signadot", "feature", entity.Obj{"priority": "urgent"}),
+	}, {
+		Name:      "consumes",
+		Stratum:   "high",
+		Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature", "value": map[string]any{"priority": "urgent"}}},
+		Action:    Action{Patch: entity.Obj{"stage": "awaiting-approval"}.Payload()},
+	}} {
+		if err := eng.AddTrigger(tr); err != nil {
+			t.Fatalf("%s: %v", tr.Name, err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	entitytest.Set(t, store, entity.Ref{System: "gh", Kind: "issue", ID: "1"}, entity.Obj{"stage": "a"}.Payload())
+	derived := waitDerived(t, store, "signadot", "feature")
+	waitStage(t, store, derived.Ref, "awaiting-approval")
+
+	eng.chainMu.Lock()
+	defer eng.chainMu.Unlock()
+	deepest := 0
+	for _, l := range eng.causes {
+		if l.depth > deepest {
+			deepest = l.depth
+		}
+	}
+	if deepest < 3 {
+		t.Fatalf("the chain did not continue across the level: deepest recorded depth is %d, "+
+			"want at least 3 (advance, derive, then the rule the derive woke above) — a derive "+
+			"written without its parent starts a fresh chain, and the throttle's report would "+
+			"name the crossing as the origin", deepest)
+	}
+}
