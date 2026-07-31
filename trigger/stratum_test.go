@@ -219,13 +219,15 @@ func TestUnstratifiedRuleMayNotDerive(t *testing.T) {
 	}
 }
 
-// The load-bearing one. Literal content is what makes the level check static and what makes a
-// rule reading a higher level inert; a reference would quietly take both away.
+// The load-bearing one. A derive may reference the firing's IDENTITY and never its STATE:
+// $subject is fixed by the same pair the derived address is fixed by, so a re-fire still writes
+// identical bytes at an identical address, and the read side keeps the inertness it leans on. A
+// value read from a payload moves as rules fire, and would take that away.
 func TestDeriveContentMustBeLiteral(t *testing.T) {
 	eng, _ := newEng(t)
 	withStrata(t, eng, demoStrata()...)
 	for why, payload := range map[string]entity.Obj{
-		"a bare reference":     {"who": "$subject"},
+		"a bare reference":     {"who": "$result"},
 		"one inside text":      {"note": "about $result now"},
 		"one nested deeper":    {"a": entity.Obj{"b": "$stage"}},
 		"one inside a list":    {"a": []any{"ok", "$result"}},
@@ -243,14 +245,82 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 		}
 	}
 	// A literal dollar is not a reference, and never was — the same rule the expander uses.
+	// $subject is, and is the one that is allowed.
+	for why, payload := range map[string]entity.Obj{
+		"a literal dollar":     {"price": "$5"},
+		"$subject alone":       {"what": "$subject"},
+		"$subject inside text": {"note": "raised from $subject"},
+		"$subject nested":      {"a": entity.Obj{"b": "$subject"}},
+		"$subject twice":       {"a": "$subject", "b": "$subject"},
+		"$subject beside a $5": {"a": "$subject costs $5"},
+	} {
+		if err := eng.AddTrigger(Trigger{
+			Name:      "ok-" + strings.ReplaceAll(strings.ReplaceAll(why, " ", "-"), "$", ""),
+			Stratum:   "observe",
+			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+			Action:    deriveAction("signadot", "feature", payload),
+		}); err != nil {
+			t.Errorf("%s was refused: %v", why, err)
+		}
+	}
+	// $subject is a ref STRING, not a record, so there is nothing to descend into. Refused
+	// here rather than at fire time, where it would be a firing that failed for a reason the
+	// charter's author is no longer present to hear.
 	if err := eng.AddTrigger(Trigger{
-		Name:      "literal-dollar",
+		Name:      "subject-field",
 		Stratum:   "observe",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"price": "$5"}),
-	}); err != nil {
-		t.Fatalf("a literal dollar was read as a reference: %v", err)
+		Action:    deriveAction("signadot", "feature", entity.Obj{"id": "$subject.id"}),
+	}); err == nil {
+		t.Error("$subject.id was accepted; it has no spelling and would fail at fire time")
 	}
+}
+
+// $subject resolves, and to the same thing on every firing — which is what keeps a re-fire a
+// no-op and the read side inert. Both halves are asserted here because only together do they
+// make the reference safe.
+func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
+	eng, store := newEng(t)
+	withStrata(t, eng,
+		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
+		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
+	)
+	if err := eng.AddTrigger(Trigger{
+		Name:      "raise",
+		Stratum:   "low",
+		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Action:    deriveAction("signadot", "feature", entity.Obj{"what": "$subject", "note": "raised from $subject"}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	ref := entity.Ref{System: "gh", Kind: "issue", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"n": 1}.Payload())
+	derived := waitDerived(t, store, "signadot", "feature")
+	obj := entity.ToObj(derived.Payload)
+	if obj["what"] != "gh:issue:1" {
+		t.Fatalf("$subject did not resolve to the ref: %+v", obj)
+	}
+	if obj["note"] != "raised from gh:issue:1" {
+		t.Fatalf("$subject did not resolve inside text: %+v", obj)
+	}
+
+	// Re-fire about the same subject: same bytes, same address. If $subject varied, this is
+	// where the read side would stop being inert.
+	rev := store.Rev()
+	entitytest.Set(t, store, ref, entity.Obj{"n": 2}.Payload())
+	waitCount(t, store, "signadot", "feature", 1)
+	again, ok, _ := store.Get(derived.Ref)
+	if !ok {
+		t.Fatal("the derived entity went away on a re-fire")
+	}
+	if got := entity.ToObj(again.Payload)["what"]; got != "gh:issue:1" {
+		t.Fatalf("a re-fire changed what the derive wrote: %v", got)
+	}
+	_ = rev
 }
 
 func TestDeriveShapeIsTwoLevels(t *testing.T) {

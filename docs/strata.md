@@ -70,23 +70,34 @@ install there is no id to check a pattern against — a stratum matching on one 
 checked at the moment the whole ordering is bought for. And a `value` predicate would make a
 level depend on a state that rules change as they fire, which is not a level.
 
-## `derive` — literal content, engine identity
+## `derive` — identity, not state
 
 The address is exactly two levels — `<system>.<kind>` — and everything under it is payload.
 Nothing deeper is address, so there is no boundary to find.
 
-**The content is literal.** A derive carries no `$references`, and this is refused at install
-rather than tolerated. It is what makes the level check a static match of a document against a
-pattern instead of a guess at what a template will produce at fire time. It is also what makes
-reading *upward* safe: a rule may `on` or `when` anything at any level, because an extra firing
-writes the same bytes to the same address, which is a no-op the store already ends.
+**The content may reference the firing's identity, and never its state.** In practice that means
+one reference, `$subject`, and every other is refused at install.
+
+The line is where it is because of what a re-fire has to be. A derived entity's *address* is a
+function of (rule, subject); `$subject` is fixed by that same pair; so firing a rule again about
+the same subject writes identical bytes to an identical address, which the store ends as a no-op.
+That is what makes reading *upward* safe — a rule may `on` or `when` anything at any level,
+because the extra firings a read causes cannot change what gets written. A reference to `$result`
+or to a payload field moves as rules fire, so a derive carrying one would turn exactly that read
+into a live cycle. It is also what keeps the level check a static match of a document against a
+pattern rather than a guess at what a template will produce.
+
+`$subject` resolves to the whole ref — `"gh:issue:1"` — which is a match address as it stands,
+and a flat binding for a spawn at the level above. `$subject.id` has no spelling: the reference is
+a string, not a record.
 
 **The identity is the engine's.** The derived entity's id is a function of (rule, subject), and
 the engine writes the subject linkage itself, at `verse.meta.derivedFrom`:
 
 ```
-$ verse entity get signadot:feature:urgent-label.gh_issue_1
+$ verse entity get signadot:feature:urgent-label@gh:issue:1
 priority: urgent
+what: gh:issue:1
 verse:
   meta:
     derivedFrom:
@@ -94,11 +105,15 @@ verse:
       subject: gh:issue:1
 ```
 
-This is the spawn's rule, and for the spawn's reason: a derivation is about exactly one subject,
-and which one is the condition's answer, not something a charter should have to interpolate. The
-two together are what make literal content *sufficient* rather than crippling — `do:approve` says
-"approve the thing this is about", and the linkage says which. A consumer at the level above
-reads the subject off the derived entity exactly as a consumer of a process reads its flow.
+The id reads `<system>:<kind>:<rule>@<subject>`, and the rule is in there because identity is
+(rule, subject) rather than subject alone — without it, two rules deriving into one kind about one
+subject would write the same entity, which is the race single-writer exists to retire.
+
+The linkage is the spawn's rule, for the spawn's reason: a derivation is about exactly one
+subject, and which one is the condition's answer rather than something a charter should have to
+interpolate. So `do:approve` can say "approve the thing this is about" and the linkage says which,
+whether or not the charter also wrote `$subject` somewhere it finds convenient — under its own
+key, where a consumer's spawn can bind it flatly (`task: "approve $pr"`, after `pr: $subject`).
 
 Two consequences fall out. A re-fire about the same subject writes the same address, so it is
 idempotent. And **no two rules can ever address one derived entity**: names are unique across the

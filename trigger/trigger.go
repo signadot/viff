@@ -464,12 +464,13 @@ func (a Action) applyOne(chain string, ev entity.Event, subj entity.Ref, e *Engi
 	// a process started about a state the trigger failed to establish is the same failure the
 	// patch above already refuses to create.
 	//
-	// No expansion: the content is literal, checked at install (validateDerive). What the engine
-	// adds is the linkage — which subject this derivation is about — on the precedent the spawn
-	// below sets for its own subject.
+	// The only reference a derive may carry is $subject, checked at install (validateDerive) and
+	// resolved against a root holding nothing else. What the engine adds beyond that is the
+	// linkage — which subject this derivation is about — on the precedent the spawn below sets
+	// for its own subject.
 	for _, d := range a.derives() {
 		ref := entity.Ref{System: d.System, Kind: d.Kind, ID: deriveID(chainID(chain), subj)}
-		payload, err := deriveLinkage(d.Payload, chain, subj)
+		payload, err := deriveContent(d.Payload, chain, subj)
 		if err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err

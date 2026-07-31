@@ -63,16 +63,26 @@
       signadot:
         feature:
           priority: urgent
+          # $subject is the ONE reference a derive may carry, and it resolves to the whole
+          # ref — "gh:issue:1" — which is a match address as it stands. It is admitted where
+          # $result is refused because it is fixed by (rule, subject), the same pair the
+          # derived entity's ADDRESS is fixed by: so a re-fire still writes identical bytes
+          # to an identical address, and a rule reading a higher level stays inert.
+          #
+          # Under a key of your choosing, so a spawn at the level above can bind it flatly
+          # (`task: "approve $what"`). The engine also records it at verse.meta.derivedFrom,
+          # nested, where a spawn's older flat substitution cannot reach it.
+          what: $subject
 
 # ── the coupling: a lower lap re-ignites the upper cycle ─────────────────────
-# The subject is at level 10 (this rule's own), and the `when` reads level 0. A read
+# The subject is at level 10 (this rule's own), and the `on` reads level 0. A read
 # downward — or upward — is unrestricted; what the ordering constrains is where a
 # write may LAND.
 - name: start-review
   stratum: sdlc
   condition:
     subject: { system: signadot, kind: feature, value: { priority: urgent } }
-    when:    { system: gh, kind: issue, value: { stage: labeled } }
+    on:    { system: gh, kind: issue, value: { stage: labeled } }
   action:
     patch: { phase: drafted }
 

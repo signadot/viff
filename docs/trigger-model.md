@@ -452,7 +452,8 @@ apply. `patch: { tmp: !delete null }` removes a key, which is something no amoun
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
 `derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It is
-addressed `<system>.<kind>`, its content is literal (no `$references`), and the derived entity's
+addressed `<system>.<kind>`, its content may reference the firing's identity but never its
+state (`$subject`, and nothing else), and the derived entity's
 id is the engine's, a function of (rule, subject). It is only installable inside a declared
 level ordering, where it must land strictly above the rule that writes it: see
 [strata](strata.md).

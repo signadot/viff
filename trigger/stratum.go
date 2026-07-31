@@ -692,32 +692,51 @@ func (a Action) validateDerive() error {
 					"subject this derivation is about into it, which a scalar has nowhere to hold",
 					sysName.String, kindName.String)
 			}
-			if ref := firstRef(payload); ref != "" {
-				return fmt.Errorf("action.derive.%s.%s carries the reference %q: a derive's content "+
-					"is LITERAL, and that is the point rather than a limitation. It is what makes "+
-					"the level check a static match of a document against a pattern instead of a "+
-					"guess at what a template will produce, and what makes a rule reading a higher "+
-					"level inert — the same bytes at the same address, so the store's own no-op "+
-					"suppression ends it. Say which subject it is about by letting the engine write "+
-					"the linkage; it already does",
-					sysName.String, kindName.String, ref)
+			if ref := firstBadRef(payload); ref != "" {
+				return fmt.Errorf("action.derive.%s.%s carries the reference %q: a derive may "+
+					"reference the firing's IDENTITY and never its STATE, and $%s is the only "+
+					"reference that is identity. The distinction is what the whole ordering rests "+
+					"on: a derived entity's address is a function of (rule, subject), so a derive "+
+					"whose content is also fixed by (rule, subject) writes the same bytes to the "+
+					"same address on every re-fire — a no-op the store ends by itself, which is why "+
+					"a rule may read a HIGHER level without that read becoming a cycle. A value read "+
+					"from a payload changes as rules fire, so a derive carrying one would make "+
+					"exactly that read live",
+					sysName.String, kindName.String, ref, refSubject)
 			}
 		}
 	}
 	return nil
 }
 
-// firstRef reports the first $reference in a subtree, or "" when there is none. It reuses the
-// same token rule the expander does (refAt), so what counts as a reference here is exactly what
-// would have been expanded at fire time — a literal dollar ("$5") is neither.
-func firstRef(n entity.Payload) string {
+// refSubject is the one reference a derive may carry: the resolved subject, as the ref string
+// the engine already writes into the linkage.
+//
+// It is admitted where every other reference is refused because it is fixed by the same pair the
+// derived entity's ADDRESS is fixed by. Re-firing a rule about a subject therefore writes
+// identical bytes at an identical address, which is the property the read side leans on — a rule
+// may read any level, because the extra firings a read causes cannot change what it writes. A
+// reference to $result or a payload field would break exactly that, since its value moves as
+// rules fire.
+//
+// $subject resolves to the whole ref ("gh:issue:1"), which is a Match address as it stands and a
+// flat binding for a spawn at the level above ("approve $pr", after `pr: $subject`). $subject.id
+// is NOT a spelling — the reference is a string, not a record — and is refused here rather than
+// failing at fire time.
+const refSubject = "subject"
+
+// firstBadRef reports the first $reference in a subtree that a derive may not carry, or "" when
+// every reference in it is $subject. It reuses the token rule the expander does (refAt), so what
+// counts as a reference here is exactly what would be expanded at fire time — a literal dollar
+// ("$5") is neither, and never was.
+func firstBadRef(n entity.Payload) string {
 	if n == nil {
 		return ""
 	}
 	switch n.Type {
 	case ir.ObjectType, ir.ArrayType:
 		for _, v := range n.Values {
-			if r := firstRef(v); r != "" {
+			if r := firstBadRef(v); r != "" {
 				return r
 			}
 		}
@@ -728,7 +747,10 @@ func firstRef(n entity.Payload) string {
 				continue
 			}
 			if l := refAt(s[i:]); l > 0 {
-				return s[i : i+l]
+				if ref := s[i+1 : i+l]; ref != refSubject {
+					return s[i : i+l]
+				}
+				i += l - 1
 			}
 		}
 	}
@@ -743,8 +765,23 @@ func firstRef(n entity.Payload) string {
 // one is the Condition's answer, not something the charter should be trusted to interpolate.
 const deriveFromField = "derivedFrom"
 
-// deriveLinkage merges the engine's record of what this derivation is about into the literal
-// content the charter wrote.
+// deriveContent resolves what a derive writes: $subject expanded, then the engine's linkage
+// merged in.
+//
+// It expands against a root holding ONLY the subject — refRoot(nil, subj) — rather than against
+// the payload that fired the action. That makes the reference universe structural instead of
+// merely checked: a reference install would have refused cannot resolve here either, it fails the
+// firing by name, and the two ends cannot drift apart if one of them is ever relaxed.
+func deriveContent(payload entity.Payload, chain string, subj entity.Ref) (entity.Payload, error) {
+	expanded, err := expandPatch(payload, refRoot(nil, subj))
+	if err != nil {
+		return nil, err
+	}
+	return deriveLinkage(expanded, chain, subj)
+}
+
+// deriveLinkage merges the engine's record of what this derivation is about into the content the
+// charter wrote.
 func deriveLinkage(payload entity.Payload, chain string, subj entity.Ref) (entity.Payload, error) {
 	link := entity.Obj{
 		entity.ReservedRoot: entity.Obj{
