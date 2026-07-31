@@ -1,4 +1,4 @@
-# Strata: a declared level ordering, so derivation is well founded
+# Strata: a declared level ordering, so cross-entity writes are checkable
 
 Status: design note, nothing here runs. It proposes two things that only make sense together — a
 new action face (`derive`, which writes somewhere other than the subject) and a level ordering
@@ -134,9 +134,12 @@ convenience the first time someone wants it.
 
 ## What this earns, stated exactly
 
-**Any derivation cascade from one commit terminates in at most (number of strata) steps.** Each
-derive strictly increases level and the ordering is finite and well founded. Not "the charter
-converges" — see the next section.
+**A cascade crosses at most (number of strata − 1) levels.** Each derive strictly increases level,
+nothing writes downward, and the ordering is finite. Note what this bounds and what it does not:
+the number of *crossings*, not the number of steps. Between two crossings a stratum's rules can
+patch their own subjects and wake each other without limit; that stretch is bounded by the cycle
+throttle, not by the ordering. Nothing here says a charter converges, and the next section says
+why it cannot.
 
 **Single writer per derived entity.** Rule names are unique across the whole charter
 (`trigger/charter.go`) and the id is injective in subject, so no two rules and no two subjects can
@@ -148,7 +151,14 @@ survives only on the subject side, where a `patch` still competes.
 instead of analyzed, so templates and operators — the thing that makes the inferred graph a
 warning rather than a proof — cannot hide an edge.
 
-## What it does not earn
+## It does not converge, and does not need to
+
+Say it plainly, because "well founded" invites the other reading: a charter under strata does not
+converge, and no amount of level discipline will make it. The ordering is well founded; the system
+running under it is not a fixpoint computation and was never going to be one. Three things loop by
+construction — a stratum's rules recursing among themselves, an agent writing whatever its tools
+reach, and the world coming back around through the mirror. What is on offer is that each of those
+is *bounded, observable, or paced*, which is a different property and the one worth having.
 
 The `fwd`/`back` pair from [convergence](../convergence.md#the-cycle-and-how-it-is-caught)
 survives intact if both rules sit in one stratum and both patch their own subject. Level
@@ -159,12 +169,14 @@ So strata never claimed to replace the cycle check, and what does replace it is 
 [cycle throttle](../cycle-throttle.md), which bounds a firing's causal depth by the number of
 installed triggers.
 
-**What strata would still buy it is a tighter bound.** A chain that crosses a level can never come
-back — a derive strictly increases level and nothing writes downward — so the counter could reset
-at every crossing and the cap would be max|stratum| rather than the whole charter. That is the
-same well-foundedness the install checks below rest on, spent a second time. It is a tightening,
-not a prerequisite: with no strata declared there is one implicit stratum and the cap is the
-installed trigger count, which is a usable bound today.
+**What strata would still buy it is a tighter bound — on detection, not on the total.** A chain
+that crosses a level can never come back, so the counter could reset at every crossing, and a loop
+confined to one stratum would then trip after that stratum's own trigger count rather than after
+the whole charter's. The total is not loosened by the reset: levels strictly increase, so each
+stratum is entered at most once, and the sum over entered strata is still the installed trigger
+count. It is a tightening of how fast a runaway is caught, not of the worst case. And it is not a
+prerequisite: with no strata declared there is one implicit stratum and the cap is the installed
+trigger count, which is a usable bound today.
 
 ## The three install checks
 
@@ -194,8 +206,9 @@ have found a bug.
 
 ## Processes are outside the ordering
 
-A spawned agent writes wherever its tools reach, at no level. So the guarantee reads: *a charter
-is well founded to the extent its writes are declared.* `derive` moves cross-entity writes from
+A spawned agent writes wherever its tools reach, at no level. So the guarantee reads: *the
+ordering covers a charter only to the extent its writes are declared.* `derive` moves cross-entity
+writes from
 "an agent did it, unanalyzable" into "the charter said it, checkable" — and every write still
 going through a spawn is outside the ordering entirely.
 
@@ -205,7 +218,7 @@ and above. The precedent is exact — `Action.validate` already refuses a `provi
 states (`trigger/trigger.go`). A grant is that ceiling for the *what* axis; a stratum could be it
 for the *where*. See [authority](../roadmap/authority.md).
 
-## The durable shape should not be the file shape
+## The durable shape is not the file shape
 
 The level-keyed document above is a good thing to read and a bad thing to store.
 [The charter is one entity per rule](../trigger-model.md#the-charter-is-durable) for reasons that
@@ -213,14 +226,32 @@ still hold: installing writes one entity and removing deletes one, so there is n
 read-modify-write and two concurrent installs cannot lose each other; and a rule is addressable
 (`verse entity get trigger:rule:review`). A single level-keyed document gives all of that up.
 
-The split that keeps both:
+So the durable form is split, and keeps both:
 
-- a rule stays one entity, gaining a `level:` field;
-- a stratum becomes its own entity — `trigger:stratum:10` — carrying `{name, match}`.
+- a rule stays one entity, gaining a `stratum:` field naming the one it lives in;
+- a stratum is its own entity — `trigger:strata:sdlc` — carrying `{level, match}`.
 
 Strata are few and change rarely; rules are many and change often, which is the same asymmetry
 the one-entity-per-rule argument turns on. The document form stays as the *file* syntax for
-`verse trigger add -f charter.tony`, fanning out into those entities on install.
+`verse trigger add -f charter.tony`, fanning out into those entities on install, as a list keyed
+`!key(name)` — the key being the entity's id, which is what makes the two forms one thing seen
+twice. (Not the level-keyed document the example above uses; that form is left as written because
+what it shows is the ordering, not the syntax.)
+
+**The name addresses, the number orders**, which settles what would otherwise be an open question
+and settles it the way that question leaned: a rule saying `stratum: sdlc` reads as what it means,
+where `10` does not. The level is an ordinary field, so **two strata may not share one** — refused
+at install, because the number is the whole ordering and a charter that gives it twice has not
+said which comes first. Renaming a stratum breaks every rule naming it, which is the price; it is
+paid rarely, and by an error rather than by silence.
+
+**The split costs one check the file form gets for free.** In a single document a stratum cannot
+dangle — every rule sits inside the one it names. Installed as separate entities, a rule naming
+`sdlc` can arrive before `sdlc` does, and that check needs the store to answer. It is the one
+check here that does. Whether such a rule is refused at install or installed dormant until its
+stratum appears is open, and the second reads better against independent installs: refusing makes
+the order of two independent writes matter, which is the property the one-entity-per-rule shape
+exists to avoid.
 
 ## Open
 
@@ -235,14 +266,15 @@ the one-entity-per-rule argument turns on. The document form stays as the *file*
   *set* of derived entities instead. That is what buys single-writer, so the trade is deliberate,
   but if an aggregate is ever genuinely wanted it needs a different construct rather than an id
   slot on this one.
-- **Migration.** Every rule needs a level. Defaulting existing rules to a single stratum gives
-  exactly today's semantics — intra-stratum unchecked, as now — so this is additive and the
-  guarantee grows as strata are declared rather than arriving as a flag day.
-- **Whether the number or the name is canonical.** The number orders and the name explains, but a
-  rule carrying `level: 10` reads worse than `level: sdlc`, and inserting a stratum renumbers
-  nothing while renaming one breaks every rule that named it.
-- **What a derive does when its target already exists with a different value.** It is a patch, so
-  it merges; single-writer means the only thing it can be merging with is its own earlier
-  firing. Probably nothing to decide, but it has not been thought through against the
-  [lifecycle](../trigger-model.md#lifecycle-how-an-entity-leaves) — in particular whether a derive
-  may resurrect an entity a reaper has marked.
+- **Migration — answered, by there being none.** Nothing installed is expected to survive; the
+  verse gets clobbered and rebuilt. What the implicit stratum is for is not a migration path but
+  an oracle: a charter declaring no strata behaves exactly as today, so the existing tests stay
+  the check on every step. The guarantee grows as strata are declared.
+- **A rule whose level names no installed stratum.** Refused at install, or installed dormant. See
+  [the durable shape](#the-durable-shape-is-not-the-file-shape); the argument there favours
+  dormant.
+- **How a derived entity leaves.** Unspecified, and not urgent — nothing reaps derived entities
+  unless a charter says to. Worth one line only because the
+  [subject-side protection](../trigger-model.md#lifecycle-how-an-entity-leaves) does not extend
+  here: a derive's target is addressed rather than selected, so the vanishing marker is not in its
+  path.
