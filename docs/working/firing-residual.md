@@ -68,6 +68,18 @@ the snapshot the rule was evaluated against (`Engine.refPayload`). A firing that
 snapshot reads the value the condition was true of. Doing it any other way today would mean a
 whole-verse read per subject, which is why the looseness is documented rather than patched.
 
+**Narrowed since, and the shape of the remainder is worth knowing.** `$subject.value` and the two
+path reads ([`!get-path` / `!list-paths`](../trigger-model.md#get-path-and-list-paths--reaching-another-entity))
+do carry a snapshot at C — one per firing, taken lazily, so a charter that never asks never pays.
+What still reads late is the FLAT bindings, `$stage` and the payload's other fields by name,
+because `refPayload` runs for every firing and pinning it would make the whole-verse read
+unconditional rather than opt-in.
+
+So this section's argument changes rather than dissolving: the roll-forward is no longer what
+makes an as-of-C read POSSIBLE, it is what would make it free — and free is what would let the
+flat bindings be pinned too, instead of leaving one datum with two spellings and two answers
+(`$stage` current, `$subject.value.stage` as-of-C).
+
 `AsOf`'s `within` parameter is kept for this: it bounds what crosses the wire, which is the shape
 a per-subtree roll-forward will want. If this never lands, `within` is a candidate for removal,
 since measurement says bounding the path is all it does.

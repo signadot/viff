@@ -88,10 +88,11 @@ level depend on a state that rules change as they fire, which is not a level.
 The address is exactly two levels — `<system>.<kind>` — and everything under it is payload.
 Nothing deeper is address, so there is no boundary to find.
 
-**A derive may reference its subject, and nothing else.** `$subject` and its parts resolve;
-every other reference is refused at install.
+**A derive may reference its subject, and nothing else** — `$subject` and its parts resolve,
+every other `$reference` is refused at install. (A path read may reach further, at a price the
+next section states.)
 
-The line is where it is because of what a re-fire has to be. A reference cannot reach another
+The line is where it is because of what a re-fire has to be. A `$reference` cannot reach another
 entity at all — it reads the firing's own subject, or a process's result — and nothing above can
 write the subject, since a patch touches only its own subject and a derive only climbs. So an
 upward read that wakes the rule without changing the subject resolves to the same bytes, writes
@@ -164,8 +165,8 @@ It also forbids rollups: fifty features cannot feed one `do:approve`. The level 
 
 [`!get-path` and `!list-paths`](trigger-model.md#get-path-and-list-paths--reaching-another-entity)
 let an action copy an entity that is not its subject, and they are the one thing the ordering has
-to constrain — because they break the fact the section above rests on: that a reference cannot
-reach another entity at all.
+to constrain — because they break the fact the section above rests on: that nothing a derive
+writes can be reached from a level above it.
 
 **A path read inside a derive must resolve at or below the rule's own stratum.** An entity at or
 below is written only by rules at that level, or derived into from below it — never from above —

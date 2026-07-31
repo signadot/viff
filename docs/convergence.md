@@ -8,7 +8,8 @@ rather than of how firings interleave, and what per-commit evaluation costs to r
 
 Of the sources of ambiguity below, two are checked at install, one is warned about, one is caught
 at runtime, and one is neither. That is the honest state, and the unchecked one is named rather
-than hidden.
+than hidden. A charter may also declare a [level ordering](strata.md), which adds install-time
+checks of its own over what an action writes and what it may read.
 
 ## The cost of asking: a read per commit
 
@@ -55,15 +56,25 @@ The edge is `AsOf(C-1)` against `AsOf(C)` rather than against what the engine re
 which is what makes a replayed commit — a catch-up, a restart — reach the same verdict as the
 live one.
 
-One looseness is left, and it is named rather than hidden: an action's `$references` read the
-subject's payload from the store as it stands **when the action runs**, not from the snapshot the
-rule was evaluated against (`Engine.refPayload`). Which entity a firing is about cannot slide —
-the subject ref is settled before any gate, so however long a human takes over an approval, the
-decision and the action are about the same entity — but the value interpolated into a patch is
-current rather than as-of-C. Reading it from the snapshot instead would mean holding the
-evaluated document through the firing, which is the same work as
+An action's reads are pinned to C too, and the ones that are say so in their spelling.
+`$subject.value` — the subject's payload — and the two path reads
+([`!get-path` / `!list-paths`](trigger-model.md#get-path-and-list-paths--reaching-another-entity))
+are all answered from **one snapshot per firing, taken at the causing commit**. So a firing held
+at a gate for a day writes from the state its rule was evaluated against, not from whatever the
+store reached while a human thought about it; and a fan-out cannot mix one member's state at C
+with another's at some later commit.
+
+One looseness is left, and it is named rather than hidden: the **flat bindings** — `$stage` and
+the subject payload's other fields by name — still read the payload as it stands when the action
+runs (`Engine.refPayload`). Which entity a firing is about cannot slide, since the subject ref is
+settled before any gate; but `$stage` is current where `$subject.value.stage` is as-of-C, and
+those are the same datum under two spellings.
+
+The reason is cost rather than principle. `refPayload` runs for every firing, so pinning it means
+a snapshot for every firing, where the as-of-C references above are taken only when a charter
+actually asks for one. Closing it properly is the same work as
 [the roll-forward](working/firing-residual.md#2-the-read-per-commit-carry-the-document-do-not-re-read-it)
-and tightens for free with it.
+— hold the evaluated document through the firing — and tightens for free with it.
 
 ## What ends a firing
 

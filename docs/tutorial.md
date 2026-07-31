@@ -493,6 +493,24 @@ checked against nothing, which is exactly how charters behaved before strata exi
 thing an unstratified rule may not do is `derive`, because "strictly above" has no answer for a
 rule with no level. See [strata](strata.md).
 
+### Reading something the rule is not about
+
+An action's `$references` read the entity the firing is about — `$stage`, `$subject`,
+`$subject.value.head`. To copy from an entity it is *not* about, name one:
+
+```tony
+action:
+  patch:
+    branch:   !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
+    branches: !list-paths { system: git, kind: repo, id: "*", path: branch }
+```
+
+One grammar split by cardinality: `!get-path` answers with one node and refuses anything that
+could name several, `!list-paths` answers with a list and is where the globs live. Both are read
+at the commit that caused the firing, so a rule held at a gate for a day still writes what it was
+evaluated against. Both **copy rather than track** — add an `on` if you want to follow the thing
+you read. See [the trigger model](trigger-model.md#get-path-and-list-paths--reaching-another-entity).
+
 ### The rest of the grammar
 
 Rules install and read back in tony, so inspecting one is a round trip rather than a second
