@@ -270,7 +270,7 @@ type Action struct {
 	// level check a static match of a document against a pattern rather than an analysis of
 	// what a template might produce, and what makes a rule reading a HIGHER level inert: the
 	// same bytes at the same address is a no-op, which the store already ends. See
-	// stratum.go and docs/working/strata.md.
+	// stratum.go and docs/strata.md.
 	Derive entity.Payload `tony:"field=derive,omitzero"`
 
 	Spawn *launch.Spec `tony:"field=spawn,omitzero"`

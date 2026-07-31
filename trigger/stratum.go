@@ -9,7 +9,7 @@ package trigger
 // triggers — decidable for a literal patch, best-effort through a template — and best-effort is
 // the wrong shape for a guarantee: an edge a template hid is an edge the check silently does not
 // have. Declared, a cross-level write is ruled out by construction, so there is nothing for a
-// template to hide. See docs/working/strata.md.
+// template to hide. See docs/strata.md.
 //
 // WHAT THIS IS NOT. It is not a convergence guarantee and cannot be made into one: recursion
 // INSIDE a stratum is exactly what a level ordering permits, which is stratified Datalog's

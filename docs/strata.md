@@ -48,6 +48,19 @@ declared level, with rules living in one and derivations only ever climbing.
 put them in. Numbers with gaps, for the reason BASIC had them: room to insert a level later
 without renumbering its neighbours.
 
+## Why the ordering is declared rather than inferred
+
+The alternative was to work it out: build a graph over the installed triggers, edge from a rule
+that writes a key to a rule that selects on it, and refuse a cycle. It is decidable for a literal
+patch and best-effort through anything computed — a patch whose values come from a template can
+satisfy a predicate a key-level check cannot see through.
+
+Best-effort is the wrong shape for a guarantee. An edge a template hid is an edge the check
+silently does not have, and a check that is right most of the time reads exactly like one that is
+right, up until it matters. Declared, a cross-level write is ruled out by construction, so there
+is nothing left for a template to hide — which is also why a derive's content is constrained
+rather than analysed.
+
 ## Two rules, and they are the whole thing
 
 - a rule's **subject** must be inside its stratum's `match`;
