@@ -1,13 +1,13 @@
 # Authority: where a process's permission comes from
 
 Status: design note, partly implemented. The **override** path under
-[The override](#the-override) has landed: a spawn may now *declare* a vector and a grant, both
-are resolved by name, and a grant is enforced per action. The **derivation** path — inferring
-an envelope from the request text — is not implemented and is the substance of what remains.
+[The override](#the-override) is built: a spawn may *declare* a vector and a grant, both are
+resolved by name, and a grant is enforced per action. The **derivation** path — inferring an
+envelope from the request text — is not implemented and is the substance of what remains.
 
 It concerns the hard authority axis (`process.Grant`) and its relationship to the soft gate
-vector (`process.Vector`) — specifically, that the hard axis was fully wired and never
-produced, which is why restraint still reaches an undeclared process as a prompt.
+vector (`process.Vector`) — specifically, that the hard axis is enforced but never *produced*,
+which is why restraint still reaches an undeclared process as a prompt.
 [Tutorial §3](../tutorial.md#3-processes) states that rough edge from the user's side; this is
 what should fix it.
 
@@ -59,20 +59,20 @@ Verse already models authority in two layers (see also the axes discussion in
 - `Vector` — the soft dial. Of what is permitted, which actions must *ask*. Slidable mid-run
   via `SetVector`.
 
-The hard layer was complete and inert — in two distinct ways, and the second was the deeper
-one. A root process's scope is initialized to a wildcard (`Grant{Allow: []GateMatch{{}}}` —
-`allowsAll`) in `process/loop.go`, and nothing but `NewChild` ever set it, so every process
-began unbounded. But even a process whose scope *was* set would not have been bounded by it:
-`Grant.Subset`, at the `call_agent` boundary, was the only reader of `p.scope` in the tree. A
-grant constrained what a process could **delegate** and never what it could **do**. Wiring the
-declarative fields through without noticing that would have reproduced the same defect one
-layer deeper — a field that resolves, installs, and still stops nothing.
+The hard layer binds a *declared* envelope: `Grant.Permits` checks each action against the
+process's scope in `process/loop.go`, ahead of the vector, and a spawn's `grant` installs that
+scope (`process.Launch`, applied in `processd`). What is missing is a producer. A root process
+that declares no grant is initialized to a wildcard (`Grant{Allow: []GateMatch{{}}}` —
+`allowsAll`), and nothing but `NewChild` sets it, so an undeclared process begins unbounded and
+the soft per-action gate is the only thing between it and an effect. That is what derivation is
+for.
 
-Both are now closed for a *declared* envelope: `Grant.Permits` checks each action against the
-scope in `process/loop.go`, ahead of the vector, and a spawn's `grant` installs the scope
-(`process.Launch`, applied in `processd`). What has not changed is the default: a process that
-declares no grant still begins unbounded, so the soft per-action gate is still the only thing
-between an undeclared agent and an effect. That is what derivation is for.
+Two failure modes are worth naming for whoever builds that producer, because the second is the
+deeper one: a grant nothing sets bounds nothing, and a grant read only at the `call_agent`
+boundary — where `Grant.Subset` reads it — constrains what a process may **delegate** and never
+what it may **do**. Wiring declarative fields through without enforcing them per action
+reproduces the defect one layer deeper: a field that resolves, installs, and still stops
+nothing.
 
 That is the whole defect, stated structurally: the soft dial is doing the hard axis's job.
 An envelope you could have decided once, at spawn, from information the caller already gave you,
@@ -80,13 +80,13 @@ is instead re-litigated per action, interactively, with a human in the loop. Not
 secure for it — a wildcard grant with an `ask` vector stops exactly one impatient operator — and
 the cost is a prompt that reads as ridiculous.
 
-The declarative side had the same hole from the other end: `launch.Spec.Vector` and
-`launch.Spec.Grant` were expanded by `Bind` and read by nothing, so a trigger could not state
-the envelope of what it spawns either — and, worse, could state one and be told it had. Both
-now resolve (`process.NamedVector` / `process.NamedGrant`, called from versed's `launchOf`)
-and reach the runtime as predicates rather than names, so the two ends cannot drift apart on
-what a name means. `launch.Spec.Resolver` and `launch.Spec.Environment` are still declared and
-still read by nothing; neither has semantics to resolve *to* yet.
+The declarative side does state the envelope of what a trigger spawns: `launch.Spec.Vector`
+and `launch.Spec.Grant` resolve (`process.NamedVector` / `process.NamedGrant`, called from
+versed's `launchOf`) and reach the runtime as predicates rather than names, so the two ends
+cannot drift apart on what a name means. A field `Bind` expands and nothing reads is the
+failure to avoid here, and it is worse than an absent one: a trigger states an envelope and is
+told it has one. `launch.Spec.Resolver` and `launch.Spec.Environment` sit in exactly that
+position — declared, read by nothing, with no semantics to resolve *to* yet.
 
 ## The principle
 
@@ -168,13 +168,13 @@ granted it and the agent is not the party who may.
 - Delegation — a child's grant is `parent ∩ req.Grant` already. A derived root envelope makes
   that check mean something for the first time, instead of a wildcard admitting everything.
 - The agent's frame — what an agent is *told* is not authority, but it must not contradict it.
-  The harness's system prompt used to be a package constant recommending `call_agent` while
-  `harness.Vector()`, ten lines below, ASK-gated the call-agent verb: the standing instruction
-  named the one action guaranteed to suspend an unattended firing. No wording fixes that,
-  because the vector is per-spawn and slidable and a constant is neither. The frame is now
-  derived from the vector it will run under, so a gated tool is described as gated and a
-  refusal outside the grant is described as final rather than as something to re-plan around.
-  A spawn writes its own `frame` when it wants something else.
+  The harness's frame is derived from the vector it will run under (`harness.defaultFrame`),
+  so a gated tool is described as gated and a refusal outside the grant is described as final
+  rather than as something to re-plan around. A constant system prompt cannot hold that line:
+  it would recommend `call_agent` while `harness.Vector()` ASK-gates the call-agent verb —
+  a standing instruction naming the one action guaranteed to suspend an unattended firing —
+  and no wording fixes it, because the vector is per-spawn and slidable and a constant is
+  neither. A spawn writes its own `frame` when it wants something else.
 - Triggers — a firing's `gates` authorize the firing; the spawn's `vector`/`grant` should
   carry that authorization into the process, closing the double-ask.
 - Environments — the unbypassable floor from [expose](expose.md) sits outside both:

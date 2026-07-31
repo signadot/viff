@@ -58,7 +58,7 @@ that finds out.
   with no external home, but it makes the verse a warehouse for conversation, which is the thing
   it has been most careful not to become.
 
-The federated reading is truer to the model, and it is also what the example actually was. The
+The federated reading is truer to the model, and it is what the motivating example already is. The
 native one is probably unavoidable eventually; the question is whether it arrives as a
 *channel that happens to be local* rather than as a second mechanism.
 

@@ -48,7 +48,7 @@ process's — you expose a directory once and program it over time, the triggers
 re-attach, and different agents can share one exposure. Contrast connect, whose trigger dies with the
 session.
 
-The old validator-per-file behavior becomes one charter you opt into against `<name>`, nothing
+Connect's validator-per-file behavior becomes one charter you opt into against `<name>`, nothing
 more.
 
 ## Mapping the agent's file tools to an exposure
@@ -206,14 +206,12 @@ something named elsewhere* rather than inlined things:
 	Grant       → hard authority — what it may do at all
 	Environment → the sandbox/workspace floor — unbypassable
 
-A naming correction has already been applied, because these two sit next to each other from here
-on. "Scope" is taken: everywhere else in verse it means the entity-store isolation overlay —
-`entity.Store.Scope`, `config.Scope`, `--scope`, `VERSE_SCOPE`, connect's nonce, and this document
-up to this point. `launch.Spec.Scope` was the one place it meant *authority*, and its own comment
-translated it away ("Scope → the Grant"). The authority axis is the grant — the word the type
-(`process.Grant`) and the delegation check (`Grant.Subset`) already use — so the field is now
-spelled `launch.Spec.Grant` (wire field `grant`). Nothing read `Spec.Scope`, so the rename cost a
-wire field and no behavior. This note says *grant* for authority and reserves *scope* for isolation.
+Two of those words sit next to each other from here on, so keep them apart. "Scope" is taken:
+everywhere in verse it means the entity-store isolation overlay — `entity.Store.Scope`,
+`config.Scope`, `--scope`, `VERSE_SCOPE`, connect's nonce, and this document up to this point.
+The authority axis is the *grant* — the word the type (`process.Grant`), the delegation check
+(`Grant.Subset`), and the launch field (`launch.Spec.Grant`, wire field `grant`) all use. This
+note says *grant* for authority and reserves *scope* for isolation.
 
 `Environment` has no referent. `Bind` expands its `$vars` and that is the entire implementation —
 nothing in the tree resolves the name (`launch/launch.go`); the test binds it to the suggestive

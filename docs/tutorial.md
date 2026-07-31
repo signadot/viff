@@ -445,8 +445,8 @@ When you mean "whenever this holds", write `when`. The engine warns at install w
 ### derive — writing something that is not the subject
 
 Every rule so far acts on its `subject` and nothing else. That is deliberate — it is what
-makes a firing checkable — but it means the only way a charter could bring an entity into
-being *elsewhere* was to spawn an agent and let it write, which puts the write beyond anything
+makes a firing checkable — but on its own it leaves a charter one way to bring an entity into
+being *elsewhere*: spawn an agent and let it write, which puts the write beyond anything
 install-time analysis can see.
 
 `derive` is that write, said in the charter. And because a charter that can write anywhere can

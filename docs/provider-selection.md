@@ -35,7 +35,7 @@ separated:
 - **attributes** — `risk`, `tier`, `cost`, anything: what a selection *matches on*;
 - **fragment fields** — `driver`, `frame`, `tools`, `grant`: what the winner *contributes*.
 
-`driver` was always both — matchable and bound — and splitting the two would make a provider
+`driver` is both — matchable and bound — and splitting the two would make a provider
 entity a schema rather than the free-form thing that lets a new attribute be invented without
 a code change.
 
@@ -141,7 +141,7 @@ never enters the option set, so it cannot be picked and cannot be voted for.
 
 Both halves of that matter. Trimming — quietly dropping the offending field and running the
 doer anyway — would put a process under an envelope different from the one its own entity
-states, which is the defect the named-grant vocabulary was written to end. And checking after
+states, which is the defect the named-grant vocabulary exists to prevent. And checking after
 the pick would let a group deliberate, reach a threshold, and elect a doer that then cannot be
 seated: a decision with no seat, which no voter could have known they were making.
 
@@ -181,7 +181,7 @@ resolve to yet, so honoring them would be a promise nothing keeps.
 
 ## What you can see
 
-Because a selection can now change what a process may do, three surfaces say what it did.
+Because a selection changes what a process may do, three surfaces say what it did.
 
 **The process entity** carries `doer`, `grant` and `tools` for every spawn — including `auto`,
 which raises no motion and therefore has no other surface at all. `doer` is separate from

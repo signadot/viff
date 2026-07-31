@@ -35,8 +35,8 @@ not offered.
 
 Reading is unaffected by all of this, including the single-key spelling: a charter that
 writes `{"quorum": 2}` loads exactly like one that writes `!quorum 2`. That is how you
-reach an operator from JSON, and it is why JSON stays a first-class way to write a charter
-even though it is no longer a way to read one back.
+reach an operator from JSON, and it is why JSON is a first-class way to write a charter
+even though it is not a way to read one back.
 
 With one exception, for the same reason the rendering is refused: the single-key spelling
 is only unambiguous where the keyspace is closed, so it is *not* applied inside a payload

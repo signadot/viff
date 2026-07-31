@@ -113,23 +113,22 @@ Installing a trigger writes it into the verse as `trigger:rule:<name>`; removing
 that entity; and a start reads them back before anything observes. So the program a verse
 comes back up running is the one it went down with.
 
-Everything else a restart needs was already durable — a process is mirrored, a sequence's
-position is a fact on its subject, a claim is a lease in the store, and resume rehydrates a
-chain's hooks from it. The one thing that did not survive was the program itself, so a verse
-came back with its work in progress intact and nothing left to react to it.
+Everything else a restart needs is durable in the same way — a process is mirrored, a
+sequence's position is a fact on its subject, a claim is a lease in the store, and resume
+rehydrates a chain's hooks from it. The program has to be too, or a verse comes back with its
+work in progress intact and nothing left to react to it.
 
 One entity per rule, because that is what the operations already are: an install writes one,
 a removal deletes one, and neither reads the others — so two installs cannot lose each
 other, and a rule is addressable (`verse entity get trigger:rule:review`).
 
 **A rule is stored as structure, under the `!raw` escape.** The escape is what makes that
-possible, and it is worth saying why it was needed. A write is a tony *patch* — the property
+possible, and it is worth saying why it is needed. A write is a tony *patch* — the property
 that makes the store good at everything else — so operator tags in a payload are EXECUTED by
 the store rather than stored by it. A charter is full of them: `id: !glob "hotfix-*"`,
-`patch: {tmp: !delete null}`. A structurally-stored rule was therefore not one that read back
-wrong, it was one that could not be read back at all — the write left an entity whose own
-patch log no longer applied (`glob patching "null" gave cannot patch with glob operation`) —
-and the rule was kept as its tony *text* instead.
+`patch: {tmp: !delete null}`. Stored as bare structure, a rule is therefore not one that reads
+back wrong, it is one that cannot be read back at all: the write leaves an entity whose own
+patch log no longer applies (`glob patching "null" gave cannot patch with glob operation`).
 
 `!raw` (go-tony v0.0.100) says *this tag is data*: the subtree is stored verbatim, nothing
 beneath it is interpreted at any depth, and the escape itself is consumed, so the rule lands
@@ -171,7 +170,7 @@ written into its scope, but a scope's engine is created on demand by `verse conn
 scoped store reads baseline layered underneath — so restoring one means enumerating scopes and
 reading only the scope's own layer. That is the same gap scoped resume has.
 
-The charter is now an observable slice like any other, so a trigger can watch the charter
+The charter is an observable slice like any other, so a trigger can watch the charter
 (`subject: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `process:*`
 as the engine's own machinery, kept out of the default match set so the loop cannot ignite on
 itself. Meta-observation stays possible, and stays deliberate.
@@ -237,13 +236,14 @@ There is no deferred `$var` form, and nothing in a payload can redirect a subjec
 whose cause is a `process:instance` change and which acts on PRs acts on the PRs its own
 `subject` selects — every one of them — not on the one the completed process happened to name.
 
-A `flow` field on the changed payload USED to short-circuit that: the firing resolved onto
-whatever ref it held, so a completed process advanced the single PR it was about. It is gone.
-Whether a firing acted on one entity or on a whole set turned on whether some entity happened
-to carry a key by that name, which no charter says and no reader of one could predict.
+In particular, a `flow` field on the changed payload does not short-circuit that. Letting it
+resolve the firing onto whatever ref it holds would advance the single PR a completed process
+was about — at the price that whether a firing acts on one entity or on a whole set turns on
+whether some entity happens to carry a key by that name, which no charter says and no reader
+of one could predict.
 
-What it did well — advancing exactly the subject a finished process was about — is what
-[completion hooks](#completion-hooks-one-trigger-chaining-visible) do, and do exactly: the
+What that shortcut does well — advancing exactly the subject a finished process was about —
+is what [completion hooks](#completion-hooks-one-trigger-chaining-visible) do, and do exactly: the
 engine scopes a hook to *that* spawn's process, a correlation the store cannot fake because the
 engine is what spawned it. Reach for a hook when you mean "this process, this subject"; reach
 for an `on` when you mean "when this becomes true, act on that set".
@@ -276,10 +276,10 @@ A selector subject advances a whole set:
 Every reviewed PR advances, while CI is green. Each is its OWN firing: its own `ask` gate and —
 with a `spawn` — its own process tagged with that member as its subject, so each is its own flow.
 
-One gate per member is worth saying out loud, because it used to be one for the whole set. A
-firing is about one entity, so twelve reviewed PRs are twelve decisions; presenting them as one
-was a summary standing in for twelve. The honest arity costs an operator twelve answers until
-`verse gate approve` grows a bulk form.
+One gate per member is worth saying out loud, because one gate for the whole set is the easier
+thing to assume. A firing is about one entity, so twelve reviewed PRs are twelve decisions;
+presenting them as one is a summary standing in for twelve. The honest arity costs an operator
+twelve answers until `verse gate approve` grows a bulk form.
 
 Note what the `when` does here and what it does not. It is the CONDITION — while CI is green —
 and the rule is re-evaluated at every commit touching either subtree, so a PR reaching
@@ -316,7 +316,8 @@ There is no `op` dimension. It classified a CHANGE — `set` or `delete` — and
 only of STATE now, at a revision, where nothing has one. A create is the rising edge of "this
 exists"; a delete is the rising edge of the [vanishing marker](#lifecycle-how-an-entity-leaves)
 that precedes removal. A charter carrying `op` is refused with that explanation rather than an
-"unknown key", because the charters that used it were written when it meant something.
+"unknown key", because the author is reaching for a distinction the model deliberately does not
+carry, and "unknown key" would not say so.
 
 The address string is sugar for the identity dimensions, so `demo:pr:*` means
 `{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
@@ -620,9 +621,9 @@ will not teach it.
 
 A run whose answer never satisfies its contract **fails**. That is the whole point:
 
-- `patch: { class: $data.class }` can no longer fail at patch time, because a process that
-  could not produce `class` did not succeed. The failure moves from a hook nobody watches to
-  `onFailed`, which every rule already declares a branch for.
+- `patch: { class: $data.class }` cannot fail at patch time, because a process that
+  could not produce `class` did not succeed. The failure lands not on a hook nobody watches
+  but on `onFailed`, which every rule already declares a branch for.
 - The check is on the answer, not the layout: a fenced answer is unwrapped, so the repair
   budget is spent on content.
 - It is a guarantee about SHAPE, not about content. A repair loop pressures a model toward
@@ -919,9 +920,9 @@ would evaluate the same predicates over the same state and write the same values
 no commit. Either way, indistinguishable from not running, which is what makes per-commit
 evaluation affordable.
 
-The residual recorded in [change events](change-events.md) is closed by this: `Rev` used to be
-the only trace that a set of changes were one transaction, and nothing grouped by it. Now the
-grouping is the unit of dispatch.
+How the store builds a commit out of one delta — and why the per-entity grain sits inside the
+transaction rather than instead of it — is in
+[change events](change-events.md#one-commit-many-entities-the-entity-is-the-reactive-grain).
 
 ## Lifecycle: how an entity leaves
 

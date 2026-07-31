@@ -13,10 +13,10 @@ comes out of.
 
 A change event needs to carry enough for a trigger to react. The rich shape —
 `Op ∈ {create, update, delete}` plus full before/after payloads — is trivial for a store
-that holds prior state in memory, but expensive for a durable, remote one. The logd-backed
-store originally faked it with a mutable `seen` set threaded through both the live watch and
-`Since`, which made the authoritative catch-up path impure, mislabelled creates inside a
-replay window, and diverged from the interface. Those were symptoms of one thing: the
+that holds prior state in memory, but expensive for a durable, remote one. Faking it over the
+logd-backed store takes a mutable `seen` set threaded through both the live watch and
+`Since`, which makes the authoritative catch-up path impure, mislabels creates inside a
+replay window, and diverges from the interface — all symptoms of one thing, the
 store synthesising *edge* semantics the substrate doesn't carry. So: what should a change
 event actually carry, and is matching edge- or level-triggered?
 
@@ -58,18 +58,17 @@ both without prior state: a tombstone (null leaf) → `Delete`, any value →
   an uncommon capability (below). A create-or-update is `Set` either way, so a charter
   does not depend on which it was.
 - **`Since` is a pure read.** It derives `Op` from the delta alone and mutates no
-  store state, so it is idempotent and safe under concurrent/repeated callers. The
-  `seen` set is gone.
+  store state, so it is idempotent and safe under concurrent/repeated callers, and the
+  store keeps no `seen` set.
 - **`To` is the ENTITY as of that commit, not the delta.** *When* an event happens is an
   edge (one per commit); *what it says* is level (the whole entity at that commit). See
-  "Why `To` is level" below — this is the one decision here that was reversed, and it was
-  reversed by measurement.
+  "Why `To` is level" below, which is the one decision here that measurement settles.
 
-## Why `To` is level (and how a delta answered a question nobody asked)
+## Why `To` is level (and what the delta would answer instead)
 
-`To` used to be the delta — the writer's patch for that commit — on the reasoning that
-verse only ever wrote whole entities, so the delta *was* the entity. That reasoning held
-exactly as long as the premise did. The moment a write can address a field
+The delta — the writer's patch for that commit — is the tempting choice: if verse only ever
+writes whole entities, the delta *is* the entity. That reasoning holds exactly as long as its
+premise. The moment a write can address a field
 (`demo:pr:1.stage`), the delta stops being the entity, and a consumer matching on `To` is
 matching a fragment.
 
@@ -81,9 +80,9 @@ docd   patch at demo:pr:1.stage -> event To = {stage: reviewed}
 ```
 
 The entity at that commit is `{stage: reviewed, env: prod}`. `env` is simply not in the
-event. And `entity.Pattern.MatchEvent` matches `To`, so a trigger whose `when` reads two
-fields fired on a whole-entity write and stayed **silent** on the deep write that reached
-the identical state:
+event. And `entity.Pattern.MatchEvent` matches `To`, so with `To` as the delta a trigger
+whose `when` reads two fields fires on a whole-entity write and stays **silent** on the deep
+write that reaches the identical state:
 
 ```
 whole-entity write to the matching state: fired = 1
@@ -110,7 +109,7 @@ round trip per entity on the watch goroutine, where the stream stalls behind its
 bookkeeping. (It also matters that those reads are not cheap on a grown log: go-tony
 `bvm163tyh12krwcqcsn0`.)
 
-One assumption remains, unchanged from before: the **set of changed refs** still comes from
+One assumption remains: the **set of changed refs** still comes from
 walking the delta's structure, and only the payloads come from the applied document. That is
 safe for a baseline delta (a verbatim merge) and is the residual noted at the end of the
 next section.
@@ -123,9 +122,9 @@ writer's patch verbatim (a plain object merge); a scoped COW watch emits a *comp
 diff whose first event is a `!replace` (diffed from null) and whose later events are
 merges; a foreign writer might use `!delete`/`!insert`. A consumer that inspects the
 *structure* of the patch to see which entities appeared will silently miss some — a
-merge-style walk cannot pull the appeared key out of a `!replace`. That is exactly the
-bug that once made an N-file `verse connect` fire N−1 validators (the first scoped
-delta, the `!replace`, was dropped).
+merge-style walk cannot pull the appeared key out of a `!replace`. That is exactly what makes
+an N-file `verse connect` fire N−1 validators: the first scoped delta, the `!replace`, is the
+one dropped.
 
 The contract is therefore: apply the delta, don't decode it. A subtree watcher
 maintains the watched slice as a document, applies each event to it
@@ -139,10 +138,10 @@ That diff compares payloads with `ir.Node.DeepEqual`, and the choice is load-bea
 than stylistic: a node carries `Parent`/`ParentIndex`/`ParentField`, which say where it sits
 in the document rather than what it holds, and a document rebuilt from a fresh read wires
 those up anew. `reflect.DeepEqual` compares them and so calls a value unequal to itself;
-ir's `DeepEqual` documents that it does not. Under `reflect` every entity in a slice diffed
-as changed after any resync, so re-establishing a watch re-emitted the whole slice and every
-trigger over it fired again for nothing. This is
-what `LogdStore.WatchSubtree` does — and now also what the root watch and the `Since`
+ir's `DeepEqual` documents that it does not. Under `reflect` every entity in a slice diffs
+as changed after any resync, so re-establishing a watch re-emits the whole slice and every
+trigger over it fires again for nothing. This is
+what `LogdStore.WatchSubtree` does — and also what the root watch and the `Since`
 replay do, to level their payloads (`applyDelta`). The residual: those two still take the
 *set of changed refs* from the delta's structure (`walkEntities`) rather than from a diff of
 the reconstructed document, which is safe only because a baseline delta is always a verbatim
@@ -164,7 +163,7 @@ is unchanged emits nothing, so a write that changes no content is *not a reactiv
 That is what keeps a reactive re-write from looping: a trigger whose effect re-touches its own
 cause writes the *same value*, so no edge fires and the trigger does not re-run.
 
-**This is now load-bearing rather than merely convenient.** A trigger is evaluated at every
+**This is load-bearing rather than merely convenient.** A trigger is evaluated at every
 commit that touches what it reads, so what ends a rule is that its own effect raises no further
 evaluation: a latching action writes a new value once and then selects nothing, and one
 re-writing what is already there is inert. Measured, and pinned by
@@ -173,12 +172,12 @@ reports anything. Note it is not a compare-and-swap result — `entity.Modify` r
 precondition, so it prevents lost updates rather than repeated work. The substrate simply
 declines to record a change that is not one.
 
-**One commit in, one commit out.** The subtree watch used to coalesce a burst — apply every
+**One commit in, one commit out.** The subtree watch does not coalesce a burst — apply every
 queued delta, diff once — which is exact for a level and lossy for an EDGE: a value written at
-one commit and overwritten at the next left only the later one, and a transition the stream
-never reported cannot be recovered downstream. Since a trigger's cause is a rising edge, that
-is a firing that never happens, so the coalescing is gone and the cost is a subtree walk per
-commit rather than per burst.
+one commit and overwritten at the next would leave only the later one, and a transition the
+stream never reported cannot be recovered downstream. Since a trigger's cause is a rising edge,
+that is a firing that never happens, so the watch pays a subtree walk per commit rather than
+per burst.
 
 ## The seed is replayed: a subtree watch is level-triggered at the open
 
@@ -232,17 +231,19 @@ isn't; `{system:"demo"}` matches every demo entity), but because dispatch is
 per-entity-edge. A broad pattern simply fans out to one independent firing per matching
 change.
 
-The subtlety (and its cost), as it stood when this was written — see Residuals, where it is
-now closed. This normalisation was deliberately lossy in one way: the reactive grain was the
-entity, not the transaction. A commit that atomically sets
-`demo:pr:1` *and* `demo:pr:2` surfaces as two independent events; the engine dispatches
-them one at a time and fires each trigger with its own subject. The shared `Rev` is the
-*only* trace that they were one tx — and nothing in the engine groups by `Rev`. So a
-well-defined subject is guaranteed, but cross-entity, transaction-scoped reactivity does
-not exist: you cannot write a trigger that reacts to "these two changed together in one
-tx" as a unit. The store can *write* atomically across entities; the engine can only
-*observe* the result as separate entity edges. This is subtle and may warrant revisiting —
-see Residuals.
+The normalisation is reported *inside* its transaction rather than instead of it, which is
+what keeps the entity grain from costing the tx. `Observe`, `Since` and `WatchSubtree` all
+deliver an `entity.Commit` (`{Rev, Changes}`), so a commit that atomically sets `demo:pr:1`
+*and* `demo:pr:2` arrives as one commit carrying two per-entity changes, and the trigger
+engine is asked once per commit rather than once per change. Each change still drives its own
+firing with its own subject; what the commit adds is that a consumer can see which changes
+were one transaction.
+
+That grouping has to come from the store. Changes of one commit share a `Rev`, but a consumer
+reading them one at a time cannot tell whether the next belongs to the same commit without
+waiting for the one after it — while the store, which built them from a single delta, knows.
+See [the commit is the unit](trigger-model.md#the-commit-is-the-unit) for what the engine does
+with one.
 
 ## Why this is the portable choice (not an exotic dependency)
 
@@ -289,15 +290,6 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
 
 ## Residuals (punted, by design)
 
-- ~~Transaction-scoped reactivity.~~ **CLOSED.** The framing this called for is now the unit
-  of observation: `Observe`, `Since` and `WatchSubtree` all deliver an `entity.Commit`
-  (`{Rev, Changes}`), and the trigger engine is asked once per commit rather than once per
-  change. It had to come from the store, exactly as this residual suspected the raw material
-  was there but unusable: changes of one commit share a `Rev`, but a consumer reading them one
-  at a time cannot tell whether the next belongs to the same commit without waiting for the one
-  after it — while the store, which built them from a single delta, knows. The per-entity
-  normalisation below is unchanged; what changed is that it is now reported inside its
-  transaction rather than instead of it.
 - **Cheap re-entry suppression** — for the *observer*. The write side is settled: a
   create-only write is `entity.Created()`, a conditional patch that fails if anything is
   already there, checked with the write in one step. What is still missing is the event

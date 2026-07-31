@@ -62,7 +62,7 @@ and it is not enough. **A firing is woken by a commit, not by a subject**, and t
 the whole set at every commit. So a rule acting on member A writes A; that commit re-evaluates the
 rule, which selects B — already matching, never brought in by anything — and fires about B off A's
 commit. Counted naively that is a repeat one hop deeper, and a fan-out over n members walks itself
-to depth n. Measured before this was fixed: a burst of 30 external writes tripped 17 times.
+to depth n. Measured without the distinction below: a burst of 30 external writes trips 17 times.
 
 So a firing inherits the waking commit's depth only when that commit **changed the subject it is
 about**, and otherwise begins a fresh chain. Nothing is lost — a real loop advances its own

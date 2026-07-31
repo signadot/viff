@@ -22,22 +22,13 @@ here has an opinion about the engine, its charter, or how a firing is gated. Kee
 distinct matters, because a policy layer over the engine is a plausible thing to want later
 and would collide head-on.
 
-It used to be called one. `process.ControlPolicy` was the interface, `controlpolicy` the
-package, `--policy` the flag, and `policy` the field on a `process:instance` — while
-`launch.Spec.policy` meant something else entirely, the gate vector. One word, two unrelated
-meanings, both on the wire.
-
-The word is now retired. What runs a process is its *runner*, and the autonomy dial is its
-*vector* — which is what the dial was already called everywhere else (`process.Vector`,
-`Handle.SetVector`, `verse process vector <id>`); only the launch spec dissented.
+So the two dials each carry their own name, and neither of them is "policy": what runs a
+process is its *runner*, and the autonomy dial is its *vector*.
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
 | what runs a process | `process.Runner`, returning a `process.Handle` | `runner` on a `process:instance` and on `verse status` | `verse up --runner <url>` |
 | how much it may do unasked | `process.Vector` | `vector` on a launch spec | `verse process vector <id>` |
-
-This was a clean break: an entity written by an older verse carries `policy`, which nothing
-reads any more, so a process in flight across the upgrade is orphaned rather than resumed.
 
 ## What the interface is
 
@@ -84,8 +75,9 @@ event cursor all sit on the `process:instance` entity, and a restart re-reads th
 `verse up` reconciles, and resume is not orphan. An in-process agent whose runtime died is
 orphaned, because the loop is gone. A detached or claimed process — a human still merging, a
 k8s Job still running — resumes: the work continued in the world while verse was down, so on
-`up` verse re-attaches to its bound runner and reconciles from current status. This refines
-the older `ReconcileOrphans` into "resume where the work outlived the daemon."
+`up` verse re-attaches to its bound runner and reconciles from current status. Startup
+reconcile is therefore "resume where the work outlived the daemon; orphan only what died
+with it."
 
 ## Everything through the base URL — no privileged local path
 
@@ -388,8 +380,8 @@ out the same, and why designing the human case first gets the agent for free.
 ## What is built
 
 Everything above is built except where noted here. The seam itself
-(`process.Runner`/`process.Handle`) carries every process, so the engine holds a handle rather than
-a `*Process`. Events carry a per-process cursor with a bounded ring, `GET /events?since=N`
+(`process.Runner`/`process.Handle`) carries every process, so the engine holds a handle and
+never a concrete `*Process`. Events carry a per-process cursor with a bounded ring, `GET /events?since=N`
 replays and then goes live, and verse persists its high-water cursor on the entity.
 `runner.HTTP(baseURL)` drives a remote verse over the verse-facing contract. Startup
 reconcile resumes rather than orphans where the work outlived the daemon. The dial-in broker

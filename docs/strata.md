@@ -1,9 +1,9 @@
 # Strata — a declared level ordering, and writes that cross it
 
 An action has one write target: the condition's subject. That is the whole of `patch`, and it
-means the only way a charter could bring an entity into being *somewhere else* was to spawn an
-agent and let it write — which put every cross-entity write beyond anything install-time
-analysis could see. An agent did it, and nothing could check what.
+means `patch` alone can bring an entity into being *somewhere else* only by spawning an agent
+and letting it write — which puts every cross-entity write beyond anything install-time
+analysis can see. An agent does it, and nothing can check what.
 
 `derive` is that write, said in the charter instead. And because a charter that can write
 anywhere can write in a circle, `derive` arrives with the thing that bounds it: a **stratum**, a
