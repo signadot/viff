@@ -52,6 +52,12 @@ duplicate nobody can ever remove.
 `verse gates` reads the record, so the list stops being names and starts saying what each
 question is about. That is the step's user-visible payoff and the reason to do it early.
 
+The shape of that record, and where it lives, is worked out in
+[1-question-record.md](1-question-record.md) — which lands this step and takes step 4 with it,
+since a question that is its own entity survives a restart without further work. It also
+corrects this step in one respect: the record is not written *onto* the `process:instance`,
+which has nowhere to put a trigger gate's question and cannot hold two from one run.
+
 **Proves:** a question is matchable without any privileged access, and addressable. Test: a
 plain `entity.Pattern` selects the pending questions of a process by verb and by path; a charter
 rule with `value: { pending: { verbs: [write] } }` fires on one and not on another; and one
