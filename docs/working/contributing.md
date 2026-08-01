@@ -270,6 +270,18 @@ Each has a trigger that would change the answer; naming it is what stops "not ye
 - **Is `git issue` visible enough?** It needs a deliberate `git issue pull` nobody does yet.
   If notices go unread the `contract` tier is theatre, which is the argument for the motion —
   `verse docket` being somewhere a dogfooder already looks. Hypothesis until drive #1 tests it.
+- **How do you ask someone to read something?** Nothing above addresses a person. The only
+  attention mechanism here is the `contract` notice, which is the opposite register on purpose
+  — announcement not permission, seen rather than answered — and `git issue` has labels and
+  comments but no assignee. Left open deliberately, because the convention is that review
+  happens *out of band* — chat, a call, someone's afternoon — and the repo is the home of what
+  applying it produced: an edited note, a commit, a residual. That much is consistent with this
+  note being subject to itself ("disagree by editing it and pushing to `main`"), and with a
+  reply that is a commit beating a comment thread nobody rereads. What is unsettled is whether
+  the *ask* wants a trace in here at all — a `review` label, a line in a note's `Status:`, or
+  the motion [`verse-dev` step 2](verse-dev.md#2-a-contract-notice-as-a-motion) builds, since a
+  review request is the case that genuinely is a gate (`!quorum 1` over a doc) where a notice
+  awkwardly is not.
 - **Where does friction go?** Not a defect, but "this took an hour and I'm still unsure" is the
   most valuable thing dogfooding produces and fits none of the buckets above.
 - **Do per-drive tags proliferate?** No proposal for retiring a drive or its tags, and

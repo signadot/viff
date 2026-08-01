@@ -167,6 +167,14 @@ granted it and the agent is not the party who may.
 
 - Delegation — a child's grant is `parent ∩ req.Grant` already. A derived root envelope makes
   that check mean something for the first time, instead of a wildcard admitting everything.
+- Supervision — a resolver's *sponsoring* grant is a second producer for this axis, and it
+  produces at a different moment: derivation fixes a root envelope at spawn, where a sponsor
+  authorises one action at the ask boundary — per action, attributed, and without changing the
+  process's own grant, so nothing ratchets ([attached
+  resolvers](../working/attached-resolvers.md)). It also asks for the outcome this note does not
+  have, *askable-with-a-sponsor* between permitted and refused, and it wants a bound this note
+  does not produce: an envelope attached to whoever installed the charter, since a sponsoring
+  grant nothing bounds is a way to write yourself authority you were never given.
 - The agent's frame — what an agent is *told* is not authority, but it must not contradict it.
   The harness's frame is derived from the vector it will run under (`harness.defaultFrame`),
   so a gated tool is described as gated and a refusal outside the grant is described as final

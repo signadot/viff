@@ -51,6 +51,15 @@ new supervision concept. Naming a `resolver:` per spawn is the tempting alternat
 a model call inline at every gated action, and the supervisor's own gates need supervising,
 with no base case but `AutoResolver`.
 
+*Refined by [attached resolvers](attached-resolvers.md)*, which keeps that conclusion and
+changes the mechanism twice. Answering cannot be a store write —
+[deployment-and-steering](../deployment-and-steering.md) forbids steering by writing, and
+names this case — so it becomes an action verb going out-of-band, with the mirrored `decision`
+event as the truth. And `resolver:` comes back, because the objection above is fatal to a
+callback and has no force against an *address*: a name the reactive loop delivers to, which
+opens a cursor on the stream leading to the gate. That cursor is the answer to the limit this
+note leaves standing — a supervisor handed only the question is supervising a keyhole.
+
 **Where to keep the remit either way.** On the hard axis — `grant`, `tools`. It is the only
 part no supervisor at either layer can widen (`process/loop.go`: outside the grant is "not
 permitted, and not something a gate can approve").
