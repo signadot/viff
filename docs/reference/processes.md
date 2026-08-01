@@ -110,7 +110,8 @@ It outlives the process: the result, the last `say`, the last tool output and th
 what an observer needs, not the transcript.
 
 A completion hook (`onDone` and friends) reads that process's own payload: `$status`,
-`$result`, `$data`, `$err`, `$flow`, `$chain`. Note that `status: done` means the process
+`$result`, `$data`, `$err`, `$chain`. The process's flow is its subject, so the hook's
+`$subject` already names it. Note that `status: done` means the process
 *stopped*, not that the work succeeded — a hook that advances state should name evidence
 (`patch: {stage: reviewed, severity: $data.severity}`) rather than trust a bare claim. See
 [bindings](../trigger-model.md#bindings) and

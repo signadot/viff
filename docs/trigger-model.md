@@ -249,8 +249,9 @@ engine is what spawned it. Reach for a hook when you mean "this process, this su
 for an `on` when you mean "when this becomes true, act on that set".
 
 `flow` remains a convention published by `mirror.Reflect` and by a goal latch — the field IS
-the process's subject — read by the flow query and bindable as `$flow`. It is kept distinct
-from the reserved `$subject` binding, which is the firing's own resolved subject.
+the process's subject — read by the flow query, and by a rule whose subject carries it as
+`$subject.value.flow`. It is kept distinct from the reserved `$subject` binding, which is the
+firing's own resolved subject.
 
 The one distinction inside the address form is name vs select, and it is the one place
 existence stops mattering. A glob-free address *names* its entity, so it is a set of one
@@ -515,10 +516,21 @@ the depth axis, and it has its own section below.
 
 ### Bindings
 
-Every field of **the subject's** payload is bound by name (`$stage`, `$path`, …), plus
-`$subject` — the resolved subject. So `review $subject` in a spawn's task names the PR the
-firing is about, even when the entity that fired was a process, not the PR, and `$stage` is
-that PR's stage rather than the process's.
+Every field of **the payload an action reads** is bound by name (`$stage`, `$path`, …), plus
+`$subject` — the resolved subject. Which payload that is has exactly two answers, and which one
+applies is a property of *why* the action is running.
+
+A trigger firing reads **the subject's own** payload. The change that dispatched it is a
+doorbell and may name an entirely different entity, whose fields would mean nothing on the
+subject being acted on. So `review $subject` in a spawn's task names the PR the firing is
+about, even when the entity that fired was a process, not the PR, and `$stage` is that PR's
+stage rather than the process's.
+
+A completion hook, or a sequence element one drives, reads **the finished process's** payload
+instead: `$status`, `$result`, `$data` and `$err` are the facts it exists to read. The engine
+synthesises that payload rather than reading the store, because the mirror may not have written
+the terminal facts yet — which is both why those bindings resolve at all and why they are flat.
+They are facts about a run, with no entity to hang a path off.
 
 `$subject` is a record, and the bare form is its address — so everything written before it had
 parts still means what it meant:

@@ -80,7 +80,8 @@ everything else composes:
 Name the subject rather than writing `change:pr:*` and expecting the latch to narrow it. A
 subject is what the charter says: a pattern here would ship every `change:pr` in the verse,
 because nothing in the latch redirects it. (`goal:done` does carry the goal's subject as
-`flow`, readable as `$flow` in an action — but it names the subject, it does not choose it.)
+`flow`, readable by a rule about that fact as `$subject.value.flow` — but it names the
+subject, it does not choose it.)
 
 ## Steering, and durability
 
