@@ -33,7 +33,11 @@ refuses one naming a different question; `read-only` refuses both.
 ### 2. Publish the question
 
 `mirror` writes the question as a record rather than two fields: id, gate, mode, tool, the
-derived verbs, resources and paths, subject, spawns. The record *replaces* `pending` and
+derived verbs, resources and paths, subject, spawns, and the ref of the resolver the question is
+addressed to. That last field is the only one not already on `GateQuestion`: a ref-named
+resolver supplies it, and an inline one is given a synthesised ref keyed to where it was
+declared, so the field is never empty and no consumer has to handle two shapes. The record
+*replaces* `pending` and
 `pendingGate` in this same step rather than standing beside them — the entity's `pending` has no
 readers at all today and `pendingGate` has exactly one, `trigger/flowtree.go` feeding
 `FlowNode.Gate` for `verse flow show`, which this step updates. Nothing else in the tree, no
@@ -48,11 +52,14 @@ duplicate nobody can ever remove.
 `verse gates` reads the record, so the list stops being names and starts saying what each
 question is about. That is the step's user-visible payoff and the reason to do it early.
 
-**Proves:** a question is matchable without any privileged access. Test: a plain
-`entity.Pattern` selects the pending questions of a process by verb and by path; a charter rule
-with `value: { pending: { verbs: [write] } }` fires on one and not on another. Also assert the
-negative — a question with no derived effects still publishes id, gate and subject, because a
-tool that classifies to nothing must not vanish from the docket.
+**Proves:** a question is matchable without any privileged access, and addressable. Test: a
+plain `entity.Pattern` selects the pending questions of a process by verb and by path; a charter
+rule with `value: { pending: { verbs: [write] } }` fires on one and not on another; and one
+matching on the resolver ref selects only the questions addressed to it, which is what makes a
+rule the body of a named resolver later. Two negatives matter as much: a question with no
+derived effects still publishes id, gate and subject, because a tool that classifies to nothing
+must not vanish from the docket, and a question from an inline-declared resolver still publishes
+a ref rather than an empty field.
 
 ### 3. One answering path, and a loser that leaves a trace
 
@@ -90,10 +97,10 @@ ordering; attach below the watermark, assert a resync frame followed by current 
 
 ## What this plan does not build
 
-No supervision record, no `resolver:` binding, no scopes, no sponsoring grant, no `resolve`
-action verb in the charter grammar. Step 1 makes resolution *sayable* on the hard axis and step
-2 makes a question *matchable*; a rule that answers one is the first step of the design, and it
-starts the moment this plan is done.
+No supervision record, no `resolvers:` entity and no verb to manage one, no sponsoring grant,
+no `resolve` action verb in the charter grammar. Step 1 makes resolution *sayable* on the hard
+axis and step 2 makes a question *matchable*; a rule that answers one is the first step of the
+design, and it starts the moment this plan is done.
 
 ## Not a prerequisite: the journal's own home
 

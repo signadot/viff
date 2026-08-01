@@ -27,9 +27,18 @@ process keeps running while `verse down; up` empties the docket, which is the ca
 control-state may live only in memory.
 
 **What lands:** the question published as a record on the entity — id, gate, mode, tool,
-derived verbs, resources and paths, subject, spawns — and re-posted from that record when verse
-reconnects to work that outlived it. `GateQuestion` already carries every field; nothing new has
-to be computed, only written down.
+derived verbs, resources and paths, subject, spawns, and the ref of the resolver it is addressed
+to — and re-posted from that record when verse reconnects to work that outlived it.
+`GateQuestion` carries all of that but the last, which has to be *derived*: a resolver named by
+ref supplies its own, and one declared inline on a spawn is given a synthesised one keyed to
+where it was written, so the field is populated whichever form declared it. A consumer that has
+to handle a sometimes-empty field handles two shapes forever.
+
+One field the question does not carry yet: `GateQuestion.Subject` is declared and only the
+trigger side sets it, so a process gate goes out with none. Publishing a record makes that
+visible rather than fixing it — the subject has to be plumbed from the launch, or read off the
+process's own `flow` field, which only a `process:instance` carries. Nothing at this layer needs
+it and everything above does, which is why it is named here rather than deferred silently.
 
 This is a shape change rather than a migration, which is worth knowing before it is planned as
 one. The entity's `pending` field has no readers at all today, and `pendingGate` has exactly one
@@ -110,10 +119,10 @@ evidence where building it first would be prediction.
 
 ## What is deliberately not here
 
-The supervision record, `resolver:` as a binding, scopes, sponsoring grants, the `resolve`
-action verb in a charter, layering. Those are the design, and each of them fails the test at the
-top: you cannot justify them without saying "supervisor". What is here is the shape of the
-world the design assumes and finds absent.
+The supervision record, `resolvers:<kind>:<id>` entities and the verb that manages them, the
+`resolve` action verb in a charter, sponsoring grants, layering. Those are the design, and each
+of them fails the test at the top: you cannot justify them without saying "supervisor". What is
+here is the shape of the world the design assumes and finds absent.
 
 ## What it buys
 
