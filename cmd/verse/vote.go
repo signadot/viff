@@ -45,10 +45,20 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	// choice is approve|reject for a quorum motion, or an option id for a select
 	// motion — the vote log is the same, the discipline that reads it differs.
 	motion, choice := args[0], args[1]
+	// Both positionals are checked for emptiness, because a shell hands an unset variable
+	// through as one: `verse vote "$m" y` with $m unset built the ref "vote::alice" — a
+	// well-formed write of a ballot belonging to no motion, which no tally will ever read and
+	// nothing will ever complain about.
+	if motion == "" {
+		return fmt.Errorf("%w: vote wants a motion id — see `verse docket`", cli.ErrUsage)
+	}
 	if choice == "" {
 		return fmt.Errorf("%w: vote wants a choice (approve|reject, or an option for a select motion)", cli.ErrUsage)
 	}
 	if err := requireAs(cfg.As, "who", "a ballot names its voter"); err != nil {
+		return err
+	}
+	if err := checkChoice(motion, choice); err != nil {
 		return err
 	}
 	ref := "vote:" + motion + ":" + cfg.As
@@ -62,6 +72,67 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	resp.Body.Close()
 	fmt.Fprintf(cc.Out, "%s voted %s on motion %s\n", cfg.As, choice, motion)
 	return nil
+}
+
+// checkChoice refuses a ballot no tally could ever count. A quorum leaf matches
+// `{choice: approve}` and a select matches the option id, so a choice naming neither lands in
+// the vote log, counts nothing, and leaves the motion open with nothing on the docket to say
+// why — which is what `vote <motion> y` did, `y` being the word `gate approve` and the
+// interactive prompt both teach. Silently accepting a vote that cannot be tallied is the worst
+// of the three available behaviours: worse than counting it, and worse than saying so.
+//
+// It refuses rather than translating. A ballot is a durable, attributed record of what
+// somebody chose, and a client that quietly rewrote `y` to `approve` would be putting a word
+// in the voter's mouth — cheap here, and the wrong precedent for a log that richer disciplines
+// are meant to read later.
+//
+// A motion the client cannot read is not grounds to refuse: an unreachable verse or an
+// unreadable payload leaves the ballot to the server, exactly as before. What is refused is
+// the case that is certainly wrong — the motion is right there, its options are known, and the
+// choice is none of them.
+func checkChoice(motion, choice string) error {
+	resp, err := httpGet("/entity", url.Values{"ref": {"motion:channel:" + motion}})
+	if err != nil {
+		return nil // cannot read it: not our call to make
+	}
+	var ent struct {
+		Payload map[string]any `tony:"field=payload"`
+	}
+	decodeClose(resp, &ent)
+	want := choices(ent.Payload["options"])
+	if len(want) == 0 {
+		return nil
+	}
+	for _, w := range want {
+		if choice == w {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: motion %s takes %s, not %q — see `verse docket`",
+		cli.ErrUsage, motion, strings.Join(want, " or "), choice)
+}
+
+// choices lists the ballots a motion's options can be answered with: the `choice` a
+// whether-gate tallies (approve/reject), or the option id a select is picked by. It mirrors
+// what optionLabels shows after the "=", so the words a voter is told to type and the words
+// accepted here cannot drift apart.
+func choices(v any) []string {
+	opts, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(opts))
+	for _, o := range opts {
+		om, _ := o.(map[string]any)
+		c, _ := om["choice"].(string)
+		if c == "" {
+			c, _ = om["id"].(string)
+		}
+		if c != "" {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // providersCmd lists the provider registry — the attribute-rich doers a select gate draws
