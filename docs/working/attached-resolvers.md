@@ -38,6 +38,10 @@ exclusive:      true
 `condition` selects _entities_, in the vocabulary a trigger already uses. It does not match
 rules and does not need to.
 
+A process gate is reachable by the same `subject`, which it was not when this was written: a
+question's subject is filled from the process's `flow` when it is posed, so "the payments PRs"
+covers the gates a run raises about one as well as the firings that spawn it.
+
 `method` says how it answers and what the answering may do. `driver` chooses between an `llm`
 deciding, a `script` deciding, and a `url` verse hands the stream to. The rest is the envelope
 of whatever that driver runs — its _acting_ grant. Those three are inert for a `url`, which
@@ -122,6 +126,15 @@ streams rather than a request and a reply.
 
 Both streams already exist: this is `GET /events?since=N` and the control POST verse itself
 uses to watch and answer. A resolver is another client of the pair.
+
+They did not yet mean what this design assumed, which a census of the seams found and
+[repairing them](seam-repair.md) fixed. `?since=` was read only for a local process, so a
+resolver on a brokered or remote one was replayed events it had already acted on. A resume
+below the retained window announced that something was missed and not WHAT, so a reconnecting
+resolver could not see the open question it exists to answer. A stream that died mid-process
+was indistinguishable from one that ended, so nothing reconnected. And an answer was recorded
+as delivered the moment it was queued. All four are closed; a resolver can be written against
+the pair as described.
 
 Context arrives _before_ the ask. By frame 36 the resolver has read 35 and 34, which are why the
 ask means what it means. Nothing has to be gathered and attached to a question, because the
@@ -331,9 +344,6 @@ evidence is the subject's history rather than a run's.
 - _Who may write a resolver._ A standing binding is exactly as strong as the ability to add and
   remove it, and the store has no per-slice write authority — the same gap
   [authority](../roadmap/authority.md) has about who may declare a resolver that sponsors.
-- _The subject of a process gate._ `GateQuestion.Subject` is declared but set only by the trigger
-  side, so a standing resolver over process gates needs the launch's subject plumbed through, or
-  the match resolved through the process's own `flow` field.
 - _Whether a long conversation holds the protocol._ Does it stay silent on frames that do not
   concern it, keep `escalate` from drifting into approval as context fills, and not re-answer
   what it has answered? Measurable rather than arguable; `scratchpad/resolverio` runs both shapes
