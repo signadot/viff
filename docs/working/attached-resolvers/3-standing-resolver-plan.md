@@ -33,31 +33,55 @@ still read everything that led to it. That is not a convenience. It is the reaso
 can differ here without the design meaning two different things by "context arrives before the
 ask".
 
-**Two bindings can now claim the same work, and must not.** Named and standing are different
-layers rather than competitors, but nothing yet enforces that two STANDING conditions do not
-both cover one subject.
+**Two bindings can now claim the same work.** Named and standing are different layers rather
+than competitors, but nothing stops two STANDING conditions from both covering one subject.
+The answer is a total order rather than a prohibition — see step 1.
 
 ## Order of work
 
-### 1. A standing binding, and the check that they do not overlap
+### 1. A standing binding, and a total order over the ones that match
 
 `condition` stops being refused. It selects entities in the vocabulary a trigger's `subject`
 already uses, so nothing new is parsed.
 
-Two standing bindings whose conditions can both select one entity are refused at add — which
-is why installing is a verb. Disjointness is undecidable in general, so the check is
-conservative and its rule is one sentence: two standing bindings over the same `(system,
-kind)` are refused unless their predicates name a common field with different constant values.
-`{area: payments}` and `{area: infra}` pass; `{area: payments}` and `{urgent: true}` do not,
-and a resolver whose author knows they are disjoint says so by naming the field.
+**Overlap is ordered, not forbidden.** When several standing bindings match a subject, the
+first BY NAME owns its questions. That is the whole rule: total, deterministic, stable under
+installs, and it needs nothing to be decided at add time.
 
-Refusing more than it must is the right direction here. A pair wrongly refused is an error
-message at install; a pair wrongly allowed is two supervisors answering one question, which is
-the thing ownership exists to prevent.
+The design says standing conditions must be disjoint so that a question has exactly one
+answerer. It still has exactly one — by construction now, rather than by refusal — so the
+three properties that follow from it are untouched: escalation still reaches `⊤` in at most
+two hops, every hop still narrows, and `⊤` still matches everything.
 
-**Proves:** a standing binding installs, and an overlapping one does not. Test: a second
-binding over the same kind with an unrelated predicate is refused naming both; one told apart
-by a field is accepted; a different kind is accepted.
+*Why not refuse instead.* Disjointness of two predicates is undecidable in general, so a
+refusal has to be conservative, and a conservative refusal blocks legitimate installs — the
+operator with `{area: payments}` and `{area: infra}` is told no for a reason that is not true
+of their case.
+
+*And not with the schema SAT check, which was measured rather than assumed.* `go-tony`'s
+`schema.CheckAcceptSatisfiability` will answer "is `!and [A, B]` satisfiable", and it works:
+`!irtype "s"` against `!irtype 1` comes back unsatisfiable. But it reasons about IR TYPES,
+not values — `{area: payments}` against `{area: infra}` is satisfiable to it, as is
+`{stage: open}` against `{stage: closed}`. Used as the oracle here it would refuse every pair
+over one kind, which is worse than the hand-rolled rule it would replace. It is not a weaker
+tool; it answers a different question. (`scratchpad/sat` is the probe.)
+
+*What ordering costs, and what pays it back.* A binding installed second can be shadowed for
+the subjects an earlier name already covers, and a resolver that is silently idle is the
+failure class this whole increment is arranged around. Two things answer that, and neither
+needs the check to be sound:
+
+- The owner is already ON the question. `verse gates` and any predicate over
+  `gate:question:*` say which binding owns each one, so "why is mine idle" is a selection
+  rather than an inference.
+- Installing REPORTS the bindings it shares a `(system, kind)` with, without refusing. A
+  cheap syntactic check is exactly right for a notice, because a false positive costs a
+  sentence rather than an install.
+
+**Proves:** several matching bindings resolve to one owner, predictably. Test: two standing
+bindings covering one subject — the first by name owns its questions and the second owns
+none; installing the second reports the first; renaming so the other sorts first moves
+ownership; and a binding over a different kind is unaffected.
 
 ### 2. The layer rule decides who owns a question
 
@@ -117,6 +141,35 @@ an httptest resolver dials in, reads the commits that led to a trigger gate, ans
 the firing proceeds — the same test the first increment ran over a run, with the origin
 changed and nothing else.
 
+### 5. Removing a binding re-routes what it owned
+
+Ownership is stamped on a question when it is posed, so removing a binding leaves questions
+carrying the ref of something that no longer exists — answerable by nobody, and listed on a
+docket as though somebody were coming.
+
+Ordering makes this sharper rather than softer: with overlap allowed, removing the first name
+promotes the second, so removal is a change of owner rather than only a loss of one.
+
+**Re-route rather than drain.** On removal, its open questions are re-owned by whatever the
+layer rule gives them now — the next standing binding covering the subject, else `⊤` — and the
+change is written on each question so the handover is readable rather than inferred.
+
+*Why not drain.* Draining means the removed binding keeps answering what it already owns until
+those settle. It sounds gentler and is worse in the case that matters: an operator removing a
+resolver usually wants it to STOP, and its service is often being shut down in the same
+breath — so the questions it still owns are stuck until something re-routes them anyway, and
+draining is a state machine that postpones the same work. Re-routing also has the property
+that `⊤` exists precisely for: a question nobody is watching belongs to a person.
+
+A verdict arriving from the removed binding after that loses on the ownership check it already
+has to pass, which is the right answer and needs no new rule.
+
+**Proves:** removal moves a question rather than stranding it. Test: a standing binding owning
+an open question is removed; the question is re-owned by the next covering binding, or its
+field goes absent when there is none and `verse gates` still lists it; a verdict from the
+removed binding is refused; and an instance of it is left where it is, since a record of what
+was watched outlives the watching.
+
 ## What this plan does not build
 
 Escalation, and therefore the second layer as a live thing: a standing binding here answers
@@ -125,11 +178,11 @@ and `script` drivers. And no resolver over a scope other than baseline.
 
 ## The residual to expect
 
-**Overlap that refusal cannot see.** Two conditions disjoint as written can select one entity
-at runtime — `{stage: open}` and `{urgent: true}` on the same PR. The design already names
-this and prefers promoting the question to the layer above over refusing at add, which needs
-escalation. Until then a question with two claimants is a case the check is built to make
-unreachable, and worth an assertion at post time rather than a belief.
+**Whether shadowing should be visible on the binding itself.** The owner is on every question,
+and installing reports what a new binding overlaps — but a binding that has been shadowed
+since some LATER install has been told nothing. A field on the binding would say it, and would
+be a derived fact stored, which is the thing this codebase keeps refusing to do. Left open
+because the answer probably arrives with somebody noticing an idle resolver.
 
 **When a subject instance is reaped.** A run ends; a subject may not. The first increment left
 this open for run instances and this one makes it sharper rather than answering it.
