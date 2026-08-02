@@ -630,9 +630,24 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 	}
 
 	epoch, c0 := claimOnce()
+	// Two controls the worker DOES take, so its acknowledged position is not zero and a
+	// cCursor of 0 cannot pass this by accident — replaying everything from the start is
+	// B3's behaviour, not this rule.
+	h := b.Attach("p")
+	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
+		t.Fatalf("steer: %v", err)
+	}
+	if err := h.Pause(); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	if got := items(epoch, c0); got != 2 {
+		t.Fatalf("the worker's first poll saw %d items, want 2", got)
+	}
+	acked := int64(2) // it took both, so it has acknowledged through cursor 2
+
 	postJSON(t, cl, srv.URL+"/processes/p/report",
 		`{"epoch":`+itoa(epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
-	items(epoch, c0) // the worker polls once, acknowledging up to c0, and then drops
+	items(epoch, acked) // polls again from where it got to, then drops
 
 	// While it is away, the gate is answered.
 	rh := b.Attach("p").(interface {
@@ -644,8 +659,85 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 
 	// It comes back and polls from where the broker told it to.
 	epoch2, c1 := claimOnce()
+	if c1 != acked {
+		t.Fatalf("cCursor = %d on reconnect, want %d — the worker's acknowledged position, "+
+			"not the broker's current one and not the beginning", c1, acked)
+	}
 	if got := items(epoch2, c1); got != 1 {
 		t.Fatalf("a reconnecting worker polling from cCursor=%d got %d items, want the answer "+
 			"queued while it was away", c1, got)
+	}
+}
+
+// A claim nobody renews is released, so the work can be taken over.
+//
+// It could not be. A worker that claimed and vanished held its claim, its open gate and its
+// process forever; a second worker was refused 409, and the only release was an operator
+// calling Revoke, which nothing calls. The code's own comment said "the eventual health-check
+// calls it" and there was no health check.
+//
+// The renewal is the work itself: every inbox poll and every report says the holder is alive,
+// so a worker that talks to the broker at all is already keeping its lease.
+func TestAnUnrenewedClaimIsReleased(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var first struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:one"}`, &first)
+	// …and it is never heard from again. Age the lease rather than waiting it out.
+	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
+
+	var second struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`, &second)
+	if second.Epoch <= first.Epoch {
+		t.Fatalf("takeover epoch %d did not fence the silent holder at %d", second.Epoch, first.Epoch)
+	}
+
+	// The silent one is fenced: if it comes back it comes back as a stranger, and cannot
+	// write onto a log another worker now owns.
+	code := postCode(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(first.Epoch)+`,"events":[{"kind":"exec","tool":"deploy"}]}`)
+	if code != http.StatusConflict {
+		t.Fatalf("the displaced worker's report = %d, want 409", code)
+	}
+
+	// And the process is NOT terminal. The broker cannot hear the worker, which says nothing
+	// about whether the work is running — only that nobody may claim to speak for it.
+	inst, _ := b.ProcessSnapshot("p")
+	if process.Status(inst.Status).Terminal() {
+		t.Fatalf("an expired claim ended the process: %q", inst.Status)
+	}
+}
+
+// A worker that keeps working keeps its claim. The lease must not expire under somebody who
+// is simply on a slow link but still polling.
+func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var first struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:one"}`, &first)
+	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
+
+	// It polls — which is what a worker waiting on control does, and is the renewal.
+	var out struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(first.Epoch), &out)
+
+	if code := postCode(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`); code != http.StatusConflict {
+		t.Fatalf("a takeover of a claim that was just renewed = %d, want 409", code)
 	}
 }

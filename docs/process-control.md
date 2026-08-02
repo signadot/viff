@@ -355,6 +355,18 @@ worker — `spec` (once), `say {text, by}`, `resolve {gateId, proceed, say?}`,
 `cancel|pause|resume`, `vector`. Each item carries a control cursor, and the worker resumes
 with `?since=cCursor`.
 
+A claim is a LEASE. It survives `broker.ClaimLease` without the holder being heard from, and
+the renewal is the work itself — every inbox poll and every report says the holder is alive,
+so a worker that talks to the broker at all is already keeping it. An expired claim is
+released when somebody next asks for the work, and the silent holder is fenced: if it comes
+back it comes back as a stranger. The process is NOT made terminal, because a broker that
+cannot hear a worker knows nothing about whether the work is running — only that nobody may
+claim to speak for it.
+
+This is the only place in the process-control seams where a clock decides anything. One clock,
+the broker's, comparing two readings of its own; timestamps written elsewhere are records and
+never inputs.
+
 `cCursor` is what this worker last ACKNOWLEDGED, not where the broker has got to: a poll for
 `since=N` is the acknowledgement of everything at or below N, because a worker could only ask
 for what came after having taken what came before. So a reconnecting worker is handed the

@@ -9,6 +9,7 @@
 package broker
 
 import (
+	"time"
 	"net/http"
 	"strconv"
 	"sync"
@@ -109,6 +110,10 @@ type procState struct {
 	mu       sync.Mutex
 	claimBy  string
 	epoch    int64                      // claim generation; the fencing token (0 = unclaimed)
+	// renewed is when this claim was last heard from. A worker renews by working: every
+	// inbox poll and every report is a renewal, so the lease needs no heartbeat of its own
+	// and a worker that already talks to the broker is already keeping it.
+	renewed time.Time
 	log      []process.Frame            // merged event log (worker reports + control-effects)
 	inbox    []api.InboxItem            // control directed at the worker
 	subs     map[int]chan process.Frame // verse-side Handle subscribers
@@ -243,6 +248,61 @@ func (ps *procState) fenced(epoch int64) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return epoch == 0 || epoch != ps.epoch
+}
+
+// AgeClaimForTest backdates a claim's last renewal, so a test can reach the far side of the
+// lease without waiting out a real one. Exported for tests in the broker_test package; the
+// lease is a duration and there is nothing to observe about it except what happens across it.
+func (b *Broker) AgeClaimForTest(id string, by time.Duration) {
+	ps := b.get(id)
+	if ps == nil {
+		return
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if !ps.renewed.IsZero() {
+		ps.renewed = ps.renewed.Add(-by)
+	}
+}
+
+// ClaimLease is how long a claim survives without the worker being heard from. A worker that
+// vanished — closed a laptop, lost a network, died — used to hold its claim, its gate and its
+// process forever, and the only release was an operator calling Revoke, which nothing calls.
+//
+// Generous, because it is a liveness bound and not a latency budget: expiring it takes the
+// work away from somebody who may simply be on a slow link, and the cost of waiting is a
+// process that stays claimed a little longer than it had to.
+//
+// This is the FIRST thing in these seams to depend on a clock for correctness. One clock —
+// the broker's — comparing two readings of its own, never a timestamp written elsewhere. That
+// is a deliberate line: comparing clocks across machines is a different problem and this does
+// not need it.
+const ClaimLease = 2 * time.Minute
+
+// renew records that the claim's holder is alive, which every inbox poll and report says.
+func (ps *procState) renew(epoch int64) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if epoch != 0 && epoch == ps.epoch {
+		ps.renewed = time.Now()
+	}
+}
+
+// expireClaim releases a claim nobody has renewed, so another worker can take the work over.
+// It reports whether it released one.
+//
+// The process is NOT made terminal: the work may well still be running somewhere, and a
+// broker that cannot hear a worker knows nothing about whether it is working. What expires is
+// the exclusive right to report on it, which is the thing that was blocking a takeover.
+func (ps *procState) expireClaim(now time.Time) bool {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.claimBy == "" || ps.terminal || ps.renewed.IsZero() || now.Sub(ps.renewed) < ClaimLease {
+		return false
+	}
+	ps.claimBy = ""
+	ps.epoch++ // fence the silent holder: if it comes back, it comes back as a stranger
+	return true
 }
 
 func (ps *procState) cursorNow() int64 {
@@ -555,6 +615,15 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		Identity string `tony:"field=identity"`
 	}
 	_ = codec.Read(r, &body)
+	// A claim nobody has renewed within the lease is released here, at the moment somebody
+	// asks for the work — which is the only moment it matters. No sweeper, no timer, and no
+	// clock read except this one, taken against the broker's own earlier reading.
+	if ps.expireClaim(time.Now()) {
+		ps.emit(process.Frame{
+			Kind: process.EvStatus, Text: string(process.Unclaimed),
+			Err: "claim expired: the worker was not heard from within " + ClaimLease.String(),
+		})
+	}
 	ps.mu.Lock()
 	if ps.claimBy != "" && ps.claimBy != body.Identity {
 		ps.mu.Unlock()
@@ -564,6 +633,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	firstClaim := ps.claimBy == "" // unclaimed → running transition (below, off-lock)
 	ps.epoch++                     // mint a new generation; fences any prior holder (including a same-id zombie)
 	ps.claimBy = body.Identity
+	ps.renewed = time.Now() // the lease starts now
 	resp := map[string]any{
 		"spec":    map[string]string{"task": ps.task, "driver": ps.driver},
 		"epoch":   ps.epoch,    // carry this on every report/inbox
@@ -601,8 +671,15 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fenced: stale claim", http.StatusConflict)
 		return
 	}
+	ps.renew(epoch) // a worker that is polling is a worker that is alive
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	ps.mu.Lock()
+	// Read the poll as the acknowledgement it is: asking for what comes after N is something
+	// a worker could only do having taken what came before, so N is the high-water mark a
+	// re-claim should hand back.
+	if since > ps.ackedCursor {
+		ps.ackedCursor = since
+	}
 	out := make([]api.InboxItem, 0)
 	for _, it := range ps.inbox {
 		if it.Cursor > since {
@@ -648,6 +725,7 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fenced: stale claim", http.StatusConflict)
 		return
 	}
+	ps.renew(body.Epoch) // reporting is working, and working is being alive
 	latched, applied := false, 0
 	for _, e := range body.Events {
 		if e.Kind == process.EvStatus && process.Status(e.Text).Terminal() {
