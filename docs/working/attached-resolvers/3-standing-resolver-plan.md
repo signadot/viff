@@ -1,5 +1,10 @@
 # The standing resolver: implementation plan
 
+Status: steps 1-4 built; step 5 (removal re-routes what it owned) is not. What the last
+section says is not built still is not.
+
+The plan follows.
+
 Status: plan, nothing built. It follows [the first resolver](2-first-resolver-plan.md), which
 runs: a binding named by a spawn, reading that run's stream and answering its gates. This is
 the other door — a binding nobody names, covering the work about the entities its `condition`
@@ -182,11 +187,14 @@ subject, for an instance whose origin is a subject — the same route that alrea
 process frames for an instance whose origin is a run, deciding by the origin rather than by
 anything the caller has to say twice.
 
-The narrowing is to the subject's own REF — every commit touching it, and nothing else. Not
-the binding's `condition`: a predicate reads a payload, a deletion has none, and a resolver
-that cannot see its subject die is one whose evidence stops exactly where it matters.
-`entity.Pattern` narrows by system and kind but carries no id, so this is a ref comparison at
-the route rather than a pattern.
+The narrowing is the subject's own REF — every commit touching it, unfiltered — plus the runs
+about it. Not the binding's `condition` for the subject half: a predicate reads a payload, a
+deletion has none, and a resolver that cannot see its subject die is one whose evidence stops
+exactly where it matters.
+
+The run half must read a payload, and can: a process names its subject in `flow` and nothing
+in its address says so. That asymmetry is not a compromise — a run's terminal is a set rather
+than a delete, so the anchors that matter carry a payload to be read.
 
 A resolver reading both planes follows the anchors: a spawn commit on the spine names a run,
 and that run's instance is where its fine grain is. Which is the whole of the navigation — no

@@ -1294,21 +1294,26 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 // Both come off the record rather than being parsed out of the address. The address is for
 // finding it; the fields are what the checks below compare, and a check that re-derives its
 // inputs from a string is one that can disagree with what is stored.
-func (s *Server) instanceOf(r *http.Request) (binding, procID string, ok bool) {
+func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool) {
 	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
 	e, found, err := s.scopedStore(r).Get(ref)
 	if err != nil || !found {
-		return "", "", false
+		return "", entity.Ref{}, false
 	}
 	p := entity.ToObj(e.Payload)
 	binding, _ = p["binding"].(string)
-	origin, _ := p["origin"].(string)
-	pr, err := entity.ParseRef(origin)
+	got, _ := p["origin"].(string)
+	origin, err = entity.ParseRef(got)
 	if err != nil {
-		return "", "", false
+		return "", entity.Ref{}, false
 	}
-	return binding, pr.ID, binding != "" && pr.ID != ""
+	return binding, origin, binding != "" && origin.ID != ""
 }
+
+// watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
+// stored beside it: a run's fine grain hangs off the spine, and which one you are reading is
+// a property of what you are watching rather than a flag that could disagree with it.
+func watchesARun(origin entity.Ref) bool { return origin.System == mirror.System }
 
 // resolverEvents hands a resolver the stream of the run it watches — the process's OWN read
 // plane, from `?since=`, not a projection of it.
@@ -1316,23 +1321,118 @@ func (s *Server) instanceOf(r *http.Request) (binding, procID string, ok bool) {
 // Context arrives before the ask, which is the whole reason a resolver is attached rather than
 // handed a question: by the time it reads the gate it has read what led to it.
 func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
-	_, procID, ok := s.instanceOf(r)
+	_, origin, ok := s.instanceOf(r)
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	if !watchesARun(origin) {
+		s.streamSpine(w, r, origin)
 		return
 	}
 	// No local special case: the runner attaches a live in-process handle by the same call,
 	// so a resolver over a local run and one over a brokered run read through one path. The
 	// process route splits only because it forwards to the runtime's own mount, and a
 	// resolver is not asking that route's question.
-	s.streamEvents(w, r, procID)
+	s.streamEvents(w, r, origin.ID)
+}
+
+// streamSpine serves the commits that touched one subject, from `?since=<revision>`.
+//
+// The narrowing is BY REF — every commit touching it, and nothing else. Not the binding's
+// condition, and the reason is not tidiness: a predicate reads a payload and a deletion has
+// none, so a condition-narrowed stream would hide exactly the end of a life it most needs to
+// show. `sys:k:i` born, marked vanishing, deleted and written again under the same ref is one
+// story, and a resolver for that ref sees all of it.
+//
+// A position here is a revision rather than a cursor, which is why an instance may be minted
+// late and still read everything that led to a question: the store keeps its commits, so the
+// subject's history is re-readable in a way a run's bounded ring is not.
+//
+// It also carries the ANCHORS: a run about this subject writes a `process:instance` entity
+// naming it as its flow, and a spawn and a terminal are both commits there because the mirror
+// writes them. That is what makes this the spine and process streams the fine grain hanging
+// off it — a resolver reading here learns a run began, and its own instance for that run is
+// where the frames are. Without them the spine would be a subject's history with the work
+// about it left out, which is most of what a supervisor is watching for.
+func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject entity.Ref) {
+	store := s.scopedStore(r)
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	onSpine := func(ev entity.Event) bool { return spineCarries(ev, subject) }
+
+	// Subscribe BEFORE the catch-up, so a commit landing between the two is carried live
+	// rather than lost in the gap; the two overlap and revision order dedups them.
+	ch, unsub := store.Observe()
+	defer unsub()
+	last := since
+	if commits, ok := store.Since(since); ok {
+		for _, c := range commits {
+			for _, ev := range c.Changes {
+				if onSpine(ev) {
+					_ = sse.Send(ev)
+				}
+			}
+			if c.Rev > last {
+				last = c.Rev
+			}
+		}
+	}
+	sse.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case c, ok := <-ch:
+			if !ok {
+				return
+			}
+			if c.Rev != 0 && c.Rev <= last {
+				continue
+			}
+			if c.Gap > 0 {
+				_ = sse.Send(entity.Event{Rev: c.Rev, Gap: c.Gap})
+			}
+			for _, ev := range c.Changes {
+				if onSpine(ev) {
+					_ = sse.Send(ev)
+				}
+			}
+			if c.Rev > last {
+				last = c.Rev
+			}
+		}
+	}
+}
+
+// spineCarries reports whether a change belongs on one subject's spine: the subject's own
+// commits, and the runs about it.
+//
+// The subject half is BY REF and unfiltered — a predicate reads a payload and a deletion has
+// none, so a payload-narrowed spine would hide the end of a life. The run half must read one:
+// a process names its subject in `flow`, and there is nothing in its address that says so. A
+// run's terminal is a set rather than a delete, so the anchors that matter carry a payload to
+// be read.
+func spineCarries(ev entity.Event, subject entity.Ref) bool {
+	if ev.Ref == subject {
+		return true
+	}
+	if ev.Ref.System != mirror.System || ev.Ref.Kind != "instance" {
+		return false
+	}
+	return entity.Str(ev.To, "flow") == subject.String()
 }
 
 // resolverVerdict applies one answer, through the SAME path a person's `verse gate approve`
 // takes. Not a new answering path, and not a write: the record is written from the decision
 // after the fact, which is what the steering invariant requires.
 func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
-	binding, procID, ok := s.instanceOf(r)
+	binding, origin, ok := s.instanceOf(r)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -1369,12 +1469,27 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	qp := entity.ToObj(q.Payload)
-	if qp["resolver"] != binding || qp["process"] != procID {
+	// Owned means: this binding, and this instance's own origin. A run instance answers the
+	// questions of its run; a spine answers those of its subject — which is how a binding
+	// with several instances cannot answer through the wrong one.
+	mine := qp["process"] == origin.ID
+	if !watchesARun(origin) {
+		mine = qp["subject"] == origin.String()
+	}
+	if qp["resolver"] != binding || !mine {
 		http.Error(w, "that question is not this resolver's to answer", http.StatusForbidden)
 		return
 	}
 	// Attribution is verse's: `by` is the binding, stamped here. A service says what it
 	// decided, never who it is.
+	//
+	// The process id is what routes the answer, and a firing's question has none — it is
+	// answered through the engine's own registry, which answerQuestion reaches when told no
+	// process holds it.
+	var procID string
+	if watchesARun(origin) {
+		procID = origin.ID
+	}
 	s.answerQuestion(w, r, api.Resolve{
 		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
 	}, procID)
