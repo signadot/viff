@@ -191,6 +191,7 @@ func rootCmd() *cli.Command {
 			processesCmd(), processCmd(),
 			flowsCmd(), flowCmd(),
 			triggersCmd(), triggerCmd(),
+			resolversCmd(), resolverCmd(),
 			strataCmd(), stratumCmd(),
 			goalsCmd(), goalCmd(),
 			voteCmd(),

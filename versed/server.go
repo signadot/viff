@@ -32,6 +32,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
+	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
@@ -615,6 +616,13 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
 	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", nothing)
 	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", nothing)
+	// resolvers — who answers a question. A binding is installed rather than declared in a
+	// charter, because it outlives any one rule and is managed by whoever supervises rather
+	// than by whoever wrote the work.
+	rt.handle("GET /resolvers", s.listResolvers, "", nothing)
+	rt.handle("POST /resolvers", s.addResolver, "", nothing)
+	rt.handle("GET /resolvers/{kind}/{name}", s.getResolver, "", nothing)
+	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
 	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
 	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
 	rt.handle("POST /goals", s.addGoal, "verse-goal", nothing)
@@ -1209,6 +1217,108 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	http.Error(w, "no such question", http.StatusNotFound)
 }
 
+
+// ── resolvers: who answers ───────────────────────────────────────────────────
+
+// addResolver installs a binding at `resolvers:<kind>:<name>`.
+//
+// A VERB rather than a raw write, and the reason survives this increment having nothing to
+// check across bindings yet: installing one is where the check that two standing conditions
+// do not overlap has to live, and a route that exists is a place to put it. A raw write has
+// nowhere.
+func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
+	// Read as a DOCUMENT first, so a field the decoder would drop can be named. `metod:`
+	// decodes to nothing and installs a resolver that answers over no protocol, reporting
+	// success — the same silence trigger.CheckFields exists to break.
+	node, err := codec.ReadNode(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := resolver.CheckFields(node); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var res resolver.Resolver
+	if err := codec.FromNode(node, &res); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := res.Check(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ref := resolver.Ref(res.Kind, res.Name)
+	body := entity.Obj{
+		"name": res.Name, "kind": res.Kind, "byRef": res.ByRef,
+		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL},
+	}
+	if m := res.Method; m.Vector != "" || len(m.Tools) > 0 || m.Grant != "" {
+		meth := body["method"].(entity.Obj)
+		if m.Vector != "" {
+			meth["vector"] = m.Vector
+		}
+		if len(m.Tools) > 0 {
+			meth["tools"] = m.Tools
+		}
+		if m.Grant != "" {
+			meth["grant"] = m.Grant
+		}
+	}
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: body.Payload()}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeOut(w, r, http.StatusCreated, map[string]any{"ref": ref.String()})
+}
+
+func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
+	out := make([]map[string]any, 0)
+	for _, ent := range s.scopedStore(r).List(func(ref entity.Ref) bool {
+		// Bindings only. An instance shares the system deliberately — one `--system
+		// resolvers` shows both — but `verse resolvers` is asking what is INSTALLED, and a
+		// record of who is watching is a different question.
+		return ref.System == resolver.System && ref.Kind != resolver.InstanceKind
+	}) {
+		rec := entity.ToObj(ent.Payload)
+		if rec == nil {
+			continue
+		}
+		rec["ref"] = ent.Ref.String()
+		out = append(out, rec)
+	}
+	writeOut(w, r, http.StatusOK, out)
+}
+
+func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
+	ref := resolver.Ref(r.PathValue("kind"), r.PathValue("name"))
+	e, ok, err := s.scopedStore(r).Get(ref)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
+}
+
+func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
+	ref := resolver.Ref(r.PathValue("kind"), r.PathValue("name"))
+	if _, ok, err := s.scopedStore(r).Get(ref); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 // ── triggers: the charter ────────────────────────────────────────────────────
 
