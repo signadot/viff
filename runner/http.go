@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,12 +120,21 @@ type remoteHandle struct {
 	cl   *http.Client
 }
 
+// Subscribe replays the whole retained window then streams live, so the mirror sees the
+// process from as far back as the remote still holds.
 func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
+	return h.SubscribeSince(0)
+}
+
+// SubscribeSince resumes from a cursor. It is the same contract the local bus and the broker
+// honour, carried over HTTP by handing the cursor to the remote's own `?since=` rather than
+// asking for everything and discarding — the remote is the one that knows what it still has,
+// and it is the one that can say EvGap when the cursor is below its window.
+func (h *remoteHandle) SubscribeSince(since int64) (<-chan process.Frame, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan process.Frame, 256)
-	// since=0: replay the whole retained window then stream live, so the mirror sees the
-	// process from the start (and, later, a resume passes the last mirrored cursor).
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, h.url("/events?since=0"), nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+		h.url("/events?since="+strconv.FormatInt(since, 10)), nil)
 	resp, err := h.cl.Do(req)
 	if err != nil {
 		close(out)

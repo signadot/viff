@@ -150,7 +150,7 @@ resume.
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (CAS-once) |
 
 That table is the durable contract — it is `mirror.Reflect`, plus `claim`/`vector`, minus the
-live-only `gap` marker, which resync makes unnecessary.
+`gap` marker, which says something about the *reading* rather than about the process.
 
 ### `since` semantics and the two restarts
 
@@ -161,13 +161,19 @@ live. This is the verse-restart path: verse reconnects with its last mirrored cu
 still-running runner replays the gap, and the worker noticed nothing.
 
 With N below the runner's low-watermark — compaction, or the runner-restart path where it lost
-its log — the runner answers a single `{"kind":"resync","cursor":C}` frame; verse re-reads
+its log — the runner answers a single `{"kind":"gap","cursor":C}` frame; the reader re-reads
 `GET /processes/{id}` for level truth, adopts cursor `C`, and streams from there. Fine-grained
 journal between N and C may be lost, but current state is exact.
 
 Resync-to-snapshot is therefore the universal safety net whenever a cursor cannot be served —
-verse restarts, runner restarts, slow consumers, compaction. There is no `gap` marker, because
-verse always pulls from its cursor rather than trusting a live tail.
+verse restarts, runner restarts, slow consumers, compaction. The same `gap` frame carries both
+reasons a reader can be behind: a cursor below the window, and events dropped because the
+reader could not keep up.
+
+`?since=` means this on every runner. The unified `GET /processes/{id}/events` hands the cursor
+to whichever runtime holds the work — the local one, a broker, a remote processd — so a client
+that resumes gets the frames after its cursor and no others, wherever the process happens to
+run.
 
 The terminal is a `status` event (`done|failed|cancelled` plus `result`) that verse CAS-writes
 once; `?since=<terminal cursor>` replays it and closes. A finished process's `/events` is a
@@ -292,7 +298,7 @@ front door still binds an external URL directly.
 ## What a 3rd-party implementer must satisfy
 
 Per process: assign gapless per-process cursors; serve `GET /processes/{id}` as current
-truth; serve `GET /events?since=` with replay-then-live and a `resync` frame below its
+truth; serve `GET /events?since=` with replay-then-live and a `gap` frame below its
 watermark; emit the kinds above; make every control POST idempotent (by `key`) and echo its
 application as an ordered event; make the terminal a stable, replayable last event. Nothing
 about *how* it runs the work leaks through — which is what makes local, k8s, lambda, and a

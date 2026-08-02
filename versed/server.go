@@ -1462,7 +1462,7 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	ch, unsub := h.Subscribe()
+	ch, unsub := subscribeAt(h, r.URL.Query().Get("since"))
 	defer unsub()
 	sse.Flush()
 	for {
@@ -1476,6 +1476,39 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 			return
 		}
 	}
+}
+
+// sinceSubscriber is a handle that can resume from a cursor. It is optional on process.Handle
+// rather than part of it, the way gate resolution is: a handle wraps somebody else's runtime,
+// and one that cannot replay should say so by not implementing this rather than by pretending.
+type sinceSubscriber interface {
+	SubscribeSince(since int64) (<-chan process.Frame, func())
+}
+
+// subscribeAt opens the read plane at the cursor the client asked for, so `?since=` means the
+// same thing on this route as it does on the local runtime's: the frames AFTER that cursor,
+// then live, with an EvGap first if the cursor is below what is still retained.
+//
+// It read nothing before, so a brokered or remote process replayed from the beginning however
+// far along the client already was. A resumable client would then see events it had already
+// acted on — which is not a cosmetic difference for a reader that acts on what it sees.
+//
+// An absent `since` is a live attach, and a handle that cannot resume falls back to one. That
+// fallback delivers MORE than was asked for rather than less, which a cursor-carrying reader
+// can discard; the opposite — silently delivering less — is what EvGap exists to prevent.
+func subscribeAt(h process.Handle, since string) (<-chan process.Frame, func()) {
+	if since == "" {
+		return h.Subscribe()
+	}
+	sub, ok := h.(sinceSubscriber)
+	if !ok {
+		return h.Subscribe()
+	}
+	n, err := strconv.ParseInt(since, 10, 64)
+	if err != nil {
+		return h.Subscribe()
+	}
+	return sub.SubscribeSince(n)
 }
 
 // processControl routes cancel/say: a process the local runtime hosts is served by it (live

@@ -303,6 +303,24 @@ type handle struct {
 }
 
 func (h *handle) Subscribe() (<-chan process.Frame, func()) {
+	// The whole log, so a (re)attach re-derives state from nothing.
+	return h.subscribeFrom(0, false)
+}
+
+// SubscribeSince resumes from a cursor: the log after it, then live. It is the same contract
+// process.SubscribeSince has locally, and it exists so `?since=` means ONE thing wherever the
+// work runs — a client that resumed against a brokered process used to be handed the log from
+// the beginning and had to recognise what it had already seen.
+//
+// A reader that finds its cursor below the retained window gets an EvGap first, so "you are
+// resuming" and "you missed some" are distinguishable. Today a broker retains its whole log
+// and never emits one; the check is here because the semantics belong to the contract, not to
+// how much this implementation happens to keep.
+func (h *handle) SubscribeSince(since int64) (<-chan process.Frame, func()) {
+	return h.subscribeFrom(since, true)
+}
+
+func (h *handle) subscribeFrom(since int64, resume bool) (<-chan process.Frame, func()) {
 	ps := h.b.get(h.id)
 	if ps == nil {
 		ch := make(chan process.Frame)
@@ -311,7 +329,18 @@ func (h *handle) Subscribe() (<-chan process.Frame, func()) {
 	}
 	ch := make(chan process.Frame, 256)
 	ps.mu.Lock()
-	for _, e := range ps.log { // replay the log so a (re)attach re-derives state
+	// Primed under the lock, as the local bus does, so no live event can interleave ahead of
+	// the replay and arrive out of order.
+	if resume && len(ps.log) > 0 && since+1 < ps.log[0].Cursor {
+		select {
+		case ch <- process.Frame{Kind: process.EvGap, Process: ps.id, Cursor: ps.logCur}:
+		default:
+		}
+	}
+	for _, e := range ps.log {
+		if resume && e.Cursor <= since {
+			continue
+		}
 		select {
 		case ch <- e:
 		default:
