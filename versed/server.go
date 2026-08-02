@@ -303,7 +303,7 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	l := process.Launch{
 		ID: id, Task: spec.Task, Driver: spec.Driver,
-		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer,
+		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
 	}
 	// The contract travels as source, but it is PARSED here as well, and the parse is the
 	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
@@ -1323,7 +1323,9 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		store = s.Store.Scope(scope)
 	}
-	h := s.runner.Spawn(process.Launch{ID: id, Task: body.Task, Driver: body.Driver}, nil)
+	h := s.runner.Spawn(process.Launch{
+		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
+	}, nil)
 	mirror.Reflect(store, id, h, mirror.Meta{Runner: s.runner.Ref()})
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }

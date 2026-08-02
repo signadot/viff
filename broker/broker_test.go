@@ -920,3 +920,68 @@ func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 		t.Fatalf("a new worker taking over saw %d items, want the 2 still queued", len(out.Items))
 	}
 }
+
+// The merged log is bounded, and a reader that falls below the window is told.
+//
+// It was unbounded — memory grew with the run — and its truncation was silent: a fresh
+// subscribe replayed what fitted and discarded the rest with no marker at all, unlike the
+// local bus. The two interacted badly: the below-watermark resync frame subscribeFrom
+// already wrote could never fire, because an unbounded log has no watermark to be below.
+func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human", Retain: 32}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	var evs strings.Builder
+	for i := range 200 {
+		if i > 0 {
+			evs.WriteString(",")
+		}
+		evs.WriteString(`{"kind":"exec","tool":"noop"}`)
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[`+evs.String()+`]}`, nil)
+
+	inst, _ := b.ProcessSnapshot("p")
+	if inst.Cursor != 201 { // 200 events plus the claim's running status
+		t.Fatalf("cursor = %d, want 201 — the cursor counts everything, trimmed or not", inst.Cursor)
+	}
+
+	// Resuming from the beginning is now below the window, and says so before the replay.
+	rh := b.Attach("p").(interface {
+		SubscribeSince(int64) (<-chan process.Frame, func())
+	})
+	ch, unsub := rh.SubscribeSince(1)
+	defer unsub()
+	var first process.Frame
+	select {
+	case first = <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("the resume delivered nothing")
+	}
+	if first.Kind != process.EvGap {
+		t.Fatalf("first frame = %q, want a resync marker: the reader's cursor is below a "+
+			"window that is now 32 events of a 201-event log", first.Kind)
+	}
+
+	// And the log really is trimmed rather than merely reported as such.
+	var n int
+	for {
+		select {
+		case <-ch:
+			n++
+			continue
+		case <-time.After(100 * time.Millisecond):
+		}
+		break
+	}
+	if n > 40 {
+		t.Fatalf("the replay delivered %d frames of a 32-event window", n)
+	}
+}

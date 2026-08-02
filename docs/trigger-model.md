@@ -509,7 +509,16 @@ spawn:
   grant:  read-only
   vector: auto
   tools:  [read_file, list_dir]
+  retain: 4096
 ```
+
+`retain` is how many of this process's read-plane events are kept for a reader that resumes —
+the window a `?since=` below which gets a resync marker instead of the story. It is per spawn
+because the right number is a property of the work: a process that narrates every token and
+one that reports four boundaries an hour want windows two orders of magnitude apart, and no
+single default is right for both. The charter is the party that knows which it is. Omit it and
+the runtime's own modest default applies; a longer window is paid for in memory per live
+process, which is why the author chooses it rather than inheriting it.
 
 `seq` runs a list of actions in order, each starting when the previous one completes. It is
 the depth axis, and it has its own section below.

@@ -72,7 +72,7 @@ func (b *Broker) get(id string) *procState {
 func (b *Broker) Spawn(l process.Launch, _ process.ContentReader) process.Handle {
 	b.mu.Lock()
 	b.procs[l.ID] = &procState{
-		id: l.ID, task: l.Task, driver: l.Driver,
+		id: l.ID, task: l.Task, driver: l.Driver, retain: l.Retain,
 		subs: map[int]chan process.Frame{}, pending: map[string]process.Frame{},
 	}
 	b.mu.Unlock()
@@ -119,6 +119,9 @@ type procState struct {
 	subs     map[int]chan process.Frame // verse-side Handle subscribers
 	nextSub  int
 	logCur   int64
+	// retain is this process's log window in events (0 = the package default). Set from the
+	// Launch, because how much of the past is worth keeping is a property of the work.
+	retain int
 	inboxCur int64
 	// ackedCursor is how far the worker has read its inbox. A poll for `since=N` IS the
 	// acknowledgement of everything at or below N — the worker asked for what came after,
@@ -134,6 +137,10 @@ type procState struct {
 	// apart from an answer to nothing. Without it both are "not open", and the two mean
 	// opposite things to whoever asked.
 	answered map[string]bool
+	// dropped counts what each subscriber missed, so the next frame it does receive can say
+	// so. The local bus has always done this; the broker discarded silently, and a reader
+	// had no way to know its view was partial.
+	dropped map[int]int
 	// applied remembers recent report keys and what each was answered with, so a retry of a
 	// report whose response the worker never saw is answered rather than re-applied. Bounded:
 	// a retry follows its original closely, and remembering forever would be a leak with the
@@ -162,6 +169,12 @@ func (ps *procState) emit(e process.Frame) {
 	ps.logCur++
 	e.Cursor, e.Process = ps.logCur, ps.id
 	ps.log = append(ps.log, e)
+	// Bounded, so the log does not grow for the life of the run — and so that the
+	// below-watermark resync frame subscribeFrom already writes can ever fire. It could not
+	// before: an unbounded log has no watermark to be below.
+	if cap := ps.retainCap(); len(ps.log) > cap {
+		ps.log = ps.log[len(ps.log)-cap:]
+	}
 	switch e.Kind { // track open gate decisions so `process get`/resolve see them
 	case process.EvPending:
 		ps.pending[e.ID] = e
@@ -182,11 +195,24 @@ func (ps *procState) emit(e process.Frame) {
 		// the terminal, which nothing follows and no resync is prompted by. The last slot is
 		// kept free for it, so it is always deliverable.
 		if !terminal && len(c) >= cap(c)-1 {
+			ps.drop(id)
 			continue
+		}
+		// Anything missed is announced before the next frame that fits, the way the local
+		// bus does. Discarding in silence let a reader believe it had the whole story.
+		if n := ps.dropped[id]; n > 0 {
+			select {
+			case c <- process.Frame{Kind: process.EvGap, Process: ps.id, Dropped: n, Cursor: ps.logCur}:
+				delete(ps.dropped, id)
+			default:
+				ps.drop(id)
+				continue
+			}
 		}
 		select {
 		case c <- e:
 		default:
+			ps.drop(id)
 		}
 		if terminal {
 			// Nothing will follow: end the stream rather than leave a reader listening to a
@@ -208,6 +234,30 @@ func (ps *procState) enqueue(it api.InboxItem) int64 {
 	it.Cursor = ps.inboxCur
 	ps.inbox = append(ps.inbox, it)
 	return it.Cursor
+}
+
+// LogRetain is the DEFAULT number of events a brokered process's merged log keeps. A charter
+// sets its own per spawn (launch.Spec.Retain); this is what a spawn that says nothing gets.
+//
+// It matches the local bus's window on purpose: the same `?since=` contract is served from
+// both, and a reader should not have to know which kind of runner it is talking to in order
+// to know how far back it may resume.
+const LogRetain = 256
+
+// retainCap is the window in force, called under ps.mu.
+func (ps *procState) retainCap() int {
+	if ps.retain > 0 {
+		return ps.retain
+	}
+	return LogRetain
+}
+
+// drop records that a subscriber missed one, called under ps.mu.
+func (ps *procState) drop(id int) {
+	if ps.dropped == nil {
+		ps.dropped = map[int]int{}
+	}
+	ps.dropped[id]++
 }
 
 // reportAck is what a report was answered with, kept so an identical retry gets an identical

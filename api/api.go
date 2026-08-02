@@ -108,6 +108,10 @@ type Spawn struct {
 	ID     string `tony:"field=id,omitzero"` // empty → the runtime mints a `run-…` id
 	Task   string `tony:"field=task"`
 	Driver string `tony:"field=driver,omitzero"` // empty → the runtime default
+	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
+	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
+	// of the same field, so `verse process run` and a firing can ask for the same thing.
+	Retain int `tony:"field=retain,omitzero"`
 }
 
 // Spawned is what a spawn answers with: the id to address the new process by.

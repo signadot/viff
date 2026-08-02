@@ -217,3 +217,35 @@ func TestAResumeInsideTheWindowDoesNotDuplicate(t *testing.T) {
 		t.Fatalf("the standing gate appeared %d times in a resume inside the window", gates)
 	}
 }
+
+// The retained window is per process, because how much of the past is worth keeping is a
+// property of the work: a process that narrates every token and one that reports four
+// boundaries an hour want windows two orders of magnitude apart, and no package constant is
+// right for both.
+func TestTheRetainedWindowIsPerProcess(t *testing.T) {
+	wide := NewProcess("wide", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	wide.SetRetain(ringCap * 4)
+	narrow := NewProcess("narrow", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	narrow.SetRetain(8)
+
+	for range ringCap * 2 {
+		wide.emit(Frame{Kind: EvSay, Text: "chatty"})
+		narrow.emit(Frame{Kind: EvSay, Text: "chatty"})
+	}
+
+	// The wide one still has the beginning; the narrow one long since let it go.
+	if got := wide.ring[0].Cursor; got != 1 {
+		t.Errorf("the wide window starts at cursor %d, want 1 — it asked to keep everything so far", got)
+	}
+	if got := len(narrow.ring); got != 8 {
+		t.Errorf("the narrow window holds %d, want 8", got)
+	}
+	// And a process that asks for nothing gets the default.
+	plain := NewProcess("plain", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	for range ringCap * 2 {
+		plain.emit(Frame{Kind: EvSay, Text: "chatty"})
+	}
+	if got := len(plain.ring); got != ringCap {
+		t.Errorf("the default window holds %d, want %d", got, ringCap)
+	}
+}

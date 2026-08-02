@@ -35,6 +35,11 @@ type Launch struct {
 	// Empty = the driver's own default frame.
 	Frame string
 
+	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
+	// default. It is per-spawn because the right number is a property of the work: see
+	// launch.Spec.Retain.
+	Retain int
+
 	// Tools names the tools offered to the agent, narrowing the driver's full set. Empty
 	// = all of them. It is the hard counterpart of Frame's advice: a frame can only ask
 	// an agent not to reach for something, whereas a tool that is not offered cannot be

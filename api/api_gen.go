@@ -434,6 +434,11 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["driver"] = ir.FromString(string(s.Driver))
 	}
 
+	// Field: Retain
+	if s.Retain != 0 {
+		irMap["retain"] = ir.FromInt(int64(s.Retain))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -485,6 +490,12 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "driver", fieldNodeUnwrapped.Type)
 			}
 			s.Driver = string(fieldNodeUnwrapped.String)
+		case "retain":
+			// Field: Retain
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "retain", fieldNodeUnwrapped.Type)
+			}
+			s.Retain = int(*fieldNodeUnwrapped.Int64)
 		}
 	}
 

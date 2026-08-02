@@ -46,10 +46,35 @@ type subscriber struct {
 	dropped int
 }
 
-// ringCap bounds the retained per-process event window served for ?since replay. A
-// consumer reconnecting within this many events resumes losslessly; older than it,
-// resync from the snapshot.
+// ringCap is the DEFAULT retained per-process event window served for ?since replay. A
+// consumer reconnecting within this many events resumes losslessly; older than it, resync
+// from the snapshot.
+//
+// It is a default rather than the rule because the right number is a property of the work:
+// see Launch.Retain, which a charter sets per spawn. Modest on purpose — the window is paid
+// for in memory per live process, and a charter that needs a longer one is the party that
+// knows it does.
 const ringCap = 256
+
+// SetRetain sets this process's retained window, in events. Zero or negative keeps the
+// default. It is applied at spawn, before the loop runs, by whoever built the process from a
+// Launch.
+func (p *Process) SetRetain(n int) {
+	if n <= 0 {
+		return
+	}
+	p.busMu.Lock()
+	defer p.busMu.Unlock()
+	p.retain = n
+}
+
+// retainCap is the window in force, called under busMu.
+func (p *Process) retainCap() int {
+	if p.retain > 0 {
+		return p.retain
+	}
+	return ringCap
+}
 
 // Subscribe returns a channel of events (live from now) and an unsubscribe func.
 // Subscribers that can't keep up drop events (never blocking the loop); the next
@@ -180,8 +205,8 @@ func (p *Process) emit(e Frame) {
 	p.cursor++
 	e.Cursor = p.cursor
 	p.ring = append(p.ring, e)
-	if len(p.ring) > ringCap {
-		p.ring = p.ring[len(p.ring)-ringCap:]
+	if cap := p.retainCap(); len(p.ring) > cap {
+		p.ring = p.ring[len(p.ring)-cap:]
 	}
 	switch e.Kind { // what is still being asked, for a reader that resumes past the window
 	case EvPending:

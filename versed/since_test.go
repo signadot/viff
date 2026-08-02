@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -18,6 +19,7 @@ import (
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/trigger"
 )
 
 // frames reads an SSE attach until the stream is quiet, and returns what it carried.
@@ -293,5 +295,61 @@ func TestAFastProcessIsStillRecordedAsFinished(t *testing.T) {
 		if !process.Status(last).Terminal() {
 			t.Fatalf("a %d-action process that completed is mirrored as %q", n, last)
 		}
+	}
+}
+
+// A CHARTER says how much of a process's past is worth keeping, and it reaches the process.
+//
+// The number is a property of the work and nothing else knows it — which is the whole reason
+// it is per-spawn rather than a constant somebody has to guess for every process at once. It
+// crosses two seams to get there: the charter's spawn fragment, and the runner contract.
+func TestACharterSetsTheRetainedWindow(t *testing.T) {
+	got := make(chan int, 4)
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		got <- l.Retain
+		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+		return process.NewProcess(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
+	}
+	srv := NewWithStore(build, entitytest.Store(t))
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	var trig trigger.Trigger
+	if err := codec.Unmarshal([]byte(`{
+		name: chatty,
+		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		action: {
+			spawn:  {task: "review $subject", retain: 4096},
+			onDone: {patch: {stage: reviewed}},
+		},
+	}`), &trig, codec.Tony); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := srv.Eng.AddTrigger(trig); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, srv.Store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+		entity.Obj{"stage": "open"}.Payload())
+
+	select {
+	case n := <-got:
+		if n != 4096 {
+			t.Fatalf("the runtime was told to retain %d, want the 4096 the charter asked for", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the charter never spawned")
+	}
+
+	// And the ad-hoc face of the same field: `verse process run` can ask for it too.
+	spawn := postTony(t, ts.URL+"/processes", api.Spawn{ID: "p", Task: "work", Retain: 2048})
+	spawn.Body.Close()
+	select {
+	case n := <-got:
+		if n != 2048 {
+			t.Fatalf("an ad-hoc spawn asked to retain 2048 and the runtime was told %d", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the ad-hoc spawn never reached the runtime")
 	}
 }

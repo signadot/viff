@@ -136,6 +136,10 @@ type Process struct {
 	subID  int
 	cursor int64   // per-process monotonic event cursor (assigned in emit)
 	ring   []Frame // bounded retained window, for SubscribeSince(?since) replay
+	// retain is this process's read-plane window in events; 0 = the package default. Set from
+	// the Launch at spawn, because how much of the past is worth keeping is a property of
+	// the work rather than of the runtime.
+	retain int
 	// open is the gates standing right now, keyed by decision id: an EvPending opens one and
 	// its EvDecision closes it. The RING is not a substitute — it forgets, and what it
 	// forgets first is the oldest, which for a long-standing gate is the gate itself.

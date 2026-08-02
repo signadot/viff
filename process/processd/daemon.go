@@ -168,6 +168,7 @@ func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) (*
 	if l.Vector != nil {
 		proc.SetVector(l.Vector, "launch")
 	}
+	proc.SetRetain(l.Retain) // how much of its read plane a resuming reader can still see
 	h := &hosted{proc: proc, reg: reg, task: l.Task, driver: l.Driver, status: process.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
