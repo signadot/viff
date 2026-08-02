@@ -275,19 +275,16 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 		since, _ := strconv.ParseInt(s, 10, 64)
 		ch, unsub = h.proc.SubscribeSince(since)
 	} else {
-		// Live attach from now: replay currently-blocked gates so it knows what to resolve,
-		// and — if the process already FINISHED — its terminal status, so an attach after
-		// completion exits instead of blocking on a stream that never emits again. (The
-		// ?since path doesn't need this: its ring replay already carries the real terminal.)
+		// Live attach from now: replay currently-blocked gates so it knows what to resolve.
+		// A finished process needs no special case here — the bus hands a late subscriber
+		// the terminal and closes, so an attach after completion exits rather than blocking
+		// on a stream that will never emit again.
 		ch, unsub = h.proc.Subscribe()
 		for _, p := range h.reg.Pending() {
 			_ = sse.Send(process.Frame{
 				Kind: process.EvPending, ID: p.Question.ID, Tool: p.Tool,
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 			})
-		}
-		if st := h.snapshot().Status; st.Terminal() {
-			_ = sse.Send(process.Frame{Kind: process.EvStatus, Text: string(st), Process: h.proc.ID})
 		}
 	}
 	defer unsub()

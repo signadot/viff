@@ -54,8 +54,16 @@ const ringCap = 256
 // Subscribe returns a channel of events (live from now) and an unsubscribe func.
 // Subscribers that can't keep up drop events (never blocking the loop); the next
 // delivered event is preceded by an EvGap marker reporting how many were missed.
+//
+// On a process that has already ENDED, "live from now" is its terminal frame and then the
+// end of the stream. It used to be nothing, forever — which strands a mirror on a process
+// that finished, the same way FailedHandle exists to avoid.
 func (p *Process) Subscribe() (<-chan Frame, func()) {
-	return p.subscribe(nil)
+	return p.subscribe(func(s *subscriber) {
+		if p.ended && len(p.ring) > 0 {
+			trySend(s, p.ring[len(p.ring)-1])
+		}
+	})
 }
 
 // SubscribeSince returns a channel that first replays retained events with cursor >
@@ -90,6 +98,14 @@ func (p *Process) subscribe(prime func(*subscriber)) (<-chan Frame, func()) {
 	if prime != nil {
 		prime(s)
 	}
+	// An ENDED process is a finite record. Registering a subscriber on one would leave it
+	// listening to something that has stopped speaking, which is not waiting — it is a leak
+	// with the shape of patience. Close it: a closed buffered channel still yields what was
+	// primed into it, so the reader gets the record and then the end of it.
+	if p.ended {
+		close(s.ch)
+		return s.ch, func() {}
+	}
 	p.subs[id] = s
 	return s.ch, func() {
 		p.busMu.Lock()
@@ -101,8 +117,29 @@ func (p *Process) subscribe(prime func(*subscriber)) (<-chan Frame, func()) {
 	}
 }
 
-// trySend delivers to a subscriber non-blocking, accruing a drop on a full buffer.
+// terminalFrame reports whether e is the one frame whose loss cannot be recovered from.
+// Every other event is replaceable: the reader is told it missed some and resyncs from the
+// snapshot. Nothing follows this one, so nothing can carry that news.
+func terminalFrame(e Frame) bool {
+	return e.Kind == EvStatus && Status(e.Text).Terminal()
+}
+
+// trySend delivers to a subscriber non-blocking, accruing a drop on a full buffer — except
+// that the last slot is RESERVED for the terminal.
+//
+// The reservation is what makes delivery of the terminal certain rather than likely: an
+// ordinary frame is only sent when the buffer is below cap-1, so occupancy never reaches
+// cap, so a slot is always free when the terminal arrives. One slot is enough because a
+// process ends once.
+//
+// It costs one slot of buffer and no blocking, which is the point: the loop must not stall
+// because an observer is slow (see emit), and the terminal is retained in the ring either
+// way — what was lost was never the fact, only one subscriber's delivery of it.
 func trySend(s *subscriber, e Frame) {
+	if !terminalFrame(e) && len(s.ch) >= cap(s.ch)-1 {
+		s.dropped++
+		return
+	}
 	select {
 	case s.ch <- e:
 	default:
@@ -131,20 +168,34 @@ func (p *Process) emit(e Frame) {
 	if len(p.ring) > ringCap {
 		p.ring = p.ring[len(p.ring)-ringCap:]
 	}
+	terminal := terminalFrame(e)
 	for _, s := range p.subs {
+		// The terminal is never withheld behind a gap marker that would not fit. For every
+		// other frame that withholding is right — the next one carries the marker — and for
+		// this one it is fatal, because a subscriber that is behind is exactly the one in
+		// the dropped state, and nothing follows to try again.
+		if terminal {
+			trySend(s, e)
+			continue
+		}
 		if s.dropped > 0 { // try to flush the gap marker before the real event
-			select {
-			case s.ch <- Frame{Kind: EvGap, Process: p.ID, Dropped: s.dropped}:
-				s.dropped = 0
-			default:
-				s.dropped++
+			was := s.dropped
+			s.dropped = 0
+			trySend(s, Frame{Kind: EvGap, Process: p.ID, Dropped: was})
+			if s.dropped > 0 { // the marker itself did not fit; keep the tally
+				s.dropped += was
 				continue
 			}
 		}
-		select {
-		case s.ch <- e:
-		default:
-			s.dropped++
+		trySend(s, e)
+	}
+	if terminal {
+		// Nothing will follow. Ending the stream says so, and says it in the one way that
+		// cannot be dropped for want of buffer.
+		p.ended = true
+		for id, s := range p.subs {
+			delete(p.subs, id)
+			close(s.ch)
 		}
 	}
 }

@@ -136,6 +136,10 @@ type Process struct {
 	subID  int
 	cursor int64   // per-process monotonic event cursor (assigned in emit)
 	ring   []Frame // bounded retained window, for SubscribeSince(?since) replay
+	// ended latches on the terminal frame. After it, the read plane is a finite record: no
+	// event will ever follow, so subscribers are closed rather than left listening to a
+	// process that has stopped speaking.
+	ended bool
 }
 
 func NewProcess(id string, sup *Supervisor, d Driver, e Executor) *Process {

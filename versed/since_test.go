@@ -12,7 +12,9 @@ import (
 
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
 	"github.com/signadot/verse/runner"
@@ -179,53 +181,6 @@ func assertSince(t *testing.T, url string) {
 	}
 }
 
-// firstFrames reads the first n frames of an attach and stops, for a stream whose tail is not
-// what is under test.
-//
-// It exists because a process that emits faster than its subscriber drains loses frames — and
-// can lose the terminal one, which nothing follows and no gap marker can announce. A
-// completed 400-action process therefore streams ~260 frames and then nothing, forever. That
-// is a defect in the bus, not in `?since=`, and it is recorded in the commit rather than
-// worked around silently (git-issue 56s91yabh12kskzcdsn0): this helper reads the head so the
-// resume contract can be tested while the tail is broken.
-func firstFrames(t *testing.T, url string, n int) []process.Frame {
-	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("attach %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-
-	lines := make(chan string, 1024)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				lines <- d
-			}
-		}
-		close(lines)
-	}()
-
-	var out []process.Frame
-	for len(out) < n {
-		select {
-		case d, ok := <-lines:
-			if !ok {
-				return out
-			}
-			var f process.Frame
-			if err := codec.Unmarshal([]byte(d), &f, codec.Tony); err != nil {
-				t.Fatalf("decode frame %q: %v", d, err)
-			}
-			out = append(out, f)
-		case <-time.After(5 * time.Second):
-			t.Fatalf("the stream delivered %d of %d frames: %v", len(out), n, cursors(out))
-		}
-	}
-	return out
-}
-
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
 // countingDriver takes n no-op actions then completes — a drive of a known shape, so the same
@@ -265,11 +220,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 
 	assertGap := func(t *testing.T, url string) {
 		t.Helper()
-		// A bounded read, not a read-to-terminal: a burst this size outruns its subscriber
-		// and the terminal frame is among what gets dropped, so waiting for one would be
-		// waiting on a known-separate defect (see the note on the drop below). What is being
-		// asserted is the head of the stream, and the head is all it takes.
-		got := firstFrames(t, url+"?since=1", 4)
+		got := frames(t, url+"?since=1")
 		if len(got) == 0 {
 			t.Fatal("resuming below the watermark returned nothing at all")
 		}
@@ -310,4 +261,37 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		defer ts.Close()
 		assertGap(t, ts.URL+"/processes/p/events")
 	})
+}
+
+// The bug this whole file kept tripping over, end to end: a process that outruns its mirror
+// still gets recorded as finished.
+//
+// The mirror is the consumer that made the loss catastrophic rather than cosmetic. It writes
+// a store entry per frame, so it is always the slow one; it returns only on a terminal, so a
+// dropped terminal leaked its goroutine and, behind a remote runner, the HTTP connection with
+// it; and the engine reacts to the mirrored status, so a sequence waiting on onDone waited
+// forever on a process that had finished minutes ago.
+func TestAFastProcessIsStillRecordedAsFinished(t *testing.T) {
+	for _, n := range []int{50, 300, 5000} {
+		drive := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+			sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+			return process.NewProcess(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
+		}
+		srv := NewWithStore(drive, entitytest.Store(t))
+		h := srv.Procd.Spawn(process.Launch{ID: "p", Task: "work"}, nil)
+		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
+
+		var last string
+		for range 500 {
+			e, _, _ := srv.Store.Get(mirror.Ref("p"))
+			last = entity.Str(e.Payload, "status")
+			if process.Status(last).Terminal() {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if !process.Status(last).Terminal() {
+			t.Fatalf("a %d-action process that completed is mirrored as %q", n, last)
+		}
+	}
 }

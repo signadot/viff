@@ -178,7 +178,13 @@ run.
 The terminal is a `status` event (`done|failed|cancelled` plus `result`) that verse CAS-writes
 once; `?since=<terminal cursor>` replays it and closes. A finished process's `/events` is a
 finite, replayable record, so a verse that restarts *after* completion still learns the
-outcome.
+outcome — and a reader that has seen the terminal should stop reconnecting, because there is
+nothing left to reconnect to.
+
+The terminal is the one frame a reader never loses. Everything else may be dropped to a
+subscriber that cannot keep up — the loop is never stalled by an observer — and the `gap`
+marker rides the next event to say so. Nothing rides after the terminal, so it is delivered
+out of a slot reserved for it, and it reaches a reader that missed everything before it.
 
 ### The control⇄events interlock
 

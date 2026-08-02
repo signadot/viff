@@ -141,17 +141,30 @@ func (ps *procState) emit(e process.Frame) {
 	case process.EvDecision:
 		delete(ps.pending, e.ID)
 	}
-	subs := make([]chan process.Frame, 0, len(ps.subs))
-	for _, c := range ps.subs {
-		subs = append(subs, c)
-	}
-	ps.mu.Unlock()
-	for _, c := range subs {
+	// Broadcast under the lock, as the local bus does. The sends are non-blocking, so it
+	// costs nothing to hold — and it is what makes closing below safe: a copy of the channel
+	// list dropped the lock between collecting and sending, so an unsubscribe landing in
+	// that window closed a channel this loop was about to send on.
+	terminal := e.Kind == process.EvStatus && process.TerminalStatus(e.Text)
+	for id, c := range ps.subs {
+		// A slow verse-side subscriber drops and resyncs from the snapshot/log — except for
+		// the terminal, which nothing follows and no resync is prompted by. The last slot is
+		// kept free for it, so it is always deliverable.
+		if !terminal && len(c) >= cap(c)-1 {
+			continue
+		}
 		select {
 		case c <- e:
-		default: // slow verse-side subscriber drops; it resyncs from the snapshot/log
+		default:
+		}
+		if terminal {
+			// Nothing will follow: end the stream rather than leave a reader listening to a
+			// process that has stopped speaking.
+			delete(ps.subs, id)
+			close(c)
 		}
 	}
+	ps.mu.Unlock()
 }
 
 func (ps *procState) enqueue(it api.InboxItem) {
@@ -345,6 +358,13 @@ func (h *handle) subscribeFrom(since int64, resume bool) (<-chan process.Frame, 
 		case ch <- e:
 		default:
 		}
+	}
+	// A process that already ended is a finite record: hand over what it said and close,
+	// rather than registering a subscriber for events that will never come.
+	if ps.terminal {
+		ps.mu.Unlock()
+		close(ch)
+		return ch, func() {}
 	}
 	id := ps.nextSub
 	ps.nextSub++
