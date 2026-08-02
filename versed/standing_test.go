@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
@@ -223,4 +224,137 @@ func waitOwner(t *testing.T, srv *Server, origin string) string {
 	}
 	t.Fatalf("%s never posed a question", origin)
 	return ""
+}
+
+// waitFor waits for one named instance and returns them all.
+//
+// By name rather than by count: a count is a claim about everything in the store, so it fails
+// for reasons that have nothing to do with what is being asserted — and under load it fails
+// intermittently, which is worse than not asserting at all.
+func waitFor(t *testing.T, srv *Server, id string) map[string]map[string]any {
+	t.Helper()
+	var got map[string]map[string]any
+	for range 400 {
+		if got = instances(t, srv); got[id] != nil {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("no instance %q after waiting: %v", id, got)
+	return nil
+}
+
+// watching counts the instances whose origin is this thing.
+func watching(all map[string]map[string]any, origin string) int {
+	var n int
+	for _, inst := range all {
+		if inst["origin"] == origin {
+			n++
+		}
+	}
+	return n
+}
+
+func instances(t *testing.T, srv *Server) map[string]map[string]any {
+	t.Helper()
+	out := map[string]map[string]any{}
+	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
+		return ref.System == resolver.System && ref.Kind == resolver.InstanceKind
+	}) {
+		out[ent.Ref.ID] = entity.ToObj(ent.Payload)
+	}
+	return out
+}
+
+// An instance follows its ORIGIN, not its binding: one binding watching a subject and the runs
+// about it has one instance per thing it watches, each living exactly as long as that thing.
+//
+// That is also what carrying a cursor pair means here — two positions as two records rather
+// than two fields, so there is no place for a merged order to be invented and no code that
+// could be tempted to invent one. Which plane an instance is on follows from its origin: one
+// under `process:instance` is a run, and anything else is a subject.
+func TestAnInstanceFollowsItsOrigin(t *testing.T) {
+	srv := askingServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+	addRule(t, ts, `{
+		name: guard,
+		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		gates:  [{name: approval, mode: ask}],
+		action: {patch: {stage: reviewed}},
+	}`)
+
+	// Three firings about one subject — the rule re-fires on every commit that touches it.
+	pr(t, srv, "1", "payments")
+	waitOwner(t, srv, "guard")
+	for range 2 {
+		entitytest.Set(t, srv.Store, entity.Ref{System: "change", Kind: "pr", ID: "1"},
+			entity.Obj{"area": "payments", "touched": time.Now().UnixNano()}.Payload())
+	}
+	time.Sleep(150 * time.Millisecond)
+
+	got := instances(t, srv)
+	spine := got["payments-review@change:pr:1"]
+	if spine == nil || spine["origin"] != "change:pr:1" {
+		t.Fatalf("the spine does not watch the subject: %v", got)
+	}
+	// One spine for the subject however many times its rule fired: an instance lives for the
+	// subject, not per firing, which is the spawn-answer-die shape this design avoids.
+	if n := watching(got, "change:pr:1"); n != 1 {
+		t.Fatalf("three firings about one subject left %d instances watching it: %v", n, got)
+	}
+
+	// A run about that same subject, whose gate the binding owns, gets its own instance
+	// beside the spine — a different origin, a different plane, a different position.
+	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	waitQuestion(t, srv, "run-1")
+	got = instances(t, srv)
+	fine := got["payments-review@run-1"]
+	if fine == nil || fine["origin"] != "process:instance:run-1" {
+		t.Fatalf("the run instance does not watch the run: %v", got)
+	}
+	if spine["binding"] != fine["binding"] {
+		t.Fatalf("the two instances belong to different bindings: %v / %v", spine, fine)
+	}
+
+	// And a second subject is a second spine, not a second entry on the first.
+	pr(t, srv, "2", "payments")
+	got = waitFor(t, srv, "payments-review@change:pr:2")
+	if watching(got, "change:pr:2") != 1 {
+		t.Fatalf("the second subject got no spine of its own: %v", got)
+	}
+	// …and the first subject's spine is untouched by it.
+	if watching(got, "change:pr:1") != 1 {
+		t.Fatalf("a second subject disturbed the first's spine: %v", got)
+	}
+}
+
+// Minting is create-only: a question arriving for something already watched must not retire
+// the progress of a resolver that is reading towards it.
+func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+	pr(t, srv, "1", "payments")
+
+	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	waitQuestion(t, srv, "run-1")
+	ref := resolver.InstanceRef("payments-review", "run-1")
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID+"/position",
+		api.Position{Position: 9, Notes: "read this far"})
+	resp.Body.Close()
+
+	// A second run about the same subject, and a second question on the first run.
+	spawnFor(t, ts, "run-2", "change:pr:1", "")
+	waitQuestion(t, srv, "run-2")
+	mirror.Watch(srv.Store, "resolvers:security:payments-review", "payments-review", mirror.Ref("run-1"))
+
+	e, _, _ := srv.Store.Get(ref)
+	got := entity.ToObj(e.Payload)
+	if got["position"] != int64(9) || got["notes"] == nil {
+		t.Fatalf("watching again reset the instance to %v: %+v", got["position"], got)
+	}
 }

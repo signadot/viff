@@ -165,8 +165,27 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 		return ""
 	}
 	s.standingOwner = standingOwner
+	// A question is where an instance is minted, because that is where ownership is decided.
+	// A spawn mints one for the binding it NAMES, since ownership is settled then and a
+	// resolver should be reading before the first ask; a standing binding cannot be minted
+	// that early, because one installed mid-run would own questions an earlier mint never
+	// heard of. Both call the same create-only Watch, so the two are one act done twice.
+	watch := func(q process.GateQuestion, processID string) {
+		if q.BoundTo == "" {
+			return
+		}
+		origin, err := entity.ParseRef(q.Subject)
+		if processID != "" {
+			origin, err = mirror.Ref(processID), nil // a run's questions are watched over the run
+		}
+		if err != nil {
+			return
+		}
+		mirror.Watch(store, q.BoundTo, resolverName(q.BoundTo), origin)
+	}
 	reg.OnPost(func(p process.Pending) {
 		owner(&p.Question)
+		watch(p.Question, "")
 		mirror.PostQuestion(store, p, "")
 	})
 	// And the counterpart. A question whose last waiter was cancelled leaves the registry
@@ -185,6 +204,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 			}
 		}
 		owner(&p.Question)
+		watch(p.Question, processID)
 		mirror.PostQuestion(store, p, processID)
 	})
 

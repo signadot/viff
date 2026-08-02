@@ -325,18 +325,48 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.H
 // address is for finding one and a field is for selecting many: "every instance of the
 // security reviewer" is a predicate, not a glob.
 func BindResolver(store entity.Store, binding, name, processID string) {
-	if binding == "" {
+	Watch(store, binding, name, Ref(processID))
+}
+
+// Watch mints the record of one binding watching one origin, and does nothing if it already
+// exists.
+//
+// AN INSTANCE FOLLOWS ITS ORIGIN, NOT ITS BINDING. "An instance lives for the duration of what
+// it resolves, and the origin decides what that is" — so a binding watching a subject and
+// three runs about it has four instances, each living exactly as long as the thing it watches.
+// That is also what carrying a cursor pair means: two positions as two records rather than two
+// fields, so there is no place for a merged order to be invented.
+//
+// Which plane an instance is on follows from its origin and is not stored beside it: an origin
+// under `process:instance` is a run, whose position is a cursor, and anything else is a
+// subject, whose position is a revision. One fact, one spelling.
+//
+// Create-only, and the precondition is the whole point rather than an optimisation: this is
+// called every time a question is posed, so a plain write would reset the position of a
+// resolver that is already reading — retiring its progress on the arrival of the very question
+// it was reading towards.
+func Watch(store entity.Store, binding, name string, origin entity.Ref) {
+	if binding == "" || name == "" {
 		return
 	}
-	ref := entity.Ref{System: resolverSystem, Kind: resolverInstance, ID: name + "@" + processID}
-	write(store, "", entity.Obj{
-		"binding": binding,
-		"origin":  Ref(processID).String(),
-		// position is where this instance has read to, and starts before the first frame.
-		// It is on the record rather than only in the reader because that is what tells
-		// "has not decided" from "has not caught up".
-		"position": int64(0),
-	}, ref)
+	ref := entity.Ref{System: resolverSystem, Kind: resolverInstance, ID: name + "@" + origin.ID}
+	if origin.System != System {
+		// A subject's id may not be unique across systems the way a process id is, so its
+		// address carries the whole ref.
+		ref.ID = name + "@" + origin.String()
+	}
+	_, _, _ = store.Write(entity.Write{
+		At: ref.At(),
+		Value: entity.Obj{
+			"binding": binding,
+			"origin":  origin.String(),
+			// position is where this instance has read to, and starts before the first
+			// frame. It is on the record rather than only in the reader because that is
+			// what tells "has not decided" from "has not caught up".
+			"position": int64(0),
+		}.Payload(),
+		When: []entity.Require{entity.Created()},
+	})
 }
 
 // The resolver system, spelled here rather than imported: mirror is what every runtime writes
