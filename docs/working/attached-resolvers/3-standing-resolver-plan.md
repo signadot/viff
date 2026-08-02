@@ -41,6 +41,41 @@ ask".
 than competitors, but nothing stops two STANDING conditions from both covering one subject.
 The answer is a total order rather than a prohibition — see step 1.
 
+## What an instance is for, and how long it lives
+
+**The store is already the evidence.** A subject's whole history is commits, and so are the
+resolver's own positions and notes, which are writes like any other. So the instance record
+does not have to be the audit trail and is not one. It is machinery: a position so a reader
+can resume, and a handover for whoever picks it up.
+
+That settles a lifetime this plan would otherwise have left open. An instance belongs to its
+BINDING, not to the thing it watches, and is reaped when the binding is removed — step 5 — and
+at no other time.
+
+Which in turn settles something the design cares about more. `sys:k:i` born at commit `C`,
+marked vanishing at `C+n`, deleted at `C+n+m` and reborn at `C+n+m+o` is ONE story to anyone
+watching that ref, and a resolver for `sys:k:i` sees all of it. Nothing about the entity's
+death ends the watch, because a position addresses the STORE's revision line, and that does
+not die when an entity does.
+
+Two consequences, both visible in what this plan builds:
+
+- **The spine is narrowed by REF, not by the binding's condition.** A predicate reads a
+  payload and a deletion has none — `Event.To` is null on a delete — so a payload-narrowed
+  stream hides exactly the end of a life it most needs to show. The condition decides which
+  subjects get an instance; the instance's spine is then that subject's whole story,
+  unfiltered. A subject that stops matching the condition does not stop being watched by an
+  instance already minted, which is the same rule read from the other side.
+- **Nothing reaps or resets an instance when its subject vanishes or is deleted**, and a
+  rebirth continues the same one. That needs no code: the address is unchanged, so the
+  do-nothing path is the correct path — which is the best kind of direction to leave, because
+  it cannot rot.
+
+What is deliberately NOT settled here is what a resolver should DO across the dead spot —
+whether an instance whose subject does not currently exist is idle-but-watching or something
+else, and what a question arising there would even mean. The behaviour above points at it
+without depending on the answer.
+
 ## Order of work
 
 ### 1. A standing binding, and a total order over the ones that match
@@ -122,6 +157,7 @@ A binding is not an instance: "an instance lives for the duration of what it res
 ORIGIN decides what that is", so one binding watching a subject and three runs about it has
 four instances, each living exactly as long as the thing it watches.
 
+
 That is what carrying a cursor pair means here, and it is why nothing has to sequence the two
 planes: the positions are two records rather than two fields, so there is no place for a
 merged order to be invented and no code that could be tempted to invent one. It also settles
@@ -140,8 +176,11 @@ subject, for an instance whose origin is a subject — the same route that alrea
 process frames for an instance whose origin is a run, deciding by the origin rather than by
 anything the caller has to say twice.
 
-The narrowing is to the subject's own commits, which is what `queryPattern` builds from
-`?system/?kind/?if` today and what the binding's `condition` is already written in.
+The narrowing is to the subject's own REF — every commit touching it, and nothing else. Not
+the binding's `condition`: a predicate reads a payload, a deletion has none, and a resolver
+that cannot see its subject die is one whose evidence stops exactly where it matters.
+`entity.Pattern` narrows by system and kind but carries no id, so this is a ref comparison at
+the route rather than a pattern.
 
 A resolver reading both planes follows the anchors: a spawn commit on the spine names a run,
 and that run's instance is where its fine grain is. Which is the whole of the navigation — no
@@ -152,6 +191,11 @@ an httptest resolver dials in, reads the commits that led to a trigger gate, ans
 the firing proceeds — the same test the first increment ran over a run, with the origin
 changed and nothing else. And the anchor: a spawn about the subject appears on the spine, and
 the run instance it names serves that run's frames.
+
+And the lifecycle, which is where the direction becomes behaviour rather than intent: a
+subject marked vanishing, then deleted, then written again under the same ref produces four
+commits on one spine, in order, to a resolver that never stopped reading — and its instance is
+the same record throughout, at the position it had reached.
 
 ### 5. Removing a binding re-routes what it owned
 
@@ -165,6 +209,10 @@ promotes the second, so removal is a change of owner rather than only a loss of 
 **Re-route rather than drain.** On removal, its open questions are re-owned by whatever the
 layer rule gives them now — the next standing binding covering the subject, else `⊤` — and the
 change is written on each question so the handover is readable rather than inferred.
+
+Its instances go with it, and this is the ONLY thing that reaps one. They are machinery for a
+reader that no longer exists; what they were evidence of is in the store, where a position
+report and a note were commits when they were made and remain commits afterwards.
 
 *Why not drain.* Draining means the removed binding keeps answering what it already owns until
 those settle. It sounds gentler and is worse in the case that matters: an operator removing a
@@ -195,9 +243,6 @@ and installing reports what a new binding overlaps — but a binding that has be
 since some LATER install has been told nothing. A field on the binding would say it, and would
 be a derived fact stored, which is the thing this codebase keeps refusing to do. Left open
 because the answer probably arrives with somebody noticing an idle resolver.
-
-**When a subject instance is reaped.** A run ends; a subject may not. The first increment left
-this open for run instances and this one makes it sharper rather than answering it.
 
 **Which plane a resolver reads first, and whether it must read both.** A binding owning a run's
 gate has a run instance for it, so the fine grain is reachable — but nothing says it has to be

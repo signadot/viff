@@ -139,11 +139,11 @@ its own. Addressing, the capability check and where a position is written were t
 question — *what is the live thing called* — and answering it once answers all three. What is
 left is smaller and genuinely open.
 
-**When an instance is reaped.** A process entity outlives its process deliberately, because the
-outcome is the point. An instance's position and notes are evidence about a run that has ended,
-which argues the same way; against that, a resolver bound to a busy subject mints one per run
-and nothing collects them. This increment keeps them and says so, which is a decision to
-revisit with a number rather than an oversight.
+**When an instance is reaped.** ANSWERED, by [the standing resolver](3-standing-resolver-plan.md):
+the store is already the evidence — a position report and a note were commits when they were
+made — so an instance is machinery rather than an audit trail, and it belongs to its binding
+rather than to the thing it watches. Removing the binding is what reaps one, and nothing else
+does. This increment keeps them because nothing here removes a binding.
 
 **Whether a run may be bound to a resolver it did not name.** The binding here comes from the
 spawn. A standing resolver binds by condition, so the instance is minted from a match rather
