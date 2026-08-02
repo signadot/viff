@@ -40,7 +40,17 @@ type Daemon struct {
 	seq   atomic.Uint64
 	build Builder
 	log   io.Writer
+	// onQuestion, when set, is called as each hosted process poses a gate question. The
+	// daemon holds no store and should not: publishing a question is the job of whoever
+	// owns one, and this is the seam that hands it over with the derived effects still
+	// attached — the read plane's own EvPending frame carries only what an attached client
+	// needs to see, which is less than a record needs to be matchable.
+	onQuestion func(processID string, p process.Pending)
 }
+
+// OnQuestion registers the publisher. Optional: processd runs standalone in tests and under
+// `verse process run` with nothing behind it.
+func (d *Daemon) OnQuestion(f func(processID string, p process.Pending)) { d.onQuestion = f }
 
 type hosted struct {
 	proc *process.Process
@@ -145,6 +155,9 @@ func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) *h
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
 	reg.OnPost(func(p process.Pending) {
+		if d.onQuestion != nil {
+			d.onQuestion(l.ID, p)
+		}
 		proc.Emit(process.Frame{
 			Kind: process.EvPending, ID: p.Question.ID, Tool: p.Tool,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,

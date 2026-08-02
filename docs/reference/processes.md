@@ -109,6 +109,38 @@ It outlives the process: the result, the last `say`, the last tool output and th
 `verse flow show` reads for history. The mirror is an index, not a warehouse — it publishes
 what an observer needs, not the transcript.
 
+## The question record
+
+A gate that stops for an answer is published as its own entity, `gate:question:<id>`, and the
+process points at it (`pending: gate:question:<id>`).
+
+```tony
+payload:
+  id:      review@demo:pr:1~d3
+  origin:  review@demo:pr:1
+  gate:    write-guard
+  mode:    ASK
+  status:  pending
+  subject: demo:pr:1
+  tool:    edit_file
+  effects: {verbs: [write], paths: [cfg/app.tony]}
+```
+
+`effects` is what the action *would do*, derived before the gate was posed, so a rule can
+select the questions it cares about without reading prose:
+
+```sh
+verse entities --system gate --if '{status: pending, effects: {verbs: [write]}}'
+```
+
+It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
+afterwards to `status: answered` with the verdict and who gave it. A question outlives its
+answer, because a docket that forgets is one nobody can audit.
+
+The record is its own entity rather than a field because a gate is not always a process's. A
+trigger gate is posed by a firing, before anything spawns — and if it is denied, nothing ever
+does.
+
 A completion hook (`onDone` and friends) reads that process's own payload: `$status`,
 `$result`, `$data`, `$err`, `$chain`. The process's flow is its subject, so the hook's
 `$subject` already names it. Note that `status: done` means the process

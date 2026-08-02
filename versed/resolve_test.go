@@ -11,8 +11,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 )
 
@@ -216,16 +215,14 @@ func waitPending(t *testing.T, srv *Server, id string) {
 func TestGateListingOmitsAbsentFields(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p1", Task: "migrate the schema", Driver: "human"}, nil)
+	h := b.Spawn(process.Launch{ID: "p1", Task: "migrate the schema", Driver: "human"}, nil)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
-	// `verse gates` lists only processes in the requested scope, and membership is the
-	// presence of the process:instance entity the mirror writes. Spawning straight on the
-	// broker skips the mirror, so seed it — otherwise the listing is empty and this test
-	// passes for the wrong reason.
-	entitytest.Set(t, srv.Store,
-		entity.Ref{System: "process", Kind: "instance", ID: "p1"},
-		entity.Obj{"status": "running"}.Payload())
+	// The docket is a slice of the store, so what puts a process on it is the same thing
+	// that makes it a member of a scope: the mirror. Spawning straight on the broker skips
+	// the mirror, so attach one — otherwise the listing is empty and this test passes for
+	// the wrong reason.
+	mirror.Reflect(srv.Store, "p1", h, mirror.Meta{Runner: "broker"})
 
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
@@ -247,13 +244,27 @@ func TestGateListingOmitsAbsentFields(t *testing.T) {
 	})
 	rep.Body.Close()
 
-	resp, err := http.Get(ops.URL + "/gates")
-	if err != nil {
-		t.Fatalf("get gates: %v", err)
-	}
-	defer resp.Body.Close()
+	// The docket is a projection, so it settles rather than being written by the report that
+	// caused it: the worker's frame travels to the mirror, which publishes the question. Poll
+	// for it — asserting on the first read would be asserting on the race.
 	var gates []map[string]any
-	decodeResp(t, resp, &gates)
+	deadline := time.After(2 * time.Second)
+	for len(gates) == 0 {
+		resp, err := http.Get(ops.URL + "/gates")
+		if err != nil {
+			t.Fatalf("get gates: %v", err)
+		}
+		decodeResp(t, resp, &gates)
+		resp.Body.Close()
+		if len(gates) > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the reported gate never reached the docket")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 	if len(gates) != 1 {
 		t.Fatalf("gates = %v, want exactly the one raised", gates)
 	}

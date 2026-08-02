@@ -140,15 +140,25 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 			}
 			switch ev.Kind {
 			case process.EvPending: // now blocked on a gate — visible to other processes
-				st["pending"] = ev.ID
-				st["pendingGate"] = ev.Gate
+				// A REF to the question rather than a copy of it. The question is its own
+				// entity (see question.go), so the gate name, mode, tool and derived effects
+				// live there; duplicating any of them here would be a second spelling of one
+				// fact, and the entity is an index.
+				st["pending"] = QuestionRef(ev.ID).String()
+				PostFrameQuestion(store, ev, id)
 			case process.EvDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays
 				// as it was. Saying "this is gone" is the writer's job, and it is the whole
 				// difference between a gate that clears and a process that looks blocked
 				// forever. (Under whole-value replace this was `delete` and read the same.)
+				// Settle the record only if this decision ANSWERED a standing question.
+				// A gate the vector allowed outright reports a decision without ever having
+				// been pending, and settling that would mint a `gate:question:` entity for a
+				// question nobody was ever asked.
+				if st["pending"] != nil {
+					AnswerQuestion(store, ev.ID, process.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+				}
 				st["pending"] = nil
-				st["pendingGate"] = nil
 				st["lastAction"] = ev.Tool
 			case process.EvExec:
 				st["lastAction"] = ev.Tool

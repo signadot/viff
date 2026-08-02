@@ -18,9 +18,9 @@ segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow demo:pr:*` and 
 `"subject": "demo:pr:*"` mean the same set.
 
 Systems verse itself writes into: `process:instance:*` (the mirror of every running process)
-and `process:claim:*` (its run claim), `trigger:rule:*` (the installed charter), `goal:*`,
-`motion:channel:*` and `vote:*` (the docket and its ballots), `local:*` (a federated working
-tree). None of them are special — they are entities, so you can `get`, `watch` and write
+and `process:claim:*` (its run claim), `gate:question:*` (every gate awaiting an answer),
+`trigger:rule:*` (the installed charter), `goal:*`, `motion:channel:*` and `vote:*` (the
+docket and its ballots), `local:*` (a federated working tree). None of them are special — they are entities, so you can `get`, `watch` and write
 rules about them.
 
 ## Reading

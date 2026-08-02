@@ -29,15 +29,22 @@ type Registry struct {
 type pendingQuestion struct {
 	q       GateQuestion
 	tool    string
+	effects []Effect
 	done    chan struct{} // closed when answered
 	res     Resolution    // valid once done is closed
 	waiters int
 }
 
 // Pending is the read-surface view of one blocked question.
+//
+// Effects rides along because this is the last place the ToolUse exists: the registry is
+// handed one, and everything downstream sees only what Pending carries. A question published
+// without its derived effects can be routed by gate name and by nothing else, which is the
+// difference between a docket entry and a fact something can match on.
 type Pending struct {
 	Question GateQuestion
 	Tool     string
+	Effects  []Effect
 }
 
 func NewRegistry() *Registry {
@@ -64,7 +71,7 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 	r.mu.Lock()
 	pq, joined := r.pending[q.ID]
 	if !joined {
-		pq = &pendingQuestion{q: q, tool: tu.Name, done: make(chan struct{})}
+		pq = &pendingQuestion{q: q, tool: tu.Name, effects: tu.Effects, done: make(chan struct{})}
 		r.pending[q.ID] = pq
 	}
 	pq.waiters++
@@ -73,7 +80,7 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 	// Only a NEW question is announced: a join adds a waiter to something already on the
 	// docket, and re-announcing it would show a watcher a question appearing twice.
 	if !joined && onPost != nil {
-		onPost(Pending{Question: q, Tool: tu.Name})
+		onPost(Pending{Question: q, Tool: tu.Name, Effects: tu.Effects})
 	}
 
 	select {
@@ -116,7 +123,7 @@ func (r *Registry) Pending() []Pending {
 	defer r.mu.Unlock()
 	out := make([]Pending, 0, len(r.pending))
 	for _, pq := range r.pending {
-		out = append(out, Pending{Question: pq.q, Tool: pq.tool})
+		out = append(out, Pending{Question: pq.q, Tool: pq.tool, Effects: pq.effects})
 	}
 	return out
 }

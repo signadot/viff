@@ -250,15 +250,26 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 	}
 
 	h.ch <- process.Frame{Kind: process.EvPending, ID: "gate1", Gate: "write"}
-	await("the gate to appear", func(f map[string]any) bool { return f["pending"] == "gate1" })
+	await("the gate to appear", func(f map[string]any) bool {
+		return f["pending"] == QuestionRef("gate1").String()
+	})
 
-	h.ch <- process.Frame{Kind: process.EvDecision, ID: "gate1", Tool: "act"}
+	h.ch <- process.Frame{Kind: process.EvDecision, ID: "gate1", Tool: "act", Proceed: true}
 	f := await("the gate to clear", func(f map[string]any) bool { return f["pending"] == nil })
-	if f["pendingGate"] != nil {
-		t.Fatalf("the gate name outlived the gate: %+v", f)
-	}
 	if f["lastAction"] != "act" {
 		t.Fatalf("clearing the gate lost the rest of the state: %+v", f)
+	}
+
+	// Clearing the ref is only half of it. The question is its own entity, and one that
+	// stayed `pending` after being answered would keep every docket and every predicate
+	// reading it wrong — the ref is gone, so nothing else would ever say otherwise.
+	q, _, _ := store.Get(QuestionRef("gate1"))
+	got := entity.ToObj(q.Payload)
+	if got["status"] != QuestionAnswered || got["verdict"] != "proceed" {
+		t.Fatalf("the question did not settle: %+v", got)
+	}
+	if got["gate"] != "write" {
+		t.Fatalf("settling overwrote what was asked: %+v", got)
 	}
 }
 

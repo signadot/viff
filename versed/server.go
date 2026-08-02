@@ -128,6 +128,25 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd, scopeEngs: map[string]*scopeEngine{}}
 	s.runner = localRunner{procd} // the in-process runner ("/broker/local")
 
+	// Publish every posed question as `gate:question:<id>`, from both places questions are
+	// raised: the engine's own registry for a firing's gates, and each hosted process for a
+	// run's. One record shape either way — the docket, a charter predicate and an auditor all
+	// read the same fact, and neither source is privileged.
+	reg.OnPost(func(p process.Pending) { mirror.PostQuestion(store, p, "") })
+	procd.OnQuestion(func(processID string, p process.Pending) {
+		// A process gate's question knows what it would DO but not what it is about: the
+		// flow belongs to the process, not to the action. Fill it in from the mirror, so a
+		// rule can select "the questions about demo:pr:1" by matching one record rather
+		// than joining two. The docket read it off the engine before; the engine forgets
+		// when it restarts, and the record does not.
+		if p.Question.Subject == "" {
+			if e, ok, _ := store.Get(mirror.Ref(processID)); ok {
+				p.Question.Subject = entity.Str(e.Payload, "flow")
+			}
+		}
+		mirror.PostQuestion(store, p, processID)
+	})
+
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
 	eng.SetSpawner(s.spawnerFor(store, nil))
@@ -952,65 +971,44 @@ func conditions(cs []api.Condition) ([]entity.Require, error) {
 	return out, nil
 }
 
-// listGates is the unified pending-gate view: engine (trigger) gates from the registry AND
-// per-process gates (an agent blocked on write/shell/delegate), which live in each process's
-// own registry and otherwise show only under `process get`. Both are resolvable by id.
+// listGates is the unified pending-gate view: engine (trigger) gates raised by a firing AND
+// per-process gates (an agent blocked on write/shell/delegate). Both are published as
+// `gate:question:<id>` records, and both are resolvable by id.
 func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
-	// A gate asks a person to decide something, so the listing has to say what is at
-	// stake. `origin` names who asked and `gate` names which rule; neither answers "about
-	// what?", which was only ever recoverable by reading it back out of the `reason` prose.
-	// An engine gate carries its subject on the question; a process gate's is the flow the
-	// process belongs to, which the engine indexes by process id. Both are omitted when
-	// genuinely absent rather than shown empty — a bare `process run` is about nothing.
+	// The docket is a slice of the store, not a walk of two in-memory registries. That is
+	// what makes it survive a restart for work that outlived the daemon, and what lets it
+	// say what each question is ABOUT rather than only what it is called: the record carries
+	// the tool, the derived effects and the subject, which is the difference between a name
+	// and something a person can answer.
 	//
-	// compact extends that rule to EVERY field, and the reason is not tidiness. A brokered
-	// gate legitimately has no origin and no mode: an executor raises a gate without
-	// deciding who answers it or under which dial. Those printed as `origin: ""` next to a
-	// `reason: ""` that was a real drop — the broker kept only id and gate — and the drop
-	// was indistinguishable from the structural blanks flanking it. A missing key is
-	// visible; an empty one is camouflage. `id` and `where` are structural and always set.
+	// Absent keys stay absent, as they did when this compacted a map: a missing key is
+	// visible, an empty one is camouflage. The record is written that way, so nothing here
+	// has to strip.
 	out := make([]map[string]any, 0)
-	compact := func(rec map[string]any) map[string]any {
-		for k, v := range rec {
-			if s, ok := v.(string); ok && s == "" {
-				delete(rec, k)
+	for _, ent := range s.scopedStore(r).List(func(ref entity.Ref) bool {
+		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+	}) {
+		p := entity.ToObj(ent.Payload)
+		if p == nil || p["status"] != mirror.QuestionPending {
+			continue
+		}
+		rec := map[string]any{}
+		for k, v := range p {
+			switch k {
+			case "status", "posedAt": // structural: every pending question has them
+			default:
+				rec[k] = v
 			}
 		}
-		return rec
-	}
-	add := func(rec map[string]any, subject string) {
-		if subject != "" {
-			rec["subject"] = subject
+		// where says which plane raised it, and is derived rather than stored: a question
+		// with a process is a run's, one without is a firing's. Storing it would be a third
+		// spelling of what `process` already says.
+		if _, ok := rec["process"]; ok {
+			rec["where"] = "process"
+		} else {
+			rec["where"] = "engine"
 		}
-		out = append(out, compact(rec))
-	}
-	for _, p := range s.Reg.Pending() {
-		rec := map[string]any{
-			"id": p.Question.ID, "origin": p.Question.Origin, "gate": p.Question.Gate,
-			"mode": p.Question.Mode.String(), "reason": p.Question.Reason, "tool": p.Tool,
-			"where": "engine",
-		}
-		// Deliberately NOT "process". An engine gate is raised before the spawn, so this
-		// names a process that does not exist yet and will not exist at all if the gate is
-		// denied. Reusing the key a process gate uses for a process that IS running would
-		// make one field mean two things, and the reader could not tell which.
-		if p.Question.Spawns != "" {
-			rec["spawns"] = p.Question.Spawns
-		}
-		add(rec, p.Question.Subject)
-	}
-	for _, snap := range s.processSnapshots(s.scopedStore(r)) {
-		subject := ""
-		if s.Eng != nil {
-			subject = s.Eng.SubjectOf(snap.ID)
-		}
-		for _, pg := range snap.Pending {
-			add(map[string]any{
-				"id": pg.ID, "origin": pg.Origin, "gate": pg.Gate,
-				"mode": pg.Mode, "reason": pg.Reason, "tool": pg.Tool,
-				"process": snap.ID, "where": "process",
-			}, subject)
-		}
+		out = append(out, rec)
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -1043,6 +1041,7 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 			return
 		}
+		mirror.AnswerQuestion(s.scopedStore(r), body.ID, res)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -1050,6 +1049,7 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 		return
 	}
+	mirror.AnswerQuestion(s.scopedStore(r), body.ID, res)
 	w.WriteHeader(http.StatusNoContent)
 }
 
