@@ -605,7 +605,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	var mu sync.Mutex
 	allProceed := true
 
-	for _, gate := range t.Gates {
+	for _, gate := range t.AllGates() {
 		if gate.Formula != nil { // temporal gate: monitored on the store, not posed
 			gname := gate.Name
 			if gname == "" {
@@ -637,6 +637,10 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// named exactly: the question is about this entity and no other.
 			Subject: subj.String(),
 			Spawns:  spawnLabel(t, subjects),
+			// The named layer for a FIRING's gates, which a spawn has had all along and a
+			// rule did not. Empty leaves the question to the standing layer, and then to
+			// the docket a person reads.
+			BoundTo: t.GateResolver(),
 		}
 		wg.Add(1)
 		go func(d process.GateQuestion, gname string) {

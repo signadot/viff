@@ -40,7 +40,44 @@ type Trigger struct {
 	Stratum   string    `tony:"field=stratum,omitzero"`
 	Condition Condition `tony:"field=condition"`
 	Gates     []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	// Gating groups the two facts about a rule's OWN gates: which they are, and who answers
+	// them. `gates:` at the top level still works and means `gating: {gates: …}` — the two
+	// are one field read two ways, not two fields that can disagree, and writing both is
+	// refused rather than merged.
+	//
+	// It exists because a resolver had nowhere to be named for a FIRING's gates. A spawn
+	// says `resolver:` for the run it starts; a rule had no counterpart, so the named door
+	// was open on one side of the design and shut on the other.
+	Gating    *Gating   `tony:"field=gating,omitzero"`
 	Action    Action    `tony:"field=action"`
+}
+
+// Gating is a rule's own gates and who answers them.
+//
+//tony:schemagen=verse-gating,notag
+type Gating struct {
+	// Resolver names the binding that answers these gates — `resolvers:<kind>:<name>`. Same
+	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
+	// and one word for it is worth more than either word being marginally better in its own
+	// place. Empty leaves the question to the standing layer, then to the human docket.
+	Resolver string `tony:"field=resolver,omitzero"`
+	Gates    []Gate `tony:"field=gates,omitzero"`
+}
+
+// AllGates is the rule's gates however they were written.
+func (t Trigger) AllGates() []Gate {
+	if t.Gating != nil && len(t.Gating.Gates) > 0 {
+		return t.Gating.Gates
+	}
+	return t.Gates
+}
+
+// GateResolver is the binding named to answer this rule's own gates, empty for none.
+func (t Trigger) GateResolver() string {
+	if t.Gating == nil {
+		return ""
+	}
+	return t.Gating.Resolver
 }
 
 // Condition is the ECA "cause": what the firing is about, and what fires it. Subject and

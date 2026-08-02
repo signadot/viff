@@ -75,6 +75,9 @@ type Server struct {
 	// scope is dropped (disconnect).
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// standingOwner answers "which standing binding covers this subject", for the paths that
+	// post a question without one — a brokered run's frames, whose deriver ran elsewhere.
+	standingOwner func(subject string) string
 	// tripPace is the cycle throttle's D, applied to every engine this server owns. Guarded by
 	// scopeMu because scopeEngine reads it when it builds a scope's engine, lazily.
 	tripPace    time.Duration
@@ -133,7 +136,39 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	// raised: the engine's own registry for a firing's gates, and each hosted process for a
 	// run's. One record shape either way — the docket, a charter predicate and an auditor all
 	// read the same fact, and neither source is privileged.
-	reg.OnPost(func(p process.Pending) { mirror.PostQuestion(store, p, "") })
+	// The layer rule, applied where a question is posed. A question carries the owner its
+	// LAYER gives it: what named it, else the standing binding covering its subject, else
+	// nothing — which is `⊤`, the docket a person reads.
+	//
+	// Absent layers are skipped rather than ranked. A standing binding is not a wider claim
+	// on a named one's questions; it answers a different set.
+	owner := func(q *process.GateQuestion) {
+		if q.BoundTo != "" || q.Subject == "" {
+			return
+		}
+		ref, err := entity.ParseRef(q.Subject)
+		if err != nil {
+			return
+		}
+		if res, ok := resolver.Owner(store, ref); ok {
+			q.BoundTo = resolver.Ref(res.Kind, res.Name).String()
+		}
+	}
+	standingOwner := func(subject string) string {
+		ref, err := entity.ParseRef(subject)
+		if err != nil {
+			return ""
+		}
+		if res, ok := resolver.Owner(store, ref); ok {
+			return resolver.Ref(res.Kind, res.Name).String()
+		}
+		return ""
+	}
+	s.standingOwner = standingOwner
+	reg.OnPost(func(p process.Pending) {
+		owner(&p.Question)
+		mirror.PostQuestion(store, p, "")
+	})
 	// And the counterpart. A question whose last waiter was cancelled leaves the registry
 	// silently; without this the record it published stays `pending` on the docket, offering
 	// a decision nothing is left to receive.
@@ -149,6 +184,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 				p.Question.Subject = entity.Str(e.Payload, "flow")
 			}
 		}
+		owner(&p.Question)
 		mirror.PostQuestion(store, p, processID)
 	})
 
@@ -268,6 +304,7 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
+			Resolver: spec.Resolver, Owner: s.standingOwner,
 		}
 		l, err := launchOf(id, spec)
 		if err != nil {
@@ -1584,7 +1621,10 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver,
 	}, nil)
-	mirror.Reflect(store, id, h, mirror.Meta{Runner: s.runner.Ref()})
+	mirror.Reflect(store, id, h, mirror.Meta{
+		Runner: s.runner.Ref(), Subject: body.Subject,
+		Resolver: body.Resolver, Owner: s.standingOwner,
+	})
 	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }

@@ -520,6 +520,24 @@ single default is right for both. The charter is the party that knows which it i
 the runtime's own modest default applies; a longer window is paid for in memory per live
 process, which is why the author chooses it rather than inheriting it.
 
+### Who answers a rule's own gates
+
+```tony
+gating:
+  resolver: resolvers:security:security-review
+  gates:    [{name: ship, mode: ask}]
+```
+
+`gating` groups the two facts about a rule's gates: which they are, and who answers them.
+`gates:` at the top level still works and means `gating: {gates: …}` — one field read two
+ways, not two that can disagree — and writing both is refused rather than merged, because a
+rule that says which gates it has twice has said it twice.
+
+`resolver` names an installed binding (`verse resolver add`). It is the same word a spawn
+uses for the same act: a spawn names who answers the run it starts, a rule names who answers
+the gates it raises itself. Empty leaves the question to whatever standing binding covers its
+subject, and then to the docket a person reads.
+
 `seq` runs a list of actions in order, each starting when the previous one completes. It is
 the depth axis, and it has its own section below.
 

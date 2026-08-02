@@ -151,6 +151,7 @@ define:
   id: .[string]
   resolver: .[string]
   retain: .[int]
+  subject: .[string]
   task: .[string]
 signature:
   name: verse-spawn

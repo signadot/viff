@@ -63,6 +63,17 @@ type Meta struct {
 	Doer  string
 	Grant string
 	Tools []string
+	// Resolver is the binding a spawn NAMED to answer this run's gates, published on the
+	// entity so "who is watching this" is readable beside what the work may do.
+	Resolver string
+	// Owner answers "which standing binding covers this subject", for a question the spawn
+	// named nobody for. It is a callback rather than a call because mirror must not import
+	// the resolver package: resolver reads the charter's match vocabulary, trigger reads
+	// mirror, and the cycle closes. So the party that knows all three supplies the lookup.
+	//
+	// Nil means no standing layer is consulted, which is what a caller with no store view
+	// of bindings should pass.
+	Owner func(subject string) string
 }
 
 // TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
@@ -124,6 +135,9 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	if len(m.Tools) > 0 {
 		st["tools"] = m.Tools
 	}
+	if m.Resolver != "" {
+		st["resolver"] = m.Resolver
+	}
 	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
 	// dial loop) rather than being pre-configured. Local/remote-processd handles have none.
@@ -144,7 +158,7 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 		// been keeping all along.
 		attempt := 0
 		for {
-			ended, heard := drainInto(store, id, st, h, ch)
+			ended, heard := drainInto(store, id, st, m, h, ch)
 			unsub()
 			if ended {
 				return
@@ -184,7 +198,7 @@ func backoff(attempt int) time.Duration {
 
 // drainInto projects one subscription's frames, reporting whether the PROCESS ended (true) or
 // merely the stream did (false).
-func drainInto(store entity.Store, id string, st entity.Obj, h process.Handle, ch <-chan process.Frame) (ended, heard bool) {
+func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.Handle, ch <-chan process.Frame) (ended, heard bool) {
 	{
 		for ev := range ch {
 			if !heard {
@@ -207,7 +221,16 @@ func drainInto(store entity.Store, id string, st entity.Obj, h process.Handle, c
 				// live there; duplicating any of them here would be a second spelling of one
 				// fact, and the entity is an index.
 				st["pending"] = QuestionRef(ev.ID).String()
-				PostFrameQuestion(store, ev, id)
+				// A frame carries no subject and no owner — the deriver that knew them ran
+				// on another machine — so they come from what this mirror already holds:
+				// the run's flow, the binding its spawn named, and failing that the
+				// standing layer covering the subject.
+				subject := entity.Str(st.Payload(), "flow")
+				owner := m.Resolver
+				if owner == "" && subject != "" && m.Owner != nil {
+					owner = m.Owner(subject)
+				}
+				PostFrameQuestion(store, ev, id, subject, owner)
 			case process.EvDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays
 				// as it was. Saying "this is gone" is the writer's job, and it is the whole

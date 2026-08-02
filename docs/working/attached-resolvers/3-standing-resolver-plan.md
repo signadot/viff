@@ -129,8 +129,14 @@ its LAYER gives it:
 
 ```
 a run's question    → the spawn's resolver, else the standing binding covering its flow, else ⊤
-a firing's question → the standing binding covering its subject, else ⊤
+a firing's question → the rule's gating.resolver, else the standing binding, else ⊤
 ```
+
+The named layer for a FIRING did not exist and neither plan had noticed: a spawn has said
+`resolver:` since the first increment, and a rule had no counterpart, so the named door was
+open on one side of the design and shut on the other. `gating: {resolver, gates}` is that
+counterpart — the design's own shape — with top-level `gates:` still meaning `gating: {gates:
+…}` and writing both refused rather than merged.
 
 Absent layers are skipped, which is what makes this a rule about layers and not a ranking. A
 standing binding is not a wider claim on a run's questions; it answers a different set — and

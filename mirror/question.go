@@ -93,7 +93,7 @@ func PostQuestion(store entity.Store, p process.Pending, processID string) {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev process.Frame, processID string) {
+func PostFrameQuestion(store entity.Store, ev process.Frame, processID, subject, owner string) {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -109,11 +109,13 @@ func PostFrameQuestion(store entity.Store, ev process.Frame, processID string) {
 		origin = ""
 	}
 	for k, v := range map[string]string{
-		"origin":  origin,
-		"mode":    ev.Mode,
-		"reason":  ev.Text,
-		"tool":    ev.Tool,
-		"process": processID,
+		"origin":   origin,
+		"mode":     ev.Mode,
+		"reason":   ev.Text,
+		"tool":     ev.Tool,
+		"process":  processID,
+		"subject":  subject,
+		"resolver": owner,
 	} {
 		if v != "" {
 			rec[k] = v

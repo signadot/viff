@@ -112,6 +112,10 @@ type Spawn struct {
 	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
 	// of the same field, so `verse process run` and a firing can ask for the same thing.
 	Retain int `tony:"field=retain,omitzero"`
+	// Subject is the flow this run belongs to — the entity it is about. A trigger spawn
+	// carries one from its firing; this is the ad-hoc face of the same field, and without it
+	// a `process run` is about nothing, which is a real state and not a useful default.
+	Subject string `tony:"field=subject,omitzero"`
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
 	// spawn's `resolver:`, so `verse process run` and a firing can bind the same way.
 	Resolver string `tony:"field=resolver,omitzero"`

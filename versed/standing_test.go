@@ -3,12 +3,24 @@ package versed
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 )
+
+// spawnFor starts a run about a subject, optionally naming a resolver for it.
+func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string) {
+	t.Helper()
+	resp := postTony(t, ts.URL+"/processes", map[string]any{
+		"id": id, "task": "true", "subject": subject, "resolver": resolverRef,
+	})
+	resp.Body.Close()
+}
 
 func standing(name, area string) string {
 	return `{name: ` + name + `, kind: security, condition: {subject: {system: change, kind: pr,` +
@@ -109,4 +121,106 @@ func TestInstallingReportsWhatItOverlaps(t *testing.T) {
 	if out["overlaps"] != nil {
 		t.Fatalf("a binding over another kind reports %v", out["overlaps"])
 	}
+}
+
+// Ownership follows from what DECLARED it, layer by layer, and absent layers are skipped.
+//
+//	a run's question    → the spawn's resolver, else the standing binding covering its flow, else ⊤
+//	a firing's question → the rule's gating.resolver, else the standing binding, else ⊤
+//
+// That is a rule about layers and not a ranking between two matches. A standing binding is not
+// a wider claim on a named one's questions; it answers a different set — which is why a run
+// whose spawn names a resolver leaves its standing binding nothing to do rather than competing
+// with it.
+func TestTheLayerRuleDecidesWhoOwnsAQuestion(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+
+	// A run about a covered subject, whose spawn ALSO names one: the named layer owns it.
+	pr(t, srv, "1", "payments")
+	spawnFor(t, ts, "named", "change:pr:1", "resolvers:security:security-review")
+	if got := question(t, srv, waitQuestion(t, srv, "named"))["resolver"]; got != "resolvers:security:security-review" {
+		t.Fatalf("a named run is owned by %v, want the binding its spawn named", got)
+	}
+
+	// The same run with no name: the standing binding covering its flow owns it.
+	spawnFor(t, ts, "unnamed", "change:pr:1", "")
+	if got := question(t, srv, waitQuestion(t, srv, "unnamed"))["resolver"]; got != "resolvers:security:payments-review" {
+		t.Fatalf("an unnamed run over a covered subject is owned by %v, want the standing binding", got)
+	}
+
+	// A run about a subject nobody covers: absent, which is ⊤ — the docket a person reads.
+	pr(t, srv, "2", "infra")
+	spawnFor(t, ts, "uncovered", "change:pr:2", "")
+	if got := question(t, srv, waitQuestion(t, srv, "uncovered"))["resolver"]; got != nil {
+		t.Fatalf("an uncovered run is owned by %v, want nobody", got)
+	}
+}
+
+// And the firing side of the same rule: a trigger gate is owned by the resolver its rule
+// named, else by the standing binding covering the subject it is about.
+func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+
+	// A rule that names nobody: the standing binding covering the subject owns its gate.
+	addRule(t, ts, `{
+		name: guard,
+		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		gates:  [{name: approval, mode: ask}],
+		action: {patch: {stage: reviewed}},
+	}`)
+	pr(t, srv, "1", "payments")
+	if got := waitOwner(t, srv, "guard"); got != "resolvers:security:payments-review" {
+		t.Fatalf("a firing's gate is owned by %q, want the standing binding", got)
+	}
+
+	// A rule that names one: the named layer owns it, and the standing binding is left the
+	// questions it was already answering rather than competing for these.
+	addRule(t, ts, `{
+		name: named,
+		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		gating: {resolver: "resolvers:security:security-review", gates: [{name: sign, mode: ask}]},
+		action: {patch: {signed: true}},
+	}`)
+	pr(t, srv, "2", "payments")
+	if got := waitOwner(t, srv, "named"); got != "resolvers:security:security-review" {
+		t.Fatalf("a rule that named its resolver has its gate owned by %q", got)
+	}
+}
+
+func addRule(t *testing.T, ts *httptest.Server, doc string) {
+	t.Helper()
+	resp, err := http.Post(ts.URL+"/triggers", "application/tony", strings.NewReader(doc))
+	if err != nil {
+		t.Fatalf("trigger add: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("trigger add = %s", resp.Status)
+	}
+}
+
+// waitOwner waits for a question raised by origin and returns the binding that owns it.
+func waitOwner(t *testing.T, srv *Server, origin string) string {
+	t.Helper()
+	for range 400 {
+		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
+			return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+		}) {
+			p := entity.ToObj(ent.Payload)
+			if p["origin"] == origin && p["status"] == mirror.QuestionPending {
+				owner, _ := p["resolver"].(string)
+				return owner
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("%s never posed a question", origin)
+	return ""
 }
