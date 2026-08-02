@@ -84,27 +84,68 @@ keeps reading; the question appears on the standing binding's spine; that bindin
 the run proceeds on the original question; and the escalating resolver sees the decision on its
 own stream, which is what makes a precedent visible instead of remembered.
 
-### 4. Silence does the same thing more slowly
+### 4. What a deadline MEANS, and then what makes it happen
 
 `escalatesAt = posedAt + escalatesAfter`, stamped on the question when it is posed and ABSOLUTE
-so a restart cannot slide it.
+so a restart cannot slide it. That much is settled. What is not is what the expiry does, and
+that question is bigger than the mechanism it is usually mistaken for.
 
-**The mechanism is the one real decision here.** The claim lease expires lazily — "when
-somebody next asks for the work, which is the only moment it matters" — and that will not do
-here, because the layer above must SEE the question arrive, and nothing is asking on its
-behalf. A question whose deadline passed while nobody looked has not escalated in any sense the
-design means.
+**Four readings, and they are not variants of one another:**
 
-So this is the first thing in verse that needs a clock to make something happen rather than to
-answer a question when asked. It should be as small as that admission: one sweep, over pending
-questions carrying an `escalatesAt` in the past, doing exactly what an `escalate` verdict does.
-Not a scheduler, and not a timer per question — the docket is already a selection, and "which
-questions are overdue" is a predicate over it.
+| on expiry | what it says |
+|---|---|
+| **escalate** | the ask moves up; nobody has yet answered |
+| **proceed** | give folks a chance to weigh in, but progress is assumed without input |
+| **deny** | the same shape, defaulting the other way |
+| **revert** | the escalated ask lapses and the ask it was raised from stands again |
 
-**Proves:** a question moves without anyone saying so. Test: a binding with a short
-`escalatesAfter` is given a question and stays silent; the question is re-owned by the layer
-above and carries the handover; its id is unchanged; and a question inside its deadline is left
-alone.
+The first three are one axis — an escalated ASK versus an escalated ANSWER — and the fourth is
+not on it at all.
+
+**This increment proves `escalate`, and the reason is forced rather than chosen.** The whole
+point of pairing the deadline with `exclusive` is that an exclusive binding which is down must
+not become a question nobody may answer. If expiry meant `proceed`, a down exclusive resolver
+would silently approve every gate it exists to hold — the failure it was installed to prevent,
+arriving by the mechanism installed to make it safe. `escalate` is the only outcome that
+resolves the deadlock by finding somebody who *can* answer, and `⊤` is a person.
+
+**`proceed` and `deny` are additive and should stay sayable.** They are a different outcome on
+the same deadline, and the field should be shaped so adding one is a value rather than a
+redesign: `escalatesAfter: 4h` is `deadline: {after: 4h, then: escalate}` with the outcome
+baked into the name. This increment keeps the design's spelling and records the general one,
+because a name that says its outcome is the right name while there is one outcome.
+
+**`revert` is NOT additive, which is the finding worth writing down.** It requires escalation
+to be a request that can lapse, and the design says a transfer: "the layer above owns it from
+that moment", "it does not ask a favour". A deadline that hands the question back is a
+different protocol wearing the same word — layer *n* would have to remain able to answer what
+it has already declined, and "every hop is to a layer answering a smaller class of questions"
+stops holding. Worth wanting, and worth building as its own thing rather than as a fourth value
+of this field.
+
+### 4b. And then the mechanism, which is smaller than it looked
+
+Tracing who CARES that a deadline passed answers it. The layer above is the only party the
+expiry is for, and it learns by reading — its spine, or its docket if it is `⊤` and a person.
+So the expiry can be evaluated when that reader arrives, which is the shape the claim lease
+already uses: "expiry happens when somebody next asks for the work, which is the only moment
+it matters".
+
+Which corrects the thing this plan said first: that a lazy deadline "will not do here, because
+the layer above must SEE the question arrive". It must — but the reader connecting is the
+moment to make it appear, not a moment too late. A sweeper would compute the same transfer
+slightly earlier, for nobody.
+
+The cost is stated rather than hidden: a question overdue while nothing is reading stays where
+it is, and moves the instant anything looks. For `⊤` that is exactly right — the docket a
+person opens is the docket as of now. For an offline layer above, the work waits, which it was
+going to do anyway.
+
+**Proves:** a question moves without anyone saying so, and moves once. Test: a binding with a
+short `escalatesAfter` stays silent; the layer above reads its spine and the question is there,
+re-owned, with the handover and an unchanged id; a question inside its deadline is untouched;
+reading twice does not move it twice; and a question whose owner answers before the deadline
+never escalates at all.
 
 ### 5. `exclusive`: whose answer counts
 
@@ -133,16 +174,19 @@ binding is still named or standing, and the ladder is still two hops.
 
 ## The residual to expect
 
-**What an overdue sweep costs when nothing is overdue.** The sweep is a predicate over pending
-questions, which is a selection over a slice that is small by construction — a docket with a
-thousand open questions is a verse in trouble for other reasons. But it runs whether or not
-anything is waiting, and its interval is a number nobody has evidence for. The lease chose
-laziness to avoid exactly this and could not be followed here.
+**Whether lazy expiry is enough once something depends on the timing.** Evaluating at the
+reader is right while the only consumer of an escalation is a reader. A rule that fired on an
+overdue question, or a report that counted them, would want the transfer to have happened —
+and would be the evidence that a sweep is worth its interval. Nothing wants that yet.
 
 **Whether an override should be answerable by anyone.** It lands as an event naming both
 parties, which is the design's answer, and that answer is about VISIBILITY rather than
 permission — it says who did it, not who may. The gap `authority.md` names is the same one, and
 this increment does not close it.
+
+**The clock, in a footnote where it belongs.** `escalatesAt` is absolute and computed once, so
+a restart cannot slide it and no arithmetic happens on a wall clock later. Two readings of one
+machine's clock, as the claim lease already does.
 
 **Whether escalation should carry the escalating resolver's notes.** A transfer that arrives
 bare makes the layer above read the history itself, which it can; a transfer carrying what the
