@@ -34,9 +34,9 @@ refuses one naming a different question; `read-only` refuses both.
 
 `mirror` writes the question as a record rather than two fields: id, gate, mode, tool, the
 derived verbs, resources and paths, subject, spawns, and the ref of the resolver the question is
-addressed to. That last field is the only one not already on `GateQuestion`: a ref-named
-resolver supplies it, and an inline one is given a synthesised ref keyed to where it was
-declared, so the field is never empty and no consumer has to handle two shapes. The record
+addressed to. That last field is the only one not already on `GateQuestion`, and it comes from
+the binding: a question addressed to a resolver carries its ref, and one nobody is bound to
+carries none, so empty means unbound rather than unknown. The record
 *replaces* `pending` and
 `pendingGate` in this same step rather than standing beside them — the entity's `pending` has no
 readers at all today and `pendingGate` has exactly one, `trigger/flowtree.go` feeding
@@ -61,11 +61,10 @@ which has nowhere to put a trigger gate's question and cannot hold two from one 
 **Proves:** a question is matchable without any privileged access, and addressable. Test: a
 plain `entity.Pattern` selects the pending questions of a process by verb and by path; a charter
 rule with `value: { pending: { verbs: [write] } }` fires on one and not on another; and one
-matching on the resolver ref selects only the questions addressed to it, which is what makes a
-rule the body of a named resolver later. Two negatives matter as much: a question with no
-derived effects still publishes id, gate and subject, because a tool that classifies to nothing
-must not vanish from the docket, and a question from an inline-declared resolver still publishes
-a ref rather than an empty field.
+matching on the resolver ref selects only the questions addressed to it, which is how a
+resolver's stream is cut later. And the negative that matters: a question with no derived
+effects still publishes id, gate and subject, because a tool that classifies to nothing must not
+vanish from the docket.
 
 ### 3. One answering path, and a loser that leaves a trace
 
@@ -97,14 +96,20 @@ The brokered and remote `/events` path replays from a cursor and then goes live,
 resync-below-watermark frame, matching what `processd` already does locally. This is the runner
 contract being honoured rather than a new capability.
 
+It is also the step the design leans on hardest, which is worth knowing while ordering the work.
+A resolver is a client of this endpoint and nothing else — it reads from a position and answers
+on the control plane — so replay-then-live is not a consistency fix for `verse process attach`,
+it is the surface supervision is built on. A resolver over a runner that only streams from now
+would be one that cannot be resumed, taken over, or told what it missed.
+
 **Proves:** attaching at a cursor yields the same events wherever the work runs. Test: drive a
 process past N events on each runner, attach at `?since=2`, assert identical frames and
 ordering; attach below the watermark, assert a resync frame followed by current state.
 
 ## What this plan does not build
 
-No supervision record, no `resolvers:` entity and no verb to manage one, no sponsoring grant,
-no `resolve` action verb in the charter grammar. Step 1 makes resolution *sayable* on the hard
+No resolver position or notes, no `resolvers:` entity and no verb to manage one, no resolver
+process of any driver. Step 1 makes resolution *sayable* on the hard
 axis and step 2 makes a question *matchable*; a rule that answers one is the first step of the
 design, and it starts the moment this plan is done.
 
