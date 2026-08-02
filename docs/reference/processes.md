@@ -104,6 +104,9 @@ payload:
   vectorBy: human:scott
 ```
 
+`observed: false` appears while the mirror cannot reach the runner holding the process. The
+entity's other fields are then the last thing it heard rather than the current truth.
+
 It outlives the process: the result, the last `say`, the last tool output and the terminal
 `status` are all still there after the live registry has retired it, which is what
 `verse flow show` reads for history. The mirror is an index, not a warehouse — it publishes

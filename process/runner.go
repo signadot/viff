@@ -133,6 +133,12 @@ var (
 
 type Handle interface {
 	Subscribe() (<-chan Frame, func())
+	// SubscribeSince resumes: the frames after that cursor, then live, with an EvGap first
+	// if the cursor is below what is still retained. It is on the interface rather than
+	// type-asserted for because a reader that cannot resume cannot recover — a stream that
+	// dies mid-process would leave it with no way back to current, and no way to tell that
+	// from the process having ended.
+	SubscribeSince(since int64) (<-chan Frame, func())
 	Pause() error
 	Resume() error
 	Cancel(reason string) error
@@ -168,6 +174,10 @@ func (f failedHandle) Subscribe() (<-chan Frame, func()) {
 	close(ch)
 	return ch, func() {}
 }
+
+// Resuming work that never started is the same one-frame record from any cursor: there is
+// nothing before the failure and there will be nothing after it.
+func (f failedHandle) SubscribeSince(int64) (<-chan Frame, func()) { return f.Subscribe() }
 
 // Control on work that never started is refused rather than silently accepted. There is no
 // process to pause, and saying so is the difference between "your cancel landed" and "there

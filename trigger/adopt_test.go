@@ -16,8 +16,11 @@ type recHandle struct {
 }
 
 func (h *recHandle) Subscribe() (<-chan process.Frame, func()) { return h.ch, func() {} }
-func (h *recHandle) Pause() error                              { return nil }
-func (h *recHandle) Resume() error                             { return nil }
+func (h *recHandle) SubscribeSince(int64) (<-chan process.Frame, func()) {
+	return h.ch, func() {}
+}
+func (h *recHandle) Pause() error  { return nil }
+func (h *recHandle) Resume() error { return nil }
 func (h *recHandle) Cancel(string) error {
 	h.mu.Lock()
 	h.cancelled = true

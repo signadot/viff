@@ -10,6 +10,7 @@ package mirror
 
 import (
 	"strings"
+	"time"
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/entity"
@@ -133,8 +134,69 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	write(store, id, st)
 	go func() {
-		defer unsub()
+		// A stream ending is not the same fact as a process ending, and treating them as one
+		// is what let a mirror stop forever: the connection died, Reflect returned, and the
+		// entity kept saying `running` about work that had long since finished.
+		//
+		// The terminal is what says the process ended — always the last frame, never dropped
+		// and never absent (see process/event.go). A channel that closes without one closed
+		// for a reason of its own, and the answer is to resume from the cursor this loop has
+		// been keeping all along.
+		attempt := 0
+		for {
+			ended, heard := drainInto(store, id, st, h, ch)
+			unsub()
+			if ended {
+				return
+			}
+			if heard {
+				attempt = 0 // it worked for a while; the next outage starts its own count
+			}
+			if attempt >= reconnectAttempts {
+				// Gave up, and says so. The entity keeps `observed: false` rather than
+				// reverting to a confident `running` nobody is watching.
+				return
+			}
+			// Said BEFORE the wait, not after it: a reader asking during the outage is
+			// exactly the reader who needs to know the index is not current.
+			st["observed"] = false
+			write(store, id, st)
+			time.Sleep(backoff(attempt))
+			attempt++
+			since, _ := st["cursor"].(int64)
+			ch, unsub = h.SubscribeSince(since)
+		}
+	}()
+}
+
+// reconnectAttempts bounds how long a mirror keeps trying to reopen a stream that keeps
+// dying. With the backoff below it is a few minutes — long enough to outlast a runner
+// restart, short enough that a process on a runner that is never coming back does not hold a
+// goroutine and a retry loop forever. A stream that delivers anything at all resets it.
+const reconnectAttempts = 40
+
+// backoff grows to a ceiling and stays there. A mirror reconnecting to a runner that is down
+// should not hammer it on the way.
+func backoff(attempt int) time.Duration {
+	d := time.Duration(1<<min(attempt, 5)) * 250 * time.Millisecond
+	return min(d, 8*time.Second)
+}
+
+// drainInto projects one subscription's frames, reporting whether the PROCESS ended (true) or
+// merely the stream did (false).
+func drainInto(store entity.Store, id string, st entity.Obj, h process.Handle, ch <-chan process.Frame) (ended, heard bool) {
+	{
 		for ev := range ch {
+			if !heard {
+				// The first frame of a resumed stream is the only proof it is working, and
+				// nothing else can stand in for it — a channel that is merely open may be
+				// one that is about to close.
+				heard = true
+				if st["observed"] == false {
+					st["observed"] = nil // nil, not delete: a write MERGES
+					write(store, id, st)
+				}
+			}
 			if ev.Cursor > 0 { // high-water for resume: verse re-subscribes ?since=cursor
 				st["cursor"] = ev.Cursor
 			}
@@ -196,7 +258,7 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
 						OrphanQuestions(store, id)
-						return // stop projecting; the entity remains, marked terminal
+						return true, heard // the PROCESS ended; the entity remains, terminal
 					}
 				}
 				write(store, id, st)
@@ -211,7 +273,8 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 			}
 			write(store, id, st) // the payload is cloned on the way out; safe to reuse st
 		}
-	}()
+	}
+	return false, heard
 }
 
 // write projects the accumulated state onto the process's entity. A failed write is

@@ -142,3 +142,78 @@ func TestSubscribingToALiveProcessStaysOpen(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+// A reader that fell below the retained window is told WHAT it missed, not merely that it
+// missed something.
+//
+// The live path replays open gates; the resume path did not, on the reasoning that the ring
+// carries them — which stops being true at exactly the moment the gap fires. A resolver is a
+// client of this call and nothing else, so it reconnected, learned it was behind, and could
+// not see the open question it exists to answer.
+func TestAResumeBelowTheWindowReplaysOpenGates(t *testing.T) {
+	p := NewProcess("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p.emit(Frame{Kind: EvPending, ID: "p~d1", Gate: "write", Mode: "ASK"})
+	gateAt := p.Cursor()
+	for range ringCap + 10 { // it keeps talking while the gate stands
+		p.emit(Frame{Kind: EvSay, Text: "thinking"})
+	}
+
+	ch, unsub := p.SubscribeSince(gateAt - 1)
+	defer unsub()
+	kinds, _ := drain(t, ch)
+	if len(kinds) == 0 || kinds[0] != EvGap+":" {
+		t.Fatalf("first frame = %v, want the gap marker", kinds[:min(2, len(kinds))])
+	}
+	var sawGate bool
+	for _, k := range kinds {
+		if k == EvPending+":" {
+			sawGate = true
+		}
+	}
+	if !sawGate {
+		t.Fatalf("the resume said %d frames and none was the standing gate", len(kinds))
+	}
+}
+
+// And a gate that has been ANSWERED is not replayed: it is not open, and re-announcing it
+// would put a settled question back on a reader's docket.
+func TestAResumeDoesNotReplayAnsweredGates(t *testing.T) {
+	p := NewProcess("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p.emit(Frame{Kind: EvPending, ID: "p~d1", Gate: "write"})
+	gateAt := p.Cursor()
+	p.emit(Frame{Kind: EvDecision, ID: "p~d1", Proceed: true, By: "human:scott"})
+	for range ringCap + 10 {
+		p.emit(Frame{Kind: EvSay, Text: "thinking"})
+	}
+
+	ch, unsub := p.SubscribeSince(gateAt - 1)
+	defer unsub()
+	kinds, _ := drain(t, ch)
+	for _, k := range kinds {
+		if k == EvPending+":" {
+			t.Fatal("an answered gate was replayed as though it were still open")
+		}
+	}
+}
+
+// Without a gap there is nothing to re-announce: the ring covers everything since the cursor,
+// so replaying open gates as well would show the reader the same question twice.
+func TestAResumeInsideTheWindowDoesNotDuplicate(t *testing.T) {
+	p := NewProcess("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p.emit(Frame{Kind: EvSay, Text: "starting"})
+	from := p.Cursor()
+	p.emit(Frame{Kind: EvPending, ID: "p~d1", Gate: "write"})
+
+	ch, unsub := p.SubscribeSince(from)
+	defer unsub()
+	kinds, _ := drain(t, ch)
+	var gates int
+	for _, k := range kinds {
+		if k == EvPending+":" {
+			gates++
+		}
+	}
+	if gates != 1 {
+		t.Fatalf("the standing gate appeared %d times in a resume inside the window", gates)
+	}
+}

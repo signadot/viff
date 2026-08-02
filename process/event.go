@@ -75,6 +75,21 @@ func (p *Process) SubscribeSince(since int64) (<-chan Frame, func()) {
 	return p.subscribe(func(s *subscriber) {
 		if len(p.ring) > 0 && since+1 < p.ring[0].Cursor { // gap below the window
 			trySend(s, Frame{Kind: EvGap, Process: p.ID, Cursor: p.cursor})
+			// A reader that fell below the window is told it missed some. Telling it WHAT
+			// is the part that matters: the live path replays open gates and this one did
+			// not, on the reasoning that the ring carries them — which stops being true at
+			// exactly the moment the gap fires. A resolver is a client of this call and
+			// nothing else, so it reconnected, learned it was behind, and could not see the
+			// question it exists to answer.
+			//
+			// Only in the gap case. Without one the ring covers everything since the
+			// cursor, so a gate raised after it is already in the replay and a gate raised
+			// before it is one the reader has already seen.
+			for _, g := range p.open {
+				if g.Cursor < p.ring[0].Cursor { // below the window, so the replay misses it
+					trySend(s, g)
+				}
+			}
 		}
 		for _, e := range p.ring {
 			if e.Cursor > since {
@@ -167,6 +182,15 @@ func (p *Process) emit(e Frame) {
 	p.ring = append(p.ring, e)
 	if len(p.ring) > ringCap {
 		p.ring = p.ring[len(p.ring)-ringCap:]
+	}
+	switch e.Kind { // what is still being asked, for a reader that resumes past the window
+	case EvPending:
+		if p.open == nil {
+			p.open = map[string]Frame{}
+		}
+		p.open[e.ID] = e
+	case EvDecision:
+		delete(p.open, e.ID)
 	}
 	terminal := terminalFrame(e)
 	for _, s := range p.subs {

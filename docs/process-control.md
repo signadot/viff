@@ -183,6 +183,19 @@ to whichever runtime holds the work — the local one, a broker, a remote proces
 that resumes gets the frames after its cursor and no others, wherever the process happens to
 run.
 
+A resume that falls below the window also replays the gates STILL OPEN below it. The gap says
+a reader missed something; this says what, and it matters because a resolver is a client of
+this endpoint and nothing else — without it a reconnecting resolver learns it is behind and
+cannot see the question it exists to answer. Only in the gap case: inside the window the
+replay already carries them.
+
+**A stream that ends without a terminal did not end because the process did.** The terminal is
+always the last frame, so its absence means the connection broke — and the answer is to resume
+from the last cursor, not to conclude anything about the work. `mirror.Reflect` does exactly
+that, backing off between attempts and publishing `observed: false` on the entity while it is
+disconnected, because an index that reads as confident while it is merely stale is worse than
+one that admits it.
+
 The terminal is a `status` event (`done|failed|cancelled` plus `result`) that verse CAS-writes
 once; `?since=<terminal cursor>` replays it and closes. A finished process's `/events` is a
 finite, replayable record, so a verse that restarts *after* completion still learns the

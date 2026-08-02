@@ -136,6 +136,10 @@ type Process struct {
 	subID  int
 	cursor int64   // per-process monotonic event cursor (assigned in emit)
 	ring   []Frame // bounded retained window, for SubscribeSince(?since) replay
+	// open is the gates standing right now, keyed by decision id: an EvPending opens one and
+	// its EvDecision closes it. The RING is not a substitute — it forgets, and what it
+	// forgets first is the oldest, which for a long-standing gate is the gate itself.
+	open map[string]Frame
 	// ended latches on the terminal frame. After it, the read plane is a finite record: no
 	// event will ever follow, so subscribers are closed rather than left listening to a
 	// process that has stopped speaking.

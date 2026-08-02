@@ -212,13 +212,16 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 type fakeHandle struct{ ch chan process.Frame }
 
 func (f *fakeHandle) Subscribe() (<-chan process.Frame, func()) { return f.ch, func() {} }
-func (f *fakeHandle) Pause() error                              { return nil }
-func (f *fakeHandle) Resume() error                             { return nil }
-func (f *fakeHandle) Cancel(string) error                       { return nil }
-func (f *fakeHandle) Steer(string, string) error                { return nil }
-func (f *fakeHandle) SetVector(*process.Vector, string) error   { return nil }
-func (f *fakeHandle) Result() string                            { return "" }
-func (f *fakeHandle) Err() string                               { return "" }
+func (f *fakeHandle) SubscribeSince(int64) (<-chan process.Frame, func()) {
+	return f.ch, func() {}
+}
+func (f *fakeHandle) Pause() error                            { return nil }
+func (f *fakeHandle) Resume() error                           { return nil }
+func (f *fakeHandle) Cancel(string) error                     { return nil }
+func (f *fakeHandle) Steer(string, string) error              { return nil }
+func (f *fakeHandle) SetVector(*process.Vector, string) error { return nil }
+func (f *fakeHandle) Result() string                          { return "" }
+func (f *fakeHandle) Err() string                             { return "" }
 
 // A gate that has been answered must LEAVE the entity, not linger on it. Reflect writes the
 // state it knows, and a write merges — so clearing a field means saying so, and the field
