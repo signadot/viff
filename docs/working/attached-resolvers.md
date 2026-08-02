@@ -1,1005 +1,340 @@
-# Attached resolvers: supervision as a cursor on a stream
+# Attached resolvers
 
-Status: notes from a conversation, nothing here runs. It builds on
-[supervising process gates](supervising-process-gates.md) and refines one move in it — that
-note proposes answering a gate by *writing*, and the steering invariant forbids exactly that.
-The charter-level counterpart that does run is [an automatic supervisor](../auto-supervisor.md).
+Status: nothing here runs. It builds on [supervising process
+gates](supervising-process-gates.md) and refines one move in it: that
+note answers a gate by writing, and the steering invariant forbids
+exactly that. The charter-level counterpart that does run is [an automatic
+supervisor](../auto-supervisor.md).
 
-**The ask.** Say a supervisor of process gates *in a charter*, and apply it to the process
-that charter spawns. Later, point the same supervisor at trigger gates. What follows is one
-mechanism serving both, which is the only reason the second half is cheap: a supervisor is a
-**stream**, a **durable position on it**, a **driver** from delta to verdict, and a verdict
-that leaves through the control plane. Trigger gates and process gates differ only in which
-stream.
+The ask is to say a supervisor of process gates in a charter, apply it to the work that charter
+spawns, and later point the same supervisor at trigger gates. One mechanism serves both, which
+is the only reason the second half is cheap.
 
-## The spine: who answers whom
+Four words carry the design. A _question_ is what a gate poses — a `process.GateQuestion`,
+carrying the `Origin` that raised it, the `Subject` it is about, a mode, and the derived effects
+of the action it gates. A _resolver_ answers questions. A _position_ is how far into a stream a
+resolver has read. A _verdict_ is one answer, naming the question it answers.
 
-Ownership, escalation, exclusivity and the regress argument all rest on one structure. It is
-smaller than it looks, and two earlier drafts of this section got it wrong the same way — by
-building an order over *competing claims to one question*, when the structure is composition and
-there are no competing claims.
+## A resolver is an entity
 
-**A question** is what a boundary poses: a `process.GateQuestion`, carrying an `Origin` — the
-process or firing that raised it — a `Subject`, a mode, and the derived effects of the action it
-gates.
-
-**A resolver is an entity**, `resolvers:<kind>:<id>` — `resolvers:security:scott`, where the kind
-carries whose concern it is — managed the way a process is managed at the entity level and
-installed through a verb of its own rather than a raw write:
-
-```sh
-verse resolver add -f reviewer.tony     # refuses on conflict, see below
-verse resolver remove reviewer
-verse resolvers                          # what is bound, and over what
-```
-
-It is not a pointer to something defined elsewhere. The entity carries the whole thing — its
-`condition`, how it answers, `escalatesAt`, whether it is `exclusive`, what it may sponsor —
-because a binding split across two surfaces is two things to keep in step.
+It is installed, not declared in a charter, and it carries the whole binding rather than
+pointing at one: what it supervises, how it answers, under what envelope, and its two dials.
 
 ```tony
-name:      security-review
-condition: { system: change, kind: pr, value: { area: payments } }
-resolutionURL:  https://sec.internal/verse      # or rules, or a doer — how it answers
-escalatesAt: 4h
-exclusive: true
+name:      security-review                       # resolvers:security:security-review
+condition:                                       # optional
+  subject: { system: change, kind: pr, value: { area: payments } }
+  when:    …                                     # the charter's own condition vocabulary
+byRef:     true                                  # may be named
+method:
+  driver:  url                                   # llm | script | url
+  vector:  ask                                   # auto | ask | park
+  tools:   [read_entity]
+  grant:   read-only
+escalatesAfter: 4h
+exclusive:      true
 ```
 
-`condition:` is the charter's existing match vocabulary and selects **entities**. It does not
-match rules, and nothing here needs it to.
+`condition` selects _entities_, in the vocabulary a trigger already uses. It does not match
+rules and does not need to.
 
-**Inline for can-call, a ref for route-to.** A resolver declared *inline* on a spawn is one
-verse can call — a `resolutionURL`, say — and it needs no name, because nothing has to select
-it: verse posts the question and waits. A resolver named by *ref* is one verse must route to,
-and the charter rules that answer it need an identity to match on. That is the whole of the
-distinction, and it decides the form rather than the other way round.
+`method` says how it answers and what the answering may do. `driver` chooses between an `llm`
+deciding, a `script` deciding, and a `url` verse hands the stream to. The rest is the envelope
+of whatever that driver runs — its _acting_ grant. Those three are inert for a `url`, which
+runs nothing verse can gate.
 
-**Every question carries the ref regardless.** An inline declaration gets one synthesised from
-where it was written — `resolvers:inline:<trigger>.<chain>`, deterministic like the spawn ids
-beside it, and dereferenced by reading the installed rule at that kpath — so `pending.resolver`
-is always populated and a reader never has to know which form declared it. The ids are not
-pretty. Uniformity beats pretty here: a field that is sometimes empty makes every consumer
-handle two shapes forever, and a kpath read sidesteps the parts nobody wants to type. (A bare
-`verse process run` has no chain, so its inline resolver keys on the process id instead.)
+`escalatesAfter` is a duration because a binding cannot know when a question will be posed. The
+question stamps `escalatesAt = posedAt + escalatesAfter` when it is, absolute so a restart
+cannot slide it.
 
-**A layer** is who answers whose questions. There are two declared and one that always exists:
+`verse resolver add|remove` and `verse resolvers` manage it. A verb rather than a raw write,
+because a write has nowhere to put the check that two conditions do not overlap.
+
+## Two doors, and one of them must be open
+
+```tony
+name: validate
+condition:
+  subject: { system: change, kind: pr, value: { stage: proposed } }
+gating:
+  resolver: resolvers:security:security-review   # answers this rule's own gates
+  gates:  [{ name: ship, mode: ask }]
+action:
+  spawn:
+    driver:   llm
+    task:     "Validate $subject and fix what is trivially wrong."
+    grant:    no-delegate                        # what the WORK may do at all
+    vector:   ask                                # …and how much of it asks
+    resolver: resolvers:security:security-review # answers this run's gates
+```
+
+A `condition` makes a resolver standing: nobody names it, and it supervises the work about the
+entities it selects. `byRef` is the other door, and it attaches by being named — `gating` for a
+rule's own gates, `resolver` on a spawn for a run's. A resolver with neither applies to nothing.
+
+The two are not exclusive. One remit can cover the subjects it always watches and still be
+pulled in where a charter wants it.
+
+## Layers
 
 ```
-the work  →  its process resolver  →  its subject resolver  →  ⊤
-             (named on the spawn)     (a resolver entity)      (auto, or the docket)
+the work  →  a named resolver  →  a standing resolver  →  ⊤
+             (gating, or a         (whose condition       (auto, or the
+              spawn's resolver)     covers the subject)     human docket)
 ```
 
-Layer *n* answers the questions layer *n−1* raises while deciding — the process resolver answers
-the work's questions, the subject resolver answers the *process resolver's* own questions, and
-`⊤` answers whatever is left. Absent layers are skipped, so a spawn with no `resolver:` sends
-the work's questions straight to its subject resolver, and a subject with none sends them to
-`⊤`.
+Layer _n_ answers the questions layer _n−1_ raises while deciding. Absent layers are skipped: a
+spawn with no `resolver` sends the work's questions straight to the standing resolver, and a
+subject with none sends them to `⊤`.
 
-**Attachment order is structural, not compared.** Which layer a resolver occupies follows from
-what declared it — a spawn's `resolver:` is layer one, a resolver entity is layer two — and
-never from ranking two matches against each other. That is the whole correction: a subject
-resolver is not a wider claim on the work's questions, it is the answerer of a different set of
-questions entirely.
+Which layer a resolver occupies follows from what declared it, never from ranking two matches
+against each other. A standing resolver is not a wider claim on the work's questions; it is the
+answerer of a different set of questions.
 
-**Ownership is unique by construction, not by tie-breaking.** A spawn names at most one
-resolver. Resolver entities must have **disjoint conditions**, and `verse resolver add` refuses
-one that overlaps an installed binding — which is the reason for a managed verb rather than
-`verse entity put`, since a store write has nowhere to put that check. So each question has
-exactly one answerer at its layer, and there is no least-element, no linear extension, and
-nothing to disambiguate.
+Ownership needs no tie-break. A spawn names at most one resolver, a rule names at most one, and
+standing conditions must be disjoint — so a question has exactly one answerer at its layer. The
+_owner_ of a question is that answerer, and `⊤` always exists, so every question has one.
 
-**Exclusivity is a different dial, about a different party.** Attachment says who supervises
-whom *inside* the stack. Exclusivity says whether anyone *outside* it — a person at the docket,
-who can always reach the control plane — may answer a question ahead of its owner. Advisory is
-the default and means first answer wins; exclusive means the owner's answer is the one that
-counts, with an override that stays possible and lands as an event naming both parties.
-Collapsing these two into one order is what produced the diamond, the linear extension and the
-tie-breaking rules in the drafts before this one. They are orthogonal: one is composition, the
-other is pre-emption.
+Three properties follow. Escalation reaches `⊤` in at most two hops, so no depth counter is
+needed. Every hop is to a layer answering a smaller class of questions, so there is no sideways
+move. And `⊤` matches everything while escalating to nothing, so "a resolver's own doubt ends
+with a person" falls out rather than being a rule.
 
-Three properties follow.
+## What a resolver reads and writes
 
-- **Termination.** Escalation ascends the layers and there are three, so it reaches `⊤` in at
-  most two hops. No depth counter and no cycle check, which is why
-  [§What has to be structural](#what-has-to-be-structural) needs no flatness rule.
-- **Progress.** Every hop is to a layer that answers a strictly smaller class of questions than
-  the one below raised — there is no sideways move to make.
-- **A base case that is not a special case.** `⊤` always exists and escalates to nothing, so "a
-  resolver's own doubt ends with a person" falls out rather than being a rule.
+It is not called. It runs, connected, for as long as what it resolves lasts. So the I/O is two
+streams rather than a request and a reply.
 
-**Breadth needs no third layer.** Covering everything a rule spawns is a matter of where the
-binding is written, not of a scope above the subject: `resolver: R` written into a rule's spawn
-rides every firing of it, and a `condition:` covers as many subjects as it matches. That is what
-the abandoned `trigger` scope was reaching for, available without an order that cannot decide.
+```tony
+# in — frames in order, from `?since=<position>`
+{ cursor: 33, kind: exec,    tool: run_tests, text: "2 failed" }
+{ cursor: 34, kind: say,     text: "retrying with the fixture rebuilt" }
+{ cursor: 35, kind: exec,    tool: write_file, path: "infra/deploy.tf" }
+{ cursor: 36, kind: pending, id: "review@demo:pr:1~d3", gate: deploy, mode: ask,
+  tool: run_bash, effects: { verbs: [exec], paths: ["infra/**"] },
+  escalatesAt: 2026-08-02T13:12:44Z }
 
-**What is still open here.** Refusal on overlap is the answer for now, and *escalate on conflict*
-— two bindings that both select a question means nobody owns it, so it promotes — is the nicer
-follow, because it makes an overlap safe rather than merely forbidden. Who may write a
-`resolver:instance` is unowned: a standing binding is exactly as strong as the ability to add
-and remove it, and the store has no per-slice write authority, which is the same gap
-[authority](../roadmap/authority.md) has about who may declare a resolver that sponsors. And
-`GateQuestion.Subject` is declared but set only by the trigger side today, so layer two over
-process gates needs the launch's subject plumbed to the supervisor, or the match resolved
-through the process's own `flow` field.
+# out — a verdict when it decides, a position whenever it moves
+{ id: "review@demo:pr:1~d3", verdict: deny, why: "prod path, and staging was asked for",
+  say: "use the staging bucket" }
+{ position: 36, notes: "denied the prod path at ~d3; staging is fine if it retries" }
+```
 
-## Answering is a verb, not a write
+Both streams already exist: this is `GET /events?since=N` and the control POST verse itself
+uses to watch and answer. A resolver is another client of the pair.
 
-[deployment-and-steering](../deployment-and-steering.md) lists answering a gate as *control*
-and states the invariant flatly: an intervention is never a store write, and control endpoints
-are distinct from read endpoints so an operator cannot steer by writing. It names this exact
-case — a pending gate is *observed* through the store, because `mirror` projects it, and
-*answered* out-of-band through the resolver.
+Context arrives _before_ the ask. By frame 36 the resolver has read 35 and 34, which are why the
+ask means what it means. Nothing has to be gathered and attached to a question, because the
+resolver was there.
 
-The invariant is protecting latency and priority: an intervention that queues behind the
-backlog is an intervention defeated, and the store's bounded buffer may drop it. A rule
-answering a gate is not an operator steering by writing — it is a reaction, which is what the
-store channel is for. So split what the older note collapsed. **The store carries the verdict;
-the control channel carries the intervention.** Concretely, `resolve` becomes a third action
-verb beside `patch` and `spawn`, and it behaves like `spawn` does: the firing reaches
-out-of-band into the process plane, and the truth comes back as the mirrored `decision` event.
-[Process control](../process-control.md) already states that interlock — the POST is the
-request, the event is the truth.
+Reading and deciding are separate. A hundred frames may produce nothing, which is the ordinary
+case, and the position advances anyway. That is what tells "has not decided" from "has not
+caught up", and it is why the position is on the record rather than only in the reader.
 
-The order matters and is easy to get backwards. The verb POSTs, and the record is written
-*from* the mirrored `decision`, after the fact. Nothing reacts to a verdict on the record by
-resolving — the moment something does, the command entity is back wearing a record's clothes,
-queueing behind the backlog it was supposed to outrank. The record is evidence, never an
-instruction.
+The position is where to resume, not how to slice. It exists so a replacement can pick up after
+a restart, a takeover, or a compaction. Nothing hands a resolver a batch and waits.
 
-Routing it through the runner API is not merely available, it is what makes supervision
-survivable. The replay path is already restart-safe: verse replays `pending@40`, re-routes to
-a resolver, re-POSTs `resolve` with the same idempotency key, and dedups by cursor. The moment
-supervision becomes a firing, the answerer's lifetime decouples from the asker's — a
-supervising rule can outlive the daemon — and that convergence is what carries it. Today's
-docket is in-memory (`process.Registry`; `verse gate approve` lands on `Reg.Answer` in
-`versed/server.go`), which is sound only while the answerer is a human standing there.
+Escalation is another frame. A resolver that escalates says so, and the question appears in the
+stream of the layer above — itself a live reader, connected for the duration of what _it_
+resolves. That layer sees the ask, the events around it, and the inner verdict, because a
+decision is an event on the same stream. There is no second path anywhere in the design, `⊤`
+included: the human docket is this contract with a person reading at their own pace.
 
-## What a resolver is: a name with a protocol behind it
+An `escalate` verdict transfers the question; it does not ask a favour. The layer above owns it
+from that moment, and its answer resolves the _original_ question — the work proceeds or is
+denied, on the work's own stream, because escalating changes who answers and not what is being
+answered. Silence does the same thing more slowly: `escalatesAt` passes and the question moves
+up without anyone saying so.
 
-A resolver is an installed object, not a bare label that rules agree to match on. `vector:` and
-`grant:` already establish that a name a spawn writes must resolve to something — an unknown one
-fails as the launch is built (`process.NamedVector`) — and `NamedVector`'s own comment
-anticipates the next step for named things, "a registry of vector entities, which is a different
-feature". The resolver registry is that shape and gets there first.
+Nothing waits. A resolver that escalates keeps reading and may answer other questions in the
+next frame; only the _work_ is blocked, at the gate it always was. The verdict, when it comes,
+arrives as a frame like any other, so the resolver that escalated learns what was decided by
+reading on — and can lean on it next time, which is what makes a precedent visible instead of
+remembered.
 
-It wants the check earlier than those two get it, though. A `vector:` that fails to resolve
-fails a spawn, which is loud. A `resolver:` that fails to resolve at firing time leaves work
-running with nobody watching it, so the name is checked when the charter is installed, and a
-resolver that is named but *absent* at firing time drops its questions to the docket rather than
-holding them. Refuse the typo early; promote the outage.
+Notes are a handover, not a memory. A live resolver remembers by being alive; `notes` rides the
+position report above, for whoever picks that position up — a replacement after a restart, or
+itself with a fresh context.
 
-Making it an object rather than a matching convention buys the second thing too: somewhere for
-the fields to live. The escalation default, exclusivity, which driver, the remit — those
-accumulate, and on a bare label they accumulate at every binding site instead of once where the
-supervisor is defined.
+## A url resolver
 
-Which raises the question those fields ask as soon as a binding can restate them: object or
-binding, who wins? The discipline the repo already applies to authority answers it — a child's
-grant is `parent ∩ req.Grant`, and a provider fragment cannot widen a ceiling — so **a binding
-may tighten what the resolver declares and never loosen it.** A resolver that declares itself
-exclusive cannot be bound advisory by a spawn that would rather not be watched; one that is
-advisory by default can still be bound exclusive for a particular high-stakes spawn. That is
-also the property the compliance case actually wants, which is not "I am exclusive here" but
-"nobody may bind me weakly".
+```
+GET  <verse>/resolvers/<ref>/events?since=<position>     replay, then live
+POST <verse>/resolvers/<ref>/verdicts                    { id, verdict, why, say? }
+POST <verse>/resolvers/<ref>/position                    { position, notes? }
+```
 
-What sits behind the name is a **protocol, not a body** — the same move that makes a runner a
-URL. Three things can implement it:
+`method.url` says where the service is, so verse can hand it a capability and an operator can
+see what is bound. It is not an endpoint verse posts questions to. The service dials out for
+both streams, so one behind NAT needs no special case.
 
-- **Rules in the charter.** The default, and the case the ask is about: rules matching the
-  questions addressed to this name, answering with the verb above. Cheap predicates for most
-  questions, a judgment spawn for the residue.
-- **A URL.** What `--runner <url>` and `/broker/<nonce>` already do for running work, done for
-  answering it. Anything that reads the questions addressed to it and answers through the
-  control plane is a resolver, so a vendor service, an SCM bot or a team's own reviewer daemon
-  plugs in without verse knowing what is behind it. It needs a capability rather than the
-  operator API — the nonce minted per binding, from the observers section below.
-- **The built-ins.** `auto`, and the human docket. They earn their place beyond convenience:
-  they are the base case that stops the regress, and the fallback when a resolver is bound but
-  absent.
+Its obligations are the runner contract's, with the nouns changed: consume in order from your
+position; answer only questions still open, since one may have lapsed upward while you read;
+tolerate replay, because a question re-posed after a restart carries the same id; and report
+your position, which is what lets verse resume you and tells an outer supervisor what you had
+seen when you decided.
 
-A third-party implementer's obligations are small and worth stating in the same register
-process control uses: read the questions addressed to you, from a cursor you keep; answer
-through the control plane with an attributable `by`; tolerate replay, since a question re-posed
-after a restart carries the same id and must not be answered twice; and publish the positions
-your verdict was drawn from. That last one is what makes a URL resolver supervisable rather than
-merely trusted — rules and judgment spawns are readable where they live, a rule as the predicate
-that fired and an assessor as a mirrored process, but a resolver holding its state on its own
-side offers an outer supervisor a verdict with no evidence behind it.
+Attribution is verse's. `by` is the resolver's ref, stamped when the verdict is applied — a
+service says what it decided, never who it is.
 
-**One declaration surface, two places it is written.** A spawn's `resolver:` declares the
-resolver of the work it starts — inline when verse can call it, by ref when charter rules
-answer it. Everything above that layer is a `resolvers:<kind>:<id>` entity, added and removed
-with its own verb by whoever owns the concern rather than by whoever wrote the rule. That split
-is the point: the team that cares about payments binds a supervisor over payments PRs without
-editing anybody's charter, and the charter that spawns the work cannot quietly unbind it.
+## An llm resolver
 
-An earlier draft had a second spawn form — `spawn: { resolves: subject }` — for starting an
-agent whose job was watching something. The entity absorbs it. A supervisor's durable identity
-is the binding, not a standing process, and an agent-implemented resolver spawns its judge when
-a question arrives rather than sitting warm between them. What that form was reaching for is in
-[the driver of a cursor](#the-driver-of-a-cursor): the record is the continuity, so materialising
-a resolver as a long-lived process or as a spawn per question is a runtime choice and not a
-semantic one.
+`driver: llm` earns its place only if it does something a script calling the same API cannot.
+Otherwise it is sugar over a chat call, and thirty lines of script would serve better.
 
-The authority question the push form raised does not go away, it moves: adding a binding over
-work you did not spawn is authority over somebody else's process, and it is now an entity write
-rather than a charter edit. Who may perform it is unowned — see the end of
-[the spine](#the-spine-who-answers-whom).
+```tony
+method:
+  driver: llm
+  grant:  read-only
+  vector: auto
+  tools:  [read_journal, read_entity]
+  frame: |
+    You are the reviewer for this run. What follows is everything that has happened since you
+    last looked, including any asks. Answer the ones that are yours, escalate the ones a person
+    should decide, and say nothing about the rest — advancing without deciding is a normal
+    reply. Your notes are what the next reviewer of this run will know.
+  answer:
+    verdicts:
+    - id:      !irtype string
+      verdict: !or [proceed, deny, escalate]
+      why:     !irtype string
+      say:     !irtype string
+    notes:     !irtype string
+```
 
-## `resolver:` names an addressee, not a callback
+It earns its place on one thing: the conversation survives. An llm resolver is a long-lived
+process, so frames are appended as they arrive and nothing is re-sent. A script is invoked per
+wake and has nowhere to keep a conversation; one that kept a conversation would be a daemon,
+which is what the process plane already is.
 
-The older note rejects a per-spawn `resolver:` — "a model call inline at every gated action,
-and the supervisor's own gates need supervising, with no base case but `AutoResolver`". That
-is fatal to `resolver:` as a **callback**. It has no force against `resolver:` as an
-**address**.
+The contract is a _list_ because the asks arrive together, in the order they happened, beside
+the events that explain them. A single verdict would force one invocation per ask and throw
+that away.
 
-Stamp the spawn's `resolver: reviewer` onto the question, and delivery is the reactive loop
-that already exists: a rule matching `pending: { resolver: reviewer }` answers with the verb
-above. No inline model call, no runtime coupling, and `launch.Spec.Resolver` — declared and
-read by nothing ([authority](../roadmap/authority.md)) — becomes the field that says which
-supervisor a charter expects. Selection (any rule matching any question) and binding (this
-spawn, that supervisor) then compose, because binding is one more match dimension rather than
-a second dispatch path.
+The frame carries the remit and the protocol's three surprises: that saying nothing is a normal
+reply, that `escalate` is an answer rather than a failure, and that notes are a handover. A
+model told none of those answers every ask to be helpful, which is the supervisor that clears
+everything.
 
-The prerequisite is that `mirror` publishes enough of the question to decide on. It writes
-`pending` and `pendingGate` today, so a supervisor could route by gate name and nothing else.
-The predicates worth having are the ones `GateMatch` already carries — verbs, resource
-kinds and refs, paths, branches, `onPush` — so the derived effects have to ride onto the
-entity with the question.
+Verse enforces the rest, so the frame does not have to: the answer shape and its repair budget,
+addressing a verdict to a question still open, attribution, replay, and the envelope. A run that
+cannot produce the shape escalates what is open — a resolver that could not answer has
+escalated.
 
-**A binding is advisory unless it says otherwise.** Binding a resolver does not take the
-question off the human docket, so a person can answer first: the docket joins by id and the
-first answer wins. What happens to the loser is a gap rather than a design. `Registry.Answer`
-returns false for an id already answered and `/gate/resolve` turns that into a 404, so today
-the second answer disappears — while the runner contract specifies the behaviour worth having,
-a `decision` marked stale, a recorded no-op rather than a silent drop. Exclusivity needs the
-latter regardless: an override that arrives too late is exactly the thing you want in the
-record. So a losing answer is recorded, not 404'd, and that is an ask rather than a
-description.
+Two things end a conversation early: a restart, and a context grown past what the model holds.
+Both are one repair — rebuild from the position, the notes, and a bounded tail of the stream.
+Restart, takeover and compaction being one path is what keeps it exercised.
 
-Advisory is also the wrong default for the case people bind for — a security review a person
-may not rubber-stamp — so exclusivity is a dial, subject to the tightening rule above:
-`resolver: { name: security-review, exclusive: true }`.
+Write a `script` instead when the decision is a function of the question alone. Most remits are
+predicates, and a predicate that spawns a model pays for judgment it does not use. The llm
+driver earns its keep when the _history_ is the evidence — when what makes an action wrong is
+that it contradicts something said twenty events ago, which is also when re-sending that history
+per call costs the most.
 
-What it governs is *whose answer counts, and for how long*. It has nothing to say about who may
-see the question, and that distinction is the whole of it. Under an exclusive binding an answer
-from anyone else does not resolve the gate, and verse can enforce that exactly where it already
-enforces the id: the resolve endpoint knows the binding and can refuse a `by` that is not the
-bound resolver. Which is real against the failure the dial is for — somebody working down a
-docket without noticing that this one belongs to `security-review` — and not real against
-somebody holding the operator API, where pretending otherwise would make the dial a lie.
-Control is an out-of-band POST by design, so an override stays possible and lands as an event
-naming both the person and the resolver they went around. Exclusivity is a claim on the record,
-not a lock.
+# Principles
 
-Exclusivity is about a party *outside* the stack, which is what keeps it from tangling with
-attachment. Inside the stack nothing competes: a question has one answerer at its layer, by
-[the spine](#the-spine-who-answers-whom). What exclusivity governs is whether anybody else who
-can reach the control plane — a person at the docket — may answer ahead of that owner. It is
-also the tighten-never-loosen discipline of the paragraph above: the resolver entity declares
-it, and nothing that refers to the binding may weaken it. That settles the compliance case the
-right way round, since an org's `security-review` binding cannot be relaxed by whoever spawns
-the work it watches.
+## Answering is control, not a write
 
-Two more things follow, and neither should be available without the other half.
-**Exclusive requires a deadline**: exclusive with no `escalatesAt` turns a resolver that is
-down into a question nobody is permitted to answer, which is worse than no supervision at all.
-Ownership and exclusivity lapse on the same clock, and the question returns to the general
-docket when they do. And **exclusivity is not a security boundary**: it decides who answers an
-`ask`, never what an answer may authorise, so what must not happen at all belongs on the hard
-axis — outside the spawn's grant and outside any sponsor's, where `Grant.Permits` refuses
-rather than asks.
+[deployment-and-steering](../deployment-and-steering.md) lists answering a gate as control and
+forbids modelling an intervention as a store write. So a resolver answers out-of-band, and the
+record is written _from_ the mirrored decision, after the fact. Nothing reacts to a verdict on
+the record by resolving; the moment something does, the command entity is back wearing a
+record's clothes, queueing behind the backlog it was meant to outrank.
 
-## Routing the question is not supervision
+Routing through the runner API is what makes supervision survivable. Verse replays a pending
+question, re-routes it, re-POSTs with the same idempotency key and dedups by cursor — so an
+answerer whose lifetime is decoupled from the asker's still converges.
 
-Handing a resolver the question hands it a keyhole and a filename. To supervise it needs the
-context leading to the gate, and that context is durable nowhere it can reach: `mirror` is
-deliberately an index — `lastAction`, `lastOutput`, a `say` preview, `cursor`, `result` at the
-end — while the run itself lives in `Process.journal` in memory (`process/loop.go`) and in the
-runner's bounded event ring.
+## Advisory, or exclusive
 
-So the binding should not summon a resolver per question. It should **attach** one at spawn,
-and attachment here has a settled meaning: a cursor and an address. `resolver: reviewer` opens
-a supervision record — `{resolver, cursor, verdicts[]}` — and the resolver is thereafter a
-client of `GET /processes/{id}/events?since=<its cursor>` (`versed/server.go`), the same
-contract verse itself consumes. When a question is posed it reads from its cursor to the
-question, and *that delta is the context leading to the gate*, exactly. First gate: the whole
-run from event 0. Tenth gate: what happened since it last decided.
+A binding is advisory by default: the question stays on the human docket and the first answer
+wins. That is wrong for the case people bind for — a review a person may not rubber-stamp — so
+`exclusive` is a dial on the resolver, and nothing that names it may weaken it.
 
-Nothing about that is new machinery. `Subscribe()` fans out already — mirror and the reaper
-are two independent subscribers to the same bus — so a third is a client, not a mechanism. And
-a hold costs a cursor, not a buffer: an attached resolver that has not been needed in an hour
-is an int on an entity, not a warm context. It is attached the way verse is attached to a
-brokered process — durably, resumably, holding nothing.
+Exclusivity governs whose answer counts, never who may see the question. Verse can enforce it
+where it already enforces the id: the resolve endpoint knows the binding and can refuse a `by`
+that is not the owner. That is real against somebody working down a docket without noticing;
+it is not real against somebody holding the operator API, and pretending otherwise would make
+the dial a lie. An override stays possible and lands as an event naming both parties.
 
-The rest of the case file is already durable. Why the process exists and what it may do is on
-the entity from `mirror.Meta`: `chain`, `trigger`, `task`, `doer`, `grant`, `tools`. The
-journal supplies what it has done. Those two plus the question are the whole briefing.
+Two things travel with it. Exclusive requires a deadline, or a resolver that is down becomes a
+question nobody may answer. And exclusivity is not a security boundary: it decides who answers
+an ask, never what an answer may authorise.
 
-**What this costs, since a round trip per gated action sounds worse than it is.** Two things
-bound it before a resolver is involved at all. The vector decides what asks: an `auto` action
-poses nothing and blocks on nobody, so the ask-set is a charter's own choice, written in the
-same charter that names the resolver. And the delta bounds the reading — an attached resolver
-sees what happened since it last decided, not the run, so the tenth gate of a long process is
-not ten times the first. That is the payoff of a cursor over a fat question or a warm context,
-and it is why the predicate case costs a store read and a position advance with no model in
-sight.
+## A resolver sees what an attached observer sees
 
-What it does cost is latency and a held context. A question that used to be answered from
-memory now waits for a commit, a firing and a POST, and the process holds its conversation
-while it waits. Against a human at a docket that is noise; against an auto-resolving rule it is
-the difference between instant and one commit. The shape to avoid is the one a charter can
-easily write by accident: a broad ask-vector over a chatty process with a judgment-driven
-resolver is a model run per tool use. The cheap layers exist precisely so the expensive one is
-the residue rather than the rule.
+The stream carries what was reported — narration, tool calls and their outputs, boundaries,
+children, status. A _boundary_ is the point between actions where the loop services control
+before proposing the next one, so it is on the stream because it says the process stopped to
+check rather than that nothing happened.
+
+For a process that is exactly what `verse process attach` shows: the read plane, whole and in
+order, not a projection. There is no supervisor's view to design. What the stream does not carry
+is the driver's internal reasoning, which is the line
+[external processes](../external-processes.md) already draws between intercepting and attesting
+— and what makes one resolver work identically over a local loop, a k8s Job, and a human dialing
+into a broker.
+
+## Supervision is never a side channel
+
+Control application is emitted on the one ordered stream, so an observer reads the whole
+exchange in order: the ask, the decision with its `by`, the say, the action that followed. There
+is no supervised run that reads as unsupervised, and no way to answer invisibly.
+
+What the stream does not show is what was _watched_ — a position advancing with no verdict emits
+nothing. So the resolver is a second subject with a record of its own, and the rule of thumb is
+worth keeping: the process stream is what was decided, the resolver's record is who was watching
+and on what evidence.
 
 ## The journal needs an address
 
-The ring is bounded, and the contract's answer to a cursor below the watermark is
-resync-to-snapshot. For verse that is benign, because the entity is level truth. For a
-resolver it is fatal in precisely the wrong place: "the fine-grained journal between N and C is
-lost, but current state is exact" means being handed `lastOutput` and asked to judge a deploy.
-**Give the journal an address and leave it with its owner.** `process:journal:<id>` as a slice
-served on demand by the runner, the split [content federation](../content-federation.md)
-already makes for files: the index is in the store, the contents are served by whoever owns
-them, and nothing is warehoused. A resolver then follows the reference and pages what it needs,
-bounded by cursor range — `!list-paths` reads that way already, and an assessor spawn gets a
-read tool over the journal rather than a prompt-stuffed transcript.
-
-**And the served range reads a durable log, not the live ring**, which is the half that makes
-the address worth having. The `connect` analogy is exact here: a content controller serves files
-that are durable because their owner keeps them on disk, and nothing about that puts them in the
-verse. The ring stays what it is, a live tail for subscribers; a range is answered from what the
-runner retained. Without that the address is decoration — a resolver asking for events 12–40
-would get the same resync-to-snapshot the ring gives everyone else, which is the thing it was
-introduced to escape.
-
-The alternative was **keep-up** — the resolver advancing its cursor at every boundary rather
-than only at gates, so it never falls below the watermark. Cheap for a predicate-shaped
-resolver, expensive for an agent-shaped one, and fragile in exactly the case that most wants
-supervision: a long run between gates. It is also only a way of *avoiding* the loss rather than
-repairing it, and it does nothing for the party who was not already attached. A durable log
-serves the resolver, the human at the docket and the late observer with one mechanism, which is
-the test worth applying to all of this.
-
-What it costs, stated rather than discovered: the runner retains something, so retention becomes
-a runner policy with a cap, and a served range needs three answers rather than two — here it is,
-that range is *not retained*, and no such process. Collapsing the middle one into an error is how
-a supervisor comes to judge on less than it asked for without knowing.
-
-## What a resolver may see, and what it may not
-
-The stream carries what was *reported*: narration (`say` with an empty `by`), tool calls and
-their outputs, boundaries, children, status. It does not carry the driver's internal reasoning,
-and it should not. Supervising the reported record is the line
-[external processes](../external-processes.md) already draws between intercepting and
-attesting, and it is what makes one charter supervisor work identically over a local loop, a
-k8s Job, and a human dialing into a broker. A supervisor that needs chain-of-thought is a
-different design, and it would not port past the local LLM runner.
-
-What a resolver may *do* about what it sees is a separate question, and the hard axis does not
-simply stay where it is. `Grant.Permits` refuses ahead of the vector today, so an action outside
-the envelope is never asked about at all — the right default, and the wrong ceiling for a
-supervisor. That is the next section.
-
-## Two grants: what a resolver may do, and what it may allow
-
-`Grant` means one thing today — what a process may do — and a resolver needs two.
-
-Its **acting grant** governs the resolver itself: for a judgment assessor, read the journal,
-read entities, produce a verdict, nothing else. Its **sponsoring grant** governs what it may
-authorise somebody *else* to do, and that one has to be able to exceed the supervised spawn's
-envelope, or supervision can only ever say no more often than the vector already does.
-
-That is the shape of every real escalation: I may not push to `main`, I ask somebody who may,
-and the push happens under their authority with my hands on the keyboard. Verse forbids exactly
-that today — outside the grant is "not permitted, and not something a gate can approve" — so
-sponsorship is a change to the enforcement order rather than a reading of it. The loop needs a
-third outcome between permitted and refused: **askable-with-a-sponsor**.
-
-Three properties keep it from being a hole. It is **per action** — the process's own grant never
-changes, so nothing ratchets and a child still delegates from the parent's narrow envelope
-through `Grant.Subset`. It is **bounded** by the sponsoring grant, so a sponsor cannot authorise
-what it could not authorise itself. And it is **attributed**: the effect lands on the journal as
-performed under a sponsor, which is the first time "every resolution is attributable" carries
-authority rather than only audit. One guard belongs in the design rather than in a later fix —
-only gates the vector marks escalatable may reach a sponsor at all, or an agent enumerates the
-envelope by proposing actions and reading which ones get asked about and which get refused.
-
-**Answering is itself an action, so it needs a verb and a resource.** `resolve` derives an
-effect like anything else — that is what lets a resolver's own resolution be gated, and it is
-what layering rests on — and the vocabulary has to grow twice for it to be sayable. A verb of
-its own, `resolve`, for the same reason `call-agent` is a verb rather than an `exec`: a vector
-that cannot name resolution separately can only ask about *everything* an inner resolver does. A
-resource kind for the question, `gate`, so the effect names what is being answered. Without the
-second one a sponsoring grant over resolution — "may authorise resolving deploy gates on
-`change:pr:*`" — is a resource predicate with no resource, which is to say unspellable.
-
-**The binding confers the answer, the grant governs the rest.** A resolver's acting grant does
-*not* have to name the `resolve` verb to answer the question it was handed: being handed one is
-what the binding means, and a grant that had to restate it would produce a supervisor that reads
-and then cannot speak — a silent stall, from forgetting a verb. The capability is scoped to that
-question and nothing else, so it widens nothing: `grant: read-only` on an assessor reads as "may
-read the world, may answer what it was given". Everything a resolver does *besides* answering —
-the advisory check, a `network` call, a write — is ordinary and needs the envelope. Note this
-governs the grant and not the gate: the effect still exists, so an outer vector can still ask
-about a resolution.
-
-**A sponsoring grant is written in portable dimensions.** A resolver may sit on another system
-entirely, where its tools are not the target's tools and its paths are not the target's paths.
-`GateMatch` spans both kinds. `Tools` is a self-reported name that means whatever the local
-driver calls it, and `Paths` is somebody's filesystem — those are local vocabulary. `Verbs`,
-`Resources`, and the git-state predicates `Branches` and `OnPush` describe the action's target
-rather than the answerer's machine, so those travel. An acting grant may use the local
-dimensions, because it governs the resolver on its own machine, and a sponsoring grant should be
-restricted to the portable ones, because it is a statement about somebody else's. That settles
-the confused-deputy question in the same stroke: a sponsor authorises "push to `git:repo:verse`
-on `main`", not "run this bash string", and an opaque tool is a poor candidate for sponsorship
-precisely because the derived effect is the only part of it that travels.
-
-**At the trigger layer it is per subject.** `security-review` may sponsor a deploy for
-`demo:pr:*` and nothing at all for `release:*`, so the sponsoring grant is a function of the
-question — a match over the subject, and the grant that match sponsors — which is the shape
-provider selection already has.
-
-That turns *remit* from a rule into an object. In [the automatic
-supervisor](../auto-supervisor.md) the remit is a companion rule rewriting an out-of-remit
-`approve` into `escalate` after the supervisor has spoken: soft, author-maintained, and correct
-only while the two rules remain exact complements. As a per-subject sponsoring grant the same
-remit is refused by construction — a supervisor that says yes outside it does not produce an
-over-wide approval for another rule to catch, it produces nothing.
-
-The tightening rule composes unchanged: a binding may narrow a sponsoring grant and never widen
-it. What does not compose is the bound at the top. Sponsorship ought to be limited by the
-authority of whoever *installed* the resolver, and a trigger has no author identity, so "who may
-declare a resolver that sponsors production deploys" has no answer in the model.
-[Authority](../roadmap/authority.md) derives an envelope from a caller's request; this wants one
-attached to the charter itself. Named here as unowned rather than solved.
-
-## What a third party attached to a supervised process sees
-
-It sees the supervision, inline, and that is not optional. Control application is emitted as an
-event on the one ordered stream, so an observer on `GET /processes/{id}/events` — a person on
-`verse process attach`, an auditor, a second resolver — reads the whole exchange in order:
-
-```
-pending  @40 {gate: deploy, tool: run_bash}
-decision @41 {proceed: false, by: "resolver:reviewer"}
-say      @42 {by: "resolver:reviewer", text: "use the staging bucket"}
-exec     @43 {tool: run_bash, text: "…staging…"}
-```
-
-The interlock rule exists for races, but the property it buys here is worth naming on its own:
-**supervision is never a side channel.** There is no supervised run that reads as unsupervised
-to an attached observer, and no way to answer invisibly.
-
-What that stream does *not* say is what was watched. A cursor advance with no verdict emits no
-event — silence is a legitimate output — so on the process stream a resolver that read the last
-twenty events and judged them fine is indistinguishable from one asleep since event 3. That is
-the liveness indistinguishability of the driver signature, showing up a second time as an
-observability gap.
-
-So the resolver is a second subject with a stream of its own: the store's, `Since` over the
-supervision record. Three things live there and nowhere else. **The evidence base** —
-consecutive positions bracket the delta a verdict was drawn from, so the process stream shows
-the conclusion and the record shows what it was made of. **Attention without intervention** — a
-moving cursor with no verdicts is a resolver doing its job, a stale one is absence. And
-**consistency** — whether a remit is applied the same way across twelve subjects is a question
-about the resolver, not about any one run. One decision, two readers: a fact on the record, an
-event on the process stream, which is the broker's own phrasing for the same shape.
-
-Neither attachment substitutes for the other, and the rule of thumb is worth writing down: *the
-process stream is what was decided; the resolver record is who was watching and on what
-evidence.* Attach to whichever the question is about.
-
-**Watching is not answering**, and that is already the architecture. Observation rides the
-runner face; resolution is the operator API, and a worker on a nonce'd path never reaches the
-entity or gate surface. So a third-party observer is unprivileged by construction, and a
-third-party *resolver* needs a capability rather than the operator API — the nonce trick again,
-minted per binding and scoped to the questions addressed to that resolver.
-
-The late observer is also the third party the journal decision above is for. Attaching mid-run
-hits the same watermark a resolver would, and gets resync-to-snapshot: current state, no run.
-A durable `process:journal:<id>` serves the resolver, the human at the docket and the late
-observer with one mechanism; keeping up would have served only whoever was already there.
-
-One corner to name while it is in view: a `judgment` assessor is an ordinary process — mirrored,
-attachable, with a journal of its own — so a resolver's reasoning is observable by anyone who
-can observe processes, and its briefing carries whatever the supervised run's output carried.
-Supervision inherits the process plane's confidentiality properties, and those are currently
-none in particular.
-
-## The trigger side is the same object
-
-`trigger: { … resolver: … }` opens a cursor too, and it has an obvious referent: the store's
-own stream — `Since(rev)` delivering `entity.Commit{Rev, Changes}` — narrowed to what the rule
-reads. The engine already computes that read set, since a trigger is skipped at a commit that
-touched none of the subtrees it reads. Both planes are `Observe : Since`; process control says
-as much about the runner contract in its opening. So `resolver:` means one thing in both
-places: open a durable position on the stream that leads to the decision.
-
-What it buys is the same thing it buys at the process layer — the path instead of the point. A
-match sees `stage: reviewed`. A resolver with a cursor sees that this PR went
-`reviewed → open → reviewed` three times in ten minutes, that `tests: green` predates the last
-push, that a sibling firing denied something adjacent an hour ago. None of that is expressible
-as a predicate over current state, and all of it is what a person means by "let me see what has
-been going on".
-
-One thing the trigger side has to settle that the process side does not: which end of the
-interval the question is. A process gate's upper bound is obvious — the cursor its `pending`
-landed at. A firing's is not. The rule evaluated as-of C, and the resolver may take minutes
-while the store moves on, so `[position, C]` keeps the resolver inside the firing's own
-semantics and it judges the world the rule judged, while `[position, now]` is what you want
-when the `deny` that matters landed after C. That is the one genuinely open fork, and it is not
-the journal question in disguise: this one decides what a verdict is *about* rather than what
-evidence
-was available to make it.
-
-## The driver of a cursor
-
-Signature first, because it settles the rest:
-
-```
-(position, delta, question?) → (verdict?, position', notes?)
-```
-
-Two things in that shape carry weight. **The verdict is optional** — a cursor driver may
-advance without deciding, which is what makes attachment cheap at any cadence. Silence
-is a legitimate output and is not the same as declining, which is a verdict. And **the position
-is an output**, so the driver's entire continuity is a durable int plus what it wrote down: no
-session, no warm context, resumable by construction. That is the reconciler shape verse runs
-everywhere, with a stream position for its resource.
-
-Optional-verdict is what forces the clock, and now it is structural rather than prudent: for a
-driver whose legitimate output is silence, "has not decided" and "has not caught up" are
-indistinguishable from outside. So the record carries both — where I am, and when this question
-stops being mine. Stamp the escalation instant absolutely, the way a goal's deadline is stamped
-so a restart cannot slide it.
-
-Three implementations, and only one of them is new.
-
-- **Agent.** An LLM cursor driver is a process driver whose conversation is a delta: spawn with
-  the delta as briefing, a read tool over the stream for paging further back, an `answer`
-  contract typing the verdict. That is `judgment`, the stubbed `RequirementKind` in
-  `trigger/formula.go`, and it needs no new execution model — it is the automatic supervisor's
-  charter with a stream for a prompt.
-- **Human.** A rendering. `verse gates` shows a question today; with a cursor it shows *what
-  changed since you last decided*, which is what a review surface has always been.
-- **Predicate.** The common case and the cheap one: match the question, read the subject and
-  whatever else the store holds, answer. No model, no spawn, no waiting — and it is what most
-  of a remit is, since most of what a supervisor decides is decided by what the thing is rather
-  than by who agrees.
-
-A structural dividend of the cursor, worth knowing about and mostly not worth reaching for:
-`OpEventually`, `OpAlways` and `OpSequence` are stubs in `trigger/formula.go` because they state
-things about an *interval*, and a point-in-time evaluation has none. A cursor is that interval,
-so `always` becomes "no commit since my position violated this" and `sequence` becomes "these
-happened in this order since my position". The temporal grammar falls out rather than being
-added. But a temporal or collective answer is rarely what a per-tool-use gate wants — a quorum
-on `write_file` is a strange thing to ask for — and the altitude where it stops being strange is
-a firing, which is where those leaves already live. So: available, seldom right, and not a
-reason to reach for a formula when a predicate says it.
-
-## Flows, and the two planes
-
-A resolver attached above one process — layer two, over a condition matching many subjects —
-is what people will actually want, since "everything that happened about `demo:pr:1`" is what a
-person means by context. It is also where this stops composing for free: two planes,
-independent cursors, no common order. The broker already meets this and answers honestly — the
-axes relate only through its sequencer.
-
-Do not build a global sequencer for it. Carry a cursor **pair**, and lean on a property that
-already holds: a process's spawn and its terminal are both store commits, because `mirror`
-writes them. The store stream is the spine — ordered, durable, carrying the anchors — and
-process streams hang off it as fine grain between anchors. A flow resolver reads the spine and
-descends into a process's events where it needs to know how a run reached where it is. That is
-enough causality for supervision and needs nothing new.
-
-## A charter, annotated
-
-Nothing below runs; the point is to see whether the shape is sayable. A charter file already
-holds several definitions separated by `---`, and their kind is inferred structurally — a
-`condition` makes a trigger, a `level` and a `match` make a stratum — so a resolver arrives the
-same way, by having neither.
-
-### The whole loop, smallest form
-
-The resolver is not a charter definition — it is an entity, added with its own verb:
-
-```sh
-verse resolver add -f - <<'TONY'
-kind:      review                                  # resolvers:review:docs
-id:        docs
-condition: { system: change, kind: pr }            # what it supervises
-escalatesAt: 10m                                   # unanswered by then, back to the docket
-TONY
-```
-
-The charter names it by ref, and a rule answers the questions addressed to it:
-
-```tony
-# ── the supervised work ──────────────────────────────────────────────────────
-- name: validate
-  condition:
-    subject: { system: change, kind: pr, value: { stage: proposed } }
-  action:
-    spawn:
-      driver:   llm
-      task:     "Validate $subject and fix what is trivially wrong."
-      grant:    no-delegate                # what the WORK may do at all
-      vector:   ask                        # …and how much of it asks: all of it
-      resolver: resolvers:review:docs      # ← route-to. the binding opens a cursor at event 0
----
-# ── the resolver's body: one rule per class of question ──────────────────────
-- name: reviewer-docs
-  condition:
-    subject:
-      system: process
-      kind:   instance
-      value:
-        pending:
-          resolver: resolvers:review:docs
-          verbs:    [write]
-          paths:    ["docs/**"]
-  action:
-    resolve: { verdict: proceed, why: "docs are inside the remit" }
-```
-
-The other form, where nothing in the charter answers:
-
-```tony
-      resolver:                            # ← can-call. no name, nothing routes to it
-        resolutionURL: https://sec.internal/verse
-        escalatesAt:   4h
-```
-
-Its questions still publish `pending.resolver`, synthesised as
-`resolvers:inline:validate.spawn` — so `verse gates` and any observer read one shape either way.
-
-Three things are doing work. **The binding is one field** — everything else about `validate` is
-what a spawn already says, which is the test of whether this is a new concept or a new address.
-
-**`resolve:` names no target** *here*, because the rule's subject is the process carrying the
-question and a blocked loop has exactly one question outstanding, so "the question on
-`$subject`" is unambiguous. That is sugar for the layer-one case and does not generalise: a
-firing poses
-one question per gate and waits on all of them at once — `trigger/engine.go` runs a goroutine
-apiece — so a trigger-layer resolver names the gate, `resolve: { gate: sign-off, verdict:
-proceed }`. Gate names are what the charter declared and what an approver reads, so they are the
-charter form; the question id (`origin~dN`) is the wire form and nobody should have to write it.
-And **`verbs`/`paths` under `pending`** are the derived effects this
-note asks `mirror` to publish; without them the rule could route by gate name and nothing else.
-
-### The residue gets a judgment
-
-```tony
-- name: reviewer-judges
-  condition:
-    subject:
-      system: process
-      kind:   instance
-      value: !and
-      - { pending: { resolver: reviewer } }
-      - !not { pending: { paths: ["docs/**"] } }   # …what the cheap rule did not answer
-  action:
-    spawn:
-      driver: llm
-      task:   "Decide whether the pending action on $subject should proceed."
-      frame: |
-        You are the reviewer for this run. The journal from your last position to the
-        question is your evidence; read further back if you need it. Answer `escalate`
-        whenever a person should decide this, and never to be agreeable.
-      answer:
-        verdict: !or [proceed, deny, escalate]
-        why:     !irtype string
-      grant:  read-only     # the ACTING grant: read, judge, and nothing else
-      vector: auto          # its own questions are not re-supervised — the base case
-      tools:  [read_journal, read_entity]
-    onDone:
-      resolve: { verdict: $data.verdict, why: $data.why }
-    onFailed:
-      resolve: { verdict: escalate, why: "the reviewer did not decide: $err" }
-```
-
-The `!not` is the load-bearing line: predicates first, judgment for the residue, and the two
-must be exact complements or a question is either answered twice or not at all — the failure
-mode `auto-supervisor.md`'s `remit` rule has, which is the argument for keeping the expensive
-driver behind the cheap one rather than beside it.
-
-**Three verdicts, not two.** `escalate` hands the question back to the docket instead of
-answering it, which is what makes "a supervisor that fails to decide has decided to promote"
-expressible rather than conventional — `onFailed` is that doctrine in one line. And the
-read-only acting grant with `vector: auto` is the regress base case written as charter rather
-than asserted as doctrine; read-only is enough because answering the question it was handed
-comes with the binding rather than out of the envelope.
-
-**TODO — settle the form of `resolve:` against coupled examples.** This charter spawns a judge
-and resolves in its hook, so the two are separate actions joined by `onDone`. The inversion is
-also sayable — `resolve:` as the frame, carrying the spawn that decides it, with `onDone:
-proceed` and `onFailed: deny` — and it is not obviously worse: it states the gate first, and it
-makes "spawn a judge and forget to resolve" unwritable, where the current shape leaves that as a
-silent stall until `escalatesAt`. What should settle it is a set of example charters exercising
-the cases where the two forms come apart, written out rather than argued:
-
-- a judge whose spawn *fails* — which form still answers, and with what;
-- a verdict of `escalate`, which `onDone: proceed` / `onFailed: deny` cannot express at all;
-- a deny that carries `say`, and where that text comes from in each form;
-- a verdict that proceeds *under a sponsoring grant*, which has to name the sponsor somewhere;
-- two gates open on one firing, where the gate name has to be at the top;
-- the cheap case — a predicate answer, no spawn — which must stay one line in either form;
-- an outer resolver gating the inner's `resolve`, where the effect's resource has to be legible.
-
-### Sponsorship, per subject
-
-```tony
-- name: security-review
-  escalatesAt: 4h
-  exclusive: true                  # declared on the object, so no binding can weaken it
-  sponsors:                        # what it may authorise OTHERS to do, by subject
-  - match: { system: change, kind: pr }
-    grant:
-      verbs:     [write]
-      resources: [{ kind: gitref, pattern: "verse:refs/heads/main" }]
-      onPush:    true
-  - match: { system: release }
-    grant: none                    # a release is never this resolver's to clear
----
-- name: land
-  condition:
-    subject: { system: change, kind: pr, value: { stage: approved } }
-  action:
-    spawn:
-      driver:   llm
-      task:     "Land $subject."
-      grant:    no-delegate        # NOT permitted to push main…
-      vector:   ask
-      escalate: [{ verbs: [write], onPush: true }]   # …but may ask a sponsor about this
-      resolver: security-review
-```
-
-`land` cannot push `main`: it is outside its grant, so today the action is refused and never
-asked about. `escalate:` is the vector-side half of sponsorship — it names the actions that may
-become *askable-with-a-sponsor* rather than refused, and only those, which is what stops an
-agent enumerating the envelope by proposing things and watching which get asked about. If
-`security-review` proceeds, the push happens attributed to it, `land`'s own grant is untouched,
-and a child of `land` still delegates from `no-delegate`.
-
-`sponsors` is where remit stops being a companion rule. The same resolver clears a push for a
-`change:pr` and can never clear anything for a `release:*` — not because a second rule rewrites
-its answer afterwards, but because there is no envelope for it to answer within.
-
-### Two bindings, and what each one's lifetime is
-
-```sh
-# layer two: whoever owns the concern adds it, over as many subjects as the condition matches
-verse resolver add -f - <<'TONY'
-kind:      security
-id:        payments
-condition: { system: change, kind: pr, value: { area: payments } }
-exclusive: true
-escalatesAt: 4h
-TONY
-```
-
-```tony
-# layer one: written where the work is spawned, so it rides every firing of this rule
-- name: land
-  condition: { subject: { system: change, kind: pr, value: { stage: approved } } }
-  action:
-    spawn:
-      task:     "Land $subject."
-      resolver: resolvers:review:docs
-```
-
-Breadth is a matter of where the binding is written rather than of a scope: `resolver:` inside a
-rule's spawn covers everything that rule spawns, and a `condition:` covers as many subjects as
-it matches. Lifetime follows the same split — a layer-one binding lasts as long as the process
-it was written for, and a layer-two binding lasts until somebody removes it, which is the one
-kind that outlives the work and the charter both.
-
-What each binding *produces* is per origin: one resolver with one cursor, keyed by the question's
-origin, so a condition matching forty subjects is forty ordinary instances rather than one
-resolver that had to be built differently. Instances retire with their origins; the binding does
-not.
-
-## What has to be structural
-
-**Regress.** `AutoResolver` is a bad base case, and with this shape the base case is structural
-instead: process control already rules that governing a process must not require another
-governed process. A rule carrying `resolve:` may not carry `gates:` — a firing that answers a
-question must not pose one — and that is an install-time refusal, which is this repo's habit:
-stratum level clashes, provider grant ceilings, the `op` dimension.
-
-What stops the regress is not flatness, though. **`resolve` derives an effect like any other
-action**, so a resolver's own resolution can be gated by its own vector, and that question is
-not its own to answer: it goes one layer up, by
-[the spine](#the-spine-who-answers-whom). Termination is the property stated there — the layers
-are finite and topped, so escalation reaches `⊤` in at most two hops — and no depth counter or
-special case is needed here. Liveness is bounded by the deadline chain the last section
-describes, where a child inherits the parent's remaining time.
-
-**Which reaches process-shaped resolvers and not rule-shaped ones.** A vector gates a process,
-and the in-charter implementation — the default, and the only one in the PoC — is a firing. It
-has no vector, and its one gating surface is the `gates:` the paragraph above forbids it. So an
-agent or a URL resolver can be supervised by an outer one, and a rule's answer is final within
-its layer. That is a limit worth stating rather than discovering, and it is not obviously the
-wrong default: a rule is a predicate somebody can read, so supervising it is closer to reviewing
-the charter than to watching a judgment.
-
-The ban is also the only thing keeping it that way, and it was written to stop a regress the
-spine now stops on its own. So the extension, when someone wants supervised rules, is to relax
-it rather than to add machinery: **a resolving rule may pose a gate only to a strictly wider
-layer, never to its own** — the spine's escalation step restated as a charter rule.
-Termination survives
-unchanged for the reason it always did, and layering becomes uniform across all three
-implementations. Not now —
-nothing runs yet, and loosening a ban before that is how a design acquires a hole it cannot
-locate later.
-
-**Layering is opt-in, and must stay that way.** Deriving an effect for `resolve` *enables* the
-stack; it must not impose it. An outer layer whose vector is `auto` for `resolve` — the default
-— changes nothing and every question still costs one round trip. A charter that wants its
-supervisor supervised says so, and pays for it, because the cost is multiplicative in the layers
-bound.
-
-**An outer supervisor reads down, it does not attach sideways.** Deciding "R may resolve this"
-needs the context that produced the question, and none of that requires a second attachment
-relationship: the effect names the question, the question's id names the process, the process
-entity carries subject, trigger, chain, task, grant and the journal address, and the deciding
-resolver's own record says what it read and what it decided before. So **a resolver attaches
-only ever to a stream of questions, never to another resolver** — the layering lives in the
-questions and the context comes from following references, which is the reading surface
-[§What a third party sees](#what-a-third-party-attached-to-a-supervised-process-sees) already
-defines. The one thing that has to be true for it: `(resolver, process)` needs a derivable
-address, or an outer supervisor can see *that* a verdict was reached and never what it was drawn
-from.
-
-**Liveness.** Promotion is free in the sense the older note means — an unanswered question
-stays in `verse gates` — but only within one daemon lifetime, because that list is
-`s.Reg.Pending()`, read out of memory. A question whose process outlived verse comes back on
-the entity and not on the docket, so promotion is free while nothing restarts and free
-afterwards only once the question itself is durable. That is the same conclusion the rest of
-this note reaches from the other direction. What is never free is a *bound* resolver silently
-owning a question nobody is looking at, which is what the absolute `escalatesAt` above is for:
-a supervisor that fails to decide has thereby decided to promote, made structural rather than
-charter-authored.
-
-**Inheritance.** `call_agent` children already take the parent's resolver under the
-inherit/careful child modes (`Supervisor.Resolver()` exists for exactly that), so the charter
-binding has to mirror it: attach to the tree, cursor per process. Otherwise the escalations
-that most want supervision — the ones from children — arrive unsupervised.
-
-**Deny is not terminal, and should be conversational.** `process/loop.go` hands back `Blocked`
-plus a reason and the driver re-plans, and `Resolution.Steer` folds guidance in whether or not
-it proceeded. So `resolve: { proceed: false, say: "use the staging bucket" }` belongs in the
-grammar from the first cut. It is also why the resolver's prior verdicts belong on the record:
-the next question is judged with the last instruction in hand, and the journal shows whether it
-was heeded. Supervision is a conversation over a shared record, and the record is the only
-continuity it has.
-
-## Names
-
-`--driver scripted|llm` already means the thing that proposes actions inside a process. If a
-cursor driver proposes verdicts from a delta, those are one interface with different context
-and proposal types, and that is worth saying out loud rather than minting a third word for the
-same shape. `Supervisor`, `Resolver` and `Driver` are all now in play at two altitudes:
-`process.Supervisor` is the in-loop enforcement object, the automatic-supervisor note already
-needs a table to keep two meanings of *supervisor* apart, and the charter object is a
-`Resolver` on the wire because the field and the interface already say so. Settle it before any
-of it ships — the `policy` rename is the argument for doing it now.
-
-## The smallest thing that would prove it
-
-Publish the question richly on the entity, honour `resolver:` as an address that opens a
-cursor, add `resolve` as an action verb going out through the runner API, and write the
-supervising charter as ordinary rules with predicate answers only — no formulas, no judgment
-spawn, no journal federation, and no exclusivity (advisory binding is the honest default to
-start from, since it cannot lock anyone out of a question). Layer one only — a resolver on the
-spawn, no `resolvers:` entity — and `resolve` ungated above it: the derived effect is what makes
-layering *possible*, and layering is not what proves the idea. One implementation behind the name,
-the in-charter one — an inline `resolutionURL` is the same object reached differently, and
-neither is what proves the idea. No sponsoring grant either: a first cut that
-can only answer within the spawn's own envelope is the one that needs no change to the
-enforcement order, and finding out whether that is too weak to be interesting is itself a
-result. If that runs, the interval fork becomes a real question rather than a guess, and the
-assessor, exclusive bindings, sponsorship, trigger-gate resolvers, the other implementations
-and — where anyone genuinely wants one — the temporal leaves are all additive over the same
-record.
-
-## After the PoC: a supervisor that investigates
-
-Everything above assumes a supervisor decides on evidence already in hand — the read-only acting
-grant with `vector: auto`. That forecloses a case worth having: a supervisor that has been
-approving, becomes suspicious that a run of generated changes is smuggling something in, and
-wants to *check* — say, for new advisories against a dependency it just saw appear. Checking is
-`network`, outside `read-only`, and `auto` means it would not ask about it in any case. A
-supervisor that can only read what it was handed is one you cannot ask to be suspicious.
-
-So the extension is that a supervisor is an ordinary process with a real acting grant and a real
-vector, and the questions it raises *while deciding* have to thread somewhere.
-
-**Its own band, but as a child of the question it is deciding.** The check is the supervisor's
-own action, so it is its own question on its own band, answered by its own chain. Posed flat it
-is unanswerable — "some process wants network" — where what a person needs to see is "the
-reviewer of `change:pr:9` wants to check advisories before deciding, and that PR's gate is
-waiting on this". So the question carries a parent link and the docket becomes a tree rather
-than a list. `GateQuestion` already carries `Origin` and ids are already structured around
-`GateSep`, so this is a field and a rendering rather than a mechanism.
-
-Two things must not collapse into one. They are **two authorisations**: answering the child
-authorises the investigation and never the merge, and a person who clears a nested question and
-thereby approves the thing being investigated is the worst outcome available here. And the
-**supervised band shows the wait** — an observer of the supervised run sees its `pending`
-blocked on the reviewer's own question, or the run reads as stalled for no reason, which is the
-side-channel rule applied to waiting rather than to deciding.
-
-**It threads rather than recurses**, because the stack nests and the resolver chain does not. A
-charter resolver answers the questions of the work; a resolver's own questions go to the
-built-ins. That is the anti-regress rule doing work rather than being asserted: the depth is
-bounded by construction, and a person is always the terminal answerer of a supervisor's own
-doubt — which is the right allocation, since a supervisor that needs supervising is a human's
-job.
-
-**The clock is the part that bites.** The parent question has an `escalatesAt` and its owner is
-now blocked, which naively reads as "failed to decide" and is false. Pausing the parent's clock
-is the tempting fix and is wrong, because an unanswered child would then hold it open forever.
-Instead a child inherits a deadline bounded by the parent's remaining time, so no sub-question
-can extend the ownership window it was raised inside. If the child outlives it the parent
-escalates carrying the partial reasoning — "I was checking for advisories affecting this
-dependency and did not finish" — so the person who picks it up inherits the suspicion, which is
-the useful part.
-
-**Retraction is not on offer.** If the verdict has already landed, a resolution is CAS-once and
-the action it cleared has happened. What remains is prospective: `say` to steer, `SetVector` to
-slide autonomy down so what did not ask now asks, `cancel` if it is bad enough. All three exist
-today and each lands as an event carrying its `by`, so a supervisor that turns suspicious after
-approving does not retract — it tightens, visibly.
-
-That is the strongest case for the record holding more than positions and verdicts. The
-suspicion, the check and its result belong there, so the next question from that run is judged
-with "I checked advisories at 14:02 and found nothing" in hand rather than re-derived, and
-whoever takes over reads why the vector got tightened.
-
-One boundary, because it cuts across the two grants: an advisory check is an **acting** grant
-question. The supervisor is doing something itself, so it needs `network` in its own envelope —
-sponsorship only ever concerns what it authorises the supervised work to do, and a supervisor
-whose acting grant is too narrow to investigate cannot sponsor its way out of that.
-
-## What this note has not settled
-
-Collected rather than scattered, because each of these is a choice someone should make
-deliberately and none of them is made here.
-
-- **Which end of the interval a trigger-side verdict is about.** `[position, C]` keeps the
-  resolver inside the firing's own semantics; `[position, now]` catches the `deny` that landed
-  after C. See [the trigger side](#the-trigger-side-is-the-same-object).
-- **Escalate on conflict, rather than only refusing it.** `verse resolver add` refuses a
-  condition overlapping an installed binding, which is the answer for now. The better one is
-  that an overlap makes a question *unowned* and therefore promoted — safe rather than
-  forbidden — which also covers the case refusal cannot see, where two conditions are disjoint
-  as written and both select the same entity at runtime.
-- **Where a lapsed question is promoted to.** §Liveness says the human docket. The other
-  reading is one layer up, which is where escalation already goes — and using a different
-  destination for lapse than for escalation is a choice that needs a reason rather than a
-  default nobody noticed.
-- **Whose sponsoring grant applies** when several bindings match a question — the owner's, or
-  any matching binding's. The second lets a narrow resolver draw on an envelope it was never
-  given, so this is not a detail.
-- **Where a stale verdict lands.** A losing answer should be recorded rather than 404'd, but a
-  record mixing verdicts that applied with verdicts that did not blunts the evidence surface. A
-  flag on the entry, or somewhere that is not the record.
-- **How deep layering is usable.** A child inherits `min(own, parent remaining)`, so the
-  innermost deadline bounds the whole stack: two layers of judgment under a ten-minute inner
-  deadline is a configuration that always escalates. The inheritance is safety at depth one and
-  a squeeze at depth two.
-- **The form of `resolve:`** — the TODO in [the annotated
-  charter](#the-residue-gets-a-judgment), to be settled by writing the coupled examples rather
-  than by arguing about them.
-- **Whether rule-shaped resolvers can be supervised**, which is the relaxation §Regress
-  describes and deliberately does not take.
-
-Two smaller ones, both accuracy rather than design. "Supervision is never a side channel" is
-true per stream: an observer of a base process sees its verdict and cannot see that the verdict
-was itself supervised, because that happened on the inner resolver's stream. And a restart
-mid-judgment does not produce two assessors only because spawn ids are derived from the trigger
-and subject — the resolve POST's idempotency key dedups the answer, not the judge.
+A process's events are served from a bounded ring, so a consumer that falls behind gets
+resync-to-snapshot rather than the frames it missed. For verse that is benign, because the
+entity is level truth. For a resolver it is fatal in the wrong place: current state is exact,
+and the run that explains it is gone.
+
+Give the journal an address and leave it with its owner — `process:journal:<id>`, served on
+demand, the split [content federation](../content-federation.md) already makes for files. The
+served range reads a durable log rather than the live ring, which is the half that makes the
+address worth having; without it a resolver asking for events 12–40 gets the same
+resync-to-snapshot as everyone else.
+
+It costs a retention policy with a cap, and a served range needs three answers rather than two:
+here it is, that range is not retained, no such process. Collapsing the middle into an error is
+how a supervisor comes to judge on less than it asked for without knowing.
+
+## Two planes, one spine
+
+A resolver above one process reads two streams with independent cursors and no common order.
+Do not build a sequencer for it. Carry a cursor pair and lean on a property that already holds:
+a process's spawn and its terminal are both store commits, because `mirror` writes them. The
+store stream is the spine, ordered and durable, carrying the anchors; process streams hang off
+it as fine grain between anchors.
+
+## Where a resolver lives
+
+An instance lives for the duration of what it resolves, and the origin decides what that is. Over
+a run it lives for the run and reads the run. Over a subject it lives for the subject and reads
+the store, because a firing is over in a commit or two and attaching per firing would be
+spawn-answer-die — the per-question shape this design exists to avoid, arrived at from the other
+end.
+
+A firing has no event stream, so a resolver at that origin reads the store's commit stream,
+narrowed to what the rule reads. Its position is a revision rather than a cursor, and its
+evidence is the subject's history rather than a run's.
+
+# What is open
+
+- _Escalate on conflict._ Overlapping conditions are refused at add. Promoting the question
+  instead would make an overlap safe rather than forbidden, and would also cover the case
+  refusal cannot see: two conditions disjoint as written that select the same entity at runtime.
+- _Who may write a resolver._ A standing binding is exactly as strong as the ability to add and
+  remove it, and the store has no per-slice write authority — the same gap
+  [authority](../roadmap/authority.md) has about who may declare a resolver that sponsors.
+- _The subject of a process gate._ `GateQuestion.Subject` is declared but set only by the trigger
+  side, so a standing resolver over process gates needs the launch's subject plumbed through, or
+  the match resolved through the process's own `flow` field.
+- _Whether a long conversation holds the protocol._ Does it stay silent on frames that do not
+  concern it, keep `escalate` from drifting into approval as context fills, and not re-answer
+  what it has answered? Measurable rather than arguable; `scratchpad/resolverio` runs both shapes
+  over one stream to find out.

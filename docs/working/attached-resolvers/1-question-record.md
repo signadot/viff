@@ -78,13 +78,16 @@ typed resources — because that is what travels across systems and what a grant
 The raw `run_bash` string is in the journal for anyone who wants it; putting it here would make
 the record the transcript.
 
-**`resolver` is always populated**, by ref for an answerer verse routes to and by a synthesised
-ref for one it can call. A field that is sometimes empty makes every consumer handle two shapes
-forever.
+**`resolver` is always populated**, and needs no cleverness to be: every resolver is an
+entity, so a question addressed to one carries its ref, and a question nobody is bound to
+carries none. Empty means unbound rather than unknown, which is a distinction a consumer can
+act on.
 
-**`escalatesAt` is an instant, not a duration.** The goal record already stamps absolute
-deadlines so a restart cannot slide them, and a question that outlives a daemon has exactly that
-problem.
+**`escalatesAt` is an instant, and the binding declares a duration.** A resolver says
+`escalatesAfter: 4h`, because a binding cannot know when a question will be posed; the record
+stamps `posedAt + escalatesAfter` when it is. The goal record already keeps absolute deadlines
+for the same reason — a question that outlives a daemon must not have its clock slide on the way
+back up.
 
 ## The answer lands on it, afterwards
 
@@ -135,7 +138,7 @@ reaper), and pointing it at settled questions is a decision this note does not m
 
 ## What this does not do
 
-No resolver entity, no `resolve` action verb, no layering, no sponsorship. The record is the
+No resolver entity, no layering, no sponsorship. The record is the
 thing all of those address; none of them is needed to build it, and a charter that merely
 *reads* questions is useful on its own — a rule that notices a question standing unanswered for
 an hour needs nothing else in the design.

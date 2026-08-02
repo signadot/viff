@@ -25,10 +25,9 @@ makes the restart behaviour observable, and 4 is the one that changes an existin
 resolver ref, `posedAt` and `escalatesAt`. The in-memory pending map stays exactly as it is —
 it is the waiter set, and this step does not touch who blocks on what.
 
-The resolver ref has no producer yet (no resolver entities exist), so it is the synthesised
-inline form for now: derived from the spawning rule and chain, or the process id for a bare
-`process run`. Getting it populated from the start is the point; what it points at can grow up
-later.
+No resolver entities exist yet, so the field is written and left empty. That is the honest
+state — unbound — and it is worth carrying from the start so nothing downstream learns to treat
+its absence as a schema variation.
 
 **Proves:** a posed question is a fact, whether or not anything owns it. Test: pose a gate,
 assert the entity exists with the fields set. Then the two cases that killed publishing onto the
@@ -104,7 +103,6 @@ history and nothing reaps it. The lifecycle marker and the reaper exist, so the 
 them at settled questions and deciding a window — which is a decision driving will inform and
 speculation will not.
 
-**The synthesised resolver ref points at nothing yet.** Step 1 populates the field so consumers
-never see two shapes, but until resolver entities exist the ref dereferences to a declaration
-site rather than an installed thing. That is deliberate and worth stating so nobody builds a
-lookup expecting an entity to be there.
+**The resolver ref is empty until resolvers exist.** Step 1 writes the field; nothing fills it
+until the design lands. A reader should treat empty as *unbound* rather than as a field that has
+not been implemented, which is the distinction a later lookup will depend on.
