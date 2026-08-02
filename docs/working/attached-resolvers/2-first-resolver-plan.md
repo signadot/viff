@@ -154,3 +154,6 @@ rule — which this increment does not build and should not prejudge.
 exactly as strong as the ability to add and remove it, and the store has no per-slice write
 authority. It is the design's own open question and
 [authority](../../roadmap/authority.md) is where it lives.
+
+The other door — a binding nobody names, covering the work about the entities its condition
+selects — is [the standing resolver](3-standing-resolver-plan.md).
