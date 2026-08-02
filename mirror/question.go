@@ -155,6 +155,14 @@ func QueuedAnswer(store entity.Store, id string, res process.Resolution) {
 	writeAt(store, QuestionRef(id), rec)
 }
 
+// Overrode records that an answer was taken against an exclusive binding's claim on the
+// question. `by` already names who answered; this names whom they answered over, so the pair
+// is on the record and neither half has to be inferred from a binding that may since have
+// changed or gone.
+func Overrode(store entity.Store, id, owner string) {
+	writeAt(store, QuestionRef(id), entity.Obj{"overrode": owner})
+}
+
 func answerRecord(res process.Resolution) entity.Obj {
 	verdict := "deny"
 	if res.Proceed {

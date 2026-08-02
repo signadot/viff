@@ -139,3 +139,89 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 		t.Fatal("the escalated question never appeared on the spine of the layer that now owns it")
 	}
 }
+
+func standingWithDeadline(name, area, within string) string {
+	return `{name: ` + name + `, kind: security, condition: {subject: {system: change, kind: pr,` +
+		` value: {area: ` + area + `}}}, deadline: {within: "` + within + `"},` +
+		` method: {driver: url, url: "https://x"}}`
+}
+
+// Silence does what an `escalate` verdict does, more slowly.
+//
+// The expiry is evaluated when a READER arrives rather than by a clock of its own, because the
+// layer above is the only party it is for and it learns by reading. A sweeper would compute
+// the same transfer slightly earlier, for nobody.
+func TestSilencePastTheDeadlineEscalates(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+	installResolver(t, ts.URL,
+		`{name: security-review, kind: security, byRef: true, deadline: {within: "300ms"}, `+
+			`method: {driver: url, url: "https://x"}}`).Body.Close()
+	pr(t, srv, "1", "payments")
+
+	spawnFor(t, ts, "run-1", "change:pr:1", "resolvers:security:security-review")
+	qid := waitQuestion(t, srv, "run-1")
+
+	// Armed, and absolute: a duration on the binding becomes an instant on the question,
+	// so a restart cannot slide it.
+	got := question(t, srv, qid)
+	if got["escalatesAt"] == nil {
+		t.Fatalf("the deadline was never armed: %+v", got)
+	}
+	// Inside it, nothing moves however much anyone reads.
+	docket(t, srv)
+	if q := question(t, srv, qid); q["resolver"] != "resolvers:security:security-review" {
+		t.Fatalf("a question inside its deadline moved to %v", q["resolver"])
+	}
+
+	time.Sleep(350 * time.Millisecond)
+	docket(t, srv) // a reader arrives, and that is when it is evaluated
+
+	got = question(t, srv, qid)
+	if got["resolver"] != "resolvers:security:payments-review" {
+		t.Fatalf("overdue, and owned by %v — want the layer above", got["resolver"])
+	}
+	if got["reownedWhy"] != "overdue" || got["reownedFrom"] != "resolvers:security:security-review" {
+		t.Fatalf("the transfer says the wrong thing moved it: %+v", got)
+	}
+	if got["id"] != qid || got["status"] != mirror.QuestionPending {
+		t.Fatalf("the question changed as it moved: %+v", got)
+	}
+	// The new owner has no deadline of its own, so the clock is cleared rather than
+	// inherited — otherwise it would be overdue forever against a deadline nobody set.
+	if got["escalatesAt"] != nil {
+		t.Fatalf("the old owner's clock outlived it: %+v", got)
+	}
+	// And reading again does not move it again.
+	docket(t, srv)
+	if q := question(t, srv, qid); q["resolver"] != "resolvers:security:payments-review" {
+		t.Fatalf("a second read moved it to %v", q["resolver"])
+	}
+}
+
+// A binding that answers before its deadline never escalates at all.
+func TestAnsweringBeforeTheDeadline(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standingWithDeadline("payments-review", "payments", "300ms")).Body.Close()
+	pr(t, srv, "1", "payments")
+	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	qid := waitQuestion(t, srv, "run-1")
+
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+resolver.InstanceRef("payments-review", "run-1").ID+"/verdicts",
+		api.Verdict{ID: qid, Verdict: "proceed"})
+	resp.Body.Close()
+	time.Sleep(350 * time.Millisecond)
+	docket(t, srv)
+
+	got := question(t, srv, qid)
+	if got["reownedWhy"] != nil {
+		t.Fatalf("an answered question was moved by its own deadline: %+v", got)
+	}
+	if got["by"] != "resolvers:security:payments-review" {
+		t.Fatalf("answered by %v, want the binding that answered in time", got["by"])
+	}
+}

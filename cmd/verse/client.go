@@ -467,6 +467,11 @@ type gateAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
 	As  string `cli:"name=as desc='identity answering the gate (REQUIRED — a decision names who made it)'"`
+	// The refusal an exclusive resolver produces names the binding and says to use this, so
+	// the flag is the answer to a question the operator has just been asked. It is a named
+	// act rather than a bypass: `exclusive` was never real against whoever holds this API,
+	// and the record ends up naming both parties.
+	Override bool `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
 }
 
 func gateAnswerCmd(approve bool) *cli.Command {
@@ -501,7 +506,7 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
 		return err
 	}
-	body := api.Resolve{ID: args[0], Approve: approve, By: cfg.As}
+	body := api.Resolve{ID: args[0], Approve: approve, By: cfg.As, Override: cfg.Override}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}

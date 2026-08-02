@@ -98,6 +98,13 @@ type Resolve struct {
 	// list because process.Resolution.Steer is: an answer may carry several instructions,
 	// and collapsing them at the boundary would lose an author's paragraphing.
 	Say []string `tony:"field=say,omitzero"`
+	// Override answers a question an exclusive binding owns, as somebody else.
+	//
+	// It exists because `exclusive` is not real against whoever holds this API, and a dial
+	// that pretended otherwise would be a lie told to the person relying on it. So the
+	// override is a named act rather than a hole: it lands on the record naming both
+	// parties — who overrode, and whom.
+	Override bool `tony:"field=override,omitzero"`
 }
 
 // Spawn runs an ad-hoc process (`POST /processes`) — the `process run` path, which has

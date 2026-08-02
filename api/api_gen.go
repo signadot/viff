@@ -319,6 +319,11 @@ func (s *Resolve) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["say"] = ir.FromSlice(slice)
 	}
 
+	// Field: Override
+	if s.Override {
+		irMap["override"] = ir.FromBool(bool(s.Override))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -385,6 +390,12 @@ func (s *Resolve) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				}
 				s.Say = slice
 			}
+		case "override":
+			// Field: Override
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "override", fieldNodeUnwrapped.Type)
+			}
+			s.Override = bool(fieldNodeUnwrapped.Bool)
 		}
 	}
 

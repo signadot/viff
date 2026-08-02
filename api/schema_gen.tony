@@ -96,6 +96,7 @@ define:
   approve: .[bool]
   by: .[string]
   id: .[string]
+  override: .[bool]
   say: .[array(string)]
 signature:
   name: verse-resolve

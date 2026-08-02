@@ -183,10 +183,31 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 		}
 		mirror.Watch(store, q.BoundTo, resolverName(q.BoundTo), origin)
 	}
+	// The clock a binding puts on its own silence, stamped when the question is posed and
+	// ABSOLUTE so a restart cannot slide it. A binding cannot know when a question will
+	// arrive, so it says a duration and the question says an instant.
+	arm := func(q process.GateQuestion) {
+		if q.BoundTo == "" {
+			return
+		}
+		res, ok := resolver.Find(store, q.BoundTo)
+		if !ok || res.Deadline == nil {
+			return
+		}
+		after, err := res.Deadline.After()
+		if err != nil {
+			return
+		}
+		_, _, _ = store.Write(entity.Write{
+			At:    mirror.QuestionRef(q.ID).At(),
+			Value: entity.Obj{"escalatesAt": time.Now().Add(after).UTC().Format(time.RFC3339Nano)}.Payload(),
+		})
+	}
 	reg.OnPost(func(p process.Pending) {
 		owner(&p.Question)
 		watch(p.Question, "")
 		mirror.PostQuestion(store, p, "")
+		arm(p.Question)
 	})
 	// And the counterpart. A question whose last waiter was cancelled leaves the registry
 	// silently; without this the record it published stays `pending` on the docket, offering
@@ -206,6 +227,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 		owner(&p.Question)
 		watch(p.Question, processID)
 		mirror.PostQuestion(store, p, processID)
+		arm(p.Question)
 	})
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
@@ -1112,6 +1134,9 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// Absent keys stay absent, as they did when this compacted a map: a missing key is
 	// visible, an empty one is camouflage. The record is written that way, so nothing here
 	// has to strip.
+	// A reader arriving is when a deadline is evaluated: the docket a person opens is the
+	// docket as of now, and `⊤` is a person reading.
+	s.escalateOverdue(s.scopedStore(r))
 	out := make([]map[string]any, 0)
 	for _, ent := range pendingQuestions(s.scopedStore(r)) {
 		p := entity.ToObj(ent.Payload)
@@ -1234,6 +1259,18 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	res := process.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
 
 	store := s.scopedStore(r)
+	// `exclusive` governs whose answer COUNTS. Not who may SEE the question: the docket is
+	// unchanged, and a person may read — and argue about — what an exclusive binding owns.
+	// And not a security boundary: it decides who answers an ask, never what an answer may
+	// authorise. The grant does that, and the two are not the same axis.
+	holder, exclusive := exclusiveOwner(store, body.ID)
+	if exclusive && body.By != holder && !body.Override {
+		http.Error(w, holder+" answers this question exclusively; "+
+			"say override to answer it anyway, and the record will name you both",
+			http.StatusForbidden)
+		return
+	}
+	overriding := exclusive && body.By != holder
 	owner := procID
 	if owner == "" {
 		owner = s.ownerOf(store, body.ID)
@@ -1254,6 +1291,9 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 			mirror.QueuedAnswer(store, body.ID, res)
 		} else {
 			mirror.AnswerQuestion(store, body.ID, res)
+		}
+		if overriding {
+			mirror.Overrode(store, body.ID, holder)
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -1321,6 +1361,7 @@ func watchesARun(origin entity.Ref) bool { return origin.System == mirror.System
 // Context arrives before the ask, which is the whole reason a resolver is attached rather than
 // handed a question: by the time it reads the gate it has read what led to it.
 func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
+	s.escalateOverdue(s.scopedStore(r)) // a resolver arriving is a reader arriving
 	_, origin, ok := s.instanceOf(r)
 	if !ok {
 		http.NotFound(w, r)
@@ -1519,6 +1560,55 @@ func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding st
 	subject, _ := p["subject"].(string)
 	reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, binding, "escalated")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// escalateOverdue moves the questions whose deadline has passed, and is called when a READER
+// arrives rather than by a clock of its own.
+//
+// The layer above is the only party an expiry is for, and it learns by reading — its spine, or
+// its docket if it is `⊤` and a person. So the reader's arrival is the moment to make the
+// transfer appear, not a moment too late: a sweeper would compute the same thing slightly
+// earlier, for nobody. It is the shape the claim lease already uses, where expiry happens when
+// somebody next asks for the work.
+//
+// What it costs, said rather than hidden: a question overdue while nothing is reading stays
+// where it is, and moves the instant anything looks. For `⊤` that is exactly right — the
+// docket a person opens is the docket as of now.
+func (s *Server) escalateOverdue(store entity.Store) {
+	now := time.Now()
+	for _, ent := range pendingQuestions(store) {
+		p := entity.ToObj(ent.Payload)
+		at, _ := p["escalatesAt"].(string)
+		if at == "" {
+			continue
+		}
+		// Nano, not RFC3339: the second-granularity spelling TRUNCATES, so a deadline
+		// would fire up to a second early — and one shorter than a second would be past
+		// the instant it was stamped.
+		due, err := time.Parse(time.RFC3339Nano, at)
+		if err != nil || now.Before(due) {
+			continue
+		}
+		owner, _ := p["resolver"].(string)
+		subject, _ := p["subject"].(string)
+		reown(store, ent.Ref, questionOrigin(p, subject), subject, owner, "overdue")
+	}
+}
+
+// exclusiveOwner reports the binding that owns this question and whether it owns it
+// exclusively. A question nobody owns, or one owned by an advisory binding, is answerable by
+// the first party to answer — which is what advisory means, and is the default.
+func exclusiveOwner(store entity.Store, id string) (string, bool) {
+	e, ok, err := store.Get(mirror.QuestionRef(id))
+	if err != nil || !ok {
+		return "", false
+	}
+	binding := entity.Str(e.Payload, "resolver")
+	if binding == "" {
+		return "", false
+	}
+	res, ok := resolver.Find(store, binding)
+	return binding, ok && res.Exclusive
 }
 
 // questionOrigin is what an owner of this question watches: the run that raised it, or the
@@ -1731,6 +1821,9 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 		// question left naming a binding that will not answer is one nobody can answer,
 		// listed on a docket as though somebody were coming.
 		"resolver": nil,
+		// And the clock goes with the owner it belonged to; the branch below arms the new
+		// one's, if it has one.
+		"escalatesAt": nil,
 		// The handover, readable rather than inferred. A question that changed hands
 		// without saying so is one whose audit trail has a hole exactly where somebody
 		// would look.
@@ -1750,6 +1843,16 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 				// just inherited. Create-only, so a binding that was already watching keeps
 				// the position it had.
 				mirror.Watch(store, binding, resolverName(binding), origin)
+				// The new owner's clock, not the old one's. Without re-arming, a question
+				// would stay overdue against a deadline nobody set and move again on every
+				// read; without CLEARING it, one handed to a binding with no deadline would
+				// keep the last one's.
+				rec["escalatesAt"] = nil
+				if res, ok := resolver.Find(store, binding); ok && res.Deadline != nil {
+					if after, err := res.Deadline.After(); err == nil {
+						rec["escalatesAt"] = time.Now().Add(after).UTC().Format(time.RFC3339Nano)
+					}
+				}
 			}
 		}
 	}

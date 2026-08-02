@@ -1,5 +1,11 @@
 # Escalation and exclusive: implementation plan
 
+Status: BUILT — all five steps. `escalate` is a verdict, a deadline does the same thing more
+slowly, and `exclusive` decides whose answer counts, with an override that names both parties.
+What the last section says is not built still is not.
+
+The original status line follows, since the argument is what the plan was for.
+
 Status: plan, nothing built. It follows [the standing resolver](3-standing-resolver-plan.md),
 which runs — bindings by name and by condition, ownership by layer, an instance per origin, a
 spine, and removal that hands on.
@@ -233,6 +239,14 @@ something stronger than proceeding an action, and `exclusive` there decides who 
 authority rather than who may allow a step.
 
 ## The residual to expect
+
+**A defect the live drive turned up, which is not this plan's.** A trigger whose action leaves
+its own condition still true fires again, re-posts a question under the SAME id, and the merge
+puts `status: pending` back over an answered record — so an answered question returns to the
+docket carrying its own answer. It reproduces with no resolver in the picture at all, so
+nothing here caused it, and it is not exclusive's or escalation's to fix: the question under it
+is whether a second firing is a second ask, which is the trigger seam's to answer. Recorded
+here because this is where it was found.
 
 **Whether lazy expiry is enough once something depends on the timing.** Evaluating at the
 reader is right while the only consumer of an escalation is a reader. A rule that fired on an

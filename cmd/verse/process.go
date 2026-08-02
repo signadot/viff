@@ -272,6 +272,10 @@ type procAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the executor on resolution'"`
 	As  string `cli:"name=as desc='identity answering the gate (REQUIRED — a decision names who made it)'"`
+	// Not a bypass so much as an admission: a resolver that answers exclusively can always
+	// be answered over by whoever holds this API, so the flag makes that an act with a name
+	// on it rather than a silent one.
+	Override bool `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
 }
 
 func procAnswerCmd(approve bool) *cli.Command {
@@ -310,7 +314,7 @@ func (cfg *procAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 	// worker's inbox, which is a difference in WHERE it goes, not in what can be said. The
 	// flag was missing here alone, so "yes, but do it this way" was unsayable to the one
 	// executor that is a person reading their inbox.
-	body := api.Resolve{ID: did, Approve: approve, By: cfg.As}
+	body := api.Resolve{ID: did, Approve: approve, By: cfg.As, Override: cfg.Override}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}

@@ -375,6 +375,23 @@ func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
 	return res, true
 }
 
+// Find reads one binding by its ref, for a caller that has an owner and wants its dials.
+func Find(r entity.Reader, ref string) (Resolver, bool) {
+	parsed, err := entity.ParseRef(ref)
+	if err != nil {
+		return Resolver{}, false
+	}
+	e, ok, err := r.Get(parsed)
+	if err != nil || !ok {
+		return Resolver{}, false
+	}
+	var res Resolver
+	if codec.FromNode(e.Payload, &res) != nil {
+		return Resolver{}, false
+	}
+	return res, true
+}
+
 // Overlaps reports the installed bindings that share a (system, kind) with res — what a new
 // one may find itself ordered against.
 //
