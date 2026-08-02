@@ -41,13 +41,17 @@ func TestDocCharartersInstall(t *testing.T) {
 	// strata: an ordering is charter-wide, so two docs each owning `gh` at level 0 would
 	// collide on a shared engine over nothing more than both being examples.
 	store := entitytest.Store(t)
-	total, n := 0, 0
+	total, n, proposed := 0, 0, 0
 	for _, path := range docs {
 		src, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
 		for _, blk := range charterBlocks(string(src)) {
+			if blk.proposed {
+				proposed++
+				continue
+			}
 			// Bounded, because a parse can HANG rather than fail: go-tony loops forever on a
 			// comment following a flow collection (`a: {} # c`), which is a shape a charter is
 			// naturally written in and which therefore reached the docs. A hang here is a
@@ -97,15 +101,26 @@ func TestDocCharartersInstall(t *testing.T) {
 		t.Fatal("found no charters in the docs — the extractor has stopped working, which " +
 			"would make this test pass forever while checking nothing")
 	}
-	t.Logf("installed %d charter block(s) from %d docs", total, len(docs))
+	t.Logf("installed %d charter block(s) from %d docs; %d marked proposed and not installed",
+		total, len(docs), proposed)
 }
 
 type block struct {
-	text string
-	line int
+	text     string
+	line     int
+	proposed bool // fenced ```tony proposed: syntax that does not exist yet
 }
 
-var fence = regexp.MustCompile("(?s)```(tony|json|yaml)\\n(.*?)```")
+// A fence may carry `proposed` after the language — ```tony proposed — which marks a block
+// that shows syntax the grammar does not have yet. A working note argues for a shape before
+// it exists, and holding those to "must install" would either fail the suite or push the
+// proposal out of the doc into prose, where it stops being checkable by a reader too.
+//
+// The marker is part of the pattern rather than an unmatched fence so the skip is DELIBERATE:
+// a block that simply failed to match would be skipped silently, which is the rot this test
+// exists to catch. Skipped blocks are counted and logged, so "proposed" cannot quietly become
+// where charters go to avoid being checked.
+var fence = regexp.MustCompile("(?s)```(tony|json|yaml)( +proposed)?\\n(.*?)```")
 
 // charterBlocks yields every fenced tony/json block, plus every heredoc body (which is how a
 // doc shows a charter being piped into `verse trigger add -f -`). Go's regexp has no
@@ -114,7 +129,7 @@ func charterBlocks(src string) []block {
 	var out []block
 	at := func(idx int) int { return strings.Count(src[:idx], "\n") + 1 }
 	for _, m := range fence.FindAllStringSubmatchIndex(src, -1) {
-		out = append(out, block{text: src[m[4]:m[5]], line: at(m[0])})
+		out = append(out, block{text: src[m[6]:m[7]], line: at(m[0]), proposed: m[4] >= 0})
 	}
 	out = append(out, heredocs(src, at)...)
 	return out

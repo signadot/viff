@@ -52,7 +52,7 @@ because a write has nowhere to put the check that two conditions do not overlap.
 
 ## Two doors, and one of them must be open
 
-```tony
+```tony proposed
 name: validate
 condition:
   subject: { system: change, kind: pr, value: { stage: proposed } }
