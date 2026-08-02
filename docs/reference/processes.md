@@ -148,6 +148,10 @@ The record is its own entity rather than a field because a gate is not always a 
 trigger gate is posed by a firing, before anything spawns — and if it is denied, nothing ever
 does.
 
+A restart settles what nobody is waiting on: a question survives it exactly as its process
+does, and one a firing raised is settled outright, since what waited on that answer was a
+goroutine in the verse. See [process control](../process-control.md).
+
 A completion hook (`onDone` and friends) reads that process's own payload: `$status`,
 `$result`, `$data`, `$err`, `$chain`. The process's flow is its subject, so the hook's
 `$subject` already names it. Note that `status: done` means the process

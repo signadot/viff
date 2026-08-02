@@ -371,6 +371,41 @@ func (s *Server) reconcileProcesses() {
 		s.write(ent.Ref.At("status"), entity.Val(string(process.Orphaned)))
 	}
 	s.reconcileClaims(resumed)
+	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
+}
+
+// reconcileQuestions settles the questions nobody is waiting on any more.
+//
+// A question is a durable record and its WAITER is not: whatever blocked on the answer was a
+// goroutine in the verse that just died. So the record outliving the restart is only useful
+// where something can still receive an answer, and the docket has to say which is which —
+// listing a question nobody will read asks a person to decide something into a void.
+//
+// Two cases, and the second is the one that is easy to miss:
+//
+//   - A PROCESS raised it. It survives exactly as its process does, which is the distinction
+//     reconcileProcesses already draws: resumed behind a runner that is still there, orphaned
+//     when the runtime died with us. The question does not get its own opinion.
+//   - A FIRING raised it, before anything spawned. That waiter was in this verse, always, so
+//     a restart ends it unconditionally. If the rule still matches, its replay poses the
+//     question again under the same deterministic id and it comes back answerable within
+//     milliseconds — which is what a deterministic id is for. If it no longer matches, the
+//     question was about a world that has moved on, and it should not be on a docket.
+func (s *Server) reconcileQuestions() {
+	for _, ent := range pendingQuestions(s.Store) {
+		procID, _ := entity.ToObj(ent.Payload)["process"].(string)
+		if procID != "" {
+			e, ok, err := s.Store.Get(mirror.Ref(procID))
+			if err != nil {
+				continue // the store is unwell; leave the record alone rather than guess
+			}
+			if ok && !process.TerminalStatus(entity.Str(e.Payload, "status")) {
+				continue // its process is still believed alive, so the answer still has a reader
+			}
+		}
+		s.write(ent.Ref.At("status"), entity.Val(mirror.QuestionOrphaned))
+		s.write(ent.Ref.At("orphanedAt"), entity.Val(time.Now().UTC().Format(time.RFC3339)))
+	}
 }
 
 // write applies a value at a path during startup reconciliation, reporting a failure on
@@ -994,13 +1029,8 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// visible, an empty one is camouflage. The record is written that way, so nothing here
 	// has to strip.
 	out := make([]map[string]any, 0)
-	for _, ent := range s.scopedStore(r).List(func(ref entity.Ref) bool {
-		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
-	}) {
+	for _, ent := range pendingQuestions(s.scopedStore(r)) {
 		p := entity.ToObj(ent.Payload)
-		if p == nil || p["status"] != mirror.QuestionPending {
-			continue
-		}
 		rec := map[string]any{}
 		for k, v := range p {
 			switch k {
@@ -1020,6 +1050,24 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 		out = append(out, rec)
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// pendingQuestions selects the open questions: the docket, as a slice of the store.
+//
+// One selector, because `verse gates` and `verse status` must name the same set. They did not
+// before — status counted the engine registry, which never held a process's questions and
+// holds nothing at all after a restart, so it could report no gates beside a docket listing
+// several.
+func pendingQuestions(store entity.Store) []entity.Entity {
+	var out []entity.Entity
+	for _, ent := range store.List(func(ref entity.Ref) bool {
+		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+	}) {
+		if p := entity.ToObj(ent.Payload); p != nil && p["status"] == mirror.QuestionPending {
+			out = append(out, ent)
+		}
+	}
+	return out
 }
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
@@ -1136,7 +1184,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		StoreRev:  s.Store.Rev(),
 		Triggers:  len(s.Eng.Triggers()),
 		Flows:     len(s.Eng.Flows()),
-		Gates:     len(s.Reg.Pending()),
+		Gates:     len(pendingQuestions(s.scopedStore(r))),
 		Processes: s.Procd.Count(),
 		Fired:     s.Eng.Fired(),
 		Runner:    s.runnerStatus(), // how processes run: kind + resume + dial legs

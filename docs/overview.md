@@ -201,7 +201,9 @@ up. See [the trigger model](trigger-model.md#the-charter-is-durable).
 
 *Resume, not orphan.* On restart, `versed.reconcileProcesses` re-attaches a non-terminal
 process whose work outlived verse — one on a remote runner — replaying to recover a terminal
-reached while down, and orphans one whose in-process runtime died with the previous run.
+reached while down, and orphans one whose in-process runtime died with the previous run. Open
+gate questions follow their asker: a resumed process keeps its docket entries answerable, and
+an orphaned one's are settled off the docket.
 
 *CAS at every contended write.* A store write carries its preconditions, checked with it in
 one step (docd's `PatchIf`). A broker adds a terminal-once latch, where the first terminal

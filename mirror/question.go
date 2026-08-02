@@ -33,6 +33,11 @@ func QuestionRef(id string) entity.Ref {
 const (
 	QuestionPending  = "pending"
 	QuestionAnswered = "answered"
+	// QuestionOrphaned is a question whose asker is gone: the process that raised it died
+	// with a previous verse, so nothing is waiting on the answer and nothing will read one.
+	// It settles rather than being deleted, for the reason an answered one does — what was
+	// asked, and why it was never decided, is the trail.
+	QuestionOrphaned = "orphaned"
 )
 
 // PostQuestion publishes a posed question. `process` is the run that raised it, empty for a

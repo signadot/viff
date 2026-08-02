@@ -79,6 +79,18 @@ k8s Job still running — resumes: the work continued in the world while verse w
 reconcile is therefore "resume where the work outlived the daemon; orphan only what died
 with it."
 
+Open questions follow their asker rather than being judged on their own. A resumed process
+keeps its pending gates on the docket, with the same ids, and answering one still reaches the
+worker. An orphaned process's go with it — settled `orphaned`, off the docket, still readable,
+because a question listed as answerable when nothing will read the answer asks a person to
+decide into a void.
+
+A gate a *firing* raised is settled unconditionally, because what waited on it was a goroutine
+in the verse. If its rule still matches, the reinstalled charter replays and poses the same
+question under the same id, and it is answerable again within milliseconds — which is what a
+deterministic gate id is for. If the rule no longer matches, the question was about a world
+that has moved on.
+
 ## Everything through the base URL — no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream,
