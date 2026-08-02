@@ -29,6 +29,14 @@ func (BasicDeriver) Derive(tu *ToolUse) {
 		return
 	}
 	switch strings.ToLower(tu.Name) {
+	case "resolve":
+		// Answering a question is an action like any other, so it derives an effect and a
+		// grant can bound it. The resource is the question, not the process it belongs to:
+		// "may answer these questions" is the sentence a resolver's envelope needs, and the
+		// id carries the origin already.
+		if id := strArg(tu.Input, "id", "question", "gate_id"); id != "" {
+			tu.Effects = append(tu.Effects, Effect{Verb: Resolve, Resource: GateRes(id)})
+		}
 	case "read", "cat":
 		if p := strArg(tu.Input, "path", "file", "file_path"); p != "" {
 			tu.Effects = append(tu.Effects, Effect{Verb: Read, Resource: File(p)})

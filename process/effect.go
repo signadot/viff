@@ -12,6 +12,12 @@ const (
 	Exec      Verb = "exec"
 	Network   Verb = "network"
 	CallAgent Verb = "call-agent" // synchronous sub-process invocation — a function call that opens a defer frame (distinct from a plain tool call)
+	// Resolve answers a gate question. It is its own verb for the reason CallAgent is:
+	// a predicate that cannot name resolution on its own can only speak about everything
+	// an answerer does at once, so "may answer questions about this, and nothing else"
+	// becomes unsayable. Answering is also not a Write — nothing in the store moves, and
+	// the thing it acts on is a question rather than a document.
+	Resolve Verb = "resolve"
 	// Reserved: an asynchronous "spawn"/"go" verb (fork a concurrent process,
 	// teardown-at-join) is deliberately omitted — it needs a different lifetime
 	// model (structured concurrency + monitoring) and breaks the quiescent
@@ -51,6 +57,7 @@ const (
 	KindHost    ResourceKind = "host"    // network endpoint
 	KindProcess ResourceKind = "process" // an exec'd command
 	KindAgent   ResourceKind = "agent"   // a delegated sub-process
+	KindGate    ResourceKind = "gate"    // a gate question, by its id
 )
 
 // Resource is a typed reference to the thing a capability touches.
@@ -76,3 +83,8 @@ func File(path string) Resource   { return Resource{Kind: KindFile, Ref: path} }
 func GitRef(ref string) Resource  { return Resource{Kind: KindGitRef, Ref: ref} }
 func Host(hp string) Resource     { return Resource{Kind: KindHost, Ref: hp} }
 func AgentRes(id string) Resource { return Resource{Kind: KindAgent, Ref: id} }
+
+// GateRes names the question a resolution answers. The ref is the question id, which
+// carries its origin (`<origin>~d<n>`), so a predicate can select the questions of one
+// process without a second field to match on.
+func GateRes(questionID string) Resource { return Resource{Kind: KindGate, Ref: questionID} }
