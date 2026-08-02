@@ -1390,6 +1390,9 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		"name": res.Name, "kind": res.Kind, "byRef": res.ByRef,
 		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL},
 	}
+	if res.Condition != nil {
+		body["condition"] = entity.Obj{"subject": map[string]any(res.Condition.Subject)}
+	}
 	if m := res.Method; m.Vector != "" || len(m.Tools) > 0 || m.Grant != "" {
 		meth := body["method"].(entity.Obj)
 		if m.Vector != "" {
@@ -1406,7 +1409,14 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{"ref": ref.String()})
+	// What it may find itself ordered against, reported and not refused. Overlap is decided
+	// by name at the moment a question is posed; saying so at install is what keeps a
+	// shadowed binding from being a silence rather than a fact.
+	out := map[string]any{"ref": ref.String()}
+	if over := resolver.Overlaps(s.scopedStore(r), res); len(over) > 0 {
+		out["overlaps"] = over
+	}
+	writeOut(w, r, http.StatusCreated, out)
 }
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {

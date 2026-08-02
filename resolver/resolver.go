@@ -8,12 +8,15 @@ package resolver
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger"
 )
 
 // System is where both bindings and instances live: `resolvers:<kind>:<name>` for a binding,
@@ -57,11 +60,43 @@ type Resolver struct {
 	// `verse entities --system resolvers --kind security` is a question worth asking.
 	Name string `tony:"field=name"`
 	Kind string `tony:"field=kind"`
+	// Condition makes it STANDING: nobody names it, and it supervises the work about the
+	// entities it selects. Nil means it attaches only by being named.
+	//
+	// The two doors are not exclusive: one remit can cover the subjects it always watches
+	// and still be pulled in where a charter names it.
+	Condition *Condition `tony:"field=condition,omitzero"`
 	// ByRef says it may be named — by a spawn's `resolver:`, or by a rule's `gating:`. It is
 	// one of the two doors, and a resolver with neither open applies to nothing.
 	ByRef bool `tony:"field=byRef,omitzero"`
 	// Method says how it answers and what the answering may do.
 	Method Method `tony:"field=method"`
+}
+
+// Condition selects the entities a standing binding covers, in the vocabulary a trigger's
+// own `subject` already uses — so nothing new is parsed and an operator who can write one can
+// write the other.
+type Condition struct {
+	Subject trigger.Match `tony:"field=subject"`
+}
+
+// Covers reports whether this condition selects ref right now.
+//
+// It asks the store rather than the ref alone, because a condition reads values —
+// `{area: payments}` is a fact about the entity, not about its address. It inherits Select's
+// treatment of an entity on its way out: one marked VANISHING is not selected, so a gate
+// about something that is leaving falls to whoever reads the docket rather than to a
+// supervisor of a thing that will not be there.
+func (c *Condition) Covers(r entity.Reader, ref entity.Ref) bool {
+	if c == nil {
+		return false
+	}
+	for _, got := range c.Subject.Select(r) {
+		if got == ref {
+			return true
+		}
+	}
+	return false
 }
 
 // Method is the answering half. Driver chooses who decides; the rest is the envelope of
@@ -108,10 +143,18 @@ func (r Resolver) Check() error {
 		return fmt.Errorf("resolver %q: kind %q is reserved for the record of a live one "+
 			"(resolvers:%s:<name>@<origin>)", r.Name, InstanceKind, InstanceKind)
 	}
-	if !r.ByRef {
-		return fmt.Errorf("resolver %q: byRef must be true — it is the only door open in this "+
-			"increment, and a resolver with none applies to nothing. A standing `condition` "+
-			"is the other, and arrives with the layer that reads it", r.Name)
+	// Two doors, and one of them must be open. A binding that may not be named and covers
+	// nothing applies to nothing, which is a supervisor that reports installed and
+	// supervises nothing — the failure this whole design is arranged around.
+	if !r.ByRef && r.Condition == nil {
+		return fmt.Errorf("resolver %q: needs a door — `byRef: true` to be named by a spawn "+
+			"or a rule, or a `condition` to cover the subjects it watches. Both is allowed; "+
+			"neither applies to nothing", r.Name)
+	}
+	if r.Condition != nil && !r.Condition.Subject.Selects() {
+		return fmt.Errorf("resolver %q: condition.subject must name a system and a kind — it "+
+			"selects the entities this binding covers, and one that selects everything is a "+
+			"claim on every question in the verse", r.Name)
 	}
 	switch r.Method.Driver {
 	case "url":
@@ -138,14 +181,20 @@ func (r Resolver) Check() error {
 // each says what will read it.
 func CheckFields(node *ir.Node) error {
 	return checkFields(node, "resolver", map[string]string{
-		"name": "", "kind": "", "byRef": "", "method": "",
-		"condition": "a standing binding arrives with the layer that reads it; " +
-			"this increment attaches by name only (byRef)",
+		"name": "", "kind": "", "byRef": "", "method": "", "condition": "",
 		"escalatesAfter": "escalation arrives with the second layer — with one layer there is " +
 			"nothing above but the human docket, which silence already reaches",
 		"exclusive": "exclusivity requires a deadline, so it arrives with escalatesAfter; " +
 			"a binding is advisory until then and the first answer wins",
 	}, func(field string, val *ir.Node) error {
+		if field == "condition" {
+			return checkFields(val, "resolver condition", map[string]string{
+				"subject": "",
+				"when": "a standing binding covers ENTITIES, and its spine is that subject's " +
+					"whole story rather than a filtered view of it; there is no firing here " +
+					"for a `when` to dispatch",
+			}, nil)
+		}
 		if field == "method" {
 			return checkFields(val, "resolver method", map[string]string{
 				"driver": "", "url": "", "vector": "", "tools": "", "grant": "",
@@ -197,4 +246,69 @@ func unwrap(n *ir.Node) *ir.Node {
 		n = n.Values[0]
 	}
 	return n
+}
+
+// List reads every installed binding, ordered by name.
+//
+// The order is the point, not a convenience: it is what decides ownership when more than one
+// standing binding covers a subject, so it must be total, stable, and the same for everyone
+// who asks.
+func List(r entity.Reader) []Resolver {
+	var out []Resolver
+	for _, ent := range r.List(func(ref entity.Ref) bool {
+		return ref.System == System && ref.Kind != InstanceKind
+	}) {
+		var res Resolver
+		if codec.FromNode(ent.Payload, &res) != nil {
+			continue // a binding this build cannot read is one it cannot honour either
+		}
+		out = append(out, res)
+	}
+	slices.SortFunc(out, func(a, b Resolver) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
+// Owner returns the binding that answers questions about subject, and whether there is one.
+//
+// OVERLAP IS ORDERED, NOT FORBIDDEN. When several standing bindings cover a subject, the
+// first by name owns it. That keeps the design's requirement — a question has exactly one
+// answerer at its layer — while dropping the one it cannot keep: disjointness of two
+// predicates is undecidable in general, so a refusal at install has to be conservative, and a
+// conservative refusal tells an operator with `{area: payments}` and `{area: infra}` no for a
+// reason that is not true of their case.
+//
+// What ordering costs is a binding silently shadowed by an earlier name. Two things answer
+// that without the check having to be sound: the owner is stamped on every question, so "why
+// is mine idle" is a selection rather than an inference, and installing reports what a new
+// binding overlaps.
+func Owner(r entity.Reader, subject entity.Ref) (Resolver, bool) {
+	for _, res := range List(r) {
+		if res.Condition.Covers(r, subject) {
+			return res, true
+		}
+	}
+	return Resolver{}, false
+}
+
+// Overlaps reports the installed bindings that share a (system, kind) with res — what a new
+// one may find itself ordered against.
+//
+// Deliberately cheap and deliberately not sound: it is a NOTICE rather than a refusal, so a
+// false positive costs a sentence instead of an install, and there is nothing here that has
+// to decide whether two predicates can both hold.
+func Overlaps(r entity.Reader, res Resolver) []string {
+	if res.Condition == nil {
+		return nil
+	}
+	var out []string
+	for _, other := range List(r) {
+		if other.Name == res.Name || other.Condition == nil {
+			continue
+		}
+		if other.Condition.Subject.System() == res.Condition.Subject.System() &&
+			other.Condition.Subject.Kind() == res.Condition.Subject.Kind() {
+			out = append(out, Ref(other.Kind, other.Name).String())
+		}
+	}
+	return out
 }
