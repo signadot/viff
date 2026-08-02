@@ -73,6 +73,21 @@ type Meta struct {
 	//
 	// Nil means no standing layer is consulted, which is what a caller with no store view
 	// of bindings should pass.
+	//
+	// TODO: cut the cycle rather than routing around it, before the resolver work
+	// multiplies this. Two symptoms already: an optional field three call sites build by
+	// hand lost the standing layer for resumed processes in the commit that added it (see
+	// versed.Server.reflect), and the resolver system and instance kind are spelled here as
+	// private constants because the real ones cannot be imported — one fact, two spellings.
+	//
+	// The edge to cut is resolver → trigger, not trigger → mirror. Trigger uses Reflect,
+	// Meta and ParseResult, which is the projection itself and not addressing, so no
+	// extraction of refs into a leaf package would help; it would move a constant and leave
+	// the dependency. Resolver imports trigger for exactly one thing — Match, the entity
+	// selector — which delegates to entity.Pattern and is called "the atom of the trigger
+	// model" while being a selector over entities that trigger happens to own. Lifting it
+	// out is the change that is right on its own merits, and it makes mirror → resolver
+	// legal as a side effect.
 	Owner func(subject string) string
 }
 
@@ -327,6 +342,9 @@ func BindResolver(store entity.Store, binding, name, processID string) {
 // The resolver system, spelled here rather than imported: mirror is what every runtime writes
 // through, and a dependency from it onto the resolver package would put the binding's own
 // vocabulary underneath the index that merely records it.
+//
+// Which is the polite reading. The blunt one is that the import is a cycle, and this is one
+// fact with two spellings until that is cut — see Meta.Owner.
 const (
 	resolverSystem   = "resolvers"
 	resolverInstance = "instance"

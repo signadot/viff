@@ -1269,7 +1269,6 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	http.Error(w, "no such question", http.StatusNotFound)
 }
 
-
 // instanceOf reads one resolver instance: the binding it is, and the process it watches.
 //
 // Both come off the record rather than being parsed out of the address. The address is for
