@@ -627,6 +627,11 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /resolvers", s.addResolver, "", nothing)
 	rt.handle("GET /resolvers/{kind}/{name}", s.getResolver, "", nothing)
 	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
+	// The two streams a resolver lives on. Addressed by INSTANCE — the binding watching one
+	// run — so neither route needs a second parameter to say which run it is about.
+	rt.handle("GET /resolvers/instance/{id}/events", s.resolverEvents, "", stream("verse-frame"))
+	rt.handle("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
+	rt.handle("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
 	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
 	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
 	rt.handle("POST /goals", s.addGoal, "verse-goal", nothing)
@@ -1222,6 +1227,122 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 }
 
 
+// instanceOf reads one resolver instance: the binding it is, and the process it watches.
+//
+// Both come off the record rather than being parsed out of the address. The address is for
+// finding it; the fields are what the checks below compare, and a check that re-derives its
+// inputs from a string is one that can disagree with what is stored.
+func (s *Server) instanceOf(r *http.Request) (binding, procID string, ok bool) {
+	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
+	e, found, err := s.scopedStore(r).Get(ref)
+	if err != nil || !found {
+		return "", "", false
+	}
+	p := entity.ToObj(e.Payload)
+	binding, _ = p["binding"].(string)
+	origin, _ := p["origin"].(string)
+	pr, err := entity.ParseRef(origin)
+	if err != nil {
+		return "", "", false
+	}
+	return binding, pr.ID, binding != "" && pr.ID != ""
+}
+
+// resolverEvents hands a resolver the stream of the run it watches — the process's OWN read
+// plane, from `?since=`, not a projection of it.
+//
+// Context arrives before the ask, which is the whole reason a resolver is attached rather than
+// handed a question: by the time it reads the gate it has read what led to it.
+func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
+	_, procID, ok := s.instanceOf(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	// No local special case: the runner attaches a live in-process handle by the same call,
+	// so a resolver over a local run and one over a brokered run read through one path. The
+	// process route splits only because it forwards to the runtime's own mount, and a
+	// resolver is not asking that route's question.
+	s.streamEvents(w, r, procID)
+}
+
+// resolverVerdict applies one answer, through the SAME path a person's `verse gate approve`
+// takes. Not a new answering path, and not a write: the record is written from the decision
+// after the fact, which is what the steering invariant requires.
+func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
+	binding, procID, ok := s.instanceOf(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var v api.Verdict
+	if err := codec.Read(r, &v); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if v.ID == "" {
+		http.Error(w, "id is required: a verdict names the question it answers", http.StatusBadRequest)
+		return
+	}
+	var proceed bool
+	switch v.Verdict {
+	case "proceed":
+		proceed = true
+	case "deny":
+	case "escalate":
+		http.Error(w, "escalate arrives with the layer that can receive it; this build has one "+
+			"layer, above which is the human docket that silence already reaches",
+			http.StatusNotImplemented)
+		return
+	default:
+		http.Error(w, "verdict must be proceed or deny", http.StatusBadRequest)
+		return
+	}
+	// A stream it may READ is not a docket it may ANSWER. The check is structural rather
+	// than a policy about who is asking: the instance names its binding and its origin, so
+	// this is a comparison of two fields the question already carries.
+	q, found, err := s.scopedStore(r).Get(mirror.QuestionRef(v.ID))
+	if err != nil || !found {
+		http.Error(w, "no such question", http.StatusNotFound)
+		return
+	}
+	qp := entity.ToObj(q.Payload)
+	if qp["resolver"] != binding || qp["process"] != procID {
+		http.Error(w, "that question is not this resolver's to answer", http.StatusForbidden)
+		return
+	}
+	// Attribution is verse's: `by` is the binding, stamped here. A service says what it
+	// decided, never who it is.
+	s.answerQuestion(w, r, api.Resolve{
+		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
+	}, procID)
+}
+
+// resolverPosition records how far a resolver has read, and what it wants its successor to
+// know. On the INSTANCE, because who was watching is per run: writing it on the binding would
+// be one resolver's second run overwriting what its first one saw.
+func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.instanceOf(r); !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var p api.Position
+	if err := codec.Read(r, &p); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rec := entity.Obj{"position": p.Position}
+	if p.Notes != "" {
+		rec["notes"] = p.Notes
+	}
+	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // resolverName is the name half of a binding's ref — the last segment of
 // `resolvers:<kind>:<name>`. An instance is addressed by name and origin rather than by the
 // whole ref, because the kind is the operator's filing and the name is the identity: two
@@ -1633,6 +1754,16 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
+	s.streamEvents(w, r, id)
+}
+
+// streamEvents serves one process's read plane over SSE, from `?since=` if it carries one.
+//
+// It is factored out because a resolver reads THIS stream, not a projection of it: the design
+// requires that a resolver sees what an attached observer sees, and the moment it is a
+// different stream there are two orders to reconcile and a supervised run that reads
+// differently depending on who is looking.
+func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string) {
 	h := s.runner.Attach(id)
 	if h == nil {
 		http.NotFound(w, r)

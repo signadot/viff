@@ -124,6 +124,38 @@ type Spawned struct {
 	ID string `tony:"field=id"`
 }
 
+// Verdict is one answer from a resolver (`POST /resolvers/instance/{id}/verdicts`).
+//
+// It names the question rather than being addressed to it: a resolver reads a stream and
+// decides about what it sees, so the id is which of the things it has read this is about.
+//
+//tony:schemagen=verse-verdict,notag
+type Verdict struct {
+	ID string `tony:"field=id"`
+	// Verdict is `proceed` or `deny` — the record's own vocabulary, so what a resolver says
+	// and what the docket shows are one word rather than a mapping. `escalate` is the third
+	// and arrives with the layer that can receive it.
+	Verdict string `tony:"field=verdict"`
+	// Why is the reasoning, for the record. Say is what to tell the process — "yes, but do
+	// it this way" — and rides the same Steer a person's `--say` does.
+	Why string   `tony:"field=why,omitzero"`
+	Say []string `tony:"field=say,omitzero"`
+}
+
+// Position is how far a resolver has read (`POST /resolvers/instance/{id}/position`).
+//
+// Reported even when nothing was decided, which is the point: a hundred frames may produce no
+// verdict, and the position advancing is what tells "has not decided" from "has not caught
+// up". Notes are a handover for whoever picks the position up — a replacement after a
+// restart, or the same resolver with a fresh context — not a memory, since a live one
+// remembers by being alive.
+//
+//tony:schemagen=verse-position,notag
+type Position struct {
+	Position int64  `tony:"field=position"`
+	Notes    string `tony:"field=notes,omitzero"`
+}
+
 // Say re-prompts a running process with a new instruction
 // (`POST /processes/{id}/say`).
 //
