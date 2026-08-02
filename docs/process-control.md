@@ -355,6 +355,15 @@ worker — `spec` (once), `say {text, by}`, `resolve {gateId, proceed, say?}`,
 `cancel|pause|resume`, `vector`. Each item carries a control cursor, and the worker resumes
 with `?since=cCursor`.
 
+An answer is a DECISION when the worker has taken it, not when it was queued. `resolve`
+closes the gate at once — a second answerer is told somebody was here first, because two
+answers to one question is a race with one winner however slowly the answer travels — and the
+`decision` event is emitted when the worker's inbox poll acknowledges the item carrying it.
+The acknowledging poll is the one that asks for what comes AFTER the item, not the one that
+returns it: receiving is not taking, since that response is exactly what a lost one looks
+like. Until then the question is answered-and-undelivered, and if the claim expires first the
+answer was never delivered at all.
+
 A claim is a LEASE. It survives `broker.ClaimLease` without the holder being heard from, and
 the renewal is the work itself — every inbox poll and every report says the holder is alive,
 so a worker that talks to the broker at all is already keeping it. An expired claim is

@@ -281,7 +281,21 @@ func TestGateLoop(t *testing.T) {
 	if err := rh.Resolve("deploy-1", true, "ship it", "human:ops"); err != nil {
 		t.Fatalf("Resolve of the open gate = %v, want nil", err)
 	}
-	drainFor(t, ch, "decision") // verse observes the resolution; pending clears
+	// The worker takes it, and THAT is when verse observes a decision. Queuing an answer is
+	// not delivering one — the read plane says what the worker acted on, not what was sent
+	// to it — so the poll is the step that makes this a decision rather than an intent.
+	var pulled struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
+	if len(pulled.Items) == 0 {
+		t.Fatal("the answer never reached the worker's inbox")
+	}
+	// And the poll that ACKNOWLEDGES it is the next one, asking for what comes after —
+	// receiving is not taking, since that response is exactly what a lost one looks like.
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(pulled.Items[len(pulled.Items)-1].Cursor)+
+		"&epoch="+itoa(claim.Epoch), &pulled)
+	drainFor(t, ch, "decision")
 
 	// Resolving it a second time is a DIFFERENT refusal from the first one above, and the
 	// two must not collapse: one means look for your typo, the other means somebody was
@@ -740,4 +754,63 @@ func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
 	if code := postCode(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`); code != http.StatusConflict {
 		t.Fatalf("a takeover of a claim that was just renewed = %d, want 409", code)
 	}
+}
+
+// An answer is a decision when the worker has TAKEN it, not when it was queued.
+//
+// Resolve used to emit the decision and clear the gate at enqueue, so the read plane, the
+// snapshot and the question record all reported the question settled while the worker that
+// must act on it had heard nothing. If it never came back, the answer evaporated with no
+// trace that it was undelivered.
+//
+// The two moments are separated rather than merged: the right to answer is taken at once — a
+// second answerer is told somebody was here first, because two answers to one question is a
+// race with one winner however slowly the answer travels — and the decision is recorded on
+// acknowledgement.
+func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	ch, unsub := b.Attach("p").Subscribe()
+	defer unsub()
+
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"d1","gate":"deploy"}]}`, nil)
+	drainFor(t, ch, "pending")
+
+	rh := b.Attach("p").(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	if err := rh.Resolve("d1", true, "ship it", "human:ops"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// Queued, and NOT yet a decision: the worker has not been heard from since.
+	select {
+	case ev := <-ch:
+		if ev.Kind == process.EvDecision {
+			t.Fatal("the answer was recorded as a decision before the worker had taken it")
+		}
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	// But the gate is closed to a second answerer straight away.
+	if err := rh.Resolve("d1", false, "no", "human:other"); !errors.Is(err, process.ErrAlreadyAnswered) {
+		t.Fatalf("a second answer = %v, want ErrAlreadyAnswered", err)
+	}
+
+	// The worker pulls, then polls past it — and now it is a decision.
+	var pulled struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
+	last := pulled.Items[len(pulled.Items)-1].Cursor
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(last)+"&epoch="+itoa(claim.Epoch), &pulled)
+	drainFor(t, ch, "decision")
 }

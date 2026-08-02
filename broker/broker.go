@@ -134,6 +134,11 @@ type procState struct {
 	// apart from an answer to nothing. Without it both are "not open", and the two mean
 	// opposite things to whoever asked.
 	answered map[string]bool
+	// undelivered holds answers queued for the worker but not yet acknowledged, keyed by the
+	// inbox cursor that carries them. An answer is a decision only once the worker has taken
+	// it; until then the question is answered-and-undelivered, which is a state a docket can
+	// show and a person can act on.
+	undelivered map[int64]api.InboxItem
 	// abandoned records that the terminal found gates still open, so a late answer can be
 	// told why it missed rather than being sent to look for a typo.
 	abandoned bool
@@ -187,12 +192,16 @@ func (ps *procState) emit(e process.Frame) {
 	ps.mu.Unlock()
 }
 
-func (ps *procState) enqueue(it api.InboxItem) {
+// enqueue appends one control item and returns the cursor it was stamped with, so a caller
+// that must know where its item landed does not have to re-read a counter another enqueue may
+// already have moved.
+func (ps *procState) enqueue(it api.InboxItem) int64 {
 	ps.mu.Lock()
+	defer ps.mu.Unlock()
 	ps.inboxCur++
 	it.Cursor = ps.inboxCur
 	ps.inbox = append(ps.inbox, it)
-	ps.mu.Unlock()
+	return it.Cursor
 }
 
 // latchTerminal records the terminal status once — first writer wins (terminal-once). It
@@ -553,8 +562,31 @@ func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	}
 	// by rides both legs: the worker sees who answered on its inbox item, and the read
 	// plane records it on the decision — the same By a locally-resolved gate carries.
-	ps.enqueue(api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say, By: by})
-	ps.emit(process.Frame{Kind: process.EvDecision, ID: decision, Proceed: proceed, By: by})
+	//
+	// The decision is NOT emitted here. Queuing an answer is not delivering one, and this
+	// used to do both at once: the gate cleared and every surface reported the question
+	// settled while the worker that must act on it had heard nothing. If it never came back
+	// the answer evaporated with no trace that it was undelivered.
+	//
+	// It is emitted when the worker's inbox poll passes this item — its acknowledgement,
+	// which the lease already reads for liveness and the cursor already reads for position.
+	it := api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say, By: by}
+	at := ps.enqueue(it)
+	ps.mu.Lock()
+	// Two different moments, and conflating them is what this separates. The RIGHT TO ANSWER
+	// is taken now — the gate closes, and a second answerer is told somebody was here first,
+	// because two answers to one question is a race with one winner however slowly the
+	// answer travels. The DECISION is recorded later, when the worker takes it.
+	delete(ps.pending, decision)
+	if ps.answered == nil {
+		ps.answered = map[string]bool{}
+	}
+	ps.answered[decision] = true
+	if ps.undelivered == nil {
+		ps.undelivered = map[int64]api.InboxItem{}
+	}
+	ps.undelivered[at] = it
+	ps.mu.Unlock()
 	return nil
 }
 
@@ -680,6 +712,21 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	if since > ps.ackedCursor {
 		ps.ackedCursor = since
 	}
+	// Everything at or below the acknowledged cursor has been TAKEN, so any answer riding
+	// there is delivered and is now a decision. Collected under the lock, emitted off it.
+	//
+	// Note which poll settles it: the one that asks for what comes AFTER the item, not the
+	// one that returns it. Receiving is not taking — that response could be the one that got
+	// lost — and the conservative reading is the one that composes with the lease: a worker
+	// that dies holding an answer it never acknowledged leaves it undelivered, which is
+	// exactly what it is.
+	var landed []api.InboxItem
+	for cur, it := range ps.undelivered {
+		if cur <= ps.ackedCursor {
+			landed = append(landed, it)
+			delete(ps.undelivered, cur)
+		}
+	}
 	out := make([]api.InboxItem, 0)
 	for _, it := range ps.inbox {
 		if it.Cursor > since {
@@ -688,6 +735,9 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	}
 	status, terminal := ps.status, ps.terminal
 	ps.mu.Unlock()
+	for _, it := range landed {
+		ps.emit(process.Frame{Kind: process.EvDecision, ID: it.Decision, Proceed: it.Proceed, By: it.By})
+	}
 	writeOut(w, r, map[string]any{"items": out, "status": status, "terminal": terminal})
 }
 
