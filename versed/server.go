@@ -304,7 +304,7 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
-			Resolver: spec.Resolver, Owner: s.standingOwner,
+			Resolver: spec.Resolver,
 		}
 		l, err := launchOf(id, spec)
 		if err != nil {
@@ -314,11 +314,11 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 			// mistake with an error message attached. So the spawn fails, visibly, and the
 			// trigger's own failure path carries the reason.
 			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			mirror.Reflect(st, id, h, meta)
+			s.reflect(st, id, h, meta)
 			return h
 		}
 		h := s.runner.Spawn(l, content)
-		mirror.Reflect(st, id, h, meta)
+		s.reflect(st, id, h, meta)
 		// Who is watching this run, if anybody was named. Minted beside the mirror because
 		// the two answer adjacent questions — what the work is doing, and who is reading it.
 		mirror.BindResolver(st, l.Resolver, resolverName(l.Resolver), id)
@@ -403,7 +403,13 @@ func (s *Server) reconcileProcesses() {
 		if runnerRef != "" && runnerRef != "local" { // remote: the work outlived verse
 			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
-				mirror.Reflect(s.Store, ent.Ref.ID, h, mirror.Meta{Subject: subject, Runner: runnerRef, Chain: chain})
+				// The binding its spawn named is read back off the entity rather than
+				// remembered: a resumed process must be watched by whoever was watching
+				// it, and the launch that said so is long gone.
+				s.reflect(s.Store, ent.Ref.ID, h, mirror.Meta{
+					Subject: subject, Runner: runnerRef, Chain: chain,
+					Resolver: entity.Str(ent.Payload, "resolver"),
+				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
 				s.Eng.AdoptChain(subject, ent.Ref.ID, chain, h)
@@ -1380,6 +1386,19 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// reflect mirrors a process, filling in the provenance every call site shares rather than
+// asking each to remember it.
+//
+// The standing-owner lookup is the reason it exists. It is a callback because mirror must not
+// import resolver — resolver reads the charter's match vocabulary, trigger reads mirror, and
+// the cycle closes — and an optional field on a struct three call sites build by hand is a
+// field one of them will forget. One did, within the commit that introduced it: reconcile
+// rebuilt its own Meta and a resumed process's questions lost their layer in silence.
+func (s *Server) reflect(store entity.Store, id string, h process.Handle, m mirror.Meta) {
+	m.Owner = s.standingOwner
+	mirror.Reflect(store, id, h, m)
+}
+
 // resolverName is the name half of a binding's ref — the last segment of
 // `resolvers:<kind>:<name>`. An instance is addressed by name and origin rather than by the
 // whole ref, because the kind is the operator's filing and the name is the identity: two
@@ -1621,9 +1640,8 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver,
 	}, nil)
-	mirror.Reflect(store, id, h, mirror.Meta{
-		Runner: s.runner.Ref(), Subject: body.Subject,
-		Resolver: body.Resolver, Owner: s.standingOwner,
+	s.reflect(store, id, h, mirror.Meta{
+		Runner: s.runner.Ref(), Subject: body.Subject, Resolver: body.Resolver,
 	})
 	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})

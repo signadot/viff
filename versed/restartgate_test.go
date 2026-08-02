@@ -315,3 +315,28 @@ func TestABrokeredProcessEndingSettlesItsQuestions(t *testing.T) {
 			got["status"], got)
 	}
 }
+
+// A RESUMED process is watched by whoever was watching it.
+//
+// The binding its spawn named is on the entity, so a restart reads it back rather than
+// remembering it — and the standing layer is consulted for its questions exactly as it was
+// before. Neither survived the first cut of this: reconcile rebuilt its own Meta by hand and
+// dropped both, silently, which is what an optional field on a struct three call sites
+// construct will do.
+func TestAResumedProcessKeepsItsResolver(t *testing.T) {
+	addr := entitytest.Addr(t)
+	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	const binding = "resolvers:security:security-review"
+	entitytest.Set(t, first.Store, mirror.Ref("p"), entity.Obj{
+		"status": string(process.Running), "runner": "http://elsewhere.invalid",
+		"flow": "change:pr:1", "resolver": binding,
+	}.Payload())
+
+	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second.reconcileProcesses()
+
+	e, _, _ := second.Store.Get(mirror.Ref("p"))
+	if got := entity.Str(e.Payload, "resolver"); got != binding {
+		t.Fatalf("a resumed process is watched by %q, want the binding it was spawned with", got)
+	}
+}
