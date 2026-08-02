@@ -133,6 +133,10 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	// run's. One record shape either way — the docket, a charter predicate and an auditor all
 	// read the same fact, and neither source is privileged.
 	reg.OnPost(func(p process.Pending) { mirror.PostQuestion(store, p, "") })
+	// And the counterpart. A question whose last waiter was cancelled leaves the registry
+	// silently; without this the record it published stays `pending` on the docket, offering
+	// a decision nothing is left to receive.
+	reg.OnDrop(func(q process.GateQuestion) { mirror.DropQuestion(store, q.ID) })
 	procd.OnQuestion(func(processID string, p process.Pending) {
 		// A process gate's question knows what it would DO but not what it is about: the
 		// flow belongs to the process, not to the action. Fill it in from the mirror, so a

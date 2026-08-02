@@ -181,6 +181,28 @@ func OrphanQuestions(store entity.Store, processID string) {
 	}
 }
 
+// DropQuestion settles one question whose asker gave up on it — the waiter was cancelled, so
+// there is nobody left to receive an answer.
+//
+// Same status as a process that ended holding open gates, because it is the same fact from a
+// smaller scope: the party who could have acted on the answer is gone.
+func DropQuestion(store entity.Store, id string) {
+	e, ok, err := store.Get(QuestionRef(id))
+	if err != nil || !ok {
+		return
+	}
+	// Only a still-pending one. An answer and a cancellation can cross, and the answer is
+	// the fact worth keeping: it says what was decided, where this says only that nobody
+	// will decide it now.
+	if entity.ToObj(e.Payload)["status"] != QuestionPending {
+		return
+	}
+	writeAt(store, QuestionRef(id), entity.Obj{
+		"status":     QuestionOrphaned,
+		"orphanedAt": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 // SettledBy reports who answered a question, and whether it is settled at all. It is the
 // discriminator between "somebody beat you to it" and "there is no such question" — two facts
 // that were one 404 before the record existed to tell them apart.

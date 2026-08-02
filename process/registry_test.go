@@ -116,7 +116,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	// joiner that has not arrived yet would otherwise be answered before it joined, and would
 	// then post the id afresh — correct behaviour (the question it wanted was already gone)
 	// but not what this test is about.
-	waitFor(t, func() bool { return r.waiterCount(id) == n })
+	waitFor(t, func() bool { return r.WaiterCount(id) == n })
 	if p := r.Pending(); len(p) != 1 {
 		t.Fatalf("%d questions on the docket for one id: %+v", len(p), p)
 	}
@@ -158,7 +158,7 @@ func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 		got, _ := r.Resolve(context.Background(), q, ToolUse{Name: "t"})
 		stay <- got
 	}()
-	waitFor(t, func() bool { return r.waiterCount(id) == 1 })
+	waitFor(t, func() bool { return r.WaiterCount(id) == 1 })
 
 	leaving, cancel := context.WithCancel(context.Background())
 	left := make(chan struct{})
@@ -166,7 +166,7 @@ func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 		_, _ = r.Resolve(leaving, q, ToolUse{Name: "t"})
 		close(left)
 	}()
-	waitFor(t, func() bool { return r.waiterCount(id) == 2 })
+	waitFor(t, func() bool { return r.WaiterCount(id) == 2 })
 	cancel()
 	<-left
 

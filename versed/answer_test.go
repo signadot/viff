@@ -183,3 +183,79 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 		t.Fatalf("an undelivered answer was recorded as a losing one: %+v", q)
 	}
 }
+
+// A question whose asker gave up leaves the docket.
+//
+// The registry drops a question when its last waiter is cancelled — a timed-out request, a
+// torn-down process — and OnPost had no counterpart, so the publisher was told about every
+// question that arrived and none that left. The record stayed `pending`: offered on a docket,
+// answerable-looking, and undeliverable, until something else happened to notice.
+func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	const id = "trigger:review:review~1"
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		_, _ = srv.Reg.Resolve(ctx,
+			process.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: process.Ask},
+			process.ToolUse{Name: "trigger:review"})
+	}()
+	waitPending(t, srv, id)
+	if q := question(t, srv, id); q["status"] != mirror.QuestionPending {
+		t.Fatalf("the question was not published as pending: %+v", q)
+	}
+
+	cancel() // the firing that was waiting on this answer is gone
+
+	var got map[string]any
+	for range 400 {
+		got = question(t, srv, id)
+		if got["status"] != mirror.QuestionPending {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got["status"] != mirror.QuestionOrphaned {
+		t.Fatalf("status = %v, want orphaned — nobody is left to receive an answer: %+v",
+			got["status"], got)
+	}
+
+	resp, err := http.Get(ts.URL + "/gates")
+	if err != nil {
+		t.Fatalf("gates: %v", err)
+	}
+	defer resp.Body.Close()
+	var gates []map[string]any
+	decodeResp(t, resp, &gates)
+	if len(gates) != 0 {
+		t.Fatalf("the docket still offers %v", gates)
+	}
+}
+
+// But a joiner giving up while others still wait takes nothing off the docket. A question
+// several callers are blocked on is not retired because one of them left.
+func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
+	srv := testServer(t)
+	const id = "trigger:review:review~1"
+	q := process.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: process.Ask}
+
+	stay, keep := context.WithCancel(context.Background())
+	defer keep()
+	go func() { _, _ = srv.Reg.Resolve(stay, q, process.ToolUse{Name: "trigger:review"}) }()
+	waitPending(t, srv, id)
+
+	leave, give := context.WithCancel(context.Background())
+	go func() { _, _ = srv.Reg.Resolve(leave, q, process.ToolUse{Name: "trigger:review"}) }()
+	for srv.Reg.WaiterCount(id) < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	give()
+	time.Sleep(100 * time.Millisecond)
+
+	if got := question(t, srv, id); got["status"] != mirror.QuestionPending {
+		t.Fatalf("status = %v, want still pending — somebody is still blocked on it: %+v",
+			got["status"], got)
+	}
+}
