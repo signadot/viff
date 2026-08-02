@@ -610,8 +610,17 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "say")
 	}, "verse-say", nothing)
+	// Answering is the ONE path (answerQuestion), not a case of processControl: this route
+	// differs from `/gate/resolve` only in being TOLD which process holds the question
+	// instead of working it out. Everything that follows — attribution, delivery, the record,
+	// a stale answer — is the same act and must not have two implementations.
 	rt.handle("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
-		s.processControl(w, r, ph, "resolve")
+		var body api.Resolve
+		if err := codec.Read(r, &body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.answerQuestion(w, r, body, r.PathValue("id"))
 	}, "verse-resolve", nothing)
 	// re-vector (slide autonomy on a running process) — runner-agnostic like cancel/say: a
 	// local process is served by the runtime mount (processd's setVector), a brokered/remote
@@ -1019,38 +1028,93 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	by := body.By
-	if by == "" {
-		by = "human:cli"
+	s.answerQuestion(w, r, body, "")
+}
+
+// answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
+// finds the owner from the id, and `/processes/{id}/resolve`, which is told it — because the
+// two differ in how the question is addressed and in nothing else. Having had two
+// implementations is how `decisionId`/`proceed` drifted from `id`/`approve` unnoticed, and an
+// answer's attribution and its record are exactly the things that must not drift.
+//
+// procID is the process the answer is addressed to, empty when the caller did not say and the
+// id must be read for it.
+func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, procID string) {
+	if body.ID == "" {
+		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
+		return
 	}
-	res := process.Resolution{Proceed: body.Approve, By: by, Steer: body.Say}
-	// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
-	// (trigger:…~N) whose owner isn't a process falls through to the registry.
-	owner := body.ID
-	if i := strings.Index(owner, process.GateSep); i >= 0 {
-		owner = owner[:i]
+	// Attribution is required, not defaulted. The server used to fill in `human:cli`, which
+	// put a name on the record that belongs to nobody — and now that an answer is a durable
+	// entry on the question, an unattributable one is a permanent unattributable one. A
+	// decision is an act; acts have actors.
+	if body.By == "" {
+		http.Error(w, "by is required: a decision names who made it", http.StatusBadRequest)
+		return
 	}
-	if !s.isProcess(owner) {
-		// The id named no process — either an engine gate, or an executor-raised one whose
-		// id carries no owner by construction. Ask the snapshots which process holds it;
-		// an engine gate is held by none and still falls through to the registry below.
-		owner = s.processHoldingGate(body.ID)
+	res := process.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
+
+	owner := procID
+	if owner == "" {
+		// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
+		// (trigger:…~N) whose owner isn't a process falls through to the registry.
+		owner = body.ID
+		if i := strings.Index(owner, process.GateSep); i >= 0 {
+			owner = owner[:i]
+		}
+		if !s.isProcess(owner) {
+			// The id named no process — either an engine gate, or an executor-raised one
+			// whose id carries no owner by construction. Ask the snapshots which process
+			// holds it; an engine gate is held by none and falls through to the registry.
+			owner = s.processHoldingGate(body.ID)
+		}
 	}
+
+	store := s.scopedStore(r)
+	delivered := false
 	if s.isProcess(owner) {
-		if !s.resolveProcessDecision(owner, body.ID, res) {
-			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+		if !s.canAnswerProcess(owner) {
+			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
 			return
 		}
-		mirror.AnswerQuestion(s.scopedStore(r), body.ID, res)
+		delivered = s.resolveProcessDecision(owner, body.ID, res)
+	} else {
+		delivered = s.Reg.Answer(body.ID, res)
+	}
+	if delivered {
+		mirror.AnswerQuestion(store, body.ID, res)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !s.Reg.Answer(body.ID, res) {
-		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+
+	// Nothing took the answer. The two reasons are different facts and used to be one 404:
+	// the question was already settled by somebody else, or there is no such question. The
+	// record is what tells them apart, which is the second thing publishing it bought.
+	if won, ok := mirror.SettledBy(store, body.ID); ok {
+		// The loser is recorded rather than dropped. Two people at a docket answering the
+		// same question at once is normal, and the one who lost the race still decided
+		// something — a docket that keeps only the winner cannot show that the question was
+		// contested, which is the thing an auditor would most want to see.
+		mirror.StaleAnswer(store, body.ID, res)
+		http.Error(w, "already answered by "+won+"; your answer was recorded as stale", http.StatusConflict)
 		return
 	}
-	mirror.AnswerQuestion(s.scopedStore(r), body.ID, res)
-	w.WriteHeader(http.StatusNoContent)
+	http.Error(w, "no such question", http.StatusNotFound)
+}
+
+// canAnswerProcess reports whether an answer can reach this process at all. A local one is
+// always answerable; a remote one is answerable only if its runner has a resolution face.
+// It is asked BEFORE delivery so "this runner cannot do that" stays a 501 rather than
+// arriving as "no such question", which would send the operator looking for a typo.
+func (s *Server) canAnswerProcess(procID string) bool {
+	if _, ok := s.Procd.SnapshotOf(procID); ok {
+		return true
+	}
+	if h := s.runner.Attach(procID); h != nil {
+		_, ok := h.(gateResolver)
+		return ok
+	}
+	return true
 }
 
 // ── triggers: the charter ────────────────────────────────────────────────────
@@ -1400,30 +1464,6 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 			return
 		}
 		h.SetVector(body.Vector, body.By)
-	case "resolve":
-		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
-		rh, ok := h.(gateResolver)
-		if !ok {
-			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
-			return
-		}
-		// Same body as `POST /gate/resolve` (api.Resolve): one gate, named by id,
-		// answered yes or no. This route differs only in WHERE the answer goes — relayed
-		// to a remote worker's inbox rather than resolved in-process — which is not a
-		// reason for a second vocabulary, and having had one is how `decisionId`/`proceed`
-		// drifted away from `id`/`approve` unnoticed.
-		var body api.Resolve
-		_ = codec.Read(r, &body)
-		// The relay interface still carries a single steer string; a multi-part say is
-		// joined rather than dropped. Widening it is part of the broker/processd pass.
-		by := body.By
-		if by == "" {
-			by = "human:cli"
-		}
-		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n"), by) {
-			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
-			return
-		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

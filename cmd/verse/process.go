@@ -271,7 +271,7 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 type procAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the executor on resolution'"`
-	As  string `cli:"name=as desc='identity answering the gate, recorded on the decision (default human:cli)'"`
+	As  string `cli:"name=as desc='identity answering the gate (REQUIRED — a decision names who made it)'"`
 }
 
 func procAnswerCmd(approve bool) *cli.Command {
@@ -281,11 +281,11 @@ func procAnswerCmd(approve bool) *cli.Command {
 		panic(err)
 	}
 	name := "approve"
-	syn := "approve a process gate (also: y, yes): approve <process-id> <decision-id> [--say <text>]"
+	syn := "approve a process gate (also: y, yes): approve <process-id> <decision-id> --as <who> [--say <text>]"
 	aliases := []string{"y", "yes"}
 	if !approve {
 		name = "deny"
-		syn = "deny a process gate (also: n, no): deny <process-id> <decision-id> [--say <text>]"
+		syn = "deny a process gate (also: n, no): deny <process-id> <decision-id> --as <who> [--say <text>]"
 		aliases = []string{"n", "no"}
 	}
 	return cli.NewCommandAt(&cfg.Command, name).WithAliases(aliases...).
@@ -301,6 +301,9 @@ func (cfg *procAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 	}
 	if len(args) < 2 {
 		return fmt.Errorf("%w: process %s wants a process id and a decision id", cli.ErrUsage, verb)
+	}
+	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
+		return err
 	}
 	pid, did := args[0], args[1]
 	// Same body as `gate approve`, --say included: this route relays the answer to a remote

@@ -87,11 +87,13 @@ type Resolve struct {
 	ID      string `tony:"field=id"`
 	Approve bool   `tony:"field=approve"`
 	// By is who answered. It rides the wire the same way GoalSteer.By and a say's By do,
-	// and for the same reason: a resolution is an act, and process.Resolution.By is emitted
-	// on the read plane, so an unattributed answer publishes "human:cli" as if that were a
-	// person. Empty falls back to that at the server, so it stays optional — unlike a
-	// ballot's --as, which is required because a motion has no meaning without its voters.
-	By string `tony:"field=by,omitzero"`
+	// and for the same reason: a resolution is an act, and an act has an actor.
+	//
+	// REQUIRED. The server used to default it to "human:cli", which published a name
+	// belonging to nobody; now that an answer is a durable entry on the question record, an
+	// unattributable one would be permanent. Same rule as a ballot's --as, and for the same
+	// reason — a decision has no meaning without whoever made it.
+	By string `tony:"field=by"`
 	// Say rides along with the answer as steering — "yes, but do it this way". It is a
 	// list because process.Resolution.Steer is: an answer may carry several instructions,
 	// and collapsing them at the boundary would lose an author's paragraphing.

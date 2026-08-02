@@ -303,7 +303,7 @@ ok "the action is held; verse gates shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v entity get demo:release:1)" stage open || die "the ask gate did not hold the action"
 ok "demo:release:1 still open while the gate is pending"
-v gate y "$GID" -s "ship it" >/dev/null || die "gate approve (y) failed"
+v gate y "$GID" -s "ship it" --as human:smoke >/dev/null || die "gate approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
 	if haskv "$(v entity get demo:release:1 2>/dev/null || true)" stage shipped; then

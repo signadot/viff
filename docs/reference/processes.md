@@ -52,7 +52,7 @@ verse gates                                  # engine + process gates, unified
 #   reason: "verb write"
 #   tool: write_file
 #   where: process
-verse gate approve run-f3e31ed0390f~d1       # or: process approve run-… run-…~d1
+verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: process approve run-… run-…~d1
 ```
 
 The `~` that separates the gate from its process needs no quoting and no escaping, in a shell
@@ -136,6 +136,13 @@ verse entities --system gate --if '{status: pending, effects: {verbs: [write]}}'
 It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
 afterwards to `status: answered` with the verdict and who gave it. A question outlives its
 answer, because a docket that forgets is one nobody can audit.
+
+Every answer names its answerer — `verse gate approve <id> --as human:you` — and two people
+answering at once is normal rather than exceptional. Exactly one applies; the other is
+recorded under `stale` and told so (`409`, naming who won), because a docket that keeps only
+the winner cannot show that a question was contested. Answering an id nobody asked about is a
+different error (`404`), and worth telling apart: one means look for your typo, the other
+means somebody beat you to it.
 
 The record is its own entity rather than a field because a gate is not always a process's. A
 trigger gate is posed by a firing, before anything spawns — and if it is denied, nothing ever
@@ -236,7 +243,7 @@ deciding — the verse governs who resolves it, and the executor never resolves 
 verse process do gate "$ID" deploy-approval --as human:scott --reason prod --wait
 # gate raised: deploy-approval-a1b2c3d4
 # awaiting resolution…
-verse process approve "$ID" deploy-approval-a1b2c3d4      # …from someone with the authority
+verse process approve "$ID" deploy-approval-a1b2c3d4 --as human:lead   # …from someone with the authority
 verse process do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
 ```
 

@@ -466,7 +466,7 @@ func gateCmd() *cli.Command {
 type gateAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
-	As  string `cli:"name=as desc='identity answering the gate, recorded on the decision (default human:cli)'"`
+	As  string `cli:"name=as desc='identity answering the gate (REQUIRED — a decision names who made it)'"`
 }
 
 func gateAnswerCmd(approve bool) *cli.Command {
@@ -475,10 +475,10 @@ func gateAnswerCmd(approve bool) *cli.Command {
 	if err != nil {
 		panic(err)
 	}
-	name, syn := "approve", "approve a decision (also: y, yes): approve <id> [--say <text>]"
+	name, syn := "approve", "approve a decision (also: y, yes): approve <id> --as <who> [--say <text>]"
 	aliases, done := []string{"y", "yes"}, "approved"
 	if !approve {
-		name, syn = "deny", "deny a decision (also: n, no): deny <id> [--say <text>]"
+		name, syn = "deny", "deny a decision (also: n, no): deny <id> --as <who> [--say <text>]"
 		aliases, done = []string{"n", "no"}, "denied"
 	}
 	// The aliases are named in the SYNOPSIS because cli's usage never prints them — it
@@ -497,6 +497,9 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	}
 	if len(args) < 1 {
 		return fmt.Errorf("%w: gate %s wants a decision id", cli.ErrUsage, verb)
+	}
+	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
+		return err
 	}
 	body := api.Resolve{ID: args[0], Approve: approve, By: cfg.As}
 	if cfg.Say != "" {

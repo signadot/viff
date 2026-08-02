@@ -58,7 +58,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	}()
 	waitPending(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, Say: []string{"ship it"}})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, By: "human:scott", Say: []string{"ship it"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve: status = %s, want 204", resp.Status)
@@ -113,18 +113,19 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	rep.Body.Close()
 
 	// Now answer it the way `verse process resolve` does.
-	resp := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true})
+	resp := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("process resolve = %s, want 204 — api.Resolve did not reach the decision (the routes have drifted apart again)", resp.Status)
 	}
 
 	// And it is gone: a second answer finds nothing open, which is what proves the first
-	// one landed on the named decision rather than on an empty id.
-	again := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true})
+	// one landed on the named decision rather than on an empty id. It is a CONFLICT, not a
+	// 404 — the question exists and somebody else settled it.
+	again := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
 	defer again.Body.Close()
-	if again.StatusCode != http.StatusNotFound {
-		t.Errorf("re-resolve = %s, want 404 (already answered)", again.Status)
+	if again.StatusCode != http.StatusConflict {
+		t.Errorf("re-resolve = %s, want 409 (already answered)", again.Status)
 	}
 }
 

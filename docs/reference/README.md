@@ -91,7 +91,7 @@ verse
            --color auto|always|never   colorize (auto = a terminal only)
 ```
 
-Flags may appear before or after positionals (`gate approve <id> --say ok` works).
+Flags may appear before or after positionals (`gate approve <id> --as you --say ok` works).
 
 ## Selecting by what an entity says
 

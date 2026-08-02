@@ -308,9 +308,7 @@ func (s *Resolve) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	irMap["approve"] = ir.FromBool(bool(s.Approve))
 
 	// Field: By
-	if s.By != "" {
-		irMap["by"] = ir.FromString(string(s.By))
-	}
+	irMap["by"] = ir.FromString(string(s.By))
 
 	// Field: Say
 	if len(s.Say) > 0 {

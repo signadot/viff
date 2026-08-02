@@ -178,7 +178,7 @@ verse gates
 #   reason: "verb write"
 #   tool: write_file
 #   where: process
-verse gate approve run-f3e31ed0390f~d1
+verse gate approve run-f3e31ed0390f~d1 --as human:you
 ```
 
 `run --attach` spawns *and* streams the transcript, prompting you inline on a terminal
@@ -344,7 +344,7 @@ verse gates
 #   reason: "trigger shape-ask gate approval on demo:ask:1"
 #   spawns: shape-ask@demo:ask:1
 #   subject: demo:ask:1
-verse gate approve trigger:shape-ask:approval~093e7c94
+verse gate approve trigger:shape-ask:approval~093e7c94 --as human:you
 ```
 
 `gate` is the gate's own name, `origin` the rule that raised it, `subject` what it is about,

@@ -154,6 +154,59 @@ func AnswerQuestion(store entity.Store, id string, res process.Resolution) {
 	writeAt(store, QuestionRef(id), rec)
 }
 
+// SettledBy reports who answered a question, and whether it is settled at all. It is the
+// discriminator between "somebody beat you to it" and "there is no such question" — two facts
+// that were one 404 before the record existed to tell them apart.
+//
+// A question nobody has answered reports false, as does one that was never posed: from the
+// answerer's side those are the same, since neither is a decision they lost.
+func SettledBy(store entity.Store, id string) (string, bool) {
+	e, ok, err := store.Get(QuestionRef(id))
+	if err != nil || !ok {
+		return "", false
+	}
+	p := entity.ToObj(e.Payload)
+	if p["status"] != QuestionAnswered {
+		return "", false
+	}
+	by, _ := p["by"].(string)
+	if by == "" {
+		by = "an earlier answer"
+	}
+	return by, true
+}
+
+// StaleAnswer records an answer that arrived after the question was settled. Losing a race is
+// an outcome, not an error: the answerer decided something, and a docket that keeps only the
+// winner cannot show that a question was contested.
+//
+// Each loser is written UNDER ITS OWN key rather than appended to a list, so two of them
+// racing cannot lose each other — a merge of distinct keys needs no read-modify-write, and
+// there is nothing here to serialize. One answerer who answers late twice overwrites their own
+// entry, which is right: it is their answer, and the later one is what they think.
+func StaleAnswer(store entity.Store, id string, res process.Resolution) {
+	verdict := "deny"
+	if res.Proceed {
+		verdict = "proceed"
+	}
+	by := res.By
+	if by == "" {
+		by = "unattributed"
+	}
+	rec := entity.Obj{
+		"verdict": verdict,
+		"at":      time.Now().UTC().Format(time.RFC3339),
+	}
+	if len(res.Steer) > 0 {
+		say := make([]any, len(res.Steer))
+		for i, s := range res.Steer {
+			say[i] = s
+		}
+		rec["say"] = say
+	}
+	_, _, _ = store.Write(entity.Write{At: QuestionRef(id).At("stale", by), Value: rec.Payload()})
+}
+
 // effectLists flattens derived effects into the three lists a gate predicate speaks in.
 // Empty when an action classified to nothing, which is a real state: a question whose tool
 // derived no effects still publishes its id, gate and subject, because a tool nothing could

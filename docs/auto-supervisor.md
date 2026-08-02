@@ -225,7 +225,7 @@ verse gates
 #   origin: land-ask
 #   reason: "trigger land-ask gate sign-off on change:pr:8"
 #   subject: change:pr:8
-verse gate approve trigger:land-ask:sign-off~090ea377
+verse gate approve trigger:land-ask:sign-off~090ea377 --as human:scott
 # approved trigger:land-ask:sign-off~090ea377
 verse entity get change:pr:8      # stage: landed
 ```

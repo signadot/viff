@@ -260,7 +260,7 @@ next_steps() {
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
 	printf '\nwhat it did:\n\n  %s entity get %s\n' "$c" "$sub"
 	case "$1" in
-	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id>\n' "$c" "$c" ;;
+	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id> --as you\n' "$c" "$c" ;;
 	vote) printf '  %s docket                 ← it is waiting for a tally\n  %s vote <motion> approve --as alice\n  %s vote <motion> approve --as bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
