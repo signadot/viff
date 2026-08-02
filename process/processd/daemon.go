@@ -129,12 +129,30 @@ func (d *Daemon) Lookup(id string) *process.Process {
 // controllable (list/get/attach/cancel) exactly like a `verse process run` one.
 // Returns the running process (already Run in the background).
 func (d *Daemon) Spawn(l process.Launch, content process.ContentReader) *process.Process {
-	return d.spawnHosted(l, content).proc
+	h, _ := d.spawnHosted(l, content)
+	return h.proc
 }
 
 // spawnHosted builds, registers, wires the read plane, and runs a process. Shared
-// by Spawn and the HTTP spawn handler.
-func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) *hosted {
+// by Spawn and the HTTP spawn handler. The bool reports whether it BUILT one; false means
+// the id was already hosted and that process is what came back.
+//
+// An id is spawned ONCE. A second spawn of one that is already hosted returns the existing
+// process rather than building beside it — because the alternative is not two processes but
+// one lost one: registration is a map assignment, so the newcomer took the id and the
+// original kept running with nothing able to reach it, address it, or stop it.
+//
+// That makes the spawn safe to RETRY, which is the point. A caller whose spawn request
+// timed out cannot know whether the far side acted, and until now its only options were to
+// abandon real work or to destroy it.
+func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) (*hosted, bool) {
+	d.mu.Lock()
+	if h, ok := d.proc[l.ID]; ok {
+		d.mu.Unlock()
+		return h, false
+	}
+	d.mu.Unlock()
+
 	reg := process.NewRegistry()
 	proc := d.build(l, reg, content)
 
@@ -164,7 +182,13 @@ func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) *h
 		})
 	})
 
+	// Re-checked under the lock: two concurrent spawns of one id race the check above, and
+	// the loser must not start a second loop. Whoever registered first is the process.
 	d.mu.Lock()
+	if existing, ok := d.proc[l.ID]; ok {
+		d.mu.Unlock()
+		return existing, false
+	}
 	d.proc[l.ID] = h
 	d.mu.Unlock()
 
@@ -181,7 +205,7 @@ func (d *Daemon) spawnHosted(l process.Launch, content process.ContentReader) *h
 		}
 		h.mu.Unlock()
 	}()
-	return h
+	return h, true
 }
 
 func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
@@ -205,11 +229,17 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	// as a local one — the seam is complete or the guarantee is local-only. The vector and
 	// grant arrive as resolved predicates rather than names for the reason process.Launch
 	// gives: the vocabulary lives at one end, so the two cannot drift apart.
-	h := d.spawnHosted(process.Launch{
+	h, created := d.spawnHosted(process.Launch{
 		ID: id, Task: body.Task, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
 		Answer: body.Answer, Vector: body.Vector, Grant: body.Grant,
 	}, nil)
-	writeOut(w, r, http.StatusCreated, map[string]any{"id": h.proc.ID})
+	// 201 built it, 200 found it already running. A retrying client needs no more than
+	// that, and a client that does not care can ignore it: both mean "this id is running".
+	status := http.StatusCreated
+	if !created {
+		status = http.StatusOK
+	}
+	writeOut(w, r, status, map[string]any{"id": h.proc.ID})
 }
 
 // Count returns the number of hosted processes (live and completed-but-unreaped).

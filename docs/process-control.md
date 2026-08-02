@@ -119,7 +119,8 @@ POST   /processes/{id}/cancel   {by, key}
 POST   /processes/{id}/pause    {by}
 POST   /processes/{id}/resume   {by}
 PUT    /processes/{id}/vector   {vector, by}                     slide autonomy
-POST   /processes                {task, subject, vector, claim?, runner-config}  spawn → {id}
+POST   /processes                {id?, task, subject, vector, claim?, runner-config}  spawn → {id}
+                               (idempotent by id: 201 built it, 200 it was already running)
 ```
 
 ### The event envelope and the cursor
