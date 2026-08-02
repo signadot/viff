@@ -9,8 +9,10 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/runner"
 )
 
 // answerable raises an engine gate and blocks on it the way a firing does, returning the
@@ -142,5 +144,42 @@ func TestAnAnswerMustNameItsQuestion(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an answer naming no question = %s, want 400", resp.Status)
+	}
+}
+
+// An answer that could not be DELIVERED is not an answer about a missing question.
+//
+// It used to be. A runner that was down produced "no such question", which sends an operator
+// hunting a typo for a question that is open, published, and waiting — the one case where
+// retrying is exactly the right thing to do.
+func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+
+	srv := testServer(t)
+	srv.SetRunner(runner.HTTP(deadURL))
+	mirror.PostQuestion(srv.Store, process.Pending{
+		Question: process.GateQuestion{ID: "p~d1", Origin: "p", Gate: "write"},
+	}, "p")
+	entitytest.Set(t, srv.Store, mirror.Ref("p"),
+		entity.Obj{"status": "running", "runner": deadURL}.Payload())
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Approve: true, By: "human:scott"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("answering an open question on an unreachable runner = %s, want 502", resp.Status)
+	}
+
+	// And the question is untouched. Nothing is known about whether it was answered, so
+	// recording an outcome — settled, or stale — would be recording a guess.
+	q := question(t, srv, "p~d1")
+	if q["status"] != mirror.QuestionPending {
+		t.Fatalf("an undelivered answer changed the record: %+v", q)
+	}
+	if q["stale"] != nil {
+		t.Fatalf("an undelivered answer was recorded as a losing one: %+v", q)
 	}
 }

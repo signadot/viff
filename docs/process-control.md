@@ -108,12 +108,19 @@ server — local is simply the broker at a fixed nonce.
 
 ## The verse-facing contract
 
-Two endpoints, which are `Observe : Since` once more, plus out-of-band control:
+Two endpoints, which are `Observe : Since` once more, plus out-of-band control.
+
+Every control call reports which of three things became of it: it was applied, the far side
+REFUSED it, or the far side was never reached. Only the third is worth retrying, and a caller
+that cannot tell them apart either retries what already happened or abandons what never
+arrived — so the distinction is carried in the status, and across the Go seam as
+`process.ErrUnreachable` and friends.
 
 ```
 GET    /processes/{id}                 level truth: current snapshot
 GET    /processes/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
 POST   /processes/{id}/resolve  {id, approve, by, say?, key}     answer a gate
+       204 applied · 404 no such decision · 409 already answered · 502 runner unreachable
 POST   /processes/{id}/say      {text, by, key}                  say to it (re-prompt)
 POST   /processes/{id}/cancel   {by, key}
 POST   /processes/{id}/pause    {by}

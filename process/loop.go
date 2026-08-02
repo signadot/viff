@@ -164,9 +164,10 @@ func (p *Process) SetSpawn(f SpawnFunc) { p.spawn = f }
 // SetVector swaps the gate vector on the running supervisor — the autonomy slide,
 // applied at the next boundary with no restart. It emits an EvVector frame so the slide is
 // observable on the read plane (the new default mode; the operator who slid it rides By).
-func (p *Process) SetVector(v *Vector, by string) {
+func (p *Process) SetVector(v *Vector, by string) error {
 	p.sup.SetVector(v)
 	p.emit(Frame{Kind: EvVector, Mode: v.Default.String(), By: by})
+	return nil // the local handle: the process is right here, so delivery is not in doubt
 }
 
 // SetFailFast makes a child's error cancel its still-running siblings
@@ -196,7 +197,7 @@ func (p *Process) appendJournal(line string) {
 // and honored at the next boundary, folded into the conversation before the next
 // model turn — cooperative: it never interrupts an in-flight model call or action.
 // Requires the Driver to implement Steerable; otherwise the steer is ignored.
-func (p *Process) Steer(instruction, by string) {
+func (p *Process) Steer(instruction, by string) error {
 	p.mu.Lock()
 	p.steer = append(p.steer, sayMsg{text: instruction, by: by})
 	p.mu.Unlock()
@@ -204,6 +205,7 @@ func (p *Process) Steer(instruction, by string) {
 	case p.steerSig <- struct{}{}:
 	default:
 	}
+	return nil
 }
 
 // sayMsg is a say-to instruction latched for the next boundary, with its speaker (by)
@@ -223,13 +225,14 @@ func (p *Process) drainSteer() []sayMsg {
 // bottom-up — children unwind before the parent's frame — and returns "cancelled"
 // at the next boundary. A steer or another cancel arriving mid-teardown does not
 // interrupt it.
-func (p *Process) Cancel(reason string) {
+func (p *Process) Cancel(reason string) error {
 	p.mu.Lock()
 	c := p.cancel
 	p.mu.Unlock()
 	if c != nil {
 		c(fmt.Errorf("cancelled: %s", reason))
 	}
+	return nil
 }
 
 // Run drives the cursor until the driver is done, or a cancel unwinds it. It is

@@ -1,6 +1,7 @@
 package broker_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -267,24 +268,26 @@ func TestGateLoop(t *testing.T) {
 	// resolution stops working with no compile error. Asserting it here is what turns that
 	// into a build failure.
 	rh := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) bool
+		Resolve(decision string, proceed bool, say, by string) error
 	})
 
-	// resolving an unknown decision id (typo, wrong process) matches no open gate and
-	// reports false — so verse can 404 rather than silently enqueue a phantom resolve.
-	if rh.Resolve("deploy-nope", true, "oops", "human:ops") {
-		t.Fatal("Resolve of an unknown decision reported success")
+	// An unknown decision id (typo, wrong process) matches no open gate and says so as
+	// ErrNoSuchDecision — so verse can 404 rather than silently enqueue a phantom resolve.
+	if err := rh.Resolve("deploy-nope", true, "oops", "human:ops"); !errors.Is(err, process.ErrNoSuchDecision) {
+		t.Fatalf("Resolve of an unknown decision = %v, want ErrNoSuchDecision", err)
 	}
 
 	// governance resolves the real gate (verse-side); the worker's inbox gets a resolve item.
-	if !rh.Resolve("deploy-1", true, "ship it", "human:ops") {
-		t.Fatal("Resolve of the open gate reported failure")
+	if err := rh.Resolve("deploy-1", true, "ship it", "human:ops"); err != nil {
+		t.Fatalf("Resolve of the open gate = %v, want nil", err)
 	}
 	drainFor(t, ch, "decision") // verse observes the resolution; pending clears
 
-	// resolving it a second time now finds nothing pending (already answered) -> false.
-	if rh.Resolve("deploy-1", true, "again", "human:ops") {
-		t.Fatal("second Resolve of an answered decision reported success")
+	// Resolving it a second time is a DIFFERENT refusal from the first one above, and the
+	// two must not collapse: one means look for your typo, the other means somebody was
+	// here first. That distinction is what lets versed answer 404 and 409 respectively.
+	if err := rh.Resolve("deploy-1", true, "again", "human:ops"); !errors.Is(err, process.ErrAlreadyAnswered) {
+		t.Fatalf("second Resolve of an answered decision = %v, want ErrAlreadyAnswered", err)
 	}
 
 	inbox, ok := b.ProcessInbox("p")

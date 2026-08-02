@@ -1,6 +1,10 @@
 package process
 
-import "github.com/signadot/tony-format/go-tony/ir"
+import (
+	"errors"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+)
 
 // Launch is everything one spawn says about the process it asks for: which driver builds
 // it, the task it is seeded with, and the FRAME that task is read in.
@@ -101,13 +105,35 @@ type Runner interface {
 // the process runs in-process or behind a URL, so the engine tracks handles, not the
 // concrete *Process. The local handle is *Process itself; a remote handle wraps an HTTP
 // client of a runner base URL.
+// Every control call reports what became of it. Three outcomes, and the third is the one that
+// used to have nowhere to go: applied (nil), REFUSED by the far side, or never reached it.
+//
+// The distinction is not pedantry. Only one of the three is worth retrying, and a caller that
+// cannot tell them apart either retries what was already applied or abandons what never
+// arrived. A cancel that never left the building read as a cancel.
+var (
+	// ErrUnreachable: the far side did not answer. Nothing is known about whether it acted.
+	ErrUnreachable = errors.New("runner unreachable")
+	// ErrNoSuchProcess / ErrNoSuchDecision: the far side answered, and has never heard of it.
+	ErrNoSuchProcess  = errors.New("no such process")
+	ErrNoSuchDecision = errors.New("no such decision")
+	// ErrAlreadyAnswered: a decision that was settled before this answer arrived. Distinct
+	// from ErrNoSuchDecision because the two mean opposite things to whoever asked — one is
+	// "look for your typo", the other is "somebody beat you to it".
+	ErrAlreadyAnswered = errors.New("already answered")
+	// ErrFenced: a stale claim. The caller's generation was displaced.
+	ErrFenced = errors.New("fenced: stale claim")
+	// ErrUnsupported: this runner has no such face at all.
+	ErrUnsupported = errors.New("unsupported by this runner")
+)
+
 type Handle interface {
 	Subscribe() (<-chan Frame, func())
-	Pause()
-	Resume()
-	Cancel(reason string)
-	Steer(instruction, by string)
-	SetVector(v *Vector, by string)
+	Pause() error
+	Resume() error
+	Cancel(reason string) error
+	Steer(instruction, by string) error
+	SetVector(v *Vector, by string) error
 	Result() string
 	// Err is why a terminal process failed or was cancelled — independent of Result, not
 	// exclusive with it: a driver can say something and then fail. It is on the Handle
@@ -139,10 +165,13 @@ func (f failedHandle) Subscribe() (<-chan Frame, func()) {
 	return ch, func() {}
 }
 
-func (failedHandle) Pause()                    {}
-func (failedHandle) Resume()                   {}
-func (failedHandle) Cancel(string)             {}
-func (failedHandle) Steer(string, string)      {}
-func (failedHandle) SetVector(*Vector, string) {}
-func (failedHandle) Result() string            { return "" }
+// Control on work that never started is refused rather than silently accepted. There is no
+// process to pause, and saying so is the difference between "your cancel landed" and "there
+// was never anything there".
+func (failedHandle) Pause() error                    { return ErrNoSuchProcess }
+func (failedHandle) Resume() error                   { return ErrNoSuchProcess }
+func (failedHandle) Cancel(string) error             { return ErrNoSuchProcess }
+func (failedHandle) Steer(string, string) error      { return ErrNoSuchProcess }
+func (failedHandle) SetVector(*Vector, string) error { return ErrNoSuchProcess }
+func (failedHandle) Result() string                  { return "" }
 func (f failedHandle) Err() string             { return f.err }

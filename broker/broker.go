@@ -121,6 +121,10 @@ type procState struct {
 	// entire point of an executor escalating instead of deciding. Narrowing this to
 	// id -> gate silently blanked it on every brokered gate.
 	pending  map[string]process.Frame
+	// answered remembers the gates that HAVE been decided, so a second answer can be told
+	// apart from an answer to nothing. Without it both are "not open", and the two mean
+	// opposite things to whoever asked.
+	answered map[string]bool
 	result   string
 	err      string         // terminal failure reason (Failed only); see latchTerminal
 	status   process.Status // latched terminal status
@@ -140,6 +144,10 @@ func (ps *procState) emit(e process.Frame) {
 		ps.pending[e.ID] = e
 	case process.EvDecision:
 		delete(ps.pending, e.ID)
+		if ps.answered == nil {
+			ps.answered = map[string]bool{}
+		}
+		ps.answered[e.ID] = true
 	}
 	// Broadcast under the lock, as the local bus does. The sends are non-blocking, so it
 	// costs nothing to hold — and it is what makes closing below safe: a copy of the channel
@@ -380,10 +388,13 @@ func (h *handle) subscribeFrom(since int64, resume bool) (<-chan process.Frame, 
 	}
 }
 
-func (h *handle) enqueue(it api.InboxItem) {
-	if ps := h.b.get(h.id); ps != nil {
-		ps.enqueue(it)
+func (h *handle) enqueue(it api.InboxItem) error {
+	ps := h.b.get(h.id)
+	if ps == nil {
+		return process.ErrNoSuchProcess
 	}
+	ps.enqueue(it)
+	return nil
 }
 
 // DialURL is where a worker dials in to run this process (the broker's hosted base). mirror
@@ -391,40 +402,51 @@ func (h *handle) enqueue(it api.InboxItem) {
 // processd) have no separate worker-facing address.
 func (h *handle) DialURL() string { return h.b.dialURL() }
 
-func (h *handle) Pause()  { h.enqueue(api.InboxItem{Kind: "pause"}) }
-func (h *handle) Resume() { h.enqueue(api.InboxItem{Kind: "resume"}) }
+// The broker is in-process and its inbox is in memory, so a control call cannot fail to be
+// QUEUED. What it can fail to be is queued for a process that exists — and beyond that, the
+// broker cannot speak for the worker: an item on the inbox is delivered when the worker pulls
+// it, which is a separate fact this signature does not claim.
+func (h *handle) Pause() error  { return h.enqueue(api.InboxItem{Kind: "pause"}) }
+func (h *handle) Resume() error { return h.enqueue(api.InboxItem{Kind: "resume"}) }
 
 // Cancel is verse-authoritative (Fork-1(b)): verse latches the process terminal
 // immediately — a dial-in worker may be unresponsive, which is often why we cancel — and
 // still enqueues a cancel item so a live worker winds down. A late worker `completed`
 // loses to the latch. The reason rides the inbox item and the terminal status event.
-func (h *handle) Cancel(reason string) {
+func (h *handle) Cancel(reason string) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
-		return
+		return process.ErrNoSuchProcess
 	}
 	ps.enqueue(api.InboxItem{Kind: "cancel", Text: reason}) // relay to a live worker
 	if ps.latchTerminal(process.Cancelled, "") {
 		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Cancelled)})
 	}
+	return nil
 }
 
-func (h *handle) Steer(instr, by string) {
-	h.enqueue(api.InboxItem{Kind: "say", Text: instr, By: by}) // relay to the worker
-	if ps := h.b.get(h.id); ps != nil {                        // operator-authored: verse observes it too
+func (h *handle) Steer(instr, by string) error {
+	if err := h.enqueue(api.InboxItem{Kind: "say", Text: instr, By: by}); err != nil {
+		return err
+	}
+	if ps := h.b.get(h.id); ps != nil { // operator-authored: verse observes it too
 		ps.emit(process.Frame{Kind: process.EvSay, Text: instr, By: by})
 	}
+	return nil
 }
 
 // SetVector relays an autonomy slide to the worker: the new vector rides the inbox item so
 // the worker applies it at its next boundary. Like a say-to, it is operator-authored, so verse
 // records an EvVector on the read plane immediately (the new default mode) rather than waiting
 // on the worker to echo it back.
-func (h *handle) SetVector(v *process.Vector, by string) {
-	h.enqueue(api.InboxItem{Kind: "vector", Vector: v, By: by})
+func (h *handle) SetVector(v *process.Vector, by string) error {
+	if err := h.enqueue(api.InboxItem{Kind: "vector", Vector: v, By: by}); err != nil {
+		return err
+	}
 	if ps := h.b.get(h.id); ps != nil {
 		ps.emit(process.Frame{Kind: process.EvVector, Mode: v.Default.String(), By: by})
 	}
+	return nil
 }
 
 // Resolve answers a gate the worker raised (via do gate). It relays the outcome to the
@@ -435,22 +457,28 @@ func (h *handle) SetVector(v *process.Vector, by string) {
 // genuine open gate: an unknown id (typo, wrong process) or one already answered finds
 // nothing in pending and returns false, so verse can surface a 404 rather than silently
 // enqueueing a resolve for a decision the worker will never recognize.
-func (h *handle) Resolve(decision string, proceed bool, say, by string) bool {
+func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
-		return false
+		return process.ErrNoSuchProcess
 	}
 	ps.mu.Lock()
 	_, open := ps.pending[decision]
+	answered := ps.answered[decision]
 	ps.mu.Unlock()
 	if !open {
-		return false
+		// Which of the two it is matters to whoever asked: one means look for the typo,
+		// the other means somebody was here first.
+		if answered {
+			return process.ErrAlreadyAnswered
+		}
+		return process.ErrNoSuchDecision
 	}
 	// by rides both legs: the worker sees who answered on its inbox item, and the read
 	// plane records it on the decision — the same By a locally-resolved gate carries.
 	ps.enqueue(api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say, By: by})
 	ps.emit(process.Frame{Kind: process.EvDecision, ID: decision, Proceed: proceed, By: by})
-	return true
+	return nil
 }
 
 // Err is the reason a brokered process failed. It needed no change to the worker protocol,

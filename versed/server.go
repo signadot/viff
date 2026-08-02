@@ -1052,6 +1052,36 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
+// ownerOf says which process holds a question, empty for a firing's gate.
+//
+// The RECORD is asked first, and it is the only source that answers while the runner holding
+// the work is down. The alternatives all interrogate the fleet — is this id a process, does
+// any snapshot hold this gate — so an unreachable runner made every question on it look like
+// a question about nothing, and the operator was sent hunting a typo for a gate that was open
+// and waiting. Which is the one case where retrying is exactly right.
+//
+// The fallbacks remain for a question this verse never published: the id's own prefix (a
+// runtime gate is `<process-id>~dN`), then a sweep of the snapshots for an executor-raised
+// gate, whose id carries no owner by construction.
+func (s *Server) ownerOf(store entity.Store, questionID string) string {
+	if e, ok, err := store.Get(mirror.QuestionRef(questionID)); err == nil && ok {
+		if p := entity.Str(e.Payload, "process"); p != "" {
+			return p
+		}
+		// The record exists and names no process: a firing raised it, and the registry is
+		// where it lives. Answering that is not a fleet question at all.
+		return ""
+	}
+	owner := questionID
+	if i := strings.Index(owner, process.GateSep); i >= 0 {
+		owner = owner[:i]
+	}
+	if s.isProcess(owner) {
+		return owner
+	}
+	return s.processHoldingGate(questionID)
+}
+
 // pendingQuestions selects the open questions: the docket, as a slice of the store.
 //
 // One selector, because `verse gates` and `verse status` must name the same set. They did not
@@ -1102,47 +1132,47 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	}
 	res := process.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
 
+	store := s.scopedStore(r)
 	owner := procID
 	if owner == "" {
-		// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
-		// (trigger:…~N) whose owner isn't a process falls through to the registry.
-		owner = body.ID
-		if i := strings.Index(owner, process.GateSep); i >= 0 {
-			owner = owner[:i]
-		}
-		if !s.isProcess(owner) {
-			// The id named no process — either an engine gate, or an executor-raised one
-			// whose id carries no owner by construction. Ask the snapshots which process
-			// holds it; an engine gate is held by none and falls through to the registry.
-			owner = s.processHoldingGate(body.ID)
-		}
+		owner = s.ownerOf(store, body.ID)
 	}
 
-	store := s.scopedStore(r)
-	delivered := false
-	if s.isProcess(owner) {
-		if !s.canAnswerProcess(owner) {
-			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
-			return
-		}
-		delivered = s.resolveProcessDecision(owner, body.ID, res)
-	} else {
-		delivered = s.Reg.Answer(body.ID, res)
+	var err error
+	if owner != "" {
+		err = s.resolveProcessDecision(owner, body.ID, res)
+	} else if !s.Reg.Answer(body.ID, res) {
+		err = process.ErrNoSuchDecision
 	}
-	if delivered {
+	if err == nil {
 		mirror.AnswerQuestion(store, body.ID, res)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	// Nothing took the answer. The two reasons are different facts and used to be one 404:
-	// the question was already settled by somebody else, or there is no such question. The
-	// record is what tells them apart, which is the second thing publishing it bought.
-	if won, ok := mirror.SettledBy(store, body.ID); ok {
-		// The loser is recorded rather than dropped. Two people at a docket answering the
-		// same question at once is normal, and the one who lost the race still decided
-		// something — a docket that keeps only the winner cannot show that the question was
-		// contested, which is the thing an auditor would most want to see.
+	// Nothing took the answer, and WHY is three different facts. Two of them used to be one
+	// 404 and the third had no way to be said at all.
+	//
+	// The runner could not be reached. Nothing is known about the question — it may be open
+	// and waiting — so this is not an answer about the question at all, and calling it "no
+	// such question" sent the operator hunting a typo for a runner that was simply down.
+	if errors.Is(err, process.ErrUnreachable) {
+		http.Error(w, "the runner holding this question could not be reached: "+err.Error(),
+			http.StatusBadGateway)
+		return
+	}
+	if errors.Is(err, process.ErrUnsupported) {
+		http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
+		return
+	}
+	// Somebody was here first. The loser is recorded rather than dropped: two people at a
+	// docket answering at once is normal, and a docket that keeps only the winner cannot
+	// show that the question was contested.
+	won, settled := mirror.SettledBy(store, body.ID)
+	if settled || errors.Is(err, process.ErrAlreadyAnswered) {
+		if won == "" {
+			won = "an earlier answer"
+		}
 		mirror.StaleAnswer(store, body.ID, res)
 		http.Error(w, "already answered by "+won+"; your answer was recorded as stale", http.StatusConflict)
 		return
@@ -1150,20 +1180,6 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	http.Error(w, "no such question", http.StatusNotFound)
 }
 
-// canAnswerProcess reports whether an answer can reach this process at all. A local one is
-// always answerable; a remote one is answerable only if its runner has a resolution face.
-// It is asked BEFORE delivery so "this runner cannot do that" stays a 501 rather than
-// arriving as "no such question", which would send the operator looking for a typo.
-func (s *Server) canAnswerProcess(procID string) bool {
-	if _, ok := s.Procd.SnapshotOf(procID); ok {
-		return true
-	}
-	if h := s.runner.Attach(procID); h != nil {
-		_, ok := h.(gateResolver)
-		return ok
-	}
-	return true
-}
 
 // ── triggers: the charter ────────────────────────────────────────────────────
 
@@ -1249,7 +1265,7 @@ type processLister interface {
 // asserting the three-argument shape and started answering 501. One declaration means one
 // thing to change, and every implementer breaks loudly when it does.
 type gateResolver interface {
-	Resolve(decision string, proceed bool, say, by string) bool
+	Resolve(decision string, proceed bool, say, by string) error
 }
 
 // spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
@@ -1386,9 +1402,14 @@ func (s *Server) processHoldingGate(decisionID string) string {
 
 // resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the
 // runtime for a local process, the runner handle for a brokered one.
-func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) bool {
+func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) error {
 	if _, ok := s.Procd.SnapshotOf(procID); ok {
-		return s.Procd.Resolve(procID, decisionID, res)
+		if s.Procd.Resolve(procID, decisionID, res) {
+			return nil
+		}
+		// The local registry answers by id and cannot say which of the two it was. The
+		// record can, and the caller consults it; here the honest answer is "not open".
+		return process.ErrNoSuchDecision
 	}
 	if h := s.runner.Attach(procID); h != nil {
 		// by is carried across this seam, not dropped: the local leg above takes the whole
@@ -1397,8 +1418,9 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 		if rh, ok := h.(gateResolver); ok {
 			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
 		}
+		return process.ErrUnsupported
 	}
-	return false
+	return process.ErrNoSuchProcess
 }
 
 // getProcess resolves one process across backends: the local runtime first (live detail),

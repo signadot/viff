@@ -212,11 +212,11 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 type fakeHandle struct{ ch chan process.Frame }
 
 func (f *fakeHandle) Subscribe() (<-chan process.Frame, func()) { return f.ch, func() {} }
-func (f *fakeHandle) Pause()                                    {}
-func (f *fakeHandle) Resume()                                   {}
-func (f *fakeHandle) Cancel(string)                             {}
-func (f *fakeHandle) Steer(string, string)                      {}
-func (f *fakeHandle) SetVector(*process.Vector, string)         {}
+func (f *fakeHandle) Pause() error                              { return nil }
+func (f *fakeHandle) Resume() error                             { return nil }
+func (f *fakeHandle) Cancel(string) error                       { return nil }
+func (f *fakeHandle) Steer(string, string) error                { return nil }
+func (f *fakeHandle) SetVector(*process.Vector, string) error   { return nil }
 func (f *fakeHandle) Result() string                            { return "" }
 func (f *fakeHandle) Err() string                               { return "" }
 
