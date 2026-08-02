@@ -1583,6 +1583,17 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 	if res.Condition != nil {
 		body["condition"] = entity.Obj{"subject": map[string]any(res.Condition.Subject)}
 	}
+	if res.Deadline != nil {
+		// The outcome is stored RESOLVED rather than as written: a binding that omitted it
+		// still means escalate, and a record that says so is one a later reader does not
+		// have to know the default to understand.
+		body["deadline"] = entity.Obj{
+			"within": res.Deadline.Within, "then": res.Deadline.Outcome(),
+		}
+	}
+	if res.Exclusive {
+		body["exclusive"] = true
+	}
 	if m := res.Method; m.Vector != "" || len(m.Tools) > 0 || m.Grant != "" {
 		meth := body["method"].(entity.Obj)
 		if m.Vector != "" {

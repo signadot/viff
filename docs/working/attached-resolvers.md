@@ -31,7 +31,7 @@ method:
   vector:  ask                                   # auto | ask | park
   tools:   [read_entity]
   grant:   read-only
-escalatesAfter: 4h
+deadline: {within: "4h", then: escalate}   # was `escalatesAfter: 4h`
 exclusive:      true
 ```
 
@@ -47,9 +47,12 @@ deciding, a `script` deciding, and a `url` verse hands the stream to. The rest i
 of whatever that driver runs — its _acting_ grant. Those three are inert for a `url`, which
 runs nothing verse can gate.
 
-`escalatesAfter` is a duration because a binding cannot know when a question will be posed. The
-question stamps `escalatesAt = posedAt + escalatesAfter` when it is, absolute so a restart
-cannot slide it.
+The deadline is a duration because a binding cannot know when a question will be posed. The
+question stamps `escalatesAt = posedAt + within` when it is, absolute so a restart cannot slide
+it. It is spelled `{within, then}` rather than `escalatesAfter` because a selection and a
+motion already call a duration `within`, and because a motion's deadline picks a winning
+OPTION while this one picks a new ANSWERER — so the outcome is a value rather than a fact about
+the field's name. See [the plan](attached-resolvers/4-escalation-and-exclusive-plan.md).
 
 `verse resolver add|remove` and `verse resolvers` manage it. A verb rather than a raw write,
 because a write has nowhere to put the check that two conditions do not overlap.

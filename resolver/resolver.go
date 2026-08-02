@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -71,6 +72,45 @@ type Resolver struct {
 	ByRef bool `tony:"field=byRef,omitzero"`
 	// Method says how it answers and what the answering may do.
 	Method Method `tony:"field=method"`
+	// Deadline is what happens if this binding says nothing. Optional; without one a
+	// question waits for it indefinitely, which is what an advisory binding usually wants.
+	Deadline *Deadline `tony:"field=deadline,omitzero"`
+	// Exclusive says its answer is the one that counts, rather than the first answer to
+	// arrive. It requires a Deadline: a binding that is down would otherwise turn every
+	// question it owns into one nobody may answer.
+	Exclusive bool `tony:"field=exclusive,omitzero"`
+}
+
+// Deadline is a clock on a question and what happens when it fires.
+//
+// `within` is the word a provider selection and a motion already use for a duration, and this
+// is the same idea — so it is the same word. `then` names the outcome rather than the field
+// name baking one in, because the two kinds of outcome are genuinely different: a motion's
+// deadline picks a winning OPTION, and this one picks a new ANSWERER.
+type Deadline struct {
+	Within string `tony:"field=within"`
+	Then   string `tony:"field=then,omitzero"`
+}
+
+// Escalate is the only outcome this build has. The others a motion already says its own way:
+// a default option that wins when the clock fires is "proceed on silence" and "deny on
+// silence", for a motion over {proceed, deny}.
+const Escalate = "escalate"
+
+// After is the deadline's duration.
+func (d *Deadline) After() (time.Duration, error) {
+	if d == nil {
+		return 0, nil
+	}
+	return time.ParseDuration(d.Within)
+}
+
+// Outcome is what happens when it fires; empty means escalate, which is the only one.
+func (d *Deadline) Outcome() string {
+	if d == nil || d.Then == "" {
+		return Escalate
+	}
+	return d.Then
 }
 
 // Condition selects the entities a standing binding covers, in the vocabulary a trigger's
@@ -156,6 +196,26 @@ func (r Resolver) Check() error {
 			"selects the entities this binding covers, and one that selects everything is a "+
 			"claim on every question in the verse", r.Name)
 	}
+	if r.Deadline != nil {
+		if _, err := r.Deadline.After(); err != nil {
+			return fmt.Errorf("resolver %q: deadline.within %q is not a duration (4h, 30m): %w",
+				r.Name, r.Deadline.Within, err)
+		}
+		if got := r.Deadline.Outcome(); got != Escalate {
+			return fmt.Errorf("resolver %q: deadline.then %q is not built; %q is, and it is the "+
+				"one a motion cannot already say — a default option that wins when the clock "+
+				"fires is how a motion says proceed-on-silence", r.Name, got, Escalate)
+		}
+	}
+	// The coupling the design states, enforced where it is cheap: an exclusive binding that
+	// is down is a question nobody may answer, and a deadline is what makes that a delay
+	// instead of a deadlock.
+	if r.Exclusive && r.Deadline == nil {
+		return fmt.Errorf("resolver %q: exclusive needs a deadline — its answer is the only "+
+			"one that counts, so a binding that is down would turn every question it owns "+
+			"into one nobody may answer. `deadline: {within: \"4h\"}` makes that a delay",
+			r.Name)
+	}
 	switch r.Method.Driver {
 	case "url":
 		if r.Method.URL == "" {
@@ -182,10 +242,10 @@ func (r Resolver) Check() error {
 func CheckFields(node *ir.Node) error {
 	return checkFields(node, "resolver", map[string]string{
 		"name": "", "kind": "", "byRef": "", "method": "", "condition": "",
-		"escalatesAfter": "escalation arrives with the second layer — with one layer there is " +
-			"nothing above but the human docket, which silence already reaches",
-		"exclusive": "exclusivity requires a deadline, so it arrives with escalatesAfter; " +
-			"a binding is advisory until then and the first answer wins",
+		"deadline": "", "exclusive": "",
+		"escalatesAfter": "spelled `deadline: {within: \"4h\", then: escalate}` — `within` is what " +
+			"a selection and a motion already call a duration, and `then` says which outcome " +
+			"because a motion's deadline picks an option while this one picks an answerer",
 	}, func(field string, val *ir.Node) error {
 		if field == "condition" {
 			return checkFields(val, "resolver condition", map[string]string{
@@ -193,6 +253,11 @@ func CheckFields(node *ir.Node) error {
 				"when": "a standing binding covers ENTITIES, and its spine is that subject's " +
 					"whole story rather than a filtered view of it; there is no firing here " +
 					"for a `when` to dispatch",
+			}, nil)
+		}
+		if field == "deadline" {
+			return checkFields(val, "resolver deadline", map[string]string{
+				"within": "", "then": "",
 			}, nil)
 		}
 		if field == "method" {

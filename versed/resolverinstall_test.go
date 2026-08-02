@@ -100,12 +100,12 @@ func TestAResolverThatWouldDoNothingIsRefused(t *testing.T) {
 		{"a condition that dispatches rather than covers",
 			`{name: r, kind: security, condition: {subject: {system: demo, kind: pr}, when: {system: demo}}, method: {driver: url, url: "https://x"}}`,
 			"no firing here"},
-		{"a deadline nothing counts down",
-			`{name: r, kind: security, byRef: true, escalatesAfter: 4h, method: {driver: url, url: "https://x"}}`,
-			"second layer"},
-		{"an exclusivity nothing enforces",
+		{"the design's older spelling for a deadline",
+			`{name: r, kind: security, byRef: true, escalatesAfter: "4h", method: {driver: url, url: "https://x"}}`,
+			"is not read yet"},
+		{"an exclusivity with nothing to bound it",
 			`{name: r, kind: security, byRef: true, exclusive: true, method: {driver: url, url: "https://x"}}`,
-			"requires a deadline"},
+			"needs a deadline"},
 		{"a driver that is not built",
 			`{name: r, kind: security, byRef: true, method: {driver: llm, url: "https://x"}}`,
 			"not built yet"},
@@ -142,5 +142,71 @@ func TestAResolverThatWouldDoNothingIsRefused(t *testing.T) {
 	decodeResp(t, list, &out)
 	if len(out) != 0 {
 		t.Fatalf("a refused install left %v behind", out)
+	}
+}
+
+// The two dials, and the rule the design binds them with: exclusive needs a deadline.
+//
+// An exclusive binding's answer is the only one that counts, so one that is down turns every
+// question it owns into a question nobody may answer. A deadline is what makes that a delay
+// instead of a deadlock — which is why the two arrive together rather than one at a time.
+func TestExclusiveNeedsADeadline(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, c := range []struct{ what, doc, wantIn string }{
+		{"exclusive with nothing to bound it",
+			`{name: a, kind: security, byRef: true, exclusive: true, method: {driver: url, url: "https://x"}}`,
+			"exclusive needs a deadline"},
+		{"a duration that is not one",
+			`{name: a, kind: security, byRef: true, deadline: {within: soon}, method: {driver: url, url: "https://x"}}`,
+			"is not a duration"},
+		{"an outcome this build does not have",
+			`{name: a, kind: security, byRef: true, deadline: {within: "4h", then: proceed}, method: {driver: url, url: "https://x"}}`,
+			"is not built"},
+		{"the design's older spelling",
+			`{name: a, kind: security, byRef: true, escalatesAfter: "4h", method: {driver: url, url: "https://x"}}`,
+			"is not read yet"},
+	} {
+		resp := installResolver(t, ts.URL, c.doc)
+		body := make([]byte, 4096)
+		n, _ := resp.Body.Read(body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: install = %s, want 400", c.what, resp.Status)
+			continue
+		}
+		if msg := string(body[:n]); !strings.Contains(msg, c.wantIn) {
+			t.Errorf("%s: refused with %q, want it to mention %q", c.what, strings.TrimSpace(msg), c.wantIn)
+		}
+	}
+
+	// The two together install, and the record says the outcome even where the author left
+	// it implicit — a later reader should not have to know the default to read the record.
+	resp := installResolver(t, ts.URL,
+		`{name: strict, kind: security, byRef: true, exclusive: true, `+
+			`deadline: {within: "4h"}, method: {driver: url, url: "https://x"}}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("exclusive with a deadline = %s, want 201", resp.Status)
+	}
+	e, _, _ := srv.Store.Get(resolver.Ref("security", "strict"))
+	got := entity.ToObj(e.Payload)
+	if got["exclusive"] != true {
+		t.Fatalf("exclusive did not survive the install: %+v", got)
+	}
+	d, _ := got["deadline"].(map[string]any)
+	if d == nil || d["within"] != "4h" || d["then"] != resolver.Escalate {
+		t.Fatalf("the deadline did not survive as written and resolved: %+v", got)
+	}
+
+	// And a deadline alone installs: without exclusivity it is just a slow hand-off.
+	resp = installResolver(t, ts.URL,
+		`{name: patient, kind: security, byRef: true, deadline: {within: "30m", then: escalate}, `+
+			`method: {driver: url, url: "https://x"}}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("a deadline without exclusive = %s, want 201", resp.Status)
 	}
 }

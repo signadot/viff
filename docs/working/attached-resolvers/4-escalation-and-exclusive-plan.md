@@ -84,7 +84,7 @@ is worth noticing before building a second one beside it.
 ### 1. The two dials, and the rule that binds them
 
 ```tony
-deadline:  {within: 4h, then: escalate}
+deadline:  {within: "4h", then: escalate}
 exclusive: true
 ```
 
