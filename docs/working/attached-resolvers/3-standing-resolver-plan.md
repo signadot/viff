@@ -263,3 +263,7 @@ gate has a run instance for it, so the fine grain is reachable — but nothing s
 read before deciding, and a resolver that answers from the spine alone is answering on less
 than it could have seen. That is a matter for the protocol's obligations rather than for
 routing, and it is the same question an `llm` driver will make concrete.
+
+Escalation — what makes layer *n* answer the questions layer *n−1* raises — and the
+`exclusive` dial that needs its deadline are
+[the next increment](4-escalation-and-exclusive-plan.md).

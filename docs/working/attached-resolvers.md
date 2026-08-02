@@ -338,9 +338,12 @@ evidence is the subject's history rather than a run's.
 
 # What is open
 
-- _Escalate on conflict._ Overlapping conditions are refused at add. Promoting the question
-  instead would make an overlap safe rather than forbidden, and would also cover the case
-  refusal cannot see: two conditions disjoint as written that select the same entity at runtime.
+- _Escalate on conflict._ Answered differently than this asked. Overlapping conditions are no
+  longer refused at add — disjointness of two predicates is undecidable, so the refusal had to
+  be conservative and would have blocked legitimate pairs. They are ORDERED instead: the first
+  binding by name owns, which keeps exactly one answerer per layer without deciding anything at
+  install. Promoting on conflict is then unnecessary rather than deferred, and the runtime case
+  refusal could not see is covered by the same rule.
 - _Who may write a resolver._ A standing binding is exactly as strong as the ability to add and
   remove it, and the store has no per-slice write authority — the same gap
   [authority](../roadmap/authority.md) has about who may declare a resolver that sponsors.
