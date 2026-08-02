@@ -159,6 +159,28 @@ func AnswerQuestion(store entity.Store, id string, res process.Resolution) {
 	writeAt(store, QuestionRef(id), rec)
 }
 
+// OrphanQuestions settles every question a process left open, for a process that has ended.
+// Nobody decided them and nobody now can: the asker is gone, and an answer would reach a run
+// that is over.
+//
+// It is a settle, not a delete, for the reason an answered one is: what was asked, and the
+// fact that it was never decided, is the trail. `orphaned` is the same word a restart uses
+// for the same fact — the party who could have answered no longer exists.
+func OrphanQuestions(store entity.Store, processID string) {
+	for _, ent := range store.List(func(ref entity.Ref) bool {
+		return ref.System == QuestionSystem && ref.Kind == QuestionKind
+	}) {
+		p := entity.ToObj(ent.Payload)
+		if p["process"] != processID || p["status"] != QuestionPending {
+			continue
+		}
+		writeAt(store, ent.Ref, entity.Obj{
+			"status":     QuestionOrphaned,
+			"orphanedAt": time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+}
+
 // SettledBy reports who answered a question, and whether it is settled at all. It is the
 // discriminator between "somebody beat you to it" and "there is no such question" — two facts
 // that were one 404 before the record existed to tell them apart.

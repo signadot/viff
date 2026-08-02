@@ -268,3 +268,50 @@ func waitDocket(t *testing.T, srv *Server, id string) {
 	}
 	t.Fatalf("%s never reached the docket", id)
 }
+
+// A process that ends leaves no question on the docket, whichever way it ended.
+//
+// Only one of the two ways settled them. A local process ends by emitting an EvDecision for
+// its open gate, which the mirror settles; a brokered one latches terminal and emits only an
+// EvStatus — so the docket went on offering a question for a run that was over, and answering
+// it reported "no such question".
+func TestABrokeredProcessEndingSettlesItsQuestions(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, entitytest.Addr(t)))
+	srv.SetRunner(b)
+	nonce := srv.HostBroker("", b.WorkerHandler())
+	mirror.Reflect(srv.Store, "p", b.Attach("p"), mirror.Meta{Runner: b.Ref()})
+	work := httptest.NewServer(srv.BrokerHandler())
+	defer work.Close()
+
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p/claim", map[string]any{"identity": "human:w"})
+	var cl struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	decodeResp(t, claim, &cl)
+	claim.Body.Close()
+	postTony(t, work.URL+"/broker/"+nonce+"/processes/p/report", map[string]any{
+		"epoch":  cl.Epoch,
+		"events": []process.Frame{{Kind: process.EvPending, ID: "p~d1", Gate: "write"}},
+	}).Body.Close()
+	waitDocket(t, srv, "p~d1")
+
+	if err := b.Attach("p").Cancel("operator changed their mind"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	for range 400 {
+		if len(docket(t, srv)) == 0 {
+			break
+		}
+	}
+	if got := docket(t, srv); len(got) != 0 {
+		t.Fatalf("the docket still offers %v for a process that ended", got)
+	}
+	e, _, _ := srv.Store.Get(mirror.QuestionRef("p~d1"))
+	if got := entity.ToObj(e.Payload); got["status"] != mirror.QuestionOrphaned {
+		t.Fatalf("question status = %v, want orphaned — nobody answered it and nobody now can: %+v",
+			got["status"], got)
+	}
+}

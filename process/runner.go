@@ -121,6 +121,10 @@ var (
 	// from ErrNoSuchDecision because the two mean opposite things to whoever asked — one is
 	// "look for your typo", the other is "somebody beat you to it".
 	ErrAlreadyAnswered = errors.New("already answered")
+	// ErrProcessEnded: the process is over, so its open gates will never be acted on. Not
+	// ErrAlreadyAnswered — nobody answered — and not ErrNoSuchDecision, because the gate was
+	// real and the answerer is not looking at a typo.
+	ErrProcessEnded = errors.New("the process ended with this gate unanswered")
 	// ErrFenced: a stale claim. The caller's generation was displaced.
 	ErrFenced = errors.New("fenced: stale claim")
 	// ErrUnsupported: this runner has no such face at all.

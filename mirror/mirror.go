@@ -191,6 +191,11 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 							st["err"] = e
 						}
 						write(store, id, st)
+						// Whatever it was still asking, it will never hear the answer to.
+						// A brokered process ends with an EvStatus and no EvDecision, so
+						// nothing else would ever settle those questions and the docket
+						// would keep offering them for a run that is over.
+						OrphanQuestions(store, id)
 						return // stop projecting; the entity remains, marked terminal
 					}
 				}

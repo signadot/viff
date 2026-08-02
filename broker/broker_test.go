@@ -526,3 +526,126 @@ func TestCompletionTextStaysAResult(t *testing.T) {
 		t.Fatalf("handle = {Result:%q Err:%q}, want {LGTM \"\"}", h.Result(), h.Err())
 	}
 }
+
+// A terminal takes the gates it never answered with it.
+//
+// It did not: the latch left the pending set untouched, so a cancelled process's open gate
+// could still be answered — reporting success, and writing a decision onto the log of a run
+// that had already ended. `report` was guarded post-terminal and the gate set was not.
+func TestATerminalAbandonsItsOpenGates(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	h := b.Attach("p")
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
+
+	if err := h.Cancel("operator changed their mind"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	inst, _ := b.ProcessSnapshot("p")
+	if len(inst.Pending) != 0 {
+		t.Fatalf("a cancelled process still holds %d open gate(s)", len(inst.Pending))
+	}
+
+	rh := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	// And the refusal says WHICH refusal it is. "No such decision" would send the answerer
+	// looking for a typo; the gate was real and the process ended underneath them.
+	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); !errors.Is(err, process.ErrProcessEnded) {
+		t.Fatalf("answering a gate on an ended process = %v, want ErrProcessEnded", err)
+	}
+}
+
+// A report says how many of its events it applied.
+//
+// It is not always all of them: nothing follows a terminal, so a batch whose terminal is not
+// its last entry has the remainder dropped. Answering 200 and nothing else told a worker its
+// whole wind-down had landed while part of it was on the floor, with no way to find out.
+func TestAReportSaysWhatItApplied(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	var out struct {
+		Applied int `tony:"field=applied"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[`+
+			`{"kind":"exec","tool":"deploy"},`+
+			`{"kind":"status","text":"done"},`+
+			`{"kind":"say","text":"and here is what I learned"},`+
+			`{"kind":"exec","tool":"cleanup"}],"result":"shipped"}`, &out)
+
+	if out.Applied != 2 {
+		t.Fatalf("applied = %d for a 4-event batch whose terminal is third from last, want 2 "+
+			"— the worker cannot compute a retry from a count that does not match", out.Applied)
+	}
+}
+
+// A reconnecting worker resumes from what it ACKNOWLEDGED, so control issued while it was
+// away is still waiting for it.
+//
+// The claim used to answer with the broker's current inbox cursor, which told a worker that
+// had just come back to skip everything queued during its outage — and an outage is exactly
+// when control is most likely to have been issued. Composed with a decision recorded at
+// enqueue time, the process then waited forever on an answer every other surface reported as
+// delivered.
+func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	claimOnce := func() (epoch, cCursor int64) {
+		t.Helper()
+		var c struct {
+			Epoch   int64 `tony:"field=epoch"`
+			CCursor int64 `tony:"field=cCursor"`
+		}
+		postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &c)
+		return c.Epoch, c.CCursor
+	}
+	items := func(epoch, since int64) int {
+		t.Helper()
+		var out struct {
+			Items []api.InboxItem `tony:"field=items"`
+		}
+		getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(since)+"&epoch="+itoa(epoch), &out)
+		return len(out.Items)
+	}
+
+	epoch, c0 := claimOnce()
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
+	items(epoch, c0) // the worker polls once, acknowledging up to c0, and then drops
+
+	// While it is away, the gate is answered.
+	rh := b.Attach("p").(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// It comes back and polls from where the broker told it to.
+	epoch2, c1 := claimOnce()
+	if got := items(epoch2, c1); got != 1 {
+		t.Fatalf("a reconnecting worker polling from cCursor=%d got %d items, want the answer "+
+			"queued while it was away", c1, got)
+	}
+}

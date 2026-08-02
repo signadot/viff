@@ -115,6 +115,10 @@ type procState struct {
 	nextSub  int
 	logCur   int64
 	inboxCur int64
+	// ackedCursor is how far the worker has read its inbox. A poll for `since=N` IS the
+	// acknowledgement of everything at or below N — the worker asked for what came after,
+	// which it could only do having taken what came before.
+	ackedCursor int64
 	// pending holds the open gate decisions raised by the worker, keyed by decision id.
 	// It keeps the whole raised frame rather than just the gate name: `do gate --reason`
 	// rides in on Text, and a resolver reading `verse gates` needs it — that reason is the
@@ -125,6 +129,9 @@ type procState struct {
 	// apart from an answer to nothing. Without it both are "not open", and the two mean
 	// opposite things to whoever asked.
 	answered map[string]bool
+	// abandoned records that the terminal found gates still open, so a late answer can be
+	// told why it missed rather than being sent to look for a typo.
+	abandoned bool
 	result   string
 	err      string         // terminal failure reason (Failed only); see latchTerminal
 	status   process.Status // latched terminal status
@@ -203,6 +210,12 @@ func (ps *procState) latchTerminal(status process.Status, text string) bool {
 	}
 	ps.terminal = true
 	ps.status = status
+	// The gates it never answered go with it. A terminal does not decide them — nobody did —
+	// but it does settle the question of whether they can still be acted on, and leaving
+	// them open let a dead process's gates be answered, with the decision written onto the
+	// log of a run that had already ended.
+	ps.abandoned = len(ps.pending) > 0
+	clear(ps.pending)
 	if text != "" {
 		// A running result already reported stays a result — only the terminal text is
 		// filed by status, and a failure does not retroactively turn it into an error.
@@ -465,12 +478,16 @@ func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	ps.mu.Lock()
 	_, open := ps.pending[decision]
 	answered := ps.answered[decision]
+	abandoned := ps.abandoned
 	ps.mu.Unlock()
 	if !open {
-		// Which of the two it is matters to whoever asked: one means look for the typo,
-		// the other means somebody was here first.
-		if answered {
+		// Which it is matters to whoever asked: look for your typo, somebody was here
+		// first, or the process ended underneath you.
+		switch {
+		case answered:
 			return process.ErrAlreadyAnswered
+		case abandoned:
+			return process.ErrProcessEnded
 		}
 		return process.ErrNoSuchDecision
 	}
@@ -550,7 +567,13 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"spec":    map[string]string{"task": ps.task, "driver": ps.driver},
 		"epoch":   ps.epoch,    // carry this on every report/inbox
-		"cCursor": ps.inboxCur, // resume control from here
+		// Resume control from what this worker ACKNOWLEDGED, not from where the broker has
+		// got to. Handing back the current cursor told a reconnecting worker to skip
+		// everything queued while it was away — which is the outage, and so exactly the
+		// window in which control is most likely to have been issued. An answer given
+		// during it was never shown to the worker, while every other surface reported the
+		// gate settled.
+		"cCursor": ps.ackedCursor,
 		"rCursor": ps.logCur,   // resume reporting from here
 	}
 	ps.mu.Unlock()
@@ -625,23 +648,30 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fenced: stale claim", http.StatusConflict)
 		return
 	}
-	latched := false
+	latched, applied := false, 0
 	for _, e := range body.Events {
 		if e.Kind == process.EvStatus && process.Status(e.Text).Terminal() {
 			latched = true
 			if ps.latchTerminal(process.Status(e.Text), body.Result) { // worker-authoritative done/fail
 				ps.emit(e)
+				applied++
 			}
 			break // nothing follows a terminal
 		}
 		ps.emit(e)
+		applied++
 	}
 	if !latched && body.Result != "" { // a non-terminal report may carry running result state
 		ps.mu.Lock()
 		ps.result = body.Result
 		ps.mu.Unlock()
 	}
-	writeOut(w, r, map[string]any{"rCursor": ps.cursorNow()})
+	// applied says how many of the reported events were taken. It is not always len(events):
+	// a batch whose terminal is not its last entry has everything after it dropped, since
+	// nothing follows a terminal — and answering 200 without saying so told a worker its
+	// whole wind-down had landed when part of it was on the floor. A retry can be computed
+	// from this; it could not be computed from silence.
+	writeOut(w, r, map[string]any{"rCursor": ps.cursorNow(), "applied": applied})
 }
 
 func writeOut(w http.ResponseWriter, r *http.Request, v any) {

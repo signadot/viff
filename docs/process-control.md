@@ -334,13 +334,23 @@ Three endpoints, worker as client:
 ```
 POST /processes/{id}/claim   {identity}                      → {spec, cCursor, rCursor}
 GET  /processes/{id}/inbox?since={cCursor}   (long-poll/SSE)  → control directed at the worker
-POST /processes/{id}/report  {from: rCursor, events:[…]}      → the worker's events
+POST /processes/{id}/report  {from: rCursor, events:[…]}      → {rCursor, applied}
 ```
 
 `inbox` is the dual of verse's `/events`: a resumable stream of control directed at the
 worker — `spec` (once), `say {text, by}`, `resolve {gateId, proceed, say?}`,
 `cancel|pause|resume`, `vector`. Each item carries a control cursor, and the worker resumes
 with `?since=cCursor`.
+
+`cCursor` is what this worker last ACKNOWLEDGED, not where the broker has got to: a poll for
+`since=N` is the acknowledgement of everything at or below N, because a worker could only ask
+for what came after having taken what came before. So a reconnecting worker is handed the
+place it actually reached, and control issued during its outage is still waiting for it.
+
+`applied` is how many of the reported events were taken, which is not always all of them:
+nothing follows a terminal, so a batch whose terminal is not its last entry has the remainder
+dropped. A worker computes its retry from this rather than assuming a 200 means everything
+landed.
 
 `report` is the dual of verse's control POSTs: the worker appends `pending`, its own `say`,
 `exec`, `status` transitions, and `boundary`. Each gets a report cursor, and `from: rCursor`
