@@ -134,3 +134,6 @@ gets, and finding out whether that is enough.
 
 And if none of the design is ever built, all three are still improvements to what a person sees
 when verse asks them a question — which is the honest test of a prerequisite.
+
+All five steps are built. What they cleared the way for is
+[the first resolver](2-first-resolver-plan.md).
