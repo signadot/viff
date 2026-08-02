@@ -130,6 +130,30 @@ func PostFrameQuestion(store entity.Store, ev process.Frame, processID string) {
 // it; the answer travelled out-of-band and this is its record. A reaction wired to this field
 // would be the command entity the steering invariant forbids.
 func AnswerQuestion(store entity.Store, id string, res process.Resolution) {
+	rec := answerRecord(res)
+	// nil, not absent: a write MERGES, so an answer that was recorded as in-flight would
+	// stay in-flight forever unless this says otherwise. Delivery is the news here.
+	rec["delivered"] = nil
+	writeAt(store, QuestionRef(id), rec)
+}
+
+// QueuedAnswer records an answer that has been ACCEPTED but not yet delivered — taken by a
+// broker for a worker that must dial in and pull it.
+//
+// The gate is closed either way: nobody else may answer, because two answers to one question
+// is a race with one winner however slowly the answer travels. What is not yet true is that
+// the party who must act on it knows. Recording that as done is what let an answer evaporate
+// with a worker that never came back, while every surface said the question was settled.
+//
+// `delivered: false` is present only while that is the case; it is cleared when the worker's
+// acknowledgement arrives. Absent means delivered, which is what it has always meant.
+func QueuedAnswer(store entity.Store, id string, res process.Resolution) {
+	rec := answerRecord(res)
+	rec["delivered"] = false
+	writeAt(store, QuestionRef(id), rec)
+}
+
+func answerRecord(res process.Resolution) entity.Obj {
 	verdict := "deny"
 	if res.Proceed {
 		verdict = "proceed"
@@ -156,7 +180,7 @@ func AnswerQuestion(store entity.Store, id string, res process.Resolution) {
 		}
 		rec["say"] = say
 	}
-	writeAt(store, QuestionRef(id), rec)
+	return rec
 }
 
 // OrphanQuestions settles every question a process left open, for a process that has ended.

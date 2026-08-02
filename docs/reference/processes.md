@@ -140,6 +140,15 @@ It is a record, not a mailbox: answering happens over the resolve API, and the e
 afterwards to `status: answered` with the verdict and who gave it. A question outlives its
 answer, because a docket that forgets is one nobody can audit.
 
+`delivered: false` appears while an answer has been accepted but not yet taken by the worker
+it is for — a brokered process, where the answer waits on the inbox until somebody dials in.
+The gate is closed to further answers the moment one is accepted; what is still in doubt is
+whether the party who must act on it knows. It clears on the worker's acknowledgement.
+
+```sh
+verse entities --system gate --if '{delivered: false}'   # answers still in flight
+```
+
 Every answer names its answerer — `verse gate approve <id> --as human:you` — and two people
 answering at once is normal rather than exceptional. Exactly one applies; the other is
 recorded under `stale` and told so (`409`, naming who won), because a docket that keeps only

@@ -479,6 +479,15 @@ func (h *handle) enqueue(it api.InboxItem) error {
 	return nil
 }
 
+// RelaysControl says that an answer accepted here is not an answer delivered: it is queued
+// for a worker that must dial in and take it. Verse asks so it can record a decision as
+// in-flight rather than as done — the difference between "approved" and "the thing you
+// approved has been told".
+//
+// It is a statement rather than an inference. A worker-facing dial URL happens to imply the
+// same thing today, and a runner that relayed without one would break that silently.
+func (h *handle) RelaysControl() bool { return true }
+
 // DialURL is where a worker dials in to run this process (the broker's hosted base). mirror
 // type-asserts for this and publishes it as `dialURL`; handles without it (local, remote
 // processd) have no separate worker-facing address.

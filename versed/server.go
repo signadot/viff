@@ -1056,6 +1056,23 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
+// relaysControl reports whether an answer to this process's gates is QUEUED for a worker
+// rather than applied. A local process's registry takes it on the spot and a remote runtime
+// takes it over the wire that carried it; a broker holds it until somebody dials in.
+func (s *Server) relaysControl(procID string) bool {
+	if procID == "" {
+		return false // a firing's gate: the registry answers it here, now
+	}
+	if _, ok := s.Procd.SnapshotOf(procID); ok {
+		return false
+	}
+	if h := s.runner.Attach(procID); h != nil {
+		r, ok := h.(interface{ RelaysControl() bool })
+		return ok && r.RelaysControl()
+	}
+	return false
+}
+
 // ownerOf says which process holds a question, empty for a firing's gate.
 //
 // The RECORD is asked first, and it is the only source that answers while the runner holding
@@ -1149,7 +1166,15 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		err = process.ErrNoSuchDecision
 	}
 	if err == nil {
-		mirror.AnswerQuestion(store, body.ID, res)
+		// Accepted is not the same as delivered. A broker takes an answer for a worker that
+		// must dial in and pull it, so the record says so — `delivered: false` — until the
+		// worker's acknowledgement clears it. Everywhere else the answer has already landed
+		// on the party that must act, and the record is simply settled.
+		if s.relaysControl(owner) {
+			mirror.QueuedAnswer(store, body.ID, res)
+		} else {
+			mirror.AnswerQuestion(store, body.ID, res)
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
