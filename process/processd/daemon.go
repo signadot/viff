@@ -322,7 +322,21 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// Spellings of one answer, because this face predates api.Resolve and things dial in
+	// against it. `id`/`approve` is what every other answering surface speaks; `decisionId`
+	// and `proceed` are the runtime's own older names, still read so a client written against
+	// them is not broken by the newer spelling arriving. The contract as documented in
+	// process-control.md mixes them — `{id, proceed}` — so both halves are read independently
+	// rather than as two fixed vocabularies.
+	//
+	// The verdict is the OR, and it is not lossy: a yes is `true` in whichever field the
+	// client used, and a no is `false` in both AND absent from both. There is no answer the
+	// two fields can express that this reads wrongly, short of a client setting them against
+	// each other on purpose.
 	var body struct {
+		ID      string `tony:"field=id"`
+		Approve bool   `tony:"field=approve"`
+
 		DecisionID string   `tony:"field=decisionId"`
 		Proceed    bool     `tony:"field=proceed"`
 		ChildMode  string   `tony:"field=childMode"`
@@ -333,15 +347,20 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	decision := body.ID
+	if decision == "" {
+		decision = body.DecisionID
+	}
+	proceed := body.Approve || body.Proceed
 	by := body.By
 	if by == "" {
 		by = "human:daemon"
 	}
 	res := process.Resolution{
-		Proceed: body.Proceed, By: by,
+		Proceed: proceed, By: by,
 		ChildMode: parseChildMode(body.ChildMode), Steer: body.Say,
 	}
-	if !h.reg.Answer(body.DecisionID, res) {
+	if !h.reg.Answer(decision, res) {
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 		return
 	}

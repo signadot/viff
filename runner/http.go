@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
@@ -199,6 +200,34 @@ func (h *remoteHandle) SetVector(v *process.Vector, by string) {
 	if resp, err := h.cl.Do(req); err == nil {
 		resp.Body.Close()
 	}
+}
+
+// Resolve answers a gate the remote's process is blocked on, and reports whether the answer
+// landed. It is what makes a remote-hosted process answerable at all: without it, this handle
+// is not a gateResolver, and every route into it fails with a message about the question
+// rather than about the runner.
+//
+// It speaks api.Resolve — the vocabulary every other answering surface uses — rather than the
+// runtime's older {decisionId, proceed}. processd accepts both, so an old runner on the other
+// end still understands this.
+//
+// The bool is the point, and it is why this cannot go through post(): an answer that did not
+// land must not read as one that did, or the operator is told a blocked worker was released.
+func (h *remoteHandle) Resolve(decision string, proceed bool, say, by string) bool {
+	body := api.Resolve{ID: decision, Approve: proceed, By: by}
+	if say != "" {
+		body.Say = []string{say}
+	}
+	b, err := codec.Marshal(body, codec.Tony)
+	if err != nil {
+		return false
+	}
+	resp, err := h.cl.Post(h.url("/resolve"), codec.MediaType(codec.Tony), bytes.NewReader(b))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode < 300
 }
 
 // Err reads the terminal failure detail off the snapshot — the remote's process.Instance

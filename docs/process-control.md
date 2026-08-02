@@ -113,7 +113,7 @@ Two endpoints, which are `Observe : Since` once more, plus out-of-band control:
 ```
 GET    /processes/{id}                 level truth: current snapshot
 GET    /processes/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
-POST   /processes/{id}/resolve  {id, proceed, by, say?, key}     answer a gate
+POST   /processes/{id}/resolve  {id, approve, by, say?, key}     answer a gate
 POST   /processes/{id}/say      {text, by, key}                  say to it (re-prompt)
 POST   /processes/{id}/cancel   {by, key}
 POST   /processes/{id}/pause    {by}
