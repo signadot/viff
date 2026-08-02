@@ -1422,6 +1422,13 @@ func spineCarries(ev entity.Event, subject entity.Ref) bool {
 	if ev.Ref == subject {
 		return true
 	}
+	// The QUESTIONS about it, which is how an escalation arrives rather than having to be
+	// polled for: a transfer writes the question, and the layer above is reading here. The
+	// design says the question "appears in the stream of the layer above" and that there is
+	// no second path anywhere, `⊤` included.
+	if ev.Ref.System == mirror.QuestionSystem && ev.Ref.Kind == mirror.QuestionKind {
+		return entity.Str(ev.To, "subject") == subject.String()
+	}
 	if ev.Ref.System != mirror.System || ev.Ref.Kind != "instance" {
 		return false
 	}
@@ -1452,9 +1459,7 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 		proceed = true
 	case "deny":
 	case "escalate":
-		http.Error(w, "escalate arrives with the layer that can receive it; this build has one "+
-			"layer, above which is the human docket that silence already reaches",
-			http.StatusNotImplemented)
+		s.escalate(w, r, v.ID, binding, origin)
 		return
 	default:
 		http.Error(w, "verdict must be proceed or deny", http.StatusBadRequest)
@@ -1468,15 +1473,7 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such question", http.StatusNotFound)
 		return
 	}
-	qp := entity.ToObj(q.Payload)
-	// Owned means: this binding, and this instance's own origin. A run instance answers the
-	// questions of its run; a spine answers those of its subject — which is how a binding
-	// with several instances cannot answer through the wrong one.
-	mine := qp["process"] == origin.ID
-	if !watchesARun(origin) {
-		mine = qp["subject"] == origin.String()
-	}
-	if qp["resolver"] != binding || !mine {
+	if !ownedBy(entity.ToObj(q.Payload), binding, origin) {
 		http.Error(w, "that question is not this resolver's to answer", http.StatusForbidden)
 		return
 	}
@@ -1493,6 +1490,59 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	s.answerQuestion(w, r, api.Resolve{
 		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
 	}, procID)
+}
+
+// escalate transfers a question to the layer above. It does NOT ask a favour: the layer above
+// owns it from that moment, and its answer resolves the ORIGINAL question, because escalating
+// changes who answers and not what is being answered.
+//
+// Nothing waits. The escalating resolver is not blocked and gets no answer back — it keeps
+// reading and may answer other questions in the next frame, and only the WORK is blocked, at
+// the gate it always was. The verdict, when it comes, arrives on its stream like any other
+// frame, which is what lets it lean on the precedent next time rather than remember it.
+func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding string, origin entity.Ref) {
+	store := s.scopedStore(r)
+	q, ok, err := store.Get(mirror.QuestionRef(id))
+	if err != nil || !ok {
+		http.Error(w, "no such question", http.StatusNotFound)
+		return
+	}
+	p := entity.ToObj(q.Payload)
+	if p["status"] != mirror.QuestionPending {
+		http.Error(w, "that question is already settled", http.StatusConflict)
+		return
+	}
+	if !ownedBy(p, binding, origin) {
+		http.Error(w, "that question is not this resolver's to escalate", http.StatusForbidden)
+		return
+	}
+	subject, _ := p["subject"].(string)
+	reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, binding, "escalated")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// questionOrigin is what an owner of this question watches: the run that raised it, or the
+// subject it is about when a firing did. It is the same distinction an instance's address
+// carries, read off the question rather than guessed.
+func questionOrigin(q map[string]any, subject string) entity.Ref {
+	if p, _ := q["process"].(string); p != "" {
+		return mirror.Ref(p)
+	}
+	ref, _ := entity.ParseRef(subject)
+	return ref
+}
+
+// ownedBy is the check both answering and escalating make: this binding, and this instance's
+// own origin. A run instance acts on the questions of its run and a spine on those of its
+// subject, which is how a binding with several instances cannot act through the wrong one.
+func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
+	if q["resolver"] != binding {
+		return false
+	}
+	if watchesARun(origin) {
+		return q["process"] == origin.ID
+	}
+	return q["subject"] == origin.String()
 }
 
 // resolverPosition records how far a resolver has read, and what it wants its successor to
@@ -1669,6 +1719,43 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// reown hands one question to the next layer, for whatever reason it changed hands.
+//
+// One function because there is one act. Removal asks "who owns this now that I am gone" and
+// escalation asks "who owns this now that I have declined"; the ladder answers both the same
+// way, and `why` is the only thing that differs — which is worth recording, since a question
+// that changed hands should say what moved it.
+func reown(store entity.Store, at, origin entity.Ref, subject, from, why string) {
+	rec := entity.Obj{
+		// nil, not absent: a write merges, so saying "this is gone" is the writer's job. A
+		// question left naming a binding that will not answer is one nobody can answer,
+		// listed on a docket as though somebody were coming.
+		"resolver": nil,
+		// The handover, readable rather than inferred. A question that changed hands
+		// without saying so is one whose audit trail has a hole exactly where somebody
+		// would look.
+		"reownedFrom": from,
+		"reownedWhy":  why,
+		"reownedAt":   time.Now().UTC().Format(time.RFC3339),
+	}
+	if subject != "" {
+		if ref, err := entity.ParseRef(subject); err == nil {
+			if next, ok := resolver.Next(store, ref, from); ok {
+				binding := resolver.Ref(next.Kind, next.Name).String()
+				rec["resolver"] = binding
+				// And the new owner gets an instance for what it now watches, because
+				// re-owning IS an ownership decision and that is where instances are
+				// minted. Without it a layer could own a question with no record through
+				// which to act on it — and no way to read the fine grain of a run it has
+				// just inherited. Create-only, so a binding that was already watching keeps
+				// the position it had.
+				mirror.Watch(store, binding, resolverName(binding), origin)
+			}
+		}
+	}
+	_, _, _ = store.Write(entity.Write{At: at.At(), Value: rec.Payload()})
+}
+
 // releaseResolver hands on what a removed binding was holding: the questions it owned, and
 // the instances that were reading for it.
 //
@@ -1687,25 +1774,8 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 		if p["resolver"] != gone.String() {
 			continue
 		}
-		rec := entity.Obj{
-			// nil, not absent: a write merges, so saying "this is gone" is the writer's
-			// job. A question left naming a binding that does not exist is one nobody can
-			// answer, listed on a docket as though somebody were coming.
-			"resolver": nil,
-			// The handover, readable rather than inferred. A question that changed hands
-			// without saying so is one whose audit trail has a hole exactly where somebody
-			// would look.
-			"reownedFrom": gone.String(),
-			"reownedAt":   time.Now().UTC().Format(time.RFC3339),
-		}
-		if subject, _ := p["subject"].(string); subject != "" {
-			if ref, err := entity.ParseRef(subject); err == nil {
-				if next, ok := resolver.Owner(store, ref); ok {
-					rec["resolver"] = resolver.Ref(next.Kind, next.Name).String()
-				}
-			}
-		}
-		_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: rec.Payload()})
+		subject, _ := p["subject"].(string)
+		reown(store, ent.Ref, questionOrigin(p, subject), subject, gone.String(), "removed")
 	}
 	// Its instances go with it, and this is the only thing that reaps one. They are
 	// machinery for a reader that no longer exists; what they were evidence of is in the

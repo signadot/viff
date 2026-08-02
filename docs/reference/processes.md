@@ -142,8 +142,11 @@ answer, because a docket that forgets is one nobody can audit.
 
 `resolver` names the binding that owns the question — what a spawn or a rule named, else the
 standing binding covering its subject, else absent, which is the docket a person reads.
-`reownedFrom` appears when the binding that owned it was removed and the question was handed
-on rather than stranded.
+`reownedFrom` appears when a question changed hands, with `reownedWhy` saying what moved it —
+`escalated` when its owner declined, `removed` when its owner was uninstalled. Either way it
+went to the layer above: the standing binding covering its subject, else the docket a person
+reads. The question itself is unchanged, because escalating changes who answers and not what
+is being answered.
 
 `delivered: false` appears while an answer has been accepted but not yet taken by the worker
 it is for — a brokered process, where the answer waits on the inbox until somebody dials in.

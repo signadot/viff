@@ -80,10 +80,21 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 	if len(got) < 2 {
 		t.Fatalf("the spine carried %d commits, want the subject's history: %+v", len(got), got)
 	}
+	// Everything on it is ABOUT this subject: its own commits, the questions raised about it,
+	// and the runs about it. Nothing else — the negative that matters is another subject's,
+	// which TestTheSpineCarriesItsAnchors pins.
+	var own int
 	for _, ev := range got {
-		if ev.Ref != subject {
+		switch {
+		case ev.Ref == subject:
+			own++
+		case ev.Ref.System == mirror.QuestionSystem, ev.Ref.System == mirror.System:
+		default:
 			t.Fatalf("the spine carried a commit about %s", ev.Ref)
 		}
+	}
+	if own < 2 {
+		t.Fatalf("the spine carried %d of the subject's own commits, want its history", own)
 	}
 
 	// And it answers the firing's gate through its own instance.

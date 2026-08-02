@@ -355,6 +355,26 @@ func Owner(r entity.Reader, subject entity.Ref) (Resolver, bool) {
 	return Resolver{}, false
 }
 
+// Next returns the binding that answers a question about subject once `from` steps aside —
+// by declining it, or by being removed.
+//
+// THE LADDER IS TWO HOPS AND NEEDS NO COUNTER. A named binding gives way to the standing one
+// covering the subject; a standing one gives way to nothing, which is `⊤`, the docket a person
+// reads. That falls out of returning the standing owner and refusing to return `from` itself:
+// a binding cannot hand a question to itself, so the second hop always lands at `⊤`.
+//
+// It does not need to know which LAYER `from` occupied, which is why nothing stores that. If
+// the standing owner is somebody else, `from` was the named layer; if it is `from`, there is
+// nowhere above to go. One binding that is both named and standing is the same case as a
+// standing one declining, and gets the same answer.
+func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
+	res, ok := Owner(r, subject)
+	if !ok || Ref(res.Kind, res.Name).String() == from {
+		return Resolver{}, false
+	}
+	return res, true
+}
+
 // Overlaps reports the installed bindings that share a (system, kind) with res — what a new
 // one may find itself ordered against.
 //
