@@ -18,12 +18,16 @@ were deferred in the first increment and nothing here needs them.
 
 Three things are genuinely new. Everything else is the first increment with a different origin.
 
-**The origin is a subject, so the stream is the store.** A firing has no event stream — it is
-over in a commit or two — so a resolver at that origin reads the store's commit stream narrowed
-to the subject, and its position is a revision rather than a cursor. `GET /watch` already
-serves exactly that: a pattern-narrowed commit stream from `?since=<revision>`, subscribing
-before its catch-up snapshot so nothing falls between the two. The subject form is that
-capability wearing the resolver's address.
+**A second plane, not a different one.** A standing binding supervises the work ABOUT the
+entities it selects, so it owns both a firing's gates and the gates of runs about those
+subjects. A firing has no event stream, so that half reads the store's commit stream narrowed
+to the subject, with a revision for a position; `GET /watch` already serves exactly that,
+pattern-narrowed from `?since=<revision>` and subscribing before its catch-up snapshot.
+
+It does not read the store INSTEAD of a run. The design settles this: the store stream is the
+spine — ordered, durable, carrying the anchors, since a process's spawn and its terminal are
+both store commits that `mirror` writes — and process streams hang off it as fine grain
+between anchors. Two streams, independent cursors, no common order, and no sequencer.
 
 **It may attach late, and the run form may not.** The first increment mints an instance at
 spawn because a run's stream is bounded and ephemeral: miss the beginning and it is gone. A
@@ -106,40 +110,48 @@ covering standing binding is owned by the named one; the same run without the na
 the standing one; a firing's gate over a covered subject is owned by the standing one; and an
 uncovered subject leaves the field absent, which still means ⊤.
 
-### 3. A subject instance
+### 3. An instance per origin, and a binding may have several
 
-`resolvers:instance:<name>@<subject>`, minted when the first question about that subject is
-posed and living for the subject after that — not per firing, which would be the
+`resolvers:instance:<name>@<subject>` for the spine, minted when the first question about that
+subject is posed and living for the subject after that — not per firing, which would be the
 spawn-answer-die shape this design exists to avoid, reached from the other end.
 
-Its `origin` is the subject's own ref rather than a `process:instance:`, which is what tells
-the two forms apart at read time without a second field saying which kind it is.
+And `resolvers:instance:<name>@<run>` for each run about that subject whose questions it owns,
+which is the same record the first increment already mints and the same route already serves.
+A binding is not an instance: "an instance lives for the duration of what it resolves, and the
+ORIGIN decides what that is", so one binding watching a subject and three runs about it has
+four instances, each living exactly as long as the thing it watches.
 
-**Proves:** one instance per subject, not per firing or per run. Test: three firings about one
-subject mint one instance; two subjects mint two; and its position field is a revision, which
-the next step is what actually moves.
+That is what carrying a cursor pair means here, and it is why nothing has to sequence the two
+planes: the positions are two records rather than two fields, so there is no place for a
+merged order to be invented and no code that could be tempted to invent one. It also settles
+what the previous section left as a fork — the plane a stream serves follows from the
+instance's origin, with nothing to disambiguate.
 
-### 4. The subject stream
+**Proves:** instances follow origins, not bindings. Test: three firings about one subject mint
+one subject instance; a run about that subject whose gate the binding owns mints a run
+instance beside it; the subject instance's position is a revision and the run instance's is a
+cursor; and two subjects mint two spines.
+
+### 4. The spine
 
 `GET /resolvers/instance/{id}/events?since=<revision>` serves store commits narrowed to the
-subject, for an instance whose origin is a subject. The same route already serves process
-frames for an instance whose origin is a run.
+subject, for an instance whose origin is a subject — the same route that already serves
+process frames for an instance whose origin is a run, deciding by the origin rather than by
+anything the caller has to say twice.
 
-That fork is the one thing here worth deciding rather than discovering: **one route serving two
-payload shapes**, or two routes. One route is what the design's protocol section describes — a
-resolver's obligations are stated once, in the nouns of positions and verdicts, not per origin
-— and the shape is discoverable from the instance the caller already named. Two routes would
-make a client's code branch on something it can already see, and would let a client read the
-wrong stream by asking the wrong route rather than by being told.
+The narrowing is to the subject's own commits, which is what `queryPattern` builds from
+`?system/?kind/?if` today and what the binding's `condition` is already written in.
 
-So: one route, and the frame carries what it is. The narrowing is to the subject's own
-commits, which is what `queryPattern` builds from a `?system/?kind/?if` today and what the
-binding's `condition` is already written in.
+A resolver reading both planes follows the anchors: a spawn commit on the spine names a run,
+and that run's instance is where its fine grain is. Which is the whole of the navigation — no
+sequencer, and no merged order for anything to disagree about.
 
 **Proves:** a standing resolver reads a subject's history and answers a firing's gate. Test:
 an httptest resolver dials in, reads the commits that led to a trigger gate, answers it, and
 the firing proceeds — the same test the first increment ran over a run, with the origin
-changed and nothing else.
+changed and nothing else. And the anchor: a spawn about the subject appears on the spine, and
+the run instance it names serves that run's frames.
 
 ### 5. Removing a binding re-routes what it owned
 
@@ -187,7 +199,8 @@ because the answer probably arrives with somebody noticing an idle resolver.
 **When a subject instance is reaped.** A run ends; a subject may not. The first increment left
 this open for run instances and this one makes it sharper rather than answering it.
 
-**Whether a standing binding should read a run's stream at all.** It covers the subject, and a
-run about that subject is part of the subject's story — but its position is a revision and a
-run's frames are not commits. Escalation is where this gets decided, because a question
-transferred up from a run's resolver arrives at a binding whose position cannot address it.
+**Which plane a resolver reads first, and whether it must read both.** A binding owning a run's
+gate has a run instance for it, so the fine grain is reachable — but nothing says it has to be
+read before deciding, and a resolver that answers from the spine alone is answering on less
+than it could have seen. That is a matter for the protocol's obligations rather than for
+routing, and it is the same question an `llm` driver will make concrete.
