@@ -41,6 +41,11 @@ func Ref(kind, name string) entity.Ref {
 // (`process:claim:<chain>@<subject>`, a gate question's `<origin>~d<n>`), and it is what lets
 // the routes that serve a resolver name a stream with one ref instead of a ref and a query
 // parameter the caller has to keep in step.
+//
+// The FIRST `@` is the separator and the rest is the origin, because an origin often contains
+// one itself — a trigger spawn is `<trigger>@<subject>`, so watching one reads
+// `resolvers:instance:security-review@guard@demo:pr:1`. Splitting on the first is the same
+// rule a question id follows for `~`, and a name may not contain `@` for that reason.
 func InstanceRef(name, origin string) entity.Ref {
 	return entity.Ref{System: System, Kind: InstanceKind, ID: name + "@" + origin}
 }
@@ -93,6 +98,11 @@ func (r Resolver) Check() error {
 		return fmt.Errorf("resolver %q: kind is required — it is the other half of the address, "+
 			"and it is what this resolver is FOR (security, cost), the way a provider's "+
 			"capability is", r.Name)
+	}
+	if strings.Contains(r.Name, "@") {
+		return fmt.Errorf("resolver %q: a name may not contain @ — it is the separator in an "+
+			"instance's address (resolvers:instance:<name>@<origin>), and an origin often "+
+			"contains one of its own", r.Name)
 	}
 	if r.Kind == InstanceKind {
 		return fmt.Errorf("resolver %q: kind %q is reserved for the record of a live one "+

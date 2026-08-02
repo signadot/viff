@@ -67,10 +67,10 @@ func PostQuestion(store entity.Store, p process.Pending, processID string) {
 		"reason":  q.Reason,
 		"tool":    p.Tool,
 		"process": processID,
-		// resolver is the ref of whoever the question is addressed to. Nothing produces one
-		// yet, so it is absent — which means UNBOUND rather than unknown, and is a distinction
-		// a later reader depends on.
-		"resolver": "",
+		// resolver is the BINDING that owns this question. Absent means UNBOUND — nobody was
+		// declared, so it belongs to whoever reads the docket — which is a different fact
+		// from an owner nobody can name, and a later reader depends on the distinction.
+		"resolver": q.BoundTo,
 	} {
 		if v != "" {
 			rec[k] = v

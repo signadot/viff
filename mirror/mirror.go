@@ -277,13 +277,49 @@ func drainInto(store entity.Store, id string, st entity.Obj, h process.Handle, c
 	return false, heard
 }
 
+// BindResolver mints the record of a resolver watching one run: `resolvers:instance:<name>@<id>`.
+//
+// At SPAWN rather than at the first question, because a resolver reads context before the ask
+// — that is the whole reason it is attached rather than handed a question — so the thing that
+// says who is watching has to exist from the moment there is something to watch.
+//
+// It carries the binding and the origin as fields as well as in its address, because an
+// address is for finding one and a field is for selecting many: "every instance of the
+// security reviewer" is a predicate, not a glob.
+func BindResolver(store entity.Store, binding, name, processID string) {
+	if binding == "" {
+		return
+	}
+	ref := entity.Ref{System: resolverSystem, Kind: resolverInstance, ID: name + "@" + processID}
+	write(store, "", entity.Obj{
+		"binding": binding,
+		"origin":  Ref(processID).String(),
+		// position is where this instance has read to, and starts before the first frame.
+		// It is on the record rather than only in the reader because that is what tells
+		// "has not decided" from "has not caught up".
+		"position": int64(0),
+	}, ref)
+}
+
+// The resolver system, spelled here rather than imported: mirror is what every runtime writes
+// through, and a dependency from it onto the resolver package would put the binding's own
+// vocabulary underneath the index that merely records it.
+const (
+	resolverSystem   = "resolvers"
+	resolverInstance = "instance"
+)
+
 // write projects the accumulated state onto the process's entity. A failed write is
 // DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the
 // process's own event goroutine with nobody to return to, and a process must not stall
 // because its index could not be updated. What it costs is that the entity can lag the
 // process it mirrors — the index is a projection, and the read plane remains the record.
-func write(store entity.Store, id string, st entity.Obj) {
-	if _, _, err := store.Write(entity.Write{At: Ref(id).At(), Value: st.Payload()}); err != nil {
+func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
+	ref := Ref(id)
+	if len(at) == 1 {
+		ref = at[0]
+	}
+	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: st.Payload()}); err != nil {
 		return
 	}
 }

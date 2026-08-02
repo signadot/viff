@@ -112,6 +112,9 @@ type Spawn struct {
 	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
 	// of the same field, so `verse process run` and a firing can ask for the same thing.
 	Retain int `tony:"field=retain,omitzero"`
+	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
+	// spawn's `resolver:`, so `verse process run` and a firing can bind the same way.
+	Resolver string `tony:"field=resolver,omitzero"`
 }
 
 // Spawned is what a spawn answers with: the id to address the new process by.

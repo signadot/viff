@@ -35,6 +35,10 @@ type Launch struct {
 	// Empty = the driver's own default frame.
 	Frame string
 
+	// Resolver is the binding that answers this process's gates — `resolvers:<kind>:<name>`.
+	// Empty means nobody is bound, and its questions go to whoever reads the docket.
+	Resolver string
+
 	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
 	// default. It is per-spawn because the right number is a property of the work: see
 	// launch.Spec.Retain.

@@ -141,6 +141,7 @@ context:
 define:
   driver: .[string]
   id: .[string]
+  resolver: .[string]
   retain: .[int]
   task: .[string]
 signature:

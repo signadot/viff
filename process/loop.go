@@ -172,6 +172,10 @@ func (p *Process) SetSpawn(f SpawnFunc) { p.spawn = f }
 // SetVector swaps the gate vector on the running supervisor — the autonomy slide,
 // applied at the next boundary with no restart. It emits an EvVector frame so the slide is
 // observable on the read plane (the new default mode; the operator who slid it rides By).
+// SetBoundTo names the resolver binding that owns this process's questions, from the launch.
+// Applied at spawn, before the loop runs.
+func (p *Process) SetBoundTo(ref string) { p.sup.SetBoundTo(ref) }
+
 func (p *Process) SetVector(v *Vector, by string) error {
 	p.sup.SetVector(v)
 	p.emit(Frame{Kind: EvVector, Mode: v.Default.String(), By: by})

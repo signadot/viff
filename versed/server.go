@@ -282,6 +282,9 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 		}
 		h := s.runner.Spawn(l, content)
 		mirror.Reflect(st, id, h, meta)
+		// Who is watching this run, if anybody was named. Minted beside the mirror because
+		// the two answer adjacent questions — what the work is doing, and who is reading it.
+		mirror.BindResolver(st, l.Resolver, resolverName(l.Resolver), id)
 		return h
 	}
 }
@@ -305,6 +308,7 @@ func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	l := process.Launch{
 		ID: id, Task: spec.Task, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
+		Resolver: spec.Resolver,
 	}
 	// The contract travels as source, but it is PARSED here as well, and the parse is the
 	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
@@ -1218,6 +1222,18 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 }
 
 
+// resolverName is the name half of a binding's ref — the last segment of
+// `resolvers:<kind>:<name>`. An instance is addressed by name and origin rather than by the
+// whole ref, because the kind is the operator's filing and the name is the identity: two
+// resolvers cannot share a name, so carrying the kind into every instance address would be
+// spelling out a fact that is already implied.
+func resolverName(ref string) string {
+	if i := strings.LastIndex(ref, ":"); i >= 0 {
+		return ref[i+1:]
+	}
+	return ref
+}
+
 // ── resolvers: who answers ───────────────────────────────────────────────────
 
 // addResolver installs a binding at `resolvers:<kind>:<name>`.
@@ -1435,8 +1451,10 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	}
 	h := s.runner.Spawn(process.Launch{
 		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
+		Resolver: body.Resolver,
 	}, nil)
 	mirror.Reflect(store, id, h, mirror.Meta{Runner: s.runner.Ref()})
+	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
