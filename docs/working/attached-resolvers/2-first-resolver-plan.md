@@ -1,5 +1,11 @@
 # The first resolver: implementation plan
 
+Status: BUILT — all four steps. What runs is a resolver bound by a spawn, reading that
+run's stream and answering its gates over HTTP; what the last section says is not built still
+is not.
+
+The original status line follows, since the argument is what the plan was for.
+
 Status: plan, nothing built. The design is [attached resolvers](../attached-resolvers.md) and
 the ground it stands on is [0-prerequisites](0-prerequisites.md), now complete — a question is
 a published, matchable, addressable entity; answering is sayable on the hard axis and reports
