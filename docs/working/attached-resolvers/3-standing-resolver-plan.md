@@ -241,8 +241,8 @@ has to pass, which is the right answer and needs no new rule.
 **Proves:** removal moves a question rather than stranding it. Test: a standing binding owning
 an open question is removed; the question is re-owned by the next covering binding, or its
 field goes absent when there is none and `verse gates` still lists it; a verdict from the
-removed binding is refused; and an instance of it is left where it is, since a record of what
-was watched outlives the watching.
+removed binding is refused; and its instances are gone, since they are machinery for a reader
+that no longer exists and what they were evidence of is in the store.
 
 ## What this plan does not build
 

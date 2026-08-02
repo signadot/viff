@@ -140,6 +140,11 @@ It is a record, not a mailbox: answering happens over the resolve API, and the e
 afterwards to `status: answered` with the verdict and who gave it. A question outlives its
 answer, because a docket that forgets is one nobody can audit.
 
+`resolver` names the binding that owns the question — what a spawn or a rule named, else the
+standing binding covering its subject, else absent, which is the docket a person reads.
+`reownedFrom` appears when the binding that owned it was removed and the question was handed
+on rather than stranded.
+
 `delivered: false` appears while an answer has been accepted but not yet taken by the worker
 it is for — a brokered process, where the answer waits on the inbox until somebody dials in.
 The gate is closed to further answers the moment one is accepted; what is still in doubt is

@@ -358,3 +358,103 @@ func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
 		t.Fatalf("watching again reset the instance to %v: %+v", got["position"], got)
 	}
 }
+
+func removeResolverAt(t *testing.T, url, ref string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodDelete, url+"/resolvers/"+ref, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("remove = %s", resp.Status)
+	}
+}
+
+// Removing a binding MOVES what it owned rather than stranding it.
+//
+// Ownership is stamped when a question is posed, so a removed binding would otherwise leave
+// questions naming something that no longer exists — answerable by nobody, and listed on a
+// docket as though somebody were coming. Allowing overlap is what makes this a change of owner
+// and not only a loss of one: removing the first name promotes the second.
+func TestRemovingABindingReRoutesWhatItOwned(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("alpha", "payments")).Body.Close()
+	installResolver(t, ts.URL, standing("bravo", "payments")).Body.Close()
+	pr(t, srv, "1", "payments")
+
+	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	qid := waitQuestion(t, srv, "run-1")
+	if got := question(t, srv, qid)["resolver"]; got != "resolvers:security:alpha" {
+		t.Fatalf("owned by %v before removal, want alpha", got)
+	}
+
+	removeResolverAt(t, ts.URL, "security/alpha")
+
+	got := question(t, srv, qid)
+	if got["resolver"] != "resolvers:security:bravo" {
+		t.Fatalf("re-owned by %v, want the next covering binding", got["resolver"])
+	}
+	// The handover is readable rather than inferred.
+	if got["reownedFrom"] != "resolvers:security:alpha" || got["reownedAt"] == nil {
+		t.Fatalf("the handover left no trace: %+v", got)
+	}
+	// And it is still open — a change of owner is not an answer.
+	if got["status"] != mirror.QuestionPending {
+		t.Fatalf("removal settled the question: %+v", got)
+	}
+	// Its instances are gone: machinery for a reader that no longer exists.
+	for id, inst := range instances(t, srv) {
+		if inst["binding"] == "resolvers:security:alpha" {
+			t.Fatalf("the removed binding still has an instance %q", id)
+		}
+	}
+}
+
+// With nobody left to take it, the question goes to ⊤ — the docket a person reads — rather
+// than to a name that no longer resolves.
+func TestRemovingTheLastBindingSendsAQuestionToTheDocket(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("alpha", "payments")).Body.Close()
+	pr(t, srv, "1", "payments")
+	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	qid := waitQuestion(t, srv, "run-1")
+
+	inst := resolver.InstanceRef("alpha", "run-1")
+	removeResolverAt(t, ts.URL, "security/alpha")
+
+	got := question(t, srv, qid)
+	if got["resolver"] != nil {
+		t.Fatalf("owned by %v after its only binding went, want nobody", got["resolver"])
+	}
+	if got["reownedFrom"] != "resolvers:security:alpha" {
+		t.Fatalf("the handover left no trace: %+v", got)
+	}
+	// `verse gates` still lists it: unowned is not unasked, and ⊤ is where it belongs.
+	var listed bool
+	for _, g := range docket(t, srv) {
+		if g["id"] == qid {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Fatalf("the question left the docket when its resolver did: %v", docket(t, srv))
+	}
+
+	// A verdict from the removed binding loses on the ownership check that already exists —
+	// no new rule, and its instance is gone besides.
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.ID+"/verdicts",
+		api.Verdict{ID: qid, Verdict: "proceed"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("a verdict from a removed binding = %s, want 404", resp.Status)
+	}
+	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
+		t.Fatalf("it answered anyway: %+v", q)
+	}
+}

@@ -1654,7 +1654,59 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.releaseResolver(s.scopedStore(r), ref)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// releaseResolver hands on what a removed binding was holding: the questions it owned, and
+// the instances that were reading for it.
+//
+// RE-ROUTE RATHER THAN DRAIN. Draining means the removed binding keeps answering what it
+// already owns until those settle, which sounds gentler and is worse in the case that
+// matters: an operator removing a resolver wants it to stop, and its service is usually
+// being shut down in the same breath — so what it still owns is stuck until something
+// re-routes it anyway, and draining is a state machine that postpones the same work.
+//
+// Called AFTER the binding is gone, which is what makes the recomputation right: the layer
+// rule asked now returns the next name in order, or nothing. So this is a change of owner and
+// not only a loss of one, which is what allowing overlap bought.
+func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
+	for _, ent := range pendingQuestions(store) {
+		p := entity.ToObj(ent.Payload)
+		if p["resolver"] != gone.String() {
+			continue
+		}
+		rec := entity.Obj{
+			// nil, not absent: a write merges, so saying "this is gone" is the writer's
+			// job. A question left naming a binding that does not exist is one nobody can
+			// answer, listed on a docket as though somebody were coming.
+			"resolver": nil,
+			// The handover, readable rather than inferred. A question that changed hands
+			// without saying so is one whose audit trail has a hole exactly where somebody
+			// would look.
+			"reownedFrom": gone.String(),
+			"reownedAt":   time.Now().UTC().Format(time.RFC3339),
+		}
+		if subject, _ := p["subject"].(string); subject != "" {
+			if ref, err := entity.ParseRef(subject); err == nil {
+				if next, ok := resolver.Owner(store, ref); ok {
+					rec["resolver"] = resolver.Ref(next.Kind, next.Name).String()
+				}
+			}
+		}
+		_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: rec.Payload()})
+	}
+	// Its instances go with it, and this is the only thing that reaps one. They are
+	// machinery for a reader that no longer exists; what they were evidence of is in the
+	// store, where a position report and a note were commits when they were made and
+	// remain commits afterwards.
+	for _, ent := range store.List(func(ref entity.Ref) bool {
+		return ref.System == resolver.System && ref.Kind == resolver.InstanceKind
+	}) {
+		if entity.Str(ent.Payload, "binding") == gone.String() {
+			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
+		}
+	}
 }
 
 // ── triggers: the charter ────────────────────────────────────────────────────
