@@ -134,6 +134,12 @@ type procState struct {
 	// apart from an answer to nothing. Without it both are "not open", and the two mean
 	// opposite things to whoever asked.
 	answered map[string]bool
+	// applied remembers recent report keys and what each was answered with, so a retry of a
+	// report whose response the worker never saw is answered rather than re-applied. Bounded:
+	// a retry follows its original closely, and remembering forever would be a leak with the
+	// shape of a guarantee.
+	applied   map[string]reportAck
+	appliedIn []string // insertion order, for eviction
 	// undelivered holds answers queued for the worker but not yet acknowledged, keyed by the
 	// inbox cursor that carries them. An answer is a decision only once the worker has taken
 	// it; until then the question is answered-and-undelivered, which is a state a docket can
@@ -202,6 +208,49 @@ func (ps *procState) enqueue(it api.InboxItem) int64 {
 	it.Cursor = ps.inboxCur
 	ps.inbox = append(ps.inbox, it)
 	return it.Cursor
+}
+
+// reportAck is what a report was answered with, kept so an identical retry gets an identical
+// answer instead of a second application.
+type reportAck struct {
+	rCursor int64
+	applied int
+}
+
+// appliedKeep bounds how many report keys are remembered. A retry chases its original within
+// a request timeout, so a short memory covers the case this exists for; a long one would grow
+// with the run.
+const appliedKeep = 64
+
+// rememberReport records a key's answer, evicting the oldest when full.
+func (ps *procState) rememberReport(key string, ack reportAck) {
+	if key == "" {
+		return
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.applied == nil {
+		ps.applied = map[string]reportAck{}
+	}
+	if _, seen := ps.applied[key]; !seen {
+		ps.appliedIn = append(ps.appliedIn, key)
+		for len(ps.appliedIn) > appliedKeep {
+			delete(ps.applied, ps.appliedIn[0])
+			ps.appliedIn = ps.appliedIn[1:]
+		}
+	}
+	ps.applied[key] = ack
+}
+
+// reportSeen reports what a key was answered with, if it has been.
+func (ps *procState) reportSeen(key string) (reportAck, bool) {
+	if key == "" {
+		return reportAck{}, false
+	}
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ack, ok := ps.applied[key]
+	return ack, ok
 }
 
 // latchTerminal records the terminal status once — first writer wins (terminal-once). It
@@ -672,6 +721,13 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	firstClaim := ps.claimBy == "" // unclaimed → running transition (below, off-lock)
+	if ps.claimBy != body.Identity {
+		// A takeover, not a reconnect. What the previous holder acknowledged is not
+		// something this worker has done, and an acknowledgement was never a promise that
+		// the work was carried out — so the new holder starts from the beginning of what
+		// is still queued rather than inheriting a position it never reached.
+		ps.ackedCursor = 0
+	}
 	ps.epoch++                     // mint a new generation; fences any prior holder (including a same-id zombie)
 	ps.claimBy = body.Identity
 	ps.renewed = time.Now() // the lease starts now
@@ -715,6 +771,17 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	ps.renew(epoch) // a worker that is polling is a worker that is alive
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	ps.mu.Lock()
+	// A worker that asks to go BACKWARDS is served from where it actually got to. It has
+	// already taken everything at or below ackedCursor, and handing it back would re-apply
+	// a pause, a say or a vector slide it has already acted on — the broker knows what this
+	// claim acknowledged, so it does not need the worker to remember.
+	//
+	// Only within one claim. A takeover resets the mark (see claim), because what a
+	// DIFFERENT worker acknowledged says nothing about what this one has done.
+	if since < ps.ackedCursor {
+		since = ps.ackedCursor
+	}
+
 	// Read the poll as the acknowledgement it is: asking for what comes after N is something
 	// a worker could only do having taken what came before, so N is the high-water mark a
 	// re-claim should hand back.
@@ -775,6 +842,14 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		Events []process.Frame `tony:"field=events"`
 		Result string          `tony:"field=result,omitzero"`
 		Epoch  int64           `tony:"field=epoch,omitzero"`
+		// Key makes a report retryable. A worker whose response was lost cannot know
+		// whether its events landed, and without this its only choices were to drop what it
+		// observed or to report it twice — which is one deploy becoming two events with two
+		// cursors, indistinguishable afterwards from the worker having done it twice.
+		//
+		// Optional: a worker that sends none gets exactly today's behaviour, which is that
+		// every report is a new one.
+		Key string `tony:"field=key,omitzero"`
 	}
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -785,6 +860,13 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ps.renew(body.Epoch) // reporting is working, and working is being alive
+	// A repeat of a key already applied is ANSWERED, not re-applied — and answered with what
+	// the first one was answered with, so a worker retrying into a lost response gets the
+	// same rCursor and the same count it would have got had the first response arrived.
+	if ack, seen := ps.reportSeen(body.Key); seen {
+		writeOut(w, r, map[string]any{"rCursor": ack.rCursor, "applied": ack.applied})
+		return
+	}
 	latched, applied := false, 0
 	for _, e := range body.Events {
 		if e.Kind == process.EvStatus && process.Status(e.Text).Terminal() {
@@ -808,7 +890,9 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 	// nothing follows a terminal — and answering 200 without saying so told a worker its
 	// whole wind-down had landed when part of it was on the floor. A retry can be computed
 	// from this; it could not be computed from silence.
-	writeOut(w, r, map[string]any{"rCursor": ps.cursorNow(), "applied": applied})
+	ack := reportAck{rCursor: ps.cursorNow(), applied: applied}
+	ps.rememberReport(body.Key, ack)
+	writeOut(w, r, map[string]any{"rCursor": ack.rCursor, "applied": ack.applied})
 }
 
 func writeOut(w http.ResponseWriter, r *http.Request, v any) {

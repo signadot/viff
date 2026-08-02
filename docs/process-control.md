@@ -347,7 +347,7 @@ Three endpoints, worker as client:
 ```
 POST /processes/{id}/claim   {identity}                      → {spec, cCursor, rCursor}
 GET  /processes/{id}/inbox?since={cCursor}   (long-poll/SSE)  → control directed at the worker
-POST /processes/{id}/report  {from: rCursor, events:[…]}      → {rCursor, applied}
+POST /processes/{id}/report  {events:[…], key?, epoch}        → {rCursor, applied}
 ```
 
 `inbox` is the dual of verse's `/events`: a resumable stream of control directed at the
@@ -380,6 +380,25 @@ never inputs.
 `since=N` is the acknowledgement of everything at or below N, because a worker could only ask
 for what came after having taken what came before. So a reconnecting worker is handed the
 place it actually reached, and control issued during its outage is still waiting for it.
+
+A worker that asks to go BACKWARDS is served from where it got to rather than from where it
+asked. The broker knows what this claim acknowledged, so a worker that lost its cursor does
+not have to remember — what it has not taken is still waiting, and what it has is not handed
+back to be applied twice. A TAKEOVER resets that mark: what a different worker acknowledged
+says nothing about what this one has done, and an acknowledgement was never a promise that
+the work was carried out.
+
+What remains the worker's own half is the window between receiving control and acknowledging
+it. A worker that pulled an item, acted on it, and died before its next poll will be handed
+that item again — so control a worker cannot afford to apply twice should be applied
+idempotently by the worker, which is the only party that can.
+
+`key` makes a report retryable. A worker whose response was lost cannot know whether its
+events landed, and without one its only choices are to drop what it observed or to report it
+twice — one deploy becoming two events at two cursors, afterwards indistinguishable from the
+work having been done twice. A repeat of a key already applied is ANSWERED with what the
+first one was answered with, not applied again. It is optional, and necessarily so: only the
+worker knows a retry is a retry, and one that sends no key gets a fresh report every time.
 
 `applied` is how many of the reported events were taken, which is not always all of them:
 nothing follows a terminal, so a batch whose terminal is not its last entry has the remainder

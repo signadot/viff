@@ -814,3 +814,109 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(last)+"&epoch="+itoa(claim.Epoch), &pulled)
 	drainFor(t, ch, "decision")
 }
+
+// A retried report is answered, not applied a second time.
+//
+// A worker whose response was lost cannot know whether its events landed, and without a key
+// its only choices were to drop what it observed or to report it twice — one deploy becoming
+// two events at two cursors, afterwards indistinguishable from the worker having done it
+// twice.
+func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	body := `{"epoch":` + itoa(claim.Epoch) + `,"key":"r1","events":[{"kind":"exec","tool":"deploy"}]}`
+	var first, again struct {
+		RCursor int64 `tony:"field=rCursor"`
+		Applied int   `tony:"field=applied"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report", body, &first)
+	postJSON(t, cl, srv.URL+"/processes/p/report", body, &again) // the response never arrived
+
+	if again != first {
+		t.Fatalf("the retry was answered %+v and the original %+v; a worker cannot tell "+
+			"a retry that landed from one that did not", again, first)
+	}
+	inst, _ := b.ProcessSnapshot("p")
+	if inst.Cursor != first.RCursor {
+		t.Fatalf("cursor moved to %d on a retry of one deploy the worker performed once "+
+			"(answered at %d)", inst.Cursor, first.RCursor)
+	}
+
+	// A DIFFERENT key is a different report, whatever it carries.
+	var third struct {
+		RCursor int64 `tony:"field=rCursor"`
+		Applied int   `tony:"field=applied"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"key":"r2","events":[{"kind":"exec","tool":"deploy"}]}`, &third)
+	if third.RCursor <= first.RCursor {
+		t.Fatalf("a second, distinct report did not advance the log: %d → %d", first.RCursor, third.RCursor)
+	}
+}
+
+// A worker that lost its cursor and asks from the beginning is served from where it actually
+// got to, so control it has already acted on is not handed back.
+//
+// The broker knows what this claim acknowledged; the worker does not have to remember. What
+// it has NOT taken is still waiting for it, which is the part that matters.
+func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	h := b.Attach("p")
+	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
+		t.Fatalf("steer: %v", err)
+	}
+	if err := h.Pause(); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	items := func(since int64) []api.InboxItem {
+		t.Helper()
+		var out struct {
+			Items []api.InboxItem `tony:"field=items"`
+		}
+		getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(since)+"&epoch="+itoa(claim.Epoch), &out)
+		return out.Items
+	}
+	got := items(0)
+	if len(got) != 2 {
+		t.Fatalf("first poll = %d items, want 2", len(got))
+	}
+	last := got[len(got)-1].Cursor
+	items(last) // acknowledges both
+
+	if again := items(0); len(again) != 0 {
+		t.Fatalf("asking from 0 after acknowledging through %d returned %d items; a worker "+
+			"that forgot would re-apply every control it ever took", last, len(again))
+	}
+
+	// …and a TAKEOVER starts fresh: what the previous holder acknowledged says nothing about
+	// what this worker has done, and an acknowledgement was never a promise of execution.
+	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
+	var second struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:other"}`, &second)
+	var out struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(second.Epoch), &out)
+	if len(out.Items) != 2 {
+		t.Fatalf("a new worker taking over saw %d items, want the 2 still queued", len(out.Items))
+	}
+}
