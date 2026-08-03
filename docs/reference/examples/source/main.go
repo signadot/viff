@@ -80,8 +80,10 @@ type demo struct{ git *source.Git }
 func (d *demo) System() string { return d.git.System() }
 
 // Owns is what this source claims across every pass, which is what verse proves that
-// disjointness against. Coarser than a Covers below: it says what nobody else may write.
-func (d *demo) Owns() []entity.Pattern { return d.git.Owns() }
+// disjointness against. Coarser than a Covers below — it says what nobody else may write — and
+// spelled as ref globs (`git:*:verse/*`) rather than as a payload predicate, because an install
+// compares two declarations with no entities in hand and only addresses compare statically.
+func (d *demo) Owns() []string { return d.git.Owns() }
 
 // reflect reads external truth for the slice `ref` names and returns it. CHANGE THIS.
 //

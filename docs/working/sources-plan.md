@@ -15,7 +15,19 @@ registration, the restart, the durability and the tombstoning have no prior code
 That is what makes step 3 roughly the size of steps 1 and 2 together, and why it is decomposed
 here rather than taken in one pass.
 
-## Two decisions this plan forces back into the note
+## Three decisions this plan forces back into the note
+
+**An ownership claim is a ref glob, not an `entity.Pattern`.** The note proposed
+`{system: git, value: {repo: verse}}`, reusing the charter's selector so ownership needs no
+second vocabulary. Writing the prover is what showed why that does not work: converge evaluates
+`Covers` against stored entities whose payloads it can read, while an install compares two
+declarations with nothing in hand. Addresses compare statically; payload predicates do not — and
+proving predicates apart syntactically has traps (a null in a predicate is a PRESENCE test, so
+"same field, different constants" would prove `{repo: null}` disjoint from `{repo: verse}` when
+the second entails the first). So `owns` is a ref with `*` allowed — `git:*:verse/*` — with id
+globs restricted to a literal prefix and an optional trailing `*`, which makes disjointness a
+string comparison rather than automata intersection. `Covers` stays a `Pattern`; the note now
+carries the full argument and the direction this is wrong in.
 
 **`lastReflect` cannot be both things.** The note asks it to be "a fact about verse's own last
 write … the poll cursor" *and* the signal that catches "a source that has wedged — alive,
@@ -40,9 +52,9 @@ route that must stay cheap enough to leave unauthenticated.
 
 ## Order of work
 
-Seven steps. Each is independently reviewable and leaves the tree green. The dependency order is
-real: 3 needs 1's entity and 2's prover, 4 needs 3's registration to have something to run, and
-6 needs 4's reflector to have something to stop. Steps 5, 6 and 7 are independent of each other.
+Six steps. Each is independently reviewable and leaves the tree green. The dependency order is
+real: 2 needs 1's entity and its prover, 3 needs 2's registration to have something to run, and
+5 needs 3's reflector to have something to stop. Steps 4, 5 and 6 are independent of each other.
 
 ### 1. The registration entity, and the name it needs
 
@@ -56,15 +68,41 @@ It becomes `source.FederationSystem`; three call sites (`versed/server.go` ×2,
 
 ```go
 type Entity struct {
-    Name   string           // half the address
-    System string           // the other half, and the slice reflected
-    URL    string           // exactly one of these three
+    Name   string   // half the address
+    System string   // the other half, and the slice reflected
+    URL    string   // exactly one of these three
     DialIn string
     Dir    string
-    Owns   []entity.Pattern
+    Owns   []string // ref globs: ["git:*:verse/*", "git:head:verse"]
     Scope  string
 }
 ```
+
+Ownership and its prover land here too, in `source/own.go` — a pure function with its own test
+and no wiring, so it can be read on its own:
+
+```go
+// Claim is one ownership claim, parsed from its ref-glob spelling `<system>:<kind>:<id>`.
+// A segment may be `*`; an id may additionally be a literal prefix with a trailing `*`, and
+// nothing richer — prefix-disjointness is a string comparison, where general glob
+// disjointness is automata intersection.
+type Claim struct{ System, Kind, ID string; Prefix bool }
+
+func ParseClaim(s string) (Claim, error)
+func (c Claim) Disjoint(o Claim) bool
+// Disjoint reports whether every claim of a is provably disjoint from every claim of b.
+func Disjoint(a, b []string) (bool, error)
+```
+
+Two claims are disjoint when **any segment is**: two literal systems that differ, two literal
+kinds that differ, or two id prefixes neither of which prefixes the other. A `*` segment is
+disjoint from nothing.
+
+`Descriptor.Owns` changes from `[]entity.Pattern` to `[]string` with it — step 2 of the note
+built it as patterns, and this is where that decision is undone. `Git.Owns()` returns **two
+entries per repo**, `git:*:<id>/*` and `git:head:<id>`, because refs and commits are
+`<repo>/<name>` while a head is the bare `<repo>`. The tempting single `<id>*` covers both and
+also claims `<id>-extras/main`, which would make two disjoint repos refuse to install together.
 
 `Check()` covers what cannot be discovered later: a name or system missing, a `:` or `/` in
 either (both are route segments), a url that does not parse or has no http scheme, and —
@@ -82,38 +120,15 @@ The `ulr:` lesson matters more here than for a runner: this entity has six field
 message that says what to do; two of url/dial-in/dir together is refused and none of them is
 refused; `CheckFields` names `onws:` rather than installing a source that claims nothing.
 
-### 2. The disjointness prover
+And the prover, as a table: two git repos are disjoint across all four claim pairs (this is the
+motivating case and the reason the rule is not just system-or-kind); `verse` and `verse-extras`
+are disjoint, the near-miss the two-entries-per-repo shape exists for; `git:*:*` is disjoint
+from nothing in git; different systems and different literal kinds are disjoint; a `*` kind
+overlaps a literal one; an id glob with `*` anywhere but the end is a parse error, not a
+silently-wrong claim. Plus symmetry over the whole table — an install checks one way and means
+both.
 
-New `source/disjoint.go`. A pure function over two `entity.Pattern`s, with its own test and no
-wiring — the one genuinely new algorithm in step 3, so it lands on its own where it can be read.
-
-```go
-// ProvablyDisjoint reports whether no entity can satisfy both. It PROVES, and answers false
-// whenever it cannot — an unprovable overlap is refused at install, not assumed away.
-func ProvablyDisjoint(a, b entity.Pattern) bool
-```
-
-The three grounds, in order: different systems; both kinds named and different; or a field that
-is a **constant in both** with different values. Everything else is false.
-
-"Constant" means: the predicate's root is an object with no tag (a tagged root — `!not {…}` —
-inverts the meaning, so bail), and the field's value is an untagged scalar. Fields carrying an
-operator are **ignored rather than distrusted**, and that is sound in this direction: an
-operator only narrows a pattern, so a contradiction already found among the constants still
-holds. `At` must match on both sides, or the two predicates are rooted at different places and
-their fields are not comparable.
-
-The case that matters falls out: `{system: git, value: {repo: verse}}` versus
-`{system: git, value: {repo: kernel}}` is proved apart, and `{system: git}` with no narrowing
-is not — it claims the lot, so it can be disjoint from nothing in its own system.
-
-**Proves:** a table — different systems, different kinds, contradicting constants, equal
-constants (not disjoint), `{system: git}` against anything in git (not provable), a `!glob` in
-one field with a contradicting constant in another (still provable), a `!not` at the root (not
-provable), mismatched `At` (not provable). And the symmetry: `ProvablyDisjoint(a,b) ==
-ProvablyDisjoint(b,a)` over the whole table, since an install checks one way and means both.
-
-### 3. Install: the routes, the two checks, and the CLI
+### 2. Install: the routes, the two checks, and the CLI
 
 New `versed/sources.go` and a route block in `Handler()` beside the runners':
 
@@ -122,7 +137,7 @@ GET    /sources                       list
 POST   /sources                       install (?probe=false)
 GET    /sources/{system}/{name}       show
 GET    /sources/{system}/{name}/check probe now
-DELETE /sources/{system}/{name}       remove (step 6 adds the fork)
+DELETE /sources/{system}/{name}       remove (step 5 adds the fork)
 ```
 
 `addSource` is `addRunner` with two checks added, and both are the thing an external source
@@ -131,7 +146,7 @@ loses that an in-process one had by construction:
 - **the descriptor's system must be the one the operator named** — a `github` registration
   pointed at a git source, caught while somebody is present;
 - **ownership must be provably disjoint from every standing registration in the same scope**,
-  using step 2, or the install is refused. `--allow-overlap` is the way past, with the cost
+  using step 1, or the install is refused. `--allow-overlap` is the way past, with the cost
   stated rather than discovered.
 
 The probe is `source.Probe` from step 2 of the note, and its three dispositions are the
@@ -149,7 +164,7 @@ mismatch is refused naming both; a second registration overlapping the first is 
 `--allow-overlap` installs it; `verse source add` reaches the route through the client the way a
 person types it.
 
-### 4. Lifetime: a reflector per registration, and a restart
+### 3. Lifetime: a reflector per registration, and a restart
 
 `Server` gains a map of registration ref → `{*source.Reflector, cancel}`, guarded by its own
 mutex — the `scopeEngs`/`scopeEngine` shape at `versed/server.go:641`, which is the tree's
@@ -172,7 +187,7 @@ quiet interval); a failing source records `lastError` and clears it on the next 
 pass leaves the registration entity byte-identical — the anti-churn assertion, which is the one
 that will break if somebody later stamps a heartbeat here.
 
-### 5. The hint, and the end of `Webhook`
+### 4. The hint, and the end of `Webhook`
 
 `POST /sources/{system}/{name}/hint?ref=…` → `Reflector.Hint(refs...)`, which step 1 of the note
 already built. No refs means a full resync. It writes nothing itself, which is what lets it stay
@@ -188,7 +203,7 @@ entity is not expressible (the route has no body); a hint for an unknown registr
 rather than a silent no-op; the installed git hook's curl line hits the new route (extend
 `TestGitInstallHook`, which already reads the script).
 
-### 6. Removal, and the fork
+### 5. Removal, and the fork
 
 `removeSource` is `removeRunner` with the nouns changed (`versed/runners.go:158` — same 409,
 same two-flag refusal message): a removal whose registration has a **non-empty reflected slice**
@@ -202,11 +217,11 @@ what `owns` selects and leaves the neighbours (a second source's slice) standing
 leaves everything and the entities are still readable afterwards; no flag is needed when the
 slice is empty; either way the reflector is stopped.
 
-### 7. Scope
+### 6. Scope
 
 The registration is written through `s.scopedStore(r)`, which already reads `?scope=`; the
 reflector for a scoped registration is built over `s.Store.Scope(name)`. The ownership check in
-step 3 is scoped with it — two sources in one scope must still be provably disjoint, while a
+step 2 is scoped with it — two sources in one scope must still be provably disjoint, while a
 scoped source claiming what a baseline source also claims is the overlay doing its job and
 must NOT be refused. Restore in `Start()` enumerates scopes the way a scoped charter would.
 
@@ -238,12 +253,13 @@ takes the registration and the reflected entities together.
 
 ## Risks worth watching
 
-**Disjointness may refuse too much to be useful.** This is the note's own unproved claim, and
-step 2 is where it becomes testable: ownership has to fall on a field the source itself writes
-as a constant. Git obliges (`repo`). A system whose truth is not content-addressed, or whose
-natural ownership is a prefix rather than an equality, will hit `--allow-overlap` immediately —
-and if the first non-git source does, that is evidence the vocabulary is wrong, not that the
-operator should keep passing the flag.
+**Ownership-as-an-address is a guess, and it is wrong in a knowable direction.** It works when a
+source's ids encode ownership positionally, which git's do only because `git.go` prefixes every
+id with the repo — a property of that code, not a law. A source reflecting `linear:issue:ENG-123`
+whose ownership is "project ENG" cannot spell that as an address at all, and will hit
+`--allow-overlap` on its second registration. If the first non-git source does, that is evidence
+the vocabulary should go back to predicates, not that the operator should keep passing the flag.
+`Covers` stays a `Pattern` throughout, so that road is still open.
 
 **A trigger over `sources:*` and the registration's own writes.** The anti-churn rule above
 keeps a quiet verse quiet, but `lastError` still writes on transition, and a source flapping

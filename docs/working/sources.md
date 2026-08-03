@@ -213,7 +213,7 @@ verse source show sources:git:laptop
 name:   laptop
 system: git
 url:    "http://build-host:9801"   # or `dial-in: <nonce>`, or `dir:` for the built-in
-owns:   [{system: git, value: {repo: verse}}]
+owns:   ["git:*:verse/*", "git:head:verse"]   # ref globs; see below
 scope:  ""                         # empty is baseline; see below
 ```
 
@@ -235,13 +235,43 @@ in-process one had by construction:
 - **Ownership must be provably disjoint from every standing registration in the same scope**, or
   the install is refused. Single-writer is what makes a reflected slice need no CAS; in-process
   it held because there was one `Git` value, and across deployments nothing holds it but this
-  check. Disjointness is *proved*, not assumed: verse can prove it for the case that matters —
-  same system and kind, one field constant in both, different values (`repo: verse` vs
-  `repo: kernel`) — and refuses what it cannot prove, which includes a registration owning
-  `{system: git}` outright, since that one claims the lot. `--allow-overlap` is the way past it,
-  with the cost stated rather than discovered: two writers on one slice, each tombstoning what
-  the other reflected. *In the same scope* is load-bearing and is the next section: a scoped
-  source shadowing a baseline one is the feature, not a collision.
+  check. Disjointness is *proved*, not assumed, and it refuses what it cannot prove — including
+  a registration owning `git:*:*` outright, since that one claims the lot. `--allow-overlap` is
+  the way past it, with the cost stated rather than discovered: two writers on one slice, each
+  tombstoning what the other reflected. *In the same scope* is load-bearing and is the next
+  section: a scoped source shadowing a baseline one is the feature, not a collision.
+
+  **An ownership claim is a ref glob, not a `Pattern`**, and this note first said the opposite.
+  It proposed `{system: git, value: {repo: verse}}` on the grounds that ownership should reuse
+  the charter's selector rather than invent a vocabulary. What that missed is that the two
+  questions are asked in different places: converge evaluates `Covers` against stored entities
+  whose payloads it can read, while an install compares two *declarations* with no entities in
+  hand. **Addresses compare statically; payload predicates do not.** Proving `{repo: verse}` and
+  `{repo: kernel}` apart means reasoning about tony matches syntactically, which is both harder
+  than it looks — a null in a predicate is a PRESENCE test, so a naive "same field, different
+  constants" rule proves `{repo: null}` disjoint from `{repo: verse}` when the second entails
+  the first — and unavailable to a source whose ownership is not a constant field at all.
+
+  So `owns` is spelled the way every other address in verse is, with `*` allowed:
+  `git:*:verse/*`. An id glob is a **literal prefix and an optional trailing `*`**, deliberately
+  and only that: prefix-disjointness is a string comparison, while general glob disjointness is
+  automata intersection, and the whole reason for retreating from predicates was to stop proving
+  things the hard way. Two claims are disjoint when any segment is — two literal systems that
+  differ, two literal kinds that differ, or two id prefixes neither of which prefixes the other.
+
+  Git's claim is two entries per repo rather than one, and the reason is worth stating because
+  the shortcut is tempting: refs and commits are `<repo>/<name>`, but a head is the bare
+  `<repo>`, so the claim is `git:*:verse/*` **and** `git:head:verse`. The single glob `verse*`
+  would cover both — and would also claim `verse-extras/main`, which is not a false alarm but a
+  real overclaim, and one that would make two perfectly disjoint repos refuse to install
+  alongside each other.
+
+  This is the cheaper of two guesses about an unproved vocabulary, and it is wrong in a knowable
+  direction: it works when a source's ids encode ownership positionally, which git's do because
+  `git.go` prefixes every id with the repo. A source reflecting `linear:issue:ENG-123` whose
+  ownership is "project ENG" cannot spell that as an address, and has an obvious predicate. If
+  that is the first source to arrive, this decision is the one to revisit — and `Covers` stays a
+  `Pattern` throughout, so the predicate grammar is still there to return to.
 
 **Three ways to reach a source, one contract.** A registration carries exactly one of `url`
 (verse dials), `dial-in` (the source dials, above), or `dir` (the in-process git source the

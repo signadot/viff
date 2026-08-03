@@ -55,8 +55,8 @@ func (g *Git) AddRepo(id, dir string) string {
 // System is the owned slice.
 func (g *Git) System() string { return GitSystem }
 
-// Owns is the ownership claim an install checks against the other installed sources: one
-// pattern per registered repo, `{system: git, value: {repo: <id>}}`.
+// Owns is the ownership claim an install checks against the other installed sources, as ref
+// globs (see own.go).
 //
 // It is KIND-LESS where a reflection's Covers names a kind, and the difference is real rather
 // than sloppy. A cover says what one pass is complete for — the mutable kinds, since history
@@ -64,10 +64,12 @@ func (g *Git) System() string { return GitSystem }
 // slice, commits included. Two sources reflecting one repo would fight over its commits just
 // as surely as over its branches.
 //
-// Scoped by the `repo` field the payloads already carry, which is what makes disjointness
-// PROVABLE for the case that matters: two registrations, same system, one field constant in
-// both, different values.
-func (g *Git) Owns() []entity.Pattern {
+// TWO ENTRIES PER REPO, and the shortcut is worth naming because it is tempting. Refs and
+// commits are `<repo>/<name>`, but a head is the bare `<repo>` — so the claim is
+// `git:*:<id>/*` AND `git:head:<id>`. The single glob `<id>*` covers both, and also claims
+// `<id>-extras/main`: not a false alarm but a real overclaim, and one that would make two
+// perfectly disjoint repos refuse to install alongside each other.
+func (g *Git) Owns() []string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	ids := make([]string, 0, len(g.repos))
@@ -75,12 +77,9 @@ func (g *Git) Owns() []entity.Pattern {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	out := make([]entity.Pattern, 0, len(ids))
+	out := make([]string, 0, 2*len(ids))
 	for _, id := range ids {
-		out = append(out, entity.Pattern{
-			System:    GitSystem,
-			Predicate: entity.Obj{"repo": id}.Payload(),
-		})
+		out = append(out, GitSystem+":*:"+id+"/*", GitSystem+":head:"+id)
 	}
 	return out
 }

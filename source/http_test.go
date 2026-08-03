@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
+	"slices"
 	"testing"
 
 	"github.com/signadot/verse/codec"
@@ -178,13 +179,10 @@ func TestProbe(t *testing.T) {
 	if d.System != source.GitSystem {
 		t.Fatalf("descriptor system = %q, want git", d.System)
 	}
-	// The ownership claim an install proves disjointness with. Kind-less and narrowed by the
-	// repo, which is what makes two registrations over different repos provably apart.
-	if len(d.Owns) != 1 || d.Owns[0].System != source.GitSystem || d.Owns[0].Kind != "" {
-		t.Fatalf("descriptor owns = %+v", d.Owns)
-	}
-	if repo := entity.ToObj(d.Owns[0].Predicate)["repo"]; repo != "A" {
-		t.Fatalf("ownership should be scoped to the repo, got %v", entity.ToObj(d.Owns[0].Predicate))
+	// The ownership claim an install proves disjointness with: two ref globs per repo, since
+	// refs and commits are <repo>/<name> while a head is the bare <repo>.
+	if want := []string{"git:*:A/*", "git:head:A"}; !slices.Equal(d.Owns, want) {
+		t.Fatalf("descriptor owns = %v, want %v", d.Owns, want)
 	}
 
 	// Something that answers and is not this: the mistake an operator makes with a url.
