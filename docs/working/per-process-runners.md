@@ -23,8 +23,16 @@ srv.UseBroker(face)                    // verse up --broker
 ```
 
 `verse up` refuses `--runner` with `--broker` — *"(one runner)"* — which is the premise this
-plan changes. Every spawn goes wherever that field points, so a drive that needs a different
-runner needs a different verse.
+plan changes. Every spawn goes wherever that field points.
+
+What that costs is worth stating exactly, because it is easy to overstate. A drive *can* deploy
+its own runner today, including a broker its workers dial into: `broker.New()` and
+`WorkerHandler()` are exported, and a second `verse up --broker` is one command. What it cannot
+do is use that runner for *some* of the work. A second runner means a second verse — its own
+store, its own engine, its own entities — and the drive's work is then somewhere else entirely,
+which is the opposite of dogfooding in the deployment.
+
+So the missing thing is not the ability to run a runner. It is per-spawn selection.
 
 **The seam is already right.** `process.Runner` is three methods — `Spawn`, `Attach`, `Ref` —
 and `Handle` already hides whether a process runs in-process, behind a URL, or on a worker that
@@ -251,10 +259,23 @@ configuration, not by construction: nothing detects a runner that queues. And th
 exactly what turns "the person deploying verse chose one runner URL" into "anyone who can write
 an entity chooses a runner URL per spawn".
 
-So the answer to *should brokered processes go through external runners* is not a blanket no —
-a drive deploying its own broker for its own workers is the motivating use case, and forbidding
-it would forbid the thing the issue asks for. The answer is that the hop has to carry the
-property. Two ways, and step 2 should not land before one of them is chosen:
+So: *should brokered processes go through external runners?*
+
+Not a blanket no, but the reason is narrower than "a drive needs its own broker" — a drive can
+have one today. `broker.New()` and `WorkerHandler()` are exported, and a second `verse up
+--broker` is a broker anybody can stand up. What it cannot be is **one runner among several**:
+`UseBroker` calls `SetRunner`, `--broker` and `--runner` are mutually exclusive, and `HostBroker`
+is a Go API rather than something reachable over HTTP. So a drive's broker today costs a whole
+second verse — its own store, its own engine, its own entities — and then *everything* that
+verse spawns goes there.
+
+That all-or-nothing is what this feature removes, and it is what a ban would put back: a runner
+entity that may not point at a queuing runner means a drive's broker can only be reached by
+making it the whole verse's runner again. Not "you cannot deploy a broker" — "you cannot have
+one for some of the work".
+
+The answer is that the hop has to carry the property. Two ways, and step 2 should not land
+before one of them is chosen:
 
 - **the contract carries it** — process-control exposes how control is applied (a capability on
   the status response), and `runner.HTTP`'s handle reports what it was told. Composes, and makes
