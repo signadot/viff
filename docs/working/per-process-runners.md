@@ -1,7 +1,10 @@
 # Per-process runners: a plan
 
-Status: plan, nothing built. It answers git-issue `zwrnysjrh12ksrgye1n0`, whose ask is one
-sentence and whose motivation is the thing that decides the design:
+Status: **built**, all four steps (`4260f4f`, `88063a7`, `a55ebcc`, `1cfeeac`). The plan is kept
+as written, with the four places the build departed from it marked inline as **[built]**; a plan
+edited to match what happened stops being evidence about which parts of it were right. It
+answers git-issue `zwrnysjrh12ksrgye1n0`, whose ask is one sentence and whose motivation is the
+thing that decides the design:
 
 > to facilitate dogfooding in the deployment, verse should have per-process runners. This will
 > enable deploying arbitrary runners in the verse namespace, including whatever is needed for a
@@ -105,6 +108,11 @@ something is one nobody can debug.
 
 `runners:<kind>:<name>` carrying `url` and nothing else this increment reads.
 `verse runner add|show|check|remove`, `verse runners`.
+
+**[built]** `add` grew a second form. A runner is three fields and one of them is its address,
+so `verse runner add pool:gpu <url>` is what a person types; the document form a resolver uses
+is what a deployment writes. Making an operator author a file to say three words would have made
+the common case the awkward one.
 
 A verb rather than a raw write, for the reason `verse resolver add` is one: a write has nowhere
 to put the checks. Here they are real from the first commit — a `url` that does not parse, and a
@@ -283,6 +291,12 @@ This is also what makes step 1's answer about removal true. Removal leaves runni
 deleted — the two decisions are one decision, and getting this one wrong would turn a tidy-up
 into an outage.
 
+**[built]** `RunnerName` landed in step 2 rather than here, because that is where the `Meta` is
+built and a field is not worth threading twice. What was left for this step was the half the
+plan was actually about, and it was a real gap: `Reflect` REPLACES the payload, so the re-attach
+was dropping the name — a resumed process came back running on the right runner and unable to
+say which one, silently falling out of `verse ps --runner`.
+
 **Proves:** work outlives the verse that started it, and outlives the entity that named its
 runner. Test: spawn on a named runner, restart the server, and the process is re-attached rather
 than orphaned; remove the runner entity while the process runs and the restart still re-attaches
@@ -326,7 +340,12 @@ runner is well, the next ask is that it act on one: skip the sick one, retry ont
 one. That is the scheduling named below as something this does not build, and a poller is how it
 arrives without being decided.
 
-**And `verse ps` must stay store-derived rather than fanning out.** Today's list unions the local
+**[built] And `verse ps` must stay store-derived rather than fanning out.** This was the one
+piece of real surgery. Written as a union of the local runtime and the DEFAULT runner, filtered
+by the mirror, `verse ps` listed a process on a named runner nowhere at all — so step 4 inverted
+it: the rows come from `process:instance` and the runtimes only enrich them. Which then removed
+the 502 this branch had just added, because an unreachable runner no longer costs rows. The
+paragraph below is the reasoning that survived contact: Today's list unions the local
 runtime with the ONE configured runner's own `ListProcesses`, and a runner that does not answer
 now fails that list with the reason rather than shortening it silently. That is right for one
 runner and wrong for many: the same union across every installed runner would let a single dead
