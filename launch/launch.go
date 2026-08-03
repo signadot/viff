@@ -105,11 +105,11 @@ type Spec struct {
 	// It bounds memory, so it is a cost the author is choosing: a long window on a chatty
 	// process is paid for in bytes per live process, and the default is deliberately modest
 	// rather than generous.
-	Retain      int      `tony:"field=retain,omitzero"`
-	Vector      string   `tony:"field=vector,omitzero"`
-	Resolver    string   `tony:"field=resolver,omitzero"`
-	Grant       string   `tony:"field=grant,omitzero"`
-	Environment string   `tony:"field=environment,omitzero"`
+	Retain      int    `tony:"field=retain,omitzero"`
+	Vector      string `tony:"field=vector,omitzero"`
+	Resolver    string `tony:"field=resolver,omitzero"`
+	Grant       string `tony:"field=grant,omitzero"`
+	Environment string `tony:"field=environment,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The
 	// engine tracks a flow's processes by subject so it can be steered/cancelled as
 	// a unit. Usually the concrete matched ref, not a template.

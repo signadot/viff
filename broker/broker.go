@@ -9,10 +9,10 @@
 package broker
 
 import (
-	"time"
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
@@ -107,21 +107,21 @@ func (b *Broker) Revoke(id string) {
 type procState struct {
 	id, task, driver string
 
-	mu       sync.Mutex
-	claimBy  string
-	epoch    int64                      // claim generation; the fencing token (0 = unclaimed)
+	mu      sync.Mutex
+	claimBy string
+	epoch   int64 // claim generation; the fencing token (0 = unclaimed)
 	// renewed is when this claim was last heard from. A worker renews by working: every
 	// inbox poll and every report is a renewal, so the lease needs no heartbeat of its own
 	// and a worker that already talks to the broker is already keeping it.
 	renewed time.Time
-	log      []process.Frame            // merged event log (worker reports + control-effects)
-	inbox    []api.InboxItem            // control directed at the worker
-	subs     map[int]chan process.Frame // verse-side Handle subscribers
-	nextSub  int
-	logCur   int64
+	log     []process.Frame            // merged event log (worker reports + control-effects)
+	inbox   []api.InboxItem            // control directed at the worker
+	subs    map[int]chan process.Frame // verse-side Handle subscribers
+	nextSub int
+	logCur  int64
 	// retain is this process's log window in events (0 = the package default). Set from the
 	// Launch, because how much of the past is worth keeping is a property of the work.
-	retain int
+	retain   int
 	inboxCur int64
 	// ackedCursor is how far the worker has read its inbox. A poll for `since=N` IS the
 	// acknowledgement of everything at or below N — the worker asked for what came after,
@@ -132,7 +132,7 @@ type procState struct {
 	// rides in on Text, and a resolver reading `verse gates` needs it — that reason is the
 	// entire point of an executor escalating instead of deciding. Narrowing this to
 	// id -> gate silently blanked it on every brokered gate.
-	pending  map[string]process.Frame
+	pending map[string]process.Frame
 	// answered remembers the gates that HAVE been decided, so a second answer can be told
 	// apart from an answer to nothing. Without it both are "not open", and the two mean
 	// opposite things to whoever asked.
@@ -155,10 +155,10 @@ type procState struct {
 	// abandoned records that the terminal found gates still open, so a late answer can be
 	// told why it missed rather than being sent to look for a typo.
 	abandoned bool
-	result   string
-	err      string         // terminal failure reason (Failed only); see latchTerminal
-	status   process.Status // latched terminal status
-	terminal bool
+	result    string
+	err       string         // terminal failure reason (Failed only); see latchTerminal
+	status    process.Status // latched terminal status
+	terminal  bool
 }
 
 // emit appends an event to the merged log (stamping the next cursor) and broadcasts it to
@@ -786,12 +786,12 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		// is still queued rather than inheriting a position it never reached.
 		ps.ackedCursor = 0
 	}
-	ps.epoch++                     // mint a new generation; fences any prior holder (including a same-id zombie)
+	ps.epoch++ // mint a new generation; fences any prior holder (including a same-id zombie)
 	ps.claimBy = body.Identity
 	ps.renewed = time.Now() // the lease starts now
 	resp := map[string]any{
-		"spec":    map[string]string{"task": ps.task, "driver": ps.driver},
-		"epoch":   ps.epoch,    // carry this on every report/inbox
+		"spec":  map[string]string{"task": ps.task, "driver": ps.driver},
+		"epoch": ps.epoch, // carry this on every report/inbox
 		// Resume control from what this worker ACKNOWLEDGED, not from where the broker has
 		// got to. Handing back the current cursor told a reconnecting worker to skip
 		// everything queued while it was away — which is the outage, and so exactly the
@@ -799,7 +799,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		// during it was never shown to the worker, while every other surface reported the
 		// gate settled.
 		"cCursor": ps.ackedCursor,
-		"rCursor": ps.logCur,   // resume reporting from here
+		"rCursor": ps.logCur, // resume reporting from here
 	}
 	ps.mu.Unlock()
 	// An executor picked it up: leave the pre-running `unclaimed` state. emit takes ps.mu,

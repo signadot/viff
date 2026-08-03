@@ -218,4 +218,4 @@ func (failedHandle) Cancel(string) error             { return ErrNoSuchProcess }
 func (failedHandle) Steer(string, string) error      { return ErrNoSuchProcess }
 func (failedHandle) SetVector(*Vector, string) error { return ErrNoSuchProcess }
 func (failedHandle) Result() string                  { return "" }
-func (f failedHandle) Err() string             { return f.err }
+func (f failedHandle) Err() string                   { return f.err }

@@ -48,8 +48,8 @@ type Trigger struct {
 	// It exists because a resolver had nowhere to be named for a FIRING's gates. A spawn
 	// says `resolver:` for the run it starts; a rule had no counterpart, so the named door
 	// was open on one side of the design and shut on the other.
-	Gating    *Gating   `tony:"field=gating,omitzero"`
-	Action    Action    `tony:"field=action"`
+	Gating *Gating `tony:"field=gating,omitzero"`
+	Action Action  `tony:"field=action"`
 }
 
 // Gating is a rule's own gates and who answers them.

@@ -342,7 +342,7 @@ type procRunConfig struct {
 	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
 	// For --attach: a gate that arrives while attached is answered as this. Watching needs
 	// no identity; answering has needed one since a decision became a durable record.
-	As string `cli:"name=as desc='identity for a gate answered while attached (with --attach)'"`
+	As       string `cli:"name=as desc='identity for a gate answered while attached (with --attach)'"`
 	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
 }
 
@@ -353,8 +353,8 @@ func procRunCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "run").
-		WithSynopsis("run a process: run <task…> [--name <label>] [--subject <ref>] "+
-			"[--resolver <ref>] [--vector auto|ask|park] [--attach] [--wait] "+
+		WithSynopsis("run a process: run <task…> [--name <label>] [--subject <ref>] " +
+			"[--resolver <ref>] [--vector auto|ask|park] [--attach] [--wait] " +
 			"[--driver scripted|llm]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
