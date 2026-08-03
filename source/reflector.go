@@ -50,9 +50,9 @@ type Reflection struct {
 	// The grammar is entity.Pattern, the charter's own selector, so ownership needs no second
 	// vocabulary. A pattern's Predicate is evaluated against the stored payload — for git,
 	// `{repo: <id>}`, which is the field it already writes into every entity.
-	Covers []entity.Pattern
+	Covers []entity.Pattern `tony:"field=covers,omitzero"`
 	// Entities is what external truth says stands there right now.
-	Entities []entity.Entity
+	Entities []entity.Entity `tony:"field=entities,omitzero"`
 }
 
 // Add appends one reflected entity, spelled as the object payload most sources build.

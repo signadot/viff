@@ -1,6 +1,7 @@
 # External sources: a source you deploy
 
-Status: design, with step 1 built (the `Reflect`/converge split; see the step list at the end).
+Status: design, with steps 1 and 2 built (the `Reflect`/converge split, and the HTTP
+transport with its sample; see the step list at the end).
 It argues one change to [sources](../sources.md) —
 that a Source should be a program somebody deploys and installs, the way a
 [runner](../runners.md) is — and one correction, that the substrate both sources.md and
@@ -101,8 +102,10 @@ answer: it covers `git:ref:*` and `git:head:*` for the repo, and does not cover 
 
 `entity.Pattern` is the charter's own selector — system, kind, and a tony predicate over the
 payload — and `Pattern.Select` already lists what satisfies one. The git source's
-per-repo scoping is `{system: git, kind: ref, fields: {repo: verse}}`, which is the predicate it
-already writes into every payload. One grammar, no second vocabulary for ownership.
+per-repo scoping is `{system: git, kind: ref, value: {repo: verse}}`, which is the predicate it
+already writes into every payload. One grammar, no second vocabulary for ownership. (`value:`
+rather than the `fields:` written here at first: that spelling was retired from the charter
+grammar, and the whole point is to use the charter's.)
 
 ## Which way the wire runs: verse dials
 
@@ -167,7 +170,7 @@ go http.Serve(ln, sourced.New(src))   // the SAME handler the url case serves
 tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
     return x.Dial(ctx, "reflect")
 }}
-src := source.HTTP("http://source", tr)
+src := source.HTTP("git", "http://source", tr)   // the system comes from the registration
 ```
 
 The inbox long-poll is the one to argue against explicitly, because the broker is the in-tree
@@ -205,7 +208,7 @@ verse source show sources:git:laptop
 name:   laptop
 system: git
 url:    "http://build-host:9801"   # or `dial-in: <nonce>`, or `dir:` for the built-in
-owns:   [{system: git, fields: {repo: verse}}]
+owns:   [{system: git, value: {repo: verse}}]
 scope:  ""                         # empty is baseline; see below
 ```
 
@@ -388,8 +391,32 @@ has to be solved, instead of a public face verse has to grow.
    `Webhook` came off the `Source` interface, since an external source cannot be handed an
    `*http.Request`; it is an optional `Hinter` the in-process git source still satisfies, and
    step 3's hint route retires it.
-2. **`source.HTTP` + `sourced` + the sample.** The test that earns this is one `Reflection`
-   compared across both transports from the same `source.Git`.
+2. ~~**`source.HTTP` + `sourced` + the sample.**~~ **Done.** `source/http.go` (client, probe,
+   descriptor), `source/sourced` (two routes, no state), and
+   `docs/reference/examples/source/main.go`, which serves `source.Git` so the sample works
+   before you change the one function it marks. Four things worth recording:
+
+   - **`entity.Pattern` carries the wire, rather than a twin in `source`.** Tagging it needed
+     the `//tony:schemagen=verse-pattern` directive — without it codegen silently skips a type
+     however it is tagged, which is what made the twin look necessary at first. The predicate
+     is spelled `value:`, the charter's own name for it, not the `fields:` this note's example
+     used: `trigger.Match` retired that spelling.
+   - **`source.HTTP` takes the system**, rather than discovering it. `Source.System()` cannot
+     fail and is asked on every converge; discovering it costs a call that can. The
+     registration names it (`sources:<system>:<name>`), and whether the far side AGREES is the
+     separate question the install probe asks once, with an operator present.
+   - **A failed reflect is an error, never an empty Reflection** — the sharpest bug this design
+     admits, since an empty answer with covers means "tombstone all of it". Pinned end to end:
+     a reconcile over a failing source reports the failure and leaves the slice standing.
+   - **The Go round-trip test does not pin the wire.** Both ends use the same struct, so a
+     renamed tony tag renames symmetrically and nothing notices — the first mutation check
+     passed with `covers` renamed. The field NAMES are the contract a source written in
+     another language depends on, so a second test reads the bytes; both mutations fail it.
+
+   `Owns` on the descriptor is built here rather than in step 3: it is an optional `Owner`
+   interface, and git's answer is one kind-less `{system: git, value: {repo: <id>}}` per repo —
+   coarser than a Covers on purpose, since a second source must not write a repo's commits
+   either.
 3. **The registration**: entity, probe, the two extra checks, the hint route, the removal fork,
    and `scope`. Restart, durability and tombstoning are the worktree's, unchanged.
 4. **Dial-in over xap**, which is a `DialContext` on verse's side and a `Listen` on the

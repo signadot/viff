@@ -64,6 +64,7 @@ drive a local agent, a remote one, and a human.
 | | [Runners](runners.md) — where work runs: installing one, naming it on a spawn, and what removing one does to the work on it |
 | | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a process records |
 | | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
+| | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
 | | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |

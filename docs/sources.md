@@ -93,6 +93,21 @@ knowledge about the entity-verse rather than about git or GitHub, and a connecto
 who had to hold them would get them wrong in a way nothing notices until a charter fires
 two hundred times.
 
+**A Source can be a program somebody deploys.** `source/sourced` serves the contract as two
+routes — `GET /source` for a descriptor `{system, owns}`, `GET /reflect[?ref=]` for a
+`Reflection` — and `source.HTTP` is the client verse drives it with. It is `processd`'s trick:
+`source.Git` behind `sourced` *is* the sample external source, and the same value behind
+verse's own reflector is the built-in, so there is no privileged local path for a deployed one
+to differ from. `source.Probe` asks a url what it is, with the runner's three outcomes and for
+the runner's reasons. See [the sample](reference/examples/source/main.go), which is a real
+program that compiles with the tree.
+
+One rule the transport must not break: **a reflect that failed is an error, never an empty
+Reflection.** An empty answer carrying covers is a legitimate instruction to tombstone
+everything under them, so a status nobody read or a body nobody could decode, returned as the
+zero value, would spell a broken source as an emptied external system — and converge would
+believe it.
+
 A source that receives its own delivery implements the optional `Hinter`
 (`Webhook(*http.Request) ([]entity.Ref, error)`), which the Reflector serves at
 `/hooks/<system>` and which schedules a reconcile and writes nothing. It is off the `Source`

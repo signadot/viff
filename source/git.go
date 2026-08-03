@@ -55,6 +55,36 @@ func (g *Git) AddRepo(id, dir string) string {
 // System is the owned slice.
 func (g *Git) System() string { return GitSystem }
 
+// Owns is the ownership claim an install checks against the other installed sources: one
+// pattern per registered repo, `{system: git, value: {repo: <id>}}`.
+//
+// It is KIND-LESS where a reflection's Covers names a kind, and the difference is real rather
+// than sloppy. A cover says what one pass is complete for — the mutable kinds, since history
+// is kept — while this says what no other source may write, which is the whole of a repo's
+// slice, commits included. Two sources reflecting one repo would fight over its commits just
+// as surely as over its branches.
+//
+// Scoped by the `repo` field the payloads already carry, which is what makes disjointness
+// PROVABLE for the case that matters: two registrations, same system, one field constant in
+// both, different values.
+func (g *Git) Owns() []entity.Pattern {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	ids := make([]string, 0, len(g.repos))
+	for id := range g.repos {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]entity.Pattern, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, entity.Pattern{
+			System:    GitSystem,
+			Predicate: entity.Obj{"repo": id}.Payload(),
+		})
+	}
+	return out
+}
+
 // Webhook maps a git-hook delivery to the ref(s) to reconcile. Git has no webhooks; the
 // hint is a local reference-transaction hook (see InstallHook) that POSTs ?repo=<id>. Per
 // the hint law it carries no authoritative data — it returns the git:head:<repo> marker that
