@@ -150,6 +150,26 @@ it, so the docket never shows a question stamped with its own answer — but *wh
 be asked again is the rule's business, and a rule with no `onDenied` re-asks by default. The
 advisory names it at install. Whether that default is right is open.
 
+The advisory that names it is `adviseDenyLatch`, and it shares `predicateKeys` and
+`collectWrites` with `checkLatch` — so it inherits every fault in git-issue
+`2xth4bxsh12krsfwdxn0`, *"checkLatch decides on top-level keys; the question is whether the
+predicate and the post-state are unsat"*. Both sides of that check are collapsed to the
+top-level keys of an object, and a payload is any tony value: a nested predicate against a
+sibling write passes and re-asks forever, a whole-value replace is refused despite latching
+totally, and a root operator (`value: !and […]`) yields the TAG NAME as if it were a field. The
+relation it wants is whether the predicate and the action's post-state are unsatisfiable, which
+needs no solver — at fire time the predicate was true, so only a path the patch writes can
+falsify it, and that is a linear three-valued fold with `tony.Match` at the leaves.
+
+Until that lands, a resolver-supervised rule with a compound subject predicate earns a deny-latch
+note it has not earned. It is a warning rather than a refusal, so nothing breaks — but the
+advice is wrong, which is worse than silence for the person reading it.
+
+That issue is blocked on git-issue `srrwnc0kh12kr1r1e1n0` (a tag-keyed match operator is
+silently inert unless the node is layout-tagged), because a check that reasons about what a
+predicate MEANS cannot be built while a predicate can silently mean something other than what it
+says.
+
 ## What was answered differently than the design asked
 
 Kept because the reasoning is the useful part.
