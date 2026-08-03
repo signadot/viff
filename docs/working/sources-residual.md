@@ -6,31 +6,47 @@ something that runs — those are recorded where they run — except where it sa
 
 ## Dial-in, for the source verse cannot reach
 
-The one designed thing that is not built. A `dial-in` registration is **refused at install**,
-with a message saying it is unbuilt rather than unwanted, because one that installed and then
-never dialled would sit in a listing looking installed — the one state an operator cannot debug
-from the outside.
+The one designed thing that is not built, and **the mechanism is not decided**. A `dial-in`
+registration is refused at install, with a message saying it is unbuilt rather than unwanted,
+because one that installed and then never dialled would sit in a listing looking installed —
+the one state an operator cannot debug from the outside.
 
 It matters more than a residual usually does. A source sits next to its truth, and truth lives
 in the places that are hardest to dial: a repo on a laptop, a system inside a corp network.
 That is most of the interesting cases, not a corner.
 
-**The contract does not change. Only where the `net.Conn` comes from does.** That is the whole
-of the design, and it is what stops this becoming a second contract in which a source declares
-truth unasked — the push design arriving through the back door with the reconcile loop
-duplicated after all. verse still dials `GET /reflect`; it just dials it down a connection the
-source opened. `source.HTTP` already takes the transport that makes this one line on each side.
+Before building any of this, note the answer that needs nothing: **Tailscale, cloudflared,
+ngrok or a jump host turns a laptop repo back into the plain `url:` case**, with no verse code
+and no language restriction. For a good deal of what "behind NAT" means in practice that is the
+honest answer, and it should be tried before a protocol is written for it.
 
-Two candidates, and one is in the house. **xap** (`libconnect/common/xap`) is a full-duplex
-multiplexer with **named endpoints** and symmetric `Dial`/`Listen` on both sides of one
-underlying conn, written for exactly this — its own doc says it "should work well for SaaS's
-interacting with customer agents", and it is what `signadot local connect` already runs on.
-Reverse HTTP is the alternative, as an inbox long-poll (the broker's shape) or an HTTP/2 tunnel
-with the roles swapped.
+### What has to hold, whatever wins
 
-**xap, because it changes one line on each side.** Named endpoints carry both legs — verse's
-reflect calls and the source's hints — on one connection without inventing a message envelope
-to tell them apart, and both ends keep `net/http` exactly as the url case has it:
+**verse asks; the source answers.** A source that declared truth unasked would be the push
+design arriving through the back door, with the reconcile loop duplicated into every source —
+which is the thing the seam exists to prevent.
+
+**A failure must be distinguishable from an empty answer.** An empty `Reflection` carrying
+covers is a legitimate instruction to tombstone everything under them, so any transport that
+cannot tell "I could not answer" from "the answer is nothing" will, sooner or later, delete a
+slice because a source was down. This is the criterion that decides most of the candidates
+below, and `TestAFailedReflectIsAnErrorAndNotAnEmptyOne` is what holds it for the url case.
+
+**How much code each costs is not symmetric.** Three of the four candidates keep `source.HTTP`
+and change only where the `net.Conn` comes from — it already takes an `http.RoundTripper`, so
+verse's side is a `DialContext` and the source keeps serving `sourced.New(src).Handler()`. The
+fourth is not a transport at all: it replaces the call, so it is a second implementation of
+`source.Source` on verse's side and *no verse client library at all* on the source's. That
+asymmetry is the whole argument, and it runs in opposite directions for the two parties.
+
+### 1. xap — the current design
+
+**xap** (`libconnect/common/xap`) is a full-duplex multiplexer with named endpoints and
+symmetric `Dial`/`Listen` on both sides of one underlying conn, written for exactly this — its
+own doc says it "should work well for SaaS's interacting with customer agents", and it is what
+`signadot local connect` already runs on. Named endpoints carry both legs on one connection
+without inventing a message envelope to tell them apart, and both ends keep `net/http` exactly
+as the url case has it:
 
 ```go
 // the source, once, at startup. Outbound only: no ingress, no port, no url.
@@ -47,30 +63,118 @@ tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.C
 src := source.HTTP("git", "http://source", tr)   // the system comes from the registration
 ```
 
-The inbox long-poll is the one to argue against explicitly, because the broker is the in-tree
-precedent and it is what somebody will reach for. It turns a request and its response into a
-correlated pair that has to be matched up by hand, with a timeout policy and an id space and a
-retry rule — all of which HTTP already has and none of which a reflect needs. The broker pays
-that price because a worker *claims* work and may go away holding it; a reflect is a plain call
-that either answers or does not.
+It satisfies both invariants for free, because it is HTTP: the status line is what tells a
+failure from an empty answer, and a source cannot answer unasked because there is no request.
 
-**The nonce is the grant**, as it already is for a broker's worker leg: `verse source add
-git:laptop --dial-in` mints one, the source is deployed with it, and the connection it opens is
-bound to that registration rather than to whatever the source says it is.
+Two costs, and neither is technical:
 
-Two things move, both somewhere better. The install probe has nothing to talk to at install
-time, so a `--dial-in` registration is the "unreachable, installed with a warning" case by
-construction — and **the probe moves to the first connection**, where a descriptor that
-disagrees with the registration refuses the *connection* rather than the install. That is the
-check landing where the answer exists. And the hint stops needing a route on the operator API
-at all: it is a `Dial(ctx, "hint")` on the connection already open.
+- **libconnect is a private repo.** Open-sourcing it is agreed in principle and is work. A
+  plain `require` is the call if xap wins — `GOPRIVATE` is already `github.com/signadot/*`, so
+  nothing changes for anyone building verse today. **The bill comes due all at once the day
+  verse goes public**, when it stops building for anyone outside signadot. That is the trigger
+  to revisit, not the language question below.
+- **Vendoring is not the answer.** It does not touch the language problem at all — a vendored
+  Go multiplexer helps a Python author exactly as much as a private one — it makes verse the
+  maintainer of a copy that will drift from the original, and it has to be undone the day xap
+  opens. It solves "can verse build", which `GOPRIVATE` already solves.
+- **Go only.** A source behind NAT can only be written in Go, because xap is the only way in
+  and there is no other implementation of it. That is the real restriction, and it is why the
+  candidates below exist.
 
-The same inversion is the better answer to [the broker's own
-residual](runners-residual.md) — several workers behind one name, and verse unable to tell a
-queuing runner from a synchronous one — but that is a different note's business.
+The usual objection to a private dependency is bus factor, and it does not apply here: the
+author is in the building and uses it.
 
-The test is the one the transport already runs, through a third transport: same `source.Git`,
-same `Reflection`, no ingress.
+### 2. A docd controller mount — rejected
+
+`verse connect` already proves that a process behind NAT can answer reads over a connection it
+opened: it runs `libctl.RunController` against docd's *mount* face and serves file bytes back
+down that connection, with nobody ever dialling the laptop. A `Reflection` is a tony document,
+which is what a `libctl.Handler.Match` returns, so the shape looks like a fit — and it would
+even be consistent with the rule sources.md states, since a reflection document is bytes
+somebody asks for while the entities verse writes from it are facts something reacts to.
+
+**It fails the second invariant, and that is decisive.** On a mount, absence and emptiness are
+the same read: `source.Content.Match` returns `ir.Null()` for the mount root, for a missing
+file and for a path that escapes, and a controller that is not running gives nothing at all.
+There is nowhere to put "I could not answer". That is not merely theoretical here —
+`LogdStore.Get` already carries the `isNotFound` string-match hack because libctl renders
+logd's typed not-found code into an opaque string, so error fidelity through that path is
+known lossy.
+
+Three smaller ones, recorded so the idea is not re-proposed: the ref parameter has to be
+smuggled into path segments; mounts are baseline-only (connect gets per-scope behaviour by
+putting a nonce *in the ref*); and it would make docd part of a source's contract, which
+sources.md currently says it is not.
+
+### 3. The broker's attach — does not fit
+
+The in-tree dial-in precedent for *runners*: a worker connects out to `claim` / `inbox` /
+`report` (`broker/broker.go`), and both parties are clients while only the broker is reachable.
+
+It carries a great deal that a reflect has no use for. `claim` hands out an **epoch** that
+fences later writes; `inbox` renews a lease, refuses a stale claim with 409, treats the poll
+cursor as an acknowledgement with a high-water mark that survives re-claim, and settles
+undelivered answers on the poll that asks past them; `report` latches a terminal exactly once.
+Every one of those exists because **a worker claims work and may go away holding it**. A
+reflect is a plain call that either answers or does not. Piggybacking means inheriting concepts
+that do not apply, or building a second simpler inbox beside the first — a new protocol either
+way, just one that looks familiar.
+
+And the property it would be piggybacked *for* is the one piece missing: **the inbox is a
+short poll**, and the long-poll is still owed (the roadmap records it).
+
+What does reuse cleanly, whichever candidate wins: **nonce-as-grant and the `/broker/<nonce>`
+hosting pattern**. Knowing the url is the grant, and the connection is bound to the
+registration rather than to whatever the source says it is.
+
+### 4. An entity channel
+
+verse writes its asks as entities at `sources:ext:<nonce>/asks`; the source **watches** that
+over `/watch` and writes reflections back at `sources:ext:<nonce>/reflect` with `POST /entity`.
+Both legs are outbound from the source, both are surfaces verse already serves, and no new
+protocol is invented anywhere.
+
+It is the only candidate that **deletes the language restriction**: a NAT'd source needs an
+HTTP client and nothing else, so it is the same effort as any other verse client, in any
+language. It also gets correlation and replay from the store — `?since=<rev>` is the acked
+cursor the broker had to hand-build — and it uses verse's own address rather than docd's.
+
+Three costs, sharpest first:
+
+- **The durable log pays for every reflection body, at every pass.** A repo with 500 refs is a
+  reflection document of 500 entities written into the log as one payload, then converged into
+  500 entities — and the ask happens every resync whether anything changed or not. That is the
+  churn the design spent a rule avoiding (`lastReflect` writes only when a pass wrote). The
+  source cannot answer only-on-change without keeping a diff and a cursor, which is the "source
+  stays dumb" property gone. Mitigations to weigh: a long resync for dial-in sources leaning on
+  hints for latency, or answering into a throwaway scope dropped after converge. **Measure this
+  before choosing it.**
+- **The nonce stops being a capability.** For the broker it works because `/broker/<nonce>` is
+  the only way in. Here the surface is the general entity API, so anyone who can write entities
+  can write another source's reflect path or watch its asks. That is the authority gap the
+  design already defers, but the nonce becomes a *name* rather than a grant.
+- **The law goes from structural to policed.** Over HTTP a source cannot answer unasked,
+  because there is no request. Here an unasked write is expressible, so verse must ignore a
+  reflection that does not name an outstanding ask — a check rather than a guarantee.
+
+One detail for whoever builds it: `entity.Pattern` has no id dimension (`queryPattern`), so a
+source watching for its own asks filters on a payload predicate — `?if={nonce: …}` — with the
+nonce in the payload rather than only in the ref.
+
+### What would decide it
+
+**Does a non-Go source behind NAT actually want in?** If yes, candidate 4 is the answer and the
+dependency question dissolves. If it stays hypothetical, 1 is less machinery and touches no
+log.
+
+**What does candidate 4's log cost measure?** If a reflection body per source per resync is
+small against what a verse already writes, it is the better answer on every axis and worth
+building even for the Go case.
+
+**When does verse go public?** That is when a private `require` stops being free.
+
+The test, whichever wins, is the one the transport already runs, through a third transport:
+same `source.Git`, same `Reflection`, no ingress.
 
 ## The claim that is still unproved
 
