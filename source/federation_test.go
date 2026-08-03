@@ -15,25 +15,25 @@ import (
 func TestFederationKindsAreMountOwned(t *testing.T) {
 	const scope = "a1b2c3"
 
-	if !entity.IsMountOwned(System, ContentPrefix+scope) {
+	if !entity.IsMountOwned(FederationSystem, ContentPrefix+scope) {
 		t.Fatalf("entity does not treat %s:%s%s as mount-owned — add it to entity.mountedKinds; "+
 			"refPath would render it under the entity root and miss the content mount",
-			System, ContentPrefix, scope)
+			FederationSystem, ContentPrefix, scope)
 	}
 
 	// The status slice is ordinary log-backed metadata written by connect. It must NOT be
 	// mount-owned: it is what the per-file validator trigger matches, so it has to stay
 	// under the entity root where it is watchable and has history.
-	if entity.IsMountOwned(System, StatusPrefix+scope) {
+	if entity.IsMountOwned(FederationSystem, StatusPrefix+scope) {
 		t.Fatalf("%s:%s%s must stay log-backed (it is watched and written, not mounted)",
-			System, StatusPrefix, scope)
+			FederationSystem, StatusPrefix, scope)
 	}
 
 	// MountKPath must agree, and must land under MountRoot rather than the entity root.
-	kp := entity.MountKPath(System, ContentPrefix+scope)
+	kp := entity.MountKPath(FederationSystem, ContentPrefix+scope)
 	if !strings.HasPrefix(kp, entity.MountRoot+".") {
 		t.Fatalf("MountKPath(%s, %s%s) = %q, want it under %q",
-			System, ContentPrefix, scope, kp, entity.MountRoot)
+			FederationSystem, ContentPrefix, scope, kp, entity.MountRoot)
 	}
 	if strings.HasPrefix(kp, entity.DefaultRoot+".") {
 		t.Fatalf("MountKPath returned a path under the entity root (%q) — a mount below a "+

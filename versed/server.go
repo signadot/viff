@@ -606,7 +606,7 @@ type storeContentReader struct {
 }
 
 func (c storeContentReader) ReadContent(path string) (string, bool, error) {
-	e, ok, err := c.store.Get(entity.Ref{System: source.System, Kind: c.kind, ID: path})
+	e, ok, err := c.store.Get(entity.Ref{System: source.FederationSystem, Kind: c.kind, ID: path})
 	if err != nil {
 		return "", false, err
 	}

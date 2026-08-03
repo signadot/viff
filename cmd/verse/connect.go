@@ -113,7 +113,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	// Start it and WAIT until it is serving before the trigger/metadata below, so a
 	// validator that fires the instant a file lands can actually read it, rather than
 	// racing an unmounted controller and reporting "file not found".
-	contentMount := entity.MountKPath(source.System, contentKind)
+	contentMount := entity.MountKPath(source.FederationSystem, contentKind)
 	go func() {
 		err := libctl.RunController(ctx, &libctl.ControllerConfig{
 			DocdAddr:   mountAddr,
@@ -136,7 +136,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	fmt.Fprintf(cc.Out, "connect %s → verse, scope %q: %s:%s:* (metadata) + %s:%s:* (content on demand), validator per file. ctrl-c to stop.\n",
-		root, scope, source.System, statusKind, source.System, contentKind)
+		root, scope, source.FederationSystem, statusKind, source.FederationSystem, contentKind)
 
 	// A generated (nonce) scope is ephemeral to this session: drop it on exit so its
 	// overlay + engine don't leak. A user-named scope is left for reuse.
@@ -168,7 +168,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 	}
 	// Baseline /entity (no ?scope) → versed's baseline store → the content mount.
 	u := "http://" + g.Addr + "/entity?" + url.Values{
-		"ref": {source.System + ":" + contentKind + ":" + probe},
+		"ref": {source.FederationSystem + ":" + contentKind + ":" + probe},
 	}.Encode()
 	deadline := time.After(30 * time.Second)
 	for {
@@ -205,7 +205,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 				} else {
 					created++
 				}
-				ref := entity.Ref{System: source.System, Kind: statusKind, ID: rel}
+				ref := entity.Ref{System: source.FederationSystem, Kind: statusKind, ID: rel}
 				if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj(meta).Payload()}); err != nil {
 					fmt.Fprintf(cc.Err, "connect: publishing %s: %v\n", ref, err)
 				}
@@ -215,7 +215,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 		for rel := range prev {
 			if _, ok := cur[rel]; !ok {
 				removed++
-				ref := entity.Ref{System: source.System, Kind: statusKind, ID: rel}
+				ref := entity.Ref{System: source.FederationSystem, Kind: statusKind, ID: rel}
 				if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // nil value removes it
 					fmt.Fprintf(cc.Err, "connect: removing %s: %v\n", ref, err)
 				}
@@ -262,7 +262,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 			// than on the state. A match is asked only of state now, so the outstanding-ness
 			// has to be written down, which is what `validated` is.
 			Subject: trigger.Match{
-				"system": source.System, "kind": statusKind,
+				"system": source.FederationSystem, "kind": statusKind,
 				// ABSENCE, built as a node rather than as a Go map, and both halves of
 				// that are load-bearing.
 				//
@@ -390,7 +390,7 @@ func disconnectCmd() *cli.Command {
 
 // removeLocalEntities deletes every local:* entity in the current (scope) view.
 func removeLocalEntities(cc *cli.Context) error {
-	resp, err := httpGet("/entities", url.Values{"system": {source.System}})
+	resp, err := httpGet("/entities", url.Values{"system": {source.FederationSystem}})
 	if err != nil {
 		return fmt.Errorf("disconnect: %w", err)
 	}
