@@ -105,6 +105,29 @@ GET    /resolvers/{kind}/{name}      show one
 DELETE /resolvers/{kind}/{name}      remove one, handing on what it held
 ```
 
+## What an observer sees
+
+Answering is emitted on the run's **one ordered stream**, so a supervised run is not a run with
+a hidden answerer — `verse process attach <run>` shows the whole exchange in order:
+
+```tony
+{kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
+{kind: decision, id: "review-bff7…~d1", by: resolvers:security:reviewer, proceed: true}
+{kind: exec,     tool: run_bash, text: reviewing}
+{kind: status,   text: done}
+```
+
+`by` on the `decision` frame is the **binding**, stamped by verse — a service says what it
+decided, never who it is. Nothing about that frame differs in shape from a person's answer, so
+there is no supervised run that reads as unsupervised, and no way to answer invisibly.
+
+What the stream does *not* show is what was **watched**: a position advancing with no verdict
+emits nothing. That is the resolver's own record, which is why there are two —
+the process stream is what was decided, the instance is who was watching and on what evidence.
+
+`./scripts/attached-resolver.sh attach` is this view; `watch` is the resolver's side of the same
+moment.
+
 ## The verbs
 
 ```sh

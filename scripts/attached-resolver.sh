@@ -11,7 +11,8 @@
 #   ./scripts/attached-resolver.sh                    list the acts
 #   ./scripts/attached-resolver.sh show    <act>      print what it installs, without installing
 #   ./scripts/attached-resolver.sh run     <act>      set it up and pose a question
-#   ./scripts/attached-resolver.sh watch              read the resolver's stream (ctrl-c to stop)
+#   ./scripts/attached-resolver.sh watch              read the RESOLVER's stream (ctrl-c to stop)
+#   ./scripts/attached-resolver.sh attach             read the RUN's stream — the operator's view
 #   ./scripts/attached-resolver.sh answer  [verdict]  answer AS the resolver: proceed|deny|escalate
 #   ./scripts/attached-resolver.sh state              the binding, the instance, and the question
 #   ./scripts/attached-resolver.sh clean              remove the bindings and the entities
@@ -241,6 +242,24 @@ instance_of() {
 	echo "${owner##*:}@$run"
 }
 
+# The same run, from the outside. The point of this one is what it does NOT hide: the ask, the
+# decision with the binding in `by`, and the action that followed, in order, on the run's own
+# read plane. There is no supervised run that reads as unsupervised, and no way to answer
+# invisibly — which is a claim worth seeing rather than being told.
+#
+#   {kind: pending,  id: …~d1, mode: ASK, tool: run_bash}
+#   {kind: decision, by: resolvers:security:reviewer, proceed: true}
+#   {kind: exec,     tool: run_bash, text: reviewing}
+#   {kind: status,   text: done}
+attach() {
+	local run
+	run=$(run_id)
+	[ -n "$run" ] || die "no run is holding a question — run an act first"
+	step "attaching to $run — what an OBSERVER sees"
+	printf '  answer it from another terminal (%s answer) and watch the decision land here.\n\n' "$0"
+	v process attach "$run"
+}
+
 watch() {
 	local inst
 	inst=$(instance_of)
@@ -292,7 +311,8 @@ run_act() {
 
 	case "$1" in
 	named | standing)
-		next "$0 watch" "read the stream it decides on" \
+		next "$0 watch" "the RESOLVER's stream — what it decides on" \
+			"$0 attach" "the RUN's stream — and answer from another terminal to watch it land" \
 			"$0 answer" "answer as the bound resolver" \
 			"$0 state" "the binding, the instance, and the question"
 		;;
@@ -382,6 +402,7 @@ case "${1:-}" in
 show) show "${2:?which act}" ;;
 run) run_act "${2:?which act}" ;;
 watch) watch ;;
+attach) attach ;;
 answer) answer "${2:-proceed}" ;;
 state) state ;;
 clean) clean ;;

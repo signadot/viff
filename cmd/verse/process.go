@@ -340,6 +340,9 @@ type procRunConfig struct {
 	// Without this a scripted run is `auto` and asks nothing, so a --resolver bound to it
 	// would have no question to answer.
 	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
+	// For --attach: a gate that arrives while attached is answered as this. Watching needs
+	// no identity; answering has needed one since a decision became a durable record.
+	As string `cli:"name=as desc='identity for a gate answered while attached (with --attach)'"`
 	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
 }
 
@@ -392,7 +395,7 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 		// Spawn + watch in one command: the transcript streams live, so you SEE the agent
 		// hit a gate. It blocks there until you resolve it (another terminal) — then the
 		// stream continues to completion. Ctrl-c to detach; the process keeps running.
-		if err := streamEvents(cc, sp.ID); err != nil {
+		if err := streamEvents(cc, sp.ID, cfg.As); err != nil {
 			return err
 		}
 	}
@@ -463,15 +466,31 @@ func (cfg *procGetConfig) run(cc *cli.Context, args []string) error {
 
 // ── attach (stream the process read plane) ──────────────────────────────────
 
-type procAttachConfig struct{ *cli.Command }
+type procAttachConfig struct {
+	*cli.Command
+	// Who answers a gate that arrives while attached. Without it the prompt is not offered:
+	// answering has required attribution since a decision became a durable record, and this
+	// path was still posting without it — so it asked, you said yes, and it failed with "by is
+	// required". Prompting into a refusal is worse than not prompting.
+	As string `cli:"name=as desc='identity for a gate answered while attached (a decision names who made it)'"`
+}
 
 func procAttachCmd() *cli.Command {
 	cfg := &procAttachConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
 	return cli.NewCommandAt(&cfg.Command, "attach").
-		WithSynopsis("attach to a process's read plane: attach <id>").WithRun(cfg.run)
+		WithSynopsis("attach to a process's read plane: attach <id> [--as <who>]").
+		WithOpts(opts...).WithRun(cfg.run)
 }
 
 func (cfg *procAttachConfig) run(cc *cli.Context, args []string) error {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
 	id, err := oneArg(cfg.Command, cc, args, "process attach wants an id")
 	if err != nil {
 		return err
@@ -482,14 +501,14 @@ func (cfg *procAttachConfig) run(cc *cli.Context, args []string) error {
 	if pid, _, ok := strings.Cut(id, process.GateSep); ok {
 		return fmt.Errorf("process attach takes a process id, but %q is a gate id — did you mean %q?", id, pid)
 	}
-	return streamEvents(cc, id)
+	return streamEvents(cc, id, cfg.As)
 }
 
 // streamEvents streams a process's read plane (SSE) to stdout — the agent's words, each
 // action, and any gate it blocks on. On an interactive terminal it also PROMPTS you to
 // approve/deny each gate as it blocks and resolves it inline (the agent unblocks and the
 // stream continues); piped/non-tty it just streams. Runs until the stream ends or you ^C.
-func streamEvents(cc *cli.Context, id string) error {
+func streamEvents(cc *cli.Context, id, as string) error {
 	resp, err := httpGet("/processes/"+id+"/events", nil)
 	if err != nil {
 		return fmt.Errorf("process attach: %w", err)
@@ -516,7 +535,9 @@ func streamEvents(cc *cli.Context, id string) error {
 		return err
 	}
 	in := streamFmt(resp)
-	interactive := isTTY()
+	// Only offer to answer if there is a name to answer AS. A gate still shows either way —
+	// attaching is watching, and watching never required an identity.
+	interactive := isTTY() && as != ""
 	stdin := bufio.NewReader(os.Stdin)
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
@@ -536,6 +557,12 @@ func streamEvents(cc *cli.Context, id string) error {
 		if ev.Kind == "status" && isTerminalStatus(ev.Text) {
 			return nil
 		}
+		// A gate is worth naming even when this attach cannot answer it: the run is stopped,
+		// and a reader watching a stream go quiet should be told why and what would move it.
+		if !interactive && ev.Kind == "pending" && ev.ID != "" {
+			fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — answer it: verse gate approve %s --as <who>\n",
+				ev.Gate, ev.Tool, ev.ID)
+		}
 		// A pending gate blocks the process HERE until answered — prompt and resolve inline.
 		if interactive && ev.Kind == "pending" {
 			pid := ev.Process
@@ -543,7 +570,7 @@ func streamEvents(cc *cli.Context, id string) error {
 				pid, _, _ = strings.Cut(ev.ID, process.GateSep)
 			}
 			approve := promptGate(cc, stdin, ev.Gate, ev.Tool)
-			if err := resolveProcessGate(pid, ev.ID, approve); err != nil {
+			if err := resolveProcessGate(pid, ev.ID, approve, as); err != nil {
 				fmt.Fprintf(cc.Err, "  resolve %s: %v\n", ev.ID, err)
 			} else if approve {
 				fmt.Fprintf(cc.Out, "  → approved %s\n", ev.ID)
@@ -580,9 +607,9 @@ func promptGate(cc *cli.Context, in *bufio.Reader, gate, tool string) bool {
 }
 
 // resolveProcessGate answers a process's pending decision by id.
-func resolveProcessGate(pid, decisionID string, approve bool) error {
+func resolveProcessGate(pid, decisionID string, approve bool, by string) error {
 	resp, err := httpPost("/processes/"+pid+"/resolve",
-		api.Resolve{ID: decisionID, Approve: approve})
+		api.Resolve{ID: decisionID, Approve: approve, By: by})
 	if err != nil {
 		return err
 	}

@@ -243,6 +243,17 @@ Control application is emitted on the one ordered stream, so an observer reads t
 exchange in order: the ask, the decision with its `by`, the say, the action that followed. There
 is no supervised run that reads as unsupervised, and no way to answer invisibly.
 
+`verse process attach <run>` shows it, and it is worth seeing rather than being told:
+
+```tony
+{kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
+{kind: decision, id: "review-bff7…~d1", by: resolvers:security:reviewer, proceed: true}
+{kind: exec,     tool: run_bash, text: reviewing}
+{kind: status,   text: done}
+```
+
+Nothing about that `decision` frame differs in shape from a person's answer — only the `by`.
+
 What the stream does not show is what was *watched* — a position advancing with no verdict emits
 nothing. So the resolver is a second subject with a record of its own, and the rule of thumb is
 worth keeping: **the process stream is what was decided, the resolver's record is who was
