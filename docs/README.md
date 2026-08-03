@@ -63,6 +63,7 @@ drive a local agent, a remote one, and a human.
 | | [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides, and promotes what is not its to decide |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
+| | [Per-process runners](working/per-process-runners.md) — a plan: which runner a spawn goes to, and what removing one does to work on it |
 | | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 
 ### Steering
