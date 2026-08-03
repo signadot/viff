@@ -35,8 +35,8 @@ func advise(t Trigger) []string {
 // want. "Ask again next time somebody touches it" is a real policy, and a rule that means it
 // is indistinguishable from one that forgot.
 func adviseDenyLatch(t Trigger) []string {
-	reads := predicateKeys(t.Condition.Subject.Predicate())
-	if len(reads) == 0 {
+	pred := t.Condition.Subject.Predicate()
+	if pred == nil {
 		// No payload predicate: the subject is selected by system/kind alone, so nothing a
 		// deny could write would deselect it. A different note, and not this one.
 		return nil
@@ -47,43 +47,28 @@ func adviseDenyLatch(t Trigger) []string {
 		if err != nil || !m.Blocks() {
 			continue // auto passes without asking anybody; nothing to refuse
 		}
-		writes := map[string]bool{}
+		var denied Action
 		if g.OnDenied != nil {
-			collectWrites(*g.OnDenied, writes)
+			denied = *g.OnDenied
 		}
-		if latchesOn(reads, writes) {
+		// The same relation the refusal uses, and the same tolerance: a note is earned by a
+		// refusal the check can SEE leaves the subject where it was, never by one it merely
+		// cannot decide. Advice that is wrong is worse than silence for whoever reads it.
+		if latches(pred, denied) {
 			continue
 		}
 		name := g.Name
 		if name == "" {
 			name = t.Name
 		}
-		out = append(out, fmt.Sprintf("gate %q blocks, and its refusal writes nothing the "+
-			"subject reads (%s): a denied firing writes nothing at all, so the subject stays "+
-			"in the state that asked and the next commit to touch it re-poses this question "+
-			"over the answer it already has. Say what a no means — `onDenied: {patch: {…}}` on "+
-			"the gate, advancing one of those fields", name, keyList(reads)))
+		out = append(out, fmt.Sprintf("gate %q blocks, and its refusal does not advance the "+
+			"subject past its own predicate (%s): a denied firing writes nothing at all, so "+
+			"the subject stays in the state that asked and the next commit to touch it re-poses "+
+			"this question over the answer it already has. Say what a no means — "+
+			"`onDenied: {patch: {…}}` on the gate, writing one of those paths a value the "+
+			"predicate refuses", name, pathList(readPaths(pred))))
 	}
 	return out
-}
-
-// latchesOn reports whether a set of writes advances a subject past its own predicate.
-//
-// The empty name is the whole-payload predicate (`value: 42`, `value: !glob "x-*"`), which
-// predicateKeys documents as the one "which every write matches" — so any write at all latches
-// it. checkLatch tests the same thing with a plain map lookup and so does not honour that case;
-// this is the documented reading, kept here rather than changed there, since tightening a
-// REFUSAL is a contract change and this is a note.
-func latchesOn(reads, writes map[string]bool) bool {
-	if reads[""] {
-		return len(writes) > 0
-	}
-	for k := range reads {
-		if writes[k] {
-			return true
-		}
-	}
-	return false
 }
 
 // adviseSampling names the difference between the two sentences a narrow `on` can be read as.

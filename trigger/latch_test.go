@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
@@ -82,26 +83,184 @@ func TestLatchCheck(t *testing.T) {
 }
 
 // `verse connect`'s validator is the charter this check was written for: it spawned per file
-// with nothing to stop it. Its replacement latches on the content hash the dir-status entity
-// already carries, so a file is validated once per version rather than once per commit.
+// with nothing to stop it. Its replacement asks for the ABSENCE of a `validated` field and
+// writes one, so a file is validated once rather than once per commit — and that is a latch the
+// key intersection could not see, since the predicate's only top-level "key" was the tag `not`.
+//
+// Both halves of the absence idiom are pinned here because the check now reasons about what the
+// predicate MEANS: `!not {validated: null}` is "no such field" (a null in a match value is a
+// wildcard, so `{validated: null}` is presence), and writing ANY value falsifies it.
 func TestConnectValidatorShapeLatches(t *testing.T) {
-	cond := Condition{Subject: Match{
+	unvalidated := Condition{Subject: Match{
 		"system": "local", "kind": "dir-status-abc",
-		"value": map[string]any{"validated": map[string]any{"not": nil}},
+		"value": ir.FromKeyVals([]ir.KeyVal{
+			{Key: ir.FromString("validated"), Val: ir.Null()},
+		}).WithTag("!not"),
 	}}
-	act := Action{
-		Spawn:  &launch.Spec{Task: `Read the file at path "$path" and report any problems.`},
-		OnDone: &Action{Patch: entity.Obj{"validated": "$hash"}.Payload()},
-	}
-	if err := checkLatch(cond, act); err != nil {
+	spawn := &launch.Spec{Task: `Read the file at path "$path" and report any problems.`}
+
+	// What connect installs today: a literal.
+	act := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": true}.Payload()}}
+	if err := checkLatch(unvalidated, act); err != nil {
 		t.Fatalf("the connect validator still re-spawns: %v", err)
+	}
+	// And a $reference, which is the case that needs the fold rather than a value comparison:
+	// what lands is unknown, but that SOMETHING lands is not, and an absence constraint is
+	// decided by presence alone. (An unresolved reference fails the firing rather than being
+	// dropped, so if the patch applied at all, a value is there.)
+	byHash := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": "$hash"}.Payload()}}
+	if err := checkLatch(unvalidated, byHash); err != nil {
+		t.Fatalf("a latch on a referenced value was not seen: %v", err)
 	}
 	// And it installs.
 	store := entitytest.Store(t)
 	eng := New(store, process.AutoResolver{})
-	tr := Trigger{Name: "validate-abc", Condition: cond, Action: act}
+	tr := Trigger{Name: "validate-abc", Condition: unvalidated, Action: act}
 	if err := eng.AddTrigger(tr); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
+	}
+}
+
+// The four shapes the key intersection got wrong, each measured before it was fixed
+// (git-issue 2xth4bxsh12krsfwdxn0). A payload is any tony value, and both sides of that check
+// were collapsed to the top-level keys of an object.
+func TestLatchDecidesShapesKeysCouldNot(t *testing.T) {
+	spawn := &launch.Spec{Task: "review $subject"}
+	subject := func(pred *ir.Node) Condition {
+		return Condition{Subject: Match{"system": "demo", "kind": "pr", "value": pred}}
+	}
+	nested := subject(entity.Obj{"labels": entity.Obj{"urgent": true}}.Payload())
+
+	// FALSE PASS: the write is a SIBLING of what the predicate reads. Both are under the key
+	// `labels`, so the intersection succeeded — and `labels.urgent` is untouched, so the
+	// subject still matches and it spawns at every commit forever.
+	sibling := Action{Spawn: spawn,
+		OnDone: &Action{Patch: entity.Obj{"labels": entity.Obj{"seen": true}}.Payload()}}
+	err := checkLatch(nested, sibling)
+	if err == nil {
+		t.Fatal("a spawn that writes a sibling of what its subject reads was accepted")
+	}
+	if !strings.Contains(err.Error(), "labels.urgent") {
+		t.Errorf("the diagnostic did not name the path the subject reads: %v", err)
+	}
+	t.Log(err)
+
+	// FALSE REFUSAL: a whole-value replace has no top-level keys to intersect, and it is the
+	// most total latch there is — nothing of the old payload survives it.
+	if err := checkLatch(nested, Action{Spawn: spawn,
+		OnDone: &Action{Patch: entity.Val("done")}}); err != nil {
+		t.Fatalf("a whole-value replace was refused: %v", err)
+	}
+
+	// FALSE PASS: writing the same value back. The keys intersect, and nothing about the
+	// subject changes — which converges for a WRITE, since rewriting a value raises no commit,
+	// and not for a SPAWN, which repeats however little changed.
+	open := subject(entity.Obj{"stage": "open"}.Payload())
+	if err := checkLatch(open, Action{Spawn: spawn,
+		OnDone: &Action{Patch: entity.Obj{"stage": "open"}.Payload()}}); err == nil {
+		t.Fatal("a spawn that writes its subject's own state back was accepted")
+	} else {
+		t.Log(err)
+	}
+
+	// SYNTAX MISTAKEN FOR STRUCTURE: a root operator's key was its TAG NAME, so this was
+	// refused unless the action wrote a field literally called `and`. An operator is just the
+	// union of its operands.
+	andPred := ir.FromSlice([]*ir.Node{
+		entity.Obj{"stage": "open"}.Payload(),
+		entity.Obj{"urgent": true}.Payload(),
+	}).WithTag("!and")
+	if err := checkLatch(subject(andPred), Action{Spawn: spawn,
+		OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()}}); err != nil {
+		t.Fatalf("a subject under a root operator could not latch: %v", err)
+	}
+	// …and the same predicate with a write to neither operand is still refused.
+	if err := checkLatch(subject(andPred), Action{Spawn: spawn,
+		OnDone: &Action{Patch: entity.Obj{"note": "x"}.Payload()}}); err == nil {
+		t.Fatal("a root operator accepted a spawn that writes neither of its operands")
+	}
+}
+
+// The fold, over the boolean structure a predicate is allowed to have. Each of these is a
+// question the key intersection could not ask at all: what a write does to the predicate's
+// TRUTH, rather than whether its name appears on both sides.
+func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
+	tag := func(t string, ns ...*ir.Node) *ir.Node {
+		if len(ns) == 1 {
+			return ns[0].DeepCopy().WithTag(t)
+		}
+		return ir.FromSlice(ns).WithTag(t)
+	}
+	stage := func(v string) *ir.Node { return entity.Obj{"stage": v}.Payload() }
+
+	cases := []struct {
+		name  string
+		pred  *ir.Node
+		patch entity.Payload
+		want  latch
+	}{
+		{"an or, advanced past every branch",
+			tag("!or", stage("open"), stage("blocked")), stage("reviewed"), latchHolds},
+		{"an or, advanced into another branch",
+			tag("!or", stage("open"), stage("blocked")), stage("blocked"), latchMatches},
+		{"a not, left alone",
+			tag("!not", stage("open")), entity.Obj{"note": "x"}.Payload(), latchUntouched},
+		{"a not, written to the value it refuses",
+			tag("!not", stage("open")), stage("open"), latchHolds},
+		{"an operator at a leaf",
+			entity.Obj{"stage": tag("!or", ir.FromString("open"), ir.FromString("merged"))}.Payload(),
+			stage("reviewed"), latchHolds},
+		{"a leaf operator the write still satisfies",
+			entity.Obj{"stage": tag("!or", ir.FromString("open"), ir.FromString("merged"))}.Payload(),
+			stage("merged"), latchMatches},
+		{"a scalar payload predicate against a record write",
+			ir.FromInt(42), stage("open"), latchHolds},
+		{"a nested field, advanced",
+			entity.Obj{"labels": entity.Obj{"urgent": true}}.Payload(),
+			entity.Obj{"labels": entity.Obj{"urgent": false}}.Payload(), latchHolds},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			act := Action{Spawn: &launch.Spec{Task: "work"}, OnDone: &Action{Patch: c.patch}}
+			if got := latchOf(c.pred, act); got != c.want {
+				t.Fatalf("latchOf = %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
+// The three answers the relation gives, and which of them a REFUSAL rests on. Undecided is not
+// a no: a check that refused everything it could not decide would refuse the ordinary shape of
+// writing a value out of a process (`patch: {stage: $result.status}`), which may well latch.
+func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
+	pred := entity.Obj{"stage": "open"}.Payload()
+	spawn := &launch.Spec{Task: "review $subject"}
+	hook := func(p entity.Payload) Action { return Action{Spawn: spawn, OnDone: &Action{Patch: p}} }
+
+	cases := []struct {
+		name string
+		act  Action
+		want latch
+	}{
+		{"advances the field", hook(entity.Obj{"stage": "reviewed"}.Payload()), latchHolds},
+		{"writes elsewhere", hook(entity.Obj{"note": "x"}.Payload()), latchUntouched},
+		{"writes nothing", Action{Spawn: spawn}, latchUntouched},
+		{"writes the same value", hook(entity.Obj{"stage": "open"}.Payload()), latchMatches},
+		{"writes a reference", hook(entity.Obj{"stage": "$result.status"}.Payload()), latchUnsure},
+		{"deletes the field", hook(ir.FromKeyVals([]ir.KeyVal{
+			{Key: ir.FromString("stage"), Val: ir.Null().WithTag("!delete")},
+		})), latchHolds},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := latchOf(pred, c.act); got != c.want {
+				t.Fatalf("latchOf = %d, want %d", got, c.want)
+			}
+			if err := checkLatch(Condition{Subject: Match{
+				"system": "demo", "kind": "pr", "value": pred}}, c.act); (err != nil) != (c.want == latchUntouched || c.want == latchMatches) {
+				t.Fatalf("refusal disagrees with the verdict: %v", err)
+			}
+		})
 	}
 }
 

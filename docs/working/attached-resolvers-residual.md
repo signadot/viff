@@ -157,25 +157,20 @@ What it costs a RESOLVER is worth saying, since it is not obvious from the rule 
 over a rule that does not latch is asked the same question forever. With two rules matching one
 subject it compounds — each rule's action re-selects the subject and re-fires both.
 
-The advisory that names it is `adviseDenyLatch`, and it shares `predicateKeys` and
-`collectWrites` with `checkLatch` — so it inherits every fault in git-issue
-`2xth4bxsh12krsfwdxn0`, *"checkLatch decides on top-level keys; the question is whether the
-predicate and the post-state are unsat"*. Both sides of that check are collapsed to the
-top-level keys of an object, and a payload is any tony value: a nested predicate against a
-sibling write passes and re-asks forever, a whole-value replace is refused despite latching
-totally, and a root operator (`value: !and […]`) yields the TAG NAME as if it were a field. The
-relation it wants is whether the predicate and the action's post-state are unsatisfiable, which
-needs no solver — at fire time the predicate was true, so only a path the patch writes can
-falsify it, and that is a linear three-valued fold with `tony.Match` at the leaves.
+The advisory that names it is `adviseDenyLatch`, and what it decides is now the same relation
+`checkLatch` decides — whether the subject's predicate and the action's post-state are
+unsatisfiable (`trigger/deselect.go`, git-issue `2xth4bxsh12krsfwdxn0`). The key intersection
+they used to share was collapsed to the top-level keys of an object, and a payload is any tony
+value, so a rule with a compound subject predicate earned a note it had not earned: `value: !and
+[…]` reported the TAG NAME as the field it read, which no `onDenied` could ever write. That is
+gone, along with the reverse — an `onDenied` writing the subject's own state back was called a
+latch and re-posed the question forever.
 
-Until that lands, a resolver-supervised rule with a compound subject predicate earns a deny-latch
-note it has not earned. It is a warning rather than a refusal, so nothing breaks — but the
-advice is wrong, which is worse than silence for the person reading it.
+Both callers take the same tolerance: a note is earned by a refusal the check can SEE leaves the
+subject where it was, never by one it cannot decide. Advice that is wrong is worse than silence.
 
-That issue is blocked on git-issue `srrwnc0kh12kr1r1e1n0` (a tag-keyed match operator is
-silently inert unless the node is layout-tagged), because a check that reasons about what a
-predicate MEANS cannot be built while a predicate can silently mean something other than what it
-says.
+What is still open here is the DEFAULT — whether a rule with no `onDenied` should re-ask — which
+no relation decides.
 
 ## What was answered differently than the design asked
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/process"
@@ -156,6 +157,40 @@ func TestAdviseNamesAnUnlatchedDeny(t *testing.T) {
 	if notes := advise(gated(Gate{Name: "approval", Mode: "auto"})); len(notes) != 0 {
 		t.Fatalf("an auto gate earned a deny note: %v", notes)
 	}
+	// An onDenied that writes the same value back does NOT latch, and the note says so — the
+	// key intersection called this one latched, and re-posed the question forever.
+	if notes := advise(gated(Gate{Name: "approval", Mode: "ask",
+		OnDenied: &Action{Patch: entity.Obj{"stage": "open"}.Payload()}})); len(notes) != 1 {
+		t.Fatalf("an onDenied writing the subject's own state back passed as a latch: %v", notes)
+	}
+}
+
+// A COMPOUND subject predicate earned advice it had not earned: `predicateKeys` reported a root
+// operator's tag name as the field it read, so no onDenied could ever intersect it and every
+// gated rule with one was told to write a field called `and`. It is a warning rather than a
+// refusal, so nothing broke — which made it worse, since what it said was simply wrong.
+func TestAdviseReadsACompoundPredicate(t *testing.T) {
+	compound := ir.FromSlice([]*ir.Node{
+		entity.Obj{"stage": "open"}.Payload(),
+		entity.Obj{"urgent": true}.Payload(),
+	}).WithTag("!and")
+	gated := func(denied entity.Payload) Trigger {
+		return Trigger{
+			Name:      "guard",
+			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": compound}},
+			Gating: &Gating{Gates: []Gate{{Name: "approval", Mode: "ask",
+				OnDenied: &Action{Patch: denied}}}},
+			Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
+		}
+	}
+	if notes := advise(gated(entity.Obj{"stage": "rejected"}.Payload())); len(notes) != 0 {
+		t.Fatalf("a deny that advances one operand of an `!and` was still advised: %v", notes)
+	}
+	notes := advise(gated(entity.Obj{"seen": true}.Payload()))
+	if len(notes) != 1 || !strings.Contains(notes[0], "stage") || !strings.Contains(notes[0], "urgent") {
+		t.Fatalf("the note does not name what a compound predicate reads: %v", notes)
+	}
+	t.Log(notes[0])
 }
 
 // errResolver stands for every way an answer fails to arrive that is not a refusal.

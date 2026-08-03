@@ -279,9 +279,16 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 				// style, so this arrived as a literal object with a field named `not` and
 				// matched nothing, silently. Match.ToTonyIR renders a predicate node "as
 				// the node it is, operators and all", so a tag put here survives the wire.
+				//
+				// The "!" on the tag is load-bearing too: mergeop.SplitChild strips a tag's
+				// first byte before looking the operator up, so `WithTag("not")` names "ot",
+				// which is no operator, and the node is read as the literal object it is
+				// wrapped around — PRESENCE, the exact inverse of this. The encoder prints
+				// both spellings as `!not`, so a trip through the wire hides the difference
+				// and only a Match used in-process shows it.
 				"value": ir.FromKeyVals([]ir.KeyVal{
 					{Key: ir.FromString("validated"), Val: ir.Null()},
-				}).WithTag("not"),
+				}).WithTag("!not"),
 			},
 		},
 		Action: trigger.Action{

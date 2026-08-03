@@ -1,13 +1,6 @@
 package trigger
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-
-	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/entity"
-)
+import "fmt"
 
 // checkLatch refuses a spawning action that can never stop spawning.
 //
@@ -24,35 +17,42 @@ import (
 // asking for `stage: open` — which is why hooks and sequence elements count as latches: the
 // process is live in the meantime, and its completion advances the subject.
 //
-// The check is over KEYS, not values: a patch's key set is literal even when its values are
-// templated ($result), so "does this write something the subject reads" is decidable where
-// "does this write something that stops matching" is not. It is therefore conservative in the
-// direction that matters — it can pass a charter that writes the same value back, which
-// converges anyway by producing no commit, but it cannot pass one with nothing to write.
+// What it decides is whether the subject's predicate and the action's post-state are
+// UNSATISFIABLE — can the subject still match once the action has run. That relation is
+// deselect.go, which answers in three parts: it latches, it definitely does not, or the check
+// cannot see. Only the middle one is refused. Here is what to say when it is.
 func checkLatch(c Condition, a Action) error {
 	if !spawns(a) {
 		return nil
 	}
-	reads := predicateKeys(c.Subject.Predicate())
-	if len(reads) == 0 {
+	pred := c.Subject.Predicate()
+	if pred == nil {
 		return fmt.Errorf("this action spawns, and its subject has no payload predicate to " +
 			"latch: a spawn is not a store write, so nothing about it is inert on repetition, " +
 			"and the engine's dedupe lasts only while the process is live. Give the subject a " +
 			"predicate the action advances past — `value: {stage: open}` with a patch (or an " +
 			"`onDone`) writing `stage` — so the next evaluation does not select it again")
 	}
-	writes := map[string]bool{}
-	collectWrites(a, writes)
-	for k := range reads {
-		if writes[k] {
-			return nil
-		}
+	verdict := latchOf(pred, a)
+	if verdict == latchHolds || verdict == latchUnsure {
+		return nil
 	}
-	return fmt.Errorf("this action spawns but writes nothing its subject reads (%s), so every "+
-		"commit that touches it spawns again: a spawn is not a store write and the engine's "+
-		"dedupe lasts only while the process is live. Patch one of those fields — here, or in "+
-		"an `onDone`, which is the ordinary shape: spawn the work, and let its completion "+
-		"advance the subject past the state that asked for it", keyList(reads))
+	reads := readPaths(pred)
+	if verdict == latchUntouched {
+		return fmt.Errorf("this action spawns but writes nothing its subject reads (%s), so "+
+			"every commit that touches it spawns again: a spawn is not a store write and the "+
+			"engine's dedupe lasts only while the process is live. Patch one of those paths — "+
+			"here, or in an `onDone`, which is the ordinary shape: spawn the work, and let its "+
+			"completion advance the subject past the state that asked for it", pathList(reads))
+	}
+	return fmt.Errorf("this action spawns and writes what its subject reads (%s), but what it "+
+		"writes still SATISFIES the predicate, so the subject stays selected and the next commit "+
+		"that touches it spawns again. Writing the value the predicate already asks for is a "+
+		"latch for a store write — rewriting a value raises no commit — and not for a spawn, "+
+		"which repeats however little changed. Advance the path to a value the predicate refuses "+
+		"(`value: {stage: open}` with `patch: {stage: reviewed}`), or ask for the ABSENCE of what "+
+		"the action writes (`value: !not {validated: null}` with `patch: {validated: …}`), which "+
+		"latches whatever value lands", pathList(reads))
 }
 
 // spawns reports whether an action starts a process that only the SUBJECT PREDICATE can bound.
@@ -66,53 +66,3 @@ func checkLatch(c Condition, a Action) error {
 // answer to this problem one level down, which is why demanding a subject latch of it as well
 // would be demanding the same guarantee twice.
 func spawns(a Action) bool { return a.Spawn != nil }
-
-// collectWrites gathers the top-level keys an action writes anywhere in its tree — its own
-// patch, its sequence elements, and its completion hooks. Hooks count because they are how the
-// canonical shape latches: the spawn holds the subject while it runs, and the hook advances it
-// when it ends.
-func collectWrites(a Action, into map[string]bool) {
-	for k := range entity.Fields(a.Patch) {
-		into[k] = true
-	}
-	for _, el := range a.Seq {
-		collectWrites(el, into)
-	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
-		if h != nil {
-			collectWrites(*h, into)
-		}
-	}
-}
-
-// predicateKeys names the top-level fields a subject's payload predicate reads. A predicate
-// that is not an object (`value: 42`, `value: !glob "hotfix-*"`) constrains the whole payload
-// rather than a field, and any write at all replaces it — so it is reported as the empty
-// name, which every write matches.
-func predicateKeys(p *ir.Node) map[string]bool {
-	if p == nil {
-		return nil
-	}
-	out := map[string]bool{}
-	if p.Type != ir.ObjectType {
-		out[""] = true
-		return out
-	}
-	for _, f := range p.Fields {
-		out[f.String] = true
-	}
-	return out
-}
-
-// keyList renders a key set for a diagnostic, in a stable order.
-func keyList(keys map[string]bool) string {
-	out := make([]string, 0, len(keys))
-	for k := range keys {
-		if k == "" {
-			return "the whole payload"
-		}
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return strings.Join(out, ", ")
-}

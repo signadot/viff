@@ -87,15 +87,22 @@ even with nothing latching it, and it is pinned by
 `entity.TestSameValueWriteRaisesNoCommit`. Note what it is not: `entity.Modify` retries on a
 failed precondition, so it prevents lost updates rather than repeated work.
 
-**A latch takes the subject out of the selection.** Write a field the subject's predicate
-constrains and the next evaluation does not select it. This is the ordinary shape, and for a
+**A latch takes the subject out of the selection.** Write a value the subject's predicate
+refuses and the next evaluation does not select it. This is the ordinary shape, and for a
 SPAWN it is the only one: a spawn is not a store write, nothing about it is inert on repetition,
 and the engine's dedupe holds only while the process is live — once reaped, the next commit
-spawns again. So a **spawning action that writes nothing its subject reads is refused at
-install**, with a diagnostic naming the fields it could latch on. The check is over KEYS, not
-values, which is what makes it decidable through templated values (`$result`): "does this write
-something the subject reads" is answerable where "does this write something that stops matching"
-is not.
+spawns again. So a **spawning action whose subject can still match after it runs is refused at
+install**, with a diagnostic naming the paths it could latch on.
+
+What the check decides is whether the predicate and the action's post-state are *unsatisfiable*,
+and it needs no solver: at fire time the predicate was true, so the only thing that can falsify
+it is a path the action writes. That makes it a three-valued fold over the predicate's own
+structure — `and`/`or`/`not` in Kleene logic, `tony.Match` at the leaves — so a nested predicate,
+a whole-value replace and a root operator are each decided as what they are rather than as their
+top-level key names. Values that are only knowable at fire time (`$result`, an operator the fold
+does not model) come out *undecided*, and undecided is a pass: the refusal rests on what the
+check can see, which is a rule that writes nothing its subject reads, or one whose write leaves
+the predicate satisfied — writing the same value back latches a store write, and never a spawn.
 
 **A sequence bounds itself.** `startSeq` refuses to re-run a sequence that has completed for a
 subject at a shape, and that claim is a fact in the store rather than a live-process check, so
@@ -161,7 +168,7 @@ which every protection described above misses:
 Each writes exactly what the other selects on, and each protection above misses it correctly. The
 substrate's no-op suppression never engages, because each write is a REAL change. `claimFlight`
 and `working` never engage, because each firing genuinely completes. And the latch check passes,
-because both rules DO write a field their subject reads — it asks whether a rule advances its
+because both rules DO leave their subject unable to match — it asks whether a rule advances its
 subject out of its own selection, and both do, into each other's.
 
 It is caught at RUNTIME, by [the cycle throttle](cycle-throttle.md): every write an engine makes
