@@ -19,3 +19,15 @@ define:
   to: .[tony-base:ir]
 signature:
   name: verse-event
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  at: .[array(string)]
+  kind: .[string]
+  op: .[string]
+  system: .[string]
+  value: .[tony-base:ir]
+signature:
+  name: verse-pattern

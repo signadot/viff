@@ -12,14 +12,16 @@ import (
 // "when") and listing the stored entities that satisfy it (Select, a formula's
 // fact-read). The match grammar is deliberately tiny (system/kind/op/field
 // equality); a richer tony match is the eventual destination.
+//
+//tony:schemagen=verse-pattern,notag
 type Pattern struct {
-	System string
-	Kind   string
+	System string `tony:"field=system"`
+	Kind   string `tony:"field=kind,omitzero"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
 	// it. Create and update are not distinguished (see Op) — express "only the
 	// first time" as a state latch, not an edge.
-	Op Op
+	Op Op `tony:"field=op,omitzero"`
 	// Predicate is the payload predicate: a tony match evaluated at the PAYLOAD ROOT, nil
 	// when unset. It is a match rather than a map of equalities, which is what lets it carry
 	// operators (`{stage: !glob "op*"}`) and match a payload that is not an object at all
@@ -28,7 +30,7 @@ type Pattern struct {
 	// It is not called Fields because it is not field-shaped: `fields` is one SPELLING of it
 	// in the charter grammar, and naming the carrier after the sugar is how the general case
 	// stays invisible.
-	Predicate *ir.Node
+	Predicate *ir.Node `tony:"field=value,omitzero"`
 	// At roots the predicate INSIDE the payload, at this field path — empty (the usual case)
 	// evaluates it at the payload root. It is the same address a deep write takes
 	// (Ref.At/Path.Field, api.PutEntity.Field), read rather than written, so "the place a
@@ -44,7 +46,7 @@ type Pattern struct {
 	// A path that does not lead anywhere — an absent field, or a scalar in the way — is a
 	// NON-MATCH, for the reason an absent payload is: a predicate that cannot be evaluated
 	// has not been satisfied.
-	At []string
+	At []string `tony:"field=at,omitzero"`
 }
 
 // MatchEvent reports whether an observed CHANGE satisfies every non-empty dimension:

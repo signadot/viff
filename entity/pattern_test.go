@@ -3,6 +3,7 @@ package entity
 import (
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/parse"
 )
 
@@ -261,5 +262,46 @@ func TestNullPresenceAbsenceIdioms(t *testing.T) {
 				t.Errorf("%s vs absent = %v, want %v", c.src, got, c.wantAbsent)
 			}
 		})
+	}
+}
+
+// A Pattern goes on the wire — it is what an external source declares as the slice its
+// answer is complete for (docs/working/sources.md), and what a source registration carries
+// as `owns`. So every dimension has to survive a round trip, the payload predicate included:
+// a cover that arrived with its predicate dropped would claim a whole kind rather than the
+// one repo it meant.
+func TestPatternSurvivesTheWire(t *testing.T) {
+	in := Pattern{
+		System:    "git",
+		Kind:      "ref",
+		Predicate: Obj{"repo": "verse"}.Payload(),
+		At:        []string{"labels"},
+	}
+	node, err := gomap.ToTonyIR(in)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var out Pattern
+	if err := gomap.FromTonyIR(node, &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.System != in.System || out.Kind != in.Kind {
+		t.Fatalf("ref dimensions lost: %+v", out)
+	}
+	if len(out.At) != 1 || out.At[0] != "labels" {
+		t.Fatalf("At lost: %+v", out.At)
+	}
+	if !Equal(out.Predicate, in.Predicate) {
+		t.Fatalf("the payload predicate did not survive: %v", ToObj(out.Predicate))
+	}
+
+	// `op` rides along as "" rather than being omitted, and that is upstream's doing rather
+	// than this type's: codegen honours `omitzero` for every field here EXCEPT Op, because Op
+	// implements MarshalText and the TextMarshaler branch does not consult the option. It is
+	// noise in the document and nothing more — it decodes back to the empty Op it was, so the
+	// round trip above is unaffected — and it disappears on its own when go-tony is fixed.
+	// Pinned so that the day it changes, this says why it was ever there.
+	if _, ok := Fields(node)["op"]; !ok {
+		t.Log("op is now omitted when empty — the upstream omitzero defect is fixed")
 	}
 }

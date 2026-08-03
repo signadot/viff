@@ -242,3 +242,146 @@ func (s *Event) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	}
 	return s.FromTonyIR(node, opts...)
 }
+
+// ToTonyIR converts Pattern to a Tony IR node.
+func (s *Pattern) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: System
+	irMap["system"] = ir.FromString(string(s.System))
+
+	// Field: Kind
+	if s.Kind != "" {
+		irMap["kind"] = ir.FromString(string(s.Kind))
+	}
+
+	// Field: Op
+	if txt, err := s.Op.MarshalText(); err != nil {
+		return nil, fmt.Errorf("failed to marshal field %q: %w", "Op", err)
+	} else {
+		irMap["op"] = ir.FromString(string(txt))
+	}
+
+	// Field: Predicate (optional)
+	if s.Predicate != nil {
+		irMap["value"] = s.Predicate
+	}
+
+	// Field: At
+	if len(s.At) > 0 {
+		slice := make([]*ir.Node, len(s.At))
+		for i, v := range s.At {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["at"] = ir.FromSlice(slice)
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates Pattern from a Tony IR node.
+func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for Pattern, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "system":
+			// Field: System
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "system", fieldNodeUnwrapped.Type)
+			}
+			s.System = string(fieldNodeUnwrapped.String)
+		case "kind":
+			// Field: Kind
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
+			}
+			s.Kind = string(fieldNodeUnwrapped.String)
+		case "op":
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "op", fieldNodeUnwrapped.Type)
+			}
+			if err := s.Op.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
+				return fmt.Errorf("field %q: failed to unmarshal text: %w", "op", err)
+			}
+		case "value":
+			if gomap.GetUnmapComments(opts...) {
+				s.Predicate = fieldNode
+			} else {
+				s.Predicate = fieldNodeUnwrapped
+			}
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.At = slice
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts Pattern to Tony format bytes.
+func (s *Pattern) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates Pattern.
+func (s *Pattern) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
