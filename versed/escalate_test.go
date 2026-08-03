@@ -225,3 +225,39 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 		t.Fatalf("answered by %v, want the binding that answered in time", got["by"])
 	}
 }
+
+// A handover must LOSE to an answer. escalateOverdue snapshots the pending questions and then
+// re-owns them one at a time, so an answer landing during that loop would otherwise be merged
+// over: a record saying both "decided by X" and "X let its deadline pass", handing the layer
+// above a question somebody had already closed.
+//
+// The write is conditional on the question still being pending rather than re-read before it,
+// because a read before it is the same race with a smaller window.
+func TestAnAnswerBeatsAHandover(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+	installResolver(t, ts.URL,
+		`{name: security-review, kind: security, byRef: true, deadline: {within: "10ms"}, `+
+			`method: {driver: url, url: "https://x"}}`).Body.Close()
+	pr(t, srv, "1", "payments")
+	spawnFor(t, ts, "run-1", "change:pr:1", "resolvers:security:security-review")
+	qid := waitQuestion(t, srv, "run-1")
+	time.Sleep(30 * time.Millisecond) // overdue
+
+	// Settled first, then the sweep arrives and must decline to move it.
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+
+		resolver.InstanceRef("security-review", "run-1").ID+"/verdicts",
+		api.Verdict{ID: qid, Verdict: "proceed"})
+	resp.Body.Close()
+	docket(t, srv)
+
+	got := question(t, srv, qid)
+	if got["reownedWhy"] != nil {
+		t.Fatalf("a settled question was handed on anyway: %+v", got)
+	}
+	if got["by"] != "resolvers:security:security-review" || got["status"] != mirror.QuestionAnswered {
+		t.Fatalf("the answer did not survive: %+v", got)
+	}
+}

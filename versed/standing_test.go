@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,7 +21,13 @@ func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string
 	resp := postTony(t, ts.URL+"/processes", map[string]any{
 		"id": id, "task": "true", "subject": subject, "resolver": resolverRef,
 	})
-	resp.Body.Close()
+	defer resp.Body.Close()
+	// Loudly: a swallowed status is how a spawn bound to a binding that does not exist went
+	// unnoticed, and a test whose run never started fails three assertions later as a timeout.
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("spawn %s: %s: %s", id, resp.Status, strings.TrimSpace(string(raw)))
+	}
 }
 
 func standing(name, area string) string {
@@ -140,6 +147,10 @@ func TestTheLayerRuleDecidesWhoOwnsAQuestion(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 
 	// A run about a covered subject, whose spawn ALSO names one: the named layer owns it.
+	// Installed, because a spawn naming a binding that does not exist is refused — it would
+	// shadow the standing layer below with something that cannot answer.
+	installResolver(t, ts.URL, `{name: security-review, kind: security, byRef: true,`+
+		` method: {driver: url, url: "https://x"}}`).Body.Close()
 	pr(t, srv, "1", "payments")
 	spawnFor(t, ts, "named", "change:pr:1", "resolvers:security:security-review")
 	if got := question(t, srv, waitQuestion(t, srv, "named"))["resolver"]; got != "resolvers:security:security-review" {

@@ -1,7 +1,10 @@
 package versed
 
 import (
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,8 +18,24 @@ import (
 // look at, and returns its id.
 func askingRun(t *testing.T, srv *Server, ts *httptest.Server, id, resolverRef string) {
 	t.Helper()
+	// The binding has to EXIST. A spawn naming one that does not is refused now — it would
+	// otherwise own the question with something that cannot answer it, and shadow whatever
+	// standing binding covers the same subject. These tests are about a spawn naming a
+	// binding, so they install the one they name.
+	if resolverRef != "" {
+		parts := strings.Split(strings.TrimPrefix(resolverRef, "resolvers:"), ":")
+		if len(parts) != 2 {
+			t.Fatalf("askingRun: %q is not resolvers:<kind>:<name>", resolverRef)
+		}
+		installResolver(t, ts.URL, `{name: `+parts[1]+`, kind: `+parts[0]+
+			`, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
+	}
 	spawn := postTony(t, ts.URL+"/processes", api.Spawn{ID: id, Task: "true", Resolver: resolverRef})
-	spawn.Body.Close()
+	defer spawn.Body.Close()
+	if spawn.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(spawn.Body)
+		t.Fatalf("spawn %s: %s: %s", id, spawn.Status, strings.TrimSpace(string(raw)))
+	}
 }
 
 // A spawn that names a resolver binds an INSTANCE and stamps the binding on its questions.
@@ -105,5 +124,37 @@ func TestAResolversDocketIsASelection(t *testing.T) {
 	}
 	if q, _, _ := srv.Store.Get(got[0]); entity.Str(q.Payload, "process") != "watched" {
 		t.Fatalf("it selected a question of %q", entity.Str(q.Payload, "process"))
+	}
+}
+
+// A spawn may not name a binding that is not installed.
+//
+// Left standing it is worse than useless: the question is owned by something that cannot answer
+// it, and — the case that makes this a refusal rather than a shrug — it SHADOWS the standing
+// binding covering the same subject, which never sees the question and has no instance through
+// which to reach it. A misspelled binding turns a supervised subject into an unsupervised one,
+// silently.
+func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
+	pr(t, srv, "1", "payments")
+
+	resp := postTony(t, ts.URL+"/processes", api.Spawn{
+		ID: "run-1", Task: "true", Subject: "change:pr:1", Resolver: "resolvers:security:ghost",
+	})
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a spawn named a binding that does not exist: %s %s", resp.Status, raw)
+	}
+	if !strings.Contains(string(raw), "not installed") {
+		t.Fatalf("the refusal does not say what is wrong: %s", raw)
+	}
+	// And the standing layer still owns what it covers, for a spawn that names nobody.
+	spawnFor(t, ts, "run-2", "change:pr:1", "")
+	if got := question(t, srv, waitQuestion(t, srv, "run-2"))["resolver"]; got != "resolvers:security:payments-review" {
+		t.Fatalf("the standing layer does not own an unnamed run: %v", got)
 	}
 }

@@ -348,6 +348,13 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
 			Resolver: spec.Resolver,
 		}
+		if why := ghostResolver(st, spec.Resolver); why != "" {
+			// The same shape as an envelope this build does not have, below: a spawn that
+			// cannot be supervised as written does not run unsupervised instead.
+			h := process.FailedHandle(fmt.Sprintf("spawn %s: %s", id, why))
+			s.reflect(st, id, h, meta)
+			return h
+		}
 		l, err := launchOf(id, spec)
 		if err != nil {
 			// A charter that names an envelope this build does not have must not run
@@ -1533,6 +1540,32 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	}, procID)
 }
 
+// ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
+//
+// A binding that is not installed is REFUSED rather than ignored, and rather than left standing
+// on the question. Left standing it is worse than useless: the question is owned by something
+// that cannot answer, and — the case that makes this a refusal rather than a shrug — it SHADOWS
+// the standing layer that covers the same subject, which never sees the question and has no
+// instance through which to reach it. A misspelled binding therefore turns a supervised subject
+// into an unsupervised one, silently, which is the shape of the hazard the first resolver plan
+// refused a `condition` to avoid.
+//
+// Checked at spawn rather than at install, because a charter and a binding are separate
+// entities and either may arrive first; what must hold is that a RUN is never bound to a name
+// nobody answers to.
+func ghostResolver(store entity.Store, ref string) string {
+	if ref == "" {
+		return "" // named nobody, which is a state and not a mistake
+	}
+	if _, ok := resolver.Find(store, ref); ok {
+		return ""
+	}
+	return fmt.Sprintf("resolver %q is not installed: a spawn may not name a binding that does "+
+		"not exist — the question would be owned by something that cannot answer it, and any "+
+		"standing binding covering the same subject would never see it. Install it "+
+		"(`verse resolver add`), or leave `resolver` empty to let the standing layer own it", ref)
+}
+
 // escalate transfers a question to the layer above. It does NOT ask a favour: the layer above
 // owns it from that moment, and its answer resolves the ORIGINAL question, because escalating
 // changes who answers and not what is being answered.
@@ -1558,7 +1591,12 @@ func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding st
 		return
 	}
 	subject, _ := p["subject"].(string)
-	reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, binding, "escalated")
+	if !reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, binding, "escalated") {
+		// Answered between the check above and the write. Not this resolver's to escalate any
+		// more, and saying 204 would tell it the layer above now holds a question that is shut.
+		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1815,7 +1853,13 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 // escalation asks "who owns this now that I have declined"; the ladder answers both the same
 // way, and `why` is the only thing that differs — which is worth recording, since a question
 // that changed hands should say what moved it.
-func reown(store entity.Store, at, origin entity.Ref, subject, from, why string) {
+// It reports whether the handover LANDED. It can fail to: a question that settled between the
+// decision to move it and the write is one that was answered, and an answer beats a transfer —
+// merging over it would leave a record saying both "decided by X" and "X let its deadline
+// pass", handing the layer above a question somebody had already closed. The check is a
+// precondition on the write rather than a read before it, because a read before it is the same
+// race with a smaller window.
+func reown(store entity.Store, at, origin entity.Ref, subject, from, why string) bool {
 	rec := entity.Obj{
 		// nil, not absent: a write merges, so saying "this is gone" is the writer's job. A
 		// question left naming a binding that will not answer is one nobody can answer,
@@ -1831,18 +1875,12 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 		"reownedWhy":  why,
 		"reownedAt":   time.Now().UTC().Format(time.RFC3339),
 	}
+	binding := ""
 	if subject != "" {
 		if ref, err := entity.ParseRef(subject); err == nil {
 			if next, ok := resolver.Next(store, ref, from); ok {
-				binding := resolver.Ref(next.Kind, next.Name).String()
+				binding = resolver.Ref(next.Kind, next.Name).String()
 				rec["resolver"] = binding
-				// And the new owner gets an instance for what it now watches, because
-				// re-owning IS an ownership decision and that is where instances are
-				// minted. Without it a layer could own a question with no record through
-				// which to act on it — and no way to read the fine grain of a run it has
-				// just inherited. Create-only, so a binding that was already watching keeps
-				// the position it had.
-				mirror.Watch(store, binding, resolverName(binding), origin)
 				// The new owner's clock, not the old one's. Without re-arming, a question
 				// would stay overdue against a deadline nobody set and move again on every
 				// read; without CLEARING it, one handed to a binding with no deadline would
@@ -1856,7 +1894,23 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 			}
 		}
 	}
-	_, _, _ = store.Write(entity.Write{At: at.At(), Value: rec.Payload()})
+	// Still pending, as of the write itself.
+	won, _, err := store.Write(entity.Write{
+		At: at.At(), Value: rec.Payload(),
+		When: []entity.Require{{Pattern: entity.Obj{"status": mirror.QuestionPending}.Payload()}},
+	})
+	if err != nil || !won {
+		return false
+	}
+	// The new owner gets an instance for what it now watches, because re-owning IS an
+	// ownership decision and that is where instances are minted. Without it a layer could own
+	// a question with no record through which to act on it — and no way to read the fine grain
+	// of a run it has just inherited. Create-only, so a binding that was already watching keeps
+	// the position it had. AFTER the write, so a handover that lost the race mints nothing.
+	if binding != "" {
+		mirror.Watch(store, binding, resolverName(binding), origin)
+	}
+	return true
 }
 
 // releaseResolver hands on what a removed binding was holding: the questions it owned, and
@@ -2005,6 +2059,10 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	store := s.Store
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		store = s.Store.Scope(scope)
+	}
+	if why := ghostResolver(store, body.Resolver); why != "" {
+		http.Error(w, why, http.StatusBadRequest)
+		return
 	}
 	h := s.runner.Spawn(process.Launch{
 		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
