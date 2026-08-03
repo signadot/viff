@@ -127,25 +127,37 @@ difference between them is an intent verse cannot read from a delete:
 - *tearing the place down* — the drive is over, the pool is going away. The work is doomed, and
   the question is only whether it ends cleanly.
 
-So removal leaves work alone by default and **offers** the other:
+**So removal with work on it is REFUSED until told which**, rather than defaulting to either:
 
 ```
 $ verse runner remove runners:pool:gpu
-removed runners:pool:gpu
-note: 3 processes are still running on it; they keep running and stay reachable, and no
-      new spawn may name it. `--cancel` ends them instead.
-
+refused: 3 processes are running on runners:pool:gpu, and removing it means one of two
+  things this cannot tell apart:
+    --cancel "<why>"   the place is going away; end them with a reason their charters see
+    --leave            the place stays; they keep running on the url already stamped on them
 $ verse runner remove runners:pool:gpu --cancel "gpu pool retired"
-removed runners:pool:gpu
-cancelled 3 processes on it
+removed runners:pool:gpu; cancelled 3 processes on it
 ```
 
-Leave-by-default because a name deleted killing work is action at a distance, and because the
-first intent is the common one. Offered because **the alternative to cancelling is usually not
-"the work keeps running"** — it is the runner going away underneath it, and then the process
-never reports a terminal at all. A flow waiting on it waits forever, and
-`the terminal is the one frame a reader never loses` is the property that breaks. `--cancel`
-buys each process a real terminal with a reason, which its charter can act on.
+Neither default survives contact with the motivating use.
+
+*Leave* looks safe and is not. The lifecycle this feature exists for is: a drive deploys a
+runner, uses it, tears it down — so `remove` **is** teardown, and the work on it is doomed
+whatever verse does. Leaving it means the process never reports a terminal at all when the place
+disappears: a flow waiting on it waits forever, which is
+`the terminal is the one frame a reader never loses` breaking from the other end. Defaulting to
+the quiet option means defaulting to the one that rots.
+
+*Cancel* is not safe either, and the two cases where it is wrong are real: retargeting the url —
+work already running has the OLD url stamped, so it is talking to a place that still exists —
+and a rename, which is an `add` and a `remove` of the same physical runner. Cancelling there
+destroys live work for a bookkeeping change.
+
+So verse asks. The operator is present, it is one word, and the precedent is in the tree: a
+spawn carrying `provider:` with no `grant:` is refused at install rather than defaulted, on the
+reasoning that the charter's author is there and a guess has consequences. Same shape, same
+reason. A removal with nothing running on it needs no flag — there is nothing to be wrong
+about.
 
 The case that decides how honest this is: **an already-gone runner**. That is *why* an operator
 removes the entity, half the time — and then `--cancel` cannot reach anything. It must report
@@ -159,19 +171,21 @@ Worth naming the asymmetry with the thing this most resembles. Removing a resolv
 above — work in flight is somewhere physical — so the choices are leave it or end it, and
 neither is a hand-on.
 
-Not a refusal in either mode, because this plan builds no drain: refusing would mean a runner
-with one long-lived process on it can never be removed.
+Note what is *not* being refused: the removal itself, ever. `--leave` always succeeds, so a
+runner with one long-lived process on it can still be removed — which matters because this plan
+builds no drain, and a refusal with no way to satisfy it would be a trap.
 
-The visible cost of the default, stated rather than discovered: `verse ps` will show processes
-on a runner that `verse runners` no longer lists. That is the true state and the alternative is
-worse — either lying about where work is, or refusing a removal forever.
+The visible cost of `--leave`, stated rather than discovered: `verse ps` will show processes on
+a runner that `verse runners` no longer lists. That is the true state and the alternatives are
+worse — lying about where work is, or refusing a removal forever.
 
 **Proves:** an operator can install, list and remove one; a runner that cannot be reached is
-refused rather than accepted; and removal says what it did to the work. Test: add, list, remove
-over the CLI; a malformed url is refused with the url quoted; a removal while a process runs on
-it warns, names the count, and leaves it running and reachable; `--cancel` ends it with a reason
-and its flow sees a `cancelled` terminal; and `--cancel` against an unreachable runner reports
-what it could not reach rather than counting it as cancelled.
+refused rather than accepted; and removal never guesses what to do with running work. Test: add,
+list, remove over the CLI; a malformed url is refused with the url quoted; removing one with a
+process on it is refused and the message names both flags; `--leave` removes it and the process
+keeps running and stays reachable; `--cancel` ends it with a reason and its flow sees a
+`cancelled` terminal; `--cancel` against an unreachable runner reports what it could not reach
+rather than counting it cancelled; and removing one with nothing on it needs no flag.
 
 ### 2. A spawn names one
 
@@ -287,15 +301,6 @@ one is closer to choosing an execution environment than to choosing an answerer.
 may name any runner may run its work anywhere the deployment can reach.
 
 ## The residual to expect
-
-**Whether removal should refuse until told which it means.** The plan picks a default
-(leave) and offers the other (`--cancel`), which is the cheap shape. The other option is to
-refuse a removal that would strand running work unless one of the two is stated — no default at
-all, on the reasoning that the intents differ enough that guessing is worse than asking, and the
-operator is present. That is the shape `verse trigger add` uses for a spawn with no ceiling
-(`provider:` without `grant:` is refused rather than defaulted), and it would be defensible
-here. It is not chosen because removal is not usually about the work at all, and making the
-common case type a flag to say "yes, really, leave it alone" earns nothing.
 
 **Whether `local` should be nameable.** This plan makes `local` the meaning of *absent*, which
 keeps every runner entity a reachable address. The cost is that a charter cannot say "explicitly
