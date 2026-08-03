@@ -125,6 +125,11 @@ work unsupervised — the deployment says one thing and the verse does another.
 startup keep meaning what they mean: they set that default. They stop being mutually exclusive
 with *each other* only if somebody wants that; this plan does not need it.
 
+**Prerequisite**, and it is not optional: the runner contract does not carry how control is
+applied, so nothing detects a runner that QUEUES an answer rather than delivering it. That is
+harmless while one URL is chosen at deploy time and fatal once a spawn may name any. See the
+residual — one of its two options has to land with or before this step.
+
 **Proves:** two processes in one verse run in two places. Test: a spawn naming an installed
 runner reaches it (an `httptest` runner records the call) while a spawn naming none goes to the
 default; a spawn naming an uninstalled one is refused, naming it.
@@ -158,17 +163,39 @@ runner. Test: spawn on a named runner, restart the server, and the process is re
 than orphaned; remove the runner entity while the process runs and the restart still re-attaches
 it; a spawn naming the removed runner is refused.
 
-### 4. The docket says where
+### 4. An operator can see where
 
-`verse ps` and `process:instance` show the runner a process is on, and `verse runners` shows
-what is installed. One `verse entities --system runners` shows both what is installed and, once
-step 3 stamps it, what is running where.
+Not the docket — `verse docket` is motions, and this has nothing to do with them. This is the
+process surface:
+
+```sh
+verse ps                      # each process names the runner it is on; the default reads `local`
+verse ps --runner gpu         # …and only that runner's, which is the question a drive asks
+verse runners                 # what is installed, and what each is carrying
+```
+
+`verse runners` earns its keep by showing more than the list it could have shown in step 1:
+
+| | |
+|---|---|
+| `running` | processes on it now — `process:instance` with this runner and a live status |
+| `total` | how many it has been given, ever |
+| `lastSpawn` | when it was last used, so a runner nobody names is visible as such |
+
+All three are **derived from the store**, not probed. That is the line this plan holds
+everywhere: verse reports what it has recorded, and does not ask a runner how it feels. A
+reachability check is a health check wearing a smaller hat, and health is named below as
+something this does not build — a runner that is down fails its spawns, and that failure travels
+the path a failed spawn already travels.
 
 Small, and last on purpose: it is the step that makes the previous three legible, and it is the
 one that would otherwise be skipped.
 
-**Proves:** an operator can answer "where is this running" without reading a charter. Test:
-`verse ps` names the runner per process; the default reads as `local` rather than as blank.
+**Proves:** an operator can answer "where is this running", and "what is this runner carrying",
+without reading a charter. Test: `verse ps` names the runner per process and the default reads
+as `local` rather than blank; `--runner <name>` selects; `verse runners` counts a spawn onto a
+named runner and does not count one onto the default.
+
 
 ## What this plan does not build
 
@@ -200,10 +227,45 @@ in-process" — it can only decline to say anything. If a deployment ever has a 
 not local, that distinction starts to matter and `runners:local:local` (or a reserved kind, as
 `resolvers:instance` is) becomes worth having.
 
-**What a broker runner's name means.** A broker is a runner workers dial *into*, so its URL is a
-face rather than a destination, and several workers stand behind one name. Nothing in this plan
-breaks on that — the URL is still the address verse posts to — but "which worker took it" is a
-question the name cannot answer, and a drive debugging a stuck process will ask it.
+**The runner contract does not say HOW control is applied, and this plan makes that reachable.**
+
+An answer accepted for a brokered process is *queued* for a worker that must dial in and pull
+it, and the question record says so — `delivered: false` until the acknowledgement clears it.
+Recording that as done is what let an answer evaporate with a worker that never came back while
+every surface said the question was settled (`an accepted answer is not a delivered one`).
+
+verse learns which case it is by asking the handle, in Go:
+
+```go
+r, ok := h.(interface{ RelaysControl() bool })
+return ok && r.RelaysControl()
+```
+
+`broker.handle` returns true. **`runner.HTTP`'s handle does not implement it at all**, and the
+process-control wire has no representation of it — so anything reached over a URL is treated as
+applying control synchronously.
+
+That is *correct today*, because the only runner URL anyone binds is `/broker/local`, which
+serves the local supervisor and does apply control synchronously. It is correct by
+configuration, not by construction: nothing detects a runner that queues. And this plan is
+exactly what turns "the person deploying verse chose one runner URL" into "anyone who can write
+an entity chooses a runner URL per spawn".
+
+So the answer to *should brokered processes go through external runners* is not a blanket no —
+a drive deploying its own broker for its own workers is the motivating use case, and forbidding
+it would forbid the thing the issue asks for. The answer is that the hop has to carry the
+property. Two ways, and step 2 should not land before one of them is chosen:
+
+- **the contract carries it** — process-control exposes how control is applied (a capability on
+  the status response), and `runner.HTTP`'s handle reports what it was told. Composes, and makes
+  the guarantee structural rather than configurational.
+- **verse constrains the URL** — a runner entity must be a runner face, checked at install, and
+  a queuing one is refused until the above exists. Cheaper, and it is a refusal that will have
+  to be lifted.
+
+The residual under either: several workers stand behind one broker name, so "which worker took
+it" is a question the runner name cannot answer, and a drive debugging a stuck process will ask
+it.
 
 **Whether a runner entity should carry more than a url.** A grant ceiling, a tool allowlist, a
 label — anything that says "work here may only do this" — is expressible and deliberately not
