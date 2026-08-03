@@ -66,7 +66,10 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	g := source.NewGit()
 	g.AddRepo("A", dirA)
 	g.AddRepo("B", dirB)
-	if err := g.Reconcile(ctx, store, entity.Ref{}); err != nil {
+	// Driven through the Reflector, which is where converge lives: the source answers with a
+	// Reflection and verse writes it, so the test exercises the path Run and a hint take.
+	rf := source.NewReflector(g, store, 0)
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 
@@ -104,7 +107,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 
 	// Delete A's feature branch; reconcile only A → A/feature tombstones, B untouched.
 	gitRun(t, dirA, "branch", "-D", "feature")
-	if err := g.Reconcile(ctx, store, entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}); err != nil {
+	if err := rf.Reconcile(ctx, entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}); err != nil {
 		t.Fatalf("targeted reconcile: %v", err)
 	}
 	if _, ok, _ := store.Get(entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/feature"}); ok {
@@ -115,7 +118,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	// A new commit on A/main advances its sha (a change a trigger would see).
 	before := get("ref", "A/main")["sha"]
 	commit(t, dirA, "a.txt", "hello A v2", "second on A")
-	if err := g.Reconcile(ctx, store, entity.Ref{}); err != nil {
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	if after := get("ref", "A/main")["sha"]; after == before {

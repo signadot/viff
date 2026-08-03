@@ -1,17 +1,24 @@
 # External sources: a source you deploy
 
-Status: design, and nothing here is built. It argues one change to [sources](../sources.md) —
+Status: design, with step 1 built (the `Reflect`/converge split; see the step list at the end).
+It argues one change to [sources](../sources.md) —
 that a Source should be a program somebody deploys and installs, the way a
 [runner](../runners.md) is — and one correction, that the substrate both sources.md and
 [controllers](../controllers.md) name for it is now the wrong one.
 
-What exists to build on. In main, `source/reflector.go` (the `Source` interface and the
-`Reflector`) and `source/git.go` (a multi-repo git Source) are a library with no caller outside
-its tests. On the `sources` worktree there is the wiring that gives it a way in — `verse source
-add <dir>`, a durable `source:<system>:<id>` registration, a reflector under the server's
-lifetime, `POST /hooks/{system}` — and it builds and its six tests pass. That work is neither
-wasted nor in the way: its registration, restart and removal reasoning survives whole, and what
-moves is one seam inside it.
+What exists to build on. In main, `source/reflector.go` (the `Source` interface, the
+`Reflector`, and the converge the Reflector now owns) and `source/git.go` (a multi-repo git
+Source) are a library with no caller outside its tests.
+
+**The wiring this note was written against is not in the repo, and step 3 has to be read
+accordingly.** It described a `sources` worktree carrying `verse source add <dir>`, a durable
+`source:<system>:<id>` registration, a reflector under the server's lifetime and `POST
+/hooks/{system}`. None of it is reachable: branch `sources` is an ancestor of `main` carrying
+unrelated commits, no history under any ref holds a `cmd/verse/source.go` or a `/sources`
+route, there is no stash, and no registered worktree has a caller of `NewGit` or
+`NewReflector` outside `source/`'s own tests. Its registration, restart and removal *reasoning*
+still survives — it is what step 3 below is — but the code does not, so step 3 is a build
+rather than a re-seam.
 
 ## The substrate named in the published docs is wrong
 
@@ -353,9 +360,34 @@ has to be solved, instead of a public face verse has to grow.
    depended on it: `TestLogdStore_ScopeHidesAnInheritedEntity` and
    `TestScopedWatchSeesADeleteOfAnInheritedEntity` in package `entity`. The answer is the one
    scoped sources need, so nothing below has to route around the store.
-1. **Split `Reconcile` into `Reflect` + converge**, converge moving into the Reflector. `git.go`
-   keeps its plumbing and loses `converge`; `git_test.go` mostly survives, and the new test is
-   that two reflects of a quiet repo write nothing and emit no events.
+1. ~~**Split `Reconcile` into `Reflect` + converge**~~ **Done.** `git.go` kept its plumbing and
+   lost `converge`; `git_test.go` survived a one-line edit (it drives `Reflector.Reconcile`
+   now). Three things the design did not predict, each pinned in `source/converge_test.go`:
+
+   - **Both of git's special cases dissolved into `Covers`, as hoped, and so did a third
+     nobody had named.** `converge` used to skip re-writing a commit because commits are
+     immutable and skip tombstoning one because history is kept; the first is now just payload
+     equality and the second is git declining to cover `git:commit:*`. No git-shaped branch
+     survives in verse.
+   - **A write has to REPLACE, not merge, and that was a latent bug.** `Store.Write` merges, so
+     a field the source stopped reporting used to stay standing — and since the
+     unchanged-check compares against what the source *said*, the entity then differed on every
+     pass forever, firing its triggers each time. A detached HEAD does exactly this (`ref`
+     vanishes from the head payload). Converge goes through `entity.Modify`, which is the
+     tree's own replace primitive, and pays its extra read only for an entity that changed.
+   - **The store absorbs a no-op patch**, so the obvious test for "skip unchanged" — assert no
+     events — passes whether or not converge skips anything. It was measuring logd's
+     idempotence. The law is about what converge ISSUES, so the test counts writes through a
+     wrapping store; all four laws are mutation-checked.
+
+   One check the design did not have and now does: a cover with **no system** is refused before
+   anything is written. An empty dimension in an `entity.Pattern` is a *wildcard*, so such a
+   cover does not claim nothing — it claims everything the pass looked at, and tombstones
+   whatever the answer did not carry.
+
+   `Webhook` came off the `Source` interface, since an external source cannot be handed an
+   `*http.Request`; it is an optional `Hinter` the in-process git source still satisfies, and
+   step 3's hint route retires it.
 2. **`source.HTTP` + `sourced` + the sample.** The test that earns this is one `Reflection`
    compared across both transports from the same `source.Git`.
 3. **The registration**: entity, probe, the two extra checks, the hint route, the removal fork,

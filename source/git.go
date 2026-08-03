@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -133,19 +134,36 @@ func gitHooksDir(dir string) (string, error) {
 	return out, nil
 }
 
-var _ Source = (*Git)(nil)
+var (
+	_ Source = (*Git)(nil)
+	_ Hinter = (*Git)(nil)
+)
 
-// Reconcile converges git:* with the repositories. A zero ref reconciles every registered
-// repo (a full resync); a git:* ref reconciles just the repo it names (the targeted reconcile
-// a webhook asks for). Per-repo reconcile is idempotent and content-addressed, so it subsumes
-// finer targeting; only actual changes are written, so a quiet repo emits no change events.
-func (g *Git) Reconcile(ctx context.Context, store entity.Store, ref entity.Ref) error {
-	for id, dir := range g.targets(ref) {
-		if err := g.reconcileRepo(ctx, store, id, dir); err != nil {
-			return fmt.Errorf("git reflect %s: %w", id, err)
-		}
+// Reflect reads the repositories and returns what git:* should hold. A zero ref reads every
+// registered repo (a full resync); a git:* ref reads just the repo it names (the targeted
+// pass a hint asks for). Per-repo reflection is content-addressed, so it subsumes finer
+// targeting — there is no cursor to keep and no missed-event window.
+//
+// It writes nothing, and the answer is scoped by what it Covers: `git:ref:*` and `git:head:*`
+// for each repo it actually read. Commits are carried and covered by NOTHING, which is how
+// "keep history" is said — they fall out of the bounded tip window and stay standing.
+func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
+	var out Reflection
+	targets := g.targets(ref)
+	ids := make([]string, 0, len(targets))
+	for id := range targets {
+		ids = append(ids, id)
 	}
-	return nil
+	sort.Strings(ids) // one order, so two passes over the same repos answer the same way
+	for _, id := range ids {
+		rn, err := g.reflectRepo(ctx, id, targets[id])
+		if err != nil {
+			return Reflection{}, fmt.Errorf("git reflect %s: %w", id, err)
+		}
+		out.Covers = append(out.Covers, rn.Covers...)
+		out.Entities = append(out.Entities, rn.Entities...)
+	}
+	return out, nil
 }
 
 // targets is the repo id→dir set a reconcile should touch: all repos for a zero ref, else the
@@ -171,22 +189,43 @@ func (g *Git) targets(ref entity.Ref) map[string]string {
 	return nil
 }
 
-func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir string) error {
-	desired := map[entity.Ref]entity.Obj{}
+// reflectRepo reads one repository. Everything it returns is scoped by the `repo` field —
+// including the covers — so one repo's pass never tombstones another's refs.
+func (g *Git) reflectRepo(ctx context.Context, id, dir string) (Reflection, error) {
+	// What this answer is COMPLETE for: the two mutable kinds, narrowed to this repo by the
+	// field the payloads below already carry. Declared BEFORE the read, and unconditionally:
+	// a repo whose every branch was deleted must still cover `git:ref:{repo: id}`, or the
+	// refs it no longer has would stand forever.
+	//
+	// `git:commit:*` is deliberately absent, and that absence IS the history rule. Commits are
+	// carried in Entities and covered by nothing, so one that has fallen out of the bounded
+	// tip window is simply not mentioned — and an unmentioned, uncovered entity stays.
+	mine := entity.Obj{"repo": id}.Payload()
+	rn := Reflection{Covers: []entity.Pattern{
+		{System: GitSystem, Kind: "ref", Predicate: mine},
+		{System: GitSystem, Kind: "head", Predicate: mine},
+	}}
 
 	// Refs: refs/heads, refs/tags, refs/remotes — git:ref:<repo>/<short> {repo, name, sha, type}.
 	refs, err := gitForEachRef(ctx, dir)
 	if err != nil {
-		return err
+		return Reflection{}, err
 	}
-	for name, r := range refs {
-		desired[entity.Ref{System: GitSystem, Kind: "ref", ID: id + "/" + name}] = entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
+	names := make([]string, 0, len(refs))
+	for name := range refs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		r := refs[name]
+		rn.Add(entity.Ref{System: GitSystem, Kind: "ref", ID: id + "/" + name},
+			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ})
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
 	if head := gitHead(ctx, dir); head != nil {
 		head["repo"] = id
-		desired[entity.Ref{System: GitSystem, Kind: "head", ID: id}] = head
+		rn.Add(entity.Ref{System: GitSystem, Kind: "head", ID: id}, head)
 	}
 
 	// Recent commits: a bounded tip window. Scoped per-repo (git:commit:<repo>/<sha>) — a
@@ -194,46 +233,10 @@ func (g *Git) reconcileRepo(ctx context.Context, store entity.Store, id, dir str
 	// diverges under rebase/amend, and the object format (sha1→sha256) changes hashes. So a
 	// commit belongs to its repo; two repos never share one entity.
 	for _, c := range gitRecentCommits(ctx, dir, g.commitDepth) {
-		desired[entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha}] = entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
+		rn.Add(entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha},
+			entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents})
 	}
-
-	return g.converge(store, id, desired)
-}
-
-// converge writes desired and tombstones this repo's removed refs. Everything is scoped by
-// the `repo` field, so one repo's reconcile never touches another's slice. A ref whose sha is
-// unchanged is skipped, so re-reflecting a quiet repo fires no triggers. Commits (repo-scoped
-// too) are immutable within their repo — Put once when new, never re-Put, and never tombstoned
-// (they fall out of the bounded tip window but the history record is kept).
-func (g *Git) converge(store entity.Store, repo string, desired map[entity.Ref]entity.Obj) error {
-	current := map[entity.Ref]entity.Obj{} // this repo's entities (all kinds)
-	for _, e := range store.List(func(r entity.Ref) bool { return r.System == GitSystem }) {
-		if entity.Str(e.Payload, "repo") == repo {
-			current[e.Ref] = entity.ToObj(e.Payload)
-		}
-	}
-	for ref, p := range desired {
-		if _, exists := current[ref]; exists {
-			if ref.Kind == "commit" || payloadEqual(current[ref], p) {
-				continue // immutable commit, or unchanged ref/head
-			}
-		}
-		if _, _, err := store.Write(entity.Write{At: ref.At(), Value: p.Payload()}); err != nil {
-			return fmt.Errorf("reflecting %s: %w", ref, err)
-		}
-	}
-	for ref := range current {
-		if ref.Kind == "commit" {
-			continue // keep history
-		}
-		if _, want := desired[ref]; !want {
-			// a deleted branch/tag tombstones its git:ref entity
-			if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil {
-				return fmt.Errorf("tombstoning %s: %w", ref, err)
-			}
-		}
-	}
-	return nil
+	return rn, nil
 }
 
 // ── git plumbing (all shape-agnostic; run with the repo dir as cwd) ──────────
@@ -305,18 +308,4 @@ func nonEmptyLines(s string) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
-}
-
-// payloadEqual compares by stringified value, so a store round-trip that shifts numeric
-// types (int↔float) doesn't read as a change.
-func payloadEqual(a, b entity.Obj) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, bv := range b {
-		if av, ok := a[k]; !ok || fmt.Sprint(av) != fmt.Sprint(bv) {
-			return false
-		}
-	}
-	return true
 }

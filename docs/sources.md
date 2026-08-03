@@ -1,10 +1,11 @@
 # Sources: reflecting external systems into the verse
 
-Status: built as a library, not yet reachable from the CLI. The `Source` interface and its
-`Reflector` are in `source/reflector.go`, and `source/git.go` is a multi-repo git Source —
-`Reconcile`, `Webhook`, and `InstallHook`/`RemoveHook`, with tests. What is missing is the
-wiring: no command registers a repo or starts a reflector, so `NewGit` has no caller outside
-its test. Reading this as a design sketch is the one mistake to avoid; the design landed.
+Status: built as a library, not yet reachable from the CLI. The `Source` interface, its
+`Reflector` and the converge the Reflector owns are in `source/reflector.go`, and
+`source/git.go` is a multi-repo git Source — `Reflect`, `Webhook`, and
+`InstallHook`/`RemoveHook`, with tests. What is missing is the wiring: no command registers a
+repo or starts a reflector, so `NewGit` has no caller outside its test. Reading this as a
+design sketch is the one mistake to avoid; the design landed.
 
 Local-tree federation is built too, but as a special case rather than through the `Source`
 below. `verse connect` federates the working tree under a per-session scope: it *writes*
@@ -61,23 +62,43 @@ where multiple triggers write a *shared subject*, not a reflected slice.)
 ## The interface (sketch)
 
 ```go
-// A Source reflects an external system into the entity-verse slice it owns.
+// A Source reflects an external system into the entity-verse slice it owns. It is NOT
+// handed a store: it reads external truth and answers with it, and converging the
+// store with that answer is the Reflector's job.
 type Source interface {
     System() string // the owned slice: <System>:*
 
-    // Reconcile converges the owned slice with external truth. ref == zero → a full
-    // resync; a concrete ref → the targeted reconcile a webhook asked for. It reads
-    // the external system and writes entities; it is the authority.
-    Reconcile(ctx context.Context, store entity.Store, ref entity.Ref) error
+    // Reflect reads external truth for the slice `ref` names — a zero ref is
+    // everything this source owns — and returns it. It does not write.
+    Reflect(ctx context.Context, ref entity.Ref) (Reflection, error)
+}
 
-    // Webhook maps a raw delivery to the ref(s) to reconcile — it does NOT write
-    // entities. Nil/zero requests a full resync.
-    Webhook(r *http.Request) ([]entity.Ref, error)
+type Reflection struct {
+    Covers   []entity.Pattern // what this answer is COMPLETE for: the tombstone authority
+    Entities []entity.Entity
 }
 ```
 
-Plus a `Reflector` (the informer shape): serve `/hooks/<system>` → `Webhook` → enqueue
-a targeted `Reconcile`; and run a periodic full `Reconcile` as the resync net.
+`Covers` is the load-bearing field. An entity under a covered pattern and absent from
+`Entities` is tombstoned; an entity in `Entities` under no covered pattern is written and
+never tombstoned — which is how git says "keep history": it covers `git:ref:*` and
+`git:head:*` for a repo and does not cover `git:commit:*`, so a commit that has fallen out
+of the bounded tip window is simply not mentioned, and stays.
+
+Plus a `Reflector` (the informer shape) which owns the store side of the seam: an initial
+full `Reconcile`, a periodic one as the resync net, and targeted ones kicked by hints.
+Converge lives there, and there only, because the three laws it keeps — skip what is
+unchanged, tombstone only what the answer covers, never tombstone what it does not — are
+knowledge about the entity-verse rather than about git or GitHub, and a connector author
+who had to hold them would get them wrong in a way nothing notices until a charter fires
+two hundred times.
+
+A source that receives its own delivery implements the optional `Hinter`
+(`Webhook(*http.Request) ([]entity.Ref, error)`), which the Reflector serves at
+`/hooks/<system>` and which schedules a reconcile and writes nothing. It is off the `Source`
+interface because a source reached over a url cannot be handed an `*http.Request` at all: it
+parses its own deliveries and hints verse with the refs.
+
 Reflection is mechanical connector code, not an agent — judgment lives in the triggers
 and agent-processes that react to the reflected entities.
 
@@ -99,9 +120,9 @@ built.
 - The "webhook" is a git hook — `post-commit` / `reference-transaction` locally,
   `post-receive` on a bare repo — curling `/hooks/git`. No signing, no network. verse
   installs it the way `connect` installs its poll.
-- Reconcile is cursorless, because git is content-addressed: `git for-each-ref` →
-  a `ref→sha` map, diffed against the verse's `git:ref:*` entities. Comparing shas
-  *is* the level-triggered diff — no since-token, no missed-event window in the poll.
+- Reflection is cursorless, because git is content-addressed: `git for-each-ref` →
+  a `ref→sha` map, which converge diffs against the verse's `git:ref:*` entities. Comparing
+  shas *is* the level-triggered diff — no since-token, no missed-event window in the poll.
 - It subsumes `connect` — it reflects git-*aware* state (branch, HEAD, dirty,
   ahead/behind), which is what SDLC flows react to ("commit landed on main," "branch
   pushed," "tag created"), not "a byte changed."
@@ -116,11 +137,11 @@ needing a diff follows the ref into the real repo via `git show`), and the worki
 tree via `connect`'s `local:dir-status-<scope>:*`. Single writer for `git:*`, so
 idempotent and CAS-free.
 
-Reconcile, concretely:
+Reflect, concretely — and it only reads; the diff-and-write half is converge's:
 ```
-git for-each-ref …            → desired ref set; diff vs List(git:ref:*); write/remove
+git for-each-ref …            → git:ref:<repo>/<short>, covered by {git, ref, {repo}}
 git symbolic-ref HEAD; rev-parse HEAD; rev-list --count @{u}..  → git:head:<repo>
-git status --porcelain        → working-tree entities
+git log -n <depth>            → git:commit:<repo>/<sha>, covered by NOTHING (history)
 ```
 
 A credential-free end-to-end test is straightforward: `git init` in a temp dir,
@@ -148,7 +169,7 @@ root watch that silently drops `FromCommit`, which is what `MountRoot` exists to
 
 The line it draws is clean, and `connect` sits on both sides of it: **bytes somebody asks for
 may be a mount; facts something reacts to must be ordinary writes.** So the reflected slice is
-written to logd exactly as the sketch above has it — `Reconcile` converges by writing — and
+written to logd exactly as the sketch above has it — the Reflector converges by writing — and
 `Source` stays a verse-level interface with nothing underneath it. docd is still in the path,
 because verse's store points at it, but a Source has no more to do with that than any other
 writer does.
@@ -161,8 +182,10 @@ installed hook can POST to — after which the end-to-end path (commit → hook 
 `git:ref:*` changes → a trigger fires) is exercisable rather than merely unit-tested.
 
 Where that should land is [external sources](working/sources.md): a Source deployed and
-installed the way a [runner](runners.md) is, reached over a url, with `Reconcile` split into a
-`Reflect` the external program answers and a converge that stays on verse's side.
+installed the way a [runner](runners.md) is, reached over a url. The seam that makes it
+possible is already cut — `Reconcile` is split into a `Reflect` the external program answers
+and a converge that stays on verse's side — so what remains is the transport and the
+registration.
 
 Write-back stays deferred to the outbound executor path
 ([the write half of expose](roadmap/expose.md#the-write-half)); a Source only reflects.
