@@ -75,6 +75,12 @@ type Server struct {
 	// scope is dropped (disconnect).
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// Per-registration reflectors. An installed source runs one, under a child of ctx, and it
+	// is the only handle on a goroutine that WRITES a slice — so a remove that forgets to stop
+	// one leaks a second writer past the disjointness check the install just made.
+	srcMu   sync.Mutex
+	srcRuns map[string]*sourceRun
+
 	// standingOwner answers "which standing binding covers this subject", for the paths that
 	// post a question without one — a brokered run's frames, whose deriver ran elsewhere.
 	standingOwner func(subject string) string
@@ -129,7 +135,13 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	reg := process.NewRegistry()
 	eng := trigger.New(store, reg)
 	procd := processd.New(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd, scopeEngs: map[string]*scopeEngine{}}
+	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd,
+		scopeEngs: map[string]*scopeEngine{}, srcRuns: map[string]*sourceRun{},
+		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
+		// check at every use: a source installed on a server nobody started still needs a
+		// context to run under, and one that is never cancelled would be worse than one
+		// cancelled at process exit.
+		ctx: context.Background()}
 	s.runner = localRunner{procd} // the in-process runner ("/broker/local")
 
 	// Publish every posed question as `gate:question:<id>`, from both places questions are
@@ -707,6 +719,10 @@ func (s *Server) Start(ctx context.Context) {
 	if err := s.Eng.LoadGoals(); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: goals: %v\n", err)
 	}
+	// And the sources, last: each one's first pass is a write the restored charter should be
+	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
+	// missed by being late it would miss for good.
+	s.restoreSources()
 }
 
 // Handler returns the HTTP surface. Observation (read plane) and control are

@@ -121,11 +121,28 @@ type Hinter interface {
 // It also owns converge — the store side of the seam — so every source, in-process or
 // deployed, converges through one implementation.
 type Reflector struct {
-	src   Source
-	store entity.Store
-	every time.Duration
-	kick  chan entity.Ref
-	onErr func(error)
+	src    Source
+	store  entity.Store
+	every  time.Duration
+	kick   chan entity.Ref
+	onPass func(Pass)
+}
+
+// Pass is what one reconcile did, handed to OnPass so a caller can record it without a second
+// read of the store.
+//
+// Wrote is the count of entities written or tombstoned, and ZERO IS THE COMMON CASE: external
+// truth is usually what it was a minute ago. That distinction is the whole reason this carries
+// a count rather than just an error — "a pass happened" and "a pass changed something" are
+// different facts, and a caller that stamps the registration on the first writes to it every
+// poll interval forever.
+type Pass struct {
+	// Ref is what was reconciled; the zero ref is a full pass.
+	Ref entity.Ref
+	// Wrote counts the entities this pass wrote or tombstoned.
+	Wrote int
+	// Err is the reflect or converge failure, nil when the pass completed.
+	Err error
 }
 
 // NewReflector reflects src into store, with a full resync every `every` (<=0 disables the
@@ -134,9 +151,12 @@ func NewReflector(src Source, store entity.Store, every time.Duration) *Reflecto
 	return &Reflector{src: src, store: store, every: every, kick: make(chan entity.Ref, 64)}
 }
 
-// OnError registers a sink for reconcile errors (else they are dropped — the periodic net
-// retries anyway).
-func (rf *Reflector) OnError(f func(error)) *Reflector { rf.onErr = f; return rf }
+// OnPass registers a sink called after every reconcile with what it did. Without one, errors
+// are dropped — the periodic net retries anyway.
+//
+// It replaced an OnError that carried only the failure, which could say a source was broken and
+// never that it was working: clearing a recorded error needs the SUCCESS as an event too.
+func (rf *Reflector) OnPass(f func(Pass)) *Reflector { rf.onPass = f; return rf }
 
 // Reconcile is one level-triggered pass: reflect the slice `ref` names, then converge the
 // store with the answer. A zero ref is a full pass.
@@ -146,17 +166,17 @@ func (rf *Reflector) OnError(f func(error)) *Reflector { rf.onErr = f; return rf
 // wanting one pass (a test, a `verse source sync`) should drive the same path they do rather
 // than a second one that could differ.
 func (rf *Reflector) Reconcile(ctx context.Context, ref entity.Ref) error {
+	p := Pass{Ref: ref}
 	rn, err := rf.src.Reflect(ctx, ref)
 	if err != nil {
-		return fmt.Errorf("reflect %s: %w", rf.src.System(), err)
+		p.Err = fmt.Errorf("reflect %s: %w", rf.src.System(), err)
+	} else {
+		p.Wrote, p.Err = rf.converge(ctx, rn)
 	}
-	return rf.converge(ctx, rn)
-}
-
-func (rf *Reflector) reconcile(ctx context.Context, ref entity.Ref) {
-	if err := rf.Reconcile(ctx, ref); err != nil && rf.onErr != nil {
-		rf.onErr(err)
+	if rf.onPass != nil {
+		rf.onPass(p)
 	}
+	return p.Err
 }
 
 // converge writes what a reflection changed and tombstones what it covers and did not carry.
@@ -177,10 +197,11 @@ func (rf *Reflector) reconcile(ctx context.Context, ref entity.Ref) {
 // A merge would leave the stale field standing, and — since the comparison above is against
 // what the source said — the entity would then differ on every pass forever, firing its
 // triggers each time. The read Modify costs is paid only by an entity that actually changed.
-func (rf *Reflector) converge(ctx context.Context, rn Reflection) error {
+func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 	if err := rn.Check(rf.src.System()); err != nil {
-		return err
+		return 0, err
 	}
+	wrote := 0
 	current := rf.current(rn)
 	desired := make(map[entity.Ref]bool, len(rn.Entities))
 	for _, e := range rn.Entities {
@@ -197,18 +218,20 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) error {
 		if err := entity.Modify(ctx, rf.store, e.Ref, func(entity.Payload) entity.Payload {
 			return payload
 		}); err != nil {
-			return fmt.Errorf("reflecting %s: %w", e.Ref, err)
+			return wrote, fmt.Errorf("reflecting %s: %w", e.Ref, err)
 		}
+		wrote++
 	}
 	for _, ref := range covered(rn.Covers, current) {
 		if desired[ref] {
 			continue
 		}
 		if _, _, err := rf.store.Write(entity.Write{At: ref.At()}); err != nil {
-			return fmt.Errorf("tombstoning %s: %w", ref, err)
+			return wrote, fmt.Errorf("tombstoning %s: %w", ref, err)
 		}
+		wrote++
 	}
-	return nil
+	return wrote, nil
 }
 
 // current reads what stands in the store for the systems the reflection touches — one List,
@@ -318,7 +341,7 @@ func (rf *Reflector) Hint(refs ...entity.Ref) {
 // Run does the initial full reconcile, then serves hint-kicked and periodic reconciles until
 // ctx is cancelled. The caller mounts Hooks() on an HTTP server; Run owns the reconcile loop.
 func (rf *Reflector) Run(ctx context.Context) error {
-	rf.reconcile(ctx, entity.Ref{}) // initial full sync
+	_ = rf.Reconcile(ctx, entity.Ref{}) // initial full sync; OnPass carries what it did
 	var tick <-chan time.Time
 	if rf.every > 0 {
 		t := time.NewTicker(rf.every)
@@ -330,9 +353,9 @@ func (rf *Reflector) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-tick:
-			rf.reconcile(ctx, entity.Ref{}) // full resync net
+			_ = rf.Reconcile(ctx, entity.Ref{}) // full resync net
 		case ref := <-rf.kick:
-			rf.reconcile(ctx, ref) // targeted, from a hint
+			_ = rf.Reconcile(ctx, ref) // targeted, from a hint
 		}
 	}
 }

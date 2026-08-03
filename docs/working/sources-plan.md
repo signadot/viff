@@ -180,6 +180,13 @@ existing answer to "a long-lived thing owned by an entity".
 - `lastReflect`/`lastError` are written here, on the rule decided above: `lastError` on
   transition, `lastReflect` only when a pass wrote something.
 
+One thing this step turned up that the plan did not predict, recorded here because it is a rule
+rather than an incident: **every status write needs a still-installed precondition, and it has
+to ask about a FIELD.** A write at a field of an absent entity CREATES it, so a pass in flight
+when a source is removed resurrects the registration as a stub carrying only a timestamp — and
+`entity.Present()` on the ref does not catch it, because that is a null pattern and a tombstone
+IS a null value at the entity's own path. Asking whether `name` still stands does catch it.
+
 **Proves:** an added source reflects with no restart (install a `dir` source over a temp repo,
 wait for `git:head:*`); a restart brings it back and it reflects again (the `smoke.sh` restart
 section is the pattern); removing one stops its goroutine (assert no further writes after a

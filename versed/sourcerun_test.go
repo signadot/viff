@@ -1,0 +1,264 @@
+package versed
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/source"
+)
+
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// repoWithCommit is a repo with something in it, so a reflection has entities to write.
+func repoWithCommit(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	initRepo(t, dir)
+	gitIn(t, dir, "commit", "--allow-empty", "-m", "first")
+	return dir
+}
+
+func waitForRef(t *testing.T, store entity.Reader, ref entity.Ref) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok, _ := store.Get(ref); ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", ref)
+}
+
+// An installed source REFLECTS, with no restart. A registration that installed and then did
+// nothing until somebody bounced the server would be a silence an operator cannot debug.
+func TestAnInstalledSourceReflects(t *testing.T) {
+	requireGit(t)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	dir := repoWithCommit(t)
+	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+		"system": "git", "name": "local", "dir": dir,
+	}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	waitForRef(t, srv.Store, entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)})
+
+	// …and removing it STOPS the reflector. A reflector outliving its registration is a writer
+	// on a slice nothing claims — the second writer the install check exists to prevent,
+	// arriving through the back door.
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/git/local", nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove = %s", resp.Status)
+	}
+	srv.srcMu.Lock()
+	n := len(srv.srcRuns)
+	srv.srcMu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d reflector(s) still running after the registration went away", n)
+	}
+}
+
+// A restart brings back the program it went down with. The registration is durable, so the
+// reflector has to be reconstructed from it — there is nothing else to reconstruct it from.
+func TestSourcesAreRestoredOnRestart(t *testing.T) {
+	requireGit(t)
+	store := entitytest.Store(t)
+	dir := repoWithCommit(t)
+
+	first := NewWithStore(ScriptedBuilder, store)
+	ts := httptest.NewServer(first.Handler())
+	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+		"system": "git", "name": "local", "dir": dir,
+	}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s", resp.Status)
+	}
+	head := entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)}
+	waitForRef(t, store, head)
+	ts.Close()
+	first.stopSource(source.Ref("git", "local"))
+
+	// The world moves while verse is down, which is the case a restart has to survive: a
+	// level-triggered pass reads what IS, so a branch made in the gap is not a missed event.
+	gitIn(t, dir, "branch", "while-down")
+
+	// A new server over the same store: the registration is all it has.
+	second := NewWithStore(ScriptedBuilder, store)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	second.ctx = ctx
+	second.restoreSources()
+	t.Cleanup(second.stopAllSources)
+
+	second.srcMu.Lock()
+	n := len(second.srcRuns)
+	second.srcMu.Unlock()
+	if n != 1 {
+		t.Fatalf("%d reflectors after restart, want 1", n)
+	}
+	// And it is really reflecting rather than merely running: the restored reflector's own
+	// first pass picks up what happened while it was gone.
+	waitForRef(t, store, entity.Ref{
+		System: source.GitSystem, Kind: "ref", ID: baseOf(dir) + "/while-down",
+	})
+}
+
+// What a pass writes about ITSELF, and what it deliberately does not.
+//
+// The anti-churn assertion is the one that matters and the one most likely to be broken later
+// by somebody stamping a heartbeat here: a pass that changed nothing must leave the
+// registration byte-identical, or every source writes to `sources:*` once per resync interval
+// forever and anything watching that slice fires on an idle verse.
+func TestAPassRecordsItselfWithoutChurn(t *testing.T) {
+	requireGit(t)
+	srv := testServer(t)
+	dir := repoWithCommit(t)
+	ref := source.Ref("git", "local")
+	e := source.Entity{Name: "local", System: "git", Dir: dir}
+
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "local", "system": "git", "dir": dir,
+	}.Payload())
+	if err := srv.startSource(e); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer srv.stopSource(ref)
+
+	// The first pass wrote the repo, so it stamps the cursor.
+	waitForRef(t, srv.Store, entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)})
+	deadline := time.Now().Add(5 * time.Second)
+	var stamped string
+	for time.Now().Before(deadline) && stamped == "" {
+		reg, _, _ := srv.Store.Get(ref)
+		stamped = entity.Str(reg.Payload, "lastReflect")
+		time.Sleep(10 * time.Millisecond)
+	}
+	if stamped == "" {
+		t.Fatal("a pass that wrote the slice should stamp lastReflect — it is the poll cursor")
+	}
+
+	// A quiet pass writes NOTHING to the registration.
+	before, _, _ := srv.Store.Get(ref)
+	rev := srv.Store.Rev()
+	if err := srv.reconcileOnce(t, e); err != nil {
+		t.Fatalf("second pass: %v", err)
+	}
+	after, _, _ := srv.Store.Get(ref)
+	if !entity.Equal(before.Payload, after.Payload) {
+		t.Fatalf("a quiet pass rewrote the registration:\n before %v\n after  %v",
+			entity.ToObj(before.Payload), entity.ToObj(after.Payload))
+	}
+	if srv.Store.Rev() != rev {
+		t.Fatal("a quiet pass moved the store — nothing changed, so nothing should have")
+	}
+}
+
+// A failure is recorded once and cleared by the recovery. Written on TRANSITION, so a source
+// failing every minute writes once rather than every minute.
+func TestLastErrorIsWrittenOnTransition(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "gone")
+	// A url nothing answers: every pass fails the same way.
+	e := source.Entity{Name: "gone", System: "git", URL: "http://127.0.0.1:1"}
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "gone", "system": "git", "url": e.URL,
+	}.Payload())
+
+	run := &sourceRun{}
+	fail := source.Pass{Err: errFor("unreachable")}
+	srv.recordPass(srv.Store, ref, run, fail)
+	reg, _, _ := srv.Store.Get(ref)
+	if entity.Str(reg.Payload, "lastError") == "" {
+		t.Fatal("a failing pass should record why")
+	}
+
+	// The same failure again: no write, because nothing changed about it.
+	rev := srv.Store.Rev()
+	srv.recordPass(srv.Store, ref, run, fail)
+	if srv.Store.Rev() != rev {
+		t.Fatal("the same failure twice should write once — lastError is a transition")
+	}
+
+	// And the recovery CLEARS it, which is the half an error-only hook could never do: the
+	// registration stops carrying an error rather than carrying an empty one.
+	srv.recordPass(srv.Store, ref, run, source.Pass{})
+	reg, _, _ = srv.Store.Get(ref)
+	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
+		t.Fatalf("a recovery should remove lastError, got %v", entity.ToObj(reg.Payload))
+	}
+}
+
+// baseOf is the repo id a `dir` registration gets: the directory's base name, which is what
+// Git.AddRepo defaults to.
+func baseOf(dir string) string { return filepath.Base(filepath.Clean(dir)) }
+
+func errFor(s string) error { return errors.New(s) }
+
+// reconcileOnce drives one pass through the same path Run does, so a test asserting what a pass
+// writes is asserting about the real one.
+func (s *Server) reconcileOnce(t *testing.T, e source.Entity) error {
+	t.Helper()
+	src, err := s.sourceFor(e)
+	if err != nil {
+		return err
+	}
+	ref := source.Ref(e.System, e.Name)
+	run := &sourceRun{}
+	rf := source.NewReflector(src, s.Store, 0)
+	rf.OnPass(func(p source.Pass) { s.recordPass(s.Store, ref, run, p) })
+	return rf.Reconcile(context.Background(), entity.Ref{})
+}
+
+// A pass that lands after the registration went away must not bring it back.
+//
+// This is a race a removal cannot win on its own: a write at a FIELD of an absent entity
+// CREATES it, so a pass already in flight when the source was removed resurrects it as a stub
+// carrying nothing but a timestamp — an installed-looking source with no url and no ownership,
+// which a restart would then try to restore. It happened, in the CLI test, before the
+// precondition existed.
+//
+// The precondition asks about `name` rather than about the entity, and that detail is the
+// point: entity.Present() is a null pattern, and a tombstone IS a null value at the entity's
+// own path, so a presence test on the ref is satisfied by the very tombstone it should notice.
+func TestAPassAfterRemovalDoesNotResurrectTheRegistration(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "gone")
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "gone", "system": "git", "url": "http://127.0.0.1:1",
+	}.Payload())
+
+	// Removed, exactly as removeSource does it.
+	if _, _, err := srv.Store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	// …and now a pass that was already in flight reports itself, both ways.
+	run := &sourceRun{}
+	srv.recordPass(srv.Store, ref, run, source.Pass{Err: errFor("unreachable")})
+	srv.recordPass(srv.Store, ref, run, source.Pass{Wrote: 3})
+
+	if e, ok, _ := srv.Store.Get(ref); ok {
+		t.Fatalf("a pass after removal resurrected the registration as %v", entity.ToObj(e.Payload))
+	}
+}
