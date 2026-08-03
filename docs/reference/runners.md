@@ -57,7 +57,7 @@ store — it is answered live and discarded, so a reachability column is always 
 ## On a spawn
 
 `runner:` on a charter's `spawn:`, and `--runner` / `runner` on the ad-hoc face. Empty means the
-verse's default runner, which `verse up --runner` / `--broker` still set.
+verse's default runner, which `verse up --runner` / `--broker` set.
 
 A spawn naming a runner that is not installed is **refused** on both paths — an ad-hoc run with
 `400` and the name in the message, a charter spawn as a failed spawn whose reason travels onto

@@ -5,11 +5,11 @@ the process records which it went to — so a drive can deploy somewhere to run 
 deployment does not otherwise need to know about, and use it for *some* of the work rather than
 all of it.
 
-That last clause is the whole feature. A drive could always deploy a runner: `broker.New()` and
-`WorkerHandler()` are exported and a second `verse up --broker` is one command. What it could not
-do was use that runner for part of the work — a second runner meant a second verse, its own store
-and engine and entities, and then everything went there, which is the opposite of dogfooding in
-the deployment.
+Per-spawn selection is the whole of it. Deploying a runner is not the hard part — `broker.New()`
+and `WorkerHandler()` are exported and a second `verse up --broker` is one command. Using one for
+*part* of the work is: a runner that every spawn must go to is a whole second verse, its own
+store and engine and entities, and the drive's work is then somewhere else entirely, which is
+the opposite of dogfooding in the deployment.
 
 To build one, start from [the sample runner](reference/examples/runner/main.go): it is a real
 program that compiles with the tree, and the two functions you change are marked.
@@ -95,8 +95,8 @@ deployment says one thing and the verse does another. An ad-hoc run is refused w
 the message and nothing is started; a charter spawn has nobody to answer, so it fails the spawn
 and the reason travels onto the flow.
 
-A spawn that names none goes to the verse's own default runner, which `--runner` and `--broker`
-at startup still set.
+A spawn that names none goes to the verse's own default runner, which `verse up --runner` and
+`--broker` set.
 
 ### Not a provider
 
@@ -128,7 +128,7 @@ whether a runner is well, the next ask is that it act on one.
 
 `verse ps --runner` selects on the name **stamped at spawn**, not on what is installed now, so it
 keeps answering for a runner that has since been removed — which is when an operator most wants
-it, that being exactly the case `verse runners` can no longer show.
+it, that being exactly the case `verse runners` does not show.
 
 `verse ps` reads the `process:instance` mirror rather than asking each installed runner, so one
 runner being down costs live detail and not rows. A fan-out would let a single dead runner take
@@ -141,9 +141,9 @@ what a restart reconstructs the runner from, so work outlives the verse that sta
 outlives the entity that named its runner: removing a runner entity cannot orphan work by making
 it unreconstructible. The name is what a person reads and what `verse ps --runner` selects on.
 
-Getting that split wrong is the one place this design could have gone quietly wrong. Stamping
-only the name would have made a restart depend on the runner entity still existing — a deletion
-with an action at a distance.
+That split is the one place this design can go quietly wrong. Stamping only the name would make
+a restart depend on the runner entity still existing, so removing one would orphan work that is
+running perfectly well — a deletion with an action at a distance.
 
 ## Removing one
 
@@ -179,7 +179,7 @@ delivered. Those are orphans, and the orphan path covers them.
 
 The removal itself is never refused: `--leave` always succeeds, because there is no drain here
 and a refusal with no way to satisfy it would be a trap. Its visible cost, stated rather than
-discovered: `verse ps` will show processes on a runner `verse runners` no longer lists. That is
+discovered: `verse ps` shows processes on a runner that `verse runners` does not list. That is
 the true state, and the alternatives are worse.
 
 Removing a resolver binding *hands on* what it held, because a question has a layer above to go
@@ -227,7 +227,8 @@ where it should go.
 
 ## The corner that is convention rather than construction
 
-**The contract does not say HOW control is applied**, and per-process runners make that reachable.
+**The contract does not say HOW control is applied**, and a url chosen per spawn is what makes
+that reachable.
 
 An answer accepted for a brokered process is *queued* for a worker that must dial in and pull it,
 and the question record says so — `delivered: false` until the acknowledgement clears it. verse
@@ -235,22 +236,21 @@ learns which case it is by asking the handle, in Go (`RelaysControl() bool`); `b
 returns true, and **`runner.HTTP`'s handle does not implement it at all**, so anything reached
 over a URL is treated as applying control synchronously.
 
-That is correct today by *configuration*, not by construction: the runner faces anyone binds do
-apply control synchronously. Nothing detects a runner that queues, and this feature is what turns
-"the person deploying verse chose one runner URL" into "anyone who can write an entity chooses a
-runner URL per spawn".
+That holds by *configuration*, not by construction: the runner faces anyone binds do apply
+control synchronously, and nothing detects one that queues. The exposure is that the url is
+chosen per spawn by anyone who can write an entity, rather than once by whoever deploys verse.
 
-The answer this build relies on is that **the runner refuses**. A real runner knows what it is
-and what it can host; verse does not, and cannot be made to without either a contract change or a
+The answer this relies on is that **the runner refuses**. A real runner knows what it is and
+what it can host; verse does not, and cannot be made to without either a contract change or a
 probe. So a runner handed a launch it cannot host with the semantics verse expects returns an
 error, and the onus sits with whoever deployed it — which is the drive, which is the party that
-knows. That answer is live rather than notional: a refused spawn comes back as a failed handle
-carrying the runner's own words, onto the flow.
+knows. A refused spawn comes back as a failed handle carrying the runner's own words, onto the
+flow — so the refusal is a mechanism rather than a convention.
 
 A ban would be worse than the risk. "A runner entity may not point at a queuing runner" means a
-drive's broker can only be reached by making it the whole verse's runner again — not "you cannot
-deploy a broker", but "you cannot have one for some of the work", which is the all-or-nothing
-this feature exists to remove.
+drive's broker is reachable only by making it the whole verse's runner — not "you cannot deploy
+a broker", but "you cannot have one for some of the work", which is exactly the all-or-nothing
+per-spawn selection is for.
 
 Where it should end up is a descriptor on the contract — `GET /runner`, saying what this is and
 how control is applied — which would answer both this and the install probe in one call, and
@@ -262,8 +262,3 @@ debugging a stuck process will ask it.
 runner entity a reachable address. The cost is that a charter cannot say "explicitly in-process"
 — it can only decline to say anything. If a deployment ever has a default that is not local, that
 distinction starts to matter.
-
----
-
-This began as a working note. The plan it was — four steps, each with what it had to prove —
-is in the history of this file rather than reproduced here.
