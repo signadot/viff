@@ -287,7 +287,7 @@ step "gate: an ask gate holds; answering it releases the action"
 v trigger add --file - >/dev/null <<'JSON' || die "gated charter add failed"
 [ { "name": "smoke-gated",
     "condition": { "subject": { "system": "demo", "kind": "release", "value": { "stage": "open" } } },
-    "gates":     [ { "name": "ship", "mode": "ask" } ],
+    "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
 v entity put demo:release:1 '{"stage":"open"}' >/dev/null || die "entity put failed"

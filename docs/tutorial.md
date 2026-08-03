@@ -331,7 +331,7 @@ running is not a second firing.
 
 ```tony
   gates:
-  - { name: approval, mode: ask }
+  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 ```
 
 ```sh
@@ -352,6 +352,11 @@ and `spawns` what a "yes" will start — settled before the question is asked, e
 nothing is running yet. The id is a function of (trigger, gate, subject), so a rule
 re-evaluated at every commit asks **once**: a firing that finds its question already standing
 joins it instead of posting a copy. [§5](#5-gates-and-the-docket) is the rest of gates.
+
+`onDenied` is the other half of the answer, and the one that is easy to leave out. A denied
+firing writes nothing — so without it the subject stays in the state that asked, and the next
+commit that touches it asks you the same question again, over the answer you already gave.
+Saying what a no means is what stops that; verse warns at install if you don't.
 
 ### seq — steps in order
 

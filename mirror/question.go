@@ -79,6 +79,7 @@ func PostQuestion(store entity.Store, p process.Pending, processID string) {
 	if eff := effectLists(p.Effects); len(eff) > 0 {
 		rec["effects"] = eff
 	}
+	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
 }
 
@@ -317,6 +318,40 @@ func effectLists(effs []process.Effect) entity.Obj {
 		}
 	}
 	return out
+}
+
+// clearPriorAnswer prepares a record that is being posed AGAIN under an id that already
+// settled — a trigger gate's id is a function of (rule, gate, subjects), so a re-firing about
+// the same subject re-poses the same one.
+//
+// Without it the write merges and the record says two things at once: pending, and answered by
+// somebody with a verdict and a time. What a person then reads on the docket is a question to
+// decide, already stamped with who decided it and what they said. Nil rather than absent,
+// because a write merges and saying "that is gone" is the writer's job.
+//
+// It does NOT refuse the post. The record is a projection of a registry that is genuinely
+// waiting for an answer, so a post that declined to write would leave a live question invisible
+// on every surface — worse than the thing it fixed. The earlier answer is not lost either: it
+// is at the commit that made it, which is what the store is for.
+//
+// `askedAgain` marks it, because "you have seen this before" is the fact a reader wants and the
+// cleared fields can no longer say. The cause is upstream — a gate whose refusal writes nothing
+// its subject reads, which advise names at install.
+func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok {
+		return
+	}
+	switch entity.Str(e.Payload, "status") {
+	case QuestionAnswered, QuestionOrphaned:
+	default:
+		return
+	}
+	for _, k := range []string{"verdict", "by", "why", "say", "answeredAt", "delivered",
+		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt"} {
+		rec[k] = nil
+	}
+	rec["askedAgain"] = true
 }
 
 func writeAt(store entity.Store, ref entity.Ref, o entity.Obj) {

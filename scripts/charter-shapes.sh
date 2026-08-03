@@ -74,7 +74,7 @@ shape_tony() {
 			  condition:
 			    subject: { system: demo, kind: ask, value: { stage: open } }
 			  gates:
-			  - { name: approval, mode: ask }
+			  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 			  action:
 			    patch:  { stage: reviewing }
 			    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 2" }

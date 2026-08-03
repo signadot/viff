@@ -444,6 +444,46 @@ sign-off is two `ask` gates. A gate can also carry a `formula` the verse resolve
 vote, a deadline, a threshold — which is the temporal layer of this document at work on the
 guard.
 
+### `onDenied` — what a no means
+
+A denied firing writes nothing: a firing that did not happen leaves no trace of having
+happened. The consequence is that the subject is left in the exact state that asked the
+question, so the next commit that touches it re-selects it, the rule fires again, and the gate
+is re-posed under the same id — to somebody who already answered it.
+
+The latch a well-formed rule carries cannot help, because it lives in the action and on a deny
+the action never runs. So the gate says what its own refusal means:
+
+```tony
+  gates:
+  - name: approval
+    mode: ask
+    onDenied: { patch: { stage: rejected } }
+```
+
+It is an ordinary action — `patch`, `derive`, `spawn`, its own completion hooks — applied about
+the same subjects the firing was about. It hangs off the GATE rather than the action because a
+no is the gate's outcome: two gates refuse for different reasons, and each says what its own
+refusal means. It is not a completion hook and needs no spawn of its own.
+
+Only a committed refusal runs it. A resolver that could not be reached, or a monitor that ended
+before its motion committed, said nothing at all — and writing a rejection on their behalf would
+put a decision in the store that nobody made. It applies on both arms: a posed `ask` that is
+answered no, and a `formula` whose motion commits a deny.
+
+Omitting it is legitimate — "ask again next time somebody touches it" is a real policy — so a
+gate without one earns an advisory at install rather than a refusal. To say a no is final
+without changing the subject's own state, the vanishing-marker shape works:
+
+```tony
+  condition:
+    subject: { system: demo, kind: pr, value: !and [ { stage: open }, !not { blocked: true } ] }
+  gates:
+  - { name: approval, mode: ask, onDenied: { patch: { blocked: true } } }
+```
+
+Removing the marker is then what re-opens the question.
+
 ## `action` — what fires
 
 Data, not code. An action needs no target of its own: it acts on the condition's subject.

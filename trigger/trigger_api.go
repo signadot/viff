@@ -59,6 +59,14 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 		if _, err := g.mode(); err != nil {
 			return err
 		}
+		// An onDenied is an ordinary action and faces every check one faces — including
+		// that ITS own completion hooks need a spawn. What it does not need is a spawn of
+		// its own: it is not a completion hook, it is what a refusal means.
+		if g.OnDenied != nil {
+			if err := g.OnDenied.validate(); err != nil {
+				return fmt.Errorf("trigger %q: gate %q onDenied: %w", t.Name, g.Name, err)
+			}
+		}
 	}
 	// LEVEL DISCIPLINE: a subject inside its stratum's pattern, a derive inside some strictly
 	// higher one's. Syntactic like the rest, and neither reads the store.

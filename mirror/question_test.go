@@ -127,3 +127,50 @@ func TestAQuestionWithNoEffectsIsStillOnTheDocket(t *testing.T) {
 		t.Fatalf("selected %v on verbs: [write], want none", got)
 	}
 }
+
+// A question posed AGAIN under an id that already settled must read as a question, not as a
+// question and its own answer at once.
+//
+// A trigger gate's id is a function of (rule, gate, subjects), so a re-firing about the same
+// subject re-poses the same one — and a write merges, so `status: pending` landed on top of a
+// verdict, a `by` and an `answeredAt` that stayed. What a person read on the docket was a
+// question to decide, already stamped with who decided it and what they said.
+func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
+	store := entitytest.Store(t)
+	pose(t, store, "guard~1", "approval", "")
+	AnswerQuestion(store, "guard~1", process.Resolution{
+		Proceed: true, By: "human:scott", Steer: []string{"ship it"}})
+
+	pose(t, store, "guard~1", "approval", "") // the rule fires again
+
+	e, ok, err := store.Get(QuestionRef("guard~1"))
+	if err != nil || !ok {
+		t.Fatal("no record")
+	}
+	got := entity.ToObj(e.Payload)
+	if got["status"] != QuestionPending {
+		t.Fatalf("status = %v, want pending — it is genuinely being asked again", got["status"])
+	}
+	for _, k := range []string{"verdict", "by", "say", "answeredAt"} {
+		if got[k] != nil {
+			t.Fatalf("%s = %v survived the re-posing: the docket shows a question already "+
+				"stamped with its own answer (%+v)", k, got[k], got)
+		}
+	}
+	// And says so, since the cleared fields no longer can. The earlier answer is not lost —
+	// it is at the commit that made it.
+	if got["askedAgain"] != true {
+		t.Fatalf("nothing marks this as asked before: %+v", got)
+	}
+}
+
+// The ordinary case is untouched: a first posing has nothing to clear and says nothing about
+// having been asked before.
+func TestAFirstPosingIsNotMarked(t *testing.T) {
+	store := entitytest.Store(t)
+	pose(t, store, "guard~2", "approval", "")
+	e, _, _ := store.Get(QuestionRef("guard~2"))
+	if got := entity.ToObj(e.Payload); got["askedAgain"] != nil {
+		t.Fatalf("a first posing was marked as a repeat: %+v", got)
+	}
+}

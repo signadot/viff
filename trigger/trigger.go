@@ -227,6 +227,22 @@ type Gate struct {
 	Name    string   `tony:"field=name,omitzero"`
 	Mode    string   `tony:"field=mode,omitzero"` // auto | ask | park
 	Formula *Formula `tony:"field=formula,omitzero"`
+	// OnDenied is what a NO means for the subject — an action applied when this gate
+	// refuses, about the same subjects the firing was about.
+	//
+	// It exists because a denied firing otherwise writes nothing at all (see Engine.fire:
+	// "no budget consumed"), so the subject is left in the state that asked the question.
+	// Any later commit that touches it re-selects it, the rule fires again, and the gate is
+	// re-posed under its deterministic id — over an answer somebody already gave. No rule
+	// shape can author its way out of that, because the latch a well-formed rule carries
+	// lives in the action, and on a deny the action never runs.
+	//
+	// It hangs off the GATE rather than the action because a no is the gate's outcome: two
+	// gates on one rule refuse for different reasons, and each says what its own refusal
+	// means. That also keeps it clear of onDone/onFailed/onCancelled/onOrphaned, which are
+	// completion hooks for a spawn — a denied gate has no process to complete, which is why
+	// Action.validate requires a spawn for those and must not for this one.
+	OnDenied *Action `tony:"field=onDenied,omitzero"`
 }
 
 // mode resolves the gate's autonomy mode. A temporal gate (Formula set) with no explicit

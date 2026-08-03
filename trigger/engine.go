@@ -604,6 +604,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	allProceed := true
+	// The gates that actually REFUSED, which is not the same set as "the gates that did not
+	// proceed": a resolver that errored, or a monitor that ended before its motion committed,
+	// said nothing. Applying a refusal's consequence to those would write a rejection nobody
+	// made.
+	var denied []Gate
 
 	for _, gate := range t.AllGates() {
 		if gate.Formula != nil { // temporal gate: monitored on the store, not posed
@@ -614,11 +619,16 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			wg.Add(1)
 			go func(g Gate, gname string) {
 				defer wg.Done()
-				if !e.monitorGate(ctx, t, g, gname, subjects) {
-					mu.Lock()
-					allProceed = false
-					mu.Unlock()
+				proceed, decided := e.monitorGate(ctx, t, g, gname, subjects)
+				if proceed {
+					return
 				}
+				mu.Lock()
+				allProceed = false
+				if decided { // committed a deny, rather than the monitor ending
+					denied = append(denied, g)
+				}
+				mu.Unlock()
 			}(gate, gname)
 			continue
 		}
@@ -643,20 +653,48 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			BoundTo: t.GateResolver(),
 		}
 		wg.Add(1)
-		go func(d process.GateQuestion, gname string) {
+		go func(g Gate, d process.GateQuestion, gname string) {
 			defer wg.Done()
 			res, err := e.resolver.Resolve(ctx, d, process.ToolUse{Name: "trigger:" + t.Name})
 			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
-			if err != nil || !res.Proceed {
-				mu.Lock()
-				allProceed = false
-				mu.Unlock()
+			if err == nil && res.Proceed {
+				return
 			}
-		}(d, gname)
+			mu.Lock()
+			allProceed = false
+			if err == nil { // answered, and the answer was no
+				denied = append(denied, g)
+			}
+			mu.Unlock()
+		}(gate, d, gname)
 	}
 	wg.Wait()
 
 	if !allProceed {
+		// A no is a decision, and until this it was a decision with no consequence in the
+		// store: nothing was written, so the subject stayed in the state that asked the
+		// question, and the next commit to touch it for any reason re-fired the rule and
+		// re-posed the same deterministic gate id over the answer somebody had given. The
+		// latch a well-formed rule carries could not help — it lives in the action, and on
+		// a deny the action never runs.
+		//
+		// So the charter says what a no means, and the engine writes nothing of its own
+		// invention. A gate with no onDenied behaves exactly as it did (advise names it at
+		// install), which is what keeps this additive.
+		for _, g := range denied {
+			if g.OnDenied == nil {
+				continue
+			}
+			gname := g.Name
+			if gname == "" {
+				gname = t.Name
+			}
+			// Addressed as its place in the charter, like a completion hook's chain: the
+			// id it writes or spawns under is where a reader can go and find the words.
+			if err := g.OnDenied.apply(t.Name+"."+gname+".onDenied", oc, subjects, e, fromSubject); err != nil {
+				e.tracef("gate %s/%s onDenied: %v", t.Name, gname, err)
+			}
+		}
 		return // some gate denied — no budget consumed
 	}
 	// Counted only for a firing that proceeds, so a denied gate leaves no trace of a firing
@@ -674,9 +712,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 // monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the
 // store's watch stream, then latches the verdict via a CAS predicated on the witness
 // (revocable-until-commit + terminal-once). It returns whether the action should proceed
-// (false = ctx ended, or the gate committed a deny). If a revoke lands between
-// satisfaction and the commit, the CAS fails and it re-monitors.
-func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, subjects []entity.Ref) bool {
+// It returns (proceed, decided): `decided` separates a committed refusal from a monitor that
+// ended before its motion committed, because only the first is an answer — and only an answer
+// carries an onDenied. If a revoke lands between satisfaction and the commit, the CAS fails and
+// it re-monitors.
+func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, subjects []entity.Ref) (bool, bool) {
 	// The channel is keyed by WHAT THE FIRING IS ABOUT, not by the entity whose change
 	// happened to dispatch it. Those differ whenever cause and subject come apart — a
 	// completion advancing the PR it carried, a broadcast over a selected set — and keying on
@@ -701,7 +741,7 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 		winner, witness, ok := e.awaitMotion(ctx, m)
 		if !ok {
 			e.tracef("temporal gate %s/%s: monitor ended before commit", t.Name, gname)
-			return false
+			return false, false
 		}
 		// The winning option's formula is the revoke guard (nil for a deadline-default deny).
 		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
@@ -710,7 +750,7 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 			continue
 		}
 		e.tracef("temporal gate %s/%s committed %q (witness %d facts)", t.Name, gname, eff, len(witness))
-		return eff == "proceed"
+		return eff == "proceed", true
 	}
 }
 

@@ -99,7 +99,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
   condition:
     subject: { system: demo, kind: pr, value: { stage: open } }
   gates:
-  - { name: approval, mode: ask }
+  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
     patch: { stage: reviewing }
     spawn: { driver: scripted, task: "echo reviewing $subject; sleep 45" }

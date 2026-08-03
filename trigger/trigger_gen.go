@@ -742,6 +742,15 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["formula"] = node
 	}
 
+	// Field: OnDenied (optional)
+	if s.OnDenied != nil {
+		node, err = s.OnDenied.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["onDenied"] = node
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -791,6 +800,12 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			// Field: Formula
 			s.Formula = &Formula{}
 			if err := s.Formula.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "onDenied":
+			// Field: OnDenied
+			s.OnDenied = &Action{}
+			if err := s.OnDenied.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		}
