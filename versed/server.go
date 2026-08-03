@@ -1429,6 +1429,25 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 				last = c.Rev
 			}
 		}
+	} else {
+		// BELOW THE WINDOW. `Since` refuses a revision older than the store has observed —
+		// logd may have compacted it — and this said nothing at all, so a reader could not
+		// tell "nothing happened" from "you missed everything". A resolver is a client of
+		// this call and nothing else, so it reconnected, learned nothing, and sat waiting
+		// for a question that had already been asked.
+		//
+		// Say that it happened, and then say WHAT — which is the half that matters, and the
+		// same two moves SubscribeSince makes on the process plane for the same reason.
+		_ = sse.Send(entity.Event{Gap: 1})
+		for _, ent := range pendingQuestions(store) {
+			if entity.Str(ent.Payload, "subject") != subject.String() {
+				continue
+			}
+			// Rev 0: this is current state, not a position. A reader tracks the highest Rev
+			// it has processed, and a replayed question must not move that cursor in either
+			// direction — the catch-up below is what advances it.
+			_ = sse.Send(entity.Event{Ref: ent.Ref, Op: entity.Set, To: ent.Payload})
+		}
 	}
 	sse.Flush()
 

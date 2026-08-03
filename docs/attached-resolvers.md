@@ -72,6 +72,8 @@ action:
     grant:    no-delegate                        # what the WORK may do at all
     vector:   ask                                # …and how much of it asks
     resolver: resolvers:security:security-review # answers this RUN's gates
+  onDone:
+    patch: { stage: validated }                  # the latch: out of its own selection
 ```
 
 A `condition` makes a resolver **standing**: nobody names it, and it supervises the work about

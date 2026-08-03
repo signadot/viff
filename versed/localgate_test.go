@@ -11,17 +11,23 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/process/processd"
 )
 
 // askingServer runs local processes under an Ask vector, so a spawned one blocks on its first
 // action and there is a real process gate to answer.
 func askingServer(t *testing.T) *Server {
 	t.Helper()
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+	return NewWithStore(askingBuilder(t), entitytest.Store(t))
+}
+
+// askingBuilder is askingServer's half that is not the store, for a test that wraps one.
+func askingBuilder(t *testing.T) processd.Builder {
+	t.Helper()
+	return func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
 		return process.NewProcess(l.ID, sup, &scriptDriver{command: l.Task}, &shellExec{root: t.TempDir()})
 	}
-	return NewWithStore(build, entitytest.Store(t))
 }
 
 // waitQuestion waits for a pending question raised by procID and returns its id.
