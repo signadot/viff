@@ -126,6 +126,8 @@ setup() {
 	esac
 	ok "installed: $(v resolvers -o tony | sed -n 's/^[[:space:]]*ref:[[:space:]]*//p' | tr '\n' ' ')"
 
+	retire_previous
+
 	# What the work is ABOUT. A standing binding matches on this, which is the whole difference
 	# between the two doors: one is named by the work, the other selects it.
 	v entity put "$SUBJECT" '{area: payments, title: "raise the retry budget"}' >/dev/null
@@ -149,27 +151,47 @@ setup() {
 
 # ── looking at it ────────────────────────────────────────────────────────────
 
-# The run, asked for rather than remembered: it is the process whose FLOW is the subject, which
-# is what --subject put it in. Keeping a state file beside the script would be a second copy of
-# something the verse already knows, and wrong the moment anybody else spawns one.
+# The run, asked for rather than remembered: the process about this subject that is STILL
+# HOLDING A QUESTION. `pending` is the ref of the question it is stopped at, so asking for the
+# runs that have one asks exactly the question this script is about — and an act that has been
+# answered leaves nothing behind to be mistaken for the next one.
+#
+# Not "the last one listed": store order is not spawn order, so that picked an arbitrary run
+# about the subject — sometimes one already finished, whose question never came and never would.
 run_id() {
-	v entities --system process --kind instance --if "{flow: \"$SUBJECT\"}" -o tony |
-		sed -n 's|^[[:space:]]*ref:[[:space:]]*process:instance:||p' | tail -1
+	v entities --system process --kind instance \
+		--if "{flow: \"$SUBJECT\", pending: null}" -o tony |
+		sed -n 's|^[[:space:]]*ref:[[:space:]]*process:instance:||p' | head -1
+}
+
+# Whatever this subject was left holding from an earlier act. One act at a time is the whole
+# contract here: two runs stopped at two questions about one subject is a fine thing for a
+# verse to hold and a confusing thing to demonstrate.
+retire_previous() {
+	local old
+	while old=$(run_id) && [ -n "$old" ]; do
+		v process cancel "$old" >/dev/null 2>&1 || break
+		sleep 0.2
+	done
 }
 
 # The question this run raised, waited for. Filtered by the run rather than taking the first
 # on the docket, so an act does not pick up the question another act left standing — the id of
 # a run's question is `<run>~d<n>`, which is why the prefix is enough.
 question_id() {
-	local run tries=0
-	run=$(run_id)
-	[ -n "$run" ] || return 0
+	local tries=0 run q
 	while [ $tries -lt 40 ]; do
-		local q
-		q=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep "^$run~" | head -1)
-		if [ -n "$q" ]; then
-			echo "$q"
-			return 0
+		# INSIDE the loop: a run that has just been spawned has not reached its gate yet, so
+		# it holds no question and run_id does not see it. Resolving the run once and giving
+		# up is how this came to report "no question was posed" about a run that was still
+		# walking to the gate.
+		run=$(run_id)
+		if [ -n "$run" ]; then
+			q=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep "^$run~" | head -1)
+			if [ -n "$q" ]; then
+				echo "$q"
+				return 0
+			fi
 		fi
 		tries=$((tries + 1))
 		sleep 0.25
