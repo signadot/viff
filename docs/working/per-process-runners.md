@@ -114,9 +114,41 @@ Refused: a runner with no `url`. There is no default and no local special case a
 `local` is what the *absence* of a runner means, which keeps the entity honest — every runner
 entity is somewhere to reach.
 
-**Proves:** an operator can install, list and remove one, and a runner that cannot be reached is
-refused rather than accepted. Test: add, list, remove over the CLI; a malformed url is refused
-with the url quoted.
+**Removal does nothing to work already running on it**, and that has to be said here rather than
+left to step 3, because `remove` is introduced here.
+
+Nothing, because there is nothing honest it could do. verse cannot move a running process
+between runners, and it will not kill work to tidy up a name. The entity was how a spawn *found*
+that place; the process already went there, and step 3 stamps the resolved URL on it so verse
+keeps reaching it — through the removal, and through a restart after it.
+
+Worth naming the asymmetry with the thing this most resembles. Removing a resolver binding
+*hands on* what it held, because a question has a layer above to go to. A runner has no layer
+above: work in flight is somewhere physical, and "somewhere else" is not a thing verse can offer
+it. So removal means only *stop choosing this*, and the plan should not dress it up as more.
+
+But it is not silent. Removal **warns**, naming how many processes are still on it — the same
+notice-rather-than-refusal move an overlapping resolver condition makes, and computable from the
+counts step 4 adds:
+
+```
+$ verse runner remove runners:pool:gpu
+removed runners:pool:gpu
+note: 3 processes are still running on it; they keep running and stay reachable, and no
+      new spawn may name it
+```
+
+Not a refusal, because there is no drain — this plan builds no way to move or wait out that
+work, so refusing would mean a runner with one long-lived process on it can never be removed.
+
+The visible cost, stated rather than discovered: `verse ps` will show processes on a runner that
+`verse runners` no longer lists. That is the true state and the alternative is worse — either
+lying about where work is, or refusing a removal forever.
+
+**Proves:** an operator can install, list and remove one; a runner that cannot be reached is
+refused rather than accepted; and removing one does not disturb what runs on it. Test: add, list,
+remove over the CLI; a malformed url is refused with the url quoted; a removal while a process
+is running on it warns, names the count, and leaves the process running and reachable.
 
 ### 2. A spawn names one
 
@@ -161,12 +193,10 @@ entity would orphan running work by making it unreconstructible — a deletion w
 distance, which is exactly the shape [the resolver work](../attached-resolvers.md) refused when
 it made removal *hand on* what it held rather than strand it.
 
-Which raises the same question one level down: **what should removing a runner entity do to
-processes running on it?** The honest answer for this increment: nothing, and say so. The work
-is already running somewhere; the entity was the way to *find* that place, and the stamped URL
-still finds it. Removal stops it being *chosen* again. That is a smaller promise than the
-resolver's hand-on, and it is the true one — verse cannot move running work between runners, and
-pretending removal does something to it would be worse than the gap.
+This is also what makes step 1's answer about removal true. Removal leaves running work alone
+*and reachable* only because the URL is on the process rather than a name that has just been
+deleted — the two decisions are one decision, and getting this one wrong would turn a tidy-up
+into an outage.
 
 **Proves:** work outlives the verse that started it, and outlives the entity that named its
 runner. Test: spawn on a named runner, restart the server, and the process is re-attached rather
@@ -191,6 +221,10 @@ verse runners                 # what is installed, and what each is carrying
 | `running` | processes on it now — `process:instance` with this runner and a live status |
 | `total` | how many it has been given, ever |
 | `lastSpawn` | when it was last used, so a runner nobody names is visible as such |
+
+`verse ps --runner <name>` reads the `runnerName` step 3 stamps, so it keeps working for a runner
+that has since been removed — which is when an operator most wants it, since that is the case
+`verse runners` can no longer show.
 
 All three are **derived from the store**, not probed. That is the line this plan holds
 everywhere: verse reports what it has recorded, and does not ask a runner how it feels. A
