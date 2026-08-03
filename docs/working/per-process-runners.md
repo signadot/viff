@@ -104,7 +104,7 @@ something is one nobody can debug.
 ### 1. A runner is an entity, and a verb manages it
 
 `runners:<kind>:<name>` carrying `url` and nothing else this increment reads.
-`verse runner add|show|remove`, `verse runners`.
+`verse runner add|show|check|remove`, `verse runners`.
 
 A verb rather than a raw write, for the reason `verse resolver add` is one: a write has nowhere
 to put the checks. Here they are real from the first commit — a `url` that does not parse, and a
@@ -113,6 +113,46 @@ name containing the characters an id cannot survive.
 Refused: a runner with no `url`. There is no default and no local special case at this layer;
 `local` is what the *absence* of a runner means, which keeps the entity honest — every runner
 entity is somewhere to reach.
+
+**And a url that answers, but not as a runner.** `verse runner add` probes before accepting: a
+bounded `GET /processes` against the base url — the read `httpRunner.ListProcesses` already
+makes, against the face `processd.Handler()` already serves, with no effect on the runner.
+Three outcomes, which are the three `process/runner.go` already draws for any control call —
+applied, refused by the far side, never reached it — because a probe is a control call carrying
+no work:
+
+| | |
+|---|---|
+| *a runner* | it answered, and the body decodes as the process list the contract promises |
+| *not a runner* | it answered, and is not that — 404, 501, a body that does not decode |
+| *unreachable* | nothing answered inside the deadline, and nothing is known |
+
+Only the middle one refuses the install, because the three are not equally fixable by waiting. A
+url that answers wrongly is answering *now*: something is at that address and it is not a runner
+face. A broker's worker leg is exactly this — `WorkerHandler` serves claim, inbox and report and
+no `GET /processes` — and it is exactly the confusion worth catching at install rather than at
+the first spawn. A url nothing answers is, by contrast, the ordinary state of a runner deployed
+alongside the entity naming it, which is how a drive will deploy one: the manifest lands, the pod
+is pending, the entity is already written. Refusing that buys nothing and makes deployment
+order-dependent, since the fact changes on its own.
+
+So *not a runner* refuses the install and *unreachable* warns and installs. Both take
+`--no-probe`, for the reason `--leave` exists below: a check with no way past it is a trap, and
+verse is not the authority on what is at the end of a url an operator chose.
+
+The probe reads the response itself rather than calling `ListProcesses`, which cannot carry the
+answer: that one returns nil both for a runner with no processes and for a runner that did not
+answer, and three outcomes do not come back through a nil slice. It is the same loss as the
+spawn-status defect step 2 depends on, on the read plane rather than the write one, and it is
+already costing something — `processSnapshots` reads the mirror as a membership *filter* rather
+than a fallback source, so an unreachable runner's processes are absent from `verse ps` and the
+list is a clean 200 that is simply short. Both are recorded on git-issue `6mnmxj6mh12krz3ae1n0`.
+
+**`verse runner check <name>`** runs that probe on demand and reports the same three outcomes. It
+belongs in this step rather than a later one because the case this step has to be honest about is
+the *already-gone* runner: `check` is how an operator learns which case they are in before
+choosing between `--cancel` and `--leave`, and it says beforehand what `--cancel` would otherwise
+have to report afterwards.
 
 **What removal does to work running on it** has to be answered here, because `remove` is
 introduced here.
@@ -179,13 +219,17 @@ The visible cost of `--leave`, stated rather than discovered: `verse ps` will sh
 a runner that `verse runners` no longer lists. That is the true state and the alternatives are
 worse — lying about where work is, or refusing a removal forever.
 
-**Proves:** an operator can install, list and remove one; a runner that cannot be reached is
-refused rather than accepted; and removal never guesses what to do with running work. Test: add,
-list, remove over the CLI; a malformed url is refused with the url quoted; removing one with a
-process on it is refused and the message names both flags; `--leave` removes it and the process
-keeps running and stays reachable; `--cancel` ends it with a reason and its flow sees a
-`cancelled` terminal; `--cancel` against an unreachable runner reports what it could not reach
-rather than counting it cancelled; and removing one with nothing on it needs no flag.
+**Proves:** an operator can install, list and remove one; a url that is not a runner is refused
+at install rather than discovered at the first spawn; and removal never guesses what to do with
+running work. Test: add, list, remove over the CLI; a malformed url is refused with the url
+quoted; an `httptest` server serving `processd.Handler()` installs clean, one serving only a
+broker's worker routes is refused and the message says what it answered, a closed port installs
+with a warning, and `--no-probe` skips both checks; `verse runner check` reports the three
+outcomes apart; removing one with a process on it is refused and the message names both flags;
+`--leave` removes it and the process keeps running and stays reachable; `--cancel` ends it with a
+reason and its flow sees a `cancelled` terminal; `--cancel` against an unreachable runner reports
+what it could not reach rather than counting it cancelled; and removing one with nothing on it
+needs no flag.
 
 ### 2. A spawn names one
 
@@ -249,6 +293,7 @@ process surface:
 verse ps                      # each process names the runner it is on; the default reads `local`
 verse ps --runner gpu         # …and only that runner's, which is the question a drive asks
 verse runners                 # what is installed, and what each is carrying
+verse runners --probe         # …and what each of them says right now
 ```
 
 `verse runners` earns its keep by showing more than the list it could have shown in step 1:
@@ -263,11 +308,19 @@ verse runners                 # what is installed, and what each is carrying
 that has since been removed — which is when an operator most wants it, since that is the case
 `verse runners` can no longer show.
 
-All three are **derived from the store**, not probed. That is the line this plan holds
-everywhere: verse reports what it has recorded, and does not ask a runner how it feels. A
-reachability check is a health check wearing a smaller hat, and health is named below as
-something this does not build — a runner that is down fails its spawns, and that failure travels
-the path a failed spawn already travels.
+All three are **derived from the store**, and `--probe` is the only thing that asks. The line
+this plan holds is not that verse never asks — step 1 asks — but that **the store never records
+health**. A probe is answered live, printed, and discarded. So a reachability column is always as
+of now, and never a cache that can be stale in the direction that costs: telling an operator a
+runner is well because it was well when something last looked. `verse runners` says what verse
+has recorded; `verse runners --probe` says what the runners said just now; nothing merges the
+two, and nothing persists the second.
+
+No background polling, for the same reason and one more. A column that is always fresh needs an
+interval, a backoff and a flap rule — and once verse holds a standing opinion about whether a
+runner is well, the next ask is that it act on one: skip the sick one, retry onto the healthy
+one. That is the scheduling named below as something this does not build, and a poller is how it
+arrives without being decided.
 
 Small, and last on purpose: it is the step that makes the previous three legible, and it is the
 one that would otherwise be skipped.
@@ -275,7 +328,9 @@ one that would otherwise be skipped.
 **Proves:** an operator can answer "where is this running", and "what is this runner carrying",
 without reading a charter. Test: `verse ps` names the runner per process and the default reads
 as `local` rather than blank; `--runner <name>` selects; `verse runners` counts a spawn onto a
-named runner and does not count one onto the default.
+named runner and does not count one onto the default; and `--probe` reports a live runner and a
+stopped one differently while the store is unchanged by either — read `verse runners` again and
+the columns are what they were.
 
 
 ## What this plan does not build
@@ -290,15 +345,28 @@ may not. "All work about payments runs on the payments pool" is a coherent thing
 different feature: it makes the runner a property of the *subject* rather than of the spawn, and
 the two would need a layer rule to resolve. Not until somebody asks.
 
-**No scheduling, no capacity, no health.** verse hands a spawn to a runner and the runner either
-takes it or does not. There is no queue, no retry onto a second runner, no draining. A runner
-that is down fails its spawns, and that failure travels the path a failed spawn already travels.
+**No scheduling, no capacity, and no health that routes.** verse hands a spawn to a runner and
+the runner either takes it or does not. There is no queue, no retry onto a second runner, no
+draining. The probes in steps 1 and 4 are diagnosis and never dispatch: nothing consults one
+before a spawn, and an unreachable runner is not skipped, demoted, or spawned around.
+
+That exclusion is sharpest at the spawn path, because a pre-flight check there looks free and is
+not. **The spawn is the better probe** — it asks the only question that matters, *will you take
+this work*, and gets an answer about this work rather than about the runner in general. A check
+before it adds a round trip and a window in which its answer stops being true, and it can only
+ever be the weaker signal of the two. A runner that is down fails its spawns, and that failure
+travels the path a failed spawn already travels.
 
 **No per-runner authority.** Which runners a charter may name is the same open question as who
 may install a resolver, and it belongs to [authority](../roadmap/authority.md). Worth stating
 sharply here because the blast radius is larger: a runner is a place work executes, so naming
 one is closer to choosing an execution environment than to choosing an answerer. A charter that
 may name any runner may run its work anywhere the deployment can reach.
+
+The install probe adds a second, smaller edge to the same question: writing a runner entity now
+makes verse issue a request to an address the writer chose, before anything has decided the
+writer may name runners at all. `--no-probe` is not the mitigation — it is the opt-out, and it
+sits on the wrong side. The answer is the authority this paragraph defers.
 
 ## The residual to expect
 
@@ -371,10 +439,16 @@ Two further ways, neither needed first:
 - **the contract carries it** — process-control exposes how control is applied (a capability on
   the status response), and `runner.HTTP`'s handle reports what it was told. Where this should
   end up: it makes the guarantee structural rather than a convention, and it lets a broker stop
-  refusing.
-- **verse constrains the URL** — a runner entity must be a runner face, checked at install. The
-  weakest of the three: verse cannot classify a URL without probing it, and a probe is the health
-  check this plan says it does not do.
+  refusing. It is also where the probe wants to go. A descriptor — `GET /runner`, saying what
+  this is and how control is applied — answers the install check and this question in one call,
+  and the two are otherwise a runner being asked to describe itself twice. The probe uses `GET
+  /processes` today only because that needs nothing new; whichever of the two gets built for real
+  should build the descriptor and let the other one read it.
+- **verse constrains the URL** — a runner entity must be a runner face, checked at install. This
+  was the weakest of the three when the objection was that verse cannot classify a url without
+  probing it. Step 1 probes, so that objection is spent and the check is built. What it does not
+  reach is the part this section is about: `GET /processes` tells a runner face from a worker
+  leg, and says nothing about whether the thing behind it queues.
 
 The residual under either: several workers stand behind one broker name, so "which worker took
 it" is a question the runner name cannot answer, and a drive debugging a stuck process will ask
