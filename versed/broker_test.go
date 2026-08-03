@@ -377,3 +377,45 @@ func TestProcessListSaysWhenTheRunnerDidNotAnswer(t *testing.T) {
 		t.Fatalf("body = %q, want the runner it could not reach", body)
 	}
 }
+
+// `process get` on an unreachable runner is not a 404. ProcessSnapshot always read its status,
+// so no refusal passed for an answer — but unreachable, refused and never-heard-of all
+// collapsed into one false, and the route could only render that as not-found. So an operator
+// was sent to look for a typo in an id that was never wrong, for a process that is running
+// somewhere they cannot currently see (git-issue 6mnmxj6mh12krz3ae1n0).
+func TestProcessGetSeparatesUnreachableFromUnknown(t *testing.T) {
+	srv := testServer(t)
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	srv.SetRunner(runner.HTTP(deadURL))
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/processes/whatever")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		t.Fatal("an unreachable runner answered 404: the id reads as wrong when the runner is")
+	}
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %s, want 502", resp.Status)
+	}
+
+	// And the id that IS wrong still 404s, or this would have traded one lie for another: a
+	// live runner saying "never heard of it" is exactly the case 404 is for.
+	live := testServer(t)
+	lts := httptest.NewServer(live.Handler())
+	defer lts.Close()
+	miss, err := lts.Client().Get(lts.URL + "/processes/nope")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer miss.Body.Close()
+	if miss.StatusCode != http.StatusNotFound {
+		t.Fatalf("an unknown id on a reachable verse = %s, want 404", miss.Status)
+	}
+}

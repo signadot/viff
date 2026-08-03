@@ -248,8 +248,8 @@ func TestGateLoop(t *testing.T) {
 			`"tool":"deploy_prod","text":"prod, off-hours"}]}`, nil)
 	drainFor(t, ch, "pending") // verse observes the pending gate
 
-	if _, ok := b.ProcessSnapshot("p"); !ok {
-		t.Fatal("no snapshot")
+	if _, err := b.ProcessSnapshot("p"); err != nil {
+		t.Fatalf("no snapshot: %v", err)
 	}
 	snap, _ := b.ProcessSnapshot("p")
 	if len(snap.Pending) != 1 || snap.Pending[0].ID != "deploy-1" {
@@ -494,9 +494,9 @@ func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 	postJSON(t, cl, srv.URL+"/processes/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"`+why+`"}`, nil)
 
-	snap, ok := b.ProcessSnapshot("p")
-	if !ok {
-		t.Fatal("no snapshot")
+	snap, err := b.ProcessSnapshot("p")
+	if err != nil {
+		t.Fatalf("no snapshot: %v", err)
 	}
 	if snap.Status != process.Failed {
 		t.Fatalf("status = %q, want failed", snap.Status)

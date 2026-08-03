@@ -121,13 +121,21 @@ type Runner interface {
 // when `by` was added to one side. One declaration, and each implementation asserts against
 // it, so a signature change is a compile error where the implementation is.
 //
-// ListProcesses reports what went wrong rather than folding a failure into an empty list.
-// nil, nil is a runner with no processes; a runner that did not answer is ErrUnreachable and
-// one with no such face is ErrUnsupported. Those are not the same fact, and a caller that
-// cannot tell them apart shows an operator a verse with less work in it than it has.
+// Both methods report what went wrong rather than folding a failure into an absence.
+//
+// ListProcesses: nil, nil is a runner with no processes; a runner that did not answer is
+// ErrUnreachable and one with no such face is ErrUnsupported. Those are not the same fact, and
+// a caller that cannot tell them apart shows an operator a verse with less work in it than it
+// has.
+//
+// ProcessSnapshot: ErrNoSuchProcess is the far side answering that it has never heard of this
+// id, and it is the only one of these that means "look for your typo". It returns an error
+// rather than an ok for the same reason — an ok cannot distinguish that from a runner that
+// never answered, so a process that exists on an unreachable runner reads as one that does not
+// exist at all.
 type Lister interface {
 	ListProcesses() ([]Instance, error)
-	ProcessSnapshot(id string) (Instance, bool)
+	ProcessSnapshot(id string) (Instance, error)
 }
 
 // Handle is verse's governing handle on one running process — the control plane

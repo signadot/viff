@@ -149,23 +149,30 @@ func (p *httpRunner) ListProcesses() ([]process.Instance, error) {
 	return out, nil
 }
 
-func (p *httpRunner) ProcessSnapshot(id string) (process.Instance, bool) {
+// The status was already read here, so a refusal never passed for an answer — but every way
+// of failing collapsed into the same `false`, which the caller could only report as "no such
+// process". A process on a runner that did not answer is not a process that does not exist,
+// and `process get` said it was (git-issue 6mnmxj6mh12krz3ae1n0).
+func (p *httpRunner) ProcessSnapshot(id string) (process.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes/"+id, nil)
 	resp, err := p.cl.Do(req)
 	if err != nil {
-		return process.Instance{}, false
+		return process.Instance{}, fmt.Errorf("%w: %s: %w", process.ErrUnreachable, p.base, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return process.Instance{}, false
+	// Here a 404 IS about the id — this path names one — so statusErr's reading is the right
+	// one, and ErrNoSuchProcess is what it yields.
+	if err := statusErr(resp); err != nil {
+		return process.Instance{}, err
 	}
 	var m process.Instance
-	if decodeResp(resp, &m) != nil {
-		return process.Instance{}, false
+	if err := decodeResp(resp, &m); err != nil {
+		return process.Instance{}, fmt.Errorf("%w: %s answered an undecodable process: %w",
+			process.ErrUnsupported, p.base, err)
 	}
-	return m, true
+	return m, nil
 }
 
 // remoteHandle is a Handle over the wire: the read plane is GET /events (SSE), the

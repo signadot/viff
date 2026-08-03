@@ -71,5 +71,8 @@ func (p *brokerProducer) RaiseGate(t *testing.T, id, gate, reason string) string
 
 func (p *brokerProducer) Snapshot(t *testing.T, id string) (process.Instance, bool) {
 	t.Helper()
-	return p.b.ProcessSnapshot(id)
+	// The harness asks a yes/no question, and for an in-memory registry the only error is
+	// "not here" — so this narrowing loses nothing the producer could act on.
+	inst, err := p.b.ProcessSnapshot(id)
+	return inst, err == nil
 }

@@ -9,6 +9,7 @@
 package broker
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -471,16 +472,18 @@ func (b *Broker) ListProcesses() ([]process.Instance, error) {
 	return out, nil
 }
 
-func (b *Broker) ProcessSnapshot(id string) (process.Instance, bool) {
+// ErrNoSuchProcess rather than an ok, and never ErrUnreachable: this registry is in memory,
+// so "not here" is the whole of what can go wrong and it is always the truth.
+func (b *Broker) ProcessSnapshot(id string) (process.Instance, error) {
 	ps := b.get(id)
 	if ps == nil {
-		return process.Instance{}, false
+		return process.Instance{}, fmt.Errorf("%w: %s", process.ErrNoSuchProcess, id)
 	}
 	m := ps.snapshot()
 	if base := b.dialURL(); base != "" {
 		m.DialURL = base
 	}
-	return m, true
+	return m, nil
 }
 
 // ProcessInbox returns the control items queued for a process's worker, WITHOUT the epoch

@@ -122,12 +122,14 @@ func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
 		t.Fatal("remote process r1 not in the runner's ListProcesses")
 	}
 
-	snap, ok := lister.ProcessSnapshot("r1")
-	if !ok || snap.Task != "remote task" {
-		t.Fatalf("ProcessSnapshot(r1) = %+v, %v; want the remote task", snap, ok)
+	snap, err := lister.ProcessSnapshot("r1")
+	if err != nil || snap.Task != "remote task" {
+		t.Fatalf("ProcessSnapshot(r1) = %+v, %v; want the remote task", snap, err)
 	}
-	if _, ok := lister.ProcessSnapshot("nope"); ok {
-		t.Fatal("ProcessSnapshot of an unknown id should be false")
+	// An id the runner has never heard of is ErrNoSuchProcess — the one error that means
+	// "look for your typo", and the only one `process get` may answer 404 to.
+	if _, err := lister.ProcessSnapshot("nope"); !errors.Is(err, process.ErrNoSuchProcess) {
+		t.Fatalf("ProcessSnapshot of an unknown id = %v, want ErrNoSuchProcess", err)
 	}
 }
 
@@ -195,6 +197,14 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	defer worker.Close()
 	if _, err := runner.HTTP(worker.URL).(process.Lister).ListProcesses(); !errors.Is(err, process.ErrUnsupported) {
 		t.Fatalf("a non-runner url's list = %v, want ErrUnsupported", err)
+	}
+
+	// And the single-process read tells the same three apart. This one always DID check its
+	// status, so no refusal ever passed for an answer — but every failure collapsed into one
+	// `false`, which the caller could only report as "no such process".
+	if _, err := runner.HTTP(deadURL).(process.Lister).ProcessSnapshot("p"); !errors.Is(err, process.ErrUnreachable) {
+		t.Fatalf("a dead runner's snapshot = %v, want ErrUnreachable — a process on an "+
+			"unreachable runner is not a process that does not exist", err)
 	}
 
 	// Answering with something undecodable is also not an empty verse: discarding this is how

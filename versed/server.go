@@ -2212,13 +2212,19 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 }
 
 // isProcess reports whether id names a process in the runtime or the active runner.
+//
+// A runner that did not answer reports false here, which is not the same fact and is the best
+// this signature can hold. It is bounded: the one caller uses this to decide whether a gate id
+// is addressed to a process, having already consulted the mirror's question record, and it
+// falls through to the same answer it would have given anyway. Widening it would widen the
+// gate-routing chain above for a case that chain cannot act on.
 func (s *Server) isProcess(id string) bool {
 	if _, ok := s.Procd.SnapshotOf(id); ok {
 		return true
 	}
 	if l, ok := s.runner.(processLister); ok {
-		_, ok := l.ProcessSnapshot(id)
-		return ok
+		_, err := l.ProcessSnapshot(id)
+		return err == nil
 	}
 	return false
 }
@@ -2299,9 +2305,21 @@ func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if l, ok := s.runner.(processLister); ok {
-		if inst, ok := l.ProcessSnapshot(id); ok {
+		inst, err := l.ProcessSnapshot(id)
+		switch {
+		case err == nil:
 			inst.Runner = s.runner.Ref()
 			writeOut(w, r, http.StatusOK, inst)
+			return
+		case errors.Is(err, process.ErrNoSuchProcess):
+			// The runner answered and has never heard of it. That is a 404 about the id, and
+			// it is the only case below that is.
+		default:
+			// A runner that did not answer is not a runner without this process. Reporting
+			// 404 sent an operator to look for a typo in an id that was never wrong, for a
+			// process that is running somewhere they cannot currently see.
+			codec.HTTPError(w, r, http.StatusBadGateway,
+				fmt.Sprintf("runner %s: %s", s.runner.Ref(), err))
 			return
 		}
 	}
