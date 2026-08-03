@@ -194,6 +194,7 @@ func rootCmd() *cli.Command {
 			triggersCmd(), triggerCmd(),
 			resolversCmd(), resolverCmd(),
 			runnersCmd(), runnerCmd(),
+			sourcesCmd(), sourceCmd(),
 			strataCmd(), stratumCmd(),
 			goalsCmd(), goalCmd(),
 			voteCmd(),

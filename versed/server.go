@@ -749,6 +749,14 @@ func (s *Server) Handler() http.Handler {
 	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
 	// at startup, so a drive can add one for work this verse does not otherwise need to know
 	// about. See docs/working/per-process-runners.md.
+	// sources — what REFLECTS an external system into the verse, as against where work runs.
+	// Addressed by the slice reflected, because that is a question verse already asks: who
+	// writes `git:*`. See docs/working/sources.md.
+	rt.handle("GET /sources", s.listSources, "", nothing)
+	rt.handle("POST /sources", s.addSource, "", nothing)
+	rt.handle("GET /sources/{system}/{name}", s.getSource, "", nothing)
+	rt.handle("GET /sources/{system}/{name}/check", s.checkSource, "", nothing)
+	rt.handle("DELETE /sources/{system}/{name}", s.removeSource, "", nothing)
 	rt.handle("GET /runners", s.listRunners, "", nothing)
 	rt.handle("POST /runners", s.addRunner, "", nothing)
 	rt.handle("GET /runners/{kind}/{name}", s.getRunner, "", nothing)
