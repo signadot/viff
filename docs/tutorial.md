@@ -661,8 +661,8 @@ substrate: a `doneWhen` formula, a deadline, and a bundle of owned triggers, lat
 or `unachievable`. *Being redesigned — read it as what runs today, not as where it lands.*
 
 **Reflecting external systems** — [sources](sources.md). Git, GitHub, Linear into an owned
-slice of the verse, on webhook-as-hint plus poll-reconcile. *Designed, not built; the git
-Source is next.*
+slice of the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
+and install, the way a runner is: `verse source add git:laptop <url>`.
 
 **Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
 only climb, and the two install checks that follow — plus a plain statement of what it does not

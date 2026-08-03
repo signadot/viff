@@ -91,9 +91,10 @@ the verse that owns it, through a docd controller.
 | read | [verse connect and docd](working/connect.md) — the mechanics, through docd's two faces |
 | | [Content federation](content-federation.md) — why `connect` replaced `--root` |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
-| | [Sources](sources.md) — reflecting git, GitHub and the rest; webhook as hint, reconcile as truth |
-| ahead | [External sources](working/sources.md) — a source you deploy and install, and why a Source is not a controller |
-| | [External sources: the plan](working/sources-plan.md) — the order of work for the registration, and what each step proves |
+| | [Sources](sources.md) — reflecting git, GitHub and the rest: a source you deploy, hint as hint, reconcile as truth |
+| | [reference/sources.md](reference/sources.md) — the source surface: the entity, ownership globs, the verbs, the routes, and the contract a source serves |
+| | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
+| ahead | [Sources: what is left](working/sources-residual.md) — dial-in for the source verse cannot reach, and the ownership claim still unproved |
 | | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
 ## What is built, and what isn't

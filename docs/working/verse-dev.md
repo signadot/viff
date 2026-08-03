@@ -62,12 +62,12 @@ precisely the middle that a `say`, a motion, and an entity each miss.
 
 ### 3. Commits landing, as facts
 
-[sources.md](../sources.md) reflects git state as `git:*` entities a trigger reacts to, and
-[the roadmap](../roadmap/README.md#what-is-not-here) already records that this git Source has
-no command exposing it.
+[sources.md](../sources.md) reflects git state as `git:*` entities a trigger reacts to, and it
+is installable now — `verse source add --dir <repo> git:local`, or a source deployed beside the
+repo it watches.
 
-So this step is expected to hit a wall, and hitting it is the result: it converts "there is a
-git Source nobody exposes" from a line in the roadmap into a thing somebody wanted, on a date,
+So this step is expected to hit a wall somewhere else, and hitting it is the result: it converts
+a gap from a line in a residual into a thing somebody wanted, on a date,
 for a reason. That is a different kind of evidence than a design note, and it is the kind this
 whole exercise exists to generate.
 

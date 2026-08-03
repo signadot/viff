@@ -53,8 +53,9 @@ entities, processes, and the charters that relate them.
   works whichever it is.
 - `mirror/` — reflects a running process into the verse as a `process:instance` entity, so
   "observe or steer another process" is just "observe an entity."
-- `source/` — reflecting external state *in*: `verse connect` federates your working tree,
-  and a multi-repo git Source reflects repo state (`git:*`) that triggers react to.
+- `source/` — reflecting external state *in*: a Source is a program you deploy and install
+  (`verse source add`), reflecting an owned slice like `git:*` that triggers react to. `verse
+  connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI: `up`, `down`, `watch`,
   `entity`, `gate`, `trigger`, `process` including the `do` executor verbs, `flow`, and
   `connect`.

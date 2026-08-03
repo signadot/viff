@@ -90,5 +90,5 @@ Two categories deliberately stay in `docs/`:
   processes](../external-processes.md) chose the seam that
   [process control](../process-control.md) implements.
 - Notes about built things with a stated gap — [process control](../process-control.md)
-  still owes an inbox long-poll, and [sources](../sources.md) has a git Source that no
-  command yet exposes. A gap inside something that runs is recorded where it runs.
+  still owes an inbox long-poll, and [sources](../sources.md) cannot yet be reached by a
+  source verse must not dial. A gap inside something that runs is recorded where it runs.

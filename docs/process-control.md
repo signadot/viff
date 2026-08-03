@@ -57,11 +57,13 @@ subject under the same runner.
 
 A process-control backend is a reconciler over the `process:instance` resource, not a gated process
 itself — which stops the regress, since governing a process must not require another governed
-process. It is the dual of a [Source](sources.md): a Source is a controller that reflects
-external state *into* the verse; a process-control backend is a controller that runs and governs *work*
-on a substrate. Both are docd-controller-shaped, both reconcile a resource, both must be
-idempotent. And k8s sits on both sides — `k8s:*` as a Source reflecting the cluster in, and
-k8s as a process-control backend running processes as Jobs out.
+process. It is the dual of a [Source](sources.md): a Source reflects external state *into* the verse; a
+process-control backend runs and governs *work* on a substrate. Both reconcile a resource and
+both must be idempotent — but only one of them is a controller, and this is the one. A Source
+is not, and cannot be: a mounted slice fires no triggers, which is the whole point of
+reflecting one (see [sources.md](sources.md#a-source-is-not-a-controller-and-cannot-be)). And
+k8s sits on both sides — `k8s:*` as a Source reflecting the cluster in, and k8s as a
+process-control backend running processes as Jobs out.
 
 ## Idempotency ⇒ the restart discipline (`verse down; up`)
 

@@ -13,7 +13,8 @@ deliberately skips. For what a charter's fields *mean*, see
 | [connect.md](connect.md) | federating a working tree, and scopes |
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
 | [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a process records |
-| [examples/](examples/README.md) | working programs to copy and change, starting with a runner |
+| [sources.md](sources.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
+| [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
 | [goals.md](goals.md) | goals — a target over the reactive substrate (being redesigned) |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why that is asymmetric |
@@ -76,6 +77,12 @@ verse
   runner  add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
+  sources                                    what reflects an external system in  [--probe]
+  source  add <system>:<name> <url> [--no-probe] [--allow-overlap]
+          add --dir <d> <system>:<name>      a local git repo, reflected in process
+          add [--file <f>|-] [file] · show <ref>
+          check <ref>                        ask it what it is and what it claims, right now
+          remove <ref> [--forget | --keep]   what becomes of what it reflected
   flows                                      the distinct subjects with live work
   flow    show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live processes by the subject they are about: demo:pr:1 (one),

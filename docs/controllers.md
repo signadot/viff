@@ -42,7 +42,7 @@ empty replay, plus a mount that stalls ~5s on the overlapping watch and then for
 
 This is why a [Source](sources.md) is *not* a controller, though this note and that one both
 once said it would be: a Source exists so that triggers fire on external change, so its
-reflected entities are writes. See [external sources](working/sources.md).
+reflected entities are writes. See [sources](sources.md).
 
 ## The Handler contract
 

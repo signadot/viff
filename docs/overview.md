@@ -218,8 +218,10 @@ Each seam is where you plug in without touching the core.
 - *Driver* — how a process thinks: `scripted`, `llm`, or your own `Next`.
 - *Process control* — where and how a process runs: a k8s Job, a lambda, a broker for humans.
 - *Store* — logd/docd, or anything implementing the `Store` interface.
-- *Source, or docd controller* — reflect an external system into an owned slice of the verse
-  ([sources](sources.md), [writing a controller](controllers.md)).
+- *Source* — reflect an external system into an owned slice of the verse, as a program you
+  deploy and install ([sources](sources.md)). Distinct from a *docd controller*, which serves
+  bytes somebody asks for rather than facts something reacts to
+  ([writing a controller](controllers.md)).
 
 ## Deployment shape
 
