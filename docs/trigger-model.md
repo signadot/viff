@@ -903,6 +903,7 @@ verse:
       steps: 3         # len(seq), known at install
       shape: "a3f1…"   # hash of the declared shape, known at install
       done:  true      # latched when step reaches steps
+      ended: failed    # …or the terminal status an off-ramp stopped it at
   meta:                # what verse records about the ENTITY itself
     vanishing: "2026-07-29T13:04:05Z"   # the intent to remove it — see Lifecycle
 ```
@@ -934,6 +935,13 @@ never one field of a payload against another. A join spelled `step == steps` is 
 expressible; one spelled `{step: 3}` silently stops meaning "finished" the moment the
 sequence gains an element. So the engine latches `done` when `step` reaches `steps`, and the
 join matches that.
+
+`ended` is the other way a run concludes: an element that reaches a terminal status other than
+`done` is an off-ramp, so its own `onFailed`/`onCancelled`/`onOrphaned` runs and the sequence
+stops there. Two fields rather than one, because they are two facts — a join asking for `done`
+must not start matching a run that gave up — and both settle the same repeat policy: a sequence
+that concluded either way does not run again at this shape. Editing the sequence changes the
+shape, which is the one thing that frees it.
 
 `shape` is a hash of the declared sequence, compared on each advance. A mismatch means the
 charter moved underneath, and the sequence fails with a reason rather than silently running

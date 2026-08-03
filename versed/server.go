@@ -550,8 +550,10 @@ type resumedRun struct{ subject, chain string }
 
 // reconcileClaims drops run claims whose run did not survive the restart.
 //
-// A claim is an exclusive lease on a sequence, released when the sequence ends. Nothing
-// releases one across a restart, so the question is whether the run it guards survived.
+// A claim is an exclusive lease on a sequence, released when the sequence ends — however it
+// ends, including at an off-ramp (Engine.stopSeq), which used to leak one and leave this
+// function as the only thing that ever freed it. Nothing releases a claim across a RESTART, so
+// what reaches here is a run that was interrupted, and the question is whether it survived.
 //
 // It survives when its process was re-adopted WITH its hooks — that process will complete,
 // and its completion advances the sequence. Then the claim must stay: dropping it would let a

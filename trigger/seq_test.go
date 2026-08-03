@@ -276,7 +276,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 	}
 	shape := seqShapeHash(tr.Action.Seq)
 
-	if eng.seqDone("review", ref, shape) {
+	if eng.seqConcluded("review", ref, shape) {
 		t.Error("an untouched subject reads as already done")
 	}
 	if err := eng.patchEntity("review", 0, ref, entity.Obj{
@@ -284,11 +284,70 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 	}.Payload()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if !eng.seqDone("review", ref, shape) {
+	if !eng.seqConcluded("review", ref, shape) {
 		t.Error("a completed sequence does not read as done")
 	}
-	if eng.seqDone("review", ref, "a-different-shape") {
+	if eng.seqConcluded("review", ref, "a-different-shape") {
 		t.Error("a completed run still settles a DIFFERENT sequence; an edit should free it")
+	}
+}
+
+// A run that STOPPED is as concluded as one that finished, and it says so in the store.
+//
+// Fail-stop used to be implemented by a leak: the off-ramp path released no claim, so the next
+// run lost it forever — which is not a repeat policy but the absence of one, and it came undone
+// at the next restart, where `reconcileClaims` clears a claim no resumed process explains. What
+// is pinned here is the pair: the claim comes BACK, and the sequence still does not re-run.
+func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
+	store := entitytest.Store(t)
+	eng, spawned := seqEngine(t, store)
+	ref := prRef("1")
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: prSubject("open")},
+		Action: Action{Seq: []Action{
+			{
+				Spawn: &launch.Spec{Task: "this will fail"},
+				// An off-ramp that does NOT advance the subject, so nothing but the run's own
+				// record can be what stops it running again.
+				OnFailed: &Action{Patch: entity.Obj{"note": "failed"}.Payload()},
+			},
+			{Spawn: &launch.Spec{Task: "must not run"}},
+		}},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	waitField(t, store, ref, "note", "failed")
+
+	// The claim is back. It is a MECHANISM for exclusion, and there is nothing left to exclude.
+	claim := mirror.ClaimRef(spawnID("review", ref))
+	for range 100 {
+		if _, held, _ := store.Get(claim); !held {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, held, _ := store.Get(claim); held {
+		t.Errorf("%s is still held after the run stopped: fail-stop by leak, and the next "+
+			"restart would free it", claim)
+	}
+	// And the conclusion is a FACT, which is what stops the re-run now.
+	if got := entity.Str(seqFacts(t, store, ref, "review"), seqEnded); got != string(process.Failed) {
+		t.Errorf("verse.charter.review.%s = %q, want %q", seqEnded, got, process.Failed)
+	}
+
+	// Stir the subject: it still matches, the claim is free, and it must still not re-run.
+	before := len(spawned())
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open", "n": 1}.Payload())
+	time.Sleep(300 * time.Millisecond)
+	if now := spawned(); len(now) != before {
+		t.Errorf("a stopped sequence ran again: %v", now)
+	}
+	// Editing the sequence is the one thing that frees it — the same escape hatch a completed
+	// run has, and the only one that does not involve restarting anything.
+	if eng.seqConcluded("review", ref, "a-different-shape") {
+		t.Error("a stopped run still settles a DIFFERENT sequence")
 	}
 }
 

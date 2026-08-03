@@ -104,9 +104,10 @@ does not model) come out *undecided*, and undecided is a pass: the refusal rests
 check can see, which is a rule that writes nothing its subject reads, or one whose write leaves
 the predicate satisfied — writing the same value back latches a store write, and never a spawn.
 
-**A sequence bounds itself.** `startSeq` refuses to re-run a sequence that has completed for a
-subject at a shape, and that claim is a fact in the store rather than a live-process check, so
-unlike a bare spawn it survives the reap. Demanding a subject latch of a `seq` as well would be
+**A sequence bounds itself.** `startSeq` refuses to re-run a sequence that has already run to a
+conclusion for a subject at a shape — `done` if it finished, `ended` if an off-ramp stopped it —
+and that is a fact in the store rather than a live-process check, so unlike a bare spawn it
+survives the reap. Demanding a subject latch of a `seq` as well would be
 demanding the same guarantee twice, so the check excludes it — as it does a completion hook's
 spawn, which is bounded by the completion above it.
 

@@ -8,6 +8,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/process"
 )
 
 // Running a sequence.
@@ -28,6 +29,12 @@ import (
 //	      steps: 3         len(seq), known at install
 //	      shape: "1f2c…"   hash of the declared sequence
 //	      done:  true      latched when step reaches steps
+//	      ended: failed    the terminal status an off-ramp stopped it at
+//
+// `done` and `ended` are the two ways a run CONCLUDES, and a run that concluded either way does
+// not run again at this shape (seqConcluded). They are separate fields rather than one, because
+// they are separate facts about the subject: `$verse.charter.review.done` is a documented thing
+// to write a rule about, and "it finished" must not start meaning "it stopped somewhere".
 //
 // One reserved name rather than a family of flat keys, because the payload is the AUTHOR's
 // document — `flow` on a process entity is the same kind of reservation. The `charter` half
@@ -50,6 +57,7 @@ const (
 	seqSteps = "steps"
 	seqShape = "shape"
 	seqDone  = "done"
+	seqEnded = "ended"
 )
 
 // startSeq begins carrier's sequence about subj, unless one is already running for it.
@@ -70,8 +78,8 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 	// MECHANISM for exclusion. They answer different questions, and fusing them is what forced
 	// the policy to be maximally strict back when the mechanism could not be trusted.
 	shape := e.shapeOf(chain)
-	if e.seqDone(chain, subj, shape) {
-		e.tracef("seq %s: already completed for %s at this shape; not re-running", chain, subj)
+	if e.seqConcluded(chain, subj, shape) {
+		e.tracef("seq %s: already ran to a conclusion for %s at this shape; not re-running", chain, subj)
 		e.releaseRun(chain, subj)
 		return
 	}
@@ -98,6 +106,12 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 			// A failed write ends the sequence where it stands. The step count is left at the
 			// last element that really completed, so the facts do not claim progress that did
 			// not happen.
+			//
+			// Deliberately NOT recorded as `ended`, which is the difference between this and an
+			// off-ramp (stopSeq): a write that failed started nothing, and the reasons it fails
+			// are the transient ones — a reference that did not resolve at this commit, a store
+			// that was unavailable. Recording it would make a moment permanent. So this releases
+			// and lets the next commit try again, which costs an evaluation and no process.
 			e.tracef("seq %s: element %d failed (%v); sequence stops", chain, i, err)
 			e.releaseRun(chain, subj)
 			return
@@ -132,6 +146,34 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 			}
 		}
 	}
+}
+
+// stopSeq ends the run an OFF-RAMP element belonged to: a sequence element that reached any
+// terminal status but `done`. It is a no-op for a chain that addresses no sequence element,
+// which is every ordinary completion hook.
+//
+// It exists because fail-stop used to be implemented by a LEAK. The off-ramp path in applyHook
+// released nothing, so the run claim stood forever and blocked the next run — which looked like
+// fail-stop and was not one: `Server.reconcileClaims` clears a claim no resumed process
+// explains, so a failed sequence ran again at the next restart and never before it. A repeat
+// policy that turns on whether anybody bounced the server is not a policy.
+//
+// The record goes down BEFORE the claim comes back, for the reason startSeq takes the claim
+// before reading `done`: between the two there is a window, and whatever is not yet written in
+// it is a decision the next firing gets to make wrong. Ordered this way there is no state in
+// which the claim is free and the run's conclusion is unrecorded.
+//
+// `step` is not touched: advanceSeq advances it only when an element COMPLETES, so it already
+// names the last one that did, and the element that failed is `step`+1.
+func (e *Engine) stopSeq(chain string, subj entity.Ref, status process.Status) {
+	carrier, _, ok := seqIndexOf(chain)
+	if !ok {
+		return
+	}
+	// No causing commit — an off-ramp is downstream of a process finishing, which is where a
+	// causal chain ends (causal.go), the same parent resumeSeq publishes progress under.
+	e.publishSeq(carrier, 0, subj, entity.Obj{seqEnded: string(status)})
+	e.releaseRun(carrier, subj)
 }
 
 // resumeSeq continues the sequence a just-completed element belonged to. Returns false if the
@@ -173,23 +215,31 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 	return true
 }
 
-// seqDone reports whether this sequence has ALREADY COMPLETED for this subject at this
-// shape. It is a repeat policy and nothing else: overlap is the claim's job (claimRun), and
-// separating the two is what let each shrink to something defensible.
+// seqConcluded reports whether this sequence has ALREADY RUN TO A CONCLUSION for this subject
+// at this shape. It is a repeat policy and nothing else: overlap is the claim's job (claimRun),
+// and separating the two is what let each shrink to something defensible.
 //
 // It no longer consults the live registry or the step count, because the claim covers both
 // windows — including the one between elements, where nothing is live and the registry had
 // nothing to say. What is left is the question the registry could never answer: should a
-// sequence that finished run again?
+// sequence that already ran run again?
+//
+// TWO CONCLUSIONS, one policy. A run that finished is `done`; a run that stopped at an off-ramp
+// is `ended`, and the second used to be enforced by a claim nobody released (see stopSeq).
+// Asking about both here is what lets that claim be released, which is what keeps the mechanism
+// and the policy apart — the separation startSeq's own comment names as the thing that let each
+// shrink.
 //
 // Scoped to the shape, so editing the sequence frees it — the same signal that stops a live
-// sequence walking into a charter that moved under it.
-func (e *Engine) seqDone(chain string, subj entity.Ref, shape string) bool {
+// sequence walking into a charter that moved under it, and the one escape hatch a stopped run
+// has that does not depend on restarting anything.
+func (e *Engine) seqConcluded(chain string, subj entity.Ref, shape string) bool {
 	p := e.seqFacts(chain, subj)
 	if p == nil {
 		return false
 	}
-	if d := entity.Get(p, seqDone); d == nil || !d.Bool {
+	d := entity.Get(p, seqDone)
+	if (d == nil || !d.Bool) && entity.Str(p, seqEnded) == "" {
 		return false
 	}
 	if got := entity.Str(p, seqShape); got != "" && got != shape {

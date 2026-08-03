@@ -1463,6 +1463,13 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 			return
 		}
 	}
+	// An off-ramp ENDS the sequence, so the run ends here and has to be written down as ended.
+	// Before the two returns below, because a sequence stops at an off-ramp whether or not the
+	// element carries a hook for it — a failure nobody wrote an `onFailed` for is still a
+	// failure, and the run behind it is still over.
+	if status != process.Done && serr == nil {
+		e.stopSeq(fp.chain, subject, status)
+	}
 	if fp.hooks == nil {
 		return
 	}
