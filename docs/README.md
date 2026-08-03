@@ -55,12 +55,15 @@ drive a local agent, a remote one, and a human.
 
 | | |
 |---|---|
-| walk | [§3 processes](tutorial.md#3-processes) |
+| walk | [§3 processes](tutorial.md#3-processes) · [attached-resolver.sh](../scripts/attached-resolver.sh) — five acts of supervision, one command each |
 | read | [reference/processes.md](reference/processes.md) — the whole surface: drivers and vectors, gates, the mirror, steering, and executing one by hand |
 | | [Process control](process-control.md) — the base-URL contract and the dial-in protocol |
+| | [Attached resolvers](attached-resolvers.md) — a service that answers gates: the two doors, the layers, and whose answer counts |
+| | [reference/resolvers.md](reference/resolvers.md) — the binding, the two entities, and the routes a resolver lives on |
 | | [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides, and promotes what is not its to decide |
 | | [External processes](external-processes.md) — how the seam was chosen |
-| ahead | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
+| ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
+| | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 
 ### Steering
 

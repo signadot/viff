@@ -40,7 +40,44 @@ type Trigger struct {
 	Stratum   string    `tony:"field=stratum,omitzero"`
 	Condition Condition `tony:"field=condition"`
 	Gates     []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	// Gating groups the two facts about a rule's OWN gates: which they are, and who answers
+	// them. `gates:` at the top level still works and means `gating: {gates: …}` — the two
+	// are one field read two ways, not two fields that can disagree, and writing both is
+	// refused rather than merged.
+	//
+	// It exists because a resolver had nowhere to be named for a FIRING's gates. A spawn
+	// says `resolver:` for the run it starts; a rule had no counterpart, so the named door
+	// was open on one side of the design and shut on the other.
+	Gating    *Gating   `tony:"field=gating,omitzero"`
 	Action    Action    `tony:"field=action"`
+}
+
+// Gating is a rule's own gates and who answers them.
+//
+//tony:schemagen=verse-gating,notag
+type Gating struct {
+	// Resolver names the binding that answers these gates — `resolvers:<kind>:<name>`. Same
+	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
+	// and one word for it is worth more than either word being marginally better in its own
+	// place. Empty leaves the question to the standing layer, then to the human docket.
+	Resolver string `tony:"field=resolver,omitzero"`
+	Gates    []Gate `tony:"field=gates,omitzero"`
+}
+
+// AllGates is the rule's gates however they were written.
+func (t Trigger) AllGates() []Gate {
+	if t.Gating != nil && len(t.Gating.Gates) > 0 {
+		return t.Gating.Gates
+	}
+	return t.Gates
+}
+
+// GateResolver is the binding named to answer this rule's own gates, empty for none.
+func (t Trigger) GateResolver() string {
+	if t.Gating == nil {
+		return ""
+	}
+	return t.Gating.Resolver
 }
 
 // Condition is the ECA "cause": what the firing is about, and what fires it. Subject and
@@ -190,6 +227,22 @@ type Gate struct {
 	Name    string   `tony:"field=name,omitzero"`
 	Mode    string   `tony:"field=mode,omitzero"` // auto | ask | park
 	Formula *Formula `tony:"field=formula,omitzero"`
+	// OnDenied is what a NO means for the subject — an action applied when this gate
+	// refuses, about the same subjects the firing was about.
+	//
+	// It exists because a denied firing otherwise writes nothing at all (see Engine.fire:
+	// "no budget consumed"), so the subject is left in the state that asked the question.
+	// Any later commit that touches it re-selects it, the rule fires again, and the gate is
+	// re-posed under its deterministic id — over an answer somebody already gave. No rule
+	// shape can author its way out of that, because the latch a well-formed rule carries
+	// lives in the action, and on a deny the action never runs.
+	//
+	// It hangs off the GATE rather than the action because a no is the gate's outcome: two
+	// gates on one rule refuse for different reasons, and each says what its own refusal
+	// means. That also keeps it clear of onDone/onFailed/onCancelled/onOrphaned, which are
+	// completion hooks for a spawn — a denied gate has no process to complete, which is why
+	// Action.validate requires a spawn for those and must not for this one.
+	OnDenied *Action `tony:"field=onDenied,omitzero"`
 }
 
 // mode resolves the gate's autonomy mode. A temporal gate (Formula set) with no explicit
@@ -300,11 +353,20 @@ type Action struct {
 	// function of rule and subject), as a spawn's is, so a re-fire is idempotent and no two
 	// rules can ever address the same derived entity.
 	//
-	// Its content is LITERAL — no $references, refused at install. That is what makes the
-	// level check a static match of a document against a pattern rather than an analysis of
-	// what a template might produce, and what makes a rule reading a HIGHER level inert: the
-	// same bytes at the same address is a no-op, which the store already ends. See
-	// stratum.go and docs/strata.md.
+	// Its content may reference the firing's SUBJECT and nothing else — every part of it,
+	// including $subject.value, and refused at install for anything further (validateDerive,
+	// via deriveMayReference). The line is not "no references": that was where this started
+	// and it was too strict, since including something of the subject in another entity is
+	// what a derive is FOR.
+	//
+	// What the ordering actually needs is content the levels above cannot influence. Nothing
+	// above can write the subject — a patch touches only its own subject and a derive only
+	// climbs — so a read from above that wakes the rule without changing the subject resolves
+	// $subject.value to the same bytes, writes them to the same address, and dies as a no-op
+	// the store ends by itself. That is what lets a rule read a HIGHER level without the read
+	// becoming a cycle. $subject.commit is the one part refused, because it is a function of
+	// WHEN the firing happened rather than of the subject, so a read from above does change
+	// it. The worked cycle is on deriveMayReference. See stratum.go and docs/strata.md.
 	Derive entity.Payload `tony:"field=derive,omitzero"`
 
 	Spawn *launch.Spec `tony:"field=spawn,omitzero"`

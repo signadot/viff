@@ -87,15 +87,24 @@ type Resolve struct {
 	ID      string `tony:"field=id"`
 	Approve bool   `tony:"field=approve"`
 	// By is who answered. It rides the wire the same way GoalSteer.By and a say's By do,
-	// and for the same reason: a resolution is an act, and process.Resolution.By is emitted
-	// on the read plane, so an unattributed answer publishes "human:cli" as if that were a
-	// person. Empty falls back to that at the server, so it stays optional — unlike a
-	// ballot's --as, which is required because a motion has no meaning without its voters.
-	By string `tony:"field=by,omitzero"`
+	// and for the same reason: a resolution is an act, and an act has an actor.
+	//
+	// REQUIRED. The server used to default it to "human:cli", which published a name
+	// belonging to nobody; now that an answer is a durable entry on the question record, an
+	// unattributable one would be permanent. Same rule as a ballot's --as, and for the same
+	// reason — a decision has no meaning without whoever made it.
+	By string `tony:"field=by"`
 	// Say rides along with the answer as steering — "yes, but do it this way". It is a
 	// list because process.Resolution.Steer is: an answer may carry several instructions,
 	// and collapsing them at the boundary would lose an author's paragraphing.
 	Say []string `tony:"field=say,omitzero"`
+	// Override answers a question an exclusive binding owns, as somebody else.
+	//
+	// It exists because `exclusive` is not real against whoever holds this API, and a dial
+	// that pretended otherwise would be a lie told to the person relying on it. So the
+	// override is a named act rather than a hole: it lands on the record naming both
+	// parties — who overrode, and whom.
+	Override bool `tony:"field=override,omitzero"`
 }
 
 // Spawn runs an ad-hoc process (`POST /processes`) — the `process run` path, which has
@@ -103,9 +112,34 @@ type Resolve struct {
 //
 //tony:schemagen=verse-spawn,notag
 type Spawn struct {
-	ID     string `tony:"field=id,omitzero"` // empty → the runtime mints a `run-…` id
+	// ID names the run. It is validated rather than taken as given: an id is the prefix of
+	// every gate question the run raises (`<id>~d1`), and answering one recovers the owner by
+	// cutting at the first `~` — so an id carrying one hands its questions to a process that
+	// is not it. It also lands in a URL path (`/processes/{id}`).
+	//
+	// Prefer Name, which is a label the runtime derives a safe id FROM.
+	ID string `tony:"field=id,omitzero"` // empty → derived from Name, or a minted `run-…`
+	// Name is a label for the run, from which the id is derived and returned. It exists so a
+	// caller can say what a run IS without choosing its address: `--name review` becomes
+	// `review-8f306077b1c2`, which is readable, unique, and cannot be malformed.
+	Name string `tony:"field=name,omitzero"`
 	Task   string `tony:"field=task"`
 	Driver string `tony:"field=driver,omitzero"` // empty → the runtime default
+	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
+	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
+	// of the same field, so `verse process run` and a firing can ask for the same thing.
+	Retain int `tony:"field=retain,omitzero"`
+	// Subject is the flow this run belongs to — the entity it is about. A trigger spawn
+	// carries one from its firing; this is the ad-hoc face of the same field, and without it
+	// a `process run` is about nothing, which is a real state and not a useful default.
+	Subject string `tony:"field=subject,omitzero"`
+	// Vector is the autonomy dial — `auto`, `ask` or `park` — the ad-hoc face of a spawn's
+	// `vector:`. Without it the runtime's own default stands, which for a scripted run is
+	// `auto`: it asks nothing, and a `resolver` bound to it would have nothing to answer.
+	Vector string `tony:"field=vector,omitzero"`
+	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
+	// spawn's `resolver:`, so `verse process run` and a firing can bind the same way.
+	Resolver string `tony:"field=resolver,omitzero"`
 }
 
 // Spawned is what a spawn answers with: the id to address the new process by.
@@ -113,6 +147,38 @@ type Spawn struct {
 //tony:schemagen=verse-spawned,notag
 type Spawned struct {
 	ID string `tony:"field=id"`
+}
+
+// Verdict is one answer from a resolver (`POST /resolvers/instance/{id}/verdicts`).
+//
+// It names the question rather than being addressed to it: a resolver reads a stream and
+// decides about what it sees, so the id is which of the things it has read this is about.
+//
+//tony:schemagen=verse-verdict,notag
+type Verdict struct {
+	ID string `tony:"field=id"`
+	// Verdict is `proceed` or `deny` — the record's own vocabulary, so what a resolver says
+	// and what the docket shows are one word rather than a mapping. `escalate` is the third
+	// and arrives with the layer that can receive it.
+	Verdict string `tony:"field=verdict"`
+	// Why is the reasoning, for the record. Say is what to tell the process — "yes, but do
+	// it this way" — and rides the same Steer a person's `--say` does.
+	Why string   `tony:"field=why,omitzero"`
+	Say []string `tony:"field=say,omitzero"`
+}
+
+// Position is how far a resolver has read (`POST /resolvers/instance/{id}/position`).
+//
+// Reported even when nothing was decided, which is the point: a hundred frames may produce no
+// verdict, and the position advancing is what tells "has not decided" from "has not caught
+// up". Notes are a handover for whoever picks the position up — a replacement after a
+// restart, or the same resolver with a fresh context — not a memory, since a live one
+// remembers by being alive.
+//
+//tony:schemagen=verse-position,notag
+type Position struct {
+	Position int64  `tony:"field=position"`
+	Notes    string `tony:"field=notes,omitzero"`
 }
 
 // Say re-prompts a running process with a new instruction

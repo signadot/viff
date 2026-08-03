@@ -1,11 +1,14 @@
 package runner_test
 
 import (
+	"bytes"
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
@@ -157,6 +160,192 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 			e, _, _ := store.Get(mirror.Ref("t1"))
 			t.Fatalf("entity never converged to completed; status=%v", entity.ToObj(e.Payload)["status"])
 		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// A gate on a REMOTE process is answerable. Without remoteHandle.Resolve this handle was not
+// a gateResolver at all, so every route into it refused with a message about the question —
+// a process on another host could be blocked on a decision that no operator could give.
+//
+// It also pins the vocabulary: the handle sends api.Resolve (`id`/`approve`), and the remote
+// runtime understands it. When those two disagree the answer decodes to an empty id, answers
+// nothing, and comes back as though the decision were unknown.
+func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		// Ask, and resolved by the daemon's own registry — so the process really blocks and
+		// really waits for an answer to arrive over HTTP.
+		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
+		return process.NewProcess(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+	}
+	srv := httptest.NewServer(processd.New(build).Handler())
+	defer srv.Close()
+
+	pol := runner.HTTP(srv.URL)
+	h := pol.Spawn(process.Launch{ID: "t-gate", Task: "do a thing", Driver: "scripted"}, nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+
+	rh, ok := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	if !ok {
+		t.Fatal("a remote handle cannot answer a gate, so a remote process can block forever")
+	}
+
+	var decision string
+	timeout := time.After(5 * time.Second)
+	for decision == "" {
+		select {
+		case ev, open := <-ch:
+			if !open {
+				t.Fatal("the stream ended before the process gated")
+			}
+			if ev.Kind == process.EvPending {
+				decision = ev.ID
+			}
+		case <-timeout:
+			t.Fatal("the remote process never raised a gate")
+		}
+	}
+
+	if err := rh.Resolve(decision, true, "go ahead", "human:scott"); err != nil {
+		t.Fatalf("answering the remote gate %s = %v", decision, err)
+	}
+	// Reported success is not delivery. The process has to actually go on, and the answer has
+	// to arrive attributed — an answer that lost its `by` on the wire is an unattributable
+	// decision recorded as though it were attributed.
+	timeout = time.After(5 * time.Second)
+	for {
+		select {
+		case ev, open := <-ch:
+			if !open {
+				t.Fatal("the stream ended without a decision")
+			}
+			if ev.Kind == process.EvDecision && ev.ID == decision {
+				if !ev.Proceed {
+					t.Fatalf("the remote read a deny from an approve: %+v", ev)
+				}
+				if ev.By != "human:scott" {
+					t.Fatalf("by = %q, want human:scott — attribution was dropped on the wire", ev.By)
+				}
+				return
+			}
+		case <-timeout:
+			t.Fatal("the remote process never acted on the answer")
+		}
+	}
+}
+
+// And the older spelling still works, because things dial in against this face. A client
+// sending {decisionId, proceed} must still be understood, or adding the new vocabulary would
+// have been a break dressed as an addition.
+func TestProcessdStillReadsTheOlderResolveSpelling(t *testing.T) {
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
+		return process.NewProcess(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+	}
+	srv := httptest.NewServer(processd.New(build).Handler())
+	defer srv.Close()
+
+	pol := runner.HTTP(srv.URL)
+	h := pol.Spawn(process.Launch{ID: "t-old", Task: "do a thing", Driver: "scripted"}, nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+
+	var decision string
+	timeout := time.After(5 * time.Second)
+	for decision == "" {
+		select {
+		case ev, open := <-ch:
+			if !open {
+				t.Fatal("the stream ended before the process gated")
+			}
+			if ev.Kind == process.EvPending {
+				decision = ev.ID
+			}
+		case <-timeout:
+			t.Fatal("the remote process never raised a gate")
+		}
+	}
+
+	body, err := codec.Marshal(map[string]any{
+		"decisionId": decision, "proceed": true, "by": "human:legacy",
+	}, codec.Tony)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp, err := http.Post(srv.URL+"/processes/t-old/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("the older spelling = %s, want 204", resp.Status)
+	}
+}
+
+// The contract as documented mixes the two spellings — `{id, proceed}` — and things dial in
+// against the document, not against the struct. Read as two fixed vocabularies that combination
+// yields a DENY: the id is recognised and the verdict field beside it is not, so an approval
+// arrives as a refusal and the process stops. It has to be read as an approval.
+func TestProcessdReadsTheDocumentedMixedSpelling(t *testing.T) {
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
+		return process.NewProcess(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+	}
+	srv := httptest.NewServer(processd.New(build).Handler())
+	defer srv.Close()
+
+	pol := runner.HTTP(srv.URL)
+	h := pol.Spawn(process.Launch{ID: "t-mixed", Task: "do a thing", Driver: "scripted"}, nil)
+	ch, unsub := h.Subscribe()
+	defer unsub()
+
+	var decision string
+	timeout := time.After(5 * time.Second)
+	for decision == "" {
+		select {
+		case ev, open := <-ch:
+			if !open {
+				t.Fatal("the stream ended before the process gated")
+			}
+			if ev.Kind == process.EvPending {
+				decision = ev.ID
+			}
+		case <-timeout:
+			t.Fatal("the remote process never raised a gate")
+		}
+	}
+
+	body, err := codec.Marshal(map[string]any{"id": decision, "proceed": true, "by": "human:doc"}, codec.Tony)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp, err := http.Post(srv.URL+"/processes/t-mixed/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("the documented spelling = %s, want 204", resp.Status)
+	}
+
+	timeout = time.After(5 * time.Second)
+	for {
+		select {
+		case ev, open := <-ch:
+			if !open {
+				t.Fatal("the stream ended without a decision")
+			}
+			if ev.Kind == process.EvDecision && ev.ID == decision {
+				if !ev.Proceed {
+					t.Fatal("`{id, proceed: true}` was read as a deny — an approval became a refusal")
+				}
+				return
+			}
+		case <-timeout:
+			t.Fatal("the remote process never acted on the answer")
 		}
 	}
 }

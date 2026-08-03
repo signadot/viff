@@ -136,6 +136,18 @@ type Process struct {
 	subID  int
 	cursor int64   // per-process monotonic event cursor (assigned in emit)
 	ring   []Frame // bounded retained window, for SubscribeSince(?since) replay
+	// retain is this process's read-plane window in events; 0 = the package default. Set from
+	// the Launch at spawn, because how much of the past is worth keeping is a property of
+	// the work rather than of the runtime.
+	retain int
+	// open is the gates standing right now, keyed by decision id: an EvPending opens one and
+	// its EvDecision closes it. The RING is not a substitute — it forgets, and what it
+	// forgets first is the oldest, which for a long-standing gate is the gate itself.
+	open map[string]Frame
+	// ended latches on the terminal frame. After it, the read plane is a finite record: no
+	// event will ever follow, so subscribers are closed rather than left listening to a
+	// process that has stopped speaking.
+	ended bool
 }
 
 func NewProcess(id string, sup *Supervisor, d Driver, e Executor) *Process {
@@ -160,9 +172,14 @@ func (p *Process) SetSpawn(f SpawnFunc) { p.spawn = f }
 // SetVector swaps the gate vector on the running supervisor — the autonomy slide,
 // applied at the next boundary with no restart. It emits an EvVector frame so the slide is
 // observable on the read plane (the new default mode; the operator who slid it rides By).
-func (p *Process) SetVector(v *Vector, by string) {
+// SetBoundTo names the resolver binding that owns this process's questions, from the launch.
+// Applied at spawn, before the loop runs.
+func (p *Process) SetBoundTo(ref string) { p.sup.SetBoundTo(ref) }
+
+func (p *Process) SetVector(v *Vector, by string) error {
 	p.sup.SetVector(v)
 	p.emit(Frame{Kind: EvVector, Mode: v.Default.String(), By: by})
+	return nil // the local handle: the process is right here, so delivery is not in doubt
 }
 
 // SetFailFast makes a child's error cancel its still-running siblings
@@ -192,7 +209,7 @@ func (p *Process) appendJournal(line string) {
 // and honored at the next boundary, folded into the conversation before the next
 // model turn — cooperative: it never interrupts an in-flight model call or action.
 // Requires the Driver to implement Steerable; otherwise the steer is ignored.
-func (p *Process) Steer(instruction, by string) {
+func (p *Process) Steer(instruction, by string) error {
 	p.mu.Lock()
 	p.steer = append(p.steer, sayMsg{text: instruction, by: by})
 	p.mu.Unlock()
@@ -200,6 +217,7 @@ func (p *Process) Steer(instruction, by string) {
 	case p.steerSig <- struct{}{}:
 	default:
 	}
+	return nil
 }
 
 // sayMsg is a say-to instruction latched for the next boundary, with its speaker (by)
@@ -219,13 +237,14 @@ func (p *Process) drainSteer() []sayMsg {
 // bottom-up — children unwind before the parent's frame — and returns "cancelled"
 // at the next boundary. A steer or another cancel arriving mid-teardown does not
 // interrupt it.
-func (p *Process) Cancel(reason string) {
+func (p *Process) Cancel(reason string) error {
 	p.mu.Lock()
 	c := p.cancel
 	p.mu.Unlock()
 	if c != nil {
 		c(fmt.Errorf("cancelled: %s", reason))
 	}
+	return nil
 }
 
 // Run drives the cursor until the driver is done, or a cancel unwinds it. It is

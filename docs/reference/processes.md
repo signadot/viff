@@ -52,7 +52,7 @@ verse gates                                  # engine + process gates, unified
 #   reason: "verb write"
 #   tool: write_file
 #   where: process
-verse gate approve run-f3e31ed0390f~d1       # or: process approve run-… run-…~d1
+verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: process approve run-… run-…~d1
 ```
 
 The `~` that separates the gate from its process needs no quoting and no escaping, in a shell
@@ -104,10 +104,73 @@ payload:
   vectorBy: human:scott
 ```
 
+`observed: false` appears while the mirror cannot reach the runner holding the process. The
+entity's other fields are then the last thing it heard rather than the current truth.
+
 It outlives the process: the result, the last `say`, the last tool output and the terminal
 `status` are all still there after the live registry has retired it, which is what
 `verse flow show` reads for history. The mirror is an index, not a warehouse — it publishes
 what an observer needs, not the transcript.
+
+## The question record
+
+A gate that stops for an answer is published as its own entity, `gate:question:<id>`, and the
+process points at it (`pending: gate:question:<id>`).
+
+```tony
+payload:
+  id:      review@demo:pr:1~d3
+  origin:  review@demo:pr:1
+  gate:    write-guard
+  mode:    ASK
+  status:  pending
+  subject: demo:pr:1
+  tool:    edit_file
+  effects: {verbs: [write], paths: [cfg/app.tony]}
+```
+
+`effects` is what the action *would do*, derived before the gate was posed, so a rule can
+select the questions it cares about without reading prose:
+
+```sh
+verse entities --system gate --if '{status: pending, effects: {verbs: [write]}}'
+```
+
+It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
+afterwards to `status: answered` with the verdict and who gave it. A question outlives its
+answer, because a docket that forgets is one nobody can audit.
+
+`resolver` names the binding that owns the question — what a spawn or a rule named, else the
+standing binding covering its subject, else absent, which is the docket a person reads.
+`reownedFrom` appears when a question changed hands, with `reownedWhy` saying what moved it —
+`escalated` when its owner declined, `removed` when its owner was uninstalled. Either way it
+went to the layer above: the standing binding covering its subject, else the docket a person
+reads. The question itself is unchanged, because escalating changes who answers and not what
+is being answered.
+
+`delivered: false` appears while an answer has been accepted but not yet taken by the worker
+it is for — a brokered process, where the answer waits on the inbox until somebody dials in.
+The gate is closed to further answers the moment one is accepted; what is still in doubt is
+whether the party who must act on it knows. It clears on the worker's acknowledgement.
+
+```sh
+verse entities --system gate --if '{delivered: false}'   # answers still in flight
+```
+
+Every answer names its answerer — `verse gate approve <id> --as human:you` — and two people
+answering at once is normal rather than exceptional. Exactly one applies; the other is
+recorded under `stale` and told so (`409`, naming who won), because a docket that keeps only
+the winner cannot show that a question was contested. Answering an id nobody asked about is a
+different error (`404`), and worth telling apart: one means look for your typo, the other
+means somebody beat you to it.
+
+The record is its own entity rather than a field because a gate is not always a process's. A
+trigger gate is posed by a firing, before anything spawns — and if it is denied, nothing ever
+does.
+
+A restart settles what nobody is waiting on: a question survives it exactly as its process
+does, and one a firing raised is settled outright, since what waited on that answer was a
+goroutine in the verse. See [process control](../process-control.md).
 
 A completion hook (`onDone` and friends) reads that process's own payload: `$status`,
 `$result`, `$data`, `$err`, `$chain`. The process's flow is its subject, so the hook's
@@ -204,7 +267,7 @@ deciding — the verse governs who resolves it, and the executor never resolves 
 verse process do gate "$ID" deploy-approval --as human:scott --reason prod --wait
 # gate raised: deploy-approval-a1b2c3d4
 # awaiting resolution…
-verse process approve "$ID" deploy-approval-a1b2c3d4      # …from someone with the authority
+verse process approve "$ID" deploy-approval-a1b2c3d4 --as human:lead   # …from someone with the authority
 verse process do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
 ```
 

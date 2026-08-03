@@ -134,7 +134,7 @@ func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
 	for _, ent := range ents {
 		chain := entity.Str(ent.Payload, "chain")
 		if chain == "" {
-			bare = append(bare, nodeFrom("", "process", ent))
+			bare = append(bare, e.nodeFrom("", "process", ent))
 			continue
 		}
 		run[chain] = ent
@@ -186,7 +186,7 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 	ent, didRun := run[chain]
 	switch {
 	case didRun:
-		n = nodeFrom(chain, kind, ent)
+		n = e.nodeFrom(chain, kind, ent)
 	case kind == "root": // nothing above it to be unreachable from
 	case act != nil && act.Spawn == nil && process.TerminalStatus(parentStatus) &&
 		kind == hookField(process.Status(parentStatus)):
@@ -283,8 +283,11 @@ func hookAction(act *Action, field string) *Action {
 }
 
 // nodeFrom projects a mirrored process onto a node. The mirror is an index, not a warehouse,
-// so this reads exactly the fields it publishes.
-func nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
+// so this reads exactly the fields it publishes — and `pending` is a ref, so the gate's NAME
+// is one hop away, on the question itself. Following it costs a read per blocked process and
+// keeps the name in one place; carrying a copy on the process would be the second spelling
+// this step exists to remove.
+func (e *Engine) nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
 	str := func(k string) string { return entity.Str(ent.Payload, k) }
 	n := FlowNode{
 		Chain:      chain,
@@ -292,7 +295,7 @@ func nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
 		ID:         ent.Ref.ID,
 		Task:       str("task"),
 		Status:     str("status"),
-		Gate:       str("pendingGate"),
+		Gate:       e.gateNameOf(str("pending")),
 		LastAction: str("lastAction"),
 	}
 	if n.Status == "" {
@@ -373,4 +376,22 @@ func applySeqProgress(carrier *FlowNode, p seqProgress) {
 		}
 		seen++
 	}
+}
+
+// gateNameOf follows a process's `pending` ref to the question it names and reads the gate
+// off it. Empty when nothing is pending, or when the question has already been reaped — a
+// blocked-looking process with no question is a display question, not a correctness one.
+func (e *Engine) gateNameOf(pendingRef string) string {
+	if pendingRef == "" {
+		return ""
+	}
+	ref, err := entity.ParseRef(pendingRef)
+	if err != nil {
+		return ""
+	}
+	ent, ok, err := e.store.Get(ref)
+	if err != nil || !ok {
+		return ""
+	}
+	return entity.Str(ent.Payload, "gate")
 }

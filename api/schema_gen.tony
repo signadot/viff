@@ -73,6 +73,14 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  notes: .[string]
+  position: .[int]
+signature:
+  name: verse-position
+---
+context:
+- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   field: .[array(string)]
@@ -88,6 +96,7 @@ define:
   approve: .[bool]
   by: .[string]
   id: .[string]
+  override: .[bool]
   say: .[array(string)]
 signature:
   name: verse-resolve
@@ -141,7 +150,12 @@ context:
 define:
   driver: .[string]
   id: .[string]
+  name: .[string]
+  resolver: .[string]
+  retain: .[int]
+  subject: .[string]
   task: .[string]
+  vector: .[string]
 signature:
   name: verse-spawn
 ---
@@ -177,3 +191,13 @@ define:
   verb: .[string]
 signature:
   name: verse-steered
+---
+context:
+- tony-format/context
+define:
+  id: .[string]
+  say: .[array(string)]
+  verdict: .[string]
+  why: .[string]
+signature:
+  name: verse-verdict

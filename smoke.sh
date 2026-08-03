@@ -287,7 +287,7 @@ step "gate: an ask gate holds; answering it releases the action"
 v trigger add --file - >/dev/null <<'JSON' || die "gated charter add failed"
 [ { "name": "smoke-gated",
     "condition": { "subject": { "system": "demo", "kind": "release", "value": { "stage": "open" } } },
-    "gates":     [ { "name": "ship", "mode": "ask" } ],
+    "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
 v entity put demo:release:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
@@ -303,7 +303,7 @@ ok "the action is held; verse gates shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v entity get demo:release:1)" stage open || die "the ask gate did not hold the action"
 ok "demo:release:1 still open while the gate is pending"
-v gate y "$GID" -s "ship it" >/dev/null || die "gate approve (y) failed"
+v gate y "$GID" -s "ship it" --as human:smoke >/dev/null || die "gate approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
 	if haskv "$(v entity get demo:release:1 2>/dev/null || true)" stage shipped; then
@@ -353,7 +353,8 @@ printf 'hello from a\n' >"$tmp/tree/a.txt"
 printf 'hello from b\n' >"$tmp/tree/b.txt"
 SCOPE="smoke$$"
 # direct invocation (see the up launch above) so kill -INT reaches connect, not a wrapper.
-"$BIN" --addr "$ADDR" --scope "$SCOPE" connect "$tmp/tree" --driver scripted >"$tmp/connect.log" 2>&1 &
+"$BIN" --addr "$ADDR" --scope "$SCOPE" connect "$tmp/tree" --driver scripted \
+	--task 'echo checked $path' >"$tmp/connect.log" 2>&1 &
 CONN=$!
 fed=
 for _ in $(seq 1 150); do
@@ -373,6 +374,29 @@ if has "$(v entity get "local:dir-content-$SCOPE:a.txt" 2>/dev/null || true)" 'h
 else
 	note "content read did not match (mount timing) — federation verified above"
 fi
+# THE VALIDATOR RAN. Federation is only half of what connect promises — its startup line says
+# "validator per file" — and this half was dead for as long as it existed while every check
+# above passed: the rule's subject predicate selected nothing, and the completion hook under it
+# failed on a reference a hook cannot reach. Both were silent. So the assertion is the end of
+# the loop rather than any part of its middle: the file's own record says it was validated.
+val=
+for _ in $(seq 1 60); do
+	if has "$(v --scope "$SCOPE" entity get "local:dir-status-$SCOPE:a.txt" 2>/dev/null || true)" 'validated'; then
+		val=1
+		break
+	fi
+	sleep 0.5
+done
+[ -n "$val" ] || { v --scope "$SCOPE" entities --system process >&2; die "the per-file validator never validated a.txt"; }
+ok "the validator ran and latched: a.txt is marked validated"
+# And it LATCHES: a validated file is not selected again, which is the whole reason the
+# subject says what is outstanding rather than what exists.
+before=$(v --scope "$SCOPE" entities --system process -o tony | grep -c 'ref:' || true)
+sleep 3
+after=$(v --scope "$SCOPE" entities --system process -o tony | grep -c 'ref:' || true)
+[ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
+ok "a validated file is not validated again ($after process)"
+
 kill -INT "$CONN" 2>/dev/null || true # ctrl-c tears the scope down
 wait "$CONN" 2>/dev/null || true
 CONN=""

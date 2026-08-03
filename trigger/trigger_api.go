@@ -47,9 +47,25 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := t.Action.noNestedSeq(false); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
-	for _, g := range t.Gates {
+	// One spelling or the other, never both. `gates:` at the top level means
+	// `gating: {gates: …}`; a rule that writes both has said which gates it has twice, and
+	// picking one silently is how a charter comes to gate on something its author removed.
+	if t.Gating != nil && len(t.Gating.Gates) > 0 && len(t.Gates) > 0 {
+		return fmt.Errorf("trigger %q: gates are written twice — at the top level and under "+
+			"`gating`. They are one field read two ways; keep the one under `gating`, which "+
+			"is also where a resolver for them is named", t.Name)
+	}
+	for _, g := range t.AllGates() {
 		if _, err := g.mode(); err != nil {
 			return err
+		}
+		// An onDenied is an ordinary action and faces every check one faces — including
+		// that ITS own completion hooks need a spawn. What it does not need is a spawn of
+		// its own: it is not a completion hook, it is what a refusal means.
+		if g.OnDenied != nil {
+			if err := g.OnDenied.validate(); err != nil {
+				return fmt.Errorf("trigger %q: gate %q onDenied: %w", t.Name, g.Name, err)
+			}
 		}
 	}
 	// LEVEL DISCIPLINE: a subject inside its stratum's pattern, a derive inside some strictly
@@ -255,12 +271,17 @@ func spawnID(chain string, ref entity.Ref) string {
 // and a patch or a derive is an arbitrary payload whose keys are the author's.
 func CheckFields(node *ir.Node) error {
 	return checkFields(node, "trigger", map[string]bool{
-		"name": true, "stratum": true, "condition": true, "gates": true, "action": true,
+		"name": true, "stratum": true, "condition": true, "gates": true, "gating": true,
+		"action": true,
 	}, func(field string, val *ir.Node) error {
 		switch field {
 		case "condition":
 			return checkFields(val, "condition", map[string]bool{
 				"subject": true, "on": true, "when": true,
+			}, nil)
+		case "gating":
+			return checkFields(val, "gating", map[string]bool{
+				"resolver": true, "gates": true,
 			}, nil)
 		case "action":
 			return checkAction(val)

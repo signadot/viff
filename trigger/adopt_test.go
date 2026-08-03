@@ -16,13 +16,21 @@ type recHandle struct {
 }
 
 func (h *recHandle) Subscribe() (<-chan process.Frame, func()) { return h.ch, func() {} }
-func (h *recHandle) Pause()                                    {}
-func (h *recHandle) Resume()                                   {}
-func (h *recHandle) Cancel(string)                             { h.mu.Lock(); h.cancelled = true; h.mu.Unlock() }
-func (h *recHandle) Steer(string, string)                      {}
-func (h *recHandle) SetVector(*process.Vector, string)         {}
-func (h *recHandle) Result() string                            { return "" }
-func (h *recHandle) Err() string                               { return "" }
+func (h *recHandle) SubscribeSince(int64) (<-chan process.Frame, func()) {
+	return h.ch, func() {}
+}
+func (h *recHandle) Pause() error  { return nil }
+func (h *recHandle) Resume() error { return nil }
+func (h *recHandle) Cancel(string) error {
+	h.mu.Lock()
+	h.cancelled = true
+	h.mu.Unlock()
+	return nil
+}
+func (h *recHandle) Steer(string, string) error              { return nil }
+func (h *recHandle) SetVector(*process.Vector, string) error { return nil }
+func (h *recHandle) Result() string                          { return "" }
+func (h *recHandle) Err() string                             { return "" }
 
 // A resumed process (Adopt) must be steerable, not merely observed: it is re-tracked
 // under its flow, so flow control (here CancelFlow) reaches it.

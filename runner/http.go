@@ -9,24 +9,44 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/process"
 )
 
 // HTTP returns a Runner that drives the runner at baseURL.
+// ControlTimeout bounds every non-streaming call to a runner. A remote that accepts the
+// connection and then never answers is indistinguishable from a slow one, and without a
+// deadline the caller waits on that distinction forever — which is not a hypothetical: it is
+// how a spawn, a cancel and an answer each hang, holding whatever goroutine issued them.
+//
+// Generous rather than tight. It is a backstop against a hung peer, not a latency budget.
+const ControlTimeout = 30 * time.Second
+
 func HTTP(baseURL string) process.Runner {
-	return &httpRunner{base: strings.TrimRight(baseURL, "/"), cl: http.DefaultClient}
+	return &httpRunner{
+		base: strings.TrimRight(baseURL, "/"),
+		// Its OWN client, never http.DefaultClient: that one is shared process-wide, so a
+		// timeout set on it would silently bound every other caller's requests too.
+		cl: &http.Client{Timeout: ControlTimeout},
+		// The event stream is long-lived by design, so a whole-request deadline would cut
+		// a healthy subscription. It is bounded by its context instead (Subscribe/cancel).
+		stream: &http.Client{},
+	}
 }
 
 type httpRunner struct {
-	base string
-	cl   *http.Client
+	base   string
+	cl     *http.Client // control: bounded by ControlTimeout
+	stream *http.Client // the event plane: unbounded, cancelled by its context
 }
 
 // Spawn POSTs /processes carrying the caller's id (so the remote uses it and it matches
@@ -59,13 +79,13 @@ func (p *httpRunner) Spawn(l process.Launch, _ process.ContentReader) process.Ha
 	} else {
 		resp.Body.Close()
 	}
-	return &remoteHandle{base: p.base, id: l.ID, cl: p.cl}
+	return &remoteHandle{base: p.base, id: l.ID, cl: p.cl, stream: p.stream}
 }
 
 // Attach re-attaches to an existing remote process (no spawn). remoteHandle.Subscribe
 // replays from the start (?since=0), so a resumed mirror re-derives current state.
 func (p *httpRunner) Attach(id string) process.Handle {
-	return &remoteHandle{base: p.base, id: id, cl: p.cl}
+	return &remoteHandle{base: p.base, id: id, cl: p.cl, stream: p.stream}
 }
 
 // Ref is the base URL — how the process:instance entity records this runner so a restart
@@ -113,18 +133,28 @@ func (p *httpRunner) ProcessSnapshot(id string) (process.Instance, bool) {
 // remoteHandle is a Handle over the wire: the read plane is GET /events (SSE), the
 // control plane the matching POSTs.
 type remoteHandle struct {
-	base string
-	id   string
-	cl   *http.Client
+	base   string
+	id     string
+	cl     *http.Client // control: bounded
+	stream *http.Client // the event plane: unbounded, cancelled by its context
 }
 
+// Subscribe replays the whole retained window then streams live, so the mirror sees the
+// process from as far back as the remote still holds.
 func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
+	return h.SubscribeSince(0)
+}
+
+// SubscribeSince resumes from a cursor. It is the same contract the local bus and the broker
+// honour, carried over HTTP by handing the cursor to the remote's own `?since=` rather than
+// asking for everything and discarding — the remote is the one that knows what it still has,
+// and it is the one that can say EvGap when the cursor is below its window.
+func (h *remoteHandle) SubscribeSince(since int64) (<-chan process.Frame, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan process.Frame, 256)
-	// since=0: replay the whole retained window then stream live, so the mirror sees the
-	// process from the start (and, later, a resume passes the last mirrored cursor).
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, h.url("/events?since=0"), nil)
-	resp, err := h.cl.Do(req)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+		h.url("/events?since="+strconv.FormatInt(since, 10)), nil)
+	resp, err := h.stream.Do(req)
 	if err != nil {
 		close(out)
 		cancel()
@@ -185,20 +215,63 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 	return out, cancel
 }
 
-func (h *remoteHandle) Pause()               { h.post("/pause", nil) }
-func (h *remoteHandle) Resume()              { h.post("/resume", nil) }
-func (h *remoteHandle) Cancel(reason string) { h.post("/cancel", nil) } // remote cancel takes no reason
-func (h *remoteHandle) Steer(instr, by string) {
-	h.post("/say", map[string]string{"instruction": instr, "by": by})
+func (h *remoteHandle) Pause() error               { return h.post("/pause", nil) }
+func (h *remoteHandle) Resume() error              { return h.post("/resume", nil) }
+func (h *remoteHandle) Cancel(reason string) error { return h.post("/cancel", nil) } // remote cancel takes no reason
+func (h *remoteHandle) Steer(instr, by string) error {
+	return h.post("/say", map[string]string{"instruction": instr, "by": by})
 }
 
-func (h *remoteHandle) SetVector(v *process.Vector, by string) {
-	b, _ := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.Tony)
-	req, _ := http.NewRequest(http.MethodPut, h.url("/vector"), bytes.NewReader(b))
-	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
-	if resp, err := h.cl.Do(req); err == nil {
-		resp.Body.Close()
+func (h *remoteHandle) SetVector(v *process.Vector, by string) error {
+	b, err := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.Tony)
+	if err != nil {
+		return err
 	}
+	req, err := http.NewRequest(http.MethodPut, h.url("/vector"), bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
+	resp, err := h.cl.Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %w", process.ErrUnreachable, h.id, err)
+	}
+	defer resp.Body.Close()
+	return statusErr(resp)
+}
+
+// Resolve answers a gate the remote's process is blocked on, and reports whether the answer
+// landed. It is what makes a remote-hosted process answerable at all: without it, this handle
+// is not a gateResolver, and every route into it fails with a message about the question
+// rather than about the runner.
+//
+// It speaks api.Resolve — the vocabulary every other answering surface uses — rather than the
+// runtime's older {decisionId, proceed}. processd accepts both, so an old runner on the other
+// end still understands this.
+//
+// The bool is the point, and it is why this cannot go through post(): an answer that did not
+// land must not read as one that did, or the operator is told a blocked worker was released.
+func (h *remoteHandle) Resolve(decision string, proceed bool, say, by string) error {
+	body := api.Resolve{ID: decision, Approve: proceed, By: by}
+	if say != "" {
+		body.Say = []string{say}
+	}
+	b, err := codec.Marshal(body, codec.Tony)
+	if err != nil {
+		return err
+	}
+	resp, err := h.cl.Post(h.url("/resolve"), codec.MediaType(codec.Tony), bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("%w: %s: %w", process.ErrUnreachable, h.id, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		// A remote 404 on a resolve is about the DECISION, not the process: the request
+		// reached a runtime that hosts this process and it did not recognise the id.
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		return fmt.Errorf("%w: %s", process.ErrNoSuchDecision, strings.TrimSpace(string(msg)))
+	}
+	return statusErr(resp)
 }
 
 // Err reads the terminal failure detail off the snapshot — the remote's process.Instance
@@ -250,15 +323,49 @@ func decodeResp(resp *http.Response, v any) error {
 	return codec.Unmarshal(body, v, f)
 }
 
-func (h *remoteHandle) post(path string, body any) {
+// post issues one control call and says what became of it. It used to discard both the error
+// and the status, so a control that never left the building — and one the remote refused —
+// read exactly like one that was applied.
+func (h *remoteHandle) post(path string, body any) error {
 	var r io.Reader
 	if body != nil {
-		b, _ := codec.Marshal(body, codec.Tony)
+		b, err := codec.Marshal(body, codec.Tony)
+		if err != nil {
+			return err
+		}
 		r = bytes.NewReader(b)
 	}
-	if resp, err := h.cl.Post(h.url(path), codec.MediaType(codec.Tony), r); err == nil {
-		resp.Body.Close()
+	resp, err := h.cl.Post(h.url(path), codec.MediaType(codec.Tony), r)
+	if err != nil {
+		// Nothing is known about whether the far side acted. That is the whole content of
+		// ErrUnreachable, and it is the only one of the three outcomes worth retrying.
+		return fmt.Errorf("%w: %s%s: %w", process.ErrUnreachable, h.id, path, err)
 	}
+	defer resp.Body.Close()
+	return statusErr(resp)
+}
+
+// statusErr reads a control response as one of the three outcomes. A refusal is the remote
+// answering, which is a different fact from not answering at all — so it never becomes
+// ErrUnreachable, however unhelpful the body.
+func statusErr(resp *http.Response) error {
+	if resp.StatusCode < 300 {
+		return nil
+	}
+	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	detail := strings.TrimSpace(string(msg))
+	if detail == "" {
+		detail = resp.Status
+	}
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %s", process.ErrNoSuchProcess, detail)
+	case http.StatusConflict:
+		return fmt.Errorf("%w: %s", process.ErrAlreadyAnswered, detail)
+	case http.StatusNotImplemented:
+		return fmt.Errorf("%w: %s", process.ErrUnsupported, detail)
+	}
+	return errors.New(detail)
 }
 
 var (

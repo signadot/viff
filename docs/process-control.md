@@ -79,6 +79,18 @@ k8s Job still running — resumes: the work continued in the world while verse w
 reconcile is therefore "resume where the work outlived the daemon; orphan only what died
 with it."
 
+Open questions follow their asker rather than being judged on their own. A resumed process
+keeps its pending gates on the docket, with the same ids, and answering one still reaches the
+worker. An orphaned process's go with it — settled `orphaned`, off the docket, still readable,
+because a question listed as answerable when nothing will read the answer asks a person to
+decide into a void.
+
+A gate a *firing* raised is settled unconditionally, because what waited on it was a goroutine
+in the verse. If its rule still matches, the reinstalled charter replays and poses the same
+question under the same id, and it is answerable again within milliseconds — which is what a
+deterministic gate id is for. If the rule no longer matches, the question was about a world
+that has moved on.
+
 ## Everything through the base URL — no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream,
@@ -96,18 +108,26 @@ server — local is simply the broker at a fixed nonce.
 
 ## The verse-facing contract
 
-Two endpoints, which are `Observe : Since` once more, plus out-of-band control:
+Two endpoints, which are `Observe : Since` once more, plus out-of-band control.
+
+Every control call reports which of three things became of it: it was applied, the far side
+REFUSED it, or the far side was never reached. Only the third is worth retrying, and a caller
+that cannot tell them apart either retries what already happened or abandons what never
+arrived — so the distinction is carried in the status, and across the Go seam as
+`process.ErrUnreachable` and friends.
 
 ```
 GET    /processes/{id}                 level truth: current snapshot
 GET    /processes/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
-POST   /processes/{id}/resolve  {id, proceed, by, say?, key}     answer a gate
+POST   /processes/{id}/resolve  {id, approve, by, say?, key}     answer a gate
+       204 applied · 404 no such decision · 409 already answered · 502 runner unreachable
 POST   /processes/{id}/say      {text, by, key}                  say to it (re-prompt)
 POST   /processes/{id}/cancel   {by, key}
 POST   /processes/{id}/pause    {by}
 POST   /processes/{id}/resume   {by}
 PUT    /processes/{id}/vector   {vector, by}                     slide autonomy
-POST   /processes                {task, subject, vector, claim?, runner-config}  spawn → {id}
+POST   /processes                {id?, task, subject, vector, claim?, runner-config}  spawn → {id}
+                               (idempotent by id: 201 built it, 200 it was already running)
 ```
 
 ### The event envelope and the cursor
@@ -138,7 +158,7 @@ resume.
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (CAS-once) |
 
 That table is the durable contract — it is `mirror.Reflect`, plus `claim`/`vector`, minus the
-live-only `gap` marker, which resync makes unnecessary.
+`gap` marker, which says something about the *reading* rather than about the process.
 
 ### `since` semantics and the two restarts
 
@@ -149,18 +169,43 @@ live. This is the verse-restart path: verse reconnects with its last mirrored cu
 still-running runner replays the gap, and the worker noticed nothing.
 
 With N below the runner's low-watermark — compaction, or the runner-restart path where it lost
-its log — the runner answers a single `{"kind":"resync","cursor":C}` frame; verse re-reads
+its log — the runner answers a single `{"kind":"gap","cursor":C}` frame; the reader re-reads
 `GET /processes/{id}` for level truth, adopts cursor `C`, and streams from there. Fine-grained
 journal between N and C may be lost, but current state is exact.
 
 Resync-to-snapshot is therefore the universal safety net whenever a cursor cannot be served —
-verse restarts, runner restarts, slow consumers, compaction. There is no `gap` marker, because
-verse always pulls from its cursor rather than trusting a live tail.
+verse restarts, runner restarts, slow consumers, compaction. The same `gap` frame carries both
+reasons a reader can be behind: a cursor below the window, and events dropped because the
+reader could not keep up.
+
+`?since=` means this on every runner. The unified `GET /processes/{id}/events` hands the cursor
+to whichever runtime holds the work — the local one, a broker, a remote processd — so a client
+that resumes gets the frames after its cursor and no others, wherever the process happens to
+run.
+
+A resume that falls below the window also replays the gates STILL OPEN below it. The gap says
+a reader missed something; this says what, and it matters because a resolver is a client of
+this endpoint and nothing else — without it a reconnecting resolver learns it is behind and
+cannot see the question it exists to answer. Only in the gap case: inside the window the
+replay already carries them.
+
+**A stream that ends without a terminal did not end because the process did.** The terminal is
+always the last frame, so its absence means the connection broke — and the answer is to resume
+from the last cursor, not to conclude anything about the work. `mirror.Reflect` does exactly
+that, backing off between attempts and publishing `observed: false` on the entity while it is
+disconnected, because an index that reads as confident while it is merely stale is worse than
+one that admits it.
 
 The terminal is a `status` event (`done|failed|cancelled` plus `result`) that verse CAS-writes
 once; `?since=<terminal cursor>` replays it and closes. A finished process's `/events` is a
 finite, replayable record, so a verse that restarts *after* completion still learns the
-outcome.
+outcome — and a reader that has seen the terminal should stop reconnecting, because there is
+nothing left to reconnect to.
+
+The terminal is the one frame a reader never loses. Everything else may be dropped to a
+subscriber that cannot keep up — the loop is never stalled by an observer — and the `gap`
+marker rides the next event to say so. Nothing rides after the terminal, so it is delivered
+out of a slot reserved for it, and it reaches a reader that missed everything before it.
 
 ### The control⇄events interlock
 
@@ -280,7 +325,7 @@ front door still binds an external URL directly.
 ## What a 3rd-party implementer must satisfy
 
 Per process: assign gapless per-process cursors; serve `GET /processes/{id}` as current
-truth; serve `GET /events?since=` with replay-then-live and a `resync` frame below its
+truth; serve `GET /events?since=` with replay-then-live and a `gap` frame below its
 watermark; emit the kinds above; make every control POST idempotent (by `key`) and echo its
 application as an ordered event; make the terminal a stable, replayable last event. Nothing
 about *how* it runs the work leaks through — which is what makes local, k8s, lambda, and a
@@ -302,13 +347,63 @@ Three endpoints, worker as client:
 ```
 POST /processes/{id}/claim   {identity}                      → {spec, cCursor, rCursor}
 GET  /processes/{id}/inbox?since={cCursor}   (long-poll/SSE)  → control directed at the worker
-POST /processes/{id}/report  {from: rCursor, events:[…]}      → the worker's events
+POST /processes/{id}/report  {events:[…], key?, epoch}        → {rCursor, applied}
 ```
 
 `inbox` is the dual of verse's `/events`: a resumable stream of control directed at the
 worker — `spec` (once), `say {text, by}`, `resolve {gateId, proceed, say?}`,
 `cancel|pause|resume`, `vector`. Each item carries a control cursor, and the worker resumes
 with `?since=cCursor`.
+
+An answer is a DECISION when the worker has taken it, not when it was queued. `resolve`
+closes the gate at once — a second answerer is told somebody was here first, because two
+answers to one question is a race with one winner however slowly the answer travels — and the
+`decision` event is emitted when the worker's inbox poll acknowledges the item carrying it.
+The acknowledging poll is the one that asks for what comes AFTER the item, not the one that
+returns it: receiving is not taking, since that response is exactly what a lost one looks
+like. Until then the question is answered-and-undelivered, and if the claim expires first the
+answer was never delivered at all.
+
+A claim is a LEASE. It survives `broker.ClaimLease` without the holder being heard from, and
+the renewal is the work itself — every inbox poll and every report says the holder is alive,
+so a worker that talks to the broker at all is already keeping it. An expired claim is
+released when somebody next asks for the work, and the silent holder is fenced: if it comes
+back it comes back as a stranger. The process is NOT made terminal, because a broker that
+cannot hear a worker knows nothing about whether the work is running — only that nobody may
+claim to speak for it.
+
+This is the only place in the process-control seams where a clock decides anything. One clock,
+the broker's, comparing two readings of its own; timestamps written elsewhere are records and
+never inputs.
+
+`cCursor` is what this worker last ACKNOWLEDGED, not where the broker has got to: a poll for
+`since=N` is the acknowledgement of everything at or below N, because a worker could only ask
+for what came after having taken what came before. So a reconnecting worker is handed the
+place it actually reached, and control issued during its outage is still waiting for it.
+
+A worker that asks to go BACKWARDS is served from where it got to rather than from where it
+asked. The broker knows what this claim acknowledged, so a worker that lost its cursor does
+not have to remember — what it has not taken is still waiting, and what it has is not handed
+back to be applied twice. A TAKEOVER resets that mark: what a different worker acknowledged
+says nothing about what this one has done, and an acknowledgement was never a promise that
+the work was carried out.
+
+What remains the worker's own half is the window between receiving control and acknowledging
+it. A worker that pulled an item, acted on it, and died before its next poll will be handed
+that item again — so control a worker cannot afford to apply twice should be applied
+idempotently by the worker, which is the only party that can.
+
+`key` makes a report retryable. A worker whose response was lost cannot know whether its
+events landed, and without one its only choices are to drop what it observed or to report it
+twice — one deploy becoming two events at two cursors, afterwards indistinguishable from the
+work having been done twice. A repeat of a key already applied is ANSWERED with what the
+first one was answered with, not applied again. It is optional, and necessarily so: only the
+worker knows a retry is a retry, and one that sends no key gets a fresh report every time.
+
+`applied` is how many of the reported events were taken, which is not always all of them:
+nothing follows a terminal, so a batch whose terminal is not its last entry has the remainder
+dropped. A worker computes its retry from this rather than assuming a 200 means everything
+landed.
 
 `report` is the dual of verse's control POSTs: the worker appends `pending`, its own `say`,
 `exec`, `status` transitions, and `boundary`. Each gets a report cursor, and `from: rCursor`

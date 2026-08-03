@@ -1,6 +1,7 @@
 package broker_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -267,24 +268,40 @@ func TestGateLoop(t *testing.T) {
 	// resolution stops working with no compile error. Asserting it here is what turns that
 	// into a build failure.
 	rh := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) bool
+		Resolve(decision string, proceed bool, say, by string) error
 	})
 
-	// resolving an unknown decision id (typo, wrong process) matches no open gate and
-	// reports false — so verse can 404 rather than silently enqueue a phantom resolve.
-	if rh.Resolve("deploy-nope", true, "oops", "human:ops") {
-		t.Fatal("Resolve of an unknown decision reported success")
+	// An unknown decision id (typo, wrong process) matches no open gate and says so as
+	// ErrNoSuchDecision — so verse can 404 rather than silently enqueue a phantom resolve.
+	if err := rh.Resolve("deploy-nope", true, "oops", "human:ops"); !errors.Is(err, process.ErrNoSuchDecision) {
+		t.Fatalf("Resolve of an unknown decision = %v, want ErrNoSuchDecision", err)
 	}
 
 	// governance resolves the real gate (verse-side); the worker's inbox gets a resolve item.
-	if !rh.Resolve("deploy-1", true, "ship it", "human:ops") {
-		t.Fatal("Resolve of the open gate reported failure")
+	if err := rh.Resolve("deploy-1", true, "ship it", "human:ops"); err != nil {
+		t.Fatalf("Resolve of the open gate = %v, want nil", err)
 	}
-	drainFor(t, ch, "decision") // verse observes the resolution; pending clears
+	// The worker takes it, and THAT is when verse observes a decision. Queuing an answer is
+	// not delivering one — the read plane says what the worker acted on, not what was sent
+	// to it — so the poll is the step that makes this a decision rather than an intent.
+	var pulled struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
+	if len(pulled.Items) == 0 {
+		t.Fatal("the answer never reached the worker's inbox")
+	}
+	// And the poll that ACKNOWLEDGES it is the next one, asking for what comes after —
+	// receiving is not taking, since that response is exactly what a lost one looks like.
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(pulled.Items[len(pulled.Items)-1].Cursor)+
+		"&epoch="+itoa(claim.Epoch), &pulled)
+	drainFor(t, ch, "decision")
 
-	// resolving it a second time now finds nothing pending (already answered) -> false.
-	if rh.Resolve("deploy-1", true, "again", "human:ops") {
-		t.Fatal("second Resolve of an answered decision reported success")
+	// Resolving it a second time is a DIFFERENT refusal from the first one above, and the
+	// two must not collapse: one means look for your typo, the other means somebody was
+	// here first. That distinction is what lets versed answer 404 and 409 respectively.
+	if err := rh.Resolve("deploy-1", true, "again", "human:ops"); !errors.Is(err, process.ErrAlreadyAnswered) {
+		t.Fatalf("second Resolve of an answered decision = %v, want ErrAlreadyAnswered", err)
 	}
 
 	inbox, ok := b.ProcessInbox("p")
@@ -521,5 +538,450 @@ func TestCompletionTextStaysAResult(t *testing.T) {
 	}
 	if h.Result() != "LGTM" || h.Err() != "" {
 		t.Fatalf("handle = {Result:%q Err:%q}, want {LGTM \"\"}", h.Result(), h.Err())
+	}
+}
+
+// A terminal takes the gates it never answered with it.
+//
+// It did not: the latch left the pending set untouched, so a cancelled process's open gate
+// could still be answered — reporting success, and writing a decision onto the log of a run
+// that had already ended. `report` was guarded post-terminal and the gate set was not.
+func TestATerminalAbandonsItsOpenGates(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	h := b.Attach("p")
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
+
+	if err := h.Cancel("operator changed their mind"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	inst, _ := b.ProcessSnapshot("p")
+	if len(inst.Pending) != 0 {
+		t.Fatalf("a cancelled process still holds %d open gate(s)", len(inst.Pending))
+	}
+
+	rh := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	// And the refusal says WHICH refusal it is. "No such decision" would send the answerer
+	// looking for a typo; the gate was real and the process ended underneath them.
+	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); !errors.Is(err, process.ErrProcessEnded) {
+		t.Fatalf("answering a gate on an ended process = %v, want ErrProcessEnded", err)
+	}
+}
+
+// A report says how many of its events it applied.
+//
+// It is not always all of them: nothing follows a terminal, so a batch whose terminal is not
+// its last entry has the remainder dropped. Answering 200 and nothing else told a worker its
+// whole wind-down had landed while part of it was on the floor, with no way to find out.
+func TestAReportSaysWhatItApplied(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	var out struct {
+		Applied int `tony:"field=applied"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[`+
+			`{"kind":"exec","tool":"deploy"},`+
+			`{"kind":"status","text":"done"},`+
+			`{"kind":"say","text":"and here is what I learned"},`+
+			`{"kind":"exec","tool":"cleanup"}],"result":"shipped"}`, &out)
+
+	if out.Applied != 2 {
+		t.Fatalf("applied = %d for a 4-event batch whose terminal is third from last, want 2 "+
+			"— the worker cannot compute a retry from a count that does not match", out.Applied)
+	}
+}
+
+// A reconnecting worker resumes from what it ACKNOWLEDGED, so control issued while it was
+// away is still waiting for it.
+//
+// The claim used to answer with the broker's current inbox cursor, which told a worker that
+// had just come back to skip everything queued during its outage — and an outage is exactly
+// when control is most likely to have been issued. Composed with a decision recorded at
+// enqueue time, the process then waited forever on an answer every other surface reported as
+// delivered.
+func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	claimOnce := func() (epoch, cCursor int64) {
+		t.Helper()
+		var c struct {
+			Epoch   int64 `tony:"field=epoch"`
+			CCursor int64 `tony:"field=cCursor"`
+		}
+		postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &c)
+		return c.Epoch, c.CCursor
+	}
+	items := func(epoch, since int64) int {
+		t.Helper()
+		var out struct {
+			Items []api.InboxItem `tony:"field=items"`
+		}
+		getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(since)+"&epoch="+itoa(epoch), &out)
+		return len(out.Items)
+	}
+
+	epoch, c0 := claimOnce()
+	// Two controls the worker DOES take, so its acknowledged position is not zero and a
+	// cCursor of 0 cannot pass this by accident — replaying everything from the start is
+	// B3's behaviour, not this rule.
+	h := b.Attach("p")
+	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
+		t.Fatalf("steer: %v", err)
+	}
+	if err := h.Pause(); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	if got := items(epoch, c0); got != 2 {
+		t.Fatalf("the worker's first poll saw %d items, want 2", got)
+	}
+	acked := int64(2) // it took both, so it has acknowledged through cursor 2
+
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
+	items(epoch, acked) // polls again from where it got to, then drops
+
+	// While it is away, the gate is answered.
+	rh := b.Attach("p").(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// It comes back and polls from where the broker told it to.
+	epoch2, c1 := claimOnce()
+	if c1 != acked {
+		t.Fatalf("cCursor = %d on reconnect, want %d — the worker's acknowledged position, "+
+			"not the broker's current one and not the beginning", c1, acked)
+	}
+	if got := items(epoch2, c1); got != 1 {
+		t.Fatalf("a reconnecting worker polling from cCursor=%d got %d items, want the answer "+
+			"queued while it was away", c1, got)
+	}
+}
+
+// A claim nobody renews is released, so the work can be taken over.
+//
+// It could not be. A worker that claimed and vanished held its claim, its open gate and its
+// process forever; a second worker was refused 409, and the only release was an operator
+// calling Revoke, which nothing calls. The code's own comment said "the eventual health-check
+// calls it" and there was no health check.
+//
+// The renewal is the work itself: every inbox poll and every report says the holder is alive,
+// so a worker that talks to the broker at all is already keeping its lease.
+func TestAnUnrenewedClaimIsReleased(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var first struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:one"}`, &first)
+	// …and it is never heard from again. Age the lease rather than waiting it out.
+	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
+
+	var second struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`, &second)
+	if second.Epoch <= first.Epoch {
+		t.Fatalf("takeover epoch %d did not fence the silent holder at %d", second.Epoch, first.Epoch)
+	}
+
+	// The silent one is fenced: if it comes back it comes back as a stranger, and cannot
+	// write onto a log another worker now owns.
+	code := postCode(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(first.Epoch)+`,"events":[{"kind":"exec","tool":"deploy"}]}`)
+	if code != http.StatusConflict {
+		t.Fatalf("the displaced worker's report = %d, want 409", code)
+	}
+
+	// And the process is NOT terminal. The broker cannot hear the worker, which says nothing
+	// about whether the work is running — only that nobody may claim to speak for it.
+	inst, _ := b.ProcessSnapshot("p")
+	if process.Status(inst.Status).Terminal() {
+		t.Fatalf("an expired claim ended the process: %q", inst.Status)
+	}
+}
+
+// A worker that keeps working keeps its claim. The lease must not expire under somebody who
+// is simply on a slow link but still polling.
+func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+
+	var first struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:one"}`, &first)
+	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
+
+	// It polls — which is what a worker waiting on control does, and is the renewal.
+	var out struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(first.Epoch), &out)
+
+	if code := postCode(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`); code != http.StatusConflict {
+		t.Fatalf("a takeover of a claim that was just renewed = %d, want 409", code)
+	}
+}
+
+// An answer is a decision when the worker has TAKEN it, not when it was queued.
+//
+// Resolve used to emit the decision and clear the gate at enqueue, so the read plane, the
+// snapshot and the question record all reported the question settled while the worker that
+// must act on it had heard nothing. If it never came back, the answer evaporated with no
+// trace that it was undelivered.
+//
+// The two moments are separated rather than merged: the right to answer is taken at once — a
+// second answerer is told somebody was here first, because two answers to one question is a
+// race with one winner however slowly the answer travels — and the decision is recorded on
+// acknowledgement.
+func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	ch, unsub := b.Attach("p").Subscribe()
+	defer unsub()
+
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"d1","gate":"deploy"}]}`, nil)
+	drainFor(t, ch, "pending")
+
+	rh := b.Attach("p").(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	if err := rh.Resolve("d1", true, "ship it", "human:ops"); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// Queued, and NOT yet a decision: the worker has not been heard from since.
+	select {
+	case ev := <-ch:
+		if ev.Kind == process.EvDecision {
+			t.Fatal("the answer was recorded as a decision before the worker had taken it")
+		}
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	// But the gate is closed to a second answerer straight away.
+	if err := rh.Resolve("d1", false, "no", "human:other"); !errors.Is(err, process.ErrAlreadyAnswered) {
+		t.Fatalf("a second answer = %v, want ErrAlreadyAnswered", err)
+	}
+
+	// The worker pulls, then polls past it — and now it is a decision.
+	var pulled struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
+	last := pulled.Items[len(pulled.Items)-1].Cursor
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(last)+"&epoch="+itoa(claim.Epoch), &pulled)
+	drainFor(t, ch, "decision")
+}
+
+// A retried report is answered, not applied a second time.
+//
+// A worker whose response was lost cannot know whether its events landed, and without a key
+// its only choices were to drop what it observed or to report it twice — one deploy becoming
+// two events at two cursors, afterwards indistinguishable from the worker having done it
+// twice.
+func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	body := `{"epoch":` + itoa(claim.Epoch) + `,"key":"r1","events":[{"kind":"exec","tool":"deploy"}]}`
+	var first, again struct {
+		RCursor int64 `tony:"field=rCursor"`
+		Applied int   `tony:"field=applied"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report", body, &first)
+	postJSON(t, cl, srv.URL+"/processes/p/report", body, &again) // the response never arrived
+
+	if again != first {
+		t.Fatalf("the retry was answered %+v and the original %+v; a worker cannot tell "+
+			"a retry that landed from one that did not", again, first)
+	}
+	inst, _ := b.ProcessSnapshot("p")
+	if inst.Cursor != first.RCursor {
+		t.Fatalf("cursor moved to %d on a retry of one deploy the worker performed once "+
+			"(answered at %d)", inst.Cursor, first.RCursor)
+	}
+
+	// A DIFFERENT key is a different report, whatever it carries.
+	var third struct {
+		RCursor int64 `tony:"field=rCursor"`
+		Applied int   `tony:"field=applied"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"key":"r2","events":[{"kind":"exec","tool":"deploy"}]}`, &third)
+	if third.RCursor <= first.RCursor {
+		t.Fatalf("a second, distinct report did not advance the log: %d → %d", first.RCursor, third.RCursor)
+	}
+}
+
+// A worker that lost its cursor and asks from the beginning is served from where it actually
+// got to, so control it has already acted on is not handed back.
+//
+// The broker knows what this claim acknowledged; the worker does not have to remember. What
+// it has NOT taken is still waiting for it, which is the part that matters.
+func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	h := b.Attach("p")
+	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
+		t.Fatalf("steer: %v", err)
+	}
+	if err := h.Pause(); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	items := func(since int64) []api.InboxItem {
+		t.Helper()
+		var out struct {
+			Items []api.InboxItem `tony:"field=items"`
+		}
+		getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(since)+"&epoch="+itoa(claim.Epoch), &out)
+		return out.Items
+	}
+	got := items(0)
+	if len(got) != 2 {
+		t.Fatalf("first poll = %d items, want 2", len(got))
+	}
+	last := got[len(got)-1].Cursor
+	items(last) // acknowledges both
+
+	if again := items(0); len(again) != 0 {
+		t.Fatalf("asking from 0 after acknowledging through %d returned %d items; a worker "+
+			"that forgot would re-apply every control it ever took", last, len(again))
+	}
+
+	// …and a TAKEOVER starts fresh: what the previous holder acknowledged says nothing about
+	// what this worker has done, and an acknowledgement was never a promise of execution.
+	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
+	var second struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:other"}`, &second)
+	var out struct {
+		Items []api.InboxItem `tony:"field=items"`
+	}
+	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(second.Epoch), &out)
+	if len(out.Items) != 2 {
+		t.Fatalf("a new worker taking over saw %d items, want the 2 still queued", len(out.Items))
+	}
+}
+
+// The merged log is bounded, and a reader that falls below the window is told.
+//
+// It was unbounded — memory grew with the run — and its truncation was silent: a fresh
+// subscribe replayed what fitted and discarded the rest with no marker at all, unlike the
+// local bus. The two interacted badly: the below-watermark resync frame subscribeFrom
+// already wrote could never fire, because an unbounded log has no watermark to be below.
+func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
+	b := broker.New()
+	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human", Retain: 32}, nil)
+	srv := httptest.NewServer(b.WorkerHandler())
+	defer srv.Close()
+	cl := srv.Client()
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+
+	var evs strings.Builder
+	for i := range 200 {
+		if i > 0 {
+			evs.WriteString(",")
+		}
+		evs.WriteString(`{"kind":"exec","tool":"noop"}`)
+	}
+	postJSON(t, cl, srv.URL+"/processes/p/report",
+		`{"epoch":`+itoa(claim.Epoch)+`,"events":[`+evs.String()+`]}`, nil)
+
+	inst, _ := b.ProcessSnapshot("p")
+	if inst.Cursor != 201 { // 200 events plus the claim's running status
+		t.Fatalf("cursor = %d, want 201 — the cursor counts everything, trimmed or not", inst.Cursor)
+	}
+
+	// Resuming from the beginning is now below the window, and says so before the replay.
+	rh := b.Attach("p").(interface {
+		SubscribeSince(int64) (<-chan process.Frame, func())
+	})
+	ch, unsub := rh.SubscribeSince(1)
+	defer unsub()
+	var first process.Frame
+	select {
+	case first = <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("the resume delivered nothing")
+	}
+	if first.Kind != process.EvGap {
+		t.Fatalf("first frame = %q, want a resync marker: the reader's cursor is below a "+
+			"window that is now 32 events of a 201-event log", first.Kind)
+	}
+
+	// And the log really is trimmed rather than merely reported as such.
+	var n int
+	for {
+		select {
+		case <-ch:
+			n++
+			continue
+		case <-time.After(100 * time.Millisecond):
+		}
+		break
+	}
+	if n > 40 {
+		t.Fatalf("the replay delivered %d frames of a 32-event window", n)
 	}
 }

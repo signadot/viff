@@ -99,7 +99,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
   condition:
     subject: { system: demo, kind: pr, value: { stage: open } }
   gates:
-  - { name: approval, mode: ask }
+  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
     patch: { stage: reviewing }
     spawn: { driver: scripted, task: "echo reviewing $subject; sleep 45" }
@@ -162,7 +162,7 @@ seeded. What to type next:
   $BIN$scope_note entities                     what is there (also: entities --system demo)
   $BIN$scope_note triggers                     the charter you just installed
   $BIN$scope_note gates                        the decision demo-review is holding
-  $BIN$scope_note gate approve ${GID:-<id>}
+  $BIN$scope_note gate approve ${GID:-<id>} --as you
                                         …and it spawns a 45s review process:
   $BIN$scope_note flows                        the subjects with live work
   $BIN$scope_note flow show demo:pr:1          what is happening to this one, and what comes next

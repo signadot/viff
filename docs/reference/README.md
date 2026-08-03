@@ -11,6 +11,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [entities.md](entities.md) | refs, payloads, merging writes, conditional writes, selection, and watching |
 | [processes.md](processes.md) | the process surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
 | [connect.md](connect.md) | federating a working tree, and scopes |
+| [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
 | [goals.md](goals.md) | goals — a target over the reactive substrate (being redesigned) |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why that is asymmetric |
@@ -91,7 +92,7 @@ verse
            --color auto|always|never   colorize (auto = a terminal only)
 ```
 
-Flags may appear before or after positionals (`gate approve <id> --say ok` works).
+Flags may appear before or after positionals (`gate approve <id> --as you --say ok` works).
 
 ## Selecting by what an entity says
 

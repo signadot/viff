@@ -178,7 +178,7 @@ verse gates
 #   reason: "verb write"
 #   tool: write_file
 #   where: process
-verse gate approve run-f3e31ed0390f~d1
+verse gate approve run-f3e31ed0390f~d1 --as human:you
 ```
 
 `run --attach` spawns *and* streams the transcript, prompting you inline on a terminal
@@ -331,7 +331,7 @@ running is not a second firing.
 
 ```tony
   gates:
-  - { name: approval, mode: ask }
+  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 ```
 
 ```sh
@@ -344,7 +344,7 @@ verse gates
 #   reason: "trigger shape-ask gate approval on demo:ask:1"
 #   spawns: shape-ask@demo:ask:1
 #   subject: demo:ask:1
-verse gate approve trigger:shape-ask:approval~093e7c94
+verse gate approve trigger:shape-ask:approval~093e7c94 --as human:you
 ```
 
 `gate` is the gate's own name, `origin` the rule that raised it, `subject` what it is about,
@@ -352,6 +352,27 @@ and `spawns` what a "yes" will start — settled before the question is asked, e
 nothing is running yet. The id is a function of (trigger, gate, subject), so a rule
 re-evaluated at every commit asks **once**: a firing that finds its question already standing
 joins it instead of posting a copy. [§5](#5-gates-and-the-docket) is the rest of gates.
+
+`onDenied` is the other half of the answer, and the one that is easy to leave out. A denied
+firing writes nothing — so without it the subject stays in the state that asked, and the next
+commit that touches it asks you the same question again, over the answer you already gave.
+Saying what a no means is what stops that; verse warns at install if you don't.
+
+### A service that answers them
+
+The docket is not only for people. A **resolver** is a service bound to a run, or to a class of
+subjects, that reads the run's own stream and answers its gates — through the same path
+`verse gate approve` takes, with `by` naming the binding instead of a person. It can hand a
+question up a layer, carry a deadline that does the same thing more slowly, and be made the only
+answer that counts.
+
+```sh
+./scripts/attached-resolver.sh              # five acts, one command each
+./scripts/attached-resolver.sh run layered  # named → standing → ⊤, in two hops
+```
+
+[Attached resolvers](attached-resolvers.md) is the argument;
+[reference/resolvers.md](reference/resolvers.md) is the surface.
 
 ### seq — steps in order
 

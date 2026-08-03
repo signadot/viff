@@ -14,7 +14,76 @@ func advise(t Trigger) []string {
 	if w := adviseSampling(t); w != "" {
 		out = append(out, w)
 	}
+	out = append(out, adviseDenyLatch(t)...)
 	return out
+}
+
+// adviseDenyLatch names the half of a gated rule nobody writes: what a NO means.
+//
+// A denied firing writes nothing at all — deliberately, so that a firing which did not happen
+// leaves no trace of having happened. The consequence is that the subject is left in the exact
+// state that asked the question. Any later commit that touches it re-selects it, the rule
+// fires again, and the gate is re-posed under its deterministic id, to somebody who already
+// answered it.
+//
+// The latch a well-formed rule carries cannot help: it lives in the ACTION, and on a deny the
+// action never runs. So this is not a defect an author can fix by writing the rule better —
+// which is why it earns a note rather than a refusal, and why the note has to say what to
+// write instead of only what is wrong.
+//
+// A warning rather than an error for the other reason too: re-asking is a legitimate thing to
+// want. "Ask again next time somebody touches it" is a real policy, and a rule that means it
+// is indistinguishable from one that forgot.
+func adviseDenyLatch(t Trigger) []string {
+	reads := predicateKeys(t.Condition.Subject.Predicate())
+	if len(reads) == 0 {
+		// No payload predicate: the subject is selected by system/kind alone, so nothing a
+		// deny could write would deselect it. A different note, and not this one.
+		return nil
+	}
+	var out []string
+	for _, g := range t.AllGates() {
+		m, err := g.mode()
+		if err != nil || !m.Blocks() {
+			continue // auto passes without asking anybody; nothing to refuse
+		}
+		writes := map[string]bool{}
+		if g.OnDenied != nil {
+			collectWrites(*g.OnDenied, writes)
+		}
+		if latchesOn(reads, writes) {
+			continue
+		}
+		name := g.Name
+		if name == "" {
+			name = t.Name
+		}
+		out = append(out, fmt.Sprintf("gate %q blocks, and its refusal writes nothing the "+
+			"subject reads (%s): a denied firing writes nothing at all, so the subject stays "+
+			"in the state that asked and the next commit to touch it re-poses this question "+
+			"over the answer it already has. Say what a no means — `onDenied: {patch: {…}}` on "+
+			"the gate, advancing one of those fields", name, keyList(reads)))
+	}
+	return out
+}
+
+// latchesOn reports whether a set of writes advances a subject past its own predicate.
+//
+// The empty name is the whole-payload predicate (`value: 42`, `value: !glob "x-*"`), which
+// predicateKeys documents as the one "which every write matches" — so any write at all latches
+// it. checkLatch tests the same thing with a plain map lookup and so does not honour that case;
+// this is the documented reading, kept here rather than changed there, since tightening a
+// REFUSAL is a contract change and this is a note.
+func latchesOn(reads, writes map[string]bool) bool {
+	if reads[""] {
+		return len(writes) > 0
+	}
+	for k := range reads {
+		if writes[k] {
+			return true
+		}
+	}
+	return false
 }
 
 // adviseSampling names the difference between the two sentences a narrow `on` can be read as.

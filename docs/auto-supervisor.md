@@ -225,7 +225,7 @@ verse gates
 #   origin: land-ask
 #   reason: "trigger land-ask gate sign-off on change:pr:8"
 #   subject: change:pr:8
-verse gate approve trigger:land-ask:sign-off~090ea377
+verse gate approve trigger:land-ask:sign-off~090ea377 --as human:scott
 # approved trigger:land-ask:sign-off~090ea377
 verse entity get change:pr:8      # stage: landed
 ```
@@ -240,11 +240,13 @@ ends `landed`, `closed`, or waiting at a gate.
 
 ## Where this stops
 
-- **Silence has no clock.** A supervisor process that never terminates leaves its change at
-  `stage: assessing` forever. `onFailed` covers failing; it does not cover hanging. The
-  clocks that exist nearby do not fit: a gate's `!deadline` guards a firing that has not
+- **Silence has no clock — for THIS shape.** A supervisor process that never terminates leaves
+  its change at `stage: assessing` forever. `onFailed` covers failing; it does not cover
+  hanging. The clocks nearby still do not fit: a gate's `!deadline` guards a firing that has not
   happened, and a goal's `deadline` is per goal, not per firing. Promote-on-silence wants a
-  deadline on a spawn, and there isn't one.
+  deadline on a spawn, and there isn't one. A [resolver](attached-resolvers.md) that owns a gate
+  does have one — `deadline: {within, then}`, and silence past it escalates to the layer above —
+  but that is a clock on an unanswered QUESTION, not on a process that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor
   wrote it, which is weaker than what the *whether* axis already gives a human: a `!quorum`
   gate keeps an attributable, retractable ballot per voter ([§6 of the
@@ -256,6 +258,9 @@ ends `landed`, `closed`, or waiting at a gate.
   expressible on paper (`!quorum 2` over judgments) and not in the engine. Two `assess`-style
   rules writing to different fields, with `land-auto` requiring both, is the shape that works
   today.
-- **The inside is still Go's.** The supervisor decides whether a change lands. What the
-  *worker* agent may do while producing it is the other supervision layer, and binding a
-  resolver from a charter is [ahead](roadmap/authority.md), not here.
+- **The inside is a different layer, and it exists now.** The supervisor here decides whether a
+  change lands, by writing to the subject. What the *worker* agent may do while producing it is
+  the other supervision layer, and binding a resolver from a charter — `gating.resolver` for a
+  rule's own gates, `spawn.resolver` for its run's — is [attached
+  resolvers](attached-resolvers.md), which runs. The two compose: this charter decides about the
+  change, a resolver decides about the actions taken to produce it.

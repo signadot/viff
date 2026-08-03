@@ -74,15 +74,17 @@ func (g *pauseGate) hold(ctx context.Context) error {
 // Pause holds this process and its whole subtree at their next boundaries — a
 // subtree operation. Applied effects stay applied; the cursor just stops between
 // actions. Cancel outranks pause; steer buffers until resume. Idempotent.
-func (p *Process) Pause() {
+func (p *Process) Pause() error {
 	p.pauseGate.pause()
 	p.logf("⏸ pause (subtree)")
 	p.emit(Frame{Kind: EvStatus, Text: "paused"})
+	return nil
 }
 
 // Resume lifts this process's pause; descendants held only by this gate proceed.
-func (p *Process) Resume() {
+func (p *Process) Resume() error {
 	p.pauseGate.unpause()
 	p.logf("▶ resume (subtree)")
 	p.emit(Frame{Kind: EvStatus, Text: "resumed"})
+	return nil
 }

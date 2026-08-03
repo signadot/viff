@@ -78,8 +78,17 @@ define:
   formula: .[nullable(verse-formula)]
   mode: .[string]
   name: .[string]
+  onDenied: .[nullable(verse-action)]
 signature:
   name: verse-trigger-gate
+---
+context:
+- tony-format/context
+define:
+  gates: .[array(verse-trigger-gate)]
+  resolver: .[string]
+signature:
+  name: verse-gating
 ---
 context:
 - tony-format/context
@@ -87,6 +96,7 @@ define:
   action: !verse-action null
   condition: !verse-condition null
   gates: .[array(verse-trigger-gate)]
+  gating: .[nullable(verse-gating)]
   name: .[string]
   stratum: .[string]
 signature:

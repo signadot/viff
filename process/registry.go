@@ -15,7 +15,8 @@ import (
 type Registry struct {
 	mu      sync.Mutex
 	pending map[string]*pendingQuestion
-	onPost  func(Pending) // optional: notify a watcher when a question is posted
+	onPost  func(Pending)      // optional: notify a watcher when a question is posted
+	onDrop  func(GateQuestion) // optional: notify a watcher when one leaves unanswered
 }
 
 // pendingQuestion is one question standing on the docket, and everyone waiting on it. The
@@ -29,15 +30,22 @@ type Registry struct {
 type pendingQuestion struct {
 	q       GateQuestion
 	tool    string
+	effects []Effect
 	done    chan struct{} // closed when answered
 	res     Resolution    // valid once done is closed
 	waiters int
 }
 
 // Pending is the read-surface view of one blocked question.
+//
+// Effects rides along because this is the last place the ToolUse exists: the registry is
+// handed one, and everything downstream sees only what Pending carries. A question published
+// without its derived effects can be routed by gate name and by nothing else, which is the
+// difference between a docket entry and a fact something can match on.
 type Pending struct {
 	Question GateQuestion
 	Tool     string
+	Effects  []Effect
 }
 
 func NewRegistry() *Registry {
@@ -47,6 +55,18 @@ func NewRegistry() *Registry {
 // OnPost registers a callback invoked (outside the lock) whenever a question is
 // posted — for a live read surface / attach stream. Optional.
 func (r *Registry) OnPost(f func(Pending)) { r.onPost = f }
+
+// OnDrop registers the counterpart: a question leaving the docket WITHOUT an answer, because
+// the last caller waiting on it was cancelled.
+//
+// It exists because OnPost had none. A publisher was told about every question that arrived
+// and about none that left, so a question the registry silently discarded stayed published as
+// `pending` — offered on a docket, answerable-looking, and undeliverable — until something
+// else happened to notice.
+//
+// Only Answer's counterpart is missing here by design: an answered question is announced by
+// the answer itself, which the answerer already has.
+func (r *Registry) OnDrop(f func(GateQuestion)) { r.onDrop = f }
 
 // Resolve (the Resolver interface) posts the question and blocks until it is answered by ID
 // or the context is cancelled.
@@ -64,7 +84,7 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 	r.mu.Lock()
 	pq, joined := r.pending[q.ID]
 	if !joined {
-		pq = &pendingQuestion{q: q, tool: tu.Name, done: make(chan struct{})}
+		pq = &pendingQuestion{q: q, tool: tu.Name, effects: tu.Effects, done: make(chan struct{})}
 		r.pending[q.ID] = pq
 	}
 	pq.waiters++
@@ -73,7 +93,7 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 	// Only a NEW question is announced: a join adds a waiter to something already on the
 	// docket, and re-announcing it would show a watcher a question appearing twice.
 	if !joined && onPost != nil {
-		onPost(Pending{Question: q, Tool: tu.Name})
+		onPost(Pending{Question: q, Tool: tu.Name, Effects: tu.Effects})
 	}
 
 	select {
@@ -85,10 +105,18 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 		// Take the question off the docket only when nobody is left waiting on it, and only
 		// if it is still ours — an Answer may have landed and a later Resolve re-posted the
 		// same id in between.
-		if pq.waiters == 0 && r.pending[q.ID] == pq {
+		dropped := pq.waiters == 0 && r.pending[q.ID] == pq
+		if dropped {
 			delete(r.pending, q.ID)
 		}
+		onDrop := r.onDrop
 		r.mu.Unlock()
+		// Announced outside the lock, and only when the question actually LEFT: a joiner
+		// giving up while others still wait has taken nothing off the docket, and saying
+		// otherwise would retire a question three people are still blocked on.
+		if dropped && onDrop != nil {
+			onDrop(q)
+		}
 		return Resolution{Proceed: false, By: "cancelled", Question: q}, ctx.Err()
 	}
 }
@@ -116,16 +144,17 @@ func (r *Registry) Pending() []Pending {
 	defer r.mu.Unlock()
 	out := make([]Pending, 0, len(r.pending))
 	for _, pq := range r.pending {
-		out = append(out, Pending{Question: pq.q, Tool: pq.tool})
+		out = append(out, Pending{Question: pq.q, Tool: pq.tool, Effects: pq.effects})
 	}
 	return out
 }
 
-// waiterCount reports how many callers are blocked on a question (0 if it is not pending).
-// It exists for tests that need to wait until every joiner has actually joined — the count is
-// the only observable that says so, and Pending() cannot: one waiter and four look identical
-// on the docket, which is exactly the point of joining.
-func (r *Registry) waiterCount(id string) int {
+// WaiterCount reports how many callers are blocked on a question (0 if it is not pending).
+//
+// The count is the only observable that distinguishes one waiter from four — Pending() cannot,
+// which is exactly the point of joining — and that distinction is what OnDrop turns on: a
+// question is retired when the LAST waiter leaves, not the first.
+func (r *Registry) WaiterCount(id string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if pq, ok := r.pending[id]; ok {

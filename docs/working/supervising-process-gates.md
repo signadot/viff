@@ -1,7 +1,9 @@
 # Supervising process gates
 
-Status: notes from a conversation. Nothing here needs building to be useful — most of it runs
-already, badly documented. The charter-level counterpart does run:
+Status: notes from a conversation, and SUPERSEDED — what came out of them is
+[attached resolvers](../attached-resolvers.md), which runs. Kept because the reasoning is what
+was useful: this note answers a gate by WRITING, and the steering invariant forbids exactly
+that, which is the correction the design turns on. The charter-level counterpart also runs:
 [an automatic supervisor](../auto-supervisor.md).
 
 **The question.** That charter answers *trigger* gates with an agent. Process gates — per tool
@@ -51,7 +53,8 @@ new supervision concept. Naming a `resolver:` per spawn is the tempting alternat
 a model call inline at every gated action, and the supervisor's own gates need supervising,
 with no base case but `AutoResolver`.
 
-*Refined by [attached resolvers](attached-resolvers.md)*, which keeps that conclusion and
+*Refined by [attached resolvers](../attached-resolvers.md)*, which is now built, and which
+keeps that conclusion and
 changes the mechanism twice. Answering cannot be a store write —
 [deployment-and-steering](../deployment-and-steering.md) forbids steering by writing, and
 names this case — so it becomes an action verb going out-of-band, with the mirrored `decision`

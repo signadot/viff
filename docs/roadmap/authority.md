@@ -171,7 +171,7 @@ granted it and the agent is not the party who may.
   produces at a different moment: derivation fixes a root envelope at spawn, where a sponsor
   authorises one action at the ask boundary — per action, attributed, and without changing the
   process's own grant, so nothing ratchets ([attached
-  resolvers](../working/attached-resolvers.md)). It also asks for the outcome this note does not
+  resolvers](../attached-resolvers.md)). It also asks for the outcome this note does not
   have, *askable-with-a-sponsor* between permitted and refused, and it wants a bound this note
   does not produce: an envelope attached to whoever installed the charter, since a sponsoring
   grant nothing bounds is a way to write yourself authority you were never given.

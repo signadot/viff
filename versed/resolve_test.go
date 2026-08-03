@@ -11,8 +11,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 )
 
@@ -59,7 +58,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	}()
 	waitPending(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, Say: []string{"ship it"}})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, By: "human:scott", Say: []string{"ship it"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve: status = %s, want 204", resp.Status)
@@ -114,18 +113,19 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	rep.Body.Close()
 
 	// Now answer it the way `verse process resolve` does.
-	resp := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true})
+	resp := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("process resolve = %s, want 204 — api.Resolve did not reach the decision (the routes have drifted apart again)", resp.Status)
 	}
 
 	// And it is gone: a second answer finds nothing open, which is what proves the first
-	// one landed on the named decision rather than on an empty id.
-	again := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true})
+	// one landed on the named decision rather than on an empty id. It is a CONFLICT, not a
+	// 404 — the question exists and somebody else settled it.
+	again := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
 	defer again.Body.Close()
-	if again.StatusCode != http.StatusNotFound {
-		t.Errorf("re-resolve = %s, want 404 (already answered)", again.Status)
+	if again.StatusCode != http.StatusConflict {
+		t.Errorf("re-resolve = %s, want 409 (already answered)", again.Status)
 	}
 }
 
@@ -216,16 +216,14 @@ func waitPending(t *testing.T, srv *Server, id string) {
 func TestGateListingOmitsAbsentFields(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p1", Task: "migrate the schema", Driver: "human"}, nil)
+	h := b.Spawn(process.Launch{ID: "p1", Task: "migrate the schema", Driver: "human"}, nil)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
-	// `verse gates` lists only processes in the requested scope, and membership is the
-	// presence of the process:instance entity the mirror writes. Spawning straight on the
-	// broker skips the mirror, so seed it — otherwise the listing is empty and this test
-	// passes for the wrong reason.
-	entitytest.Set(t, srv.Store,
-		entity.Ref{System: "process", Kind: "instance", ID: "p1"},
-		entity.Obj{"status": "running"}.Payload())
+	// The docket is a slice of the store, so what puts a process on it is the same thing
+	// that makes it a member of a scope: the mirror. Spawning straight on the broker skips
+	// the mirror, so attach one — otherwise the listing is empty and this test passes for
+	// the wrong reason.
+	mirror.Reflect(srv.Store, "p1", h, mirror.Meta{Runner: "broker"})
 
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
@@ -247,13 +245,27 @@ func TestGateListingOmitsAbsentFields(t *testing.T) {
 	})
 	rep.Body.Close()
 
-	resp, err := http.Get(ops.URL + "/gates")
-	if err != nil {
-		t.Fatalf("get gates: %v", err)
-	}
-	defer resp.Body.Close()
+	// The docket is a projection, so it settles rather than being written by the report that
+	// caused it: the worker's frame travels to the mirror, which publishes the question. Poll
+	// for it — asserting on the first read would be asserting on the race.
 	var gates []map[string]any
-	decodeResp(t, resp, &gates)
+	deadline := time.After(2 * time.Second)
+	for len(gates) == 0 {
+		resp, err := http.Get(ops.URL + "/gates")
+		if err != nil {
+			t.Fatalf("get gates: %v", err)
+		}
+		decodeResp(t, resp, &gates)
+		resp.Body.Close()
+		if len(gates) > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the reported gate never reached the docket")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 	if len(gates) != 1 {
 		t.Fatalf("gates = %v, want exactly the one raised", gates)
 	}

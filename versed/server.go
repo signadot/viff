@@ -32,6 +32,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
+	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
@@ -74,6 +75,9 @@ type Server struct {
 	// scope is dropped (disconnect).
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// standingOwner answers "which standing binding covers this subject", for the paths that
+	// post a question without one — a brokered run's frames, whose deriver ran elsewhere.
+	standingOwner func(subject string) string
 	// tripPace is the cycle throttle's D, applied to every engine this server owns. Guarded by
 	// scopeMu because scopeEngine reads it when it builds a scope's engine, lazily.
 	tripPace    time.Duration
@@ -127,6 +131,104 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	procd := processd.New(build)
 	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd, scopeEngs: map[string]*scopeEngine{}}
 	s.runner = localRunner{procd} // the in-process runner ("/broker/local")
+
+	// Publish every posed question as `gate:question:<id>`, from both places questions are
+	// raised: the engine's own registry for a firing's gates, and each hosted process for a
+	// run's. One record shape either way — the docket, a charter predicate and an auditor all
+	// read the same fact, and neither source is privileged.
+	// The layer rule, applied where a question is posed. A question carries the owner its
+	// LAYER gives it: what named it, else the standing binding covering its subject, else
+	// nothing — which is `⊤`, the docket a person reads.
+	//
+	// Absent layers are skipped rather than ranked. A standing binding is not a wider claim
+	// on a named one's questions; it answers a different set.
+	owner := func(q *process.GateQuestion) {
+		if q.BoundTo != "" || q.Subject == "" {
+			return
+		}
+		ref, err := entity.ParseRef(q.Subject)
+		if err != nil {
+			return
+		}
+		if res, ok := resolver.Owner(store, ref); ok {
+			q.BoundTo = resolver.Ref(res.Kind, res.Name).String()
+		}
+	}
+	standingOwner := func(subject string) string {
+		ref, err := entity.ParseRef(subject)
+		if err != nil {
+			return ""
+		}
+		if res, ok := resolver.Owner(store, ref); ok {
+			return resolver.Ref(res.Kind, res.Name).String()
+		}
+		return ""
+	}
+	s.standingOwner = standingOwner
+	// A question is where an instance is minted, because that is where ownership is decided.
+	// A spawn mints one for the binding it NAMES, since ownership is settled then and a
+	// resolver should be reading before the first ask; a standing binding cannot be minted
+	// that early, because one installed mid-run would own questions an earlier mint never
+	// heard of. Both call the same create-only Watch, so the two are one act done twice.
+	watch := func(q process.GateQuestion, processID string) {
+		if q.BoundTo == "" {
+			return
+		}
+		origin, err := entity.ParseRef(q.Subject)
+		if processID != "" {
+			origin, err = mirror.Ref(processID), nil // a run's questions are watched over the run
+		}
+		if err != nil {
+			return
+		}
+		mirror.Watch(store, q.BoundTo, resolverName(q.BoundTo), origin)
+	}
+	// The clock a binding puts on its own silence, stamped when the question is posed and
+	// ABSOLUTE so a restart cannot slide it. A binding cannot know when a question will
+	// arrive, so it says a duration and the question says an instant.
+	arm := func(q process.GateQuestion) {
+		if q.BoundTo == "" {
+			return
+		}
+		res, ok := resolver.Find(store, q.BoundTo)
+		if !ok || res.Deadline == nil {
+			return
+		}
+		after, err := res.Deadline.After()
+		if err != nil {
+			return
+		}
+		_, _, _ = store.Write(entity.Write{
+			At:    mirror.QuestionRef(q.ID).At(),
+			Value: entity.Obj{"escalatesAt": time.Now().Add(after).UTC().Format(time.RFC3339Nano)}.Payload(),
+		})
+	}
+	reg.OnPost(func(p process.Pending) {
+		owner(&p.Question)
+		watch(p.Question, "")
+		mirror.PostQuestion(store, p, "")
+		arm(p.Question)
+	})
+	// And the counterpart. A question whose last waiter was cancelled leaves the registry
+	// silently; without this the record it published stays `pending` on the docket, offering
+	// a decision nothing is left to receive.
+	reg.OnDrop(func(q process.GateQuestion) { mirror.DropQuestion(store, q.ID) })
+	procd.OnQuestion(func(processID string, p process.Pending) {
+		// A process gate's question knows what it would DO but not what it is about: the
+		// flow belongs to the process, not to the action. Fill it in from the mirror, so a
+		// rule can select "the questions about demo:pr:1" by matching one record rather
+		// than joining two. The docket read it off the engine before; the engine forgets
+		// when it restarts, and the record does not.
+		if p.Question.Subject == "" {
+			if e, ok, _ := store.Get(mirror.Ref(processID)); ok {
+				p.Question.Subject = entity.Str(e.Payload, "flow")
+			}
+		}
+		owner(&p.Question)
+		watch(p.Question, processID)
+		mirror.PostQuestion(store, p, processID)
+		arm(p.Question)
+	})
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
@@ -244,6 +346,14 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
+			Resolver: spec.Resolver,
+		}
+		if why := ghostResolver(st, spec.Resolver); why != "" {
+			// The same shape as an envelope this build does not have, below: a spawn that
+			// cannot be supervised as written does not run unsupervised instead.
+			h := process.FailedHandle(fmt.Sprintf("spawn %s: %s", id, why))
+			s.reflect(st, id, h, meta)
+			return h
 		}
 		l, err := launchOf(id, spec)
 		if err != nil {
@@ -253,11 +363,14 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 			// mistake with an error message attached. So the spawn fails, visibly, and the
 			// trigger's own failure path carries the reason.
 			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			mirror.Reflect(st, id, h, meta)
+			s.reflect(st, id, h, meta)
 			return h
 		}
 		h := s.runner.Spawn(l, content)
-		mirror.Reflect(st, id, h, meta)
+		s.reflect(st, id, h, meta)
+		// Who is watching this run, if anybody was named. Minted beside the mirror because
+		// the two answer adjacent questions — what the work is doing, and who is reading it.
+		mirror.BindResolver(st, l.Resolver, resolverName(l.Resolver), id)
 		return h
 	}
 }
@@ -280,7 +393,8 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	l := process.Launch{
 		ID: id, Task: spec.Task, Driver: spec.Driver,
-		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer,
+		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
+		Resolver: spec.Resolver,
 	}
 	// The contract travels as source, but it is PARSED here as well, and the parse is the
 	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
@@ -338,7 +452,13 @@ func (s *Server) reconcileProcesses() {
 		if runnerRef != "" && runnerRef != "local" { // remote: the work outlived verse
 			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
-				mirror.Reflect(s.Store, ent.Ref.ID, h, mirror.Meta{Subject: subject, Runner: runnerRef, Chain: chain})
+				// The binding its spawn named is read back off the entity rather than
+				// remembered: a resumed process must be watched by whoever was watching
+				// it, and the launch that said so is long gone.
+				s.reflect(s.Store, ent.Ref.ID, h, mirror.Meta{
+					Subject: subject, Runner: runnerRef, Chain: chain,
+					Resolver: entity.Str(ent.Payload, "resolver"),
+				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
 				s.Eng.AdoptChain(subject, ent.Ref.ID, chain, h)
@@ -352,6 +472,41 @@ func (s *Server) reconcileProcesses() {
 		s.write(ent.Ref.At("status"), entity.Val(string(process.Orphaned)))
 	}
 	s.reconcileClaims(resumed)
+	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
+}
+
+// reconcileQuestions settles the questions nobody is waiting on any more.
+//
+// A question is a durable record and its WAITER is not: whatever blocked on the answer was a
+// goroutine in the verse that just died. So the record outliving the restart is only useful
+// where something can still receive an answer, and the docket has to say which is which —
+// listing a question nobody will read asks a person to decide something into a void.
+//
+// Two cases, and the second is the one that is easy to miss:
+//
+//   - A PROCESS raised it. It survives exactly as its process does, which is the distinction
+//     reconcileProcesses already draws: resumed behind a runner that is still there, orphaned
+//     when the runtime died with us. The question does not get its own opinion.
+//   - A FIRING raised it, before anything spawned. That waiter was in this verse, always, so
+//     a restart ends it unconditionally. If the rule still matches, its replay poses the
+//     question again under the same deterministic id and it comes back answerable within
+//     milliseconds — which is what a deterministic id is for. If it no longer matches, the
+//     question was about a world that has moved on, and it should not be on a docket.
+func (s *Server) reconcileQuestions() {
+	for _, ent := range pendingQuestions(s.Store) {
+		procID, _ := entity.ToObj(ent.Payload)["process"].(string)
+		if procID != "" {
+			e, ok, err := s.Store.Get(mirror.Ref(procID))
+			if err != nil {
+				continue // the store is unwell; leave the record alone rather than guess
+			}
+			if ok && !process.TerminalStatus(entity.Str(e.Payload, "status")) {
+				continue // its process is still believed alive, so the answer still has a reader
+			}
+		}
+		s.write(ent.Ref.At("status"), entity.Val(mirror.QuestionOrphaned))
+		s.write(ent.Ref.At("orphanedAt"), entity.Val(time.Now().UTC().Format(time.RFC3339)))
+	}
 }
 
 // write applies a value at a path during startup reconciliation, reporting a failure on
@@ -557,6 +712,18 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
 	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", nothing)
 	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", nothing)
+	// resolvers — who answers a question. A binding is installed rather than declared in a
+	// charter, because it outlives any one rule and is managed by whoever supervises rather
+	// than by whoever wrote the work.
+	rt.handle("GET /resolvers", s.listResolvers, "", nothing)
+	rt.handle("POST /resolvers", s.addResolver, "", nothing)
+	rt.handle("GET /resolvers/{kind}/{name}", s.getResolver, "", nothing)
+	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
+	// The two streams a resolver lives on. Addressed by INSTANCE — the binding watching one
+	// run — so neither route needs a second parameter to say which run it is about.
+	rt.handle("GET /resolvers/instance/{id}/events", s.resolverEvents, "", stream("verse-frame"))
+	rt.handle("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
+	rt.handle("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
 	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
 	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
 	rt.handle("POST /goals", s.addGoal, "verse-goal", nothing)
@@ -591,8 +758,17 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.processControl(w, r, ph, "say")
 	}, "verse-say", nothing)
+	// Answering is the ONE path (answerQuestion), not a case of processControl: this route
+	// differs from `/gate/resolve` only in being TOLD which process holds the question
+	// instead of working it out. Everything that follows — attribution, delivery, the record,
+	// a stale answer — is the same act and must not have two implementations.
 	rt.handle("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
-		s.processControl(w, r, ph, "resolve")
+		var body api.Resolve
+		if err := codec.Read(r, &body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.answerQuestion(w, r, body, r.PathValue("id"))
 	}, "verse-resolve", nothing)
 	// re-vector (slide autonomy on a running process) — runner-agnostic like cancel/say: a
 	// local process is served by the runtime mount (processd's setVector), a brokered/remote
@@ -952,67 +1128,109 @@ func conditions(cs []api.Condition) ([]entity.Require, error) {
 	return out, nil
 }
 
-// listGates is the unified pending-gate view: engine (trigger) gates from the registry AND
-// per-process gates (an agent blocked on write/shell/delegate), which live in each process's
-// own registry and otherwise show only under `process get`. Both are resolvable by id.
+// listGates is the unified pending-gate view: engine (trigger) gates raised by a firing AND
+// per-process gates (an agent blocked on write/shell/delegate). Both are published as
+// `gate:question:<id>` records, and both are resolvable by id.
 func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
-	// A gate asks a person to decide something, so the listing has to say what is at
-	// stake. `origin` names who asked and `gate` names which rule; neither answers "about
-	// what?", which was only ever recoverable by reading it back out of the `reason` prose.
-	// An engine gate carries its subject on the question; a process gate's is the flow the
-	// process belongs to, which the engine indexes by process id. Both are omitted when
-	// genuinely absent rather than shown empty — a bare `process run` is about nothing.
+	// The docket is a slice of the store, not a walk of two in-memory registries. That is
+	// what makes it survive a restart for work that outlived the daemon, and what lets it
+	// say what each question is ABOUT rather than only what it is called: the record carries
+	// the tool, the derived effects and the subject, which is the difference between a name
+	// and something a person can answer.
 	//
-	// compact extends that rule to EVERY field, and the reason is not tidiness. A brokered
-	// gate legitimately has no origin and no mode: an executor raises a gate without
-	// deciding who answers it or under which dial. Those printed as `origin: ""` next to a
-	// `reason: ""` that was a real drop — the broker kept only id and gate — and the drop
-	// was indistinguishable from the structural blanks flanking it. A missing key is
-	// visible; an empty one is camouflage. `id` and `where` are structural and always set.
+	// Absent keys stay absent, as they did when this compacted a map: a missing key is
+	// visible, an empty one is camouflage. The record is written that way, so nothing here
+	// has to strip.
+	// A reader arriving is when a deadline is evaluated: the docket a person opens is the
+	// docket as of now, and `⊤` is a person reading.
+	s.escalateOverdue(s.scopedStore(r))
 	out := make([]map[string]any, 0)
-	compact := func(rec map[string]any) map[string]any {
-		for k, v := range rec {
-			if s, ok := v.(string); ok && s == "" {
-				delete(rec, k)
+	for _, ent := range pendingQuestions(s.scopedStore(r)) {
+		p := entity.ToObj(ent.Payload)
+		rec := map[string]any{}
+		for k, v := range p {
+			switch k {
+			case "status", "posedAt": // structural: every pending question has them
+			default:
+				rec[k] = v
 			}
 		}
-		return rec
-	}
-	add := func(rec map[string]any, subject string) {
-		if subject != "" {
-			rec["subject"] = subject
+		// where says which plane raised it, and is derived rather than stored: a question
+		// with a process is a run's, one without is a firing's. Storing it would be a third
+		// spelling of what `process` already says.
+		if _, ok := rec["process"]; ok {
+			rec["where"] = "process"
+		} else {
+			rec["where"] = "engine"
 		}
-		out = append(out, compact(rec))
-	}
-	for _, p := range s.Reg.Pending() {
-		rec := map[string]any{
-			"id": p.Question.ID, "origin": p.Question.Origin, "gate": p.Question.Gate,
-			"mode": p.Question.Mode.String(), "reason": p.Question.Reason, "tool": p.Tool,
-			"where": "engine",
-		}
-		// Deliberately NOT "process". An engine gate is raised before the spawn, so this
-		// names a process that does not exist yet and will not exist at all if the gate is
-		// denied. Reusing the key a process gate uses for a process that IS running would
-		// make one field mean two things, and the reader could not tell which.
-		if p.Question.Spawns != "" {
-			rec["spawns"] = p.Question.Spawns
-		}
-		add(rec, p.Question.Subject)
-	}
-	for _, snap := range s.processSnapshots(s.scopedStore(r)) {
-		subject := ""
-		if s.Eng != nil {
-			subject = s.Eng.SubjectOf(snap.ID)
-		}
-		for _, pg := range snap.Pending {
-			add(map[string]any{
-				"id": pg.ID, "origin": pg.Origin, "gate": pg.Gate,
-				"mode": pg.Mode, "reason": pg.Reason, "tool": pg.Tool,
-				"process": snap.ID, "where": "process",
-			}, subject)
-		}
+		out = append(out, rec)
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// relaysControl reports whether an answer to this process's gates is QUEUED for a worker
+// rather than applied. A local process's registry takes it on the spot and a remote runtime
+// takes it over the wire that carried it; a broker holds it until somebody dials in.
+func (s *Server) relaysControl(procID string) bool {
+	if procID == "" {
+		return false // a firing's gate: the registry answers it here, now
+	}
+	if _, ok := s.Procd.SnapshotOf(procID); ok {
+		return false
+	}
+	if h := s.runner.Attach(procID); h != nil {
+		r, ok := h.(interface{ RelaysControl() bool })
+		return ok && r.RelaysControl()
+	}
+	return false
+}
+
+// ownerOf says which process holds a question, empty for a firing's gate.
+//
+// The RECORD is asked first, and it is the only source that answers while the runner holding
+// the work is down. The alternatives all interrogate the fleet — is this id a process, does
+// any snapshot hold this gate — so an unreachable runner made every question on it look like
+// a question about nothing, and the operator was sent hunting a typo for a gate that was open
+// and waiting. Which is the one case where retrying is exactly right.
+//
+// The fallbacks remain for a question this verse never published: the id's own prefix (a
+// runtime gate is `<process-id>~dN`), then a sweep of the snapshots for an executor-raised
+// gate, whose id carries no owner by construction.
+func (s *Server) ownerOf(store entity.Store, questionID string) string {
+	if e, ok, err := store.Get(mirror.QuestionRef(questionID)); err == nil && ok {
+		if p := entity.Str(e.Payload, "process"); p != "" {
+			return p
+		}
+		// The record exists and names no process: a firing raised it, and the registry is
+		// where it lives. Answering that is not a fleet question at all.
+		return ""
+	}
+	owner := questionID
+	if i := strings.Index(owner, process.GateSep); i >= 0 {
+		owner = owner[:i]
+	}
+	if s.isProcess(owner) {
+		return owner
+	}
+	return s.processHoldingGate(questionID)
+}
+
+// pendingQuestions selects the open questions: the docket, as a slice of the store.
+//
+// One selector, because `verse gates` and `verse status` must name the same set. They did not
+// before — status counted the engine registry, which never held a process's questions and
+// holds nothing at all after a restart, so it could report no gates beside a docket listing
+// several.
+func pendingQuestions(store entity.Store) []entity.Entity {
+	var out []entity.Entity
+	for _, ent := range store.List(func(ref entity.Ref) bool {
+		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+	}) {
+		if p := entity.ToObj(ent.Payload); p != nil && p["status"] == mirror.QuestionPending {
+			out = append(out, ent)
+		}
+	}
+	return out
 }
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
@@ -1021,36 +1239,731 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	by := body.By
-	if by == "" {
-		by = "human:cli"
+	s.answerQuestion(w, r, body, "")
+}
+
+// answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
+// finds the owner from the id, and `/processes/{id}/resolve`, which is told it — because the
+// two differ in how the question is addressed and in nothing else. Having had two
+// implementations is how `decisionId`/`proceed` drifted from `id`/`approve` unnoticed, and an
+// answer's attribution and its record are exactly the things that must not drift.
+//
+// procID is the process the answer is addressed to, empty when the caller did not say and the
+// id must be read for it.
+func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, procID string) {
+	if body.ID == "" {
+		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
+		return
 	}
-	res := process.Resolution{Proceed: body.Approve, By: by, Steer: body.Say}
-	// A process gate's id is <process-id>~dN; route it to that process. An engine gate id
-	// (trigger:…~N) whose owner isn't a process falls through to the registry.
-	owner := body.ID
-	if i := strings.Index(owner, process.GateSep); i >= 0 {
-		owner = owner[:i]
+	// Attribution is required, not defaulted. The server used to fill in `human:cli`, which
+	// put a name on the record that belongs to nobody — and now that an answer is a durable
+	// entry on the question, an unattributable one is a permanent unattributable one. A
+	// decision is an act; acts have actors.
+	if body.By == "" {
+		http.Error(w, "by is required: a decision names who made it", http.StatusBadRequest)
+		return
 	}
-	if !s.isProcess(owner) {
-		// The id named no process — either an engine gate, or an executor-raised one whose
-		// id carries no owner by construction. Ask the snapshots which process holds it;
-		// an engine gate is held by none and still falls through to the registry below.
-		owner = s.processHoldingGate(body.ID)
+	res := process.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
+
+	store := s.scopedStore(r)
+	// `exclusive` governs whose answer COUNTS. Not who may SEE the question: the docket is
+	// unchanged, and a person may read — and argue about — what an exclusive binding owns.
+	// And not a security boundary: it decides who answers an ask, never what an answer may
+	// authorise. The grant does that, and the two are not the same axis.
+	holder, exclusive := exclusiveOwner(store, body.ID)
+	if exclusive && body.By != holder && !body.Override {
+		http.Error(w, holder+" answers this question exclusively; "+
+			"say override to answer it anyway, and the record will name you both",
+			http.StatusForbidden)
+		return
 	}
-	if s.isProcess(owner) {
-		if !s.resolveProcessDecision(owner, body.ID, res) {
-			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
-			return
+	overriding := exclusive && body.By != holder
+	owner := procID
+	if owner == "" {
+		owner = s.ownerOf(store, body.ID)
+	}
+
+	var err error
+	if owner != "" {
+		err = s.resolveProcessDecision(owner, body.ID, res)
+	} else if !s.Reg.Answer(body.ID, res) {
+		err = process.ErrNoSuchDecision
+	}
+	if err == nil {
+		// Accepted is not the same as delivered. A broker takes an answer for a worker that
+		// must dial in and pull it, so the record says so — `delivered: false` — until the
+		// worker's acknowledgement clears it. Everywhere else the answer has already landed
+		// on the party that must act, and the record is simply settled.
+		if s.relaysControl(owner) {
+			mirror.QueuedAnswer(store, body.ID, res)
+		} else {
+			mirror.AnswerQuestion(store, body.ID, res)
+		}
+		if overriding {
+			mirror.Overrode(store, body.ID, holder)
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !s.Reg.Answer(body.ID, res) {
-		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+
+	// Nothing took the answer, and WHY is three different facts. Two of them used to be one
+	// 404 and the third had no way to be said at all.
+	//
+	// The runner could not be reached. Nothing is known about the question — it may be open
+	// and waiting — so this is not an answer about the question at all, and calling it "no
+	// such question" sent the operator hunting a typo for a runner that was simply down.
+	if errors.Is(err, process.ErrUnreachable) {
+		http.Error(w, "the runner holding this question could not be reached: "+err.Error(),
+			http.StatusBadGateway)
+		return
+	}
+	if errors.Is(err, process.ErrUnsupported) {
+		http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
+		return
+	}
+	// Somebody was here first. The loser is recorded rather than dropped: two people at a
+	// docket answering at once is normal, and a docket that keeps only the winner cannot
+	// show that the question was contested.
+	won, settled := mirror.SettledBy(store, body.ID)
+	if settled || errors.Is(err, process.ErrAlreadyAnswered) {
+		if won == "" {
+			won = "an earlier answer"
+		}
+		mirror.StaleAnswer(store, body.ID, res)
+		http.Error(w, "already answered by "+won+"; your answer was recorded as stale", http.StatusConflict)
+		return
+	}
+	http.Error(w, "no such question", http.StatusNotFound)
+}
+
+// instanceOf reads one resolver instance: the binding it is, and the process it watches.
+//
+// Both come off the record rather than being parsed out of the address. The address is for
+// finding it; the fields are what the checks below compare, and a check that re-derives its
+// inputs from a string is one that can disagree with what is stored.
+func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool) {
+	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
+	e, found, err := s.scopedStore(r).Get(ref)
+	if err != nil || !found {
+		return "", entity.Ref{}, false
+	}
+	p := entity.ToObj(e.Payload)
+	binding, _ = p["binding"].(string)
+	got, _ := p["origin"].(string)
+	origin, err = entity.ParseRef(got)
+	if err != nil {
+		return "", entity.Ref{}, false
+	}
+	return binding, origin, binding != "" && origin.ID != ""
+}
+
+// watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
+// stored beside it: a run's fine grain hangs off the spine, and which one you are reading is
+// a property of what you are watching rather than a flag that could disagree with it.
+func watchesARun(origin entity.Ref) bool { return origin.System == mirror.System }
+
+// resolverEvents hands a resolver the stream of the run it watches — the process's OWN read
+// plane, from `?since=`, not a projection of it.
+//
+// Context arrives before the ask, which is the whole reason a resolver is attached rather than
+// handed a question: by the time it reads the gate it has read what led to it.
+func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
+	s.escalateOverdue(s.scopedStore(r)) // a resolver arriving is a reader arriving
+	_, origin, ok := s.instanceOf(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if !watchesARun(origin) {
+		s.streamSpine(w, r, origin)
+		return
+	}
+	// No local special case: the runner attaches a live in-process handle by the same call,
+	// so a resolver over a local run and one over a brokered run read through one path. The
+	// process route splits only because it forwards to the runtime's own mount, and a
+	// resolver is not asking that route's question.
+	s.streamEvents(w, r, origin.ID)
+}
+
+// streamSpine serves the commits that touched one subject, from `?since=<revision>`.
+//
+// The narrowing is BY REF — every commit touching it, and nothing else. Not the binding's
+// condition, and the reason is not tidiness: a predicate reads a payload and a deletion has
+// none, so a condition-narrowed stream would hide exactly the end of a life it most needs to
+// show. `sys:k:i` born, marked vanishing, deleted and written again under the same ref is one
+// story, and a resolver for that ref sees all of it.
+//
+// A position here is a revision rather than a cursor, which is why an instance may be minted
+// late and still read everything that led to a question: the store keeps its commits, so the
+// subject's history is re-readable in a way a run's bounded ring is not.
+//
+// It also carries the ANCHORS: a run about this subject writes a `process:instance` entity
+// naming it as its flow, and a spawn and a terminal are both commits there because the mirror
+// writes them. That is what makes this the spine and process streams the fine grain hanging
+// off it — a resolver reading here learns a run began, and its own instance for that run is
+// where the frames are. Without them the spine would be a subject's history with the work
+// about it left out, which is most of what a supervisor is watching for.
+func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject entity.Ref) {
+	store := s.scopedStore(r)
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	onSpine := func(ev entity.Event) bool { return spineCarries(ev, subject) }
+
+	// Subscribe BEFORE the catch-up, so a commit landing between the two is carried live
+	// rather than lost in the gap; the two overlap and revision order dedups them.
+	ch, unsub := store.Observe()
+	defer unsub()
+	last := since
+	if commits, ok := store.Since(since); ok {
+		for _, c := range commits {
+			for _, ev := range c.Changes {
+				if onSpine(ev) {
+					_ = sse.Send(ev)
+				}
+			}
+			if c.Rev > last {
+				last = c.Rev
+			}
+		}
+	} else {
+		// BELOW THE WINDOW. `Since` refuses a revision older than the store has observed —
+		// logd may have compacted it — and this said nothing at all, so a reader could not
+		// tell "nothing happened" from "you missed everything". A resolver is a client of
+		// this call and nothing else, so it reconnected, learned nothing, and sat waiting
+		// for a question that had already been asked.
+		//
+		// Say that it happened, and then say WHAT — which is the half that matters, and the
+		// same two moves SubscribeSince makes on the process plane for the same reason.
+		_ = sse.Send(entity.Event{Gap: 1})
+		for _, ent := range pendingQuestions(store) {
+			if entity.Str(ent.Payload, "subject") != subject.String() {
+				continue
+			}
+			// Rev 0: this is current state, not a position. A reader tracks the highest Rev
+			// it has processed, and a replayed question must not move that cursor in either
+			// direction — the catch-up below is what advances it.
+			_ = sse.Send(entity.Event{Ref: ent.Ref, Op: entity.Set, To: ent.Payload})
+		}
+	}
+	sse.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case c, ok := <-ch:
+			if !ok {
+				return
+			}
+			if c.Rev != 0 && c.Rev <= last {
+				continue
+			}
+			if c.Gap > 0 {
+				_ = sse.Send(entity.Event{Rev: c.Rev, Gap: c.Gap})
+			}
+			for _, ev := range c.Changes {
+				if onSpine(ev) {
+					_ = sse.Send(ev)
+				}
+			}
+			if c.Rev > last {
+				last = c.Rev
+			}
+		}
+	}
+}
+
+// spineCarries reports whether a change belongs on one subject's spine: the subject's own
+// commits, and the runs about it.
+//
+// The subject half is BY REF and unfiltered — a predicate reads a payload and a deletion has
+// none, so a payload-narrowed spine would hide the end of a life. The run half must read one:
+// a process names its subject in `flow`, and there is nothing in its address that says so. A
+// run's terminal is a set rather than a delete, so the anchors that matter carry a payload to
+// be read.
+func spineCarries(ev entity.Event, subject entity.Ref) bool {
+	if ev.Ref == subject {
+		return true
+	}
+	// The QUESTIONS about it, which is how an escalation arrives rather than having to be
+	// polled for: a transfer writes the question, and the layer above is reading here. The
+	// design says the question "appears in the stream of the layer above" and that there is
+	// no second path anywhere, `⊤` included.
+	if ev.Ref.System == mirror.QuestionSystem && ev.Ref.Kind == mirror.QuestionKind {
+		return entity.Str(ev.To, "subject") == subject.String()
+	}
+	if ev.Ref.System != mirror.System || ev.Ref.Kind != "instance" {
+		return false
+	}
+	return entity.Str(ev.To, "flow") == subject.String()
+}
+
+// resolverVerdict applies one answer, through the SAME path a person's `verse gate approve`
+// takes. Not a new answering path, and not a write: the record is written from the decision
+// after the fact, which is what the steering invariant requires.
+func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
+	binding, origin, ok := s.instanceOf(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var v api.Verdict
+	if err := codec.Read(r, &v); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if v.ID == "" {
+		http.Error(w, "id is required: a verdict names the question it answers", http.StatusBadRequest)
+		return
+	}
+	var proceed bool
+	switch v.Verdict {
+	case "proceed":
+		proceed = true
+	case "deny":
+	case "escalate":
+		s.escalate(w, r, v.ID, binding, origin)
+		return
+	default:
+		http.Error(w, "verdict must be proceed or deny", http.StatusBadRequest)
+		return
+	}
+	// A stream it may READ is not a docket it may ANSWER. The check is structural rather
+	// than a policy about who is asking: the instance names its binding and its origin, so
+	// this is a comparison of two fields the question already carries.
+	q, found, err := s.scopedStore(r).Get(mirror.QuestionRef(v.ID))
+	if err != nil || !found {
+		http.Error(w, "no such question", http.StatusNotFound)
+		return
+	}
+	if !ownedBy(entity.ToObj(q.Payload), binding, origin) {
+		http.Error(w, "that question is not this resolver's to answer", http.StatusForbidden)
+		return
+	}
+	// Attribution is verse's: `by` is the binding, stamped here. A service says what it
+	// decided, never who it is.
+	//
+	// The process id is what routes the answer, and a firing's question has none — it is
+	// answered through the engine's own registry, which answerQuestion reaches when told no
+	// process holds it.
+	var procID string
+	if watchesARun(origin) {
+		procID = origin.ID
+	}
+	s.answerQuestion(w, r, api.Resolve{
+		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
+	}, procID)
+}
+
+// ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
+//
+// A binding that is not installed is REFUSED rather than ignored, and rather than left standing
+// on the question. Left standing it is worse than useless: the question is owned by something
+// that cannot answer, and — the case that makes this a refusal rather than a shrug — it SHADOWS
+// the standing layer that covers the same subject, which never sees the question and has no
+// instance through which to reach it. A misspelled binding therefore turns a supervised subject
+// into an unsupervised one, silently, which is the shape of the hazard the first resolver plan
+// refused a `condition` to avoid.
+//
+// Checked at spawn rather than at install, because a charter and a binding are separate
+// entities and either may arrive first; what must hold is that a RUN is never bound to a name
+// nobody answers to.
+func ghostResolver(store entity.Store, ref string) string {
+	if ref == "" {
+		return "" // named nobody, which is a state and not a mistake
+	}
+	if _, ok := resolver.Find(store, ref); ok {
+		return ""
+	}
+	return fmt.Sprintf("resolver %q is not installed: a spawn may not name a binding that does "+
+		"not exist — the question would be owned by something that cannot answer it, and any "+
+		"standing binding covering the same subject would never see it. Install it "+
+		"(`verse resolver add`), or leave `resolver` empty to let the standing layer own it", ref)
+}
+
+// escalate transfers a question to the layer above. It does NOT ask a favour: the layer above
+// owns it from that moment, and its answer resolves the ORIGINAL question, because escalating
+// changes who answers and not what is being answered.
+//
+// Nothing waits. The escalating resolver is not blocked and gets no answer back — it keeps
+// reading and may answer other questions in the next frame, and only the WORK is blocked, at
+// the gate it always was. The verdict, when it comes, arrives on its stream like any other
+// frame, which is what lets it lean on the precedent next time rather than remember it.
+func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding string, origin entity.Ref) {
+	store := s.scopedStore(r)
+	q, ok, err := store.Get(mirror.QuestionRef(id))
+	if err != nil || !ok {
+		http.Error(w, "no such question", http.StatusNotFound)
+		return
+	}
+	p := entity.ToObj(q.Payload)
+	if p["status"] != mirror.QuestionPending {
+		http.Error(w, "that question is already settled", http.StatusConflict)
+		return
+	}
+	if !ownedBy(p, binding, origin) {
+		http.Error(w, "that question is not this resolver's to escalate", http.StatusForbidden)
+		return
+	}
+	subject, _ := p["subject"].(string)
+	if !reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, binding, "escalated") {
+		// Answered between the check above and the write. Not this resolver's to escalate any
+		// more, and saying 204 would tell it the layer above now holds a question that is shut.
+		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// escalateOverdue moves the questions whose deadline has passed, and is called when a READER
+// arrives rather than by a clock of its own.
+//
+// The layer above is the only party an expiry is for, and it learns by reading — its spine, or
+// its docket if it is `⊤` and a person. So the reader's arrival is the moment to make the
+// transfer appear, not a moment too late: a sweeper would compute the same thing slightly
+// earlier, for nobody. It is the shape the claim lease already uses, where expiry happens when
+// somebody next asks for the work.
+//
+// What it costs, said rather than hidden: a question overdue while nothing is reading stays
+// where it is, and moves the instant anything looks. For `⊤` that is exactly right — the
+// docket a person opens is the docket as of now.
+func (s *Server) escalateOverdue(store entity.Store) {
+	now := time.Now()
+	for _, ent := range pendingQuestions(store) {
+		p := entity.ToObj(ent.Payload)
+		at, _ := p["escalatesAt"].(string)
+		if at == "" {
+			continue
+		}
+		// Nano, not RFC3339: the second-granularity spelling TRUNCATES, so a deadline
+		// would fire up to a second early — and one shorter than a second would be past
+		// the instant it was stamped.
+		due, err := time.Parse(time.RFC3339Nano, at)
+		if err != nil || now.Before(due) {
+			continue
+		}
+		owner, _ := p["resolver"].(string)
+		subject, _ := p["subject"].(string)
+		reown(store, ent.Ref, questionOrigin(p, subject), subject, owner, "overdue")
+	}
+}
+
+// exclusiveOwner reports the binding that owns this question and whether it owns it
+// exclusively. A question nobody owns, or one owned by an advisory binding, is answerable by
+// the first party to answer — which is what advisory means, and is the default.
+func exclusiveOwner(store entity.Store, id string) (string, bool) {
+	e, ok, err := store.Get(mirror.QuestionRef(id))
+	if err != nil || !ok {
+		return "", false
+	}
+	binding := entity.Str(e.Payload, "resolver")
+	if binding == "" {
+		return "", false
+	}
+	res, ok := resolver.Find(store, binding)
+	return binding, ok && res.Exclusive
+}
+
+// questionOrigin is what an owner of this question watches: the run that raised it, or the
+// subject it is about when a firing did. It is the same distinction an instance's address
+// carries, read off the question rather than guessed.
+func questionOrigin(q map[string]any, subject string) entity.Ref {
+	if p, _ := q["process"].(string); p != "" {
+		return mirror.Ref(p)
+	}
+	ref, _ := entity.ParseRef(subject)
+	return ref
+}
+
+// ownedBy is the check both answering and escalating make: this binding, and this instance's
+// own origin. A run instance acts on the questions of its run and a spine on those of its
+// subject, which is how a binding with several instances cannot act through the wrong one.
+func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
+	if q["resolver"] != binding {
+		return false
+	}
+	if watchesARun(origin) {
+		return q["process"] == origin.ID
+	}
+	return q["subject"] == origin.String()
+}
+
+// resolverPosition records how far a resolver has read, and what it wants its successor to
+// know. On the INSTANCE, because who was watching is per run: writing it on the binding would
+// be one resolver's second run overwriting what its first one saw.
+func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.instanceOf(r); !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var p api.Position
+	if err := codec.Read(r, &p); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rec := entity.Obj{"position": p.Position}
+	if p.Notes != "" {
+		rec["notes"] = p.Notes
+	}
+	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reflect mirrors a process, filling in the provenance every call site shares rather than
+// asking each to remember it.
+//
+// The standing-owner lookup is the reason it exists. It is a callback because mirror must not
+// import resolver — resolver reads the charter's match vocabulary, trigger reads mirror, and
+// the cycle closes — and an optional field on a struct three call sites build by hand is a
+// field one of them will forget. One did, within the commit that introduced it: reconcile
+// rebuilt its own Meta and a resumed process's questions lost their layer in silence.
+func (s *Server) reflect(store entity.Store, id string, h process.Handle, m mirror.Meta) {
+	m.Owner = s.standingOwner
+	mirror.Reflect(store, id, h, m)
+}
+
+// resolverName is the name half of a binding's ref — the last segment of
+// `resolvers:<kind>:<name>`. An instance is addressed by name and origin rather than by the
+// whole ref, because the kind is the operator's filing and the name is the identity: two
+// resolvers cannot share a name, so carrying the kind into every instance address would be
+// spelling out a fact that is already implied.
+func resolverName(ref string) string {
+	if i := strings.LastIndex(ref, ":"); i >= 0 {
+		return ref[i+1:]
+	}
+	return ref
+}
+
+// ── resolvers: who answers ───────────────────────────────────────────────────
+
+// addResolver installs a binding at `resolvers:<kind>:<name>`.
+//
+// A VERB rather than a raw write, and the reason survives this increment having nothing to
+// check across bindings yet: installing one is where the check that two standing conditions
+// do not overlap has to live, and a route that exists is a place to put it. A raw write has
+// nowhere.
+func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
+	// Read as a DOCUMENT first, so a field the decoder would drop can be named. `metod:`
+	// decodes to nothing and installs a resolver that answers over no protocol, reporting
+	// success — the same silence trigger.CheckFields exists to break.
+	node, err := codec.ReadNode(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := resolver.CheckFields(node); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var res resolver.Resolver
+	if err := codec.FromNode(node, &res); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := res.Check(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ref := resolver.Ref(res.Kind, res.Name)
+	body := entity.Obj{
+		"name": res.Name, "kind": res.Kind, "byRef": res.ByRef,
+		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL},
+	}
+	if res.Condition != nil {
+		body["condition"] = entity.Obj{"subject": map[string]any(res.Condition.Subject)}
+	}
+	if res.Deadline != nil {
+		// The outcome is stored RESOLVED rather than as written: a binding that omitted it
+		// still means escalate, and a record that says so is one a later reader does not
+		// have to know the default to understand.
+		body["deadline"] = entity.Obj{
+			"within": res.Deadline.Within, "then": res.Deadline.Outcome(),
+		}
+	}
+	if res.Exclusive {
+		body["exclusive"] = true
+	}
+	if m := res.Method; m.Vector != "" || len(m.Tools) > 0 || m.Grant != "" {
+		meth := body["method"].(entity.Obj)
+		if m.Vector != "" {
+			meth["vector"] = m.Vector
+		}
+		if len(m.Tools) > 0 {
+			meth["tools"] = m.Tools
+		}
+		if m.Grant != "" {
+			meth["grant"] = m.Grant
+		}
+	}
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: body.Payload()}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// What it may find itself ordered against, reported and not refused. Overlap is decided
+	// by name at the moment a question is posed; saying so at install is what keeps a
+	// shadowed binding from being a silence rather than a fact.
+	out := map[string]any{"ref": ref.String()}
+	if over := resolver.Overlaps(s.scopedStore(r), res); len(over) > 0 {
+		out["overlaps"] = over
+	}
+	writeOut(w, r, http.StatusCreated, out)
+}
+
+func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
+	out := make([]map[string]any, 0)
+	for _, ent := range s.scopedStore(r).List(func(ref entity.Ref) bool {
+		// Bindings only. An instance shares the system deliberately — one `--system
+		// resolvers` shows both — but `verse resolvers` is asking what is INSTALLED, and a
+		// record of who is watching is a different question.
+		return ref.System == resolver.System && ref.Kind != resolver.InstanceKind
+	}) {
+		rec := entity.ToObj(ent.Payload)
+		if rec == nil {
+			continue
+		}
+		rec["ref"] = ent.Ref.String()
+		out = append(out, rec)
+	}
+	writeOut(w, r, http.StatusOK, out)
+}
+
+func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
+	ref := resolver.Ref(r.PathValue("kind"), r.PathValue("name"))
+	e, ok, err := s.scopedStore(r).Get(ref)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
+}
+
+func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
+	ref := resolver.Ref(r.PathValue("kind"), r.PathValue("name"))
+	if _, ok, err := s.scopedStore(r).Get(ref); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.releaseResolver(s.scopedStore(r), ref)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reown hands one question to the next layer, for whatever reason it changed hands.
+//
+// One function because there is one act. Removal asks "who owns this now that I am gone" and
+// escalation asks "who owns this now that I have declined"; the ladder answers both the same
+// way, and `why` is the only thing that differs — which is worth recording, since a question
+// that changed hands should say what moved it.
+// It reports whether the handover LANDED. It can fail to: a question that settled between the
+// decision to move it and the write is one that was answered, and an answer beats a transfer —
+// merging over it would leave a record saying both "decided by X" and "X let its deadline
+// pass", handing the layer above a question somebody had already closed. The check is a
+// precondition on the write rather than a read before it, because a read before it is the same
+// race with a smaller window.
+func reown(store entity.Store, at, origin entity.Ref, subject, from, why string) bool {
+	rec := entity.Obj{
+		// nil, not absent: a write merges, so saying "this is gone" is the writer's job. A
+		// question left naming a binding that will not answer is one nobody can answer,
+		// listed on a docket as though somebody were coming.
+		"resolver": nil,
+		// And the clock goes with the owner it belonged to; the branch below arms the new
+		// one's, if it has one.
+		"escalatesAt": nil,
+		// The handover, readable rather than inferred. A question that changed hands
+		// without saying so is one whose audit trail has a hole exactly where somebody
+		// would look.
+		"reownedFrom": from,
+		"reownedWhy":  why,
+		"reownedAt":   time.Now().UTC().Format(time.RFC3339),
+	}
+	binding := ""
+	if subject != "" {
+		if ref, err := entity.ParseRef(subject); err == nil {
+			if next, ok := resolver.Next(store, ref, from); ok {
+				binding = resolver.Ref(next.Kind, next.Name).String()
+				rec["resolver"] = binding
+				// The new owner's clock, not the old one's. Without re-arming, a question
+				// would stay overdue against a deadline nobody set and move again on every
+				// read; without CLEARING it, one handed to a binding with no deadline would
+				// keep the last one's.
+				rec["escalatesAt"] = nil
+				if res, ok := resolver.Find(store, binding); ok && res.Deadline != nil {
+					if after, err := res.Deadline.After(); err == nil {
+						rec["escalatesAt"] = time.Now().Add(after).UTC().Format(time.RFC3339Nano)
+					}
+				}
+			}
+		}
+	}
+	// Still pending, as of the write itself.
+	won, _, err := store.Write(entity.Write{
+		At: at.At(), Value: rec.Payload(),
+		When: []entity.Require{{Pattern: entity.Obj{"status": mirror.QuestionPending}.Payload()}},
+	})
+	if err != nil || !won {
+		return false
+	}
+	// The new owner gets an instance for what it now watches, because re-owning IS an
+	// ownership decision and that is where instances are minted. Without it a layer could own
+	// a question with no record through which to act on it — and no way to read the fine grain
+	// of a run it has just inherited. Create-only, so a binding that was already watching keeps
+	// the position it had. AFTER the write, so a handover that lost the race mints nothing.
+	if binding != "" {
+		mirror.Watch(store, binding, resolverName(binding), origin)
+	}
+	return true
+}
+
+// releaseResolver hands on what a removed binding was holding: the questions it owned, and
+// the instances that were reading for it.
+//
+// RE-ROUTE RATHER THAN DRAIN. Draining means the removed binding keeps answering what it
+// already owns until those settle, which sounds gentler and is worse in the case that
+// matters: an operator removing a resolver wants it to stop, and its service is usually
+// being shut down in the same breath — so what it still owns is stuck until something
+// re-routes it anyway, and draining is a state machine that postpones the same work.
+//
+// Called AFTER the binding is gone, which is what makes the recomputation right: the layer
+// rule asked now returns the next name in order, or nothing. So this is a change of owner and
+// not only a loss of one, which is what allowing overlap bought.
+func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
+	for _, ent := range pendingQuestions(store) {
+		p := entity.ToObj(ent.Payload)
+		if p["resolver"] != gone.String() {
+			continue
+		}
+		subject, _ := p["subject"].(string)
+		reown(store, ent.Ref, questionOrigin(p, subject), subject, gone.String(), "removed")
+	}
+	// Its instances go with it, and this is the only thing that reaps one. They are
+	// machinery for a reader that no longer exists; what they were evidence of is in the
+	// store, where a position report and a note were commits when they were made and
+	// remain commits afterwards.
+	for _, ent := range store.List(func(ref entity.Ref) bool {
+		return ref.System == resolver.System && ref.Kind == resolver.InstanceKind
+	}) {
+		if entity.Str(ent.Payload, "binding") == gone.String() {
+			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
+		}
+	}
 }
 
 // ── triggers: the charter ────────────────────────────────────────────────────
@@ -1072,7 +1985,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		StoreRev:  s.Store.Rev(),
 		Triggers:  len(s.Eng.Triggers()),
 		Flows:     len(s.Eng.Flows()),
-		Gates:     len(s.Reg.Pending()),
+		Gates:     len(pendingQuestions(s.scopedStore(r))),
 		Processes: s.Procd.Count(),
 		Fired:     s.Eng.Fired(),
 		Runner:    s.runnerStatus(), // how processes run: kind + resume + dial legs
@@ -1137,7 +2050,7 @@ type processLister interface {
 // asserting the three-argument shape and started answering 501. One declaration means one
 // thing to change, and every implementer breaks loudly when it does.
 type gateResolver interface {
-	Resolve(decision string, proceed bool, say, by string) bool
+	Resolve(decision string, proceed bool, say, by string) error
 }
 
 // spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
@@ -1145,6 +2058,43 @@ type gateResolver interface {
 // honors --runner/--broker, not just trigger spawns) and mirror it into the store (so a run
 // is a process:instance entity — observable, and its completion can drive triggers) — the
 // consistency the "processes are entities" model wants.
+// spawnID settles what a run is called, and refuses an id that would break the surfaces an id
+// crosses.
+//
+// `~` is the separator between a process and its questions (process.GateSep), and answering one
+// recovers the owner by cutting at the FIRST occurrence — so `a~b` raises `a~b~d1` and hands it
+// to a process called `a`, which is either nothing or somebody else's run. The rest are the
+// characters an id cannot survive in a URL path, since ids are addressed at `/processes/{id}`.
+// The trigger side has stripped exactly these from subject-derived ids all along (safeSeg); the
+// ad-hoc face never had to, because until `--name` it never let a caller near one.
+//
+// A NAME is the safe way to say what a run is: it is sanitised and made unique here, so the
+// caller gets a readable id back rather than choosing an address.
+func spawnID(body api.Spawn) (string, error) {
+	if body.ID != "" {
+		if bad := strings.IndexAny(body.ID, badInID); bad >= 0 {
+			return "", fmt.Errorf("process id %q may not contain %q: it is the prefix of every "+
+				"gate question this run raises (<id>~d1) and it is addressed in a URL path. "+
+				"Use `name` instead and the id is derived from it", body.ID, body.ID[bad:bad+1])
+		}
+		return body.ID, nil
+	}
+	nonce := mintNonce()[:12]
+	if body.Name == "" {
+		return "run-" + nonce, nil
+	}
+	label := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(badInID, r) {
+			return '_'
+		}
+		return r
+	}, body.Name)
+	return label + "-" + nonce, nil
+}
+
+// badInID is `~` plus what an id cannot survive in a URL path.
+const badInID = "~/\\#?% \t\n"
+
 func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	var body api.Spawn
 	if err := codec.Read(r, &body); err != nil {
@@ -1155,9 +2105,10 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task is required", http.StatusBadRequest)
 		return
 	}
-	id := body.ID
-	if id == "" {
-		id = "run-" + mintNonce()[:12] // ad-hoc id; a trigger spawn supplies its own
+	id, err := spawnID(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	// Honor --scope: mirror the process:instance into that scope's copy-on-write view, not
 	// baseline — else a scoped run leaks into baseline (a baseline watch would see it). On the
@@ -1166,8 +2117,23 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		store = s.Store.Scope(scope)
 	}
-	h := s.runner.Spawn(process.Launch{ID: id, Task: body.Task, Driver: body.Driver}, nil)
-	mirror.Reflect(store, id, h, mirror.Meta{Runner: s.runner.Ref()})
+	if why := ghostResolver(store, body.Resolver); why != "" {
+		http.Error(w, why, http.StatusBadRequest)
+		return
+	}
+	vec, err := process.NamedVector(body.Vector)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h := s.runner.Spawn(process.Launch{
+		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
+		Resolver: body.Resolver, Vector: vec,
+	}, nil)
+	s.reflect(store, id, h, mirror.Meta{
+		Runner: s.runner.Ref(), Subject: body.Subject, Resolver: body.Resolver,
+	})
+	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
@@ -1274,9 +2240,14 @@ func (s *Server) processHoldingGate(decisionID string) string {
 
 // resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the
 // runtime for a local process, the runner handle for a brokered one.
-func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) bool {
+func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) error {
 	if _, ok := s.Procd.SnapshotOf(procID); ok {
-		return s.Procd.Resolve(procID, decisionID, res)
+		if s.Procd.Resolve(procID, decisionID, res) {
+			return nil
+		}
+		// The local registry answers by id and cannot say which of the two it was. The
+		// record can, and the caller consults it; here the honest answer is "not open".
+		return process.ErrNoSuchDecision
 	}
 	if h := s.runner.Attach(procID); h != nil {
 		// by is carried across this seam, not dropped: the local leg above takes the whole
@@ -1285,8 +2256,9 @@ func (s *Server) resolveProcessDecision(procID, decisionID string, res process.R
 		if rh, ok := h.(gateResolver); ok {
 			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
 		}
+		return process.ErrUnsupported
 	}
-	return false
+	return process.ErrNoSuchProcess
 }
 
 // getProcess resolves one process across backends: the local runtime first (live detail),
@@ -1340,6 +2312,16 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
+	s.streamEvents(w, r, id)
+}
+
+// streamEvents serves one process's read plane over SSE, from `?since=` if it carries one.
+//
+// It is factored out because a resolver reads THIS stream, not a projection of it: the design
+// requires that a resolver sees what an attached observer sees, and the moment it is a
+// different stream there are two orders to reconcile and a supervised run that reads
+// differently depending on who is looking.
+func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string) {
 	h := s.runner.Attach(id)
 	if h == nil {
 		http.NotFound(w, r)
@@ -1350,7 +2332,7 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	ch, unsub := h.Subscribe()
+	ch, unsub := subscribeAt(h, r.URL.Query().Get("since"))
 	defer unsub()
 	sse.Flush()
 	for {
@@ -1364,6 +2346,39 @@ func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime h
 			return
 		}
 	}
+}
+
+// sinceSubscriber is a handle that can resume from a cursor. It is optional on process.Handle
+// rather than part of it, the way gate resolution is: a handle wraps somebody else's runtime,
+// and one that cannot replay should say so by not implementing this rather than by pretending.
+type sinceSubscriber interface {
+	SubscribeSince(since int64) (<-chan process.Frame, func())
+}
+
+// subscribeAt opens the read plane at the cursor the client asked for, so `?since=` means the
+// same thing on this route as it does on the local runtime's: the frames AFTER that cursor,
+// then live, with an EvGap first if the cursor is below what is still retained.
+//
+// It read nothing before, so a brokered or remote process replayed from the beginning however
+// far along the client already was. A resumable client would then see events it had already
+// acted on — which is not a cosmetic difference for a reader that acts on what it sees.
+//
+// An absent `since` is a live attach, and a handle that cannot resume falls back to one. That
+// fallback delivers MORE than was asked for rather than less, which a cursor-carrying reader
+// can discard; the opposite — silently delivering less — is what EvGap exists to prevent.
+func subscribeAt(h process.Handle, since string) (<-chan process.Frame, func()) {
+	if since == "" {
+		return h.Subscribe()
+	}
+	sub, ok := h.(sinceSubscriber)
+	if !ok {
+		return h.Subscribe()
+	}
+	n, err := strconv.ParseInt(since, 10, 64)
+	if err != nil {
+		return h.Subscribe()
+	}
+	return sub.SubscribeSince(n)
 }
 
 // processControl routes cancel/say: a process the local runtime hosts is served by it (live
@@ -1400,30 +2415,6 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 			return
 		}
 		h.SetVector(body.Vector, body.By)
-	case "resolve":
-		// answer a gate the worker raised — relayed to the worker's inbox by the handle.
-		rh, ok := h.(gateResolver)
-		if !ok {
-			http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
-			return
-		}
-		// Same body as `POST /gate/resolve` (api.Resolve): one gate, named by id,
-		// answered yes or no. This route differs only in WHERE the answer goes — relayed
-		// to a remote worker's inbox rather than resolved in-process — which is not a
-		// reason for a second vocabulary, and having had one is how `decisionId`/`proceed`
-		// drifted away from `id`/`approve` unnoticed.
-		var body api.Resolve
-		_ = codec.Read(r, &body)
-		// The relay interface still carries a single steer string; a multi-part say is
-		// joined rather than dropped. Widening it is part of the broker/processd pass.
-		by := body.By
-		if by == "" {
-			by = "human:cli"
-		}
-		if !rh.Resolve(body.ID, body.Approve, strings.Join(body.Say, "\n"), by) {
-			http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
-			return
-		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

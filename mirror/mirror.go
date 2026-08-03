@@ -10,6 +10,7 @@ package mirror
 
 import (
 	"strings"
+	"time"
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/entity"
@@ -62,6 +63,32 @@ type Meta struct {
 	Doer  string
 	Grant string
 	Tools []string
+	// Resolver is the binding a spawn NAMED to answer this run's gates, published on the
+	// entity so "who is watching this" is readable beside what the work may do.
+	Resolver string
+	// Owner answers "which standing binding covers this subject", for a question the spawn
+	// named nobody for. It is a callback rather than a call because mirror must not import
+	// the resolver package: resolver reads the charter's match vocabulary, trigger reads
+	// mirror, and the cycle closes. So the party that knows all three supplies the lookup.
+	//
+	// Nil means no standing layer is consulted, which is what a caller with no store view
+	// of bindings should pass.
+	//
+	// TODO: cut the cycle rather than routing around it, before the resolver work
+	// multiplies this. Two symptoms already: an optional field three call sites build by
+	// hand lost the standing layer for resumed processes in the commit that added it (see
+	// versed.Server.reflect), and the resolver system and instance kind are spelled here as
+	// private constants because the real ones cannot be imported — one fact, two spellings.
+	//
+	// The edge to cut is resolver → trigger, not trigger → mirror. Trigger uses Reflect,
+	// Meta and ParseResult, which is the projection itself and not addressing, so no
+	// extraction of refs into a leaf package would help; it would move a constant and leave
+	// the dependency. Resolver imports trigger for exactly one thing — Match, the entity
+	// selector — which delegates to entity.Pattern and is called "the atom of the trigger
+	// model" while being a selector over entities that trigger happens to own. Lifting it
+	// out is the change that is right on its own merits, and it makes mirror → resolver
+	// legal as a side effect.
+	Owner func(subject string) string
 }
 
 // TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
@@ -123,6 +150,9 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	if len(m.Tools) > 0 {
 		st["tools"] = m.Tools
 	}
+	if m.Resolver != "" {
+		st["resolver"] = m.Resolver
+	}
 	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
 	// dial loop) rather than being pre-configured. Local/remote-processd handles have none.
@@ -133,22 +163,102 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	write(store, id, st)
 	go func() {
-		defer unsub()
+		// A stream ending is not the same fact as a process ending, and treating them as one
+		// is what let a mirror stop forever: the connection died, Reflect returned, and the
+		// entity kept saying `running` about work that had long since finished.
+		//
+		// The terminal is what says the process ended — always the last frame, never dropped
+		// and never absent (see process/event.go). A channel that closes without one closed
+		// for a reason of its own, and the answer is to resume from the cursor this loop has
+		// been keeping all along.
+		attempt := 0
+		for {
+			ended, heard := drainInto(store, id, st, m, h, ch)
+			unsub()
+			if ended {
+				return
+			}
+			if heard {
+				attempt = 0 // it worked for a while; the next outage starts its own count
+			}
+			if attempt >= reconnectAttempts {
+				// Gave up, and says so. The entity keeps `observed: false` rather than
+				// reverting to a confident `running` nobody is watching.
+				return
+			}
+			// Said BEFORE the wait, not after it: a reader asking during the outage is
+			// exactly the reader who needs to know the index is not current.
+			st["observed"] = false
+			write(store, id, st)
+			time.Sleep(backoff(attempt))
+			attempt++
+			since, _ := st["cursor"].(int64)
+			ch, unsub = h.SubscribeSince(since)
+		}
+	}()
+}
+
+// reconnectAttempts bounds how long a mirror keeps trying to reopen a stream that keeps
+// dying. With the backoff below it is a few minutes — long enough to outlast a runner
+// restart, short enough that a process on a runner that is never coming back does not hold a
+// goroutine and a retry loop forever. A stream that delivers anything at all resets it.
+const reconnectAttempts = 40
+
+// backoff grows to a ceiling and stays there. A mirror reconnecting to a runner that is down
+// should not hammer it on the way.
+func backoff(attempt int) time.Duration {
+	d := time.Duration(1<<min(attempt, 5)) * 250 * time.Millisecond
+	return min(d, 8*time.Second)
+}
+
+// drainInto projects one subscription's frames, reporting whether the PROCESS ended (true) or
+// merely the stream did (false).
+func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.Handle, ch <-chan process.Frame) (ended, heard bool) {
+	{
 		for ev := range ch {
+			if !heard {
+				// The first frame of a resumed stream is the only proof it is working, and
+				// nothing else can stand in for it — a channel that is merely open may be
+				// one that is about to close.
+				heard = true
+				if st["observed"] == false {
+					st["observed"] = nil // nil, not delete: a write MERGES
+					write(store, id, st)
+				}
+			}
 			if ev.Cursor > 0 { // high-water for resume: verse re-subscribes ?since=cursor
 				st["cursor"] = ev.Cursor
 			}
 			switch ev.Kind {
 			case process.EvPending: // now blocked on a gate — visible to other processes
-				st["pending"] = ev.ID
-				st["pendingGate"] = ev.Gate
+				// A REF to the question rather than a copy of it. The question is its own
+				// entity (see question.go), so the gate name, mode, tool and derived effects
+				// live there; duplicating any of them here would be a second spelling of one
+				// fact, and the entity is an index.
+				st["pending"] = QuestionRef(ev.ID).String()
+				// A frame carries no subject and no owner — the deriver that knew them ran
+				// on another machine — so they come from what this mirror already holds:
+				// the run's flow, the binding its spawn named, and failing that the
+				// standing layer covering the subject.
+				subject := entity.Str(st.Payload(), "flow")
+				owner := m.Resolver
+				if owner == "" && subject != "" && m.Owner != nil {
+					owner = m.Owner(subject)
+				}
+				PostFrameQuestion(store, ev, id, subject, owner)
 			case process.EvDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays
 				// as it was. Saying "this is gone" is the writer's job, and it is the whole
 				// difference between a gate that clears and a process that looks blocked
 				// forever. (Under whole-value replace this was `delete` and read the same.)
+				// Settle the record only if this decision ANSWERED a standing question.
+				// A gate the vector allowed outright reports a decision without ever having
+				// been pending, and settling that would mint a `gate:question:` entity for a
+				// question nobody was ever asked.
+				if st["pending"] != nil {
+					AnswerQuestion(store, ev.ID, process.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+				}
 				st["pending"] = nil
-				st["pendingGate"] = nil
 				st["lastAction"] = ev.Tool
 			case process.EvExec:
 				st["lastAction"] = ev.Tool
@@ -181,7 +291,12 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 							st["err"] = e
 						}
 						write(store, id, st)
-						return // stop projecting; the entity remains, marked terminal
+						// Whatever it was still asking, it will never hear the answer to.
+						// A brokered process ends with an EvStatus and no EvDecision, so
+						// nothing else would ever settle those questions and the docket
+						// would keep offering them for a run that is over.
+						OrphanQuestions(store, id)
+						return true, heard // the PROCESS ended; the entity remains, terminal
 					}
 				}
 				write(store, id, st)
@@ -196,16 +311,86 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 			}
 			write(store, id, st) // the payload is cloned on the way out; safe to reuse st
 		}
-	}()
+	}
+	return false, heard
 }
+
+// BindResolver mints the record of a resolver watching one run: `resolvers:instance:<name>@<id>`.
+//
+// At SPAWN rather than at the first question, because a resolver reads context before the ask
+// — that is the whole reason it is attached rather than handed a question — so the thing that
+// says who is watching has to exist from the moment there is something to watch.
+//
+// It carries the binding and the origin as fields as well as in its address, because an
+// address is for finding one and a field is for selecting many: "every instance of the
+// security reviewer" is a predicate, not a glob.
+func BindResolver(store entity.Store, binding, name, processID string) {
+	Watch(store, binding, name, Ref(processID))
+}
+
+// Watch mints the record of one binding watching one origin, and does nothing if it already
+// exists.
+//
+// AN INSTANCE FOLLOWS ITS ORIGIN, NOT ITS BINDING. "An instance lives for the duration of what
+// it resolves, and the origin decides what that is" — so a binding watching a subject and
+// three runs about it has four instances, each living exactly as long as the thing it watches.
+// That is also what carrying a cursor pair means: two positions as two records rather than two
+// fields, so there is no place for a merged order to be invented.
+//
+// Which plane an instance is on follows from its origin and is not stored beside it: an origin
+// under `process:instance` is a run, whose position is a cursor, and anything else is a
+// subject, whose position is a revision. One fact, one spelling.
+//
+// Create-only, and the precondition is the whole point rather than an optimisation: this is
+// called every time a question is posed, so a plain write would reset the position of a
+// resolver that is already reading — retiring its progress on the arrival of the very question
+// it was reading towards.
+func Watch(store entity.Store, binding, name string, origin entity.Ref) {
+	if binding == "" || name == "" {
+		return
+	}
+	ref := entity.Ref{System: resolverSystem, Kind: resolverInstance, ID: name + "@" + origin.ID}
+	if origin.System != System {
+		// A subject's id may not be unique across systems the way a process id is, so its
+		// address carries the whole ref.
+		ref.ID = name + "@" + origin.String()
+	}
+	_, _, _ = store.Write(entity.Write{
+		At: ref.At(),
+		Value: entity.Obj{
+			"binding": binding,
+			"origin":  origin.String(),
+			// position is where this instance has read to, and starts before the first
+			// frame. It is on the record rather than only in the reader because that is
+			// what tells "has not decided" from "has not caught up".
+			"position": int64(0),
+		}.Payload(),
+		When: []entity.Require{entity.Created()},
+	})
+}
+
+// The resolver system, spelled here rather than imported: mirror is what every runtime writes
+// through, and a dependency from it onto the resolver package would put the binding's own
+// vocabulary underneath the index that merely records it.
+//
+// Which is the polite reading. The blunt one is that the import is a cycle, and this is one
+// fact with two spellings until that is cut — see Meta.Owner.
+const (
+	resolverSystem   = "resolvers"
+	resolverInstance = "instance"
+)
 
 // write projects the accumulated state onto the process's entity. A failed write is
 // DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the
 // process's own event goroutine with nobody to return to, and a process must not stall
 // because its index could not be updated. What it costs is that the entity can lag the
 // process it mirrors — the index is a projection, and the read plane remains the record.
-func write(store entity.Store, id string, st entity.Obj) {
-	if _, _, err := store.Write(entity.Write{At: Ref(id).At(), Value: st.Payload()}); err != nil {
+func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
+	ref := Ref(id)
+	if len(at) == 1 {
+		ref = at[0]
+	}
+	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: st.Payload()}); err != nil {
 		return
 	}
 }

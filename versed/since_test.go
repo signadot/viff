@@ -1,0 +1,355 @@
+package versed
+
+import (
+	"bufio"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/broker"
+	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/process/processd"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/trigger"
+)
+
+// frames reads an SSE attach until the stream is quiet, and returns what it carried.
+//
+// Quiet rather than closed: a live attach does not end, and what is being compared here is
+// the REPLAY — everything the server had to say about the past before it started waiting.
+func frames(t *testing.T, url string) []process.Frame {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("attach %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	lines := make(chan string, 1024)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
+				lines <- d
+			}
+		}
+		close(lines)
+	}()
+
+	// The stop condition is the process's own terminal frame, not a stopwatch. Every drive
+	// here finishes, so "the replay is complete" is a fact the stream states rather than one
+	// the test infers from a quiet moment — which under load is indistinguishable from a
+	// burst that has not finished arriving.
+	var out []process.Frame
+	for {
+		select {
+		case d, ok := <-lines:
+			if !ok {
+				return out
+			}
+			var f process.Frame
+			if err := codec.Unmarshal([]byte(d), &f, codec.Tony); err != nil {
+				t.Fatalf("decode frame %q: %v", d, err)
+			}
+			out = append(out, f)
+			if f.Kind == process.EvStatus && process.Status(f.Text).Terminal() {
+				return out
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the stream stalled after %d frames without reaching a terminal: %v",
+				len(out), cursors(out))
+			return out
+		}
+	}
+}
+
+// cursors is what a comparison across runners can actually be made on: the frames' kinds and
+// order. Ids and timings differ by runner; the sequence is the contract.
+func cursors(fs []process.Frame) []string {
+	var out []string
+	for _, f := range fs {
+		out = append(out, f.Kind)
+	}
+	return out
+}
+
+// `?since=` names the same thing on every runner: the frames AFTER that cursor.
+//
+// It did not. The route read the parameter only for a local process; a brokered or remote one
+// went through a plain Subscribe and replayed from the beginning however far along the client
+// already was. A reader that resumes then sees events it has already acted on, which for a
+// resolver — whose whole job is acting on what it reads — is not a cosmetic difference.
+func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
+	// A drive of identical shape on each runner: N actions, then done.
+	drive := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+		return process.NewProcess(l.ID, sup, &countingDriver{n: 6}, noopExecutor{})
+	}
+
+	t.Run("local", func(t *testing.T) {
+		srv := NewWithStore(drive, entitytest.Store(t))
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		spawn := postTony(t, ts.URL+"/processes", map[string]any{"id": "p", "task": "work"})
+		spawn.Body.Close()
+		assertSince(t, ts.URL+"/processes/p/events")
+	})
+
+	t.Run("remote", func(t *testing.T) {
+		remote := httptest.NewServer(processd.New(drive).Handler())
+		defer remote.Close()
+		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+		srv.SetRunner(runner.HTTP(remote.URL))
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		spawn := postTony(t, ts.URL+"/processes", map[string]any{"id": "p", "task": "work"})
+		spawn.Body.Close()
+		assertSince(t, ts.URL+"/processes/p/events")
+	})
+
+	t.Run("broker", func(t *testing.T) {
+		b := broker.New()
+		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+		srv.SetRunner(b)
+		nonce := srv.HostBroker("", b.WorkerHandler())
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		work := httptest.NewServer(srv.BrokerHandler())
+		defer work.Close()
+
+		b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+		claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p/claim", map[string]any{"identity": "human:w"})
+		var cl struct {
+			Epoch int64 `tony:"field=epoch"`
+		}
+		decodeResp(t, claim, &cl)
+		claim.Body.Close()
+		// The worker reports the same shape of drive the other two ran.
+		var evs []process.Frame
+		for range 6 {
+			evs = append(evs, process.Frame{Kind: process.EvExec, Tool: "noop"})
+		}
+		evs = append(evs, process.Frame{Kind: process.EvStatus, Text: string(process.Done)})
+		rep := postTony(t, work.URL+"/broker/"+nonce+"/processes/p/report",
+			map[string]any{"epoch": cl.Epoch, "events": evs})
+		rep.Body.Close()
+		assertSince(t, ts.URL+"/processes/p/events")
+	})
+}
+
+// assertSince is the contract itself, asked of one attach URL: what `?since=N` returns is
+// exactly what a full replay returns with the first N dropped, and the cursors say so.
+func assertSince(t *testing.T, url string) {
+	t.Helper()
+	all := frames(t, url+"?since=0")
+	if len(all) < 4 {
+		t.Fatalf("the drive produced %d frames, too few to resume into: %v", len(all), cursors(all))
+	}
+	cut := all[1].Cursor // resume just after the second frame
+
+	got := frames(t, url+"?since="+itoa(cut))
+	var want []process.Frame
+	for _, f := range all {
+		if f.Cursor > cut {
+			want = append(want, f)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("since=%d gave %d frames, want %d\n got: %v\nwant: %v",
+			cut, len(got), len(want), cursors(got), cursors(want))
+	}
+	for i := range want {
+		if got[i].Cursor != want[i].Cursor || got[i].Kind != want[i].Kind {
+			t.Fatalf("since=%d frame %d = {%s @%d}, want {%s @%d} — the resume is not the tail of the replay",
+				cut, i, got[i].Kind, got[i].Cursor, want[i].Kind, want[i].Cursor)
+		}
+	}
+	// And the frames it dropped are the ones the client said it had. Asserting only the tail
+	// would pass for a stream that replayed everything and happened to be counted loosely.
+	for _, f := range got {
+		if f.Cursor != 0 && f.Cursor <= cut {
+			t.Fatalf("since=%d replayed %s at cursor %d — a resumed reader is being shown what it already saw",
+				cut, f.Kind, f.Cursor)
+		}
+	}
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// countingDriver takes n no-op actions then completes — a drive of a known shape, so the same
+// one can be run on each runner and the streams compared.
+type countingDriver struct{ n int }
+
+func (d *countingDriver) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
+	if d.n <= 0 {
+		return process.ToolUse{}, false, nil
+	}
+	d.n--
+	return process.ToolUse{Name: "noop"}, true, nil
+}
+
+type noopExecutor struct{}
+
+func (noopExecutor) Execute(_ context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
+	return process.StepResult{Use: tu, Output: "ok"}, nil, nil
+}
+
+// Below the watermark, the answer is a resync marker and then current state — not silence,
+// and not a stream that starts mid-story as though nothing were missing.
+//
+// This is the half of `?since=` that cannot be papered over by replaying more than was asked.
+// A reader resuming from a cursor the server no longer holds has to be TOLD, or it carries on
+// believing it has an unbroken view of a process it has actually lost the middle of.
+//
+// Each process here is spawned on its runtime DIRECTLY rather than through verse, so the only
+// subscriber is the one under test. A mirror attached to the same burst would be racing it for
+// the same retained window, and what is being measured is the resume, not the race.
+func TestBelowTheWatermarkResyncs(t *testing.T) {
+	// Past the retained window (process.ringCap is 256), so the early frames are gone.
+	drive := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+		return process.NewProcess(l.ID, sup, &countingDriver{n: 400}, noopExecutor{})
+	}
+
+	assertGap := func(t *testing.T, url string) {
+		t.Helper()
+		got := frames(t, url+"?since=1")
+		if len(got) == 0 {
+			t.Fatal("resuming below the watermark returned nothing at all")
+		}
+		if got[0].Kind != process.EvGap {
+			t.Fatalf("first frame = %s, want %s — the reader is not told it lost the middle: %v",
+				got[0].Kind, process.EvGap, cursors(got)[:min(6, len(got))])
+		}
+		// And what follows is current, not the start of the story: everything after the
+		// marker is above the cursor the client asked to resume from.
+		if len(got) < 2 {
+			t.Fatal("the resync marker arrived with no state after it")
+		}
+		if got[1].Cursor <= 1 {
+			t.Fatalf("after the resync the stream restarted at cursor %d", got[1].Cursor)
+		}
+	}
+
+	t.Run("local", func(t *testing.T) {
+		srv := NewWithStore(drive, entitytest.Store(t))
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		srv.Procd.Spawn(process.Launch{ID: "p", Task: "work"}, nil)
+		assertGap(t, ts.URL+"/processes/p/events")
+	})
+
+	// The remote leg is the one this step changed: the cursor is handed to the REMOTE's own
+	// `?since=`, so the resync decision is made by the side that knows what it still holds.
+	// Asking for everything and discarding locally could never produce this frame.
+	t.Run("remote", func(t *testing.T) {
+		remote := httptest.NewServer(processd.New(drive).Handler())
+		defer remote.Close()
+		pol := runner.HTTP(remote.URL)
+		pol.Spawn(process.Launch{ID: "p", Task: "work", Driver: "scripted"}, nil)
+
+		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+		srv.SetRunner(pol)
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		assertGap(t, ts.URL+"/processes/p/events")
+	})
+}
+
+// The bug this whole file kept tripping over, end to end: a process that outruns its mirror
+// still gets recorded as finished.
+//
+// The mirror is the consumer that made the loss catastrophic rather than cosmetic. It writes
+// a store entry per frame, so it is always the slow one; it returns only on a terminal, so a
+// dropped terminal leaked its goroutine and, behind a remote runner, the HTTP connection with
+// it; and the engine reacts to the mirrored status, so a sequence waiting on onDone waited
+// forever on a process that had finished minutes ago.
+func TestAFastProcessIsStillRecordedAsFinished(t *testing.T) {
+	for _, n := range []int{50, 300, 5000} {
+		drive := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+			sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+			return process.NewProcess(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
+		}
+		srv := NewWithStore(drive, entitytest.Store(t))
+		h := srv.Procd.Spawn(process.Launch{ID: "p", Task: "work"}, nil)
+		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
+
+		var last string
+		for range 500 {
+			e, _, _ := srv.Store.Get(mirror.Ref("p"))
+			last = entity.Str(e.Payload, "status")
+			if process.Status(last).Terminal() {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if !process.Status(last).Terminal() {
+			t.Fatalf("a %d-action process that completed is mirrored as %q", n, last)
+		}
+	}
+}
+
+// A CHARTER says how much of a process's past is worth keeping, and it reaches the process.
+//
+// The number is a property of the work and nothing else knows it — which is the whole reason
+// it is per-spawn rather than a constant somebody has to guess for every process at once. It
+// crosses two seams to get there: the charter's spawn fragment, and the runner contract.
+func TestACharterSetsTheRetainedWindow(t *testing.T) {
+	got := make(chan int, 4)
+	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
+		got <- l.Retain
+		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
+		return process.NewProcess(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
+	}
+	srv := NewWithStore(build, entitytest.Store(t))
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	var trig trigger.Trigger
+	if err := codec.Unmarshal([]byte(`{
+		name: chatty,
+		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		action: {
+			spawn:  {task: "review $subject", retain: 4096},
+			onDone: {patch: {stage: reviewed}},
+		},
+	}`), &trig, codec.Tony); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := srv.Eng.AddTrigger(trig); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, srv.Store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+		entity.Obj{"stage": "open"}.Payload())
+
+	select {
+	case n := <-got:
+		if n != 4096 {
+			t.Fatalf("the runtime was told to retain %d, want the 4096 the charter asked for", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the charter never spawned")
+	}
+
+	// And the ad-hoc face of the same field: `verse process run` can ask for it too.
+	spawn := postTony(t, ts.URL+"/processes", api.Spawn{ID: "p", Task: "work", Retain: 2048})
+	spawn.Body.Close()
+	select {
+	case n := <-got:
+		if n != 2048 {
+			t.Fatalf("an ad-hoc spawn asked to retain 2048 and the runtime was told %d", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the ad-hoc spawn never reached the runtime")
+	}
+}

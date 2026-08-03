@@ -91,7 +91,21 @@ type Spec struct {
 	// met. That last part is what makes the deref downstream total: `patch: {class:
 	// $data.class}` can no longer fail at patch time, because a process that could not
 	// produce `class` did not succeed.
-	Answer      *ir.Node `tony:"field=answer,omitzero"`
+	Answer *ir.Node `tony:"field=answer,omitzero"`
+	// Retain is how many events of this process's read plane are kept for a reader that
+	// resumes — the window a `?since=` below which gets a resync marker instead of the
+	// story. In events, 0 = the runtime's default.
+	//
+	// It is per-spawn because the right number is a property of the WORK and nothing else
+	// knows it. A process that narrates every token and one that reports four boundaries an
+	// hour want windows two orders of magnitude apart, and a package-level constant is
+	// wrong for both. The charter that spawns it is the party that knows which it is — the
+	// same argument Frame makes, applied to how much of the past is worth keeping.
+	//
+	// It bounds memory, so it is a cost the author is choosing: a long window on a chatty
+	// process is paid for in bytes per live process, and the default is deliberately modest
+	// rather than generous.
+	Retain      int      `tony:"field=retain,omitzero"`
 	Vector      string   `tony:"field=vector,omitzero"`
 	Resolver    string   `tony:"field=resolver,omitzero"`
 	Grant       string   `tony:"field=grant,omitzero"`
@@ -182,6 +196,11 @@ func (s Spec) Bind(b Binding) Spec {
 		Subject:     expand(s.Subject, b),
 		Provider:    s.Provider.bind(b),
 	}
+	// Retain is a number, so there is nothing to expand — but it is carried, and forgetting
+	// to carry it here is exactly the failure this construction invites: Bind is a
+	// field-by-field copy, so a field added to Spec and not added here is silently dropped
+	// on every charter spawn while every direct construction of a Spec keeps working.
+	out.Retain = s.Retain
 	// Answer is not expanded either, and for a plainer reason than Tools: it is a pattern,
 	// not text, and $var expansion inside a match is the same future work Provider.Match is
 	// waiting on. It is carried across as it was written.
