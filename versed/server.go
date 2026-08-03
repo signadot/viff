@@ -719,6 +719,14 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /resolvers", s.addResolver, "", nothing)
 	rt.handle("GET /resolvers/{kind}/{name}", s.getResolver, "", nothing)
 	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
+	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
+	// at startup, so a drive can add one for work this verse does not otherwise need to know
+	// about. See docs/working/per-process-runners.md.
+	rt.handle("GET /runners", s.listRunners, "", nothing)
+	rt.handle("POST /runners", s.addRunner, "", nothing)
+	rt.handle("GET /runners/{kind}/{name}", s.getRunner, "", nothing)
+	rt.handle("GET /runners/{kind}/{name}/check", s.checkRunner, "", nothing)
+	rt.handle("DELETE /runners/{kind}/{name}", s.removeRunner, "", nothing)
 	// The two streams a resolver lives on. Addressed by INSTANCE — the binding watching one
 	// run — so neither route needs a second parameter to say which run it is about.
 	rt.handle("GET /resolvers/instance/{id}/events", s.resolverEvents, "", stream("verse-frame"))

@@ -192,6 +192,7 @@ func rootCmd() *cli.Command {
 			flowsCmd(), flowCmd(),
 			triggersCmd(), triggerCmd(),
 			resolversCmd(), resolverCmd(),
+			runnersCmd(), runnerCmd(),
 			strataCmd(), stratumCmd(),
 			goalsCmd(), goalCmd(),
 			voteCmd(),
