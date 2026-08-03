@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
@@ -528,4 +529,57 @@ func instanceOf(t *testing.T, srv *Server, id string) map[string]any {
 		t.Fatalf("no process:instance for %s (err=%v)", id, err)
 	}
 	return entity.ToObj(e.Payload)
+}
+
+// Work outlives the verse that started it, and outlives the ENTITY that named its runner.
+//
+// This is the step that decides whether the feature is safe. A restart reconstructs the runner
+// from the url stamped on the process, so removing the runner entity — which is what a drive
+// does when it tears its runner down, and what step 1's --leave explicitly allows — cannot make
+// running work unreconstructible.
+func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
+	face := runnerFace(t)
+	store := entitytest.Store(t)
+
+	// A verse that spawns onto a named runner, then dies.
+	first := NewWithStore(ScriptedBuilder, store)
+	ts := httptest.NewServer(first.Handler())
+	postTony(t, ts.URL+"/runners", map[string]any{
+		"name": "gpu", "kind": "pool", "url": face.URL,
+	}).Body.Close()
+	id := spawnOK(t, ts, map[string]any{"id": "survivor", "task": "long work", "runner": "runners:pool:gpu"})
+	ts.Close()
+
+	// The drive tears the runner down: the ENTITY goes, the work does not. This is what
+	// step 1's --leave does, reached here directly because the verse that served it is gone.
+	if _, _, err := store.Write(entity.Write{At: runner.Ref("pool", "gpu").At(), Value: nil}); err != nil {
+		t.Fatalf("removing the runner entity: %v", err)
+	}
+
+	// "verse restart": a new server over the same store.
+	second := NewWithStore(ScriptedBuilder, store)
+	second.reconcileProcesses()
+
+	rec := instanceOf(t, second, id)
+	if st, _ := rec["status"].(string); st == string(process.Orphaned) {
+		t.Fatal("the restart orphaned work that is still running — the runner entity was gone, " +
+			"but the url on the process is what a restart reconstructs from")
+	}
+	// And it still says which runner it was named for, so an operator can still select it.
+	if rec["runnerName"] != "runners:pool:gpu" {
+		t.Fatalf("runnerName = %v after restart, want it carried through the re-attach — "+
+			"Reflect replaces the payload, so what is not handed back is forgotten", rec["runnerName"])
+	}
+
+	// A NEW spawn naming the removed runner is refused, though: the work that is already
+	// there is reachable, and the name is not installed.
+	ts2 := httptest.NewServer(second.Handler())
+	defer ts2.Close()
+	resp := postTony(t, ts2.URL+"/processes", map[string]any{
+		"id": "later", "task": "t", "runner": "runners:pool:gpu",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("spawn naming the removed runner = %s, want 400", resp.Status)
+	}
 }

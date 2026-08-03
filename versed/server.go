@@ -462,6 +462,11 @@ func (s *Server) reconcileProcesses() {
 		// see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
 		if runnerRef != "" && runnerRef != "local" { // remote: the work outlived verse
+			// The URL is what this attaches with, and that is the whole reason it is stamped
+			// beside the name. A restart that resolved the name instead would depend on the
+			// runner ENTITY still existing, so removing one would orphan work that is running
+			// perfectly well — a deletion with an action at a distance, and the thing that
+			// would make step 1's `--leave` a lie.
 			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
 				// The binding its spawn named is read back off the entity rather than
@@ -469,7 +474,13 @@ func (s *Server) reconcileProcesses() {
 				// it, and the launch that said so is long gone.
 				s.reflect(s.Store, ent.Ref.ID, h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
-					Resolver: entity.Str(ent.Payload, "resolver"),
+					// Carried for the same reason chain is: Reflect REPLACES the payload, so
+					// provenance this does not hand back is provenance the resumed process
+					// forgets. `verse ps --runner <name>` reads this field, and a process
+					// that lost it on restart would drop out of the answer while still
+					// running there.
+					RunnerName: entity.Str(ent.Payload, "runnerName"),
+					Resolver:   entity.Str(ent.Payload, "resolver"),
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
