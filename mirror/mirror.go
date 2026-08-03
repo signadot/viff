@@ -39,6 +39,16 @@ type Meta struct {
 	// Runner is the process-control backend hosting it — "local", "broker", or a remote URL — so a
 	// restart can decide resume-or-orphan.
 	Runner string
+	// RunnerName is the runner ENTITY a spawn named — `runners:<kind>:<name>` — when it named
+	// one. Empty for a spawn that took the verse's default.
+	//
+	// It is stamped BESIDE Runner rather than instead of it, and that split is the one place
+	// this design can go quietly wrong. Runner is what a restart can act on with nothing else
+	// present; RunnerName is what a person reads and what a later change can re-resolve.
+	// Stamping only the name would make a restart depend on the runner entity still existing,
+	// so removing one would orphan running work by making it unreconstructible — a deletion
+	// with an action at a distance.
+	RunnerName string
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
 	// "review.onDone". Empty for a process with no trigger behind it (`verse process run`).
 	Chain string
@@ -127,6 +137,12 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	if m.Runner != "" { // which runner runs this — so a restart can resume-or-orphan
 		st["runner"] = m.Runner
+	}
+	// And which installed runner it was NAMED as, so an operator can select by the name they
+	// wrote. It keeps working for a runner that has since been removed, which is when they
+	// most want it — the url above is what makes the work still reachable then.
+	if m.RunnerName != "" {
+		st["runnerName"] = m.RunnerName
 	}
 	// Where this process came from in the charter. `chain` is the spawning action's kpath
 	// inside its trigger (review, review.onDone, …) and `trigger` is its root segment,

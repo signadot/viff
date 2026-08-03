@@ -110,6 +110,17 @@ type Spec struct {
 	Resolver    string `tony:"field=resolver,omitzero"`
 	Grant       string `tony:"field=grant,omitzero"`
 	Environment string `tony:"field=environment,omitzero"`
+	// Runner is WHERE this launch runs: `runners:<kind>:<name>`, an entity installed with
+	// `verse runner add`. Empty means the verse's own default runner.
+	//
+	// A name rather than a url, and that indirection is the point: a url on the spawn would
+	// spread the deployment through the charters, so every charter wanting the gpu pool would
+	// carry its address and moving the pool would mean editing all of them. It is the same
+	// indirection `provider:` and `resolver:` already are.
+	//
+	// A launch naming a runner that is not installed is REFUSED rather than run somewhere
+	// else — see versed.runnerFor.
+	Runner string `tony:"field=runner,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The
 	// engine tracks a flow's processes by subject so it can be steered/cancelled as
 	// a unit. Usually the concrete matched ref, not a template.
@@ -191,6 +202,7 @@ func (s Spec) Bind(b Binding) Spec {
 		Frame:       expand(s.Frame, b),
 		Vector:      expand(s.Vector, b),
 		Resolver:    expand(s.Resolver, b),
+		Runner:      expand(s.Runner, b),
 		Grant:       expand(s.Grant, b),
 		Environment: expand(s.Environment, b),
 		Subject:     expand(s.Subject, b),

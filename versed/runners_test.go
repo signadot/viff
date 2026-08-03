@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/process/processd"
@@ -20,12 +21,19 @@ import (
 // same processd handler `/broker/local` serves.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
+	// Released at cleanup, so the work on this face ENDS before the face does. Without it a
+	// process that never finishes holds the mirror's event stream open, and httptest.Close
+	// waits on outstanding requests — the test hangs on its own teardown rather than failing.
+	release := make(chan struct{})
 	build := func(l process.Launch, _ *process.Registry, _ process.ContentReader) *process.Process {
 		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(l.ID, sup, &blockedDriver{}, okExecutor{})
+		return process.NewProcess(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
 	srv := httptest.NewServer(processd.New(build).Handler())
-	t.Cleanup(srv.Close)
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
 	return srv
 }
 
@@ -36,10 +44,12 @@ func runnerFace(t *testing.T) *httptest.Server {
 // noticed at the loop's BOUNDARY: a driver parked in Next is one the loop never gets back to,
 // so cancelling it would produce no terminal at all. This is the shape of the real thing — work
 // that is going, and stops at the next hinge.
-type blockedDriver struct{}
+type blockedDriver struct{ release chan struct{} }
 
 func (d *blockedDriver) Next(ctx context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
 	select {
+	case <-d.release:
+		return process.ToolUse{}, false, nil // the face is going away; finish
 	case <-ctx.Done():
 	case <-time.After(5 * time.Millisecond):
 	}
@@ -403,4 +413,119 @@ func waitForStatus(t *testing.T, ch <-chan process.Frame, want process.Status) {
 			t.Fatalf("timed out waiting for a %s terminal — the work never learned it was ended", want)
 		}
 	}
+}
+
+// Two processes in one verse, running in two places. This is the whole feature: what a drive
+// could not do before was use its own runner for SOME of the work — a second runner meant a
+// second verse, and then everything went there.
+func TestSpawnNamesItsRunner(t *testing.T) {
+	srv := testServer(t)
+	face := runnerFace(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	postTony(t, ts.URL+"/runners", map[string]any{
+		"name": "gpu", "kind": "pool", "url": face.URL,
+	}).Body.Close()
+
+	// One naming the runner, one naming none.
+	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "task": "t", "runner": "runners:pool:gpu"})
+	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "task": "t"})
+
+	// It really went there: the runner face has it, and the default one does not.
+	remote := runner.HTTP(face.URL).(process.Lister)
+	if _, err := remote.ProcessSnapshot(named); err != nil {
+		t.Fatalf("the spawn naming runners:pool:gpu did not reach it: %v", err)
+	}
+	if _, err := remote.ProcessSnapshot(deflt); err == nil {
+		t.Fatal("the spawn naming NO runner went to the named one — the default is what an " +
+			"absent runner means")
+	}
+	if _, ok := srv.Procd.SnapshotOf(deflt); !ok {
+		t.Fatal("the spawn naming no runner did not go to the verse's default runner")
+	}
+	if _, ok := srv.Procd.SnapshotOf(named); ok {
+		t.Fatal("the spawn naming a runner ALSO ran in-process")
+	}
+
+	// And each process records where it went, by url and by the name that was written.
+	rec := instanceOf(t, srv, named)
+	if rec["runner"] != face.URL {
+		t.Fatalf("runner = %v, want the resolved url — it is what a restart can act on", rec["runner"])
+	}
+	if rec["runnerName"] != "runners:pool:gpu" {
+		t.Fatalf("runnerName = %v, want the name the spawn wrote", rec["runnerName"])
+	}
+	if got := instanceOf(t, srv, deflt)["runnerName"]; got != nil {
+		t.Fatalf("runnerName = %v on a spawn that named none, want absent", got)
+	}
+}
+
+// A spawn naming a runner that is not installed is REFUSED, on both spawn paths. A misspelled
+// runner that quietly ran the work in-process would be the same class of bug as a misspelled
+// resolver that quietly left it unsupervised: the deployment says one thing and the verse does
+// another.
+func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// The ad-hoc path.
+	resp := postTony(t, ts.URL+"/processes", map[string]any{
+		"id": "nope", "task": "t", "runner": "runners:pool:typo",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("spawn naming an uninstalled runner = %s, want 400", resp.Status)
+	}
+	if msg := readBody(t, resp); !strings.Contains(msg, "runners:pool:typo") {
+		t.Fatalf("refusal = %q, want it to name the runner that is not installed", msg)
+	}
+	if _, ok := srv.Procd.SnapshotOf("nope"); ok {
+		t.Fatal("the refused spawn ran on the default runner anyway")
+	}
+	if _, ok, _ := srv.Store.Get(mirror.Ref("nope")); ok {
+		t.Fatal("the refused spawn was mirrored — nothing was started, so there is nothing to mirror")
+	}
+
+	// The charter path, where the refusal has to travel as a failed spawn rather than as an
+	// HTTP status, because there is nobody to answer.
+	h := srv.spawnerFor(srv.Store, nil)("fired", launch.Spec{
+		Task: "t", Driver: "scripted", Runner: "runners:pool:typo",
+	})
+	if h == nil {
+		t.Fatal("a refused charter spawn returned no handle at all")
+	}
+	if e := h.Err(); !strings.Contains(e, "runners:pool:typo") {
+		t.Fatalf("failure = %q, want the runner named in it", e)
+	}
+	if _, ok := srv.Procd.SnapshotOf("fired"); ok {
+		t.Fatal("a charter spawn naming an uninstalled runner ran on the default instead")
+	}
+}
+
+func spawnOK(t *testing.T, ts *httptest.Server, body map[string]any) string {
+	t.Helper()
+	resp := postTony(t, ts.URL+"/processes", body)
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		t.Fatalf("spawn %v = %s: %s", body, resp.Status, readBody(t, resp))
+	}
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
+	decodeResp(t, resp, &sp)
+	if sp.ID == "" {
+		t.Fatalf("spawn %v returned no id", body)
+	}
+	return sp.ID
+}
+
+func instanceOf(t *testing.T, srv *Server, id string) map[string]any {
+	t.Helper()
+	e, ok, err := srv.Store.Get(mirror.Ref(id))
+	if err != nil || !ok {
+		t.Fatalf("no process:instance for %s (err=%v)", id, err)
+	}
+	return entity.ToObj(e.Payload)
 }

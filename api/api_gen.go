@@ -470,6 +470,11 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["resolver"] = ir.FromString(string(s.Resolver))
 	}
 
+	// Field: Runner
+	if s.Runner != "" {
+		irMap["runner"] = ir.FromString(string(s.Runner))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -551,6 +556,12 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "resolver", fieldNodeUnwrapped.Type)
 			}
 			s.Resolver = string(fieldNodeUnwrapped.String)
+		case "runner":
+			// Field: Runner
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
+			}
+			s.Runner = string(fieldNodeUnwrapped.String)
 		}
 	}
 

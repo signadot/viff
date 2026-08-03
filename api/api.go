@@ -140,6 +140,15 @@ type Spawn struct {
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
 	// spawn's `resolver:`, so `verse process run` and a firing can bind the same way.
 	Resolver string `tony:"field=resolver,omitzero"`
+	// Runner names WHERE this run runs — `runners:<kind>:<name>`, installed with `verse
+	// runner add`. Empty means the verse's own default runner, which is what `local` means
+	// on a process:instance.
+	//
+	// It is orthogonal to Resolver and to a provider: a provider picks the DOER, a resolver
+	// picks who answers for it, and this picks the place. The same doer may run in either of
+	// two places and the same place may host either of two doers, so folding them together
+	// would make one selection answer two questions.
+	Runner string `tony:"field=runner,omitzero"`
 }
 
 // Spawned is what a spawn answers with: the id to address the new process by.

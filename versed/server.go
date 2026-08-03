@@ -340,11 +340,23 @@ func mintNonce() string {
 // for baseline) routes a spawned agent's read_file through the verse.
 func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
 	return func(id string, spec launch.Spec) process.Handle {
+		// WHERE this runs, resolved before anything is attempted, so the meta below records
+		// the runner the work actually went to rather than the default it did not.
+		place, placeName, err := s.runnerFor(st, spec.Runner)
+		if err != nil {
+			// Same shape as the envelope and the resolver below: a spawn that cannot run
+			// where it said does not run somewhere else instead.
+			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Task: spec.Task}
+			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+			s.reflect(st, id, h, meta)
+			return h
+		}
 		// The provenance every reflection of this spawn carries, envelope included: which
 		// doer a selection picked and what the launch may do. Built once so the failure path
 		// and the running path cannot disagree about what was attempted.
 		meta := mirror.Meta{
-			Subject: spec.Subject, Runner: s.runner.Ref(), Chain: spec.Chain, Task: spec.Task,
+			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
+			Chain: spec.Chain, Task: spec.Task,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
 			Resolver: spec.Resolver,
 		}
@@ -366,7 +378,7 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 			s.reflect(st, id, h, meta)
 			return h
 		}
-		h := s.runner.Spawn(l, content)
+		h := place.Spawn(l, content)
 		s.reflect(st, id, h, meta)
 		// Who is watching this run, if anybody was named. Minted beside the mirror because
 		// the two answer adjacent questions — what the work is doing, and who is reading it.
@@ -2136,12 +2148,22 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h := s.runner.Spawn(process.Launch{
+	// The second spawn path, refusing the same way the first does. A misspelled runner that
+	// quietly ran the work in-process would be the same class of bug as a misspelled resolver
+	// that quietly left it unsupervised: the deployment says one thing and the verse does
+	// another. Refused BEFORE the spawn, so nothing is started and nothing is mirrored.
+	place, placeName, err := s.runnerFor(store, body.Runner)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h := place.Spawn(process.Launch{
 		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver, Vector: vec,
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{
-		Runner: s.runner.Ref(), Subject: body.Subject, Resolver: body.Resolver,
+		Runner: place.Ref(), RunnerName: placeName,
+		Subject: body.Subject, Resolver: body.Resolver,
 	})
 	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})

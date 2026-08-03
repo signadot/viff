@@ -78,6 +78,11 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["environment"] = ir.FromString(string(s.Environment))
 	}
 
+	// Field: Runner
+	if s.Runner != "" {
+		irMap["runner"] = ir.FromString(string(s.Runner))
+	}
+
 	// Field: Subject
 	if s.Subject != "" {
 		irMap["subject"] = ir.FromString(string(s.Subject))
@@ -204,6 +209,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "environment", fieldNodeUnwrapped.Type)
 			}
 			s.Environment = string(fieldNodeUnwrapped.String)
+		case "runner":
+			// Field: Runner
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
+			}
+			s.Runner = string(fieldNodeUnwrapped.String)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {

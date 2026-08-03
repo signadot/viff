@@ -153,6 +153,7 @@ define:
   name: .[string]
   resolver: .[string]
   retain: .[int]
+  runner: .[string]
   subject: .[string]
   task: .[string]
   vector: .[string]

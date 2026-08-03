@@ -344,6 +344,7 @@ type procRunConfig struct {
 	// no identity; answering has needed one since a decision became a durable record.
 	As       string `cli:"name=as desc='identity for a gate answered while attached (with --attach)'"`
 	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
+	Runner   string `cli:"name=runner desc='where this run runs: an installed runner (runners:<kind>:<name>); default: the verse default'"`
 }
 
 func procRunCmd() *cli.Command {
@@ -372,6 +373,7 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 	resp, err := httpPost("/processes", api.Spawn{
 		Task: task, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: cfg.Vector,
+		Runner: cfg.Runner,
 	})
 	if err != nil {
 		return fmt.Errorf("process run: %w", err)
