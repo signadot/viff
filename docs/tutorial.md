@@ -236,10 +236,22 @@ stream.
 It need not run here. The same verbs drive a process hosted on a remote verse
 (`up --runner <url>`), one behind a dial-in broker that a firewalled worker claims
 (`up --broker`), and one a **person** executes by hand (`verse process do …`). verse drives
-all three through one handle, so nothing above changes. That is its own subject:
-[process control](process-control.md) for the seam and the dial-in protocol,
-[external processes](external-processes.md) for why it was cut there, and
-[reference/processes.md](reference/processes.md) for the commands.
+all three through one handle, so nothing above changes.
+
+Those choose for the whole verse. A single spawn can also choose for itself: install a runner,
+name it, and that work runs there while every spawn that names none goes to the default.
+
+```sh
+go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
+verse runner add pool:demo http://localhost:9800      # `reach: a runner` — the install probes it
+verse process run --runner runners:pool:demo "fetch the data; retrain; report"
+verse ps --runner runners:pool:demo
+```
+
+That is its own subject: [runners](runners.md) for installing one, naming it on a spawn, and
+what removing one does to the work on it; [process control](process-control.md) for the seam
+and the dial-in protocol; [external processes](external-processes.md) for why it was cut
+there; and [reference/processes.md](reference/processes.md) for the commands.
 
 ---
 

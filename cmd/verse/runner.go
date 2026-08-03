@@ -203,7 +203,7 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("%w: want `runner add <kind>:<name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		resp, err := httpPost("/runners?"+q.Encode(), map[string]any{
+		resp, err := httpPostTo("/runners", q, map[string]any{
 			"kind": parts[0], "name": parts[1], "url": rawURL,
 		})
 		return runnerAdded(cc, resp, err)
@@ -223,7 +223,7 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("runner add: %w", err)
 	}
-	resp, err := httpPostNode("/runners?"+q.Encode(), node)
+	resp, err := httpPostNodeTo("/runners", q, node)
 	return runnerAdded(cc, resp, err)
 }
 

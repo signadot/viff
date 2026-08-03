@@ -68,12 +68,19 @@ func httpGet(path string, q url.Values) (*http.Response, error) {
 // tony once it can, so the round trip stops being lossy — a tagged charter survives as tags
 // rather than being flattened to the JSON key form on the way out and back.
 func httpPost(path string, body any) (*http.Response, error) {
+	return httpPostTo(path, nil, body)
+}
+
+// httpPostTo is httpPost with query parameters. They must come through here rather than being
+// written into the path: urlFor ESCAPES the path, so a "?" concatenated onto it arrives as
+// %3F and the route 404s — a request that looks right and reaches nothing.
+func httpPostTo(path string, q url.Values, body any) (*http.Response, error) {
 	f := wireFmt()
 	b, err := codec.Marshal(body, f)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, urlFor(path, nil), bytes.NewReader(b))
+	req, err := http.NewRequest(http.MethodPost, urlFor(path, q), bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -86,12 +93,18 @@ func httpPost(path string, body any) (*http.Response, error) {
 // — a tagged charter goes to the server AS tags, rather than being flattened through JSON
 // and rebuilt from the key form at the far end.
 func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
+	return httpPostNodeTo(path, nil, node)
+}
+
+// httpPostNodeTo is httpPostNode with query parameters; see httpPostTo on why they cannot ride
+// in the path.
+func httpPostNodeTo(path string, q url.Values, node *ir.Node) (*http.Response, error) {
 	f := wireFmt()
 	b, err := codec.NodeBytes(node, f)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, urlFor(path, nil), bytes.NewReader(b))
+	req, err := http.NewRequest(http.MethodPost, urlFor(path, q), bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
