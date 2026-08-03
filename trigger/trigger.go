@@ -353,11 +353,20 @@ type Action struct {
 	// function of rule and subject), as a spawn's is, so a re-fire is idempotent and no two
 	// rules can ever address the same derived entity.
 	//
-	// Its content is LITERAL — no $references, refused at install. That is what makes the
-	// level check a static match of a document against a pattern rather than an analysis of
-	// what a template might produce, and what makes a rule reading a HIGHER level inert: the
-	// same bytes at the same address is a no-op, which the store already ends. See
-	// stratum.go and docs/strata.md.
+	// Its content may reference the firing's SUBJECT and nothing else — every part of it,
+	// including $subject.value, and refused at install for anything further (validateDerive,
+	// via deriveMayReference). The line is not "no references": that was where this started
+	// and it was too strict, since including something of the subject in another entity is
+	// what a derive is FOR.
+	//
+	// What the ordering actually needs is content the levels above cannot influence. Nothing
+	// above can write the subject — a patch touches only its own subject and a derive only
+	// climbs — so a read from above that wakes the rule without changing the subject resolves
+	// $subject.value to the same bytes, writes them to the same address, and dies as a no-op
+	// the store ends by itself. That is what lets a rule read a HIGHER level without the read
+	// becoming a cycle. $subject.commit is the one part refused, because it is a function of
+	// WHEN the firing happened rather than of the subject, so a read from above does change
+	// it. The worked cycle is on deriveMayReference. See stratum.go and docs/strata.md.
 	Derive entity.Payload `tony:"field=derive,omitzero"`
 
 	Spawn *launch.Spec `tony:"field=spawn,omitzero"`
