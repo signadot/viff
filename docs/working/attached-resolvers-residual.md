@@ -32,12 +32,16 @@ no explicit mode to **`"ask"`** — so a thing literally called *ask* goes down 
 charter author gets supervision or does not depending on which they wrote under the same key,
 which nobody could predict from the name.
 
-The fork's stated justification is the comment on it: *"temporal gate: monitored on the store,
-not posed."* That is false for the case the motion docket exists to serve — `!quorum 2` is asking
-people, to a room, which is what a ballot is. And it is wrong from the other side: `openChannel`
+The fork's justification used to be stated on it — *"temporal gate: monitored on the store, not
+posed"* — and that is false for the case the motion docket exists to serve: `!quorum 2` is asking
+people, to a room, which is what a ballot is. It is wrong from the other side too: `openChannel`
 is unconditional, so `!until [!fact green, !deadline "4h"]` opens a channel and lands on
 `verse docket` with no ballot anybody can cast. The docket lists things nobody can answer, and
 `verse gates` omits things people are being asked.
+
+That comment now says what the two arms actually differ in — the surface a decision lands on —
+and points back here, so the next reader of `fire` meets the open question rather than a
+justification that does not hold.
 
 So the line that wants drawing is **asks somebody** versus **waits for something**, and it lives
 inside the formula rather than at `gate.Formula != nil`. A gate whose formula contains a quorum
@@ -118,23 +122,6 @@ the one test in that battery deliberately left red.
 
 The adjacent half of the same gap: **who may install a binding.** A standing binding is exactly
 as strong as the ability to add and remove it, and the store has no per-slice write authority.
-
-## 3b. A subject-origin resolver that resumes never learns what is still open
-
-git-issue `ksbzafh6h12kr5gpe1n0`. A resolver over a RUN resumes correctly — `SubscribeSince`
-replays the gates still open below the reader's window, which the prerequisites work built
-deliberately. A resolver over a SUBJECT has no equivalent: `streamSpine` serves the commits that
-touched the subject from `?since=<revision>`, so resuming at the position it reported yields an
-empty stream, and a question posted before that position and still open is not in it.
-
-A restarted subject-origin resolver would have to read `/gates` to find its own work — a second
-path, which this design says does not exist.
-
-Found testing one subject, one binding, and TWO rules matching that subject. The rest of that
-shape is sound and worth recording: both questions are owned by the binding, both collapse onto
-ONE instance (a firing question's origin is the subject, not the rule), both are answerable
-through it, and both actions fire. A resolver watching a subject seeing every question about it
-is the right semantics.
 
 ## 4. Resolvers over a scope other than baseline
 

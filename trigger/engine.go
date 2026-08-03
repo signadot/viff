@@ -610,8 +610,28 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// made.
 	var denied []Gate
 
+	// ONE LIST, TWO IMPLEMENTATIONS, and the fork below is not the line it claims to be.
+	//
+	// It used to read "temporal gate: monitored on the store, not posed", which is false for
+	// the case the motion docket exists to serve: `!quorum 2` is asking PEOPLE, to a room,
+	// which is what a ballot is. It is wrong from the other side too — openChannel is
+	// unconditional, so `!until [!fact green, !deadline "4h"]` opens a channel and lands on
+	// `verse docket` with no ballot anybody can cast. So the docket lists things nobody can
+	// answer and `verse gates` omits things people are being asked.
+	//
+	// What the two arms actually differ in is the SURFACE a decision lands on: a formula gate
+	// becomes a motion (motion:channel, `verse docket`, `verse vote`, settled by tally), and
+	// everything else becomes a question (gate:question, `verse gates`, `verse gate approve`).
+	// Both come out of this one `gating.gates` list, and Gate.mode() resolves a formula gate
+	// with no explicit mode to "ask" — so a thing literally called ASK goes down the motion
+	// arm. A charter author gets a resolver or does not depending on which they wrote under
+	// the same key, which nobody could predict from the name.
+	//
+	// The line that wants drawing is ASKS SOMEBODY versus WAITS FOR SOMETHING, and it lives
+	// inside the formula rather than at `Formula != nil`. Settling that is the prerequisite
+	// for a resolver over a motion: docs/working/attached-resolvers-residual.md §1.
 	for _, gate := range t.AllGates() {
-		if gate.Formula != nil { // temporal gate: monitored on the store, not posed
+		if gate.Formula != nil { // → a motion, not a posed question
 			gname := gate.Name
 			if gname == "" {
 				gname = t.Name
