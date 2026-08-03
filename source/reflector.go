@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"time"
 
@@ -98,25 +97,9 @@ func (r Reflection) Check(system string) error {
 	return nil
 }
 
-// Hinter is the optional low-latency delivery face: a source that receives its own webhook or
-// hook delivery maps it to the ref(s) to reconcile, and writes nothing.
-//
-// It is OFF the Source interface, and for two reasons that point the same way. A source
-// reached over a url cannot be handed an *http.Request at all — it owns delivery and parsing
-// on its own side, and tells verse which refs went stale. And the law a hint keeps (map the
-// delivery to refs, schedule a reconcile, write nothing) is the Reflector's to keep, so a
-// second implementation of it per source is exactly how it comes to be broken in one of two
-// places.
-//
-// What is left here is the in-process case: git has no webhooks, so its hint is a local
-// reference-transaction hook that POSTs Hooks().
-type Hinter interface {
-	Webhook(r *http.Request) ([]entity.Ref, error)
-}
-
 // Reflector drives a Source in the informer shape: an initial full reconcile, a periodic full
 // reconcile (the resync net that catches every missed hint), and targeted reconciles kicked
-// by hint deliveries to Hooks(). A hint only schedules; the reconcile is the authority.
+// by hint deliveries (Hint). A hint only schedules; the reconcile is the authority.
 //
 // It also owns converge — the store side of the seam — so every source, in-process or
 // deployed, converges through one implementation.
@@ -294,36 +277,18 @@ func asStored(p entity.Payload) entity.Payload {
 	return ir.FromMap(live).WithTag(p.Tag)
 }
 
-// Hooks serves the hint endpoint POST /hooks/<system>. It maps the delivery to ref(s) via
-// the Source's Webhook and enqueues a targeted reconcile for each — never writing entities
-// itself. If the queue is full the hint is dropped; the periodic full reconcile covers it.
+// Hint schedules a targeted reconcile of each ref, and a full one if given none — the whole of
+// what a hint may do. It writes nothing, whoever delivered it: that is the law, and it is what
+// lets a hint route stay unauthenticated in a wide-open verse, since a delivery carrying no
+// data can cost at most a reconcile of a slice its sender does not get to choose the contents
+// of.
 //
-// A source that is not a Hinter gets a mux with no routes on it, which answers 404: it
-// receives its deliveries on its own side and hints verse with the refs, so there is nothing
-// for verse to parse.
-func (rf *Reflector) Hooks() http.Handler {
-	mux := http.NewServeMux()
-	h, ok := rf.src.(Hinter)
-	if !ok {
-		return mux
-	}
-	mux.HandleFunc("POST /hooks/"+rf.src.System(), func(w http.ResponseWriter, r *http.Request) {
-		refs, err := h.Webhook(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		rf.Hint(refs...)
-		w.WriteHeader(http.StatusNoContent)
-	})
-	return mux
-}
-
-// Hint schedules a targeted reconcile of each ref, and a full one if given none — the whole
-// of what a hint may do. It writes nothing, whoever delivered it: that is the law, and it is
-// what lets a hint route stay unauthenticated in a wide-open verse, since a delivery carrying
-// no data can cost at most a reconcile of a slice its sender does not get to choose the
-// contents of.
+// verse does not PARSE deliveries, and that is why this takes refs rather than a request. A
+// source owns its own delivery — it deployed the git hook, it holds the webhook secret — and
+// tells verse which refs went stale; a second implementation of "map a delivery to refs" per
+// source is exactly how the law comes to be broken in one of two places, and across a network
+// a divergence is least recoverable. The route that reaches this is
+// POST /sources/<system>/<name>/hint?ref=…
 //
 // A full queue drops the hint rather than blocking; the periodic net catches it.
 func (rf *Reflector) Hint(refs ...entity.Ref) {
@@ -339,7 +304,7 @@ func (rf *Reflector) Hint(refs ...entity.Ref) {
 }
 
 // Run does the initial full reconcile, then serves hint-kicked and periodic reconciles until
-// ctx is cancelled. The caller mounts Hooks() on an HTTP server; Run owns the reconcile loop.
+// ctx is cancelled. Run owns the reconcile loop; a caller delivers hints with Hint.
 func (rf *Reflector) Run(ctx context.Context) error {
 	_ = rf.Reconcile(ctx, entity.Ref{}) // initial full sync; OnPass carries what it did
 	var tick <-chan time.Time

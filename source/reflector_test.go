@@ -2,8 +2,6 @@ package source_test
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,17 +14,13 @@ import (
 	"github.com/signadot/verse/source"
 )
 
-// Webhook is a hint that targets a repo and writes nothing.
-func TestGitWebhookTargets(t *testing.T) {
-	g := source.NewGit()
-	g.AddRepo("A", "/tmp/x")
-
-	refs, _ := g.Webhook(httptest.NewRequest("POST", "/hooks/git?repo=A", nil))
-	if len(refs) != 1 || refs[0] != (entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}) {
-		t.Fatalf("Webhook(?repo=A) = %+v, want a git:head:A target", refs)
-	}
-	if refs, _ := g.Webhook(httptest.NewRequest("POST", "/hooks/git", nil)); len(refs) != 0 {
-		t.Fatalf("Webhook with no repo should request a full resync, got %+v", refs)
+// The ref a git hint names. verse does not parse deliveries — a source owns its own and says
+// which refs went stale — so this one constant is the whole of git's side of the contract, and
+// the installed hook and the reflector have to agree about it.
+func TestGitHintNamesTheRepo(t *testing.T) {
+	want := entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}
+	if got := source.HeadRef("A"); got != want {
+		t.Fatalf("HeadRef(A) = %v, want %v", got, want)
 	}
 }
 
@@ -41,7 +35,7 @@ func TestGitInstallHook(t *testing.T) {
 	g := source.NewGit()
 	id := g.AddRepo("", dir)
 
-	if err := g.InstallHook(id, "http://127.0.0.1:9999/hooks/git"); err != nil {
+	if err := g.InstallHook(id, "http://127.0.0.1:9999/sources/git/laptop/hint"); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	path := filepath.Join(dir, ".git", "hooks", "reference-transaction")
@@ -53,15 +47,17 @@ func TestGitInstallHook(t *testing.T) {
 		t.Fatal("hook is not executable")
 	}
 	b, _ := os.ReadFile(path)
-	if s := string(b); !contains(s, "http://127.0.0.1:9999/hooks/git") || !contains(s, "repo="+id) {
-		t.Fatalf("hook does not POST the reflector: %s", s)
+	// It posts the registration's hint route, naming the slice that went stale and carrying
+	// nothing else — there is no data in it for verse to parse or to trust.
+	if s := string(b); !contains(s, "/sources/git/laptop/hint") || !contains(s, "ref=git%3Ahead%3A"+id) {
+		t.Fatalf("hook does not POST a hint at the registration: %s", s)
 	}
 
 	// a foreign hook is not clobbered.
 	if err := os.WriteFile(path, []byte("#!/bin/sh\necho mine\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.InstallHook(id, "http://x/hooks/git"); err == nil {
+	if err := g.InstallHook(id, "http://x/sources/git/laptop/hint"); err == nil {
 		t.Fatal("install should refuse to overwrite a foreign hook")
 	}
 	// RemoveHook leaves the foreign hook alone.
@@ -71,9 +67,10 @@ func TestGitInstallHook(t *testing.T) {
 	}
 }
 
-// End-to-end informer: a hint POST to Hooks() drives a targeted reconcile that reflects a
-// change the (disabled) periodic net wouldn't have caught yet.
-func TestGitReflectorHookReconciles(t *testing.T) {
+// End-to-end informer: a hint drives a targeted reconcile that reflects a change the
+// (disabled) periodic net wouldn't have caught yet. The route that delivers one is versed's;
+// this is the loop underneath it.
+func TestGitReflectorHintReconciles(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
@@ -94,15 +91,15 @@ func TestGitReflectorHookReconciles(t *testing.T) {
 
 	// a new branch the periodic net won't see (it's off) — only a hint reconcile surfaces it.
 	gitRun(t, dir, "branch", "shiny")
-	ts := httptest.NewServer(rf.Hooks())
-	defer ts.Close()
-	resp, err := http.Post(ts.URL+"/hooks/git?repo=A", "application/json", nil)
-	if err != nil {
-		t.Fatalf("hook POST: %v", err)
-	}
-	resp.Body.Close()
+	rf.Hint(source.HeadRef("A"))
 
 	waitFor(t, store, entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/shiny"})
+
+	// And a hint with NO refs is a full resync, which is what a delivery that named nothing
+	// asks for.
+	gitRun(t, dir, "branch", "shinier")
+	rf.Hint()
+	waitFor(t, store, entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/shinier"})
 }
 
 func waitFor(t *testing.T, store entity.Store, ref entity.Ref) {

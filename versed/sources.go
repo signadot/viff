@@ -347,6 +347,7 @@ const ResyncEvery = time.Minute
 // runner's rule: a reachability fact that is written down can be stale in the direction that
 // costs. What IS written is in recordPass.
 type sourceRun struct {
+	rf     *source.Reflector
 	cancel context.CancelFunc
 
 	mu       sync.Mutex
@@ -374,8 +375,8 @@ func (s *Server) startSource(e source.Entity) error {
 		// scope's triggers and nobody else's.
 		store = s.Store.Scope(e.Scope)
 	}
-	run := &sourceRun{}
 	rf := source.NewReflector(src, store, ResyncEvery)
+	run := &sourceRun{rf: rf}
 	rf.OnPass(func(p source.Pass) { s.recordPass(store, ref, run, p) })
 
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -511,4 +512,48 @@ func (s *Server) restoreSources() {
 			fmt.Fprintf(os.Stderr, "verse: source %s: %v\n", source.Ref(e.System, e.Name), err)
 		}
 	}
+}
+
+// hintSource takes a low-latency hint: something changed over there, look now.
+//
+// THE HINT LAW, and the whole reason this route is shaped as it is: a hint NEVER writes
+// entities. It names the slice that went stale and schedules a reconcile, which reads the
+// external source of truth and converges — so a delivery that is duplicated, reordered or
+// forged costs at most a reconcile of a slice its sender does not get to choose the contents
+// of. That is what lets this route stay unauthenticated in a wide-open dogfood verse, and it
+// is why the refs arrive as query parameters rather than as a body: there is nothing to send
+// but which slice, and a `/bin/sh` git hook running `curl` is the sender to keep to one line.
+//
+// verse does not PARSE deliveries. The source owns delivery and parsing, because the source is
+// what deployed the git hook or holds the webhook secret; a second implementation of
+// "map a delivery to refs" per source is how the law comes to be broken in one of two places.
+func (s *Server) hintSource(w http.ResponseWriter, r *http.Request) {
+	system, name := r.PathValue("system"), r.PathValue("name")
+	ref := source.Ref(system, name)
+	if _, ok := source.Find(s.scopedStore(r), system+":"+name); !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var refs []entity.Ref
+	for _, raw := range r.URL.Query()["ref"] {
+		parsed, err := entity.ParseRef(raw)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		refs = append(refs, parsed)
+	}
+	s.srcMu.Lock()
+	run := s.srcRuns[ref.String()]
+	s.srcMu.Unlock()
+	if run == nil {
+		// Registered but not running — a `dir` whose path went away, or a restore that failed.
+		// Said out loud rather than accepted: a hint that is swallowed looks exactly like one
+		// that worked, and the sender would go on believing its changes were landing.
+		http.Error(w, fmt.Sprintf("%s is installed but not running; its hint cannot be "+
+			"scheduled (see lastError on the registration)", ref), http.StatusServiceUnavailable)
+		return
+	}
+	run.rf.Hint(refs...) // no refs is a full resync
+	w.WriteHeader(http.StatusNoContent)
 }

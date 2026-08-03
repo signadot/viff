@@ -1,11 +1,11 @@
 # Sources: reflecting external systems into the verse
 
-Status: built as a library, not yet reachable from the CLI. The `Source` interface, its
-`Reflector` and the converge the Reflector owns are in `source/reflector.go`, and
-`source/git.go` is a multi-repo git Source — `Reflect`, `Webhook`, and
-`InstallHook`/`RemoveHook`, with tests. What is missing is the wiring: no command registers a
-repo or starts a reflector, so `NewGit` has no caller outside its test. Reading this as a
-design sketch is the one mistake to avoid; the design landed.
+Status: built, and reachable. The `Source` interface, its `Reflector` and the converge the
+Reflector owns are in `source/reflector.go`; `source/git.go` is a multi-repo git Source;
+`source/sourced` serves the contract over HTTP so a source can be a program somebody deploys.
+`verse source add` installs a registration at `sources:<system>:<name>`, verse runs a reflector
+under it, and a hint arrives at `POST /sources/<system>/<name>/hint?ref=…`. What is left is the
+removal fork and scoped sources — see [external sources](working/sources-plan.md).
 
 Local-tree federation is built too, but as a special case rather than through the `Source`
 below. `verse connect` federates the working tree under a per-session scope: it *writes*
@@ -108,11 +108,14 @@ everything under them, so a status nobody read or a body nobody could decode, re
 zero value, would spell a broken source as an emptied external system — and converge would
 believe it.
 
-A source that receives its own delivery implements the optional `Hinter`
-(`Webhook(*http.Request) ([]entity.Ref, error)`), which the Reflector serves at
-`/hooks/<system>` and which schedules a reconcile and writes nothing. It is off the `Source`
-interface because a source reached over a url cannot be handed an `*http.Request` at all: it
-parses its own deliveries and hints verse with the refs.
+**verse does not parse deliveries.** A source owns its own — it deployed the git hook, it holds
+the webhook secret — and tells verse which refs went stale, at
+`POST /sources/<system>/<name>/hint?ref=…`. Naming no ref asks for a full resync. A hint
+carrying entities would be the law broken exactly where it costs most, and a second
+implementation of "map a delivery to refs" per source is how it comes to be broken in one of
+two places. It pays twice: a delivery that carries no data can cost at most a reconcile of a
+slice its sender does not get to choose the contents of, so the route can stay unauthenticated
+in a wide-open dogfood verse.
 
 Reflection is mechanical connector code, not an agent — judgment lives in the triggers
 and agent-processes that react to the reflected entities.
@@ -133,8 +136,9 @@ network, and is SDLC-native — so it is the right first Source, and it is the o
 built.
 
 - The "webhook" is a git hook — `post-commit` / `reference-transaction` locally,
-  `post-receive` on a bare repo — curling `/hooks/git`. No signing, no network. verse
-  installs it the way `connect` installs its poll.
+  `post-receive` on a bare repo — curling the registration's hint route with the ref that
+  names the repo. No signing, no network, and nothing in the delivery but which slice went
+  stale. verse installs it the way `connect` installs its poll (`Git.InstallHook`).
 - Reflection is cursorless, because git is content-addressed: `git for-each-ref` →
   a `ref→sha` map, which converge diffs against the verse's `git:ref:*` entities. Comparing
   shas *is* the level-triggered diff — no since-token, no missed-event window in the poll.
@@ -189,18 +193,14 @@ written to logd exactly as the sketch above has it — the Reflector converges b
 because verse's store points at it, but a Source has no more to do with that than any other
 writer does.
 
-## Next step
+## What is left
 
-The git Source exists and reconciles; what it lacks is a way in. It needs a command that
-registers a repo and runs it — `AddRepo` plus a `Reflector` under `verse up`, and a route the
-installed hook can POST to — after which the end-to-end path (commit → hook → reconcile →
-`git:ref:*` changes → a trigger fires) is exercisable rather than merely unit-tested.
-
-Where that should land is [external sources](working/sources.md): a Source deployed and
-installed the way a [runner](runners.md) is, reached over a url. The seam that makes it
-possible is already cut — `Reconcile` is split into a `Reflect` the external program answers
-and a converge that stays on verse's side — so what remains is the transport and the
-registration.
+Two things, both in [the plan](working/sources-plan.md): removal with a non-empty reflected
+slice is refused until told `--forget` or `--keep` (moving a repo between hosts is a remove and
+an add of the same physical truth, and tombstoning it would destroy and re-create live facts),
+and a source can register into a SCOPE, so a sandbox's checkout shadows baseline's view of the
+same repo for its own triggers. Dial-in — for the source verse cannot reach — is designed in
+[external sources](working/sources.md) and refused at install until it is built.
 
 Write-back stays deferred to the outbound executor path
 ([the write half of expose](roadmap/expose.md#the-write-half)); a Source only reflects.

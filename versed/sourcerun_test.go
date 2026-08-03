@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -260,5 +261,87 @@ func TestAPassAfterRemovalDoesNotResurrectTheRegistration(t *testing.T) {
 
 	if e, ok, _ := srv.Store.Get(ref); ok {
 		t.Fatalf("a pass after removal resurrected the registration as %v", entity.ToObj(e.Payload))
+	}
+}
+
+// A hint reaches the reflector and reconciles the slice it names — the low-latency half, which
+// is the whole reason a source exists rather than a cron job.
+//
+// The periodic net is a minute away here, so anything that lands promptly landed because of the
+// hint.
+func TestAHintReconcilesTheSliceItNames(t *testing.T) {
+	requireGit(t)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	dir := repoWithCommit(t)
+	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+		"system": "git", "name": "local", "dir": dir,
+	}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s", resp.Status)
+	}
+	waitForRef(t, srv.Store, entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)})
+
+	gitIn(t, dir, "branch", "hinted")
+	hint := ts.URL + "/sources/git/local/hint?ref=" +
+		url.QueryEscape(source.HeadRef(baseOf(dir)).String())
+	resp, err := ts.Client().Post(hint, "", nil)
+	if err != nil {
+		t.Fatalf("hint: %v", err)
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("hint = %s, want 204", resp.Status)
+	}
+	waitForRef(t, srv.Store, entity.Ref{
+		System: source.GitSystem, Kind: "ref", ID: baseOf(dir) + "/hinted",
+	})
+
+	// A hint naming nothing is a full resync, which is what a delivery that could not say which
+	// slice asks for.
+	gitIn(t, dir, "branch", "resynced")
+	if resp, err := ts.Client().Post(ts.URL+"/sources/git/local/hint", "", nil); err != nil ||
+		resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("bare hint = %v (%v)", resp.Status, err)
+	}
+	waitForRef(t, srv.Store, entity.Ref{
+		System: source.GitSystem, Kind: "ref", ID: baseOf(dir) + "/resynced",
+	})
+}
+
+// What a hint may NOT do, and what it must not do silently.
+func TestHintRefusals(t *testing.T) {
+	requireGit(t)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// A hint for a registration nobody installed is a 404, not a quiet 204. A sender told
+	// nothing goes on believing its changes are landing.
+	resp, err := ts.Client().Post(ts.URL+"/sources/git/nope/hint", "", nil)
+	if err != nil || resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("hint at an unknown source = %v (%v), want 404", resp.Status, err)
+	}
+
+	dir := repoWithCommit(t)
+	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+		"system": "git", "name": "local", "dir": dir,
+	}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s", resp.Status)
+	}
+	// A ref that is not one is a 400 rather than a resync: a delivery that meant something
+	// specific must not silently become "reflect everything".
+	bad := ts.URL + "/sources/git/local/hint?ref=" + url.QueryEscape("not-a-ref")
+	if resp, err := ts.Client().Post(bad, "", nil); err != nil ||
+		resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("hint with a malformed ref = %v (%v), want 400", resp.Status, err)
+	}
+
+	// Installed but not running: said out loud, because a swallowed hint looks exactly like one
+	// that worked.
+	srv.stopSource(source.Ref("git", "local"))
+	if resp, err := ts.Client().Post(ts.URL+"/sources/git/local/hint", "", nil); err != nil ||
+		resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("hint at a stopped source = %v (%v), want 503", resp.Status, err)
 	}
 }

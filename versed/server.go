@@ -773,6 +773,9 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /sources/{system}/{name}", s.getSource, "", nothing)
 	rt.handle("GET /sources/{system}/{name}/check", s.checkSource, "", nothing)
 	rt.handle("DELETE /sources/{system}/{name}", s.removeSource, "", nothing)
+	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
+	// a reconcile of a slice its sender does not choose the contents of.
+	rt.handle("POST /sources/{system}/{name}/hint", s.hintSource, "", nothing)
 	rt.handle("GET /runners", s.listRunners, "", nothing)
 	rt.handle("POST /runners", s.addRunner, "", nothing)
 	rt.handle("GET /runners/{kind}/{name}", s.getRunner, "", nothing)

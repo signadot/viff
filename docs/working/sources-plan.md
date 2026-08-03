@@ -194,7 +194,7 @@ quiet interval); a failing source records `lastError` and clears it on the next 
 pass leaves the registration entity byte-identical — the anti-churn assertion, which is the one
 that will break if somebody later stamps a heartbeat here.
 
-### 4. The hint, and the end of `Webhook`
+### 4. ~~The hint, and the end of `Webhook`~~ **Done**
 
 `POST /sources/{system}/{name}/hint?ref=…` → `Reflector.Hint(refs...)`, which step 1 of the note
 already built. No refs means a full resync. It writes nothing itself, which is what lets it stay
@@ -209,6 +209,12 @@ to keep step 1 green; this is the step that was always going to remove it.
 entity is not expressible (the route has no body); a hint for an unknown registration is 404
 rather than a silent no-op; the installed git hook's curl line hits the new route (extend
 `TestGitInstallHook`, which already reads the script).
+
+Two refusals the plan did not name, both about the same thing — a hint that is swallowed looks
+exactly like one that worked, so the sender goes on believing its changes are landing. A
+malformed ref is a 400 rather than a silent full resync (a delivery that meant something
+specific must not quietly become "reflect everything"), and a hint at a registration that is
+installed but NOT RUNNING is a 503 rather than a 204.
 
 ### 5. Removal, and the fork
 

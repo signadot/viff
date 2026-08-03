@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -84,25 +83,24 @@ func (g *Git) Owns() []string {
 	return out
 }
 
-// Webhook maps a git-hook delivery to the ref(s) to reconcile. Git has no webhooks; the
-// hint is a local reference-transaction hook (see InstallHook) that POSTs ?repo=<id>. Per
-// the hint law it carries no authoritative data — it returns the git:head:<repo> marker that
-// targets a reconcile of that repo, or nil (full resync) if no repo is named. It writes nothing.
-func (g *Git) Webhook(r *http.Request) ([]entity.Ref, error) {
-	repo := r.URL.Query().Get("repo")
-	if repo == "" {
-		return nil, nil // full resync
-	}
-	return []entity.Ref{{System: GitSystem, Kind: "head", ID: repo}}, nil
+// HeadRef is the ref that targets one repo: a reconcile of it reconciles that repo, since a
+// per-repo pass is content-addressed and subsumes finer targeting. It is what a hint names.
+func HeadRef(id string) entity.Ref {
+	return entity.Ref{System: GitSystem, Kind: "head", ID: id}
 }
 
 // hookMarker identifies the hook verse installs, so we only ever overwrite/remove our own.
 const hookMarker = "# verse git Source hook"
 
-// InstallHook writes a reference-transaction hook into repo id's git dir that POSTs hookURL
-// (the reflector's /hooks/git) on every ref change — the git-native "webhook". It refuses to
-// clobber a pre-existing reference-transaction hook that isn't ours. Idempotent for ours.
-func (g *Git) InstallHook(id, hookURL string) error {
+// InstallHook writes a reference-transaction hook into repo id's git dir that POSTs a HINT to
+// verse on every ref change — the git-native "webhook". It refuses to clobber a pre-existing
+// reference-transaction hook that isn't ours. Idempotent for ours.
+//
+// hintURL is the registration's hint route, `<verse>/sources/git/<name>/hint`. The ref is
+// appended HERE, because which ref targets a repo is git's knowledge and not the route's: a
+// reconcile of `git:head:<id>` is a reconcile of that repo. verse never parses this delivery —
+// there is nothing to parse, which is the point.
+func (g *Git) InstallHook(id, hintURL string) error {
 	dir, ok := g.dirOf(id)
 	if !ok {
 		return fmt.Errorf("git: no repo %q", id)
@@ -119,11 +117,12 @@ func (g *Git) InstallHook(id, hookURL string) error {
 		return fmt.Errorf("git: %s already has a reference-transaction hook; not overwriting", id)
 	}
 	// git runs this three times per transaction (prepared|committed|aborted); act on
-	// committed. It only hints — the reconcile reads truth — so it forwards just the repo id.
+	// committed. It carries no data at all — just which slice went stale — which is what lets
+	// the route it posts to stay unauthenticated in a wide-open verse.
 	script := "#!/bin/sh\n" + hookMarker + "\n" +
 		`[ "$1" = committed ] || exit 0` + "\n" +
-		fmt.Sprintf(`curl -fsS -X POST "%s?repo=%s" >/dev/null 2>&1 || true`+"\n",
-			hookURL, url.QueryEscape(id))
+		fmt.Sprintf(`curl -fsS -X POST "%s?ref=%s" >/dev/null 2>&1 || true`+"\n",
+			hintURL, url.QueryEscape(HeadRef(id).String()))
 	return os.WriteFile(path, []byte(script), 0o755)
 }
 
@@ -163,10 +162,7 @@ func gitHooksDir(dir string) (string, error) {
 	return out, nil
 }
 
-var (
-	_ Source = (*Git)(nil)
-	_ Hinter = (*Git)(nil)
-)
+var _ Source = (*Git)(nil)
 
 // Reflect reads the repositories and returns what git:* should hold. A zero ref reads every
 // registered repo (a full resync); a git:* ref reads just the repo it names (the targeted
