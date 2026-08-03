@@ -66,6 +66,7 @@ drive a local agent, a remote one, and a human.
 | | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
+| | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |
 | | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 
 ### Steering
