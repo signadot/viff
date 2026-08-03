@@ -119,6 +119,23 @@ the one test in that battery deliberately left red.
 The adjacent half of the same gap: **who may install a binding.** A standing binding is exactly
 as strong as the ability to add and remove it, and the store has no per-slice write authority.
 
+## 3b. A subject-origin resolver that resumes never learns what is still open
+
+git-issue `ksbzafh6h12kr5gpe1n0`. A resolver over a RUN resumes correctly — `SubscribeSince`
+replays the gates still open below the reader's window, which the prerequisites work built
+deliberately. A resolver over a SUBJECT has no equivalent: `streamSpine` serves the commits that
+touched the subject from `?since=<revision>`, so resuming at the position it reported yields an
+empty stream, and a question posted before that position and still open is not in it.
+
+A restarted subject-origin resolver would have to read `/gates` to find its own work — a second
+path, which this design says does not exist.
+
+Found testing one subject, one binding, and TWO rules matching that subject. The rest of that
+shape is sound and worth recording: both questions are owned by the binding, both collapse onto
+ONE instance (a firing question's origin is the subject, not the rule), both are answerable
+through it, and both actions fire. A resolver watching a subject seeing every question about it
+is the right semantics.
+
 ## 4. Resolvers over a scope other than baseline
 
 Untried. A scoped run's questions live in that scope's copy-on-write view, and nothing has
@@ -149,6 +166,10 @@ one. A settled record is no longer merged over — the answer is cleared and `as
 it, so the docket never shows a question stamped with its own answer — but *whether* it should
 be asked again is the rule's business, and a rule with no `onDenied` re-asks by default. The
 advisory names it at install. Whether that default is right is open.
+
+What it costs a RESOLVER is worth saying, since it is not obvious from the rule side: a resolver
+over a rule that does not latch is asked the same question forever. With two rules matching one
+subject it compounds — each rule's action re-selects the subject and re-fires both.
 
 The advisory that names it is `adviseDenyLatch`, and it shares `predicateKeys` and
 `collectWrites` with `checkLatch` — so it inherits every fault in git-issue
