@@ -114,18 +114,23 @@ Refused: a runner with no `url`. There is no default and no local special case a
 `local` is what the *absence* of a runner means, which keeps the entity honest — every runner
 entity is somewhere to reach.
 
-**And a url that answers, but not as a runner.** `verse runner add` probes before accepting: a
-bounded `GET /processes` against the base url — the read `httpRunner.ListProcesses` already
-makes, against the face `processd.Handler()` already serves, with no effect on the runner.
-Three outcomes, which are the three `process/runner.go` already draws for any control call —
-applied, refused by the far side, never reached it — because a probe is a control call carrying
-no work:
+**And a url that answers, but not as a runner.** `verse runner add` probes before accepting, and
+the probe is a call this now has: `httpRunner.ListProcesses` — a bounded `GET /processes` against
+the face `processd.Handler()` already serves, with no effect on the runner. Its three outcomes
+are already the three this needs, because they are the three `process/runner.go` draws for any
+control call, and a probe is a control call carrying no work:
 
 | | |
 |---|---|
-| *a runner* | it answered, and the body decodes as the process list the contract promises |
-| *not a runner* | it answered, and is not that — 404, 501, a body that does not decode |
-| *unreachable* | nothing answered inside the deadline, and nothing is known |
+| *a runner* | `nil` — it answered, and the body decoded as the promised process list |
+| *not a runner* | `ErrUnsupported` — it answered, and is not that: 404, 501, junk |
+| *unreachable* | `ErrUnreachable` — nothing answered inside the deadline, and nothing is known |
+
+That is a change of plan, and in the cheap direction. This step was written when
+`ListProcesses` returned a bare nil slice for all three, so the probe had to re-issue the
+request and read the response itself; the fix to `6mnmxj6mh12krz3ae1n0` (`8ae7f7e`) put the
+distinction on the call, and step 1 now has nothing to build under `runner add` but the mapping
+from those errors to the two dispositions below.
 
 Only the middle one refuses the install, because the three are not equally fixable by waiting. A
 url that answers wrongly is answering *now*: something is at that address and it is not a runner
@@ -140,13 +145,12 @@ So *not a runner* refuses the install and *unreachable* warns and installs. Both
 `--no-probe`, for the reason `--leave` exists below: a check with no way past it is a trap, and
 verse is not the authority on what is at the end of a url an operator chose.
 
-The probe reads the response itself rather than calling `ListProcesses`, which cannot carry the
-answer: that one returns nil both for a runner with no processes and for a runner that did not
-answer, and three outcomes do not come back through a nil slice. It is the same loss as the
-spawn-status defect step 2 depends on, on the read plane rather than the write one, and it is
-already costing something — `processSnapshots` reads the mirror as a membership *filter* rather
-than a fallback source, so an unreachable runner's processes are absent from `verse ps` and the
-list is a clean 200 that is simply short. Both are recorded on git-issue `6mnmxj6mh12krz3ae1n0`.
+One thing that fix settled is worth carrying into step 4, because this plan assumed the opposite.
+`processSnapshots` reads the process:instance mirror as a scope-membership *filter* over what the
+runner reported — never as a fallback source — so a runner that does not answer contributes
+nothing, and the comment claiming the mirror covered that was wrong. `verse ps` now fails with
+the reason rather than returning a short list, and `process get` on an unreachable runner answers
+502 rather than 404. Step 4's columns are built on a list that no longer quietly shortens.
 
 **`verse runner check <name>`** runs that probe on demand and reports the same three outcomes. It
 belongs in this step rather than a later one because the case this step has to be honest about is
@@ -246,12 +250,12 @@ work unsupervised — the deployment says one thing and the verse does another.
 startup keep meaning what they mean: they set that default. They stop being mutually exclusive
 with *each other* only if somebody wants that; this plan does not need it.
 
-**Prerequisite**, and it is not optional: `httpRunner.Spawn` discards the response status, so a
-runner REFUSING a spawn is treated as having accepted it (git-issue `6mnmxj6mh12krz3ae1n0`). A
-refusal has to read as a refusal before a spawn may name an arbitrary runner — otherwise the
-first thing a drive meets when it points work somewhere that will not take it is a process that
-hangs. See the residual, which is also where the queued-vs-delivered gap this closes is
-argued.
+**The prerequisite is met.** `httpRunner.Spawn` discarded the response status, so a runner
+REFUSING a spawn was treated as having accepted it and the refusal surfaced as a hang. That had
+to read as a refusal before a spawn could name an arbitrary runner, and it now does: `Spawn`
+returns `process.FailedHandle` carrying the runner's own words, so the reason lands on the plane
+the flow already reads (git-issue `6mnmxj6mh12krz3ae1n0`, fixed in `8ae7f7e`). The same commit
+and `a2647e9` closed the read plane, which matters to steps 1 and 4 rather than here.
 
 **Proves:** two processes in one verse run in two places. Test: a spawn naming an installed
 runner reaches it (an `httptest` runner records the call) while a spawn naming none goes to the
@@ -322,15 +326,25 @@ runner is well, the next ask is that it act on one: skip the sick one, retry ont
 one. That is the scheduling named below as something this does not build, and a poller is how it
 arrives without being decided.
 
+**And `verse ps` must stay store-derived rather than fanning out.** Today's list unions the local
+runtime with the ONE configured runner's own `ListProcesses`, and a runner that does not answer
+now fails that list with the reason rather than shortening it silently. That is right for one
+runner and wrong for many: the same union across every installed runner would let a single dead
+one take out the whole list, and this feature exists to make dead runners ordinary — a drive
+deploys one, uses it, tears it down. The rows must come from `process:instance`, which is written
+at spawn and is complete without asking anybody. Building the fan-out first is the version of
+step 4 that seems obviously right and gets worse with every runner added.
+
 Small, and last on purpose: it is the step that makes the previous three legible, and it is the
 one that would otherwise be skipped.
 
 **Proves:** an operator can answer "where is this running", and "what is this runner carrying",
 without reading a charter. Test: `verse ps` names the runner per process and the default reads
 as `local` rather than blank; `--runner <name>` selects; `verse runners` counts a spawn onto a
-named runner and does not count one onto the default; and `--probe` reports a live runner and a
+named runner and does not count one onto the default; `--probe` reports a live runner and a
 stopped one differently while the store is unchanged by either — read `verse runners` again and
-the columns are what they were.
+the columns are what they were; and `verse ps` still lists every process with one installed
+runner unreachable, which is the test that pins the rows to the store rather than to a fan-out.
 
 
 ## What this plan does not build
@@ -422,17 +436,20 @@ onus sits with whoever deployed it — which is the drive, which is the party th
 broker, refusing to be driven as somebody else's external runner is the right default, because
 the queued/delivered distinction has nowhere to go across that hop.
 
-This needs nothing new. A refused spawn already has a path — `process.FailedHandle` carries the
-reason onto the flow, the way an envelope this build does not have already does.
+This needs nothing new, and as of `8ae7f7e` that is true rather than aspirational. A refused
+spawn has a path: `httpRunner.Spawn` reads the status and returns `process.FailedHandle` carrying
+the runner's own words, so the reason travels onto the flow the way an envelope this build does
+not have already does.
 
-**Except that verse ignores refusals today** (git-issue `6mnmxj6mh12krz3ae1n0`).
-`httpRunner.Spawn` checks the transport error and discards the HTTP status, so a runner
-answering 400 or 501 is treated as having accepted the work: a remote handle comes back, a
-`process:instance` is mirrored, and the flow waits on a process that was never started. The
-refusal reads as a hang. That has to be fixed for this option to mean anything, and it is worth
-fixing regardless — with per-process runners a refusal stops being a deploy-time
-misconfiguration and becomes a normal outcome, a drive pointing work at a runner that will not
-take it.
+It was not true when this section was written, and the gap is worth keeping on the record because
+it is what made the option a slogan. `Spawn` checked the transport error and discarded the HTTP
+status, so a runner answering 400 or 501 was treated as having accepted the work: a remote handle
+came back, a `process:instance` was mirrored, and the flow waited on a process that was never
+started. The refusal read as a hang — so the whole argument above, that a runner may simply
+refuse and the onus sits with whoever deployed it, rested on an answer nothing listened to.
+Per-process runners are what make that answer routine rather than exotic: a drive pointing work
+at a runner that will not take it stops being a deploy-time misconfiguration and becomes an
+ordinary Tuesday.
 
 Two further ways, neither needed first:
 
