@@ -358,6 +358,22 @@ firing writes nothing — so without it the subject stays in the state that aske
 commit that touches it asks you the same question again, over the answer you already gave.
 Saying what a no means is what stops that; verse warns at install if you don't.
 
+### A service that answers them
+
+The docket is not only for people. A **resolver** is a service bound to a run, or to a class of
+subjects, that reads the run's own stream and answers its gates — through the same path
+`verse gate approve` takes, with `by` naming the binding instead of a person. It can hand a
+question up a layer, carry a deadline that does the same thing more slowly, and be made the only
+answer that counts.
+
+```sh
+./scripts/attached-resolver.sh              # five acts, one command each
+./scripts/attached-resolver.sh run layered  # named → standing → ⊤, in two hops
+```
+
+[Attached resolvers](attached-resolvers.md) is the argument;
+[reference/resolvers.md](reference/resolvers.md) is the surface.
+
 ### seq — steps in order
 
 ```tony

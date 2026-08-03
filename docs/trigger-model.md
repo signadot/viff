@@ -576,7 +576,9 @@ rule that says which gates it has twice has said it twice.
 `resolver` names an installed binding (`verse resolver add`). It is the same word a spawn
 uses for the same act: a spawn names who answers the run it starts, a rule names who answers
 the gates it raises itself. Empty leaves the question to whatever standing binding covers its
-subject, and then to the docket a person reads.
+subject, and then to the docket a person reads. A binding that is not installed is refused
+here rather than left to own a question nothing can answer — see [attached
+resolvers](attached-resolvers.md).
 
 `seq` runs a list of actions in order, each starting when the previous one completes. It is
 the depth axis, and it has its own section below.
