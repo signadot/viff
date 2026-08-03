@@ -32,16 +32,15 @@ no explicit mode to **`"ask"`** — so a thing literally called *ask* goes down 
 charter author gets supervision or does not depending on which they wrote under the same key,
 which nobody could predict from the name.
 
-The fork's justification used to be stated on it — *"temporal gate: monitored on the store, not
-posed"* — and that is false for the case the motion docket exists to serve: `!quorum 2` is asking
-people, to a room, which is what a ballot is. It is wrong from the other side too: `openChannel`
-is unconditional, so `!until [!fact green, !deadline "4h"]` opens a channel and lands on
-`verse docket` with no ballot anybody can cast. The docket lists things nobody can answer, and
-`verse gates` omits things people are being asked.
+`Formula != nil` is not the distinction the split needs. `Gate.mode()` resolves a formula gate
+with no explicit mode to `"ask"`, so a thing literally called *ask* goes down the motion arm. And
+`openChannel` is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks nobody
+anything — opens a channel and lands on `verse docket` with no ballot anyone can cast. The
+result is a docket listing decisions nobody can make, and a `verse gates` omitting decisions
+people are being asked for.
 
-That comment now says what the two arms actually differ in — the surface a decision lands on —
-and points back here, so the next reader of `fire` meets the open question rather than a
-justification that does not hold.
+The fork is git-issue `sp27m3g1h12krdgve1n0`, and is marked in the code as an unfixed design
+bug pointing back here.
 
 So the line that wants drawing is **asks somebody** versus **waits for something**, and it lives
 inside the formula rather than at `gate.Formula != nil`. A gate whose formula contains a quorum

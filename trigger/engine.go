@@ -610,26 +610,27 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// made.
 	var denied []Gate
 
-	// ONE LIST, TWO IMPLEMENTATIONS, and the fork below is not the line it claims to be.
+	// DESIGN BUG, unfixed: this fork splits one construct on a field that does not mean what
+	// the split needs.
 	//
-	// It used to read "temporal gate: monitored on the store, not posed", which is false for
-	// the case the motion docket exists to serve: `!quorum 2` is asking PEOPLE, to a room,
-	// which is what a ballot is. It is wrong from the other side too — openChannel is
-	// unconditional, so `!until [!fact green, !deadline "4h"]` opens a channel and lands on
-	// `verse docket` with no ballot anybody can cast. So the docket lists things nobody can
-	// answer and `verse gates` omits things people are being asked.
+	// One `gating.gates` list produces two surfaces. A formula gate becomes a MOTION
+	// (motion:channel, `verse docket`, `verse vote`, settled by tally); everything else
+	// becomes a QUESTION (gate:question, `verse gates`, `verse gate approve`, settled by an
+	// answer). Different entity, different verb, different docket — and a resolver can own
+	// only the second, so whether a rule can be supervised depends on which of the two an
+	// author wrote under the same key.
 	//
-	// What the two arms actually differ in is the SURFACE a decision lands on: a formula gate
-	// becomes a motion (motion:channel, `verse docket`, `verse vote`, settled by tally), and
-	// everything else becomes a question (gate:question, `verse gates`, `verse gate approve`).
-	// Both come out of this one `gating.gates` list, and Gate.mode() resolves a formula gate
-	// with no explicit mode to "ask" — so a thing literally called ASK goes down the motion
-	// arm. A charter author gets a resolver or does not depending on which they wrote under
-	// the same key, which nobody could predict from the name.
+	// `Formula != nil` is not that distinction. Gate.mode() resolves a formula gate with no
+	// explicit mode to "ask", so a thing literally called ASK goes down the motion arm. And
+	// openChannel is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks
+	// nobody anything — opens a channel and lands on the docket with no ballot anyone can
+	// cast. The result is a docket listing decisions nobody can make, and a `verse gates`
+	// omitting decisions people are being asked for.
 	//
-	// The line that wants drawing is ASKS SOMEBODY versus WAITS FOR SOMETHING, and it lives
-	// inside the formula rather than at `Formula != nil`. Settling that is the prerequisite
-	// for a resolver over a motion: docs/working/attached-resolvers-residual.md §1.
+	// The distinction the split needs is ASKS SOMEBODY versus WAITS FOR SOMETHING, and it is
+	// a property of the formula's contents — a quorum asks, a fact and a clock do not — not
+	// of whether a formula is present. Fixing it is the prerequisite for a resolver over a
+	// motion: git-issue sp27m3g1h12krdgve1n0, docs/working/attached-resolvers-residual.md §1.
 	for _, gate := range t.AllGates() {
 		if gate.Formula != nil { // → a motion, not a posed question
 			gname := gate.Name
