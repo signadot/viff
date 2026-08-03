@@ -2030,14 +2030,16 @@ func hasFace(p process.Runner) bool {
 	return ok
 }
 
-// processLister is a runner that keeps its OWN process registry (a broker), distinct
-// from the local runtime. localRunner does NOT implement it — it delegates to the same
-// processd the union already lists — so brokered processes are added without double-counting
-// local ones.
-type processLister interface {
-	ListProcesses() []process.Instance
-	ProcessSnapshot(id string) (process.Instance, bool)
-}
+// processLister is process.Lister: a runner that keeps its OWN process registry (a broker),
+// distinct from the local runtime. localRunner does NOT implement it — it delegates to the
+// same processd the union already lists — so brokered processes are added without
+// double-counting local ones.
+//
+// The declaration moved to the process package so both implementations assert against it and
+// a signature change is a compile error where the implementation is. Asserting it structurally
+// here, as this did, meant a widened signature made the assertion report false rather than
+// fail to build — which is how the same mistake took out gate resolution once already.
+type processLister = process.Lister
 
 // gateResolver is a Handle that can answer a gate its worker raised, by relaying the
 // outcome to that worker. It is optional on Handle because only a runner with a worker leg
@@ -2141,7 +2143,16 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 // broker (or any runner with its own registry), its processes — each stamped with its runner
 // so a client sees whether a process is local or brokered (and, for a broker, its dialURL).
 func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
-	writeOut(w, r, http.StatusOK, s.processSnapshots(s.scopedStore(r)))
+	out, err := s.processSnapshots(s.scopedStore(r))
+	if err != nil {
+		// A short list is worse than no list. The rows that survive here are the LOCAL
+		// runtime's, and a verse with a runner configured is a verse whose work is mostly not
+		// there — so answering 200 with what is left reports a verse with less work in it than
+		// it has, and nothing in the response says so. The reason travels instead.
+		codec.HTTPError(w, r, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeOut(w, r, http.StatusOK, out)
 }
 
 // processSnapshots is the unified process list for one store view (baseline, or a ?scope
@@ -2156,7 +2167,13 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 // overlay's own writes, plus baseline seen through the overlay. On a store without real
 // scopes every instance would be visible in every scope, making this a no-op — the
 // isolation boundary is the store's (real on docd/logd).
-func (s *Server) processSnapshots(store entity.Store) []process.Instance {
+//
+// The runner's failure to answer is returned rather than folded into a shorter list. The
+// mirror is read here as a scope FILTER over what the runner reported — `keep` — and not as a
+// fallback source: nothing below iterates `members` to add a row. So a runner that did not
+// answer contributes nothing, and without this error that absence was indistinguishable from
+// it having nothing to contribute (git-issue 6mnmxj6mh12krz3ae1n0).
+func (s *Server) processSnapshots(store entity.Store) ([]process.Instance, error) {
 	members := s.scopeMembers(store)
 	keep := func(inst process.Instance) bool { return members[inst.ID] }
 	out := make([]process.Instance, 0)
@@ -2168,14 +2185,18 @@ func (s *Server) processSnapshots(store entity.Store) []process.Instance {
 	}
 	if l, ok := s.runner.(processLister); ok {
 		ref := s.runner.Ref()
-		for _, inst := range l.ListProcesses() {
+		insts, err := l.ListProcesses()
+		if err != nil {
+			return nil, fmt.Errorf("runner %s: %w", ref, err)
+		}
+		for _, inst := range insts {
 			if keep(inst) {
 				inst.Runner = ref
 				out = append(out, inst)
 			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // scopeMembers returns the set of process ids whose process:instance entity is visible in
@@ -2229,7 +2250,13 @@ func (s *Server) processHoldingGate(decisionID string) string {
 		}
 	}
 	if l, ok := s.runner.(processLister); ok {
-		for _, inst := range l.ListProcesses() {
+		// A runner that did not answer is not a runner holding no gate, and this does not
+		// distinguish them — deliberately, because it is already the fallback: the caller
+		// consults the mirror's question record first and only lands here when no record
+		// names a process. There is nothing better to say from here, and saying it would
+		// mean widening every caller between this and the resolve.
+		insts, _ := l.ListProcesses()
+		for _, inst := range insts {
 			if holds(inst) {
 				return inst.ID
 			}

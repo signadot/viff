@@ -74,10 +74,20 @@ func (p *httpRunner) Spawn(l process.Launch, _ process.ContentReader) process.Ha
 		req["grant"] = l.Grant
 	}
 	body, _ := codec.Marshal(req, codec.Tony)
-	if resp, err := p.cl.Post(p.base+"/processes", codec.MediaType(codec.Tony), bytes.NewReader(body)); err != nil {
+	resp, err := p.cl.Post(p.base+"/processes", codec.MediaType(codec.Tony), bytes.NewReader(body))
+	if err != nil {
 		return process.FailedHandle(err.Error())
-	} else {
-		resp.Body.Close()
+	}
+	defer resp.Body.Close()
+	// A refusal is not an acceptance. The status used to be discarded here, so a runner
+	// answering 400, 403 or 501 got the same remote handle as one that took the work: versed
+	// mirrored a process:instance for it and the flow waited on a process that was never
+	// started, so the refusal surfaced as a hang. The runner deciding it cannot host this
+	// launch is the DEFAULT way a runner declines — it is the whole reason a runner may refuse
+	// rather than verse having to detect what it is — and that answer is inert unless it is
+	// read (git-issue 6mnmxj6mh12krz3ae1n0).
+	if err := statusErr(resp); err != nil {
+		return process.FailedHandle(fmt.Sprintf("spawn refused by %s: %s", p.base, err))
 	}
 	return &remoteHandle{base: p.base, id: l.ID, cl: p.cl, stream: p.stream}
 }
@@ -93,22 +103,50 @@ func (p *httpRunner) Attach(id string) process.Handle {
 func (p *httpRunner) Ref() string { return p.base }
 
 // ListProcesses / ProcessSnapshot let versed union a remote runner's processes into the
-// unified `process list`/`get` (implementing the same lister interface a broker does). Each
-// call is bounded by a short timeout so an unreachable remote yields nothing rather than
-// hanging the list — those processes remain visible via the entity mirror. The verse-facing
-// contract already serves GET /processes and GET /processes/{id}, so this is a thin client.
-func (p *httpRunner) ListProcesses() []process.Instance {
+// unified `process list`/`get` (implementing the same process.Lister a broker does). Each call
+// is bounded by a short timeout, so an unreachable remote fails fast rather than hanging the
+// list. The verse-facing contract already serves GET /processes and GET /processes/{id}, so
+// this is a thin client.
+//
+// It returns an error because nil could not carry one. It used to report nil for a runner with
+// no processes, for one that answered 500, and for one that never answered at all — and the
+// comment here claimed the mirror covered the difference. It does not: versed reads the mirror
+// as a scope-membership FILTER over what the runner reported, not as a fallback source, so an
+// unreachable runner's processes were absent from the list and the response was a clean 200
+// that was simply short. The same shape as the discarded spawn status above, on the read plane
+// (git-issue 6mnmxj6mh12krz3ae1n0).
+func (p *httpRunner) ListProcesses() ([]process.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes", nil)
 	resp, err := p.cl.Do(req)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("%w: %s: %w", process.ErrUnreachable, p.base, err)
 	}
 	defer resp.Body.Close()
+	// Not statusErr: that reads a status against ONE process, where 404 means the far side
+	// has never heard of that id. On the collection there is no id to be wrong about, so a
+	// 404 says the same thing 501 does — whatever is at this URL, it does not serve the
+	// verse-facing runner contract.
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented {
+		return nil, fmt.Errorf("%w: %s serves no process list", process.ErrUnsupported, p.base)
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		detail := strings.TrimSpace(string(msg))
+		if detail == "" {
+			detail = resp.Status
+		}
+		return nil, fmt.Errorf("listing processes on %s: %s", p.base, detail)
+	}
 	var out []process.Instance
-	_ = decodeResp(resp, &out)
-	return out
+	if err := decodeResp(resp, &out); err != nil {
+		// A body that does not decode is not an empty verse. Discarding this error is how a
+		// format drift on either end reads as a runner that has nothing running.
+		return nil, fmt.Errorf("%w: %s answered an undecodable process list: %w",
+			process.ErrUnsupported, p.base, err)
+	}
+	return out, nil
 }
 
 func (p *httpRunner) ProcessSnapshot(id string) (process.Instance, bool) {
@@ -371,4 +409,7 @@ func statusErr(resp *http.Response) error {
 var (
 	_ process.Runner = (*httpRunner)(nil)
 	_ process.Handle = (*remoteHandle)(nil)
+	// Asserted here so a change to Lister is a compile error in this file rather than a
+	// type assertion that quietly starts reporting false in versed.
+	_ process.Lister = (*httpRunner)(nil)
 )

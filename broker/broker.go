@@ -449,7 +449,10 @@ func (ps *procState) snapshot() process.Instance {
 // ListProcesses / ProcessSnapshot enumerate the broker's processes for versed's unified
 // process list. Each brokered process carries its dialURL so its worker face is discoverable
 // from `process list`/`get` (the same base for all of a broker's processes).
-func (b *Broker) ListProcesses() []process.Instance {
+// The error is always nil: this registry is in memory, so there is no unreachable case to
+// report. It is on the signature because the other implementation has one (a runner behind a
+// URL), and process.Lister is what both are held to.
+func (b *Broker) ListProcesses() ([]process.Instance, error) {
 	b.mu.Lock()
 	base := b.base
 	pss := make([]*procState, 0, len(b.procs))
@@ -465,7 +468,7 @@ func (b *Broker) ListProcesses() []process.Instance {
 		}
 		out = append(out, m)
 	}
-	return out
+	return out, nil
 }
 
 func (b *Broker) ProcessSnapshot(id string) (process.Instance, bool) {
@@ -723,7 +726,12 @@ func (h *handle) Result() string {
 	return ps.result
 }
 
-var _ process.Runner = (*Broker)(nil)
+var (
+	_ process.Runner = (*Broker)(nil)
+	// Asserted so a change to Lister fails to compile here, rather than making versed's
+	// type assertion report false and silently drop every brokered process from the list.
+	_ process.Lister = (*Broker)(nil)
+)
 
 // WorkerHandler serves the worker-facing dial-in protocol (claim / inbox / report). It is
 // intended for verse's sibling broker port, mounted under /broker/<nonce>. Both verse and

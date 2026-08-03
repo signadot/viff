@@ -3,8 +3,10 @@ package runner_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,16 +101,19 @@ func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
 	pol := runner.HTTP(srv.URL)
 	pol.Spawn(process.Launch{ID: "r1", Task: "remote task", Driver: "scripted"}, nil)
 
-	lister, ok := pol.(interface {
-		ListProcesses() []process.Instance
-		ProcessSnapshot(string) (process.Instance, bool)
-	})
+	// process.Lister by NAME, not a structural assertion written out here. Spelling the
+	// signature inline is what let a widened one report false instead of failing to build.
+	lister, ok := pol.(process.Lister)
 	if !ok {
-		t.Fatal("httpRunner should implement the lister interface")
+		t.Fatal("httpRunner should implement process.Lister")
 	}
 
+	insts, err := lister.ListProcesses()
+	if err != nil {
+		t.Fatalf("ListProcesses against a live runner = %v, want no error", err)
+	}
 	var found bool
-	for _, m := range lister.ListProcesses() {
+	for _, m := range insts {
 		if m.ID == "r1" {
 			found = true
 		}
@@ -123,6 +128,84 @@ func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
 	}
 	if _, ok := lister.ProcessSnapshot("nope"); ok {
 		t.Fatal("ProcessSnapshot of an unknown id should be false")
+	}
+}
+
+// A runner that REFUSES a spawn must not read as one that took it. The status used to be
+// discarded, so 400/403/501 all came back as a live remote handle: versed mirrored a
+// process:instance for work that was never started and the flow waited on it forever, so the
+// refusal surfaced as a hang. A runner declining a launch it cannot host is the whole
+// mechanism by which a runner gets to refuse, and it is inert unless this reads it.
+func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code int
+		body string
+	}{
+		{"bad request", http.StatusBadRequest, "unknown driver \"llm\""},
+		{"not implemented", http.StatusNotImplemented, "this runner does not host brokered work"},
+		{"no body", http.StatusForbidden, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, tc.body, tc.code)
+			}))
+			defer srv.Close()
+
+			h := runner.HTTP(srv.URL).Spawn(process.Launch{ID: "x", Task: "t", Driver: "scripted"}, nil)
+
+			// The refusal has to arrive as a terminal on the plane the flow already reads,
+			// which is what FailedHandle is for.
+			ch, _ := h.Subscribe()
+			ev, open := <-ch
+			if !open {
+				t.Fatal("a refused spawn produced no frame at all; the flow waits forever")
+			}
+			if ev.Kind != process.EvStatus || ev.Text != string(process.Failed) {
+				t.Fatalf("frame = %+v, want a failed status — the refusal read as an accepted spawn", ev)
+			}
+			if ev.Err == "" {
+				t.Fatal("the failure carries no reason, so the operator is told only that it failed")
+			}
+			if tc.body != "" && !strings.Contains(ev.Err, tc.body) {
+				t.Fatalf("reason = %q, want the runner's own words (%q)", ev.Err, tc.body)
+			}
+		})
+	}
+}
+
+// And the read plane: a list that could not be taken must not read as an empty one. nil could
+// not carry the difference, so an unreachable runner's processes were absent from the unified
+// list and the response was a clean 200 that was simply short.
+func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
+	// Unreachable: a server that is listening at bind time and gone at call time — the
+	// runner that was torn down, which is the ordinary case, not an exotic one.
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+
+	if _, err := runner.HTTP(deadURL).(process.Lister).ListProcesses(); !errors.Is(err, process.ErrUnreachable) {
+		t.Fatalf("a dead runner's list = %v, want ErrUnreachable", err)
+	}
+
+	// Answering, but not as a runner: a broker's WORKER leg serves claim/inbox/report and no
+	// GET /processes, so a url pointed at one 404s. That is a different fact from unreachable
+	// — something is there, and it is not this contract.
+	worker := httptest.NewServer(http.NewServeMux())
+	defer worker.Close()
+	if _, err := runner.HTTP(worker.URL).(process.Lister).ListProcesses(); !errors.Is(err, process.ErrUnsupported) {
+		t.Fatalf("a non-runner url's list = %v, want ErrUnsupported", err)
+	}
+
+	// Answering with something undecodable is also not an empty verse: discarding this is how
+	// a format drift on either end reads as a runner with nothing running.
+	junk := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"not":"a list"`))
+	}))
+	defer junk.Close()
+	if _, err := runner.HTTP(junk.URL).(process.Lister).ListProcesses(); err == nil {
+		t.Fatal("an undecodable body listed as no processes at all")
 	}
 }
 

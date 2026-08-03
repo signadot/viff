@@ -2,6 +2,7 @@ package versed
 
 import (
 	"bufio"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/runner"
 )
 
 // process run (POST /processes) goes through the runner, not straight to the local
@@ -339,5 +341,39 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	bad.Body.Close()
 	if bad.StatusCode != http.StatusNotFound {
 		t.Fatalf("unregistered nonce = %d, want 404", bad.StatusCode)
+	}
+}
+
+// A runner that did not answer must not read as a runner with nothing running. versed reads
+// the process:instance mirror as a scope FILTER over what the runner reported, never as a
+// fallback source, so an unreachable runner contributes no rows — and before this the
+// response was a clean 200 that was simply short, with nothing saying the runner was not
+// reached (git-issue 6mnmxj6mh12krz3ae1n0).
+func TestProcessListSaysWhenTheRunnerDidNotAnswer(t *testing.T) {
+	srv := testServer(t)
+	// A runner url that is listening at bind time and gone by the call — the torn-down
+	// runner, which with per-process runners is an ordinary state rather than an exotic one.
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	srv.SetRunner(runner.HTTP(deadURL))
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/processes")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("an unreachable runner listed as a verse with no processes on it")
+	}
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %s, want 502", resp.Status)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), deadURL) {
+		t.Fatalf("body = %q, want the runner it could not reach", body)
 	}
 }

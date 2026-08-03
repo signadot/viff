@@ -109,6 +109,27 @@ type Runner interface {
 	Ref() string
 }
 
+// Lister is a Runner that keeps its OWN process registry — a broker, or a runner behind a
+// URL — distinct from the local runtime. The in-process runner does NOT implement it: it
+// delegates to the same processd the union already lists, so brokered processes are added
+// without double-counting local ones.
+//
+// It is declared HERE, beside Runner, rather than inline at the call site that asserts it.
+// The assertion is structural and checked with `, ok`, so widening a signature on one side
+// alone does not fail to compile — it makes the assertion silently report false and the
+// feature stop working. That has already happened once in this codebase, to gate resolution,
+// when `by` was added to one side. One declaration, and each implementation asserts against
+// it, so a signature change is a compile error where the implementation is.
+//
+// ListProcesses reports what went wrong rather than folding a failure into an empty list.
+// nil, nil is a runner with no processes; a runner that did not answer is ErrUnreachable and
+// one with no such face is ErrUnsupported. Those are not the same fact, and a caller that
+// cannot tell them apart shows an operator a verse with less work in it than it has.
+type Lister interface {
+	ListProcesses() ([]Instance, error)
+	ProcessSnapshot(id string) (Instance, bool)
+}
+
 // Handle is verse's governing handle on one running process — the control plane
 // (pause/resume/cancel/say/set-vector) plus the read plane (Subscribe). It hides whether
 // the process runs in-process or behind a URL, so the engine tracks handles, not the
