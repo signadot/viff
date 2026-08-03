@@ -328,6 +328,16 @@ type procRunConfig struct {
 	Wait   bool   `cli:"name=wait desc='block until the process completes, then print the result (composes with --attach)'"`
 	Attach bool   `cli:"name=attach desc='stream the live transcript (words, actions, gates) until it ends'"`
 	Driver string `cli:"name=driver desc='process driver: scripted | llm (default: the runtime default)'"`
+	// Name is a LABEL, not an address. The id is derived from it and returned, because a
+	// caller-chosen id is a caller-chosen prefix on every gate question the run raises
+	// (`<id>~d1`) — and answering one recovers the owner by cutting at the first `~`, so a
+	// process called `a~b` hands its questions to a process called `a`. The trigger side has
+	// always sanitised its own ids (safeSeg) for exactly this; the ad-hoc face never had to,
+	// because it never let anyone choose one.
+	Name string `cli:"name=name desc='label for the run; the id is derived from it and printed'"`
+	// The two fields a spawn has carried all along with no way to type them.
+	Subject  string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
+	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
 }
 
 func procRunCmd() *cli.Command {
@@ -337,7 +347,8 @@ func procRunCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "run").
-		WithSynopsis("run a process: run <task…> [--attach] [--wait] [--driver scripted|llm]").
+		WithSynopsis("run a process: run <task…> [--name <label>] [--subject <ref>] "+
+			"[--resolver <ref>] [--attach] [--wait] [--driver scripted|llm]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -351,9 +362,21 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: process run wants a task", cli.ErrUsage)
 	}
 	task := strings.Join(args, " ")
-	resp, err := httpPost("/processes", api.Spawn{Task: task, Driver: cfg.Driver})
+	resp, err := httpPost("/processes", api.Spawn{
+		Task: task, Driver: cfg.Driver, Name: cfg.Name,
+		Subject: cfg.Subject, Resolver: cfg.Resolver,
+	})
 	if err != nil {
 		return fmt.Errorf("process run: %w", err)
+	}
+	// The server's reason, not a guess at it. A refused spawn — a resolver that is not
+	// installed, an id that would break the surfaces an id crosses — says exactly what is
+	// wrong, and "no id returned" threw that away and sent the reader looking at the wrong
+	// thing.
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return fmt.Errorf("process run: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	var sp api.Spawned
 	decodeClose(resp, &sp)

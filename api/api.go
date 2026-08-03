@@ -112,7 +112,17 @@ type Resolve struct {
 //
 //tony:schemagen=verse-spawn,notag
 type Spawn struct {
-	ID     string `tony:"field=id,omitzero"` // empty → the runtime mints a `run-…` id
+	// ID names the run. It is validated rather than taken as given: an id is the prefix of
+	// every gate question the run raises (`<id>~d1`), and answering one recovers the owner by
+	// cutting at the first `~` — so an id carrying one hands its questions to a process that
+	// is not it. It also lands in a URL path (`/processes/{id}`).
+	//
+	// Prefer Name, which is a label the runtime derives a safe id FROM.
+	ID string `tony:"field=id,omitzero"` // empty → derived from Name, or a minted `run-…`
+	// Name is a label for the run, from which the id is derived and returned. It exists so a
+	// caller can say what a run IS without choosing its address: `--name review` becomes
+	// `review-8f306077b1c2`, which is readable, unique, and cannot be malformed.
+	Name string `tony:"field=name,omitzero"`
 	Task   string `tony:"field=task"`
 	Driver string `tony:"field=driver,omitzero"` // empty → the runtime default
 	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's

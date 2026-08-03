@@ -2039,6 +2039,43 @@ type gateResolver interface {
 // honors --runner/--broker, not just trigger spawns) and mirror it into the store (so a run
 // is a process:instance entity — observable, and its completion can drive triggers) — the
 // consistency the "processes are entities" model wants.
+// spawnID settles what a run is called, and refuses an id that would break the surfaces an id
+// crosses.
+//
+// `~` is the separator between a process and its questions (process.GateSep), and answering one
+// recovers the owner by cutting at the FIRST occurrence — so `a~b` raises `a~b~d1` and hands it
+// to a process called `a`, which is either nothing or somebody else's run. The rest are the
+// characters an id cannot survive in a URL path, since ids are addressed at `/processes/{id}`.
+// The trigger side has stripped exactly these from subject-derived ids all along (safeSeg); the
+// ad-hoc face never had to, because until `--name` it never let a caller near one.
+//
+// A NAME is the safe way to say what a run is: it is sanitised and made unique here, so the
+// caller gets a readable id back rather than choosing an address.
+func spawnID(body api.Spawn) (string, error) {
+	if body.ID != "" {
+		if bad := strings.IndexAny(body.ID, badInID); bad >= 0 {
+			return "", fmt.Errorf("process id %q may not contain %q: it is the prefix of every "+
+				"gate question this run raises (<id>~d1) and it is addressed in a URL path. "+
+				"Use `name` instead and the id is derived from it", body.ID, body.ID[bad:bad+1])
+		}
+		return body.ID, nil
+	}
+	nonce := mintNonce()[:12]
+	if body.Name == "" {
+		return "run-" + nonce, nil
+	}
+	label := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(badInID, r) {
+			return '_'
+		}
+		return r
+	}, body.Name)
+	return label + "-" + nonce, nil
+}
+
+// badInID is `~` plus what an id cannot survive in a URL path.
+const badInID = "~/\\#?% \t\n"
+
 func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	var body api.Spawn
 	if err := codec.Read(r, &body); err != nil {
@@ -2049,9 +2086,10 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "task is required", http.StatusBadRequest)
 		return
 	}
-	id := body.ID
-	if id == "" {
-		id = "run-" + mintNonce()[:12] // ad-hoc id; a trigger spawn supplies its own
+	id, err := spawnID(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	// Honor --scope: mirror the process:instance into that scope's copy-on-write view, not
 	// baseline — else a scoped run leaks into baseline (a baseline watch would see it). On the

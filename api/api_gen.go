@@ -437,6 +437,11 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["id"] = ir.FromString(string(s.ID))
 	}
 
+	// Field: Name
+	if s.Name != "" {
+		irMap["name"] = ir.FromString(string(s.Name))
+	}
+
 	// Field: Task
 	irMap["task"] = ir.FromString(string(s.Task))
 
@@ -499,6 +504,12 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "id", fieldNodeUnwrapped.Type)
 			}
 			s.ID = string(fieldNodeUnwrapped.String)
+		case "name":
+			// Field: Name
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
+			}
+			s.Name = string(fieldNodeUnwrapped.String)
 		case "task":
 			// Field: Task
 			if fieldNodeUnwrapped.Type != ir.StringType {

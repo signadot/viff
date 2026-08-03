@@ -150,6 +150,7 @@ context:
 define:
   driver: .[string]
   id: .[string]
+  name: .[string]
   resolver: .[string]
   retain: .[int]
   subject: .[string]
