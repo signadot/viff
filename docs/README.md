@@ -93,6 +93,7 @@ the verse that owns it, through a docd controller.
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, GitHub and the rest; webhook as hint, reconcile as truth |
 | ahead | [External sources](working/sources.md) — a source you deploy and install, and why a Source is not a controller |
+| | [External sources: the plan](working/sources-plan.md) — the order of work for the registration, and what each step proves |
 | | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
 ## What is built, and what isn't

@@ -128,10 +128,15 @@ what makes "externally installable" mean the same thing twice rather than two th
 
 **The hint reverses, and stays a hint.** The source owns delivery and parsing, because the
 source is what deployed the git hook or holds the webhook secret; it then tells verse `POST
-/sources/<name>/hint {refs: […]}`, and verse pulls. A hint carrying entities would be the law
+/sources/<system>/<name>/hint?ref=…`, and verse pulls. A hint carrying entities would be the law
 broken exactly where it costs most. It also pays a second time: the hint route can stay
 unauthenticated in a wide-open dogfood verse, because a delivery that carries no data can cost
 at most a reconcile of a slice its sender does not get to choose the contents of.
+
+*Refs as query parameters, where this note first wrote a `{refs: […]}` body.* The
+[plan](sources-plan.md) changed it, and the sender is the argument: a `/bin/sh` git hook running
+`curl` is the case to keep to one line, a handful of refs fit in a url, and a route that must
+stay cheap enough to leave unauthenticated should not also be negotiating a content type.
 
 ## Dialing in, for the source verse cannot reach
 
@@ -271,6 +276,16 @@ wellness*, which is why the store never holds one: it can be stale in the direct
 `lastReflect` is a fact about verse's own last write, which is the poll cursor sources.md already
 calls dogfood. The distinction survives the SAT check: a stale `lastReflect` cannot say a source
 is well when it is not — it says the opposite, and the older it gets the louder.
+
+**Except that it was asked to be two clocks, and the [plan](sources-plan.md) splits it.** A
+cursor moves only when something changed, so on a quiet repo a healthy source and a wedged one
+carry the same `lastReflect` and the paragraph above is wrong about what it catches. A stamp
+that moved every pass would catch the wedge — and write to `sources:*` once per poll interval,
+so anything watching that slice fires forever on a verse where nothing is happening. So the two
+clocks separate along the line runners already drew: `lastReflect` and `lastError` are STORED,
+because they are facts about verse's own actions and change rarely; when a pass last *completed*
+is REPORTED on `GET /sources` from the live reflector and never written down, because that is an
+opinion about now.
 
 ## One source, two transports
 
@@ -418,7 +433,10 @@ has to be solved, instead of a public face verse has to grow.
    coarser than a Covers on purpose, since a second source must not write a repo's commits
    either.
 3. **The registration**: entity, probe, the two extra checks, the hint route, the removal fork,
-   and `scope`. Restart, durability and tombstoning are the worktree's, unchanged.
+   and `scope` — decomposed into seven steps in [the plan](sources-plan.md), which is also
+   where the two decisions above were forced out of this note. Restart, durability and
+   tombstoning were to have been the worktree's; since that worktree is not here, they are
+   built.
 4. **Dial-in over xap**, which is a `DialContext` on verse's side and a `Listen` on the
    source's. The test is the same one step 2 runs, through a third transport: same
    `source.Git`, same `Reflection`, no ingress.
