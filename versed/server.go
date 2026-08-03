@@ -480,7 +480,9 @@ func (s *Server) reconcileProcesses() {
 					// that lost it on restart would drop out of the answer while still
 					// running there.
 					RunnerName: entity.Str(ent.Payload, "runnerName"),
-					Resolver:   entity.Str(ent.Payload, "resolver"),
+					// Carried, not re-stamped: a resumed process did not start again.
+					StartedAt: entity.Str(ent.Payload, "startedAt"),
+					Resolver:  entity.Str(ent.Payload, "resolver"),
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
@@ -2186,12 +2188,22 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 	out, err := s.processSnapshots(s.scopedStore(r))
 	if err != nil {
-		// A short list is worse than no list. The rows that survive here are the LOCAL
-		// runtime's, and a verse with a runner configured is a verse whose work is mostly not
-		// there — so answering 200 with what is left reports a verse with less work in it than
-		// it has, and nothing in the response says so. The reason travels instead.
 		codec.HTTPError(w, r, http.StatusBadGateway, err.Error())
 		return
+	}
+	// `verse ps --runner <name>`: the question a drive asks. It selects on the NAME stamped at
+	// spawn, not on what is installed now, so it keeps answering for a runner that has since
+	// been removed — which is when an operator most wants it, since that is exactly the case
+	// `verse runners` can no longer show. `--runner local` selects the ones that named none.
+	if want := r.URL.Query().Get("runner"); want != "" {
+		kept := make([]process.Instance, 0, len(out))
+		for _, inst := range out {
+			if inst.RunnerName == want ||
+				(inst.RunnerName == "" && want == "local" && inst.Runner == "local") {
+				kept = append(kept, inst)
+			}
+		}
+		out = kept
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -2209,35 +2221,73 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 // scopes every instance would be visible in every scope, making this a no-op — the
 // isolation boundary is the store's (real on docd/logd).
 //
-// The runner's failure to answer is returned rather than folded into a shorter list. The
-// mirror is read here as a scope FILTER over what the runner reported — `keep` — and not as a
-// fallback source: nothing below iterates `members` to add a row. So a runner that did not
-// answer contributes nothing, and without this error that absence was indistinguishable from
-// it having nothing to contribute (git-issue 6mnmxj6mh12krz3ae1n0).
+// The ROWS come from the process:instance mirror, and the runtimes are consulted only to
+// enrich them. That inversion is what per-process runners require: a process on a named runner
+// is in neither the local runtime nor the default runner's registry, so a union over those two
+// would simply not list it — and the fix is not to fan out over every installed runner, which
+// would let one dead runner take out the whole list in a feature whose whole point is that
+// runners come and go. The mirror is written at spawn and is complete without asking anybody.
+//
+// It also settles what an unreachable runner costs here. It used to cost ROWS, silently
+// (git-issue 6mnmxj6mh12krz3ae1n0), and then — once ListProcesses could say so — the whole
+// list. Now it costs neither: the rows are already here, and a runtime that does not answer
+// only means its live detail is missing, so the record's own account stands in.
 func (s *Server) processSnapshots(store entity.Store) ([]process.Instance, error) {
-	members := s.scopeMembers(store)
-	keep := func(inst process.Instance) bool { return members[inst.ID] }
-	out := make([]process.Instance, 0)
+	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
+	// the default runner when it keeps its own registry (a broker).
+	live := map[string]process.Instance{}
 	for _, inst := range s.Procd.Snapshots() {
-		if keep(inst) {
-			inst.Runner = "local"
-			out = append(out, inst)
-		}
+		inst.Runner = "local"
+		live[inst.ID] = inst
 	}
 	if l, ok := s.runner.(processLister); ok {
-		ref := s.runner.Ref()
-		insts, err := l.ListProcesses()
-		if err != nil {
-			return nil, fmt.Errorf("runner %s: %w", ref, err)
-		}
-		for _, inst := range insts {
-			if keep(inst) {
+		// Best effort, deliberately: an error here means this runner's DETAIL is missing, and
+		// the row survives without it. Failing the list on it would be trading a complete
+		// answer for no answer.
+		if insts, err := l.ListProcesses(); err == nil {
+			ref := s.runner.Ref()
+			for _, inst := range insts {
 				inst.Runner = ref
-				out = append(out, inst)
+				live[inst.ID] = inst
 			}
 		}
 	}
+	out := make([]process.Instance, 0)
+	for _, ent := range store.List(func(r entity.Ref) bool {
+		return r.System == mirror.System && r.Kind == mirror.InstanceKind
+	}) {
+		rec := entity.ToObj(ent.Payload)
+		if rec == nil {
+			continue
+		}
+		inst, ok := live[ent.Ref.ID]
+		if !ok {
+			inst = instanceFromRecord(ent.Ref.ID, rec)
+		}
+		// Where it ran is the RECORD's to say, not the runtime's: the runtime knows it hosts
+		// the process, and the record knows which installed runner that is and what the
+		// charter called it.
+		if on, _ := rec["runner"].(string); on != "" {
+			inst.Runner = on
+		}
+		if named, _ := rec["runnerName"].(string); named != "" {
+			inst.RunnerName = named
+		}
+		out = append(out, inst)
+	}
 	return out, nil
+}
+
+// instanceFromRecord is what verse can say about a process it is not currently holding a
+// handle on — one on a named runner, or one whose runtime has not been asked. It is the
+// durable account rather than a live one, which is exactly what the mirror is for.
+func instanceFromRecord(id string, rec map[string]any) process.Instance {
+	str := func(k string) string { v, _ := rec[k].(string); return v }
+	return process.Instance{
+		ID: id, Task: str("task"), Status: process.Status(str("status")),
+		Runner: str("runner"), RunnerName: str("runnerName"),
+		Result: str("result"), Err: str("err"),
+	}
 }
 
 // scopeMembers returns the set of process ids whose process:instance entity is visible in
@@ -2354,13 +2404,23 @@ func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 			return
 		case errors.Is(err, process.ErrNoSuchProcess):
 			// The runner answered and has never heard of it. That is a 404 about the id, and
-			// it is the only case below that is.
+			// it is the only case below that is — but not yet, because a process on a NAMED
+			// runner is in nobody's registry here. The record is asked before anyone gives up.
 		default:
 			// A runner that did not answer is not a runner without this process. Reporting
 			// 404 sent an operator to look for a typo in an id that was never wrong, for a
 			// process that is running somewhere they cannot currently see.
 			codec.HTTPError(w, r, http.StatusBadGateway,
 				fmt.Sprintf("runner %s: %s", s.runner.Ref(), err))
+			return
+		}
+	}
+	// The mirror, last: a process on a named runner is held by neither the local runtime nor
+	// the default runner, so without this `process get` would 404 for work that is running.
+	// The account is durable rather than live, which is what the record is for.
+	if e, ok, _ := s.scopedStore(r).Get(mirror.Ref(id)); ok {
+		if rec := entity.ToObj(e.Payload); rec != nil {
+			writeOut(w, r, http.StatusOK, instanceFromRecord(id, rec))
 			return
 		}
 	}

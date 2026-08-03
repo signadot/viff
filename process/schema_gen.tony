@@ -85,6 +85,7 @@ define:
   pending: .[array(verse-pending-gate)]
   result: .[string]
   runner: .[string]
+  runnerName: .[string]
   status: .[string]
   task: .[string]
 signature:

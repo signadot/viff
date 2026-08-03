@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -439,10 +440,28 @@ func waitForResult(cc *cli.Context, id string, timeout time.Duration) error {
 
 // ── list / get ───────────────────────────────────────────────────────────────
 
+type processesConfig struct {
+	Runner string `cli:"name=runner desc='only the processes on this runner (runners:<kind>:<name>, or local for the ones that named none)'"`
+}
+
+var psFlags = &processesConfig{}
+
 func processesCmd() *cli.Command {
-	return collection("processes", "/processes",
+	opts, err := cli.StructOpts(psFlags)
+	if err != nil {
+		panic(err)
+	}
+	return filteredCollection("processes", "/processes",
 		"processes — list processes (also: ps; act on one with `verse process`)", "process",
-		processSubs()...).
+		opts, func() url.Values {
+			// The name a spawn WROTE, which is what an operator remembers and what keeps
+			// answering after the runner entity is gone.
+			q := url.Values{}
+			if psFlags.Runner != "" {
+				q.Set("runner", psFlags.Runner)
+			}
+			return q
+		}, processSubs()...).
 		WithAliases("ps")
 }
 

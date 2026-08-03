@@ -25,8 +25,13 @@ const System = "process"
 // failed/orphaned), carried on the entity payload as the "status" field; its
 // Terminal() decides when to stop projecting.
 
+// InstanceKind is the kind a mirrored process lives under. Named, because a reader selecting
+// instances has to say so — the system also holds claims, which carry no status and would fall
+// through a check that only looks at one.
+const InstanceKind = "instance"
+
 // Ref is the entity that mirrors process id.
-func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: "instance", ID: id} }
+func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: InstanceKind, ID: id} }
 
 // Meta is the provenance Reflect publishes alongside a process's own state: where it runs
 // and what it is about. Grouped rather than passed as four positional strings, which is
@@ -49,6 +54,10 @@ type Meta struct {
 	// so removing one would orphan running work by making it unreconstructible — a deletion
 	// with an action at a distance.
 	RunnerName string
+	// StartedAt is when the process began, RFC3339. Empty on a fresh spawn — Reflect stamps
+	// the clock — and carried back verbatim by a re-attach, which is the only caller that
+	// knows this process is older than this verse.
+	StartedAt string
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
 	// "review.onDone". Empty for a process with no trigger behind it (`verse process run`).
 	Chain string
@@ -143,6 +152,15 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	// most want it — the url above is what makes the work still reachable then.
 	if m.RunnerName != "" {
 		st["runnerName"] = m.RunnerName
+	}
+	// When this process began, so `verse runners` can say when a runner was last used and a
+	// runner nobody names is visible as such. Written once, at the first reflection, and
+	// carried across a re-attach rather than re-stamped — a resumed process did not start
+	// again, and a clock that restarts on every restart measures the verse, not the work.
+	if m.StartedAt != "" {
+		st["startedAt"] = m.StartedAt
+	} else {
+		st["startedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	// Where this process came from in the charter. `chain` is the spawning action's kpath
 	// inside its trigger (review, review.onDone, …) and `trigger` is its root segment,

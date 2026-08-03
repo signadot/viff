@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/runner"
 )
@@ -344,12 +345,15 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	}
 }
 
-// A runner that did not answer must not read as a runner with nothing running. versed reads
-// the process:instance mirror as a scope FILTER over what the runner reported, never as a
-// fallback source, so an unreachable runner contributes no rows — and before this the
-// response was a clean 200 that was simply short, with nothing saying the runner was not
-// reached (git-issue 6mnmxj6mh12krz3ae1n0).
-func TestProcessListSaysWhenTheRunnerDidNotAnswer(t *testing.T) {
+// A runner that did not answer must not read as a runner with nothing running.
+//
+// It first read that way silently — the union dropped its rows and answered a clean, short 200
+// (git-issue 6mnmxj6mh12krz3ae1n0). Then it failed the whole list, which was right while the
+// LIST depended on the runner. It no longer does: per-process runners made the rows come from
+// the process:instance mirror, which is written at spawn and complete without asking anybody,
+// so an unreachable runner now costs live DETAIL and not rows. This pins the property all three
+// were reaching for — the answer never quietly gets shorter.
+func TestProcessListSurvivesAnUnreachableRunner(t *testing.T) {
 	srv := testServer(t)
 	// A runner url that is listening at bind time and gone by the call — the torn-down
 	// runner, which with per-process runners is an ordinary state rather than an exotic one.
@@ -358,6 +362,16 @@ func TestProcessListSaysWhenTheRunnerDidNotAnswer(t *testing.T) {
 	dead.Close()
 	srv.SetRunner(runner.HTTP(deadURL))
 
+	// Work that IS on it, recorded the way a spawn records it.
+	if _, _, err := srv.Store.Write(entity.Write{
+		At: mirror.Ref("stranded").At(),
+		Value: entity.Obj{
+			"status": "running", "task": "on the dead runner", "runner": deadURL,
+		}.Payload(),
+	}); err != nil {
+		t.Fatalf("writing the process:instance: %v", err)
+	}
+
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -365,16 +379,29 @@ func TestProcessListSaysWhenTheRunnerDidNotAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
-		t.Fatal("an unreachable runner listed as a verse with no processes on it")
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("list = %s: %s — the rows do not depend on the runner answering", resp.Status, body)
 	}
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Fatalf("status = %s, want 502", resp.Status)
+	var list []map[string]any
+	decodeResp(t, resp, &list)
+	var found map[string]any
+	for _, m := range list {
+		if m["id"] == "stranded" {
+			found = m
+		}
 	}
-	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), deadURL) {
-		t.Fatalf("body = %q, want the runner it could not reach", body)
+	if found == nil {
+		t.Fatalf("list = %+v, want the process on the unreachable runner — a verse with less "+
+			"work in it than it has is the failure this whole line of work is about", list)
+	}
+	if found["runner"] != deadURL {
+		t.Fatalf("runner = %v, want the url it is on", found["runner"])
+	}
+	if found["status"] != "running" {
+		t.Fatalf("status = %v, want the record's own account when the runtime cannot be asked",
+			found["status"])
 	}
 }
 

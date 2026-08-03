@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 
@@ -227,6 +228,37 @@ func collection(name, route, synopsis, singular string, subs ...*cli.Command) *c
 				return err
 			}
 			resp, err := httpGet(route, nil)
+			if err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+			return printBody(cc, resp)
+		})
+}
+
+// filteredCollection is collection with flags that narrow what it lists. The narrowing goes to
+// the SERVER as query parameters rather than being applied to the rows here, because the server
+// is where the record lives — a client-side filter would have to know which field a name is
+// stamped on, and would be a second place that has to agree about it.
+func filteredCollection(name, route, synopsis, singular string, opts []*cli.Opt,
+	query func() url.Values, subs ...*cli.Command,
+) *cli.Command {
+	cfg := &struct{ *cli.Command }{}
+	return cli.NewCommandAt(&cfg.Command, name).
+		WithSynopsis(synopsis).
+		WithOpts(opts...).
+		WithSubs(subs...).
+		WithRun(func(cc *cli.Context, args []string) error {
+			args, err := cfg.Parse(cc, args)
+			if err != nil {
+				return err
+			}
+			if handled, err := dispatch(cfg.Command, cc, args); handled {
+				return err
+			}
+			if err := noArgs(cfg.Command, name, singular, args); err != nil {
+				return err
+			}
+			resp, err := httpGet(route, query())
 			if err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}

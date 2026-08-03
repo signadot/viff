@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -582,4 +583,143 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("spawn naming the removed runner = %s, want 400", resp.Status)
 	}
+}
+
+// An operator can answer "where is this running" and "what is this runner carrying" without
+// reading a charter.
+func TestOperatorCanSeeWhere(t *testing.T) {
+	srv := testServer(t)
+	face := runnerFace(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	postTony(t, ts.URL+"/runners", map[string]any{
+		"name": "gpu", "kind": "pool", "url": face.URL,
+	}).Body.Close()
+	named := spawnOK(t, ts, map[string]any{"id": "there", "task": "t", "runner": "runners:pool:gpu"})
+	here := spawnOK(t, ts, map[string]any{"id": "here", "task": "t"})
+
+	// ps names the runner per process, and the default reads `local` rather than blank.
+	byID := map[string]map[string]any{}
+	for _, m := range psList(t, ts, "") {
+		byID[m["id"].(string)] = m
+	}
+	if got := byID[named]["runnerName"]; got != "runners:pool:gpu" {
+		t.Fatalf("runnerName = %v, want the name it was spawned under", got)
+	}
+	if got := byID[here]["runner"]; got != "local" {
+		t.Fatalf("runner = %v for the default, want \"local\" rather than blank", got)
+	}
+
+	// --runner selects, on the name that was written.
+	only := psList(t, ts, "runners:pool:gpu")
+	if len(only) != 1 || only[0]["id"] != named {
+		t.Fatalf("ps --runner = %+v, want just the one on that runner", only)
+	}
+	if local := psList(t, ts, "local"); len(local) != 1 || local[0]["id"] != here {
+		t.Fatalf("ps --runner local = %+v, want just the one that named none", local)
+	}
+
+	// `verse runners` counts what it is carrying, from the store.
+	one := runnersList(t, ts, false)[0]
+	if one["running"] != int64(1) || one["total"] != int64(1) {
+		t.Fatalf("counts = %+v, want one running and one total", one)
+	}
+	if one["lastSpawn"] == nil {
+		t.Fatalf("runners = %+v, want lastSpawn, so a runner nobody names is visible as such", one)
+	}
+	if _, probed := one["reach"]; probed {
+		t.Fatalf("runners = %+v, want no reach column without --probe: bare, the columns are "+
+			"what verse RECORDED", one)
+	}
+
+	// --probe adds what the runner says now, and records none of it.
+	probed := runnersList(t, ts, true)[0]
+	if probed["reach"] != "a runner" {
+		t.Fatalf("runners --probe = %+v, want a live reach column", probed)
+	}
+	e, _, _ := srv.Store.Get(runner.Ref("pool", "gpu"))
+	if rec := entity.ToObj(e.Payload); rec["reach"] != nil {
+		t.Fatalf("the store recorded health: %+v", rec)
+	}
+}
+
+// The rows come from the store, never from a fan-out over installed runners. One dead runner
+// must not take out the whole list — in a feature whose point is that runners come and go, that
+// would be the answer getting worse with every runner added.
+func TestPsDoesNotFanOutOverRunners(t *testing.T) {
+	srv := testServer(t)
+	face := runnerFace(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	postTony(t, ts.URL+"/runners", map[string]any{
+		"name": "gpu", "kind": "pool", "url": face.URL,
+	}).Body.Close()
+	live := spawnOK(t, ts, map[string]any{"id": "live", "task": "t", "runner": "runners:pool:gpu"})
+
+	// A second installed runner that is not there at all, carrying work of its own.
+	gone := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	goneURL := gone.URL
+	gone.Close()
+	postTony(t, ts.URL+"/runners?probe=false", map[string]any{
+		"name": "ghost", "kind": "pool", "url": goneURL,
+	}).Body.Close()
+	setInstance(t, srv, "stranded", entity.Obj{
+		"status": "running", "task": "t", "runner": goneURL, "runnerName": "runners:pool:ghost",
+	})
+
+	ids := map[string]bool{}
+	for _, m := range psList(t, ts, "") {
+		ids[m["id"].(string)] = true
+	}
+	if !ids[live] || !ids["stranded"] {
+		t.Fatalf("ps = %v, want both — the dead runner cost detail, not rows", ids)
+	}
+	// And it still answers for the dead runner by name, which is when an operator most wants it.
+	if only := psList(t, ts, "runners:pool:ghost"); len(only) != 1 || only[0]["id"] != "stranded" {
+		t.Fatalf("ps --runner on a dead runner = %+v, want its work", only)
+	}
+	// `process get` finds work on a named runner too, rather than 404ing on work that is running.
+	resp, err := ts.Client().Get(ts.URL + "/processes/stranded")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get of work on a named runner = %s, want 200", resp.Status)
+	}
+}
+
+func psList(t *testing.T, ts *httptest.Server, runnerName string) []map[string]any {
+	t.Helper()
+	u := ts.URL + "/processes"
+	if runnerName != "" {
+		u += "?runner=" + url.QueryEscape(runnerName)
+	}
+	resp, err := ts.Client().Get(u)
+	if err != nil {
+		t.Fatalf("ps: %v", err)
+	}
+	var out []map[string]any
+	decodeResp(t, resp, &out)
+	return out
+}
+
+func runnersList(t *testing.T, ts *httptest.Server, probe bool) []map[string]any {
+	t.Helper()
+	u := ts.URL + "/runners"
+	if probe {
+		u += "?probe=true"
+	}
+	resp, err := ts.Client().Get(u)
+	if err != nil {
+		t.Fatalf("runners: %v", err)
+	}
+	var out []map[string]any
+	decodeResp(t, resp, &out)
+	if len(out) == 0 {
+		t.Fatal("no runners listed")
+	}
+	return out
 }

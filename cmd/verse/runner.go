@@ -18,10 +18,28 @@ func runnerSubs() []*cli.Command {
 	}
 }
 
+type runnersConfig struct {
+	Probe bool `cli:"name=probe desc='also ask each runner what it is, right now (not recorded)'"`
+}
+
+var runnersFlags = &runnersConfig{}
+
 func runnersCmd() *cli.Command {
-	return collection("runners", "/runners",
+	opts, err := cli.StructOpts(runnersFlags)
+	if err != nil {
+		panic(err)
+	}
+	return filteredCollection("runners", "/runners",
 		"runners — list where work can run (add or remove one with `verse runner`)",
-		"runner", runnerSubs()...)
+		"runner", opts, func() url.Values {
+			// Bare, the columns are what verse has RECORDED. --probe adds what the runners say
+			// now, and nothing merges the two or keeps the second.
+			q := url.Values{}
+			if runnersFlags.Probe {
+				q.Set("probe", "true")
+			}
+			return q
+		}, runnerSubs()...)
 }
 
 func runnerCmd() *cli.Command {

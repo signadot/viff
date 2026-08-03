@@ -208,7 +208,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 	var out []string
 	for _, ent := range r.List(func(e entity.Ref) bool {
-		return e.System == mirror.System && e.Kind == "instance"
+		return e.System == mirror.System && e.Kind == mirror.InstanceKind
 	}) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -253,7 +253,7 @@ func runnerCounts(r entity.Reader, ref entity.Ref, url string) map[string]any {
 	var running, total int
 	var last string
 	for _, ent := range r.List(func(e entity.Ref) bool {
-		return e.System == mirror.System && e.Kind == "instance"
+		return e.System == mirror.System && e.Kind == mirror.InstanceKind
 	}) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
