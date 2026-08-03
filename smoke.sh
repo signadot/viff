@@ -353,7 +353,8 @@ printf 'hello from a\n' >"$tmp/tree/a.txt"
 printf 'hello from b\n' >"$tmp/tree/b.txt"
 SCOPE="smoke$$"
 # direct invocation (see the up launch above) so kill -INT reaches connect, not a wrapper.
-"$BIN" --addr "$ADDR" --scope "$SCOPE" connect "$tmp/tree" --driver scripted >"$tmp/connect.log" 2>&1 &
+"$BIN" --addr "$ADDR" --scope "$SCOPE" connect "$tmp/tree" --driver scripted \
+	--task 'echo checked $path' >"$tmp/connect.log" 2>&1 &
 CONN=$!
 fed=
 for _ in $(seq 1 150); do
@@ -373,6 +374,29 @@ if has "$(v entity get "local:dir-content-$SCOPE:a.txt" 2>/dev/null || true)" 'h
 else
 	note "content read did not match (mount timing) — federation verified above"
 fi
+# THE VALIDATOR RAN. Federation is only half of what connect promises — its startup line says
+# "validator per file" — and this half was dead for as long as it existed while every check
+# above passed: the rule's subject predicate selected nothing, and the completion hook under it
+# failed on a reference a hook cannot reach. Both were silent. So the assertion is the end of
+# the loop rather than any part of its middle: the file's own record says it was validated.
+val=
+for _ in $(seq 1 60); do
+	if has "$(v --scope "$SCOPE" entity get "local:dir-status-$SCOPE:a.txt" 2>/dev/null || true)" 'validated'; then
+		val=1
+		break
+	fi
+	sleep 0.5
+done
+[ -n "$val" ] || { v --scope "$SCOPE" entities --system process >&2; die "the per-file validator never validated a.txt"; }
+ok "the validator ran and latched: a.txt is marked validated"
+# And it LATCHES: a validated file is not selected again, which is the whole reason the
+# subject says what is outstanding rather than what exists.
+before=$(v --scope "$SCOPE" entities --system process -o tony | grep -c 'ref:' || true)
+sleep 3
+after=$(v --scope "$SCOPE" entities --system process -o tony | grep -c 'ref:' || true)
+[ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
+ok "a validated file is not validated again ($after process)"
+
 kill -INT "$CONN" 2>/dev/null || true # ctrl-c tears the scope down
 wait "$CONN" 2>/dev/null || true
 CONN=""
