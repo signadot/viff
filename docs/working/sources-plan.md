@@ -1,8 +1,12 @@
 # External sources: implementation plan
 
-Status: plan. Steps 1 and 2 of the design note are built; this is how step 3 lands. The design
-is [sources.md](sources.md) — read that first, since this file does not restate its reasoning,
-only the order of work and what each step must prove.
+Status: **done**, all six steps. The design is [sources.md](sources.md); this file is the order
+the work was taken in and what each step had to prove, kept because the surprises are recorded
+against the steps that found them. What is left of the note is step 4 of ITS list — dial-in over
+xap — which is refused at install until it is built.
+
+This should land into `docs/` and go away, together with the note, once dial-in is decided: see
+[contributing](contributing.md) on what a landing owes.
 
 The shape being built: a registration at `sources:<system>:<name>` carrying exactly one of
 `url`/`dial-in`/`dir`, probed at install and checked for provable ownership disjointness, with
@@ -56,7 +60,7 @@ Six steps. Each is independently reviewable and leaves the tree green. The depen
 real: 2 needs 1's entity and its prover, 3 needs 2's registration to have something to run, and
 5 needs 3's reflector to have something to stop. Steps 4, 5 and 6 are independent of each other.
 
-### 1. The registration entity, and the name it needs
+### 1. ~~The registration entity, and the name it needs~~ **Done**
 
 New `source/registration.go`, modelled on `runner/entity.go` throughout — same shape, same
 reasons, and where it differs the difference should be stated in the code.
@@ -128,7 +132,7 @@ overlaps a literal one; an id glob with `*` anywhere but the end is a parse erro
 silently-wrong claim. Plus symmetry over the whole table — an install checks one way and means
 both.
 
-### 2. Install: the routes, the two checks, and the CLI
+### 2. ~~Install: the routes, the two checks, and the CLI~~ **Done**
 
 New `versed/sources.go` and a route block in `Handler()` beside the runners':
 
@@ -164,7 +168,7 @@ mismatch is refused naming both; a second registration overlapping the first is 
 `--allow-overlap` installs it; `verse source add` reaches the route through the client the way a
 person types it.
 
-### 3. Lifetime: a reflector per registration, and a restart
+### 3. ~~Lifetime: a reflector per registration, and a restart~~ **Done**
 
 `Server` gains a map of registration ref → `{*source.Reflector, cancel}`, guarded by its own
 mutex — the `scopeEngs`/`scopeEngine` shape at `versed/server.go:641`, which is the tree's
@@ -216,7 +220,7 @@ malformed ref is a 400 rather than a silent full resync (a delivery that meant s
 specific must not quietly become "reflect everything"), and a hint at a registration that is
 installed but NOT RUNNING is a 503 rather than a 204.
 
-### 5. Removal, and the fork
+### 5. ~~Removal, and the fork~~ **Done**
 
 `removeSource` is `removeRunner` with the nouns changed (`versed/runners.go:158` — same 409,
 same two-flag refusal message): a removal whose registration has a **non-empty reflected slice**
@@ -230,7 +234,7 @@ what `owns` selects and leaves the neighbours (a second source's slice) standing
 leaves everything and the entities are still readable afterwards; no flag is needed when the
 slice is empty; either way the reflector is stopped.
 
-### 6. Scope
+### 6. ~~Scope~~ **Done**
 
 The registration is written through `s.scopedStore(r)`, which already reads `?scope=`; the
 reflector for a scoped registration is built over `s.Store.Scope(name)`. The ownership check in
@@ -249,6 +253,15 @@ the same repo for that scope's triggers and no one else's; `Covers` evaluated ag
 overlaid read tombstones an entity inherited from baseline *in the scope only*
 (`TestLogdStore_ScopeHidesAnInheritedEntity` is the primitive this rides on); `DeleteScope`
 takes the registration and the reflected entities together.
+
+Two things it settled that the plan had left vague. **Scoped registrations are NOT restored on
+restart, and cannot be** with what the store offers: `entity.Store` has `Scope` and
+`DeleteScope` and nothing that lists, and a scoped store reads baseline layered underneath, so
+nothing can find them. It is exactly the gap scoped charters have and survivable for the same
+reason — a scope is created on demand by whatever owns it, so the thing that made the scope can
+install into it again. And **the scope is named once, in `?scope=`**: a `scope:` field
+disagreeing with the request is refused, because a registration living in one place and
+reflecting into another is a thing nothing would ever clean up.
 
 ## What this plan deliberately does not do
 

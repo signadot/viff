@@ -471,9 +471,17 @@ has to be solved, instead of a public face verse has to grow.
    source's. The test is the same one step 2 runs, through a third transport: same
    `source.Git`, same `Reflection`, no ingress.
 
-Two claims are load-bearing and neither is proved. That `Covers` as a list of `entity.Pattern`s
-is expressive enough for a source that is not git: the cheap test — a second git source on
-another host — exercises the transport and says nothing about the vocabulary, so it does not
-count. The honest one is a system whose truth is not content-addressed and whose ownership does
-not fall on a field the source itself writes. And that converge inside a scope behaves as the
-store now says it does — the primitive is measured, but no reflection has run on top of it.
+Two claims were load-bearing and unproved when this was written. **One is now measured**:
+converge inside a scope behaves as the store says it does — `TestAScopedReflectionHidesAnInheritedEntity`
+runs a real reflection on top of the primitive, and a scoped pass hides a branch inherited from
+baseline while leaving baseline holding it.
+
+**The other stands, and moved.** It was "is `Covers` as a list of `entity.Pattern`s expressive
+enough for a source that is not git" — and the answer for *ownership* turned out to be that
+`Covers` was the wrong shape for it entirely: an install compares declarations with no entities
+in hand, so ownership became a ref glob and `Covers` stayed a `Pattern` for the pass. The
+untested claim is now about that glob: it works when a source's ids encode ownership
+positionally, which git's do only because `git.go` prefixes every id with the repo. The honest
+test is still the same one — a system whose truth is not content-addressed and whose ownership
+does not fall where the address does, `linear:issue:ENG-123` owned by project ENG. A second git
+source on another host exercises the transport and says nothing about the vocabulary.

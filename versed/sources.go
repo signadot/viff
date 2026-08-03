@@ -90,6 +90,19 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// The scope is the REQUEST's, as it is on every other route, and the field is made to
+	// agree. A registration must live in the scope it reflects into — that is what makes its
+	// lifetime free, since DeleteScope then drops the overlay and takes the registration and
+	// everything it wrote — so the two disagreeing is a registration in one place writing into
+	// another, which nothing would ever clean up.
+	scope := r.URL.Query().Get("scope")
+	if e.Scope != "" && e.Scope != scope {
+		http.Error(w, fmt.Sprintf("source %q: `scope: %s` but the request is against %s — a "+
+			"registration lives in the scope it reflects into, so name it once, in ?scope=",
+			e.Name, e.Scope, scopeName(scope)), http.StatusBadRequest)
+		return
+	}
+	e.Scope = scope
 	store := s.scopedStore(r)
 	out := map[string]any{"ref": source.Ref(e.System, e.Name).String()}
 
@@ -178,6 +191,14 @@ func overlaps(r entity.Reader, e source.Entity) string {
 	for _, other := range source.List(r) {
 		if other.System == e.System && other.Name == e.Name {
 			continue // a re-install of the same registration replaces it
+		}
+		// IN THE SAME SCOPE, which is load-bearing rather than a detail. A scoped store reads
+		// baseline layered underneath, so this listing carries baseline's registrations too —
+		// and a scoped source claiming what a baseline source also claims is not a collision at
+		// all. It is the overlay doing its job: "in here, the repo looks like this" is the
+		// question a sandbox exists to answer, and refusing it would refuse the motivating case.
+		if other.Scope != e.Scope {
+			continue
 		}
 		// An UNDECLARED ownership is not an empty one, and the difference is the whole of this
 		// check. source.Disjoint answers true for an empty list, and is right to: nothing
@@ -422,6 +443,7 @@ const ResyncEvery = time.Minute
 // costs. What IS written is in recordPass.
 type sourceRun struct {
 	rf     *source.Reflector
+	scope  string
 	cancel context.CancelFunc
 
 	mu       sync.Mutex
@@ -450,7 +472,7 @@ func (s *Server) startSource(e source.Entity) error {
 		store = s.Store.Scope(e.Scope)
 	}
 	rf := source.NewReflector(src, store, ResyncEvery)
-	run := &sourceRun{rf: rf}
+	run := &sourceRun{rf: rf, scope: e.Scope}
 	rf.OnPass(func(p source.Pass) { s.recordPass(store, ref, run, p) })
 
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -478,6 +500,32 @@ func (s *Server) stopSource(ref entity.Ref) {
 	if ok {
 		run.cancel()
 	}
+}
+
+// stopScopeSources ends every reflector reflecting INTO a scope, which is what a scope going
+// away means for the sources in it. Called before the overlay is dropped, so nothing is left
+// writing into a scope that no longer exists.
+func (s *Server) stopScopeSources(scope string) {
+	s.srcMu.Lock()
+	var doomed []*sourceRun
+	for ref, run := range s.srcRuns {
+		if run.scope == scope {
+			doomed = append(doomed, run)
+			delete(s.srcRuns, ref)
+		}
+	}
+	s.srcMu.Unlock()
+	for _, run := range doomed {
+		run.cancel()
+	}
+}
+
+// scopeName spells a scope for a message, since the empty one has a name people use.
+func scopeName(scope string) string {
+	if scope == "" {
+		return "baseline"
+	}
+	return scope
 }
 
 // stopAllSources ends every reflector this server is running.
@@ -578,10 +626,12 @@ func stillInstalled(ref entity.Ref) entity.Require {
 // verse that has not got them back yet — and a level-triggered pass does not repeat itself, so
 // what those rules missed they would miss for good.
 //
-// Scoped registrations are not restored here, for the reason scoped charters are not: a scope's
-// engine is created on demand, and a scoped store reads baseline layered underneath, so
-// restoring one means enumerating scopes and reading only the scope's own layer. See
-// docs/working/sources-plan.md step 6.
+// SCOPED REGISTRATIONS ARE NOT RESTORED, and cannot be with what the store offers: there is no
+// way to enumerate scopes (entity.Store has Scope and DeleteScope and nothing that lists), and
+// a scoped store reads baseline layered underneath, so nothing here can find them. It is
+// exactly the gap scoped charters have, and it is survivable for the same reason: a scope is
+// created on demand by whatever owns it — `verse connect` for a session, a sandbox for its own
+// lifetime — so the thing that made the scope is the thing that can install into it again.
 func (s *Server) restoreSources() {
 	for _, e := range source.List(s.Store) {
 		if e.Scope != "" {

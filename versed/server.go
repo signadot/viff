@@ -933,6 +933,11 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "scope delete: ?scope required", http.StatusBadRequest)
 		return
 	}
+	// Stop the scope's SOURCES before its data goes away: a reflector writing into a scope
+	// that no longer exists would be re-creating an overlay nobody asked for, one converge at
+	// a time. This is what makes a scoped source's lifetime free — it has no deregistration
+	// path to forget, because the scope going away takes it.
+	s.stopScopeSources(name)
 	// Stop the scope's engine (if any) before its data goes away, so it isn't
 	// observing a store whose scope is being deleted.
 	s.scopeMu.Lock()
