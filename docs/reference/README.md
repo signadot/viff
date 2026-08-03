@@ -12,6 +12,8 @@ deliberately skips. For what a charter's fields *mean*, see
 | [processes.md](processes.md) | the process surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
 | [connect.md](connect.md) | federating a working tree, and scopes |
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
+| [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a process records |
+| [examples/](examples/README.md) | working programs to copy and change, starting with a runner |
 | [goals.md](goals.md) | goals — a target over the reactive substrate (being redesigned) |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why that is asymmetric |
@@ -61,14 +63,19 @@ verse
           approve: y, yes · deny: n, no · --say: -s
   triggers                                   the installed charter
   trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
-  processes (ps)                             every process, whatever runs it
+  processes (ps) [--runner <ref>]            every process, whatever runs it
   process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
+          run [--runner <ref>]               …on an installed runner, not the verse default
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>
           vector <id> auto|ask|park [--as <who>] · vector <id> --file <f>
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
           do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
           do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
+  runners                                    where work can run  [--probe]
+  runner  add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
+          check <ref>                        ask a runner what it is, right now
+          remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
   flows                                      the distinct subjects with live work
   flow    show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live processes by the subject they are about: demo:pr:1 (one),

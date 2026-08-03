@@ -66,7 +66,9 @@ verse up --runner http://other-verse:9797     # host processes on a remote verse
 verse up --broker --broker-addr :9090         # …or behind a dial-in broker
 ```
 
-Both are the same seam, and every `verse process` verb works across all three. See
+Both are the same seam, and every `verse process` verb works across all three. Either way this
+sets the DEFAULT: a spawn may name an installed runner instead, and go somewhere this flag
+never mentioned — see [runners.md](runners.md). See also
 [process control](../process-control.md) and [processes.md](processes.md).
 
 ## Configuration

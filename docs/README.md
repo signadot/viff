@@ -61,9 +61,11 @@ drive a local agent, a remote one, and a human.
 | | [Attached resolvers](attached-resolvers.md) — a service that answers gates: the two doors, the layers, and whose answer counts |
 | | [reference/resolvers.md](reference/resolvers.md) — the binding, the two entities, and the routes a resolver lives on |
 | | [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides, and promotes what is not its to decide |
+| | [Runners](runners.md) — where work runs: installing one, naming it on a spawn, and what removing one does to the work on it |
+| | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a process records |
+| | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
 | | [External processes](external-processes.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
-| | [Per-process runners](working/per-process-runners.md) — a plan: which runner a spawn goes to, and what removing one does to work on it |
 | | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
 
 ### Steering
