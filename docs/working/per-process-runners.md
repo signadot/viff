@@ -133,10 +133,12 @@ work unsupervised — the deployment says one thing and the verse does another.
 startup keep meaning what they mean: they set that default. They stop being mutually exclusive
 with *each other* only if somebody wants that; this plan does not need it.
 
-**Prerequisite**, and it is not optional: the runner contract does not carry how control is
-applied, so nothing detects a runner that QUEUES an answer rather than delivering it. That is
-harmless while one URL is chosen at deploy time and fatal once a spawn may name any. See the
-residual — one of its two options has to land with or before this step.
+**Prerequisite**, and it is not optional: `httpRunner.Spawn` discards the response status, so a
+runner REFUSING a spawn is treated as having accepted it (git-issue `6mnmxj6mh12krz3ae1n0`). A
+refusal has to read as a refusal before a spawn may name an arbitrary runner — otherwise the
+first thing a drive meets when it points work somewhere that will not take it is a process that
+hangs. See the residual, which is also where the queued-vs-delivered gap this closes is
+argued.
 
 **Proves:** two processes in one verse run in two places. Test: a spawn naming an installed
 runner reaches it (an `httptest` runner records the call) while a spawn naming none goes to the
@@ -274,15 +276,34 @@ entity that may not point at a queuing runner means a drive's broker can only be
 making it the whole verse's runner again. Not "you cannot deploy a broker" — "you cannot have
 one for some of the work".
 
-The answer is that the hop has to carry the property. Two ways, and step 2 should not land
-before one of them is chosen:
+**The runner refuses, and that is the default.** A real runner knows what it is and what it can
+host; verse does not, and cannot be made to without either a contract change or a probe. So the
+runner handed a launch it cannot host with the semantics verse expects returns an error, and the
+onus sits with whoever deployed it — which is the drive, which is the party that knows. For a
+broker, refusing to be driven as somebody else's external runner is the right default, because
+the queued/delivered distinction has nowhere to go across that hop.
+
+This needs nothing new. A refused spawn already has a path — `process.FailedHandle` carries the
+reason onto the flow, the way an envelope this build does not have already does.
+
+**Except that verse ignores refusals today** (git-issue `6mnmxj6mh12krz3ae1n0`).
+`httpRunner.Spawn` checks the transport error and discards the HTTP status, so a runner
+answering 400 or 501 is treated as having accepted the work: a remote handle comes back, a
+`process:instance` is mirrored, and the flow waits on a process that was never started. The
+refusal reads as a hang. That has to be fixed for this option to mean anything, and it is worth
+fixing regardless — with per-process runners a refusal stops being a deploy-time
+misconfiguration and becomes a normal outcome, a drive pointing work at a runner that will not
+take it.
+
+Two further ways, neither needed first:
 
 - **the contract carries it** — process-control exposes how control is applied (a capability on
-  the status response), and `runner.HTTP`'s handle reports what it was told. Composes, and makes
-  the guarantee structural rather than configurational.
-- **verse constrains the URL** — a runner entity must be a runner face, checked at install, and
-  a queuing one is refused until the above exists. Cheaper, and it is a refusal that will have
-  to be lifted.
+  the status response), and `runner.HTTP`'s handle reports what it was told. Where this should
+  end up: it makes the guarantee structural rather than a convention, and it lets a broker stop
+  refusing.
+- **verse constrains the URL** — a runner entity must be a runner face, checked at install. The
+  weakest of the three: verse cannot classify a URL without probing it, and a probe is the health
+  check this plan says it does not do.
 
 The residual under either: several workers stand behind one broker name, so "which worker took
 it" is a question the runner name cannot answer, and a drive debugging a stuck process will ask
