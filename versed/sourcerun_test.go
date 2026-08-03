@@ -3,11 +3,13 @@ package versed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,13 +67,16 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	// …and removing it STOPS the reflector. A reflector outliving its registration is a writer
 	// on a slice nothing claims — the second writer the install check exists to prevent,
 	// arriving through the back door.
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/git/local", nil)
+	// --forget, because by now it HAS reflected something and a bare remove is refused until
+	// told which (the fork is TestRemovingASourceForksOnWhatItReflected); what is being
+	// asserted here is that either answer stops the reflector.
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/git/local?forget=true", nil)
 	resp, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("remove = %s", resp.Status)
+		t.Fatalf("remove = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	srv.srcMu.Lock()
 	n := len(srv.srcRuns)
@@ -343,5 +348,141 @@ func TestHintRefusals(t *testing.T) {
 	if resp, err := ts.Client().Post(ts.URL+"/sources/git/local/hint", "", nil); err != nil ||
 		resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("hint at a stopped source = %v (%v), want 503", resp.Status, err)
+	}
+}
+
+// removeSource answers the question a delete cannot: what happens to what it reflected.
+//
+// Tombstoning always is right about the common case and wrong about the one that will happen —
+// moving a repo to another host is a remove and an add of the same physical truth, and
+// tombstoning it fires every branch-deleted trigger in the verse and then every branch-created
+// one behind it. So a removal with a non-empty reflected slice is refused until told which.
+func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
+	requireGit(t)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	dir := repoWithCommit(t)
+	install := func(name string) {
+		t.Helper()
+		if resp := postTony(t, ts.URL+"/sources", map[string]any{
+			"system": "git", "name": name, "dir": dir,
+		}); resp.StatusCode != http.StatusCreated {
+			t.Fatalf("install %s = %s: %s", name, resp.Status, bodyOf(t, resp))
+		}
+	}
+	remove := func(name, flag string) *http.Response {
+		t.Helper()
+		u := ts.URL + "/sources/git/" + name
+		if flag != "" {
+			u += "?" + flag + "=true"
+		}
+		req, _ := http.NewRequest(http.MethodDelete, u, nil)
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("remove: %v", err)
+		}
+		return resp
+	}
+
+	install("local")
+	head := entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)}
+	waitForRef(t, srv.Store, head)
+
+	// Bare: refused, and the message names both flags, because neither default survives
+	// contact with the case it is wrong about.
+	resp := remove("local", "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("bare remove with a reflected slice = %s, want 409", resp.Status)
+	}
+	body := bodyOf(t, resp)
+	for _, want := range []string{"--forget", "--keep"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the refusal should offer %s, got: %s", want, body)
+		}
+	}
+
+	// --keep leaves the last known state, now frozen: the repo is moving, not vanishing.
+	if resp := remove("local", "keep"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("--keep = %s", resp.Status)
+	}
+	if _, ok, _ := srv.Store.Get(head); !ok {
+		t.Fatal("--keep tombstoned the slice; it is supposed to leave it standing")
+	}
+
+	// …and then --forget, on a re-install of the same truth, does take it away.
+	install("local")
+	waitForRef(t, srv.Store, head)
+	if resp := remove("local", "forget"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("--forget = %s", resp.Status)
+	}
+	if _, ok, _ := srv.Store.Get(head); ok {
+		t.Fatal("--forget left the slice standing")
+	}
+}
+
+// A removal with nothing reflected needs no flag, there being nothing to be wrong about.
+func TestRemovingASourceThatReflectedNothingNeedsNoFlag(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// Unreachable, so it installs (with a warning) and reflects nothing.
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+		"system": "git", "name": "never", "url": dead.URL,
+	}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s", resp.Status)
+	}
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/git/never", nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove = %v (%v), want 200 with no flag", resp.Status, err)
+	}
+}
+
+// A --forget is bounded by what the install PROVED this source was the single writer of, and by
+// nothing else. Deleting a neighbour's slice on the way out would be the disjointness check
+// undone at the last moment.
+func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "a")
+	e := source.Entity{Name: "a", System: "git", URL: "http://x:1", Owns: []string{"git:*:A/*"}}
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "a", "system": "git", "url": e.URL, "owns": e.Owns,
+	}.Payload())
+
+	mine := entity.Ref{System: "git", Kind: "ref", ID: "A/main"}
+	theirs := entity.Ref{System: "git", Kind: "ref", ID: "B/main"}
+	entitytest.Set(t, srv.Store, mine, entity.Obj{"repo": "A"}.Payload())
+	entitytest.Set(t, srv.Store, theirs, entity.Obj{"repo": "B"}.Payload())
+
+	if got := reflectedBy(srv.Store, e); len(got) != 1 || got[0] != mine {
+		t.Fatalf("reflectedBy = %v, want just %v", got, mine)
+	}
+}
+
+// A clean shutdown is not a failure, and must not be recorded as one.
+//
+// Cancelling a reflector fails the pass in flight with context.Canceled. Written down, that
+// would outlive the process: every source would come back from a clean stop carrying it as
+// lastError, and an operator reading the listing after a restart would see a verse full of
+// broken sources that are all fine.
+func TestACleanShutdownIsNotRecordedAsAFailure(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "local")
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "local", "system": "git", "url": "http://x:1",
+	}.Payload())
+
+	run := &sourceRun{}
+	srv.recordPass(srv.Store, ref, run, source.Pass{
+		Err: fmt.Errorf("reflect git: %w", context.Canceled),
+	})
+	reg, _, _ := srv.Store.Get(ref)
+	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
+		t.Fatalf("a cancelled pass should record nothing, got %v", entity.ToObj(reg.Payload))
 	}
 }

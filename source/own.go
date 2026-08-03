@@ -3,6 +3,8 @@ package source
 import (
 	"fmt"
 	"strings"
+
+	"github.com/signadot/verse/entity"
 )
 
 // An ownership claim says what no other source may write, and it is spelled the way every other
@@ -168,4 +170,29 @@ func parseClaims(ss []string) ([]Claim, error) {
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// Claims reports whether an ownership list claims a concrete ref.
+//
+// It is Disjoint asked about a POINT: a ref is a claim with no wildcards, and a claim covers it
+// exactly when the two are not disjoint. Naming it rather than open-coding that identity twice,
+// because the two callers are far apart — an install proving two registrations are separable,
+// and a removal deciding what a `--forget` may tombstone — and they must not drift, or verse
+// would delete on removal something it never proved this source owned.
+//
+// A claim that does not parse is skipped rather than treated as matching everything. Install
+// refuses one, so this is the belt to that suspenders, and erring toward claiming LESS is the
+// safe direction for the caller that deletes.
+func Claims(owns []string, ref entity.Ref) bool {
+	point := Claim{System: ref.System, Kind: ref.Kind, ID: ref.ID}
+	for _, own := range owns {
+		c, err := ParseClaim(own)
+		if err != nil {
+			continue
+		}
+		if !c.Disjoint(point) {
+			return true
+		}
+	}
+	return false
 }

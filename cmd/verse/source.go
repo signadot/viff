@@ -119,12 +119,22 @@ func (cfg *sourceCheckConfig) run(cc *cli.Context, args []string) error {
 	return printBody(cc, resp)
 }
 
-type sourceRemoveConfig struct{ *cli.Command }
+type sourceRemoveConfig struct {
+	*cli.Command
+	Forget bool `cli:"name=forget desc='the reflection is over: tombstone what this source wrote'"`
+	Keep   bool `cli:"name=keep desc='the same truth is moving elsewhere: leave the last known state, now frozen'"`
+}
 
 func sourceRemoveCmd() *cli.Command {
 	cfg := &sourceRemoveConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
 	return cli.NewCommandAt(&cfg.Command, "remove").
-		WithSynopsis("remove a source: remove <ref>").WithRun(cfg.run)
+		WithSynopsis("remove a source: remove <ref> [--forget | --keep]").
+		WithOpts(opts...).
+		WithRun(cfg.run)
 }
 
 func (cfg *sourceRemoveConfig) run(cc *cli.Context, args []string) error {
@@ -136,7 +146,16 @@ func (cfg *sourceRemoveConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpDelete(path, nil)
+	// The two intents a delete cannot carry. Sent as given rather than defaulted here: the
+	// refusal is the server's to make, so one message says what both flags mean.
+	q := url.Values{}
+	if cfg.Forget {
+		q.Set("forget", "true")
+	}
+	if cfg.Keep {
+		q.Set("keep", "true")
+	}
+	resp, err := httpDelete(path, q)
 	if err != nil {
 		return fmt.Errorf("source remove: %w", err)
 	}

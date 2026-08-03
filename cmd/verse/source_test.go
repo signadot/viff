@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/source/sourced"
 )
@@ -22,6 +24,10 @@ func sourceFace(t *testing.T, repo string) *httptest.Server {
 		{"init", "-b", "main"},
 		{"config", "user.email", "t@example.com"},
 		{"config", "user.name", "Tester"},
+		// A commit, because an UNBORN repo reflects nothing at all: gitHead answers nil with no
+		// HEAD sha, and there are no refs yet either. A removal test needs something reflected
+		// to fork on.
+		{"commit", "--allow-empty", "-m", "first"},
 	} {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
@@ -78,8 +84,18 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 		!strings.Contains(out, "a source") {
 		t.Fatalf("source check = %q (%v)", out, err)
 	}
-	if _, err := runCLI(t, "source", "remove", "git:laptop"); err != nil {
-		t.Fatalf("source remove: %v", err)
+	// A bare remove is REFUSED once it has reflected something, and the flags reach the route
+	// the way a person types them — the half of a command that is silently unreachable when the
+	// client builds its request wrongly.
+	waitForCLI(t, store, entity.Ref{System: source.GitSystem, Kind: "head", ID: "verse"})
+	if _, err := runCLI(t, "source", "remove", "git:laptop"); err == nil {
+		t.Fatal("a bare remove with a reflected slice should be refused")
+	}
+	if _, err := runCLI(t, "source", "remove", "--keep", "git:laptop"); err != nil {
+		t.Fatalf("source remove --keep: %v", err)
+	}
+	if payloadOf(t, store, source.Ref("git", "verse")) != nil {
+		t.Fatal("--keep should leave the reflected slice standing")
 	}
 	if payloadOf(t, store, source.Ref("git", "laptop")) != nil {
 		t.Fatal("remove left the registration standing")
@@ -168,4 +184,18 @@ func TestSourceAddFromAFile(t *testing.T) {
 	if !strings.Contains(err.Error(), "ulr") {
 		t.Fatalf("the refusal should name the field, got: %v", err)
 	}
+}
+
+// waitForCLI waits for a reflected entity to land, so a removal test is about the fork rather
+// than about a race with the reflector's first pass.
+func waitForCLI(t *testing.T, store entity.Store, ref entity.Ref) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok, _ := store.Get(ref); ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", ref)
 }

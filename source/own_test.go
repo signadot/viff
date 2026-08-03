@@ -3,6 +3,8 @@ package source_test
 import (
 	"testing"
 
+	"github.com/signadot/verse/entity"
+
 	"github.com/signadot/verse/source"
 )
 
@@ -126,46 +128,25 @@ func TestParseClaimRefusals(t *testing.T) {
 func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 	g := source.NewGit()
 	g.AddRepo("A", t.TempDir())
-	claims, err := parseAll(g.Owns())
-	if err != nil {
-		t.Fatalf("git's own claims do not parse: %v", err)
-	}
 	for _, ref := range []string{"git:ref:A/main", "git:head:A", "git:commit:A/abc123"} {
-		if !claimed(claims, ref) {
+		if !source.Claims(g.Owns(), mustRef(t, ref)) {
 			t.Fatalf("%s is reflected but not claimed by Owns() = %v", ref, g.Owns())
 		}
 	}
-	// And it does not claim a neighbour's.
+	// And it does not claim a neighbour's — which is what bounds a --forget removal to the
+	// slice this registration was proved to own.
 	for _, ref := range []string{"git:ref:B/main", "git:head:B"} {
-		if claimed(claims, ref) {
+		if source.Claims(g.Owns(), mustRef(t, ref)) {
 			t.Fatalf("%s belongs to another repo but is claimed by %v", ref, g.Owns())
 		}
 	}
 }
 
-func parseAll(ss []string) ([]source.Claim, error) {
-	out := make([]source.Claim, 0, len(ss))
-	for _, s := range ss {
-		c, err := source.ParseClaim(s)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, nil
-}
-
-// claimed reports whether any claim covers a concrete ref, by asking the disjointness rule the
-// question it already answers: a claim covers a ref iff it is not disjoint from that exact ref.
-func claimed(claims []source.Claim, ref string) bool {
-	exact, err := source.ParseClaim(ref)
+func mustRef(t *testing.T, s string) entity.Ref {
+	t.Helper()
+	ref, err := entity.ParseRef(s)
 	if err != nil {
-		return false
+		t.Fatalf("ParseRef(%q): %v", s, err)
 	}
-	for _, c := range claims {
-		if !c.Disjoint(exact) {
-			return true
-		}
-	}
-	return false
+	return ref
 }
