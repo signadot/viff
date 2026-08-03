@@ -2102,9 +2102,14 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, why, http.StatusBadRequest)
 		return
 	}
+	vec, err := process.NamedVector(body.Vector)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	h := s.runner.Spawn(process.Launch{
 		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
-		Resolver: body.Resolver,
+		Resolver: body.Resolver, Vector: vec,
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: s.runner.Ref(), Subject: body.Subject, Resolver: body.Resolver,

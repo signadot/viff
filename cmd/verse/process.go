@@ -336,7 +336,10 @@ type procRunConfig struct {
 	// because it never let anyone choose one.
 	Name string `cli:"name=name desc='label for the run; the id is derived from it and printed'"`
 	// The two fields a spawn has carried all along with no way to type them.
-	Subject  string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
+	Subject string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
+	// Without this a scripted run is `auto` and asks nothing, so a --resolver bound to it
+	// would have no question to answer.
+	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
 	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
 }
 
@@ -348,7 +351,8 @@ func procRunCmd() *cli.Command {
 	}
 	return cli.NewCommandAt(&cfg.Command, "run").
 		WithSynopsis("run a process: run <task…> [--name <label>] [--subject <ref>] "+
-			"[--resolver <ref>] [--attach] [--wait] [--driver scripted|llm]").
+			"[--resolver <ref>] [--vector auto|ask|park] [--attach] [--wait] "+
+			"[--driver scripted|llm]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -364,7 +368,7 @@ func (cfg *procRunConfig) run(cc *cli.Context, args []string) error {
 	task := strings.Join(args, " ")
 	resp, err := httpPost("/processes", api.Spawn{
 		Task: task, Driver: cfg.Driver, Name: cfg.Name,
-		Subject: cfg.Subject, Resolver: cfg.Resolver,
+		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: cfg.Vector,
 	})
 	if err != nil {
 		return fmt.Errorf("process run: %w", err)

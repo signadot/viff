@@ -155,6 +155,7 @@ define:
   retain: .[int]
   subject: .[string]
   task: .[string]
+  vector: .[string]
 signature:
   name: verse-spawn
 ---

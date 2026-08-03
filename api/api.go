@@ -133,6 +133,10 @@ type Spawn struct {
 	// carries one from its firing; this is the ad-hoc face of the same field, and without it
 	// a `process run` is about nothing, which is a real state and not a useful default.
 	Subject string `tony:"field=subject,omitzero"`
+	// Vector is the autonomy dial — `auto`, `ask` or `park` — the ad-hoc face of a spawn's
+	// `vector:`. Without it the runtime's own default stands, which for a scripted run is
+	// `auto`: it asks nothing, and a `resolver` bound to it would have nothing to answer.
+	Vector string `tony:"field=vector,omitzero"`
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
 	// spawn's `resolver:`, so `verse process run` and a firing can bind the same way.
 	Resolver string `tony:"field=resolver,omitzero"`

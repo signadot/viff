@@ -460,6 +460,11 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["subject"] = ir.FromString(string(s.Subject))
 	}
 
+	// Field: Vector
+	if s.Vector != "" {
+		irMap["vector"] = ir.FromString(string(s.Vector))
+	}
+
 	// Field: Resolver
 	if s.Resolver != "" {
 		irMap["resolver"] = ir.FromString(string(s.Resolver))
@@ -534,6 +539,12 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
 			s.Subject = string(fieldNodeUnwrapped.String)
+		case "vector":
+			// Field: Vector
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "vector", fieldNodeUnwrapped.Type)
+			}
+			s.Vector = string(fieldNodeUnwrapped.String)
 		case "resolver":
 			// Field: Resolver
 			if fieldNodeUnwrapped.Type != ir.StringType {
