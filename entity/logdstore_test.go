@@ -217,6 +217,60 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 	}
 }
 
+// A scope can delete an entity it does not own: removing an INHERITED baseline entity
+// hides it in the scope and leaves baseline holding it. The overlay's read-through is
+// therefore not one-way — a scope can say "not here" about something it never wrote.
+//
+// This is what lets a scoped reflection be level-triggered. A converge writes what the
+// external truth has and tombstones what it does not, and inside a scope most of what it
+// finds standing is inherited; if a scoped delete could only remove scope-local entities,
+// a scoped source could not say "that branch does not exist in this sandbox" and every
+// scope would be stuck with baseline's set as a floor. See docs/working/sources.md.
+func TestLogdStore_ScopeHidesAnInheritedEntity(t *testing.T) {
+	base := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "inherited"}
+	set(t, base, ref, Obj{"stage": "open"}.Payload())
+
+	scoped := base.Scope("me")
+	inDemo := func(r Ref) bool { return r.System == "demo" }
+	if _, ok, _ := scoped.Get(ref); !ok {
+		t.Fatal("precondition: the scope should read the baseline entity through")
+	}
+
+	remove(t, scoped, ref)
+
+	// Hidden in the scope, by both faces of a read — Get and List. List is the one the
+	// converge path uses to decide what to tombstone, so a hide it did not honour would
+	// leave a scoped reflection re-tombstoning the same entity on every pass.
+	if _, ok, _ := scoped.Get(ref); ok {
+		t.Fatal("scoped delete of an inherited entity did not hide it from Get")
+	}
+	if n := len(scoped.List(inDemo)); n != 0 {
+		t.Fatalf("scoped delete did not hide the entity from List: %d entities remain", n)
+	}
+
+	// And baseline still has it: the hide is an overlay fact, not a delete.
+	if e, ok, _ := base.Get(ref); !ok || ToObj(e.Payload)["stage"] != "open" {
+		t.Fatalf("a scoped delete reached baseline: ok=%v payload=%#v", ok, e.Payload)
+	}
+
+	// The scope can bring it back by writing its own, which is what a reflection does when
+	// the branch reappears.
+	set(t, scoped, ref, Obj{"stage": "reopened"}.Payload())
+	if e, ok, _ := scoped.Get(ref); !ok || ToObj(e.Payload)["stage"] != "reopened" {
+		t.Fatalf("scope could not rewrite what it had hidden: ok=%v payload=%#v", ok, e.Payload)
+	}
+
+	// Dropping the overlay drops the hide with it.
+	remove(t, scoped, ref)
+	if err := base.DeleteScope("me"); err != nil {
+		t.Fatalf("DeleteScope: %v", err)
+	}
+	if _, ok, _ := base.Scope("me").Get(ref); !ok {
+		t.Fatal("after DeleteScope the hide survived: a fresh scope should read baseline again")
+	}
+}
+
 // Scope caches its children: asking twice yields the same live store.
 func TestLogdStore_ScopeCaching(t *testing.T) {
 	base := openStore(t)

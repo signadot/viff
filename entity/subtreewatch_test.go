@@ -322,3 +322,39 @@ func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
 		t.Fatalf("event = %s, want demo:pr:1", ev.Ref)
 	}
 }
+
+// A scoped subtree watch — what a per-scope engine runs (Engine.ObserveScoped) — seeds the
+// entities the scope inherits from baseline, and reports a scoped delete of one of them as
+// a Delete. So hiding an inherited entity is not merely a read-time fact: it is an edge the
+// scope's triggers fire on, the same one they would see for an entity the scope wrote itself.
+//
+// This is the event half of TestLogdStore_ScopeHidesAnInheritedEntity, and it is what a
+// scoped reflection needs: a converge inside a scope that tombstones a branch the checkout
+// no longer has must reach that scope's rules. See docs/working/sources.md.
+func TestScopedWatchSeesADeleteOfAnInheritedEntity(t *testing.T) {
+	base := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "inherited"}
+	set(t, base, ref, Obj{"stage": "open"}.Payload())
+
+	scoped, ok := base.Scope("me").(*LogdStore)
+	if !ok {
+		t.Fatal("Scope did not return a *LogdStore")
+	}
+	ch, unsub, err := scoped.WatchSubtree("demo", "pr")
+	if err != nil {
+		t.Fatalf("scoped WatchSubtree: %v", err)
+	}
+	defer unsub()
+	r := reader(ch)
+
+	// The seed: a scoped watch replays what the scope reads, inherited entities included.
+	if ev := r.next(t, "the seed of the inherited entity"); ev.Ref != ref || ev.Op != Set {
+		t.Fatalf("seed = %s %s, want %s set", ev.Ref, ev.Op, ref)
+	}
+
+	remove(t, scoped, ref)
+	if ev := r.next(t, "the scoped tombstone"); ev.Ref != ref || ev.Op != Delete {
+		t.Fatalf("after a scoped delete of an inherited entity: %s %s, want %s delete",
+			ev.Ref, ev.Op, ref)
+	}
+}
