@@ -91,7 +91,8 @@ the verse that owns it, through a docd controller.
 | | [Content federation](content-federation.md) — why `connect` replaced `--root` |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, GitHub and the rest; webhook as hint, reconcile as truth |
-| ahead | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
+| ahead | [External sources](working/sources.md) — a source you deploy and install, and why a Source is not a controller |
+| | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
 ## What is built, and what isn't
 

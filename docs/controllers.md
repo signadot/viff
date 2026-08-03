@@ -5,18 +5,44 @@ storage: a [`libctl.Handler`](https://pkg.go.dev/github.com/signadot/tony-format
 mounted at a [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath), to
 which docd routes every client operation (`Match`/`Patch`/`Watch`) for that subtree by
 longest-prefix mount. To verse's store client — which points at docd's client address — a
-controller-served subtree is indistinguishable from logd: `demo:*`/`process:*` resolve to
-logd, `local:dir-content-*` (and, ahead, `git:*`, `k8s:*`) resolve to a controller, with no
-store rewrite.
+controller-served subtree is indistinguishable *to a read*: `demo:*`/`process:*` resolve to
+logd, `local:dir-content-*` resolves to a controller, with no store rewrite. To a *watch* it is
+not indistinguishable at all, which is the first thing to know and is below.
 
 You can see one running in [reference/connect.md](reference/connect.md),
 where `verse connect` mounts the content controller over your working tree.
 
-Two things are built as controllers today: the content controller (`source/content.go`
-— serves file bytes on demand under `local:dir-content-<scope>:*`) and, ahead, every
-Source ([sources](sources.md) — reflect an external system into the slice it owns). This
-note is the how-to and, more importantly, the invariants a controller must honor —
-several of them learned the hard way, so read them before you write a `Watch`.
+One thing is built as a controller today: the content controller (`source/content.go` — serves
+file bytes on demand under `local:dir-content-<scope>:*`). This note is the how-to and, more
+importantly, the invariants a controller must honor — several of them learned the hard way, so
+read them before you write a `Watch`, starting with the one that decides whether to write a
+controller at all.
+
+## The first question: should this be a controller at all?
+
+**A mounted slice fires no triggers.** Mounts live under `entity.MountRoot`, a top-level segment
+disjoint from the entity root, because a mount is process-driven and so has no history, and a
+history-bearing watch must never span one (`entity/logdstore.go`, and the "no root watches"
+invariant below is the other half of the same story). `refPath` renders a mount-owned slice
+under `MountRoot`; `LogdStore.WatchSubtree` renders only under the entity root. So a
+controller-served subtree is reachable by its ordinary ref and **invisible to every watch there
+is** — no change events, no `Since` replay, and therefore nothing a charter can react to.
+
+That gives a rule with no exceptions: **bytes somebody asks for may be a mount; facts something
+reacts to must be ordinary writes.** `verse connect` is the worked example on both sides of it,
+federating one working tree as two slices — file bytes served on demand by the content
+controller, and `dir-status-<scope>` metadata written log-backed precisely because it is what
+the per-file validator trigger matches. `source.TestFederationKindsAreMountOwned` pins the split
+so neither half drifts into the other.
+
+The escape that suggests itself does not exist. Mounting under the entity root would put the
+slice back where watches can see it, and re-create exactly what `MountRoot` was introduced to
+fix: a composed root watch that silently drops `FromCommit` and returns a successful-looking
+empty replay, plus a mount that stalls ~5s on the overlapping watch and then force-ends it.
+
+This is why a [Source](sources.md) is *not* a controller, though this note and that one both
+once said it would be: a Source exists so that triggers fire on external change, so its
+reflected entities are writes. See [external sources](working/sources.md).
 
 ## The Handler contract
 
@@ -47,14 +73,17 @@ Mount it with `RunController`, which blocks for the controller's lifetime:
 libctl.RunController(ctx, &libctl.ControllerConfig{
     DocdAddr:   mountAddr,                 // docd's mount (controller-facing) face
     Controller: "content-" + scope,        // identifies this controller to docd
-    Path:       entity.MountKPath(system, kind), // <root>.<system>.<kind> — store & controller agree
+    Path:       entity.MountKPath(system, kind), // <MountRoot>.<system>.<kind> — store & controller agree
     Handler:    source.NewContent(root, mount),
 })
 ```
 
-`entity.MountKPath(system, kind)` renders the kpath so the store (which maps a ref
-`system:kind:id` to `<root>.<system>.<kind>.<id>`) and the controller agree on where the
-subtree lives. Cancel `ctx` to unmount (docd tombstones the mount cleanly).
+`entity.MountKPath(system, kind)` renders the kpath so the store and the controller agree on
+where the subtree lives — under `MountRoot`, not under the entity root, per the rule above. The
+entity namespace is unchanged by that: the slice is still addressed as the ordinary ref
+`system:kind:id`, and only the path it renders to differs. Add the `(system, kind-prefix)` pair
+to `entity.mountedKinds` so `refPath` routes reads there; a mount the store does not know about
+is a mount every read misses. Cancel `ctx` to unmount (docd tombstones the mount cleanly).
 
 Readiness. `RunController` establishes the mount synchronously but exposes no
 readiness signal, and a mount is not instantaneous. Do not write metadata that fires
@@ -70,9 +99,9 @@ for two independent reasons:
 1. A mount force-ends overlapping watches. Mount/unmount coordinates with the watch
    readers overlapping the mounted path: docd waits `force_after` (default 5s) for them
    to drain, then force-ends them (`WatchEndedError` reason `membership_changed`). A
-   *standing* root watch overlaps every mount under the root, so every `connect`/every
-   Source mount stalls ~5s and then kills the reader. (This is why `verse connect` once
-   took ~5s and silently broke the engine; see `verse-root-watches-eliminated`.)
+   *standing* root watch overlaps every mount under the root, so every `connect` mount
+   stalls ~5s and then kills the reader. (This is why `verse connect` once took ~5s and
+   silently broke the engine; see `verse-root-watches-eliminated`.)
 2. A root watch depends on every controller under it. docd composes an ancestor
    watch by folding in each overlapping mount's `Watch` stream. If any one controller
    declines `Watch`, the composed ancestor watch has no stream for that subtree and
@@ -80,11 +109,12 @@ for two independent reasons:
 
 Hence: no root watches. An engine (or any consumer) watches exactly the
 `(system[,kind])` subtree it matches — `LogdStore.WatchSubtree` / `Engine.ObserveScoped`
-— never the root. A subtree watch collides with a mount only if the mount is *in that
-subtree*, which is rare and, when it happens, is survived by re-establishing the watch
-and resyncing (below), not by dying. An unfiltered `verse watch` (no `--system`/`--kind`)
-may take a transient root watch while a human is actively watching, and it retries on a
-force-end — but nothing holds one at rest.
+— never the root. Two things then keep a watch clear of a mount, and the belt matters as
+much as the braces: mounts render under `MountRoot`, disjoint from the entity root, so no
+watch verse takes *can* contain one; and a watch that somehow overlapped anyway survives by
+re-establishing and resyncing (below) rather than by dying. An unfiltered `verse watch` (no
+`--system`/`--kind`) may take a transient root watch while a human is actively watching,
+and it retries on a force-end — but nothing holds one at rest.
 
 ## Invariants for the Handler itself
 
@@ -129,20 +159,18 @@ for `Set`/`Delete`. On a
 mount set) and let the fresh `State` resync close the gap. See [change events](change-events.md)
 and `LogdStore.WatchSubtree`.
 
-## Reflecting an external system: webhook is a hint, reconcile is truth
+## Serving something that changes on its own
 
-For a Source (reflect git/GitHub/k8s/… into its owned slice), the internal mechanism that
-keeps `Match`/`Watch` current follows `webhook : poll-reconcile :: Observe : Since`:
+A controller backed by something that moves — a filesystem, an API — keeps `Match` current by
+answering from the live thing rather than from a cache, and emits on `Watch` what it has learned
+changed. The discipline that governs a low-latency change notification is the one verse runs
+everywhere, `hint : level-read :: Observe : Since`: a notification is a hint that may be missed,
+duplicated or reordered, so it never carries authoritative data — it prompts a read of the
+truth. The content controller sidesteps all of it by holding nothing: every `Match` stats and
+reads the file, so there is no staleness to reconcile.
 
-> A webhook never writes entities. It triggers a *reconcile* of the affected ref(s); the
-> reconcile reads the external source of truth and writes to converge.
-
-That buys idempotency, self-healing, and order/duplicate independence. A periodic full
-reconcile is the safety net for missed hooks. The controller's own progress (a poll
-cursor: `updated-since`, etag, page token) lives as an entity (`source:cursor:<system>`)
-so it's observable like everything else. Reflection is inbound; acting *on* the external
-system (comment, merge, deploy) is the outbound executor path — a gated effect, not the
-Source. See [sources](sources.md).
+If what you are serving is a system whose changes something must *react* to, stop — that is a
+[Source](sources.md), it is not a controller, and the first section says why.
 
 ## Scope-awareness
 
@@ -162,12 +190,13 @@ session's lifetime and drops it (and its scope) on exit.
 
 ## Checklist
 
-- [ ] Mount at `entity.MountKPath(system, kind)`; own that slice as sole writer.
+- [ ] Nothing needs to trigger on this slice — a mount fires no events, so facts something
+      reacts to are log-backed writes instead.
+- [ ] Mount at `entity.MountKPath(system, kind)`, and add the slice to `entity.mountedKinds`;
+      own it as sole writer.
 - [ ] `Watch` implemented (no-op + block if read-only), emitting root-rooted patches.
 - [ ] No non-UTF-8 / unbounded bytes on the wire — serve markers.
 - [ ] No root/ancestor watch anywhere in the consuming path; watch the matched subtree.
 - [ ] Consumers apply deltas (`tony.Patch`), don't decode them; resync on
       `membership_changed`.
 - [ ] Readiness probed before firing consumers.
-- [ ] (Source) webhook triggers reconcile; reconcile is the single writer; cursor is an
-      entity.

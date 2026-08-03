@@ -26,8 +26,9 @@ verse already reflects two systems. `connect` federates the local tree (scoped
 `local:dir-status-<scope>:*` metadata writes + a `local:dir-content-<scope>:*` content
 controller), and `mirror` reflects processes (`process:instance:*`, event-based). A
 Source generalizes the *remote* case — webhook + poll-reconcile against an external
-truth — and is the same "controller owns a subtree and answers for it" shape as the
-content controller in [content federation](content-federation.md).
+truth. The half of `connect` it resembles is the *status* half: log-backed writes that
+something reacts to, not the content controller beside them (see below, and
+[content federation](content-federation.md)).
 
 ## The core law: a webhook is a hint, reconcile is the truth
 
@@ -92,8 +93,8 @@ the verse like everything else.
 ## Git: the exemplar (and the intended first Source)
 
 A git repo fits the pattern more cleanly than the SaaS ones, needs no credentials or
-network, and is SDLC-native — so it is the right first Source once the controller
-primitive is ready.
+network, and is SDLC-native — so it is the right first Source, and it is the one that is
+built.
 
 - The "webhook" is a git hook — `post-commit` / `reference-transaction` locally,
   `post-receive` on a bare repo — curling `/hooks/git`. No signing, no network. verse
@@ -126,35 +127,31 @@ A credential-free end-to-end test is straightforward: `git init` in a temp dir,
 commit / branch / delete-branch, reconcile, assert the `git:ref:*` entities appear and
 tombstone, and that a trigger fires on "commit on main."
 
-## Built on docd's controller primitive
+## A Source is not a controller, and cannot be
 
-The docd and controller work has landed in
-[go-tony's `libctl`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl),
-and a Source maps onto it directly. The `Source` sketch above is the *verse-facing* shape;
-the *substrate* is:
+An earlier version of this note ended with the opposite: that a verse `Source` *is* a
+`libctl.Handler` run under `RunController`, mounted at its system's subtree, with the
+reconcile freshening what `Match` returns. That was written when controller mounts still
+rendered under the entity root, and it is now wrong. It is recorded rather than deleted
+because the mistake is an easy one to make twice — the shape really does fit, right up
+until you ask what fires.
 
-- `libctl.Handler` — `Match(path, pattern)`, `Patch(path, data, opts)`,
-  `Watch(path, opts, emit)`. A controller mounts a subtree via `RunController` and
-  docd forwards client operations for that subtree to these methods. A read-only
-  reflector declines `Patch` (`ErrUnsupported`) but must still implement `Watch` —
-  a Source's `Watch` emits its reflected changes, and even a purely on-demand controller
-  must serve `Watch` as a no-op rather than decline it, because docd composes an ancestor
-  watch by folding in each mount's `Watch` and a declining mount breaks it (hence: no
-  root watches; see [writing a controller](controllers.md) for the full contract and invariants). "The
-  controller owns the subtree and answers for it; content need not live in logd" — so a
-  git Source answers `Match`/`Watch` straight from the repo.
-- docd speaks the logd session protocol to clients, routing each op by
-  longest-prefix mount to the owning controller (and everything else to logd). So
-  verse's store client points at docd's client address unchanged and gets
-  federation for free: `demo:*`/`process:*` resolve to logd, `git:*` to the git
-  controller. No store rewrite.
-- The `Reconcile`/`Webhook` split above is the Source's *internal* mechanism for
-  staying current — the poll and the git hook drive what `Watch` emits and freshen
-  what `Match` returns. The webhook-is-a-hint law lives inside the Handler.
+**A mounted slice fires no triggers.** Mounts render under `entity.MountRoot`, a top-level
+segment disjoint from the entity root, because a mount is process-driven and so has no history,
+and a history-bearing watch must never span one. `LogdStore.WatchSubtree` renders only under the
+entity root. So a controller-served slice is readable by its ordinary ref and invisible to every
+watch there is: no change events, no `Since` replay, nothing a charter can react to. A git
+Source mounted this way would reflect a repo perfectly and fire nothing, which is the entire
+point of it. Mounting under the entity root instead is not a trade — it re-creates the composed
+root watch that silently drops `FromCommit`, which is what `MountRoot` exists to prevent. See
+[writing a controller](controllers.md) for both halves of that rule.
 
-So the mapping is: a verse `Source` = a `libctl.Handler` (+ its internal
-poll/webhook reconcile) run under `RunController`, mounted at its system's subtree;
-verse's store points at docd; triggers and the mirror are unchanged.
+The line it draws is clean, and `connect` sits on both sides of it: **bytes somebody asks for
+may be a mount; facts something reacts to must be ordinary writes.** So the reflected slice is
+written to logd exactly as the sketch above has it — `Reconcile` converges by writing — and
+`Source` stays a verse-level interface with nothing underneath it. docd is still in the path,
+because verse's store points at it, but a Source has no more to do with that than any other
+writer does.
 
 ## Next step
 
@@ -162,6 +159,10 @@ The git Source exists and reconciles; what it lacks is a way in. It needs a comm
 registers a repo and runs it — `AddRepo` plus a `Reflector` under `verse up`, and a route the
 installed hook can POST to — after which the end-to-end path (commit → hook → reconcile →
 `git:ref:*` changes → a trigger fires) is exercisable rather than merely unit-tested.
+
+Where that should land is [external sources](working/sources.md): a Source deployed and
+installed the way a [runner](runners.md) is, reached over a url, with `Reconcile` split into a
+`Reflect` the external program answers and a converge that stays on verse's side.
 
 Write-back stays deferred to the outbound executor path
 ([the write half of expose](roadmap/expose.md#the-write-half)); a Source only reflects.
