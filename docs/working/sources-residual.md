@@ -302,26 +302,46 @@ from an external system where nothing is happening — the same shape as the wed
 **And it protects the external API, not the store**, which turns out to be the half that hurt
 first. A throttled pass still converges: `Reflector.converge` calls `current()`, which Lists the
 whole system slice out of the store to answer "what changed", so the store cost of a resync is
-paid every minute whether the answer is cached, unchanged, or new. Measured on a k3s deployment
-— one git source mirroring a repo with ~500 refs, the stock one-minute `ResyncEvery` — docd held
-**2.0–2.4 cores continuously**, against **0.28** for the same verse with the registration
-removed. That is a real deployment consequence: it is what made `/status` answer in ~2s, which
-is what made versed's liveness probe (a one-second default) kill the singleton engine every
-ninety seconds until the probe was fixed.
+paid whether the answer is cached, unchanged, or new.
 
-Three directions, and the first is the one to measure before choosing:
+**The resync interval is fiction at any size that matters.** Measured on a k3s deployment — one
+git source mirroring a repo with ~700 refs and commits, the stock one-minute `ResyncEvery`:
 
-- **Is the cost the List or the writes?** A pass that writes nothing still Lists everything, so
-  a `current()` that could ask the store for a slice's *revision* rather than its contents would
-  turn an unchanged pass into one cheap question. That needs something the store does not
-  currently offer, and it is the fix that scales.
+| | |
+|---|---|
+| entities written per second | **~0.8** |
+| one full pass | **~15 minutes** |
+| docd, while a pass runs | **2.0–2.4 cores** (0.28 with the registration removed) |
+
+`Reflector.Run` is one goroutine selecting on a ticker, so a tick that arrives mid-pass waits;
+the effective tracking latency is **however long a pass takes**, and the minute in `ResyncEvery`
+never applies. The observable form of this — and the thing that makes it worth a table — is
+that a mirror's `FETCH_HEAD` advances once per pass, so it sat unchanged for fifteen minutes
+while the verse looked busy. Everything downstream of that number is downstream of a pass
+completing.
+
+It is also what made `/status` answer in ~2s, which made versed's one-second liveness probe kill
+the singleton engine every ninety seconds until the probe was fixed.
+
+Four directions, and the first is the cheapest by a distance:
+
+- **converge already has what `Modify` re-reads.** `entity.Modify` does a Get and then a
+  conditional Write per changed entity — two round trips — and it needs the Get for
+  `withRemovals` and for the expect-unchanged precondition. But converge has *just Listed the
+  whole slice* into `current`, so it holds that payload already. Writing from the snapshot, with
+  `Modify` as the fallback when the precondition fails, halves the round trips on the only path
+  that costs any. Nothing new is needed from the store.
+- **Is the residue the List or the writes?** A pass that writes nothing still Lists everything,
+  so a `current()` that could ask the store for a slice's *revision* rather than its contents
+  would make an unchanged pass one cheap question. That needs something the store does not
+  offer, and it is the fix that scales.
 - **A resync interval that is not a constant.** One minute is right for a repo with ten refs and
-  wrong for a slice with five hundred. Per-registration is the obvious spelling and is the one
-  this design argued against for the *source's* rate limit — but the reasoning does not carry:
+  wrong for a slice with seven hundred. Per-registration is the obvious spelling, and is what
+  this design argued against for the *source's* rate limit — but that reasoning does not carry:
   the store cost is verse's own, and verse is the side that knows it.
-- **Narrower slices.** `git:ref:*` includes GitHub's `refs/pull/*`, which is most of that 500.
-  A source that reflected refs an SDLC flow reacts to — heads and tags — would be an order of
-  magnitude smaller for free, which is the `-refs` flag `sourced git` does not have.
+- **Narrower slices.** `git:ref:*` includes GitHub's `refs/pull/*`, which is most of that 700.
+  Reflecting the refs an SDLC flow reacts to — heads and tags — is an order of magnitude smaller
+  for free, and is the `-refs` flag `sourced git` does not have.
 
 ## Deferred by argument, not by effort
 
