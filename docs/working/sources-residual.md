@@ -333,7 +333,13 @@ before and after, with docd saturated at 2–3.6 cores either way.
 
 So the read was not the bottleneck. The change stays — it is strictly less work and it is
 correct — but the constraint is **the substrate's write path, at roughly one commit per second**,
-and nothing verse does to its own round trips will change that. That reframes the rest of this
+and nothing verse does to its own round trips will change that.
+
+**And that number is not the cluster's fault**, which is worth knowing before anyone tunes for
+it. The same source and the same repo against a local `verse up` on an Apple Silicon SSD: ~1.2
+commits/second, against ~0.5 on the k3s node. Two times, not two orders — so a first pass over
+700 entities takes about a quarter of an hour on a laptop too. The ceiling travels with verse,
+not with the environment, and every lever below is worth pulling on both. That reframes the rest of this
 list: the levers that matter are the ones that WRITE LESS, not the ones that ask more
 efficiently.
 
