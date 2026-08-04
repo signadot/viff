@@ -41,6 +41,39 @@ build:
     onDemandDocd: false
     spotVersed: false
 
+    # ── Sources: what reflects an external system into the verse ──────────────
+    #
+    # Each is off by default and independent of the others, because each costs something
+    # different to turn on: the git one costs a clone, the other two cost a credential in the
+    # cluster. Turning one on deploys the connector; INSTALLING it is still a verb somebody
+    # runs (`verse source add …`), since a registration carries an ownership claim verse checks
+    # against what is already standing, and a manifest is not where that conversation happens.
+    #
+    # The `<x>SourceName` knobs are the registration name each will be added under. They are
+    # here because the hint url a source posts deliveries to contains it, so the name has to be
+    # decided before the pod starts — and verse 404s a hint for a name it has no registration
+    # under, which is how a mismatch announces itself.
+    gitSource: false
+    gitMirror: "https://github.com/signadot/verse.git"
+
+    slackSource: false
+    slackSourceName: "workspace"
+    # "" takes the team name the bot token belongs to — the id prefix every slack:* entity
+    # carries and the ownership claim is spelled with.
+    slackWorkspace: ""
+    # An Ingress for Slack's Events API request url. "" = no Ingress, and the source converges
+    # on the periodic resync instead of on delivery.
+    slackWebhookHost: ""
+
+    linearSource: false
+    linearSourceName: "teams"
+    # Comma-separated team keys (ENG,OPS); "" is every team the credential can see.
+    linearTeams: ""
+    linearWebhookHost: ""
+
+    # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
+    ingressClassName: ""
+
   sources:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
   # precede the Namespace (else "namespaces \"verse\" not found" on the first apply).
@@ -50,6 +83,12 @@ build:
     dir: eks
   - if: '.[hostPV]'
     dir: hostpv
+  - if: '.[gitSource]'
+    dir: git-source
+  - if: '.[slackSource]'
+    dir: slack-source
+  - if: '.[linearSource]'
+    dir: linear-source
 
   patches:
   # The Namespace object's own name.
@@ -61,7 +100,7 @@ build:
 
   # Namespace every namespaced resource (StorageClass is cluster-scoped — excluded).
   - match:
-      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret]
+      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress]
     patch:
       metadata:
         namespace: $[namespace]
@@ -77,8 +116,13 @@ build:
             containers: !key(name)
             - name: docd
               image: $[image]
+  # Named rather than by kind alone, now that the source connectors are Deployments too: a
+  # container list-merged BY NAME against a Deployment that has no `versed` in it does not
+  # patch, it ADDS one.
   - match:
       kind: Deployment
+      metadata:
+        name: versed
     patch:
       spec:
         template:
@@ -101,6 +145,8 @@ build:
   - if: '.[ imagePullPolicy != "" ]'
     match:
       kind: Deployment
+      metadata:
+        name: versed
     patch:
       spec:
         template:
@@ -194,6 +240,8 @@ build:
   - if: '.[spotVersed]'
     match:
       kind: Deployment
+      metadata:
+        name: versed
     patch:
       spec:
         template:
@@ -208,10 +256,218 @@ build:
                       operator: In
                       values: [SPOT]
 
+  # The source connectors. One image, three roles: these run `sourced`, versed runs `verse`,
+  # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list
+  # does — and a source's command IS its configuration, so there is nothing to merge into.
+  - if: '.[gitSource]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: git-source
+              image: $[image]
+              command:
+              - sourced
+              - git
+              - -addr
+              - ":9801"
+              - -state
+              - /repos
+              - -mirror
+              - $[gitMirror]
+
+  - if: '.[slackSource]'
+    match:
+      kind: Deployment
+      metadata:
+        name: slack-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: slack-source
+              image: $[image]
+              env: !key(name)
+              - name: VERSE_HINT_URL
+                value: "http://verse:9797/sources/slack/$[slackSourceName]/hint"
+
+  # The workspace label, when the operator would rather name it than take the team's own name.
+  - if: '.[ slackSource && slackWorkspace != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: slack-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: slack-source
+              command:
+              - sourced
+              - slack
+              - -addr
+              - ":9801"
+              - -min-interval
+              - "30s"
+              - -workspace
+              - $[slackWorkspace]
+
+  - if: '.[linearSource]'
+    match:
+      kind: Deployment
+      metadata:
+        name: linear-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: linear-source
+              image: $[image]
+              env: !key(name)
+              - name: VERSE_HINT_URL
+                value: "http://verse:9797/sources/linear/$[linearSourceName]/hint"
+
+  - if: '.[ linearSource && linearTeams != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: linear-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: linear-source
+              command:
+              - sourced
+              - linear
+              - -addr
+              - ":9801"
+              - -min-interval
+              - "2m"
+              - -team
+              - $[linearTeams]
+
+  # imagePullPolicy on the connectors, for the same local-image reason as the two tiers above.
+  # One patch each rather than an `!or` over the three names: a keyed-list element has to CARRY
+  # its key, so there is nothing for a match over three differently-named containers to merge.
+  - if: '.[ imagePullPolicy != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: git-source
+              imagePullPolicy: $[imagePullPolicy]
+  - if: '.[ imagePullPolicy != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: slack-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: slack-source
+              imagePullPolicy: $[imagePullPolicy]
+  - if: '.[ imagePullPolicy != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: linear-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: linear-source
+              imagePullPolicy: $[imagePullPolicy]
+
+  # The two webhook Ingresses. A source that cannot be reached from the internet still
+  # converges — one resync behind — so an absent host DROPS the Ingress rather than emitting
+  # one pointed at nothing.
+  - if: '.[ slackWebhookHost != "" ]'
+    match:
+      kind: Ingress
+      metadata:
+        name: slack-source
+    patch:
+      spec:
+        rules:
+        - host: $[slackWebhookHost]
+          http:
+            paths:
+            - path: /slack/events
+              pathType: Prefix
+              backend:
+                service:
+                  name: slack-source
+                  port:
+                    number: 9801
+  - if: '.[ slackWebhookHost == "" ]'
+    match:
+      kind: Ingress
+      metadata:
+        name: slack-source
+    # `!delete null`, not a bare `!delete`: a dangling `:` is not in tony's grammar (an
+    # omitted value is the bracketed key-set form, `{a b c}`), and it is accepted only as the
+    # LAST pair of a document — so a bare one parses until somebody adds a patch below it.
+    # Not `!delete {}` either, which builds but passes an empty object where null was meant.
+    patch: !delete null
+
+  - if: '.[ linearWebhookHost != "" ]'
+    match:
+      kind: Ingress
+      metadata:
+        name: linear-source
+    patch:
+      spec:
+        rules:
+        - host: $[linearWebhookHost]
+          http:
+            paths:
+            - path: /linear/webhook
+              pathType: Prefix
+              backend:
+                service:
+                  name: linear-source
+                  port:
+                    number: 9801
+  - if: '.[ linearWebhookHost == "" ]'
+    match:
+      kind: Ingress
+      metadata:
+        name: linear-source
+    patch: !delete null
+
+  - if: '.[ ingressClassName != "" ]'
+    match:
+      kind: Ingress
+    patch:
+      spec:
+        ingressClassName: $[ingressClassName]
+
   # Drop the broker Service unless the broker face is served.
+  #
+  # `!delete null` like the two above, and this one is where the trap was found: a bare
+  # `!delete` parses while it is the LAST pair of the document, so this patch was fine until
+  # a patch was added below it — and then the error pointed at the new patch.
   - if: '.[!brokerFace]'
     match:
       kind: Service
       metadata:
         name: verse-broker
-    patch: !delete
+    patch: !delete null

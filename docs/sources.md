@@ -6,12 +6,14 @@ and agents *read* the reflected entities and react. A source only reflects: acti
 external system is the outbound path, not this one.
 
 For the surface — the entity, the verbs, the routes, the contract a source serves — see
-[reference/sources.md](reference/sources.md). To build one, copy
+[reference/sources.md](reference/sources.md). For the three verse ships — git, Slack, Linear —
+see [reference/sourced.md](reference/sourced.md). To build one of your own, copy
 [examples/source](reference/examples/source/main.go), which is a real program that compiles
 with the tree.
 
 ```sh
 verse source add git:laptop http://build-host:9801
+verse source add slack:workspace http://slack-source:9801
 verse sources
 ```
 
@@ -210,6 +212,68 @@ the scope's reads and its watches, leaves baseline holding it, and is dropped wi
 Baseline stays the default: one shared reflection everything reads is what most of a deployment
 wants, and an empty `scope` is what it gets.
 
+## Three of them, and what the second and third cost
+
+verse ships `sourced`, a second binary with a subcommand per system it connects
+([reference/sourced.md](reference/sourced.md)) — git, Slack, Linear. It rides in the same image
+as `verse` and is deliberately not in the same process: folding a connector into the engine
+would put every API's wire format and every credential's failure mode in the binary that runs
+everybody's triggers. There is nothing privileged about the three; they are ordinary external
+sources that happen to be maintained here, and the sample program is still the thing to copy
+for a fourth.
+
+**Only one thing actually differs between them, and it is the credential.** git needs none, so
+it can also run in process (`--dir`) and its "webhook" is a four-line shell script. The other
+two hold a token, which is what puts them on the far side of the seam for good — and what
+"nothing new about credentials" below turns out to mean in practice.
+
+Three things came out of building the two that need one.
+
+**A delivery endpoint is the git hook in another costume.** The Slack Events API endpoint and
+the Linear webhook live in the *source*, verify their own signature, and post the same thing
+the shell one-liner posts: which ref went stale, as a query parameter, and nothing else. That is
+the law holding across three senders that share no code — and the reason a forged delivery is
+uninteresting is unchanged, so the signature check is there because Slack's and Linear's
+contracts ask for it, not because correctness rests on it.
+
+**A source is where an API budget is known.** verse's resync interval is a constant (one
+minute); Linear's complexity budget is hourly and Slack's is per-method-per-minute. Making the
+interval a registration field would move that knowledge to the side that does not have it, so
+the answer is `source.Throttle`: a window inside which a source answers with its last
+*successful* reflection rather than asking again. It costs a hint's latency in a burst, which is
+the right direction — a source that has been rate-limited reflects nothing at all until the
+limit lifts. A failure is never cached, for the reason everything here turns on: a cached
+failure is `every` minutes of a source claiming an external system is empty.
+
+**A cover is how a source says what it could not read.** Slack's people need a scope its
+channels do not, so a `users.list` that fails drops the user cover *and* the user entities: the
+answer is then complete for the channels and complete for nothing else, and what could not be
+read is left standing rather than deleted. The channels get no such treatment — a pass that lost
+them has nothing true left to say, and fails. That asymmetry is the whole of what `Covers` is
+for, doing a job that would otherwise have to be a flag.
+
+And one thing that did NOT survive contact: **Linear projects are not reflected**, because a
+project can belong to several teams at once and so has no positional owner. Ownership-as-an-
+address cannot spell it, and two sources over two teams would each tombstone what the other
+wrote. The source carries a project's name as a field on the issue and claims no entity for it.
+
+That is not a dead end, and the way out is the CAS finding this design parked: the store's only
+write is already a *conditional* one, at a path that may be inside a payload, with preconditions
+that may be about another path. A shared entity where each source writes its own slot and the
+last owner out deletes is expressible with that — what it costs is converge's replace-the-whole-
+payload rule, which is right for an owned slice and wrong for a shared one. The
+[residual](working/sources-residual.md) has the four things that would have to move.
+
+### The window, and why Slack is not git
+
+A git source carries commits under **no** cover, so history stays. The Slack source covers its
+messages, so the last `-depth` per channel is a window that slides and what falls out is
+tombstoned. The difference is not a preference: a repository's history is finite and immutable,
+and a process that wants more follows a ref into the real repo — while a channel is an unbounded
+event stream, and an entity-verse that keeps all of it is exactly the warehouse a source is not
+supposed to be. Covering it also makes the source *more* truthful, not less: a message deleted
+inside the window goes, where an uncovered one would stand forever.
+
 ## Git: the exemplar
 
 A git repo fits the pattern more cleanly than the SaaS ones, needs no credentials or network,
@@ -263,10 +327,11 @@ would put ordering back into a contract whose whole point is that it has none.
 is the same edge the runner install probe already opens, and lands with
 [authority](roadmap/authority.md) rather than before it.
 
-**Nothing new about credentials**, which is a gain worth saying: a GitHub source's webhook
-arrives from the internet and needs an ingress and a signature check, and once the source is a
-deployed program that is *its* problem to solve where it already has to be solved, instead of a
-public face verse has to grow.
+**Nothing new about credentials**, which is a gain worth saying and is now demonstrated rather
+than claimed: the Slack source's events endpoint arrives from the internet and needs an ingress
+and a signature check, and all of that lives in the Slack source — where the signing secret
+already had to be — instead of in a public face verse has to grow. verse learned nothing about
+Slack, and its hint route did not change.
 
 What is designed and not built — dial-in, for the source verse cannot reach — is in
 [what is left](working/sources-residual.md).

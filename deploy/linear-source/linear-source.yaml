@@ -1,0 +1,111 @@
+# The Linear Source: `sourced linear`, holding an API key.
+#
+# The credential first, as with Slack:
+#
+#   kubectl -n verse create secret generic verse-linear \
+#     --from-literal=LINEAR_API_KEY=lin_api_… \
+#     --from-literal=LINEAR_WEBHOOK_SECRET=…
+#
+# LINEAR_API_KEY is the Authorization header verbatim: a personal API key (Settings → API) goes
+# bare, an OAuth access token as `Bearer lin_oauth_…`.
+#
+# Install it once the pods are up (the name must match `linearSourceName`, because the hint url
+# below carries it):
+#   kubectl -n verse exec deploy/versed -- verse source add linear:teams http://linear-source:9801
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linear-source
+  labels:
+    app: verse
+    tier: source
+    source: linear
+spec:
+  replicas: 1
+  # Recreate: one writer of linear:*, for the reason the git source is one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: verse
+      tier: source
+      source: linear
+  template:
+    metadata:
+      labels:
+        app: verse
+        tier: source
+        source: linear
+    spec:
+      containers:
+      - name: linear-source
+        image: signadot/verse:latest
+        command:
+        - sourced
+        - linear
+        - -addr
+        - :9801
+        # Longer than Slack's, because Linear's budget is HOURLY and a team's read is a paged
+        # GraphQL query: a source that spends the hour in its first ten minutes reflects
+        # nothing for the next fifty. verse still resyncs every minute; this is the source
+        # saying how often it will really answer.
+        - -min-interval
+        - "2m"
+        ports:
+        - name: source
+          containerPort: 9801
+        env:
+        - name: VERSE_HINT_URL
+          value: http://verse:9797/sources/linear/teams/hint
+        envFrom:
+        - secretRef:
+            name: verse-linear
+        readinessProbe:
+          httpGet:
+            path: /source
+            port: source
+          initialDelaySeconds: 3
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: linear-source
+  labels:
+    app: verse
+    tier: source
+    source: linear
+spec:
+  selector:
+    app: verse
+    tier: source
+    source: linear
+  ports:
+  - name: source
+    port: 9801
+    targetPort: source
+---
+# Linear's webhook needs a url IT can reach — the same asymmetry the Slack ingress carries, and
+# the same consequence without it: the source converges one resync behind instead of in
+# seconds. Dropped unless `linearWebhookHost` is set. Point Settings → API → Webhooks at
+# https://<host>/linear/webhook.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: linear-source
+  labels:
+    app: verse
+    tier: source
+    source: linear
+spec:
+  rules:
+  - host: linear-source.example.com
+    http:
+      paths:
+      - path: /linear/webhook
+        pathType: Prefix
+        backend:
+          service:
+            name: linear-source
+            port:
+              number: 9801

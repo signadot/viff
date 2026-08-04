@@ -1,0 +1,90 @@
+# The git Source, as a deployed program: `sourced git`, mirroring a remote.
+#
+# A pod has no repositories, so this one makes its own — `-mirror` clones the remote at
+# startup and fetches on every pass. That is the read; nothing is ever pushed. For a repo that
+# already exists somewhere (a build host, a laptop), run the same binary there with `-repo`
+# instead, or use verse's in-process path (`verse source add --dir`) and skip this entirely.
+#
+# Install it once the pods are up (the name here must match `gitSourceName`):
+#   kubectl -n verse exec deploy/versed -- verse source add git:cluster http://git-source:9801
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-source
+  labels:
+    app: verse
+    tier: source
+    source: git
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: two pods would each hold a mirror and verse would dial
+  # whichever the Service picked, so a fetch's timing would decide which answer a pass got.
+  # A source is the single writer of its slice; running two of it is the thing the install's
+  # disjointness check exists to prevent, arriving through the deployment instead.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: verse
+      tier: source
+      source: git
+  template:
+    metadata:
+      labels:
+        app: verse
+        tier: source
+        source: git
+    spec:
+      containers:
+      - name: git-source
+        image: signadot/verse:latest
+        # The mirror spec comes from the build (`-e gitMirror=…`); see deploy/build.tony.
+        command:
+        - sourced
+        - git
+        - -addr
+        - :9801
+        - -state
+        - /repos
+        - -mirror
+        - https://github.com/signadot/verse.git
+        ports:
+        - name: source
+          containerPort: 9801
+        volumeMounts:
+        - name: repos
+          mountPath: /repos
+        # An emptyDir, so this needs no storage at all: the mirror is a cache of a remote that
+        # is still the truth, and a restart re-clones it. Swap in a PVC when the clone is
+        # expensive enough that paying for it on every rollout is worse than paying for a
+        # volume — nothing else changes.
+        readinessProbe:
+          # GET /source is the contract's own "what are you", which is exactly the question a
+          # readiness probe is asking. A source that cannot answer it is one verse's install
+          # probe would call unreachable.
+          httpGet:
+            path: /source
+            port: source
+          initialDelaySeconds: 3
+          periodSeconds: 10
+      volumes:
+      - name: repos
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-source
+  labels:
+    app: verse
+    tier: source
+    source: git
+spec:
+  selector:
+    app: verse
+    tier: source
+    source: git
+  ports:
+  - name: source
+    port: 9801
+    targetPort: source

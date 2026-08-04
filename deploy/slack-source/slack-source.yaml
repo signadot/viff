@@ -1,0 +1,114 @@
+# The Slack Source: `sourced slack`, holding a bot token.
+#
+# Before this deploys, the credential has to exist — it is the whole difference between this
+# source and the git one:
+#
+#   kubectl -n verse create secret generic verse-slack \
+#     --from-literal=SLACK_BOT_TOKEN=xoxb-… \
+#     --from-literal=SLACK_SIGNING_SECRET=…
+#
+# Not `optional: true` like verse-llm. A Slack source without a token has nothing to reflect,
+# and a pod that starts anyway would install clean and fail every pass — so it fails to start,
+# in front of whoever deployed it.
+#
+# Install it once the pods are up (the name must match `slackSourceName`, because the hint url
+# below carries it):
+#   kubectl -n verse exec deploy/versed -- verse source add slack:workspace http://slack-source:9801
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-source
+  labels:
+    app: verse
+    tier: source
+    source: slack
+spec:
+  replicas: 1
+  # Recreate: one writer of slack:*, for the reason the git source is one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: verse
+      tier: source
+      source: slack
+  template:
+    metadata:
+      labels:
+        app: verse
+        tier: source
+        source: slack
+    spec:
+      containers:
+      - name: slack-source
+        image: signadot/verse:latest
+        command:
+        - sourced
+        - slack
+        - -addr
+        - :9801
+        # A source's own rate limit. verse resyncs every minute and Slack's per-method budget
+        # is not verse's to know about, so the window that keeps a delivery storm from
+        # spending it lives here, next to the token. See source.Throttle.
+        - -min-interval
+        - "30s"
+        ports:
+        - name: source
+          containerPort: 9801
+        env:
+        # Where a verified delivery becomes a hint. The registration name in this path is what
+        # ties the two together: verse 404s a hint for a name it has no registration under.
+        - name: VERSE_HINT_URL
+          value: http://verse:9797/sources/slack/workspace/hint
+        envFrom:
+        - secretRef:
+            name: verse-slack
+        readinessProbe:
+          httpGet:
+            path: /source
+            port: source
+          initialDelaySeconds: 3
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slack-source
+  labels:
+    app: verse
+    tier: source
+    source: slack
+spec:
+  selector:
+    app: verse
+    tier: source
+    source: slack
+  ports:
+  - name: source
+    port: 9801
+    targetPort: source
+---
+# Slack's Events API needs a url IT can reach, which is the one thing a reflection does not:
+# verse dials the source, the source dials verse, and only this leg comes from the internet.
+# Dropped unless `slackWebhookHost` is set — without it the source still converges, one resync
+# behind. Point the Slack app's Request URL at https://<host>/slack/events.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: slack-source
+  labels:
+    app: verse
+    tier: source
+    source: slack
+spec:
+  rules:
+  - host: slack-source.example.com
+    http:
+      paths:
+      - path: /slack/events
+        pathType: Prefix
+        backend:
+          service:
+            name: slack-source
+            port:
+              number: 9801

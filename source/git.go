@@ -1,6 +1,7 @@
 package source
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/url"
@@ -32,12 +33,23 @@ const GitSystem = "git"
 // back on a repo (commit, tag, push) is the separate outbound executor path, not here.
 type Git struct {
 	mu          sync.Mutex
-	repos       map[string]string // repo id -> working dir
-	commitDepth int               // how many tip commits to reflect as git:commit:<sha>
+	repos       map[string]repo
+	commitDepth int // how many tip commits to reflect as git:commit:<sha>
 }
 
-// NewGit returns an empty git Source; register repositories with AddRepo.
-func NewGit() *Git { return &Git{repos: map[string]string{}, commitDepth: 50} }
+// repo is one registered repository: where it is, and — for a mirror — what it is a mirror OF.
+//
+// A remote makes the read a fetch, and that is the difference between a source that sits next
+// to its truth (a build host, a laptop) and one deployed away from it (a pod, which has no
+// repository until it makes one). Both are the same reflection afterwards; only how the local
+// copy comes to be current differs.
+type repo struct {
+	dir    string
+	remote string // when set, `git fetch` before reading — this dir is a mirror of it
+}
+
+// NewGit returns an empty git Source; register repositories with AddRepo or AddMirror.
+func NewGit() *Git { return &Git{repos: map[string]repo{}, commitDepth: 50} }
 
 // AddRepo registers a repository under id (defaults to the dir's base name) and returns the
 // id used. Re-adding an id repoints it.
@@ -46,9 +58,51 @@ func (g *Git) AddRepo(id, dir string) string {
 		id = filepath.Base(filepath.Clean(dir))
 	}
 	g.mu.Lock()
-	g.repos[id] = dir
+	g.repos[id] = repo{dir: dir}
 	g.mu.Unlock()
 	return id
+}
+
+// AddMirror registers a MIRROR of remote at dir, cloning it if dir does not already hold one,
+// and returns the id used (defaulting to the remote's base name, less any `.git`).
+//
+// This is what makes a git source deployable away from the repository it reflects. A pod has
+// no repositories, and the two obvious answers are both worse than this one: a hostPath mounts
+// somebody's laptop into the cluster, and a shared volume makes the reflection depend on
+// whatever else writes to it. A mirror is the source's own copy of a remote it can reach,
+// which is the ordinary shape of a read-only consumer of a repository.
+//
+// FETCHING IS THE READ, and that is why it does not violate "a source never acts on the
+// external system": `git fetch` takes nothing from the remote but what `git ls-remote` would,
+// and writes only into this source's private copy. Pushing, committing and tagging remain the
+// outbound executor path, and none of them is here.
+//
+// The clone happens HERE, at startup, rather than lazily inside a reflect: an unreachable
+// remote or a bad credential is then a process that does not start, in front of the operator
+// who just deployed it, instead of a registration that installs clean and reports a failure
+// into lastError once a minute forever.
+func (g *Git) AddMirror(ctx context.Context, id, remote, dir string) (string, error) {
+	if remote == "" {
+		return "", fmt.Errorf("git: a mirror needs a remote to mirror")
+	}
+	if id == "" {
+		id = strings.TrimSuffix(filepath.Base(strings.TrimRight(remote, "/")), ".git")
+	}
+	// A mirror is a bare repository, so HEAD is the file that says one is already there. Not
+	// re-cloned when it is: the volume outliving the pod is the point of putting it on one.
+	if _, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil {
+		parent := filepath.Dir(dir)
+		if err := os.MkdirAll(parent, 0o755); err != nil {
+			return "", fmt.Errorf("git: %s: %w", parent, err)
+		}
+		if _, err := gitCmd(ctx, parent, "clone", "--mirror", remote, dir); err != nil {
+			return "", fmt.Errorf("git: cloning %s into %s: %w", remote, dir, err)
+		}
+	}
+	g.mu.Lock()
+	g.repos[id] = repo{dir: dir, remote: remote}
+	g.mu.Unlock()
+	return id, nil
 }
 
 // System is the owned slice.
@@ -147,7 +201,7 @@ func (g *Git) dirOf(id string) (string, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	d, ok := g.repos[id]
-	return d, ok
+	return d.dir, ok
 }
 
 // gitHooksDir resolves a repo's hooks directory (handles worktrees/bare via git rev-parse).
@@ -191,16 +245,16 @@ func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 	return out, nil
 }
 
-// targets is the repo id→dir set a reconcile should touch: all repos for a zero ref, else the
+// targets is the repo id→repo set a reconcile should touch: all repos for a zero ref, else the
 // single repo the ref belongs to (its id is the git:head:<repo> id, or the leading segment of
 // a git:ref:<repo>/<name> id).
-func (g *Git) targets(ref entity.Ref) map[string]string {
+func (g *Git) targets(ref entity.Ref) map[string]repo {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if ref.System != GitSystem || ref.ID == "" {
-		out := make(map[string]string, len(g.repos))
-		for id, dir := range g.repos {
-			out[id] = dir
+		out := make(map[string]repo, len(g.repos))
+		for id, r := range g.repos {
+			out[id] = r
 		}
 		return out
 	}
@@ -208,15 +262,26 @@ func (g *Git) targets(ref entity.Ref) map[string]string {
 	if ref.Kind == "ref" {
 		id, _, _ = strings.Cut(ref.ID, "/") // <repo>/<name>
 	}
-	if dir, ok := g.repos[id]; ok {
-		return map[string]string{id: dir}
+	if r, ok := g.repos[id]; ok {
+		return map[string]repo{id: r}
 	}
 	return nil
 }
 
 // reflectRepo reads one repository. Everything it returns is scoped by the `repo` field —
 // including the covers — so one repo's pass never tombstones another's refs.
-func (g *Git) reflectRepo(ctx context.Context, id, dir string) (Reflection, error) {
+func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, error) {
+	dir := rp.dir
+	// A mirror's read starts with a fetch, and a FAILED one fails the pass rather than
+	// reflecting what was fetched last time. Stale-and-silent is the worse failure of the two:
+	// converge would write nothing, the registration would carry no error, and a source whose
+	// credential expired last Tuesday would look exactly like a repository where nothing has
+	// happened. An error lands in lastError, where somebody can see it.
+	if rp.remote != "" {
+		if _, err := gitCmd(ctx, dir, "fetch", "--prune"); err != nil {
+			return Reflection{}, fmt.Errorf("fetching %s: %w", rp.remote, err)
+		}
+	}
 	// What this answer is COMPLETE for: the two mutable kinds, narrowed to this repo by the
 	// field the payloads below already carry. Declared BEFORE the read, and unconditionally:
 	// a repo whose every branch was deleted must still cover `git:ref:{repo: id}`, or the
@@ -321,10 +386,24 @@ func gitRecentCommits(ctx context.Context, dir string, depth int) []commitInfo {
 	return cs
 }
 
+// gitCmd runs one git command in dir and returns its stdout, with git's own stderr folded into
+// the error.
+//
+// The folding is what makes a deployed mirror debuggable: an ExitError renders as "exit status
+// 128", and that is the whole of what a failed clone of a private remote would otherwise write
+// into the registration's lastError. (cmd.Output fills ExitError.Stderr only while Stderr is
+// nil, and setting it — which is what captures the message — is exactly what empties that.)
 func gitCmd(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			err = fmt.Errorf("%w: %s", err, msg)
+		}
+	}
 	return strings.TrimRight(string(out), "\n"), err
 }
 

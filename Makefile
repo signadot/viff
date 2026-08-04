@@ -25,20 +25,30 @@ DIST := dist
 
 O_PKG := github.com/signadot/tony-format/go-tony/cmd/o
 
-# The o binary verse spawns for logd+docd (built alongside verse).
+# Three binaries, one image:
+#   verse    the engine + CLI
+#   o        the tony daemons verse spawns for logd+docd (pinned, built alongside verse)
+#   sourced  the shipped Sources (git, slack, linear) — a SEPARATE process by design, so the
+#            engine binary carries no connector's wire format or credential handling. Riding
+#            in the same image is free; riding in the same process is not (cmd/sourced).
 define go_build
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse ./cmd/verse
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/o $(O_PKG)
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/sourced ./cmd/sourced
 endef
 
 .DEFAULT_GOAL := help
 
 .PHONY: bin
-bin: ## build verse + o for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
+bin: ## build verse + o + sourced for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
 	$(call go_build,$(GOOS),$(GOARCH))
 
+.PHONY: sourced
+sourced: ## build just the source connectors (git, slack, linear) for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/sourced ./cmd/sourced
+
 .PHONY: dist-linux
-dist-linux: ## cross-compile verse + o for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
+dist-linux: ## cross-compile verse + o + sourced for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
 	$(call go_build,linux,$(IMAGE_ARCH))
 
 .PHONY: docker
@@ -56,12 +66,18 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
+# make deploy E='-e gitSource=true -e slackSource=true'          # …plus source connectors
+#
+# E is the escape hatch for everything the three named variables do not cover — the source
+# knobs are a dozen on their own (deploy/README.md), and naming each here would make this
+# target a second copy of build.tony's env block that could disagree with it.
 PROFILE  ?=
 HOSTPV   ?=
 HOSTPATH ?=
+E        ?=
 .PHONY: deploy
-deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV=true HOSTPATH=… to host-link)
-	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) | kubectl apply -f -
+deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
+	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
 
 # config, launch and process carry //go:generate tony-codegen directives; their <pkg>_gen.go
 # and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.

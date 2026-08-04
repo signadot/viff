@@ -11,14 +11,17 @@
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-# PERMANENT exceptions.
-#   process/harness/llm.go — the OpenAI chat-completions schema. Not verse's format; not
-#     ours to re-render.
-#   codec/codec.go         — json.Number, in AsInt64. codec is where formats live.
+# PERMANENT exceptions, and every one of them is the SAME exception: a foreign wire format
+# that is not verse's to re-render, at the edge of the process that speaks it.
+#   process/harness/llm.go   — the OpenAI chat-completions schema.
+#   codec/codec.go           — json.Number, in AsInt64. codec is where formats live.
+#   source/slack/*.go        — Slack's Web API and its signed event envelopes.
+#   source/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
 #
-# That is the whole list, and it should stay that way. The charter grammar's pre-tony JSON
-# codecs were the last non-test holdout and are gone; every path renders through codec.
-allow='process/harness/llm.go|codec/codec.go'
+# The two source connectors are the shape to copy if a third arrives: JSON stops at the
+# package boundary. What they hand back is an entity.Payload, and what they serve is rendered
+# by codec like everything else — so no verse surface acquires a second dialect from this.
+allow='process/harness/llm.go|codec/codec.go|source/slack/[a-z]+\.go|source/linear/[a-z]+\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

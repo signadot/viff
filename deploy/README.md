@@ -18,6 +18,10 @@ Two tiers, split so the storage fragility stays off the engine:
 Plus a headless `Service` for docd (client+mount), a `Service` for the versed API, and — when
 `brokerFace` — one for the broker face.
 
+Optionally a third tier: **source connectors**, one `Deployment` + `Service` each, running
+`sourced` (git, Slack, Linear). Each is a singleton for the reason versed is — a source is the
+single writer of its slice — and each is off by default. See [Sources](#sources-optional).
+
 ## Build the image
 
 The `Makefile` at the module root builds the Go binaries **locally** (fast, your host build
@@ -32,7 +36,8 @@ make docker IMAGE_ARCH=amd64      # target amd64 nodes (default: your host arch)
 
 `make deploy PROFILE=minikube HOSTPATH=/Users/<you>/.verse/minikube-default` renders and
 applies in one step (`make help` lists all targets). The image bundles `verse`, the pinned
-`o` (which docd's pod runs), and `git` (git Source).
+`o` (which docd's pod runs), `sourced` (the source connectors), and `git` — one image, several
+roles, so there is one ref to pin and one build to cache.
 
 ## Render + apply
 
@@ -110,6 +115,88 @@ StorageClass instead of the emitted one: `-e storageClassName=<name> -e emitStor
 | `hostPV` | `false` | back the PVC with a static hostPath `PersistentVolume` (minikube) |
 | `hostPath` | `/mnt/verse` | the PV's in-VM host path when `hostPV` |
 | `onDemandDocd` / `spotVersed` | `false` | `eks.amazonaws.com/capacityType` placement |
+| the source knobs | off | see [Sources](#sources-optional) |
+
+## Sources (optional)
+
+What reflects an external system into the verse ([docs/sources.md](../docs/sources.md)). Three
+are shipped, each its own Deployment + Service, each **off by default** and turned on
+independently — the git one costs a clone, the other two cost a credential in the cluster.
+
+```sh
+make deploy E='-e gitSource=true'
+o build deploy -e slackSource=true -e linearSource=true | kubectl apply -f -
+```
+
+They run `sourced`, the connector binary in the same image
+([docs/reference/sourced.md](../docs/reference/sourced.md) is its surface). Deploying one does
+**not** install it: an install carries an ownership claim verse proves against what is already
+standing, so it stays a verb somebody runs.
+
+```sh
+kubectl -n verse exec deploy/versed -- verse source add git:cluster    http://git-source:9801
+kubectl -n verse exec deploy/versed -- verse source add slack:workspace http://slack-source:9801
+kubectl -n verse exec deploy/versed -- verse source add linear:teams   http://linear-source:9801
+kubectl -n verse exec deploy/versed -- verse sources
+```
+
+⚠️ **The name has to match `<x>SourceName`.** The hint url is baked into the pod
+(`http://verse:9797/sources/slack/<name>/hint`), so a registration under a different name means
+verse 404s every delivery — loud, but only if you look.
+
+### Credentials
+
+The two that need one take it from a Secret, and `optional` is **false** on purpose: a Slack
+source with no token has nothing to reflect, so it fails to start rather than installing clean
+and failing every pass.
+
+```sh
+kubectl -n verse create secret generic verse-slack \
+  --from-literal=SLACK_BOT_TOKEN=xoxb-… \
+  --from-literal=SLACK_SIGNING_SECRET=…
+
+kubectl -n verse create secret generic verse-linear \
+  --from-literal=LINEAR_API_KEY=lin_api_… \
+  --from-literal=LINEAR_WEBHOOK_SECRET=…
+```
+
+### Webhooks
+
+verse dials a source, and the source dials verse — only the *delivery* leg comes from the
+internet, and only the two SaaS sources have one. Set a host and an Ingress is emitted for it;
+leave it empty and there is none, and the source converges on the periodic resync (one minute)
+instead of on delivery.
+
+```sh
+o build deploy -e slackSource=true -e slackWebhookHost=slack.verse.example.com \
+               -e ingressClassName=nginx | kubectl apply -f -
+```
+
+Then point Slack's Event Subscriptions request url at `https://<host>/slack/events`, and
+Linear's Settings → API → Webhooks at `https://<host>/linear/webhook`. Each source verifies its
+own signature; verse never sees the delivery.
+
+### The git source has no repositories
+
+A pod has none, so `-mirror` makes one: it clones the remote at startup and fetches on every
+pass. That is the read — nothing is ever pushed. The mirror lives on an `emptyDir`, so a restart
+re-clones; swap in a PVC if that gets expensive. For a repository that already exists somewhere,
+run the same binary next to it with `-repo`, or skip the deployment entirely and use
+`verse source add --dir`.
+
+| knob | default | meaning |
+|---|---|---|
+| `gitSource` | `false` | deploy the git connector |
+| `gitMirror` | the verse repo | `[<id>=]<url>` to mirror |
+| `slackSource` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
+| `slackSourceName` | `workspace` | the registration name — must match `verse source add slack:<name>` |
+| `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
+| `slackWebhookHost` | `""` | Ingress host for `/slack/events`; `""` emits none |
+| `linearSource` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
+| `linearSourceName` | `teams` | the registration name |
+| `linearTeams` | `""` | comma-separated team keys; `""` is every team the credential sees. Quote it: `-e 'linearTeams="ENG,OPS"'` |
+| `linearWebhookHost` | `""` | Ingress host for `/linear/webhook` |
+| `ingressClassName` | `""` | class for both Ingresses; `""` leaves the cluster default |
 
 ## LLM creds (optional)
 

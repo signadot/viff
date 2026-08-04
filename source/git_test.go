@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -123,5 +124,85 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	}
 	if after := get("ref", "A/main")["sha"]; after == before {
 		t.Fatal("A/main sha should have advanced after a new commit")
+	}
+}
+
+// A MIRROR is how a git source reflects a repository it does not sit next to — the deployed
+// case, where the pod has no repositories until it makes one. The clone happens at startup and
+// every pass fetches, so what the source answers tracks the remote rather than the copy.
+func TestGitMirrorClonesAtStartupAndFetchesOnEveryPass(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+	store := entitytest.Store(t)
+
+	origin := t.TempDir()
+	initRepo(t, origin)
+	first := commit(t, origin, "a.txt", "one", "first")
+
+	// The clone is AddMirror's, into a directory that does not exist yet — which is what a
+	// fresh pod's volume looks like.
+	into := filepath.Join(t.TempDir(), "mirrors", "origin")
+	g := source.NewGit()
+	id, err := g.AddMirror(ctx, "", origin, into)
+	if err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+	if id != filepath.Base(origin) {
+		t.Fatalf("id %q, want the remote's base name %q", id, filepath.Base(origin))
+	}
+
+	rf := source.NewReflector(g, store, 0)
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	get := func(kind, refID string) entity.Obj {
+		e, ok, _ := store.Get(entity.Ref{System: source.GitSystem, Kind: kind, ID: refID})
+		if !ok {
+			t.Fatalf("missing git:%s:%s", kind, refID)
+		}
+		return entity.ToObj(e.Payload)
+	}
+	if sha := get("ref", id+"/main")["sha"]; sha != first {
+		t.Fatalf("main is %v, want the remote's %s", sha, first)
+	}
+
+	// A commit lands on the remote. Nothing touched the mirror — the next pass's fetch is what
+	// has to see it, and a source that reflected its local copy without fetching would answer
+	// the old sha forever while looking perfectly healthy.
+	second := commit(t, origin, "a.txt", "two", "second")
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatalf("reconcile after remote commit: %v", err)
+	}
+	if sha := get("ref", id+"/main")["sha"]; sha != second {
+		t.Fatalf("main is %v after a remote commit, want %s — the pass did not fetch", sha, second)
+	}
+
+	// Re-adding the same mirror does not re-clone: the directory already holds one, which is
+	// what makes a restart on a persistent volume cheap.
+	if _, err := g.AddMirror(ctx, id, origin, into); err != nil {
+		t.Fatalf("re-adding an existing mirror: %v", err)
+	}
+}
+
+// A mirror of a remote that is not there fails AT STARTUP, with git's own words. Stale and
+// silent is the worse failure: converge would write nothing, the registration would carry no
+// error, and a source whose credential expired would look like a repository where nothing has
+// happened.
+func TestGitMirrorFailsLoudlyWhenTheRemoteIsNotThere(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	missing := filepath.Join(t.TempDir(), "not-a-repo")
+	g := source.NewGit()
+	_, err := g.AddMirror(context.Background(), "x", missing, filepath.Join(t.TempDir(), "m"))
+	if err == nil {
+		t.Fatal("cloning a remote that does not exist succeeded")
+	}
+	// git's stderr, folded in — without it this is "exit status 128", which is the whole of
+	// what a failed clone would otherwise write into a registration's lastError.
+	if !strings.Contains(err.Error(), "repository") && !strings.Contains(err.Error(), "not") {
+		t.Fatalf("error %v carries nothing git said", err)
 	}
 }

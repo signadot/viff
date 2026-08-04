@@ -176,21 +176,79 @@ building even for the Go case.
 The test, whichever wins, is the one the transport already runs, through a third transport:
 same `source.Git`, same `Reflection`, no ingress.
 
-## The claim that is still unproved
+## The claim, now partly answered
 
 **Ownership as an address works when a source's ids encode ownership positionally**, which
-git's do only because `source/git.go` prefixes every id with the repo. That is a property of
-that code, not a law.
+git's do only because `source/git.go` prefixes every id with the repo. That was a property of
+that code, not a law, and this note used to say the first non-git source would settle it. Two
+have now been built (`source/slack`, `source/linear`), and they split.
 
-A source reflecting `linear:issue:ENG-123` whose ownership is "project ENG" cannot spell that
-as an address at all, and will hit `--allow-overlap` on its second registration. **If the first
-non-git source does, this decision is the one to revisit** — it is evidence the vocabulary is
-wrong, not that the operator should keep passing the flag. `Covers` stayed an `entity.Pattern`
-throughout, so the road back to predicates is open, and a check that later becomes more
-permissive breaks nothing installed under the strict one.
+**Slack passed, easily.** A bot token is issued for one workspace, every id is
+`<workspace>/…`, and the claim is one glob: `slack:*:<workspace>/*`. Two workspaces are
+provably disjoint with nothing added to the vocabulary.
 
-The cheap test — a second git source on another host — exercises the transport and says nothing
-about the vocabulary, so it does not count.
+**Linear passed for what it reflects, and only because Linear's own identifiers are
+team-prefixed.** `linear:issue:ENG-123` is Linear's spelling, not one the source invented, so
+the claim `linear:issue:ENG-*` is honest — and the hyphen is what keeps it from claiming
+`ENGINE-1`, which is the same overclaim `git.go` avoids by not writing `<id>*`. Three claims per
+team (`linear:team:ENG`, `linear:issue:ENG-*`, `linear:cycle:ENG/*`) rather than git's two, for
+the same reason git needs two: the kinds spell their owner differently.
+
+**And one thing failed, which is the useful part.** A Linear **project can belong to several
+teams at once**, so it has no positional owner and no team can claim it as an address. Two
+sources over two teams sharing a project would each tombstone what the other reflected — the
+single-writer rule broken quietly, which is worse than an install refused loudly. So the source
+does not reflect projects at all: an issue carries its project's *name* as a field, and there is
+no `linear:project:*` entity.
+
+That is the vocabulary's first real limit, and it is worth being precise about what it is
+evidence FOR. It is not that addresses are the wrong grammar — they held for everything
+one-owner-shaped. It is that **a many-to-many relation has no owner to spell**, and no ownership
+grammar fixes that: a predicate form (`{teams: contains ENG}`) would let both sources claim the
+project and would still leave two writers on it.
+
+### The way through is the conditional write
+
+The parked CAS finding is the answer, and it is worth writing down because the machinery is
+already here. `entity.Write` is the store's ONLY write — a value applied at a `Path` (a ref, or
+a place *inside* its payload) iff every `Require` holds, with the checks and the write
+committing as one step, and a `Require` may be about **another path**
+(`entity/commitif_test.go`). That is precisely "condition my write on yours not having
+changed", available today.
+
+What a shared entity would need on top of it, in the order the trouble arrives:
+
+- **A source writes its own slot, not the entity.** `linear:project:<id>` carries
+  `owners: {ENG: {…}, OPS: {…}}`, and each source writes at `…owners.ENG`. Disjoint field paths
+  do not race, so this needs no precondition at all — it needs only that converge stop
+  replacing the whole payload. That rule (*a write replaces, because the answer is what the
+  entity IS*) is true of an owned slice and false of a shared one, where each answer is what a
+  PART of it is.
+- **Skip-unchanged has to compare the slot**, not the payload. Comparing the whole thing would
+  make a change by OPS look like a change to ENG's answer, and the two sources would rewrite
+  each other forever — the same "differs on every pass, fires its triggers every time" failure
+  the merge rule was written to avoid, arriving from the other side.
+- **Only the tombstone is genuinely contended**, and that is where the precondition earns its
+  keep: the last owner out deletes, and nobody else may. The gap is that the match grammar can
+  say "OPS is absent" (`!not {OPS: null}`) but not "no key other than mine", so either the
+  condition names a known set — which no source has — or the entity carries a **count** and the
+  delete is `Value: nil, When: [{At: …owners.n, Pattern: 0}]`, with CAS making the decrement
+  safe. A count is expressible with what exists; "no other keys" is not.
+- **And the install check would have to admit it.** `owns` proves single-writership; a shared
+  entity is by construction not that. It wants a second declaration — *these I share, by slot* —
+  or it lands under `--allow-overlap`, where the safety comes from the write discipline instead
+  of from a proof, which is exactly the thing the flag is supposed to warn about.
+
+Nothing here is built, and it is a change to converge's contract rather than to a connector, so
+it is not something the Linear source should do on its own. The cheap version, if projects are
+wanted before any of that: reflect them under **no cover** — the way git carries commits — so
+each source writes its slot and nothing ever tombstones. That costs a husk per project that
+leaves every team, and buys the entity today.
+
+**What would still push this to predicates**: a system whose entities are one-owner-shaped but
+whose ids do not say so — an owner in the payload and a uuid in the ref. Nothing built has hit
+that. `Covers` stayed an `entity.Pattern` throughout, so the road back is open, and a check that
+later becomes more permissive breaks nothing installed under the strict one.
 
 The reason the predicate form was not taken: an install compares two declarations with no
 entities in hand, and proving predicates apart syntactically has traps. A null in a predicate is
@@ -222,6 +280,24 @@ flag would settle it.
 **A `dir` registration is not portable**, and a restart restores it whether or not the
 directory is still there. The reflector reports the failure into `lastError`, which is the right
 behaviour; nothing has confirmed it end to end.
+
+**A deployed source is not registered by deploying it.** `deploy/{git,slack,linear}-source`
+brings the connector up; `verse source add` is still a verb somebody runs afterwards. That is
+deliberate — an install carries an ownership claim verse proves against what is already
+standing, and a manifest is not where that conversation happens — but it does mean a fresh
+cluster is two steps, and the registration NAME has to match the hint url baked into the pod
+(`<x>SourceName`). A mismatch shows up as verse 404ing every hint, which is at least loud.
+
+**A thread stops being reflected when its parent ages out.** The Slack window is over
+`conversations.history`, and a reply does not bump its parent there, so a long-running thread on
+an old message falls out of the window with it. Raising `-depth` postpones it rather than fixing
+it; the fix, if it matters, is a second window over recently-active threads, which needs a
+cursor the source deliberately does not keep.
+
+**`source.Throttle` has no visibility.** A source answering from its cache is indistinguishable
+from an external system where nothing is happening — the same shape as the wedged-source problem
+`lastPass` exists for, one level down. Nothing reports it; a `/source` descriptor field saying
+"my floor is 2m" would, and would also let `verse sources` explain why a hint took two minutes.
 
 ## Deferred by argument, not by effort
 

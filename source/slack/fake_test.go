@@ -1,0 +1,117 @@
+package slack_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// fakeSlack is a Slack Web API that answers from fixtures.
+//
+// It answers `ok: false` with HTTP 200 when told to fail, which is the one behaviour a test
+// against a real client library would not reproduce and the one this source has to get right:
+// a refusal that arrives as a 200 is how a permission error becomes "the workspace is empty".
+type fakeSlack struct {
+	mu sync.Mutex
+
+	channels []map[string]any            // users.conversations
+	info     map[string]map[string]any   // conversations.info, by id
+	history  map[string][]map[string]any // conversations.history, by channel
+	replies  map[string][]map[string]any // conversations.replies, by "<channel>/<ts>"
+	users    []map[string]any
+
+	fail  map[string]string // method → slack error string
+	calls map[string]int
+}
+
+func newFake() *fakeSlack {
+	return &fakeSlack{
+		info:    map[string]map[string]any{},
+		history: map[string][]map[string]any{},
+		replies: map[string][]map[string]any{},
+		fail:    map[string]string{},
+		calls:   map[string]int{},
+	}
+}
+
+func (f *fakeSlack) serve(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(f.handle))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func (f *fakeSlack) called(method string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[method]
+}
+
+func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	method := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+	f.calls[method]++
+	if r.Header.Get("Authorization") != "Bearer test-token" {
+		write(w, map[string]any{"ok": false, "error": "invalid_auth"})
+		return
+	}
+	if msg, bad := f.fail[method]; bad {
+		// HTTP 200 with ok:false — Slack's own shape for a refusal.
+		write(w, map[string]any{"ok": false, "error": msg})
+		return
+	}
+	q := r.URL.Query()
+	switch method {
+	case "auth.test":
+		write(w, map[string]any{
+			"ok": true, "team": "Acme", "team_id": "T1",
+			"url": "https://acme.slack.com/", "user": "verse", "user_id": "U0",
+		})
+	case "users.conversations":
+		write(w, map[string]any{"ok": true, "channels": f.channels})
+	case "conversations.info":
+		c, ok := f.info[q.Get("channel")]
+		if !ok {
+			write(w, map[string]any{"ok": false, "error": "channel_not_found"})
+			return
+		}
+		write(w, map[string]any{"ok": true, "channel": c})
+	case "conversations.history":
+		write(w, map[string]any{"ok": true, "messages": f.history[q.Get("channel")]})
+	case "conversations.replies":
+		write(w, map[string]any{"ok": true,
+			"messages": f.replies[q.Get("channel")+"/"+q.Get("ts")]})
+	case "users.list":
+		write(w, map[string]any{"ok": true, "members": f.users})
+	default:
+		write(w, map[string]any{"ok": false, "error": "unknown_method"})
+	}
+}
+
+func write(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// channel registers one channel in both the list and the by-id lookup, so a full pass and a
+// targeted pass see the same thing.
+func (f *fakeSlack) channel(id, name string) {
+	c := map[string]any{
+		"id": id, "name": name, "is_private": false, "is_archived": false,
+		"num_members": 3, "created": 1700000000,
+		"topic":   map[string]any{"value": "what " + name + " is for"},
+		"purpose": map[string]any{"value": ""},
+	}
+	f.channels = append(f.channels, c)
+	f.info[id] = c
+}
+
+func (f *fakeSlack) say(channel, ts, user, text string) map[string]any {
+	m := map[string]any{"type": "message", "ts": ts, "user": user, "text": text}
+	f.history[channel] = append(f.history[channel], m)
+	return m
+}
