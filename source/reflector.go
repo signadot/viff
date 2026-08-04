@@ -13,7 +13,7 @@ import (
 
 // Source reads external truth for a slice of the entity-verse and hands it back. It owns one
 // system (`git:*`, `github:*`, …) and is the single writer of it, which is what lets that
-// slice go without CAS. See docs/sources.md and docs/working/sources.md.
+// slice go without CAS. See docs/sources.md.
 //
 // IT IS NOT HANDED A STORE, and that is the whole shape of this interface. Reflect answers
 // with what it read; converging the store with that answer is the Reflector's job, on verse's

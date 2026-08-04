@@ -130,7 +130,7 @@ func (e Entity) checkReach() error {
 			"name exactly one", e.Name, strings.Join(set, ", "))
 	}
 	if e.DialIn != "" {
-		// Designed, not built (docs/working/sources.md, step 4). Refused rather than accepted,
+		// Designed, not built (docs/working/sources-residual.md). Refused rather than accepted,
 		// because a registration that installed and then never dialled would sit in a listing
 		// looking installed — which is the one state an operator cannot debug from the outside.
 		return fmt.Errorf("source %q: `dial-in` is designed but not built yet — a registration "+

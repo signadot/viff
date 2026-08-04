@@ -767,7 +767,7 @@ func (s *Server) Handler() http.Handler {
 	// about. See docs/working/per-process-runners.md.
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
 	// Addressed by the slice reflected, because that is a question verse already asks: who
-	// writes `git:*`. See docs/working/sources.md.
+	// writes `git:*`. See docs/sources.md.
 	rt.handle("GET /sources", s.listSources, "", nothing)
 	rt.handle("POST /sources", s.addSource, "", nothing)
 	rt.handle("GET /sources/{system}/{name}", s.getSource, "", nothing)

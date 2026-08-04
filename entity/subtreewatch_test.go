@@ -330,7 +330,7 @@ func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
 //
 // This is the event half of TestLogdStore_ScopeHidesAnInheritedEntity, and it is what a
 // scoped reflection needs: a converge inside a scope that tombstones a branch the checkout
-// no longer has must reach that scope's rules. See docs/working/sources.md.
+// no longer has must reach that scope's rules. See docs/sources.md.
 func TestScopedWatchSeesADeleteOfAnInheritedEntity(t *testing.T) {
 	base := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "inherited"}

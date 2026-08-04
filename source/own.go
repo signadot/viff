@@ -22,9 +22,11 @@ import (
 // constants — proves `{repo: null}` disjoint from `{repo: verse}` when the second entails the
 // first: a wrong REFUSAL, from a check whose whole job is to be conservative.
 //
-// The cost is stated in docs/working/sources.md and worth knowing: this works when a source's
-// ids encode ownership positionally, which git's do because git.go prefixes every id with the
-// repo. A source whose ownership is a field rather than an address cannot spell it here.
+// The cost is stated in docs/working/sources-residual.md and worth knowing: this works when a
+// source's ids encode ownership positionally, which git's do because git.go prefixes every id
+// with the repo. A source whose ownership is a field rather than an address cannot spell it
+// here — and one whose entities have SEVERAL owners (a Linear project, which belongs to more
+// than one team) cannot be spelled by any ownership grammar at all.
 
 // Claim is one parsed ownership claim.
 type Claim struct {
@@ -139,7 +141,7 @@ func idsDisjoint(a, b Claim) bool {
 // An unparseable claim is an error rather than a false, so an install refuses with the reason
 // instead of with the conclusion. A registration that claims NOTHING is disjoint from
 // everything, which is the honest reading of an empty list — see the note in
-// docs/working/sources-plan.md on why a source that declines to say gets no ownership guessed
+// docs/sources.md on why a source that declines to say gets no ownership guessed
 // for it.
 func Disjoint(a, b []string) (bool, error) {
 	as, err := parseClaims(a)

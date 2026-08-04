@@ -21,7 +21,7 @@ import (
 // A source is installed at `sources:<system>:<name>` carrying one way in, and it is the single
 // writer of its system's slice. Where a runner's kind is the operator's own category, a
 // source's system is already a question verse asks — who writes `git:*` — so it goes in the
-// address, and an overlap is visible in a listing. See docs/working/sources.md.
+// address, and an overlap is visible in a listing. See docs/sources.md.
 
 // sourceFor builds the Source a registration names. The three ways in differ only in where the
 // net.Conn comes from; Reflect is the same call down all three.
@@ -555,7 +555,7 @@ func (s *Server) stopAllSources() {
 //     would put a write on `sources:*` once per resync interval forever, and anything watching
 //     that slice would fire on a verse where nothing is happening.
 //
-// What that costs is stated in docs/working/sources-plan.md: the cursor cannot catch a source
+// What that costs is stated in docs/sources.md: the cursor cannot catch a source
 // that has wedged, since a healthy quiet one looks the same. That is what the in-memory
 // lastPass above is for, and why it is reported rather than written.
 func (s *Server) recordPass(store entity.Store, ref entity.Ref, run *sourceRun, p source.Pass) {

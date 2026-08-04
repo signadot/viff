@@ -74,7 +74,7 @@ var (
 const ReflectTimeout = 2 * time.Minute
 
 // Client is a Source reached over HTTP: the same contract as an in-process one, with the
-// answers arriving from another program. See docs/working/sources.md.
+// answers arriving from another program. See docs/sources.md.
 type Client struct {
 	system string
 	base   string

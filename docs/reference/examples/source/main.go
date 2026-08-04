@@ -11,7 +11,7 @@
 // block goes stale the first time a signature moves and nobody finds out. It also is not a
 // toy — as shipped it serves source.Git, the same value verse runs in process, so what you
 // copy already works before you change anything. See ../../../sources.md for what a Source IS
-// and ../../../working/sources.md for the design.
+// and ../../../working/sources-residual.md for what is left.
 //
 // # What to change
 //
