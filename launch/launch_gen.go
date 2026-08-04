@@ -239,6 +239,10 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Provider.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Spec", fieldName.String)
+			}
 		}
 	}
 
@@ -403,6 +407,10 @@ func (s *Provider) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "within", fieldNodeUnwrapped.Type)
 			}
 			s.Within = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Provider", fieldName.String)
+			}
 		}
 	}
 

@@ -120,6 +120,10 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "tripDuration", fieldNodeUnwrapped.Type)
 			}
 			s.TripDuration = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Config", fieldName.String)
+			}
 		}
 	}
 
@@ -260,6 +264,10 @@ func (s *FormatConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) erro
 					return fmt.Errorf("field %q: failed to unmarshal text: %w", "wire", err)
 				}
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for FormatConfig", fieldName.String)
+			}
 		}
 	}
 
@@ -373,6 +381,10 @@ func (s *LLMConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "model", fieldNodeUnwrapped.Type)
 			}
 			s.Model = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for LLMConfig", fieldName.String)
+			}
 		}
 	}
 

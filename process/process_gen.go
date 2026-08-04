@@ -84,6 +84,10 @@ func (s *Grant) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				}
 				s.Allow = slice
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Grant", fieldName.String)
+			}
 		}
 	}
 
@@ -292,6 +296,10 @@ func (s *Frame) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "dropped", fieldNodeUnwrapped.Type)
 			}
 			s.Dropped = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Frame", fieldName.String)
+			}
 		}
 	}
 
@@ -404,6 +412,10 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			if err := s.Mode.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
 				return fmt.Errorf("field %q: failed to unmarshal text: %w", "mode", err)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Gate", fieldName.String)
 			}
 		}
 	}
@@ -614,6 +626,10 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected bool, got %v", "onPush", fieldNodeUnwrapped.Type)
 			}
 			s.OnPush = bool(fieldNodeUnwrapped.Bool)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for GateMatch", fieldName.String)
+			}
 		}
 	}
 
@@ -713,6 +729,10 @@ func (s *ResourcePred) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) erro
 				return fmt.Errorf("field %q: expected string, got %v", "pattern", fieldNodeUnwrapped.Type)
 			}
 			s.Pattern = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for ResourcePred", fieldName.String)
+			}
 		}
 	}
 
@@ -924,6 +944,10 @@ func (s *Instance) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				}
 				s.Pending = slice
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Instance", fieldName.String)
+			}
 		}
 	}
 
@@ -1057,6 +1081,10 @@ func (s *PendingGate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 				return fmt.Errorf("field %q: expected string, got %v", "reason", fieldNodeUnwrapped.Type)
 			}
 			s.Reason = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for PendingGate", fieldName.String)
+			}
 		}
 	}
 
@@ -1148,6 +1176,10 @@ func (s *PathPred) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "type", fieldNodeUnwrapped.Type)
 			}
 			s.Type = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for PathPred", fieldName.String)
+			}
 		}
 	}
 
@@ -1261,6 +1293,10 @@ func (s *Vector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			if err := s.Default.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
 				return fmt.Errorf("field %q: failed to unmarshal text: %w", "default", err)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Vector", fieldName.String)
 			}
 		}
 	}

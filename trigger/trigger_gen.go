@@ -157,6 +157,10 @@ func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				}
 				s.Children = slice
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for FlowNode", fieldName.String)
+			}
 		}
 	}
 
@@ -265,6 +269,10 @@ func (s *FlowTree) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Roots = slice
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for FlowTree", fieldName.String)
 			}
 		}
 	}
@@ -411,6 +419,10 @@ func (s *GoalDef) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Triggers = slice
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for GoalDef", fieldName.String)
 			}
 		}
 	}
@@ -571,6 +583,10 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Action.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "action", err)
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Trigger", fieldName.String)
+			}
 		}
 	}
 
@@ -681,6 +697,10 @@ func (s *Gating) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Gates = slice
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Gating", fieldName.String)
 			}
 		}
 	}
@@ -807,6 +827,10 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.OnDenied = &Action{}
 			if err := s.OnDenied.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Gate", fieldName.String)
 			}
 		}
 	}
@@ -1004,6 +1028,10 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.OnOrphaned = &Action{}
 			if err := s.OnOrphaned.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Action", fieldName.String)
 			}
 		}
 	}

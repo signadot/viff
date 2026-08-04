@@ -82,6 +82,10 @@ func (s *Entity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				s.Payload = fieldNodeUnwrapped
 			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Entity", fieldName.String)
+			}
 		}
 	}
 
@@ -215,6 +219,10 @@ func (s *Event) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "gap", fieldNodeUnwrapped.Type)
 			}
 			s.Gap = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Event", fieldName.String)
+			}
 		}
 	}
 
@@ -357,6 +365,10 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.At = slice
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Pattern", fieldName.String)
 			}
 		}
 	}
