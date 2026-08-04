@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/fatih/color v1.19.0
 	github.com/scott-cotton/cli v0.2.4
-	github.com/signadot/tony-format/go-tony v0.0.116-0.20260804102726-4e41c356a4b3
+	github.com/signadot/tony-format/go-tony v0.0.116
 )
 
 require (
