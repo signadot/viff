@@ -135,6 +135,32 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 	}
 }
 
+// ReplaceFrom writes next as the WHOLE value at ref, given cur — what the caller knows stands
+// there — and with NO precondition.
+//
+// It is for the single writer, and it is the operation the ownership rule was supposed to buy:
+// a slice with one writer has no concurrent writer to lose an update to, so the
+// compare-and-swap every other write here carries is protecting against something that cannot
+// happen. Reflected slices are exactly that case (docs/sources.md, "Ownership = single writer =
+// no CAS"), and until this existed they paid for CAS anyway, because Modify was the only way to
+// get replace semantics.
+//
+// WHAT IT COSTS, measured rather than assumed, against a local logd (see the repro in the
+// go-tony issue): an unconditional patch runs at ~1500/second and does not slow as the document
+// grows; a conditional one runs at 3–24/second. Two orders of magnitude, for a guarantee the
+// caller does not need. That is the whole reason this is a separate function rather than a flag.
+//
+// cur is what makes it a REPLACE rather than a merge: a write merges at its path, so a field
+// that has gone away goes away only if somebody writes an explicit null at it. A caller whose
+// cur is stale leaves such a field standing — which is why this is for the writer that has just
+// read the slice it is writing, and not a general-purpose call.
+func ReplaceFrom(s Store, ref Ref, cur, next Payload) error {
+	if _, _, err := s.Write(Write{At: ref.At(), Value: AsData(withRemovals(next, cur))}); err != nil {
+		return fmt.Errorf("replace %s: %w", ref, err)
+	}
+	return nil
+}
+
 // ModifyFrom is Modify with the read already done: cur is what the caller believes stands at
 // ref, and exists says whether anything does.
 //

@@ -304,60 +304,68 @@ first. A throttled pass still converges: `Reflector.converge` calls `current()`,
 whole system slice out of the store to answer "what changed", so the store cost of a resync is
 paid whether the answer is cached, unchanged, or new.
 
-**The resync interval is fiction at any size that matters.** Measured on a k3s deployment — one
-git source mirroring a repo with ~700 refs and commits, the stock one-minute `ResyncEvery`:
+**A pass used to take an hour, and the reason was verse's own.** The story is left in one
+piece because the two wrong turns in it are the useful part.
 
-| | |
-|---|---|
-| entities written per second | **~0.8** |
-| one full pass | **~15 minutes** |
-| docd, while a pass runs | **2.0–2.4 cores** (0.28 with the registration removed) |
+What was measured first, on a k3s deployment with one git source mirroring a repository: docd
+at 2.0–2.4 cores, entities landing at well under one per second, a mirror's `FETCH_HEAD` — which
+advances once per pass, and so is a direct probe of the pass rate — sitting unchanged for
+fifteen minutes at a time. `Reflector.Run` is one goroutine selecting on a ticker, so a tick
+arriving mid-pass waits: the tracking latency is however long a pass takes, and the minute in
+`ResyncEvery` never applied. It was worse than it looked, too — the repository turned out to
+hold **3377** reflected entities, not the 700 the partial counts suggested, so no first pass
+ever finished.
 
-`Reflector.Run` is one goroutine selecting on a ticker, so a tick that arrives mid-pass waits;
-the effective tracking latency is **however long a pass takes**, and the minute in `ResyncEvery`
-never applies. The observable form of this — and the thing that makes it worth a table — is
-that a mirror's `FETCH_HEAD` advances once per pass, so it sat unchanged for fifteen minutes
-while the verse looked busy. Everything downstream of that number is downstream of a pass
-completing.
+**The first guess was the extra read, and it was wrong.** `converge` called `entity.Modify` per
+changed entity — a Get and then a conditional Write — for a payload it had just Listed into
+`current`. `entity.ModifyFrom` removed that Get (a pass now makes no per-entity reads;
+`TestConvergeDoesNotReReadWhatItJustListed` fails without it). Throughput did not move at all.
 
-It is also what made `/status` answer in ~2s, which made versed's one-second liveness probe kill
-the singleton engine every ninety seconds until the probe was fixed.
+**The second guess was the environment, and it was wrong too.** The same source and repo against
+a local `verse up` on an Apple Silicon SSD ran at ~1.2 commits/second against ~0.5 in the
+cluster — two times, not two orders. The ceiling travelled with verse.
 
-**The obvious fix was made, and it did not help.** `converge` used to call `entity.Modify` per
-changed entity — a Get and then a conditional Write, two round trips — for a payload it had just
-Listed into `current`. It now writes from that snapshot (`entity.ModifyFrom`, with `Modify` as
-the fallback when the precondition fails), so a pass makes **no per-entity reads at all**;
-`TestConvergeDoesNotReReadWhatItJustListed` fails without it. Round trips per changed entity
-went from two to one, and **throughput did not move**: storeRev advanced ~5 commits per 10–25s
-before and after, with docd saturated at 2–3.6 cores either way.
+**It was the compare-and-swap.** Every conditional write is a `PatchIf`, and against a local
+logd, with no other client and nothing else running:
 
-So the read was not the bottleneck. The change stays — it is strictly less work and it is
-correct — but the constraint is **the substrate's write path, at roughly one commit per second**,
-and nothing verse does to its own round trips will change that.
+| entities in the document | `Patch` (no precondition) | `PatchIf` |
+|---|---|---|
+| 100 | 1718/s | 15–24/s |
+| 500 | 1776/s | 3–4/s |
+| 1000 | 1503/s | 13–17/s |
 
-**And that number is not the cluster's fault**, which is worth knowing before anyone tunes for
-it. The same source and the same repo against a local `verse up` on an Apple Silicon SSD: ~1.2
-commits/second, against ~0.5 on the k3s node. Two times, not two orders — so a first pass over
-700 entities takes about a quarter of an hour on a laptop too. The ceiling travels with verse,
-not with the environment, and every lever below is worth pulling on both. That reframes the rest of this
-list: the levers that matter are the ones that WRITE LESS, not the ones that ask more
-efficiently.
+Two orders of magnitude, flat versus erratic, and — the part that killed the anchoring theory —
+it makes no difference whether the match sits at the entity's own path or nested under the root.
+That is upstream's to explain (go-tony `x2bn8w56h12krw5we5n0`, with the repro attached), but
+verse did not have to be paying it: **a source is the single writer of its slice, so the CAS was
+defending against a writer that cannot exist.** `entity.ReplaceFrom` writes with no precondition,
+using the `current` snapshot to spell the removals that make it a replace rather than a merge.
 
-- **Is the residue the List or the writes?** A pass that writes nothing still Lists everything,
-  so a `current()` that could ask the store for a slice's *revision* rather than its contents
-  would make an unchanged pass one cheap question. That needs something the store does not
-  offer, and it is the fix that scales — for the steady state, where most passes change nothing.
-- **A resync interval that is not a constant.** One minute is right for a repo with ten refs and
-  wrong for a slice with seven hundred. Per-registration is the obvious spelling, and is what
-  this design argued against for the *source's* rate limit — but that reasoning does not carry:
-  the store cost is verse's own, and verse is the side that knows it.
-- **Narrower slices**, which is now the one to do first. `git:ref:*` includes GitHub's
-  `refs/pull/*`, which is most of that 700, and `git:commit:*` carries a tip window nothing has
-  asked for. Reflecting what an SDLC flow reacts to — heads and tags — is an order of magnitude
-  fewer writes for free, and is the `-refs` flag `sourced git` does not have.
+| | before | after |
+|---|---|---|
+| local | 1.2 writes/s | **337 writes/s** |
+| k3s | 0.5 writes/s | **100 writes/s** |
+| the 3377-entity first pass | never completed | **under 10s local, under 2 minutes in-cluster** |
+
+`docs/sources.md` has said "Ownership = single writer = no CAS" since the landing. It was true
+about the design and false about the code, and the gap cost two orders of magnitude for as long
+as nobody deployed it.
+
+**What is left of the levers**, now that the urgent one is spent:
+
+- **A pass that changes nothing still Lists everything.** A `current()` that could ask the store
+  for a slice's *revision* rather than its contents would make the steady state — most passes,
+  most of the time — one cheap question instead of a full read.
+- **Narrower slices.** `git:ref:*` includes GitHub's `refs/pull/*`, which is 3000 of those 3377
+  entities and which no SDLC flow reacts to. A `-refs heads,tags` flag on `sourced git` would
+  cut the slice by an order of magnitude; it does not exist. This is now about the store staying
+  small rather than about a pass finishing.
+- **A resync interval that is not a constant.** Still true that one minute suits ten refs and
+  not three thousand — but no longer urgent, since a pass now finishes well inside it.
 
 **And versed has no liveness probe any more**, which belongs here because it is the same
-measurement. `/status`'s latency is a function of docd's load, so probing it kills the singleton
+measurement — and the load that exposed it was self-inflicted, which does not make the probe any
+less wrong. `/status`'s latency is a function of docd's load, so probing it kills the singleton
 engine exactly when the store is struggling — and the restart makes it worse, since the new
 process re-establishes its sessions and re-runs every source's initial reconcile. Observed
 twice: at the default one-second timeout, and again at five seconds with six consecutive

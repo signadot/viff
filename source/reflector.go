@@ -198,19 +198,22 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		if exists && entity.Equal(cur, asStored(e.Payload)) {
 			continue
 		}
-		payload := e.Payload
-		// ModifyFrom rather than Modify, and `current` is why: the read Modify begins with is
-		// one this pass has ALREADY DONE, in the single List above. Asking for it again is a
-		// second round trip per changed entity, which on a first pass over a large slice is
-		// half of everything the pass costs — measured at ~0.8 entities/second against a
-		// deployed docd, where a 700-entity slice took a quarter of an hour to land.
+		// NO PRECONDITION, and this is the ownership rule finally being spent rather than
+		// merely stated. A source is the single writer of its slice, so the compare-and-swap a
+		// Modify carries defends against a concurrent writer that does not exist — and it is
+		// not free: measured against a local logd, an unconditional patch runs at ~1500/second
+		// and does not slow as the document grows, while a conditional one runs at 3–24/second.
+		// That factor is what made a 700-entity first pass take a quarter of an hour, on a
+		// laptop as much as on a cluster.
 		//
-		// It is not a weaker write: the precondition is the same expect-unchanged, so a
-		// snapshot that has gone stale between the List and here does not lose an update — it
-		// fails to commit and falls back to Modify, which re-reads. That is the single-writer
-		// rule being taken advantage of rather than relied upon.
-		if err := entity.ModifyFrom(ctx, rf.store, e.Ref, cur, exists,
-			func(entity.Payload) entity.Payload { return payload }); err != nil {
+		// `cur` is what keeps it a REPLACE: a write merges at its path, so a field the source
+		// has stopped reporting goes away only because an explicit null is written at it. The
+		// List above is where cur comes from, in the same pass, from the only writer there is.
+		//
+		// What is given up is the last thing --allow-overlap warns about: two sources on one
+		// slice now race rather than retry. They were already tombstoning each other's
+		// entities, which is the louder half of the same problem.
+		if err := entity.ReplaceFrom(rf.store, e.Ref, cur, e.Payload); err != nil {
 			return wrote, fmt.Errorf("reflecting %s: %w", e.Ref, err)
 		}
 		wrote++

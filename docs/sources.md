@@ -53,6 +53,15 @@ a *shared subject*, not a reflected slice.)
 In process that held because there was one `Git` value. Across deployments nothing holds it but
 the install check below.
 
+**And converge now spends it**, which it did not until a deployment made the cost visible: every
+write it made was a compare-and-swap, defending a single-writer slice against a concurrent
+writer that cannot exist. A conditional write costs two orders of magnitude more than an
+unconditional one, so the first pass over a repository reflected as 3400 entities never
+finished. It now writes with no precondition (`entity.ReplaceFrom`), using the snapshot it
+already read to spell the removals that keep it a replace rather than a merge — 1.2 writes per
+second to 337. The rule above was true about the design and false about the code for as long as
+nobody deployed it.
+
 ## The seam: a source answers, verse converges
 
 ```go
