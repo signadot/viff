@@ -325,8 +325,8 @@ changed entity — a Get and then a conditional Write — for a payload it had j
 a local `verse up` on an Apple Silicon SSD ran at ~1.2 commits/second against ~0.5 in the
 cluster — two times, not two orders. The ceiling travelled with verse.
 
-**It was the compare-and-swap.** Every conditional write is a `PatchIf`, and against a local
-logd, with no other client and nothing else running:
+**It was the compare-and-swap, and most of that was upstream's.** Every conditional write is a
+`PatchIf`, and on go-tony v0.0.113, against a local logd with no other client:
 
 | entities in the document | `Patch` (no precondition) | `PatchIf` |
 |---|---|---|
@@ -335,21 +335,28 @@ logd, with no other client and nothing else running:
 | 1000 | 1503/s | 13–17/s |
 
 Two orders of magnitude, flat versus erratic, and — the part that killed the anchoring theory —
-it makes no difference whether the match sits at the entity's own path or nested under the root.
-That is upstream's to explain (go-tony `x2bn8w56h12krw5we5n0`, with the repro attached), but
-verse did not have to be paying it: **a source is the single writer of its slice, so the CAS was
-defending against a writer that cannot exist.** `entity.ReplaceFrom` writes with no precondition,
-using the `current` snapshot to spell the removals that make it a replace rather than a merge.
+no difference between a match at the entity's own path and one nested under the root. That was
+filed with a repro (go-tony `x2bn8w56h12krw5we5n0`) and **fixed in v0.0.116**: the same three
+arms now run at 1806/1125/1287, 1995/495/1562 and 1662/893/1316 writes per second, so a
+conditional patch is within ~1.2–4x of an unconditional one rather than 100x off.
 
-| | before | after |
+verse's own change stands, but for a smaller reason than it was made for. `entity.ReplaceFrom`
+writes with no precondition at all, using the `current` snapshot to spell the removals that make
+a write a replace rather than a merge — because **a source is the single writer of its slice, so
+the CAS was defending against a writer that cannot exist**. On v0.0.116 that is worth about a
+quarter, not two orders:
+
+| the 3377-entity first pass | v0.0.113 | v0.0.116 |
 |---|---|---|
-| local | 1.2 writes/s | **337 writes/s** |
-| k3s | 0.5 writes/s | **100 writes/s** |
-| the 3377-entity first pass | never completed | **under 10s local, under 2 minutes in-cluster** |
+| with the CAS (`Modify`/`ModifyFrom`), local | never completed | 15.8s |
+| without it (`ReplaceFrom`), local | under 10s | **11.5s** |
+| without it, on the k3s deployment | never completed | **18.3s** |
 
-`docs/sources.md` has said "Ownership = single writer = no CAS" since the landing. It was true
-about the design and false about the code, and the gap cost two orders of magnitude for as long
-as nobody deployed it.
+The order in which those two facts arrived is the lesson worth keeping. The verse-side change
+was made because the measurement was catastrophic; it survives because the ownership rule says
+it should, which is the argument that was available before any of this was measured.
+`docs/sources.md` had said "Ownership = single writer = no CAS" since the landing — true about
+the design, false about the code, and it took a deployment to notice.
 
 **What is left of the levers**, now that the urgent one is spent:
 
@@ -362,6 +369,11 @@ as nobody deployed it.
   small rather than about a pass finishing.
 - **A resync interval that is not a constant.** Still true that one minute suits ten refs and
   not three thousand — but no longer urgent, since a pass now finishes well inside it.
+
+And what the numbers no longer say: verse converges at ~290 entities/second against a local
+logd, while a bare unconditional patch runs at ~1700. The remaining gap is verse's own — the
+List, the comparison, the single-goroutine loop — and nothing has looked at it, because at 12
+seconds for a whole repository nothing is asking.
 
 **And versed has no liveness probe any more**, which belongs here because it is the same
 measurement — and the load that exposed it was self-inflicted, which does not make the probe any
