@@ -299,6 +299,30 @@ from an external system where nothing is happening — the same shape as the wed
 `lastPass` exists for, one level down. Nothing reports it; a `/source` descriptor field saying
 "my floor is 2m" would, and would also let `verse sources` explain why a hint took two minutes.
 
+**And it protects the external API, not the store**, which turns out to be the half that hurt
+first. A throttled pass still converges: `Reflector.converge` calls `current()`, which Lists the
+whole system slice out of the store to answer "what changed", so the store cost of a resync is
+paid every minute whether the answer is cached, unchanged, or new. Measured on a k3s deployment
+— one git source mirroring a repo with ~500 refs, the stock one-minute `ResyncEvery` — docd held
+**2.0–2.4 cores continuously**, against **0.28** for the same verse with the registration
+removed. That is a real deployment consequence: it is what made `/status` answer in ~2s, which
+is what made versed's liveness probe (a one-second default) kill the singleton engine every
+ninety seconds until the probe was fixed.
+
+Three directions, and the first is the one to measure before choosing:
+
+- **Is the cost the List or the writes?** A pass that writes nothing still Lists everything, so
+  a `current()` that could ask the store for a slice's *revision* rather than its contents would
+  turn an unchanged pass into one cheap question. That needs something the store does not
+  currently offer, and it is the fix that scales.
+- **A resync interval that is not a constant.** One minute is right for a repo with ten refs and
+  wrong for a slice with five hundred. Per-registration is the obvious spelling and is the one
+  this design argued against for the *source's* rate limit — but the reasoning does not carry:
+  the store cost is verse's own, and verse is the side that knows it.
+- **Narrower slices.** `git:ref:*` includes GitHub's `refs/pull/*`, which is most of that 500.
+  A source that reflected refs an SDLC flow reacts to — heads and tags — would be an order of
+  magnitude smaller for free, which is the `-refs` flag `sourced git` does not have.
+
 ## Deferred by argument, not by effort
 
 These are in [sources.md](../sources.md)'s own "what a Source does not do", and are repeated

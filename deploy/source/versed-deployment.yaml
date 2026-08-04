@@ -47,16 +47,30 @@ spec:
         - secretRef:
             name: verse-llm
             optional: true
+        # Both probes read /status, and both carry an explicit timeoutSeconds because the
+        # default is ONE SECOND and /status is not a constant-time read — it reports store
+        # revision and engine counts, so it answers as fast as docd does. Measured on a k3s
+        # deployment holding ~500 reflected entities: ~2s, which the default calls a failure.
         readinessProbe:
           httpGet:
             path: /status
             port: api
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 5
           failureThreshold: 24
+        # LIVENESS IS THE DANGEROUS ONE, and it is deliberately slack. Readiness failing takes
+        # this pod out of a Service it is the only member of, which changes nothing; liveness
+        # failing KILLS THE SINGLETON ENGINE. And a restart is not free here even though the
+        # tier is stateless: reflectors restart, and a level-triggered pass does not repeat
+        # what it missed — so a probe that is wrong once costs change events nobody can get
+        # back. A minute of consecutive failures before acting, and the fact it is testing is
+        # "wedged", which a slow answer is not.
         livenessProbe:
           httpGet:
             path: /status
             port: api
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6

@@ -176,6 +176,26 @@ Then point Slack's Event Subscriptions request url at `https://<host>/slack/even
 Linear's Settings → API → Webhooks at `https://<host>/linear/webhook`. Each source verifies its
 own signature; verse never sees the delivery.
 
+### A private mirror needs a credential
+
+The git connector mounts a `verse-git` Secret at `/git-credentials`, `optional: true`, and
+points git's credential helper at it. No Secret means an empty mount, a helper that answers
+nothing, and an anonymous clone — which is what a public mirror wants — so there is no knob to
+set for the common case.
+
+```sh
+kubectl -n verse create secret generic verse-git \
+  --from-literal=credential=$'username=x-access-token\npassword=<PAT>\n'
+```
+
+The token is in a Secret rather than in the `-mirror` url because the url is in the pod spec,
+and a pod spec is not a secret. The helper is read-only on purpose: `credential.helper=store`
+writes the file back on success *and* on failure, so against a read-only mount it spends a
+1000ms lock timeout and prints a fatal-looking line on every clone and every fetch.
+
+⚠️ **The shipped `gitMirror` default is `signadot/verse`, which is private** — so the connector
+crash-loops until that Secret exists, with git's own "could not read Username" in the log.
+
 ### The git source has no repositories
 
 A pod has none, so `-mirror` makes one: it clones the remote at startup and fetches on every

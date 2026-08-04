@@ -51,13 +51,36 @@ spec:
         ports:
         - name: source
           containerPort: 9801
+        # Credentials for a private mirror. Unconditional, and harmless without them: the
+        # Secret is `optional`, so a missing one mounts an empty directory, the helper below
+        # answers nothing, and git proceeds anonymously — which is exactly what a public
+        # mirror wants. That is why this is not a knob. Create it and the same pod reaches a
+        # private remote:
+        #
+        #   kubectl -n verse create secret generic verse-git \
+        #     --from-literal=credential=$'username=x-access-token\npassword=<PAT>\n'
+        #
+        # GIT_CONFIG_* rather than a token in the -mirror url, because the url is in the pod
+        # spec and a pod spec is not a secret.
+        #
+        # A READ-ONLY helper, not `store --file=…`: store WRITES the file back — on success
+        # (approve) and on failure (erase) alike — so against a read-only Secret mount it
+        # spends a 1000ms lock timeout and prints a fatal-looking line on every clone and
+        # every fetch, which is once a minute forever. This one only ever reads, and answers
+        # nothing for `store` and `erase`.
+        env:
+        - name: GIT_CONFIG_COUNT
+          value: "1"
+        - name: GIT_CONFIG_KEY_0
+          value: credential.helper
+        - name: GIT_CONFIG_VALUE_0
+          value: '!f() { if [ "$1" = get ]; then cat /git-credentials/credential 2>/dev/null; fi; }; f'
         volumeMounts:
         - name: repos
           mountPath: /repos
-        # An emptyDir, so this needs no storage at all: the mirror is a cache of a remote that
-        # is still the truth, and a restart re-clones it. Swap in a PVC when the clone is
-        # expensive enough that paying for it on every rollout is worse than paying for a
-        # volume — nothing else changes.
+        - name: git-credentials
+          mountPath: /git-credentials
+          readOnly: true
         readinessProbe:
           # GET /source is the contract's own "what are you", which is exactly the question a
           # readiness probe is asking. A source that cannot answer it is one verse's install
@@ -67,9 +90,21 @@ spec:
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10
+          # Explicit, for the reason versed's are (see deploy/source/versed-deployment.yaml):
+          # the default is one second, and /source is answered by a program that may be busy
+          # talking to somebody else's API.
+          timeoutSeconds: 5
       volumes:
+      # An emptyDir, so this needs no storage at all: the mirror is a cache of a remote that is
+      # still the truth, and a restart re-clones it. Swap in a PVC when the clone is expensive
+      # enough that paying for it on every rollout is worse than paying for a volume — nothing
+      # else changes.
       - name: repos
         emptyDir: {}
+      - name: git-credentials
+        secret:
+          secretName: verse-git
+          optional: true
 ---
 apiVersion: v1
 kind: Service
