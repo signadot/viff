@@ -386,3 +386,81 @@ func TestSameValueWriteRaisesNoCommit(t *testing.T) {
 		t.Fatalf("root watch missed a real change: %+v", ev)
 	}
 }
+
+// ModifyFrom is Modify with the read already done, and it has to be the same write. A caller
+// that has just Listed a slice holds every payload in it, and asking the store for one of them
+// again is a round trip for something already in hand.
+func TestModifyFromWritesWithoutReading(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+
+	// Create: nothing stands there, and the caller says so.
+	if err := ModifyFrom(t.Context(), s, ref, nil, false, func(cur Payload) Payload {
+		if cur != nil {
+			t.Errorf("fn was handed %v for a create, want nil", ToObj(cur))
+		}
+		return Obj{"stage": "open", "note": "x"}.Payload()
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if got := readObj(t, s, ref); got["stage"] != "open" {
+		t.Fatalf("create did not land: %+v", got)
+	}
+
+	// Update from a correct snapshot, dropping a field — the whole-value contract Modify has.
+	cur, _, err := s.Get(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ModifyFrom(t.Context(), s, ref, cur.Payload, true, func(Payload) Payload {
+		return Obj{"stage": "merged"}.Payload() // answers without `note`
+	}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got := readObj(t, s, ref)
+	if got["stage"] != "merged" {
+		t.Fatalf("update did not land: %+v", got)
+	}
+	if _, still := got["note"]; still {
+		t.Fatalf("a field the answer left out survived: %+v", got)
+	}
+}
+
+// THE SNAPSHOT IS A GUESS, and a wrong one must not cost an update. The precondition is
+// Modify's own, so a stale `cur` fails to commit and falls back to Modify — which re-reads and
+// re-applies fn against what is actually there.
+func TestModifyFromFallsBackOnAStaleSnapshot(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	set(t, s, ref, Obj{"n": 1}.Payload())
+
+	// A snapshot from before somebody else's write. fn increments, so a lost update would be
+	// visible as a 2 where a 3 belongs — it must be re-applied against the CURRENT value.
+	stale := Obj{"n": 1}.Payload()
+	set(t, s, ref, Obj{"n": 2}.Payload())
+
+	if err := ModifyFrom(t.Context(), s, ref, stale, true, func(cur Payload) Payload {
+		return Obj{"n": asInt(ToObj(cur)["n"]) + 1}.Payload()
+	}); err != nil {
+		t.Fatalf("modify from a stale snapshot: %v", err)
+	}
+	if got := readObj(t, s, ref); got["n"] != int64(3) {
+		t.Fatalf("n = %v (%T), want 3 — the stale snapshot's answer was committed instead of "+
+			"being re-applied against what is there", got["n"], got["n"])
+	}
+}
+
+// The other wrong guess: claiming something stands there when nothing does. The expect-unchanged
+// precondition cannot hold against an absent entity, so this is the same fallback.
+func TestModifyFromFallsBackWhenNothingIsThere(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+
+	if err := ModifyFrom(t.Context(), s, ref, Obj{"stage": "ghost"}.Payload(), true,
+		func(Payload) Payload { return Obj{"stage": "open"}.Payload() }); err != nil {
+		t.Fatalf("modify from a snapshot of nothing: %v", err)
+	}
+	if got := readObj(t, s, ref); got["stage"] != "open" {
+		t.Fatalf("the write did not land: %+v", got)
+	}
+}

@@ -2,6 +2,7 @@ package source_test
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"testing"
 	"time"
@@ -42,14 +43,25 @@ func ref(system, kind, id string) entity.Ref {
 // rather than verse's law. That absorption is also not something to build on: it is the
 // substrate's behaviour, not this contract's, and the cost converge is avoiding (a read and a
 // write per entity, per pass, over the whole slice) is paid either way.
+//
+// It counts READS for a second reason, and a sharper one: a pass Lists the whole slice once to
+// work out what changed, so it already holds the payload of everything it is about to write.
+// A per-entity read after that is a round trip for something in hand, and on a deployed docd
+// it was half of what a first pass cost.
 type countingStore struct {
 	entity.Store
 	writes int
+	gets   int
 }
 
 func (c *countingStore) Write(w entity.Write) (bool, int64, error) {
 	c.writes++
 	return c.Store.Write(w)
+}
+
+func (c *countingStore) Get(ref entity.Ref) (entity.Entity, bool, error) {
+	c.gets++
+	return c.Store.Get(ref)
 }
 
 func newStore(t *testing.T) *countingStore {
@@ -259,5 +271,68 @@ func TestReflectionCheckRefusals(t *testing.T) {
 	ok.Add(ref("x", "a", "1"), entity.Obj{"n": 1})
 	if err := ok.Check("x"); err != nil {
 		t.Fatalf("a well-formed reflection should pass: %v", err)
+	}
+}
+
+// A PASS READS THE SLICE ONCE. converge Lists everything under the systems it touches to work
+// out what changed, so it already holds the payload of every entity it is about to write —
+// and asking the store for each one again is a second round trip for something in hand. On a
+// deployed docd that was half of what a first pass cost: ~700 entities at ~0.8/second, a
+// quarter of an hour to land a repository.
+//
+// Nothing here measures time. The invariant is the one that produced the time: converge makes
+// NO per-entity reads, whether it is creating, updating, or leaving things alone.
+func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
+	ctx := context.Background()
+	counting := newStore(t)
+
+	var answer source.Reflection
+	src := &fakeSource{system: "demo", answer: func() source.Reflection { return answer }}
+	mine := entity.Obj{"repo": "r"}.Payload()
+	build := func(stage string, n int) source.Reflection {
+		rn := source.Reflection{Covers: []entity.Pattern{
+			{System: "demo", Kind: "thing", Predicate: mine},
+		}}
+		for i := range n {
+			rn.Add(entity.Ref{System: "demo", Kind: "thing", ID: fmt.Sprint(i)},
+				entity.Obj{"repo": "r", "stage": stage})
+		}
+		return rn
+	}
+	rf := source.NewReflector(src, counting, 0)
+
+	// A first pass: every entity is a create.
+	answer = build("open", 20)
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := counting.gets; got != 0 {
+		t.Fatalf("a first pass made %d per-entity reads, want 0 — it had just Listed them", got)
+	}
+
+	// A second pass over the same answer: everything is unchanged, so nothing is written.
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := counting.gets; got != 0 {
+		t.Fatalf("an unchanged pass made %d per-entity reads, want 0", got)
+	}
+
+	// A third pass where every entity changed, plus a tombstone for one that is gone.
+	answer = build("merged", 19)
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := counting.gets; got != 0 {
+		t.Fatalf("an updating pass made %d per-entity reads, want 0", got)
+	}
+
+	// And it is still correct: the updates landed and the missing one is gone.
+	e, ok, _ := counting.Get(entity.Ref{System: "demo", Kind: "thing", ID: "0"})
+	if !ok || entity.Str(e.Payload, "stage") != "merged" {
+		t.Fatalf("thing:0 = %+v, ok=%v — the update did not land", entity.ToObj(e.Payload), ok)
+	}
+	if _, ok, _ := counting.Get(entity.Ref{System: "demo", Kind: "thing", ID: "19"}); ok {
+		t.Fatal("thing:19 left the answer and was not tombstoned")
 	}
 }

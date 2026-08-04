@@ -323,25 +323,42 @@ completing.
 It is also what made `/status` answer in ~2s, which made versed's one-second liveness probe kill
 the singleton engine every ninety seconds until the probe was fixed.
 
-Four directions, and the first is the cheapest by a distance:
+**The obvious fix was made, and it did not help.** `converge` used to call `entity.Modify` per
+changed entity — a Get and then a conditional Write, two round trips — for a payload it had just
+Listed into `current`. It now writes from that snapshot (`entity.ModifyFrom`, with `Modify` as
+the fallback when the precondition fails), so a pass makes **no per-entity reads at all**;
+`TestConvergeDoesNotReReadWhatItJustListed` fails without it. Round trips per changed entity
+went from two to one, and **throughput did not move**: storeRev advanced ~5 commits per 10–25s
+before and after, with docd saturated at 2–3.6 cores either way.
 
-- **converge already has what `Modify` re-reads.** `entity.Modify` does a Get and then a
-  conditional Write per changed entity — two round trips — and it needs the Get for
-  `withRemovals` and for the expect-unchanged precondition. But converge has *just Listed the
-  whole slice* into `current`, so it holds that payload already. Writing from the snapshot, with
-  `Modify` as the fallback when the precondition fails, halves the round trips on the only path
-  that costs any. Nothing new is needed from the store.
+So the read was not the bottleneck. The change stays — it is strictly less work and it is
+correct — but the constraint is **the substrate's write path, at roughly one commit per second**,
+and nothing verse does to its own round trips will change that. That reframes the rest of this
+list: the levers that matter are the ones that WRITE LESS, not the ones that ask more
+efficiently.
+
 - **Is the residue the List or the writes?** A pass that writes nothing still Lists everything,
   so a `current()` that could ask the store for a slice's *revision* rather than its contents
   would make an unchanged pass one cheap question. That needs something the store does not
-  offer, and it is the fix that scales.
+  offer, and it is the fix that scales — for the steady state, where most passes change nothing.
 - **A resync interval that is not a constant.** One minute is right for a repo with ten refs and
   wrong for a slice with seven hundred. Per-registration is the obvious spelling, and is what
   this design argued against for the *source's* rate limit — but that reasoning does not carry:
   the store cost is verse's own, and verse is the side that knows it.
-- **Narrower slices.** `git:ref:*` includes GitHub's `refs/pull/*`, which is most of that 700.
-  Reflecting the refs an SDLC flow reacts to — heads and tags — is an order of magnitude smaller
-  for free, and is the `-refs` flag `sourced git` does not have.
+- **Narrower slices**, which is now the one to do first. `git:ref:*` includes GitHub's
+  `refs/pull/*`, which is most of that 700, and `git:commit:*` carries a tip window nothing has
+  asked for. Reflecting what an SDLC flow reacts to — heads and tags — is an order of magnitude
+  fewer writes for free, and is the `-refs` flag `sourced git` does not have.
+
+**And versed has no liveness probe any more**, which belongs here because it is the same
+measurement. `/status`'s latency is a function of docd's load, so probing it kills the singleton
+engine exactly when the store is struggling — and the restart makes it worse, since the new
+process re-establishes its sessions and re-runs every source's initial reconcile. Observed
+twice: at the default one-second timeout, and again at five seconds with six consecutive
+failures required. Readiness stays (taking a slow engine out of a Service is cheap and
+reversible). Earning a liveness probe back needs an endpoint that answers from the process
+alone, without asking docd anything — then "is it alive" and "is the store fast" stop being the
+same question.
 
 ## Deferred by argument, not by effort
 

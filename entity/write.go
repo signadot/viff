@@ -135,6 +135,46 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 	}
 }
 
+// ModifyFrom is Modify with the read already done: cur is what the caller believes stands at
+// ref, and exists says whether anything does.
+//
+// It exists for the caller that has just read a whole SLICE and is now writing part of it back
+// — the source reflector's converge, which Lists everything under a source's system to work out
+// what changed and then, entity by entity, asked Modify to Get each one again. That second read
+// is half the round trips a pass makes, for payloads already in hand.
+//
+// IT IS NOT A WEAKER WRITE. The precondition is the one Modify uses — expect-absent for a
+// create, expect-unchanged for an update — so a caller whose snapshot has gone stale does not
+// lose an update; it gets a write that does not commit, and falls back to Modify, which
+// re-reads and re-applies exactly as if it had been called in the first place. The cost of a
+// wrong guess is one extra round trip on that entity; the saving on a right one is half of them
+// on every entity.
+//
+// fn keeps Modify's contract: it is handed what stands there (nil when nothing does) and
+// answers with what should, whole-value.
+func ModifyFrom(ctx context.Context, s Store, ref Ref, cur Payload, exists bool, fn func(cur Payload) Payload) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("modify %s: %w", ref, err)
+	}
+	when := Require{Pattern: Absent()} // expect-absent: this is a create
+	next := fn(nil)
+	if exists {
+		when = Require{Pattern: AsData(cur)} // expect-unchanged: this is an update
+		next = fn(cur)
+		next = withRemovals(next, cur)
+	}
+	ok, _, err := s.Write(Write{At: ref.At(), Value: AsData(next), When: []Require{when}})
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	// The snapshot was stale — someone else wrote, or it never stood there at all. Modify is
+	// the general case, and re-reading is exactly what it does.
+	return Modify(ctx, s, ref, fn)
+}
+
 // withRemovals adds an explicit null for every field of old that next does not mention, so
 // a read-modify-write that drops a field drops it in the store too. Only objects have
 // fields to drop; any other value replaces outright.

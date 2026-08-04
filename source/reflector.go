@@ -194,13 +194,23 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		// Compared against the payload AS THE STORE WILL HOLD IT: a read strips null fields
 		// (they are how the log spells a tombstone), so comparing against the raw answer would
 		// make a source that writes one differ from itself on every pass.
-		if cur, ok := current[e.Ref]; ok && entity.Equal(cur, asStored(e.Payload)) {
+		cur, exists := current[e.Ref]
+		if exists && entity.Equal(cur, asStored(e.Payload)) {
 			continue
 		}
 		payload := e.Payload
-		if err := entity.Modify(ctx, rf.store, e.Ref, func(entity.Payload) entity.Payload {
-			return payload
-		}); err != nil {
+		// ModifyFrom rather than Modify, and `current` is why: the read Modify begins with is
+		// one this pass has ALREADY DONE, in the single List above. Asking for it again is a
+		// second round trip per changed entity, which on a first pass over a large slice is
+		// half of everything the pass costs — measured at ~0.8 entities/second against a
+		// deployed docd, where a 700-entity slice took a quarter of an hour to land.
+		//
+		// It is not a weaker write: the precondition is the same expect-unchanged, so a
+		// snapshot that has gone stale between the List and here does not lose an update — it
+		// fails to commit and falls back to Modify, which re-reads. That is the single-writer
+		// rule being taken advantage of rather than relied upon.
+		if err := entity.ModifyFrom(ctx, rf.store, e.Ref, cur, exists,
+			func(entity.Payload) entity.Payload { return payload }); err != nil {
 			return wrote, fmt.Errorf("reflecting %s: %w", e.Ref, err)
 		}
 		wrote++

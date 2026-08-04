@@ -59,18 +59,22 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 5
           failureThreshold: 24
-        # LIVENESS IS THE DANGEROUS ONE, and it is deliberately slack. Readiness failing takes
-        # this pod out of a Service it is the only member of, which changes nothing; liveness
-        # failing KILLS THE SINGLETON ENGINE. And a restart is not free here even though the
-        # tier is stateless: reflectors restart, and a level-triggered pass does not repeat
-        # what it missed — so a probe that is wrong once costs change events nobody can get
-        # back. A minute of consecutive failures before acting, and the fact it is testing is
-        # "wedged", which a slow answer is not.
-        livenessProbe:
-          httpGet:
-            path: /status
-            port: api
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 6
+        # THERE IS NO LIVENESS PROBE, and that is a decision rather than an omission.
+        #
+        # The only endpoint to probe is /status, and its latency is a function of DOCD's load,
+        # not of whether this process is alive. So a liveness probe on it kills the singleton
+        # engine exactly when the store is struggling — and a restart makes that worse, because
+        # the new process re-establishes its sessions and re-runs every source's initial
+        # reconcile. It is a feedback loop, and it was observed as one twice on a k3s
+        # deployment: first at the default one-second timeout, then again at five seconds with
+        # six consecutive failures required, once docd was busy enough.
+        #
+        # A restart is not free even though this tier is stateless: reflectors restart, and a
+        # level-triggered pass does not repeat what it missed, so change events go missing for
+        # good. Against that, what a liveness probe buys is recovery from a wedge nothing else
+        # would clear — and no wedge has been observed. Readiness stays, because taking a slow
+        # engine out of its Service is cheap and reversible.
+        #
+        # What would earn one back: an endpoint that answers from this process alone, without
+        # asking docd anything. Then "is it alive" and "is the store fast" stop being the same
+        # question, which is the whole problem here.
