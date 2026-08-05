@@ -111,7 +111,7 @@ the entity alone and exits non-zero.
 verse watch --system demo --if '{stage: open}'
 ```
 
-```
+```tony
 {op: set ref: demo:pr:1 rev: 1 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
 {op: set ref: demo:pr:3 rev: 3 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
 {op: set ref: demo:pr:5 rev: 5 to: {labels: {area: engine} owner: cy stage: open …}}
