@@ -95,7 +95,7 @@ verse watch --system demo --if '{stage: open}'     # the same selectors as a lis
 verse watch --since 42                             # from a revision you already have
 ```
 
-```
+```tony
 {op: set ref: demo:pr:1 rev: 1 to: {stage: open owner: ana}}
 {op: delete ref: demo:pr:9 rev: 7}
 ```
