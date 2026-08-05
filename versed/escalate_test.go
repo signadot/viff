@@ -146,6 +146,31 @@ func standingWithDeadline(name, area, within string) string {
 		` method: {driver: url, url: "https://x"}}`
 }
 
+// waitArmed waits for a posed question to carry its owner's deadline, and returns it.
+//
+// Arming is a SECOND write: posting the question publishes it, and stamping `escalatesAt`
+// happens after, because the instant is computed from a binding that has to be looked up
+// first (see the `arm` hook in server.go). So a reader that waits for the question and then
+// reads the clock is reading between two writes, and the answer is legitimately nil — which
+// is what made this test fail under -race and pass otherwise. It is the arming that is being
+// asserted, so it is the arming that has to be waited for; the message is the assertion it
+// replaces, and a genuine failure to arm still reaches it as a timeout.
+func waitArmed(t *testing.T, srv *Server, qid string) map[string]any {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		got := question(t, srv, qid)
+		if got["escalatesAt"] != nil {
+			return got
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the deadline was never armed: %+v", got)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 // Silence does what an `escalate` verdict does, more slowly.
 //
 // The expiry is evaluated when a READER arrives rather than by a clock of its own, because the
@@ -166,10 +191,7 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 
 	// Armed, and absolute: a duration on the binding becomes an instant on the question,
 	// so a restart cannot slide it.
-	got := question(t, srv, qid)
-	if got["escalatesAt"] == nil {
-		t.Fatalf("the deadline was never armed: %+v", got)
-	}
+	got := waitArmed(t, srv, qid)
 	// Inside it, nothing moves however much anyone reads.
 	docket(t, srv)
 	if q := question(t, srv, qid); q["resolver"] != "resolvers:security:security-review" {

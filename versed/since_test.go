@@ -222,6 +222,18 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 
 	assertGap := func(t *testing.T, url string) {
 		t.Helper()
+		// The precondition is that cursor 1 has FALLEN OUT of the retained window, and until
+		// this test waited for it that was a race it usually won by luck: 400 actions outran a
+		// reader that attached immediately, so the ring had already rolled past 1 and the gap
+		// fired. Under -race the driver is the slow one, cursor 1 was still retained, and the
+		// answer was correctly no gap — a test failing on its own setup rather than on what it
+		// asserts.
+		//
+		// Draining to the terminal makes the precondition a fact instead of a wager: a drive
+		// this long that has ENDED is past the window on every runner and at every speed. It
+		// is the same stop condition frames() already uses — the process saying so — and it
+		// costs one pass over a stream this test then re-reads from the far end anyway.
+		frames(t, url)
 		got := frames(t, url+"?since=1")
 		if len(got) == 0 {
 			t.Fatal("resuming below the watermark returned nothing at all")
