@@ -191,6 +191,26 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		desired[e.Ref] = true
 	}
 	for _, e := range rn.Entities {
+		// THE FENCE: a cancelled reflector stops WRITING, not merely stops looping.
+		//
+		// Cancelling used to end the pass only where Run selects on ctx.Done, which is between
+		// passes — so a stop signalled mid-pass let every remaining write land, and against a
+		// scope being deleted that is a slice re-created one entity at a time in an overlay
+		// nobody asked for. A 700-entity first pass makes the window a quarter of an hour.
+		//
+		// It is a ctx check rather than a precondition because a precondition is what converge
+		// deliberately gave up: the note below measures conditional writes at 3–24/second
+		// against ~1500 unconditional, and paying that back per entity to defend against a
+		// deleted scope would be the same trade the ownership rule already refused. An atomic
+		// load costs nothing and answers the same question.
+		//
+		// It cannot be airtight — a cancel landing between this check and the write still gets
+		// through — but it bounds the exposure at ONE write instead of a whole pass, and there
+		// is no tighter fence available while the store's write carries the store's context
+		// rather than the caller's.
+		if err := ctx.Err(); err != nil {
+			return wrote, err
+		}
 		// Compared against the payload AS THE STORE WILL HOLD IT: a read strips null fields
 		// (they are how the log spells a tombstone), so comparing against the raw answer would
 		// make a source that writes one differ from itself on every pass.
@@ -221,6 +241,11 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 	for _, ref := range covered(rn.Covers, current) {
 		if desired[ref] {
 			continue
+		}
+		// Fenced as the writes above are, and for the sharper reason: a tombstone written into
+		// a scope that has just gone away re-creates the overlay in order to record an absence.
+		if err := ctx.Err(); err != nil {
+			return wrote, err
 		}
 		if _, _, err := rf.store.Write(entity.Write{At: ref.At()}); err != nil {
 			return wrote, fmt.Errorf("tombstoning %s: %w", ref, err)

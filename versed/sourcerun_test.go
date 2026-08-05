@@ -193,7 +193,7 @@ func TestLastErrorIsWrittenOnTransition(t *testing.T) {
 
 	run := &sourceRun{}
 	fail := source.Pass{Err: errFor("unreachable")}
-	srv.recordPass(srv.Store, ref, run, fail)
+	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
 	reg, _, _ := srv.Store.Get(ref)
 	if entity.Str(reg.Payload, "lastError") == "" {
 		t.Fatal("a failing pass should record why")
@@ -201,14 +201,14 @@ func TestLastErrorIsWrittenOnTransition(t *testing.T) {
 
 	// The same failure again: no write, because nothing changed about it.
 	rev := srv.Store.Rev()
-	srv.recordPass(srv.Store, ref, run, fail)
+	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
 	if srv.Store.Rev() != rev {
 		t.Fatal("the same failure twice should write once — lastError is a transition")
 	}
 
 	// And the recovery CLEARS it, which is the half an error-only hook could never do: the
 	// registration stops carrying an error rather than carrying an empty one.
-	srv.recordPass(srv.Store, ref, run, source.Pass{})
+	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{})
 	reg, _, _ = srv.Store.Get(ref)
 	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
 		t.Fatalf("a recovery should remove lastError, got %v", entity.ToObj(reg.Payload))
@@ -232,7 +232,7 @@ func (s *Server) reconcileOnce(t *testing.T, e source.Entity) error {
 	ref := source.Ref(e.System, e.Name)
 	run := &sourceRun{}
 	rf := source.NewReflector(src, s.Store, 0)
-	rf.OnPass(func(p source.Pass) { s.recordPass(s.Store, ref, run, p) })
+	rf.OnPass(func(p source.Pass) { s.recordPass(t.Context(), s.Store, ref, run, p) })
 	return rf.Reconcile(context.Background(), entity.Ref{})
 }
 
@@ -261,11 +261,44 @@ func TestAPassAfterRemovalDoesNotResurrectTheRegistration(t *testing.T) {
 
 	// …and now a pass that was already in flight reports itself, both ways.
 	run := &sourceRun{}
-	srv.recordPass(srv.Store, ref, run, source.Pass{Err: errFor("unreachable")})
-	srv.recordPass(srv.Store, ref, run, source.Pass{Wrote: 3})
+	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{Err: errFor("unreachable")})
+	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{Wrote: 3})
 
 	if e, ok, _ := srv.Store.Get(ref); ok {
 		t.Fatalf("a pass after removal resurrected the registration as %v", entity.ToObj(e.Payload))
+	}
+}
+
+// A SUCCEEDING pass reported after its reflector was stopped writes nothing.
+//
+// This is the half the precondition above cannot cover, and it is a different failure wearing
+// the same clothes. `stillInstalled` is a compare-and-swap, and a compare-and-swap can only be
+// ordered against other WRITES — a scope delete is not one. So the CAS reads `name` present,
+// the overlay is dropped underneath it, and the patch lands anyway and re-creates the
+// registration in a scope that no longer exists, as a stub carrying nothing but a timestamp.
+// TestDeletingAScopeTakesItsSources caught it about one run in five.
+//
+// Nothing about such a pass is an error — it succeeded, moments before the stop — so the
+// cancelled-pass guard does not see it either. The reflector's own context is the only thing
+// that knows, and once it is done this run has no business writing anywhere.
+func TestAPassReportedAfterTheStopWritesNothing(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "stopped")
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "stopped", "system": "git", "url": "http://127.0.0.1:1",
+	}.Payload())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // the reflector has been stopped; a pass that was already in flight now reports
+
+	rev := srv.Store.Rev()
+	run := &sourceRun{}
+	srv.recordPass(ctx, srv.Store, ref, run, source.Pass{Wrote: 3})
+	srv.recordPass(ctx, srv.Store, ref, run, source.Pass{Err: errFor("unreachable")})
+
+	if srv.Store.Rev() != rev {
+		reg, _, _ := srv.Store.Get(ref)
+		t.Fatalf("a pass reported after the stop wrote to the store: %v", entity.ToObj(reg.Payload))
 	}
 }
 
@@ -478,7 +511,7 @@ func TestACleanShutdownIsNotRecordedAsAFailure(t *testing.T) {
 	}.Payload())
 
 	run := &sourceRun{}
-	srv.recordPass(srv.Store, ref, run, source.Pass{
+	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{
 		Err: fmt.Errorf("reflect git: %w", context.Canceled),
 	})
 	reg, _, _ := srv.Store.Get(ref)

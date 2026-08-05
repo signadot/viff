@@ -445,10 +445,44 @@ type sourceRun struct {
 	rf     *source.Reflector
 	scope  string
 	cancel context.CancelFunc
+	// done closes when Run returns, which is what lets a stop WAIT rather than merely signal.
+	// Nil on a run nobody started (a test builds one to drive recordPass directly), and stop
+	// treats that as already finished.
+	done chan struct{}
 
 	mu       sync.Mutex
 	lastPass string // RFC3339, or empty until the first pass returns
 	lastErr  string // the current error state, for the transition test
+}
+
+// stopDrain bounds how long a stop waits for a reflector's loop to return.
+//
+// It can be short because of the FENCE, and the two are one mechanism: a cancelled reflector
+// stops issuing writes at the next entity (see Reflector.converge), so what is being waited out
+// is one store round trip and a Reflect that ctx already aborted — not a pass, which can run to
+// a quarter of an hour. Without the fence this number would have to be the pass length, which
+// is why draining alone was never the answer.
+//
+// On expiry the stop proceeds anyway. A wedged source must not be able to hold a scope delete
+// open, and the fence means the worst it can still do is land the one write it had in flight.
+const stopDrain = 2 * time.Second
+
+// stop ends this reflector and waits for its loop to be off the store.
+//
+// Cancelling alone is not enough for a caller that is about to drop the data underneath it. A
+// scope delete is not a write, so no compare-and-swap can be ordered against it: a pass that
+// passed its precondition before the delete lands after it and re-creates the overlay it was
+// writing into. Waiting until Run has returned is what makes "the sources are stopped" true at
+// the moment the delete is issued rather than merely requested.
+func (r *sourceRun) stop() {
+	r.cancel()
+	if r.done == nil {
+		return
+	}
+	select {
+	case <-r.done:
+	case <-time.After(stopDrain):
+	}
 }
 
 func (r *sourceRun) status() (lastPass, lastErr string) {
@@ -473,21 +507,32 @@ func (s *Server) startSource(e source.Entity) error {
 	}
 	rf := source.NewReflector(src, store, ResyncEvery)
 	run := &sourceRun{rf: rf, scope: e.Scope}
-	rf.OnPass(func(p source.Pass) { s.recordPass(store, ref, run, p) })
 
+	// The context is built BEFORE the pass sink, so the sink can be fenced by it: a status
+	// write is a write like any other, and one landing after its scope was dropped re-creates
+	// the registration as a stub (see stillInstalled). Ordering it here rather than storing the
+	// context on the run keeps it a closure over a lifetime instead of a field to remember.
 	ctx, cancel := context.WithCancel(s.ctx)
 	run.cancel = cancel
+	rf.OnPass(func(p source.Pass) { s.recordPass(ctx, store, ref, run, p) })
 	s.srcMu.Lock()
 	// A re-install replaces, and the OLD one has to be stopped first — two reflectors on one
 	// slice is exactly what the disjointness check at install exists to prevent, so leaking one
 	// here would be the same bug arriving through the back door.
-	if old, ok := s.srcRuns[ref.String()]; ok {
-		old.cancel()
-	}
+	old, replacing := s.srcRuns[ref.String()]
+	run.done = make(chan struct{})
 	s.srcRuns[ref.String()] = run
 	s.srcMu.Unlock()
+	// Outside the lock, because stop WAITS now: holding srcMu across a drain would block every
+	// other source's install and stop behind one slow reflector.
+	if replacing {
+		old.stop()
+	}
 
-	go rf.Run(ctx)
+	go func() {
+		defer close(run.done)
+		_ = rf.Run(ctx)
+	}()
 	return nil
 }
 
@@ -498,7 +543,7 @@ func (s *Server) stopSource(ref entity.Ref) {
 	delete(s.srcRuns, ref.String())
 	s.srcMu.Unlock()
 	if ok {
-		run.cancel()
+		run.stop()
 	}
 }
 
@@ -515,8 +560,10 @@ func (s *Server) stopScopeSources(scope string) {
 		}
 	}
 	s.srcMu.Unlock()
+	// Waited out, not just signalled: this is the call deleteScope makes immediately before it
+	// drops the overlay, so "stopped" has to mean off the store rather than told to go.
 	for _, run := range doomed {
-		run.cancel()
+		run.stop()
 	}
 }
 
@@ -540,7 +587,7 @@ func (s *Server) stopAllSources() {
 	s.srcRuns = map[string]*sourceRun{}
 	s.srcMu.Unlock()
 	for _, run := range runs {
-		run.cancel()
+		run.stop()
 	}
 }
 
@@ -558,12 +605,25 @@ func (s *Server) stopAllSources() {
 // What that costs is stated in docs/sources.md: the cursor cannot catch a source
 // that has wedged, since a healthy quiet one looks the same. That is what the in-memory
 // lastPass above is for, and why it is reported rather than written.
-func (s *Server) recordPass(store entity.Store, ref entity.Ref, run *sourceRun, p source.Pass) {
+func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.Ref, run *sourceRun, p source.Pass) {
 	// A cancelled pass is a SHUTDOWN, not a fault, and recording it would be a lie that
 	// outlives the process: every source would come back from a clean stop carrying
 	// "context canceled" as its last error, and an operator reading the listing after a
 	// restart would see a verse full of broken sources that are all fine.
 	if errors.Is(p.Err, context.Canceled) {
+		return
+	}
+	// And a pass that SUCCEEDED just before the stop is the case the line above cannot catch,
+	// because nothing about it is an error: p.Err is nil, p.Wrote is positive, and the write
+	// below is the one that lands in a scope that has since been deleted. stillInstalled is
+	// the precondition meant to stop it and cannot, because it is a compare-and-swap and a
+	// scope delete is not a write to be ordered against — so the CAS reads `name` present,
+	// the overlay is dropped, and the patch re-creates the registration as a stub carrying
+	// nothing but a timestamp. That was reproducible in roughly one run in five.
+	//
+	// The context is the fence the CAS cannot be: it is the reflector's own lifetime, and once
+	// it is done this run has no business writing anything anywhere.
+	if err := ctx.Err(); err != nil {
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
