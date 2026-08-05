@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // registerTreatments writes the two doers the case in docs/provider-selection.md
@@ -39,11 +39,11 @@ func registerTreatments(t *testing.T, store entity.Store) {
 // tools, grant and frame — and agree on the driver.
 func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	registerTreatments(t, store)
 
 	specs := make(chan launch.Spec, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		specs <- spec
 		return nil
 	})
@@ -57,10 +57,10 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 			Action: Action{
 				OnDone: &Action{Patch: entity.Obj{"risk": "treated"}.Payload()},
 				Spawn: &launch.Spec{
-					Task:  "treat $subject",
-					Frame: "a frame the doer overrides",
-					Tools: []string{"read_file", "list_dir", "write_file", "run_bash"},
-					Grant: "no-delegate",
+					Prompt: "treat $subject",
+					Frame:  "a frame the doer overrides",
+					Tools:  []string{"read_file", "list_dir", "write_file", "run_bash"},
+					Grant:  "no-delegate",
 					Provider: &launch.Provider{
 						Capability: "treat",
 						Match:      map[string]any{"risk": risk},
@@ -108,11 +108,11 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 		t.Errorf("frames did not come from the doers: %q / %q", fix.Frame, memo.Frame)
 	}
 	// The task is the charter's, always: a doer varies how the work is done, not what it is.
-	if fix.Task != "treat demo:finding:1" {
-		t.Errorf("task = %q, want the charter's, bound", fix.Task)
+	if fix.Prompt != "treat demo:finding:1" {
+		t.Errorf("task = %q, want the charter's, bound", fix.Prompt)
 	}
 	// And each spawn says WHICH doer it got. The driver cannot answer that here — both ran
-	// `llm` — which is the whole reason a process carries the doer separately.
+	// `llm` — which is the whole reason a task carries the doer separately.
 	if fix.Doer != "provider:treat:fixer" || memo.Doer != "provider:treat:memo" {
 		t.Errorf("doers = %q / %q, want the two provider refs", fix.Doer, memo.Doer)
 	}
@@ -130,7 +130,7 @@ func TestInlineEligibleCarriesOnlyTheDriver(t *testing.T) {
 		t.Fatal("inline eligible did not select")
 	}
 	// Its name is its identity AND its driver — an inline list names no entity, so the doer
-	// a process reports is the same string the charter typed.
+	// a task reports is the same string the charter typed.
 	if !reflect.DeepEqual(frag, launch.Fragment{ID: "gpt", Driver: "gpt"}) {
 		t.Fatalf("inline fragment = %+v, want a bare driver", frag)
 	}
@@ -165,13 +165,13 @@ func TestDisjointToolsIsIneligible(t *testing.T) {
 		entity.Obj{"driver": "llm", "tools": []any{"run_bash"}}.Payload())
 
 	spawned := make(chan launch.Spec, 1)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		spawned <- spec
 		return nil
 	})
 
 	spawn := launch.Spec{
-		Task:     "treat it",
+		Prompt:   "treat it",
 		Tools:    []string{"read_file"}, // the spawn offers a tool the doer does not
 		Grant:    "read-only",
 		Provider: &launch.Provider{Capability: "treat", Select: "auto"},

@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // observe/sdlc/effectuate — the ordering the design note is written around, which is what
@@ -34,7 +34,7 @@ func withStrata(t *testing.T, eng *Engine, strata ...Stratum) {
 func newEng(t *testing.T) (*Engine, entity.Store) {
 	t.Helper()
 	store := entitytest.Store(t)
-	return New(store, process.AutoResolver{}), store
+	return New(store, task.AutoResolver{}), store
 }
 
 // ── the ordering itself ───────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ func TestDeriveMustLandStrictlyAbove(t *testing.T) {
 			Name: "x4", Stratum: "sdlc",
 			Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature"}},
 			Action: Action{
-				Spawn:  &launch.Spec{Task: "review $subject"},
+				Spawn:  &launch.Spec{Prompt: "review $subject"},
 				OnDone: &Action{Derive: entity.Obj{"gh": entity.Obj{"issue": entity.Obj{"a": 1}}}.Payload()},
 			},
 		},
@@ -526,7 +526,7 @@ func TestAStratumWithRulesCannotBeRemoved(t *testing.T) {
 // progress intact, and the ordering its rules were checked against has to come back with it.
 func TestStrataSurviveARestart(t *testing.T) {
 	store := entitytest.Store(t)
-	first := New(store, process.AutoResolver{})
+	first := New(store, task.AutoResolver{})
 	withStrata(t, first, demoStrata()...)
 	if err := first.AddTrigger(Trigger{
 		Name:      "r",
@@ -537,7 +537,7 @@ func TestStrataSurviveARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second := New(store, process.AutoResolver{})
+	second := New(store, task.AutoResolver{})
 	if err := second.LoadStrata(); err != nil {
 		t.Fatalf("LoadStrata: %v", err)
 	}
@@ -562,7 +562,7 @@ func TestStrataSurviveARestart(t *testing.T) {
 // comes up with a charter that does not fire.
 func TestCharterLoadedBeforeStrataHoldsItsRules(t *testing.T) {
 	store := entitytest.Store(t)
-	first := New(store, process.AutoResolver{})
+	first := New(store, task.AutoResolver{})
 	withStrata(t, first, demoStrata()...)
 	if err := first.AddTrigger(Trigger{
 		Name:      "r",
@@ -572,7 +572,7 @@ func TestCharterLoadedBeforeStrataHoldsItsRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Deliberately the wrong order, to pin what it costs.
-	second := New(store, process.AutoResolver{})
+	second := New(store, task.AutoResolver{})
 	if err := second.LoadCharter(); err != nil {
 		t.Fatal(err)
 	}
@@ -768,8 +768,8 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 // the bare key and leaves the text "demo:pr:1.id", which is why this is pinned.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.Ref{System: "demo", Kind: "pr", ID: "1"})
-	spec := launch.Spec{Task: "review $subject.id in $subject.system ($subject) at $stage"}
-	got := spec.Bind(b).Task
+	spec := launch.Spec{Prompt: "review $subject.id in $subject.system ($subject) at $stage"}
+	got := spec.Bind(b).Prompt
 	if want := "review 1 in demo (demo:pr:1) at open"; got != want {
 		t.Fatalf("task = %q, want %q", got, want)
 	}
@@ -858,11 +858,11 @@ func TestSubjectValueReadsAtTheCausingCommit(t *testing.T) {
 // the approval that takes long enough for the world to move.
 type blockingResolver struct{ release chan struct{} }
 
-func (r blockingResolver) Resolve(ctx context.Context, q process.GateQuestion, tu process.ToolUse) (process.Resolution, error) {
+func (r blockingResolver) Resolve(ctx context.Context, q task.GateQuestion, tu task.ToolUse) (task.Resolution, error) {
 	select {
 	case <-r.release:
 	case <-ctx.Done():
-		return process.Resolution{}, ctx.Err()
+		return task.Resolution{}, ctx.Err()
 	}
-	return process.Resolution{Proceed: true, By: "test"}, nil
+	return task.Resolution{Proceed: true, By: "test"}, nil
 }

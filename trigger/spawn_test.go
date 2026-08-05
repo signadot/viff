@@ -10,50 +10,50 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // immediate is a driver that completes without taking any action.
 type immediate struct{}
 
-func (immediate) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
-	return process.ToolUse{}, false, nil
+func (immediate) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
+	return task.ToolUse{}, false, nil
 }
 
 type noExec struct{}
 
-func (noExec) Execute(context.Context, process.ToolUse) (process.StepResult, []process.ToolUse, error) {
-	return process.StepResult{}, nil, nil
+func (noExec) Execute(context.Context, task.ToolUse) (task.StepResult, []task.ToolUse, error) {
+	return task.StepResult{}, nil, nil
 }
 
 // Engine.Spawn hands the (bound) launch.Spec to the Spawner and mirrors the
-// resulting process into the verse — the wire-form action becoming a real process.
+// resulting task into the verse — the wire-form action becoming a real task.
 func TestSpawnRoutesBoundSpec(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	var got launch.Spec
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		got = spec
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, immediate{}, noExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{Runner: "local"}) // the Spawner now owns mirror + run
 		go p.Run(context.Background())
 		return p
 	})
 
-	spec := launch.Spec{Driver: "scripted", Task: "review $subject"}.
+	spec := launch.Spec{Driver: "scripted", Prompt: "review $subject"}.
 		Bind(launch.Binding{"subject": "demo:pr:1"})
 
 	p := eng.Spawn("rev-1", spec)
 	if p == nil {
 		t.Fatal("Spawn returned nil")
 	}
-	if got.Driver != "scripted" || got.Task != "review demo:pr:1" {
+	if got.Driver != "scripted" || got.Prompt != "review demo:pr:1" {
 		t.Fatalf("spawner received unbound/wrong spec: %+v", got)
 	}
 
-	// the process appears in the verse (mirror), then reaches a terminal status
+	// the task appears in the verse (mirror), then reaches a terminal status
 	ref := mirror.Ref("rev-1")
 	deadline := time.After(2 * time.Second)
 	for {
@@ -63,23 +63,23 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		select {
 		case <-deadline:
 			e, _, _ := store.Get(ref)
-			t.Fatalf("spawned process never completed in the verse: %+v", e.Payload)
+			t.Fatalf("spawned task never completed in the verse: %+v", e.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
 }
 
 // A ref id can be a file path (from local-dev federation) — full of slashes. The
-// spawned process id must stay a single, route-safe URL segment (it routes through
-// /processes/{id}), so slashes are sanitized while the real ref lives on as Subject.
+// spawned task id must stay a single, route-safe URL segment (it routes through
+// /tasks/{id}), so slashes are sanitized while the real ref lives on as Subject.
 func TestSpawnIDIsRouteSafe(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	ids := make(chan string, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		ids <- id
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, immediate{}, noExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		go p.Run(context.Background())
 		return p
@@ -89,7 +89,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		Condition: Condition{Subject: Match{"system": "local", "kind": "file",
 			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
-			Spawn:  &launch.Spec{Task: "validate $path"},
+			Spawn:  &launch.Spec{Prompt: "validate $path"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "validated"}.Payload()},
 		},
 	}); err != nil {
@@ -99,8 +99,8 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "local", Kind: "file", ID: "process/processd/daemon.go"},
-		entity.Obj{"path": "process/processd/daemon.go", "stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "local", Kind: "file", ID: "task/taskd/daemon.go"},
+		entity.Obj{"path": "task/taskd/daemon.go", "stage": "open"}.Payload())
 
 	select {
 	case id := <-ids:
@@ -110,7 +110,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		// Chain, then the subject boundary, then the full ref (slashes sanitized), plus a
 		// hash suffix behind its own marker (the ref had rewritten characters, so it is
 		// disambiguated).
-		if !strings.HasPrefix(id, "validate@local:file:process_processd_daemon.go+") {
+		if !strings.HasPrefix(id, "validate@local:file:task_taskd_daemon.go+") {
 			t.Fatalf("unexpected sanitized id: %q", id)
 		}
 		// and it is routable/findable in the verse under that id (mirror is async)
@@ -122,7 +122,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 			}
 			select {
 			case <-deadline:
-				t.Fatalf("mirrored process not found under sanitized id %q", id)
+				t.Fatalf("mirrored task not found under sanitized id %q", id)
 			case <-time.After(5 * time.Millisecond):
 			}
 		}
@@ -132,7 +132,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 }
 
 // spawnID keys off the whole ref and disambiguates safeSeg's lossy rewrites, so
-// distinct entities never share a process id (which would cross-wire control).
+// distinct entities never share a task id (which would cross-wire control).
 func TestSpawnIDDistinguishesRefs(t *testing.T) {
 	// same id, different system: must differ (not just ref.ID keyed)
 	if a, b := spawnID("r", entity.Ref{System: "demo", Kind: "pr", ID: "1"}),
@@ -146,17 +146,17 @@ func TestSpawnIDDistinguishesRefs(t *testing.T) {
 	}
 }
 
-// A spawnID becomes the OWNER half of every gate id its process poses, so it must never
-// contain process.GateSep — an owner carrying one would make `gate resolve` cut the id at
-// the wrong place and route the answer to a process that does not exist. A ref is arbitrary
+// A spawnID becomes the OWNER half of every gate id its task poses, so it must never
+// contain task.GateSep — an owner carrying one would make `gate resolve` cut the id at
+// the wrong place and route the answer to a task that does not exist. A ref is arbitrary
 // user data (a branch, a path, a title), so the guard belongs in safeSeg rather than in a
 // convention nobody enforces. The hash still keeps the rewritten ids distinct.
 func TestSpawnIDNeverContainsGateSep(t *testing.T) {
-	dirty := entity.Ref{System: "local", Kind: "file", ID: "a" + process.GateSep + "b"}
+	dirty := entity.Ref{System: "local", Kind: "file", ID: "a" + task.GateSep + "b"}
 	id := spawnID("r", dirty)
-	if strings.Contains(id, process.GateSep) {
+	if strings.Contains(id, task.GateSep) {
 		t.Errorf("spawnID(%s) = %q contains GateSep %q — a gate id built on it would split "+
-			"inside the owner", dirty, id, process.GateSep)
+			"inside the owner", dirty, id, task.GateSep)
 	}
 	// and the rewrite stays lossless in the way that matters: a_b must not collide with a~b
 	if other := spawnID("r", entity.Ref{System: "local", Kind: "file", ID: "a_b"}); id == other {
@@ -166,8 +166,8 @@ func TestSpawnIDNeverContainsGateSep(t *testing.T) {
 
 // With no Spawner configured, Spawn is a no-op that returns nil (traced), not a panic.
 func TestSpawnWithoutSpawner(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
-	if p := eng.Spawn("x", launch.Spec{Task: "t"}); p != nil {
-		t.Fatal("expected nil process with no spawner")
+	eng := New(entitytest.Store(t), task.AutoResolver{})
+	if p := eng.Spawn("x", launch.Spec{Prompt: "t"}); p != nil {
+		t.Fatal("expected nil task with no spawner")
 	}
 }

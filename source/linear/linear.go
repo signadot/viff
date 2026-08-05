@@ -64,7 +64,7 @@ var _ source.Source = (*Linear)(nil)
 
 // New builds a Linear source and asks the credential which teams it can see.
 //
-// That question is the startup check — a revoked key or a misspelled team key is a process
+// That question is the startup check — a revoked key or a misspelled team key is a task
 // that does not start, in front of whoever just deployed it, rather than a source that
 // installs clean and writes a failure into lastError once a minute forever. It is also what
 // resolves "every team" into the concrete list Owns is spelled from, so an install can prove

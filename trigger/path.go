@@ -4,7 +4,7 @@ package trigger
 //
 // A charter could already CONDITION on outside state — `when` and `on` both name other entities
 // — but it could not copy any of it: every `$reference` an action can write reads the subject,
-// or the process that just finished.
+// or the task that just finished.
 //
 //	repo:   !get-path { system: git, kind: repo, id: $subject.value.head }
 //	branch: !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }

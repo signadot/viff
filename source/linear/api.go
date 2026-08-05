@@ -14,7 +14,7 @@ import (
 // Linear's GraphQL API, as much of it as a reflection needs.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
-// the reason process/harness/llm.go is: it is somebody else's wire format, and re-rendering it
+// the reason task/harness/llm.go is: it is somebody else's wire format, and re-rendering it
 // through codec would buy nothing but a second place for it to be wrong.
 //
 // One endpoint, one verb, three queries. A generated GraphQL client would be a build step and
@@ -177,7 +177,7 @@ type pageInfo struct {
 const teamsQuery = `query { teams(first: 250) { nodes { id key name description private } } }`
 
 // teams lists what this credential can see. It is the startup check — a bad token fails the
-// process rather than every reflect — and it is what turns a configured set of team keys into
+// task rather than every reflect — and it is what turns a configured set of team keys into
 // an ownership claim that names real teams.
 func (a *api) teams(ctx context.Context) ([]team, error) {
 	var out struct {

@@ -190,7 +190,7 @@ type goalsSayConfig struct{ *cli.Command }
 func goalsSayCmd() *cli.Command {
 	cfg := &goalsSayConfig{}
 	return cli.NewCommandAt(&cfg.Command, "say").
-		WithSynopsis("say something to a goal's in-flight processes: say <name> <text…>").WithRun(cfg.run)
+		WithSynopsis("say something to a goal's in-flight tasks: say <name> <text…>").WithRun(cfg.run)
 }
 
 func (cfg *goalsSayConfig) run(cc *cli.Context, args []string) error {

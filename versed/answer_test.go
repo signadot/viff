@@ -12,19 +12,19 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
 )
 
 // answerable raises an engine gate and blocks on it the way a firing does, returning the
 // channel the resolution comes back on.
-func answerable(t *testing.T, srv *Server, id string) chan process.Resolution {
+func answerable(t *testing.T, srv *Server, id string) chan task.Resolution {
 	t.Helper()
-	answered := make(chan process.Resolution, 1)
+	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
-			process.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: process.Ask},
-			process.ToolUse{Name: "trigger:review"})
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.ToolUse{Name: "trigger:review"})
 		answered <- res
 	}()
 	waitPending(t, srv, id)
@@ -61,7 +61,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 		t.Fatalf("second answer = %s, want 409 — losing a race is an outcome, not a missing question", lose.Status)
 	}
 
-	// The process proceeds ONCE, on the winner's verdict. A denial arriving second must not
+	// The task proceeds ONCE, on the winner's verdict. A denial arriving second must not
 	// reach the waiter at all: it lost, and a gate that resolved twice is a gate that let a
 	// second decision through after the first had already released the work.
 	select {
@@ -160,8 +160,8 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 
 	srv := testServer(t)
 	srv.SetRunner(runner.HTTP(deadURL))
-	mirror.PostQuestion(srv.Store, process.Pending{
-		Question: process.GateQuestion{ID: "p~d1", Origin: "p", Gate: "write"},
+	mirror.PostQuestion(srv.Store, task.Pending{
+		Question: task.GateQuestion{ID: "p~d1", Origin: "p", Gate: "write"},
 	}, "p")
 	entitytest.Set(t, srv.Store, mirror.Ref("p"),
 		entity.Obj{"status": "running", "runner": deadURL}.Payload())
@@ -188,7 +188,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 // A question whose asker gave up leaves the docket.
 //
 // The registry drops a question when its last waiter is cancelled — a timed-out request, a
-// torn-down process — and OnPost had no counterpart, so the publisher was told about every
+// torn-down task — and OnPost had no counterpart, so the publisher was told about every
 // question that arrived and none that left. The record stayed `pending`: offered on a docket,
 // answerable-looking, and undeliverable, until something else happened to notice.
 func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
@@ -200,8 +200,8 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		_, _ = srv.Reg.Resolve(ctx,
-			process.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: process.Ask},
-			process.ToolUse{Name: "trigger:review"})
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.ToolUse{Name: "trigger:review"})
 	}()
 	waitPending(t, srv, id)
 	if q := question(t, srv, id); q["status"] != mirror.QuestionPending {
@@ -240,15 +240,15 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 	srv := testServer(t)
 	const id = "trigger:review:review~1"
-	q := process.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: process.Ask}
+	q := task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask}
 
 	stay, keep := context.WithCancel(context.Background())
 	defer keep()
-	go func() { _, _ = srv.Reg.Resolve(stay, q, process.ToolUse{Name: "trigger:review"}) }()
+	go func() { _, _ = srv.Reg.Resolve(stay, q, task.ToolUse{Name: "trigger:review"}) }()
 	waitPending(t, srv, id)
 
 	leave, give := context.WithCancel(context.Background())
-	go func() { _, _ = srv.Reg.Resolve(leave, q, process.ToolUse{Name: "trigger:review"}) }()
+	go func() { _, _ = srv.Reg.Resolve(leave, q, task.ToolUse{Name: "trigger:review"}) }()
 	for srv.Reg.WaiterCount(id) < 2 {
 		time.Sleep(time.Millisecond)
 	}
@@ -272,7 +272,7 @@ func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 // party who must act knows.
 func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := testServer(t)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
@@ -282,15 +282,15 @@ func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p/claim", map[string]any{"identity": "human:w"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "human:w"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
 	decodeResp(t, claim, &cl)
 	claim.Body.Close()
-	postTony(t, work.URL+"/broker/"+nonce+"/processes/p/report", map[string]any{
+	postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/report", map[string]any{
 		"epoch":  cl.Epoch,
-		"events": []process.Frame{{Kind: process.EvPending, ID: "p~d1", Gate: "write"}},
+		"events": []task.Frame{{Kind: task.EvPending, ID: "p~d1", Gate: "write"}},
 	}).Body.Close()
 	for range 400 {
 		if _, ok, _ := srv.Store.Get(mirror.QuestionRef("p~d1")); ok {
@@ -316,7 +316,7 @@ func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
 	// The worker pulls, then polls past it. That acknowledgement is what makes it delivered.
 	pull := func(since int64) []map[string]any {
 		t.Helper()
-		r, err := http.Get(work.URL + "/broker/" + nonce + "/processes/p/inbox?since=" +
+		r, err := http.Get(work.URL + "/broker/" + nonce + "/tasks/p/inbox?since=" +
 			itoa(since) + "&epoch=" + itoa(cl.Epoch))
 		if err != nil {
 			t.Fatalf("inbox: %v", err)

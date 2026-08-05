@@ -87,7 +87,7 @@ auto-created on the first metadata write and auto-deleted on disconnect — the 
   client turns "the connector went away" into an observable, collectable fact.
 - Delete semantics. `verse scope delete` must be the union of what `deleteScope` does today
   (cancel the per-scope engine, `DeleteScope` the overlay) *plus* removing the registry entry — and
-  be safe to call on a scope with a live client (fence it, like process cancel).
+  be safe to call on a scope with a live client (fence it, like task cancel).
 
 ## What this preserves
 

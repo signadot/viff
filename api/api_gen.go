@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // ToTonyIR converts PutEntity to a Tony IR node.
@@ -454,8 +454,8 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["name"] = ir.FromString(string(s.Name))
 	}
 
-	// Field: Task
-	irMap["task"] = ir.FromString(string(s.Task))
+	// Field: Prompt
+	irMap["prompt"] = ir.FromString(string(s.Prompt))
 
 	// Field: Driver
 	if s.Driver != "" {
@@ -532,12 +532,12 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
 			s.Name = string(fieldNodeUnwrapped.String)
-		case "task":
-			// Field: Task
+		case "prompt":
+			// Field: Prompt
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
-			s.Task = string(fieldNodeUnwrapped.String)
+			s.Prompt = string(fieldNodeUnwrapped.String)
 		case "driver":
 			// Field: Driver
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -1062,7 +1062,7 @@ func (s *SetVector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		switch fieldName.String {
 		case "vector":
 			// Field: Vector
-			s.Vector = &process.Vector{}
+			s.Vector = &task.Vector{}
 			if err := s.Vector.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
@@ -1672,9 +1672,9 @@ func (s *InboxItem) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Kind
 	irMap["kind"] = ir.FromString(string(s.Kind))
 
-	// Field: Task
-	if s.Task != "" {
-		irMap["task"] = ir.FromString(string(s.Task))
+	// Field: Prompt
+	if s.Prompt != "" {
+		irMap["prompt"] = ir.FromString(string(s.Prompt))
 	}
 
 	// Field: Driver
@@ -1756,12 +1756,12 @@ func (s *InboxItem) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
 			}
 			s.Kind = string(fieldNodeUnwrapped.String)
-		case "task":
-			// Field: Task
+		case "prompt":
+			// Field: Prompt
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
-			s.Task = string(fieldNodeUnwrapped.String)
+			s.Prompt = string(fieldNodeUnwrapped.String)
 		case "driver":
 			// Field: Driver
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -1794,7 +1794,7 @@ func (s *InboxItem) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Proceed = bool(fieldNodeUnwrapped.Bool)
 		case "vector":
 			// Field: Vector
-			s.Vector = &process.Vector{}
+			s.Vector = &task.Vector{}
 			if err := s.Vector.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
@@ -1855,8 +1855,8 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Gates
 	irMap["gates"] = ir.FromInt(int64(s.Gates))
 
-	// Field: Processes
-	irMap["processes"] = ir.FromInt(int64(s.Processes))
+	// Field: Tasks
+	irMap["tasks"] = ir.FromInt(int64(s.Tasks))
 
 	// Field: Fired
 	irMap["fired"] = ir.FromInt(int64(s.Fired))
@@ -1954,12 +1954,12 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "gates", fieldNodeUnwrapped.Type)
 			}
 			s.Gates = int(*fieldNodeUnwrapped.Int64)
-		case "processes":
-			// Field: Processes
+		case "tasks":
+			// Field: Tasks
 			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "processes", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected number, got %v", "tasks", fieldNodeUnwrapped.Type)
 			}
-			s.Processes = int(*fieldNodeUnwrapped.Int64)
+			s.Tasks = int(*fieldNodeUnwrapped.Int64)
 		case "fired":
 			// Field: Fired
 			if fieldNodeUnwrapped.Int64 == nil {

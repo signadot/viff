@@ -241,7 +241,7 @@ func TestSourceAddProbeDispositions(t *testing.T) {
 // `dir` is described WITHOUT a network, by building the source and asking it — the same
 // question sourced answers over HTTP, put to the same value. That is what keeps it first-class
 // rather than a path with fewer checks than the others.
-func TestADirSourceIsDescribedInProcess(t *testing.T) {
+func TestADirSourceIsDescribedInTask(t *testing.T) {
 	requireGit(t)
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -258,7 +258,7 @@ func TestADirSourceIsDescribedInProcess(t *testing.T) {
 	var got map[string]any
 	decodeResp(t, resp, &got)
 	if got["reach"] != "a source" {
-		t.Fatalf("a dir source should describe itself in process, got %+v", got)
+		t.Fatalf("a dir source should describe itself in task, got %+v", got)
 	}
 	// And it claims what it will write, with no probe and no url.
 	sr, _ := ts.Client().Get(ts.URL + "/sources/git/local")

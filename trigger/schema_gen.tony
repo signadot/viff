@@ -59,8 +59,8 @@ define:
   id: .[string]
   kind: .[string]
   lastAction: .[string]
+  prompt: .[string]
   status: .[string]
-  task: .[string]
 signature:
   name: verse-flow-node
 ---

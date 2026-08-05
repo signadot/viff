@@ -8,29 +8,29 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // Attribution: an outcome has to be readable back to the DOER that produced it, not only to
 // the driver that ran it. Two doers sharing `driver: llm` and differing in frame, tools and
-// grant is the case provider selection exists for, so a process entity — and any fact a
+// grant is the case provider selection exists for, so a task entity — and any fact a
 // completion hook writes from it — that names only the driver reports two quite different
 // spawns as the same work by the same agent.
 //
 // The two halves are tested together because either alone is insufficient. `doer` on the
-// process entity makes the pick observable; `$doer` bindable in a completion hook is what
+// task entity makes the pick observable; `$doer` bindable in a completion hook is what
 // lets a charter carry the pick onto the SUBJECT, where scoring reads it. Selection landing
 // and selection being learnable from are exactly that difference.
 func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	// The spawner mirrors the envelope the way versed's does (Server.spawnerFor): the
 	// selection's answer travels on the spec, and the mirror is what publishes it.
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, answering{r: "SHIPIT"}, noExec{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, answering{r: "SHIPIT"}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
-			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Task: spec.Task,
+			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
 		})
 		go p.Run(context.Background())
@@ -51,7 +51,7 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{
-				Task:     "review $subject",
+				Prompt:   "review $subject",
 				Grant:    "all", // the ceiling a governed selection happens within
 				Provider: &launch.Provider{Capability: "review", Match: map[string]any{"tier": "careful"}, Select: "auto"},
 			},
@@ -65,9 +65,9 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
-	// The mirror half: the process says WHICH doer was selected, beside the driver that ran it.
-	procRef := mirror.Ref(spawnID(chainID("review"), prRef("1")))
-	waitFor(t, store, procRef, func(p entity.Payload) bool {
+	// The mirror half: the task says WHICH doer was selected, beside the driver that ran it.
+	taskRef := mirror.Ref(spawnID(chainID("review"), prRef("1")))
+	waitFor(t, store, taskRef, func(p entity.Payload) bool {
 		return entity.Str(p, "doer") == "provider:review:careful"
 	}, `doer = provider:review:careful`)
 

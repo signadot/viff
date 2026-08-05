@@ -7,7 +7,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A spawn id is `<chain>@<subject>`, and the chain half is a real kpath: the address of the
@@ -34,7 +34,7 @@ func TestChainIsAKPath(t *testing.T) {
 	}
 }
 
-// The root of a chain prefix-matches everything under it, which is how "every process of
+// The root of a chain prefix-matches everything under it, which is how "every task of
 // this trigger" is asked without globbing ids. Uses go-tony v0.0.92's MatchesPrefix, so
 // this also pins the upstream behaviour verse now depends on (issue 61766xadh12kstqqcnn0).
 func TestChainPrefixMatching(t *testing.T) {
@@ -57,8 +57,8 @@ func TestChainPrefixMatching(t *testing.T) {
 	}
 }
 
-// A spawn id is pasted back onto a command line constantly (process show, gate resolve,
-// process events), so it must survive a shell word unquoted. This is the constraint that
+// A spawn id is pasted back onto a command line constantly (task show, gate resolve,
+// task events), so it must survive a shell word unquoted. This is the constraint that
 // kept kpath's bracket syntax OUT of the id: under zsh, review.seq[2]@demo:pr:1 dies with
 // "no matches found" before verse ever runs. The same principle shortID already states.
 func TestSpawnIDIsPasteSafe(t *testing.T) {
@@ -74,8 +74,8 @@ func TestSpawnIDIsPasteSafe(t *testing.T) {
 				"an id that must be quoted to be pasted is an id that will be mistyped",
 				id, id[i])
 		}
-		if strings.Contains(id, process.GateSep) {
-			t.Errorf("spawn id %q contains GateSep %q", id, process.GateSep)
+		if strings.Contains(id, task.GateSep) {
+			t.Errorf("spawn id %q contains GateSep %q", id, task.GateSep)
 		}
 	}
 }
@@ -90,11 +90,11 @@ func TestHookFieldPairsWithHookFor(t *testing.T) {
 		OnCancelled: &Action{},
 		OnOrphaned:  &Action{},
 	}
-	want := map[process.Status]string{
-		process.Done:      "onDone",
-		process.Failed:    "onFailed",
-		process.Cancelled: "onCancelled",
-		process.Orphaned:  "onOrphaned",
+	want := map[task.Status]string{
+		task.Done:      "onDone",
+		task.Failed:    "onFailed",
+		task.Cancelled: "onCancelled",
+		task.Orphaned:  "onOrphaned",
 	}
 	for st, field := range want {
 		if got := hookField(st); got != field {
@@ -108,7 +108,7 @@ func TestHookFieldPairsWithHookFor(t *testing.T) {
 			t.Errorf("descended chain review.%s is not a kpath: %v", hookField(st), err)
 		}
 	}
-	if got := hookField(process.Running); got != "" {
+	if got := hookField(task.Running); got != "" {
 		t.Errorf("hookField(running) = %q; want empty — a non-terminal status has no hook", got)
 	}
 }
@@ -144,7 +144,7 @@ func TestDashInTriggerNameStillDecodes(t *testing.T) {
 	}
 }
 
-// mirror publishes the chain and its root so "every process of this trigger" is a payload
+// mirror publishes the chain and its root so "every task of this trigger" is a payload
 // predicate (a value, not a fragment of an id) rather than a glob over ids.
 func TestTriggerOf(t *testing.T) {
 	for chain, want := range map[string]string{

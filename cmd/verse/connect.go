@@ -38,9 +38,9 @@ type connectConfig struct {
 	*cli.Command
 	Interval string `cli:"name=interval default=2s desc='tree poll interval'"`
 	Driver   string `cli:"name=driver desc='validator driver: scripted | llm (default: the runtime default)'"`
-	// What the default task actually is, not what it once was: it reads the file at $path
+	// What the default prompt actually is, not what it once was: it reads the file at $path
 	// and reports, because "validate $subject" hands an agent a ref it cannot read.
-	Task string `cli:"name=task desc='per-file validator task (default: read the file at $path and report on it)'"`
+	Prompt string `cli:"name=prompt desc='per-file validator prompt (default: read the file at $path and report on it)'"`
 }
 
 func connectCmd() *cli.Command {
@@ -74,7 +74,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	// One nonce scope per session (unless the user named one). Every client request
-	// this process makes is folded into it via the global --scope, so its writes and
+	// this task makes is folded into it via the global --scope, so its writes and
 	// its trigger live in an isolated copy-on-write overlay.
 	scope := g.Scope
 	generated := false
@@ -243,12 +243,12 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 // installTrigger registers the per-file validator on the scope's engine: match any
 // set on a dir-status entity → spawn a validator whose subject is that file.
 func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
-	task := cfg.Task
-	if task == "" {
+	prompt := cfg.Prompt
+	if prompt == "" {
 		// $path is the file's relpath (a dir-status payload field) — a readable path,
 		// not the ref, so an llm agent can read_file it and produce a real report. A
 		// bare "validate $subject" hands it a ref it can't read, so it returns nothing.
-		task = `Read the file at path "$path" and report any problems (or that it looks fine) in one sentence.`
+		prompt = `Read the file at path "$path" and report any problems (or that it looks fine) in one sentence.`
 	}
 	def := trigger.Trigger{
 		Name: "validate-" + scope,
@@ -292,12 +292,12 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 			},
 		},
 		Action: trigger.Action{
-			Spawn: &launch.Spec{Driver: cfg.Driver, Task: task},
+			Spawn: &launch.Spec{Driver: cfg.Driver, Prompt: prompt},
 			// The latch, and it has to be a LITERAL. This wrote `validated: $hash` — the
 			// dir-status entity's own content hash, so the record would say which version
 			// was validated — and that reference is not reachable from here: a completion
-			// hook is woken by a process finishing rather than by a write, so its occasion
-			// carries the PROCESS event for references and nothing of the subject's payload
+			// hook is woken by a task finishing rather than by a write, so its occasion
+			// carries the TASK event for references and nothing of the subject's payload
 			// (Engine.applyHook). Every hook failed with "$hash is not present in the
 			// payload that fired this action", which nothing surfaced because the rule it
 			// hung off never selected a file in the first place.

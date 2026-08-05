@@ -12,14 +12,14 @@ import (
 func TestBindExpandsSubject(t *testing.T) {
 	s := Spec{
 		Driver:      "harness",
-		Task:        "review $subject and report",
+		Prompt:      "review $subject and report",
 		Environment: "sandbox-$subject",
 		Vector:      "supervised",
 	}
 	got := s.Bind(Binding{"subject": "demo:pr:1"})
 
-	if got.Task != "review demo:pr:1 and report" {
-		t.Fatalf("Task = %q", got.Task)
+	if got.Prompt != "review demo:pr:1 and report" {
+		t.Fatalf("Prompt = %q", got.Prompt)
 	}
 	if got.Environment != "sandbox-demo:pr:1" {
 		t.Fatalf("Environment = %q", got.Environment)
@@ -31,22 +31,22 @@ func TestBindExpandsSubject(t *testing.T) {
 }
 
 func TestBindLeavesUnboundVarsAndIsPure(t *testing.T) {
-	s := Spec{Task: "do $subject for $owner"}
+	s := Spec{Prompt: "do $subject for $owner"}
 	got := s.Bind(Binding{"subject": "x:y:1"}) // no "owner" binding
-	if got.Task != "do x:y:1 for $owner" {
-		t.Fatalf("unbound var not preserved: %q", got.Task)
+	if got.Prompt != "do x:y:1 for $owner" {
+		t.Fatalf("unbound var not preserved: %q", got.Prompt)
 	}
-	if s.Task != "do $subject for $owner" {
-		t.Fatalf("Bind mutated the receiver: %q", s.Task)
+	if s.Prompt != "do $subject for $owner" {
+		t.Fatalf("Bind mutated the receiver: %q", s.Prompt)
 	}
 }
 
 // Longer variable names bind first, so a short name is not a prefix-hazard.
 func TestBindLongestKeyFirst(t *testing.T) {
-	s := Spec{Task: "$subject vs $sub"}
+	s := Spec{Prompt: "$subject vs $sub"}
 	got := s.Bind(Binding{"sub": "SHORT", "subject": "LONG"})
-	if got.Task != "LONG vs SHORT" {
-		t.Fatalf("prefix collision: %q", got.Task)
+	if got.Prompt != "LONG vs SHORT" {
+		t.Fatalf("prefix collision: %q", got.Prompt)
 	}
 }
 

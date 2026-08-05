@@ -147,7 +147,7 @@ func TestSourceAddDirThroughTheClient(t *testing.T) {
 		t.Fatalf("--dir: %v", err)
 	}
 	if !strings.Contains(out, "a source") {
-		t.Fatalf("a dir source should describe itself in process, got %q", out)
+		t.Fatalf("a dir source should describe itself in task, got %q", out)
 	}
 }
 

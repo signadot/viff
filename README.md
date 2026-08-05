@@ -31,7 +31,7 @@ What you author is the rules, and how much autonomy each of them runs with.
 ```sh
 go build -o verse ./cmd/verse     # or: make bin
 export VERSE_ADDR=localhost:9797
-./verse up                        # engine + process runtime + store, in one process
+./verse up                        # engine + task runtime + store, in one process
 
 ./scripts/seed-demo.sh            # in another terminal: a charter, entities, a waiting gate
 ```
@@ -47,7 +47,7 @@ next. Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse 
 `verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
 `scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
 shapes a rule comes in, one command each). The tutorial walks the lot in five sections —
-entities, processes, and the charters that relate them.
+entities, tasks, and the charters that relate them.
 
 ## What's here
 
@@ -57,14 +57,14 @@ entities, processes, and the charters that relate them.
 - `trigger/` — the ECA engine: conjunctive matches, conjunctive gates posed concurrently,
   actions-as-data, level-triggered catch-up via a cursor, and per-subtree watches with no
   root watch.
-- `process/` and `process/processd/` — governed, steerable units of work, scripted or LLM
+- `task/` and `task/taskd/` — governed, steerable units of work, scripted or LLM
   agents, behind an HTTP control and read plane.
-- `runner/` and `broker/` — how a process *runs* is a seam: local (in-process),
+- `runner/` and `broker/` — how a task *runs* is a seam: local (in-process),
   remote (another verse over HTTP), or a dial-in broker where a firewalled worker or a human
-  executes it. The engine drives all three through one handle, so every `verse process` verb
+  executes it. The engine drives all three through one handle, so every `verse task` verb
   works whichever it is.
-- `mirror/` — reflects a running process into the verse as a `process:instance` entity, so
-  "observe or steer another process" is just "observe an entity."
+- `mirror/` — reflects a running task into the verse as a `task:instance` entity, so
+  "observe or steer another task" is just "observe an entity."
 - `resolver/` — who answers a gate. A binding is *installed* rather than written into a
   charter, because it outlives any one rule and belongs to whoever supervises rather than to
   whoever wrote the work. It covers a subject by match or a run by name, and one instance is
@@ -76,7 +76,7 @@ entities, processes, and the charters that relate them.
   react to. Three ship (`sourced git|slack|linear`); anything else is the sample program plus
   one function. `verse connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
-  `trigger`, `stratum`, `goal`, `process` (including the `do` executor verbs), `flow`,
+  `trigger`, `stratum`, `goal`, `task` (including the `do` executor verbs), `flow`,
   `resolver`, `runner`, `source`. What it answers with: `gate`, `docket`, `vote`. What it
   reads: `status`, `watch`, `providers`, `schema`. What it runs: `up`, `down`, `connect`,
   `disconnect`. Most come as a pair — the plural lists, the singular acts on one — which is
@@ -87,13 +87,13 @@ entities, processes, and the charters that relate them.
 ## Docs
 
 [docs/](docs/README.md) is the index: it pairs each subject — the store, triggers,
-processes, steering, federation — with the tutorial section that walks it and the notes that
+tasks, steering, federation — with the tutorial section that walks it and the notes that
 explain it. Everything under `docs/` describes what runs today; design notes for work that
 is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the
   load-bearing decisions. Read this first.
-- [Tutorial](docs/tutorial.md) — hands-on, in five sections: entities, processes, and the
+- [Tutorial](docs/tutorial.md) — hands-on, in five sections: entities, tasks, and the
   charters that relate them, each with a script that seeds it.
 - [Trigger model](docs/trigger-model.md) — the two grammars a charter is written in, and
   what every field of a rule means.
@@ -101,7 +101,7 @@ is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
   what may run remote, what may sit behind a firewall, and what that costs.
 - [Reference](docs/reference/README.md) — the command surface, the config layers, and a
   per-topic deep end: [starting a verse](docs/reference/up.md),
-  [entities](docs/reference/entities.md), [processes](docs/reference/processes.md),
+  [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
   [sources](docs/reference/sources.md) and [the three that ship](docs/reference/sourced.md),
   [connect and scopes](docs/reference/connect.md), [goals](docs/reference/goals.md),

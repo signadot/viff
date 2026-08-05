@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -356,7 +356,7 @@ func TestMatchValueScalarIsTheWholePayload(t *testing.T) {
 // the signal that the plan's decision has arrived, not a regression.
 func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.ObserveScoped(ctx)

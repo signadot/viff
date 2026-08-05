@@ -58,7 +58,7 @@ var (
 // MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
 // disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
 //
-// A mount is process-driven, so it has NO HISTORY. A controller backs its subtree with
+// A mount is task-driven, so it has NO HISTORY. A controller backs its subtree with
 // something that is not the log (a filesystem, an API), and across a mount/unmount there
 // is no durable commit sequence to replay; a self-backed controller has no past to ask
 // for at all (libctl.Handler says such a controller "should reject a historical read
@@ -248,7 +248,7 @@ func (s *LogdStore) rootFor(ref Ref) string {
 
 // MountKPath renders the kinded-path <MountRoot>.<system>.<kind> at which a controller
 // mounts to own that (system,kind) slice — e.g. verse connect's content controller
-// mounts the local:dir-content-<scope> slice. A controller process holds no store, so
+// mounts the local:dir-content-<scope> slice. A controller task holds no store, so
 // this lets it and the store agree on the path.
 //
 // It renders under MountRoot, disjoint from the entity root, so a mount never sits below
@@ -359,7 +359,7 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 
 // Get returns an entity by ref. An absent (or deleted) path reads back as null.
 // Get reads one entity. A failed READ is reported as an error, never as absence: the
-// read crosses a network and may traverse a mount owned by another process, so "I could
+// read crosses a network and may traverse a mount owned by another task, so "I could
 // not ask" and "it is not there" are genuinely different answers and the caller has to be
 // able to tell them apart. A null node IS absence — that is how the log spells a tombstone.
 func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
@@ -1264,7 +1264,7 @@ func (s *LogdStore) runWatch(ctx context.Context, w *libctl.Watch) {
 	}
 }
 
-// handleEvent processes one watch event: an initial/reconnect State only seeds rev
+// handleEvent tasks one watch event: an initial/reconnect State only seeds rev
 // (no emit — Observe is "from now"); a delta bumps rev and fans change events out to
 // observers.
 func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {

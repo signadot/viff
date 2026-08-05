@@ -13,7 +13,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // Every charter written in the docs must install.
@@ -74,7 +74,7 @@ func TestDocCharartersInstall(t *testing.T) {
 				continue
 			}
 			total++
-			eng := New(store, process.AutoResolver{})
+			eng := New(store, task.AutoResolver{})
 			// The ORDERING first, as an install does — a rule naming a stratum that is not
 			// there is held rather than refused, which would make a stratified example pass
 			// this test by not being checked.

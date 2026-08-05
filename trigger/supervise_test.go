@@ -13,7 +13,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // The automatic-supervisor charter of docs/auto-supervisor.md, driven through every route it
@@ -144,22 +144,22 @@ func awaitStage(t *testing.T, store entity.Store, ref entity.Ref, stage string) 
 	}
 }
 
-// supervisorSpawner hosts each spawned process on a driver that answers `answer` — a stand-in
+// supervisorSpawner hosts each spawned task on a driver that answers `answer` — a stand-in
 // for the doc's llm supervisor. An empty answer models a run that produced nothing, which is
 // what a failed answer contract leaves behind, so onFailed is the branch that fires.
 func supervisorSpawner(store entity.Store, answer string) Spawner {
-	return func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		var p process.Handle
+	return func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		var p task.Handle
 		if answer == "" {
-			p = process.NewFailed(id, process.NewRegistry(), "the supervisor produced no answer")
+			p = task.NewFailed(id, task.NewRegistry(), "the supervisor produced no answer")
 		} else {
-			p = process.NewProcess(id, sup, answering{r: answer}, noExec{})
+			p = task.NewTask(id, sup, answering{r: answer}, noExec{})
 		}
 		mirror.Reflect(store, id, p, mirror.Meta{
-			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Task: spec.Task,
+			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
 		})
-		if pr, ok := p.(*process.Process); ok {
+		if pr, ok := p.(*task.Task); ok {
 			go pr.Run(context.Background())
 		}
 		return p
@@ -174,11 +174,11 @@ type recorder struct {
 	asked []string
 }
 
-func (r *recorder) Resolve(_ context.Context, q process.GateQuestion, _ process.ToolUse) (process.Resolution, error) {
+func (r *recorder) Resolve(_ context.Context, q task.GateQuestion, _ task.ToolUse) (task.Resolution, error) {
 	r.mu.Lock()
 	r.asked = append(r.asked, q.Gate+"@"+q.Subject)
 	r.mu.Unlock()
-	return process.Resolution{Proceed: true, By: "human:test", Question: q}, nil
+	return task.Resolution{Proceed: true, By: "human:test", Question: q}, nil
 }
 
 func (r *recorder) list() []string {
@@ -217,7 +217,7 @@ func docCharter(t *testing.T, path, named string) []Trigger {
 }
 
 // The doc's own claim about credentials: with no llm creds, `verse up` builds an llm spawn as
-// a process that fails immediately, so this charter routes EVERY change to a person. That is
+// a task that fails immediately, so this charter routes EVERY change to a person. That is
 // the fail-safe direction the doc points at, and it holds only because a failed spawn still
 // runs onFailed — which is what this pins.
 func TestSupervisorFailurePromotesRatherThanStrands(t *testing.T) {

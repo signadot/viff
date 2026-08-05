@@ -99,8 +99,8 @@ import (
 //	{}                                                             everything
 //
 // A Subject is a plain Match too: on a firing it is matched against the entity the firing is
-// about — including a reflected process's own subject (its `flow`), so `subject: "demo:pr:*"`
-// on a completion trigger advances the PR that process was about. There is no deferred `$var`
+// about — including a reflected task's own subject (its `flow`), so `subject: "demo:pr:*"`
+// on a completion trigger advances the PR that task was about. There is no deferred `$var`
 // form: the pattern IS the reference (see Trigger.resolveSubject).
 //
 //tony:schemagen=verse-match,notag,codec=custom
@@ -536,7 +536,7 @@ func present(n *ir.Node) (*ir.Node, bool) { return n, n != nil }
 
 // MatchRef reports whether a bare REF satisfies the match's const dimensions
 // (system/kind/id). It is the face used to address things by identity when there is no
-// payload or change to look at — steering live processes by their subject, where the subject
+// payload or change to look at — steering live tasks by their subject, where the subject
 // is a ref string. `value` is not consulted here: a caller wanting a payload predicate must
 // read the entity and use MatchEvent.
 func (m Match) MatchRef(ref entity.Ref) bool {
@@ -571,7 +571,7 @@ func ParseExpr(s string) (Match, error) {
 	if strings.ContainsRune(s, '$') {
 		return nil, fmt.Errorf("address %q has a $var; there is no deferred subject form — a "+
 			"subject is a pattern matched against the entity a firing is about, e.g. \"demo:pr:*\" "+
-			"on a completion trigger names the PR its process was about (see docs/trigger-model.md)", s)
+			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
 	}
 	parts := strings.SplitN(s, ":", 3) // an id may itself contain colons
 	m := Match{}

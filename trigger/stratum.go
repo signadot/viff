@@ -746,7 +746,7 @@ func (a Action) validateDerive() error {
 // The line is not "identity, never state", which is where this started and which was too
 // strict. What the ordering actually needs is content THE LEVELS ABOVE CANNOT INFLUENCE, and a
 // reference cannot reach another entity at all: it reads the firing's own subject, or a
-// process's result. Nothing above can write the subject — a patch touches only its own subject
+// task's result. Nothing above can write the subject — a patch touches only its own subject
 // and a derive only climbs — so an upward read that wakes the rule without changing the subject
 // resolves $subject.value to the same bytes, writes them to the same address, and dies as a
 // no-op. That is the property "reads may go anywhere" rests on, and $subject.value keeps it.

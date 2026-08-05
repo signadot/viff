@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/verse/source"
 )
 
-// The git source, served rather than run in process.
+// The git source, served rather than run in task.
 //
 // verse can already reflect a local repository with `verse source add --dir`, and that path is
 // not going anywhere. This is for the two cases it cannot reach: a repository on a machine
@@ -50,7 +50,7 @@ func gitMain(args []string) error {
 		if id == "" {
 			id = strings.TrimSuffix(filepath.Base(strings.TrimRight(remote, "/")), ".git")
 		}
-		// The clone happens here, at startup, and a failure ends the process: an unreachable
+		// The clone happens here, at startup, and a failure ends the task: an unreachable
 		// remote or a credential that is not in this pod is something to find out while
 		// somebody is watching the rollout, not once a minute in a field of the registration.
 		dir := filepath.Join(*state, id)

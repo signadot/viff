@@ -7,7 +7,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // ci writes a ci:status entity at a state.
@@ -38,7 +38,7 @@ func TestOnFiresOnTheRisingEdge(t *testing.T) {
 	reviewed := prs(t, store, "reviewed", "1", "2")
 	prs(t, store, "open", "3") // wrong stage — not selected
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(onWhen(nil)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestOnFiresOnTheRisingEdge(t *testing.T) {
 // says nothing when it is satisfied again.
 func TestOnDoesNotReFireWhileItHolds(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(onWhen(nil)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestOnDoesNotReFireWhileItHolds(t *testing.T) {
 // `when` is the LEVEL beside the edge: the cause rising is not enough on its own.
 func TestOnIsGuardedByWhen(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	when := MatchWhen(Match{"system": "demo", "kind": "notion", "value": map[string]any{"ok": true}})
 	if err := eng.AddTrigger(onWhen(when)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -146,7 +146,7 @@ func TestOnDoesNotFireOnTheBacklog(t *testing.T) {
 	prs(t, store, "reviewed", "1")
 	ci(t, store, "green") // the cause already holds before anything is installed
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(onWhen(nil)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestOnWithAPinnedIDReadsItsPredicate(t *testing.T) {
 	reviewed := prs(t, store, "reviewed", "1")
 	rel := entity.Ref{System: "ci", Kind: "status", ID: "release"}
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
@@ -205,7 +205,7 @@ func TestOnWithAPinnedIDReadsItsPredicate(t *testing.T) {
 // entity's payload does not satisfy it. Existence is not the predicate.
 func TestWhenWithAPinnedIDBlocksOnItsPredicate(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
@@ -234,7 +234,7 @@ func TestWhenWithAPinnedIDBlocksOnItsPredicate(t *testing.T) {
 // what lets every charter written so far keep running while the new one is exercised.
 func TestSubjectDispatchIsUnchangedAlongsideOn(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(onWhen(nil)); err != nil {
 		t.Fatalf("AddTrigger(on): %v", err)
 	}
@@ -266,7 +266,7 @@ func TestEdgeReadsOneSnapshot(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "1")
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(onWhen(nil)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestAddTriggerRejectsBadOn(t *testing.T) {
 	for name, cond := range cases {
 		t.Run(name, func(t *testing.T) {
 			store := entitytest.Store(t)
-			eng := New(store, process.AutoResolver{})
+			eng := New(store, task.AutoResolver{})
 			err := eng.AddTrigger(Trigger{Name: "t", Condition: cond, Action: Action{}})
 			if err == nil {
 				t.Fatal("installed a condition that cannot mean what it says")

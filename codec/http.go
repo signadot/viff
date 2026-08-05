@@ -16,7 +16,7 @@ import (
 // works uniformly across streaming and non-streaming routes. It is also the lever a person
 // reaches for with curl.
 //
-// The default is whatever the process set with SetDefault — JSON until the flip, so an
+// The default is whatever the task set with SetDefault — JSON until the flip, so an
 // existing client that sends no headers keeps getting exactly what it got before.
 
 // FormatParam is the query parameter that names a format, on any route.

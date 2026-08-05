@@ -5,7 +5,7 @@ create/update/delete, why `Since` is a pure read, and why that keeps verse Stora
 on a portable baseline instead of an exotic one.
 
 You watch the stream this describes in
-[tutorial §4](tutorial.md#4-charters--relating-entities-to-processes), and
+[tutorial §4](tutorial.md#4-charters--relating-entities-to-tasks), and
 [reference/store.md](reference/store.md) sketches the store it
 comes out of.
 

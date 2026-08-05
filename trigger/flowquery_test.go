@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // ParseExpr is the address grammar behind `flow pause <addr>`: three segments, `*` as a
@@ -44,36 +44,36 @@ func TestParseExpr(t *testing.T) {
 	}
 }
 
-// spawnFP registers a live process under a subject, as Spawn does, and returns its handle.
-func spawnFP(t *testing.T, eng *Engine, id, subject string) *process.Process {
+// spawnFP registers a live task under a subject, as Spawn does, and returns its handle.
+func spawnFP(t *testing.T, eng *Engine, id, subject string) *task.Task {
 	t.Helper()
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess(id, sup, blockForever{}, noExec{})
-	eng.track(flowProc{id: id, subject: subject, h: p})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask(id, sup, blockForever{}, noExec{})
+	eng.track(flowTask{id: id, subject: subject, h: p})
 	return p
 }
 
-// blockForever keeps a process alive so it stays in the live registry for the duration of a
+// blockForever keeps a task alive so it stays in the live registry for the duration of a
 // steering test (an `immediate` driver would complete and be reaped mid-test).
 type blockForever struct{}
 
-func (blockForever) Next(ctx context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
+func (blockForever) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, bool, error) {
 	<-ctx.Done()
-	return process.ToolUse{}, false, ctx.Err()
+	return task.ToolUse{}, false, ctx.Err()
 }
 
 // A flow is a QUERY, so one address can steer a whole kind or a whole system — "relational
 // flows" without a second primitive. This is the capability step 4 exists to unlock.
 func TestFlowAddressingSelectsSets(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
-	spawnFP(t, eng, "p2", "demo:pr:1") // two processes on one subject
+	spawnFP(t, eng, "p2", "demo:pr:1") // two tasks on one subject
 	spawnFP(t, eng, "p3", "demo:pr:2")
 	spawnFP(t, eng, "p4", "demo:issue:9")
 	spawnFP(t, eng, "p5", "other:pr:1")
 
 	cases := map[string]int{
-		"demo:pr:1":    2, // one subject, both its processes
+		"demo:pr:1":    2, // one subject, both its tasks
 		"demo:pr:2":    1,
 		"demo:pr:*":    3, // the whole kind — the relational case
 		"demo:*:*":     4, // the whole system
@@ -85,7 +85,7 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 	}
 	for addr, want := range cases {
 		if got := len(eng.matchFlow(mustExpr(t, addr))); got != want {
-			t.Errorf("address %q selected %d live processes, want %d", addr, got, want)
+			t.Errorf("address %q selected %d live tasks, want %d", addr, got, want)
 		}
 	}
 
@@ -96,10 +96,10 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 	}
 }
 
-// Steering by a set address reaches every selected process and reports the count — the
+// Steering by a set address reaches every selected task and reports the count — the
 // {subject, verb, affected} contract the tutorial documents (api.Steered).
 func TestSteerWholeKind(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
 	spawnFP(t, eng, "p2", "demo:pr:2")
 	spawnFP(t, eng, "p3", "demo:issue:9")
@@ -127,7 +127,7 @@ func TestFlowAddressingByPayload(t *testing.T) {
 	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "merged"}.Payload())
 	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
 	spawnFP(t, eng, "p2", "demo:pr:2")
 	spawnFP(t, eng, "p3", "demo:pr:3")
@@ -138,19 +138,19 @@ func TestFlowAddressingByPayload(t *testing.T) {
 	}
 }
 
-// A re-fire about the same subject must NOT start a second process: spawnID is deterministic
+// A re-fire about the same subject must NOT start a second task: spawnID is deterministic
 // per (trigger, subject), and the runtime would happily run duplicates while clobbering its
 // own registry entry, so the engine dedupes by id.
 func TestSpawnIsIdempotentPerID(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	spawned := 0
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		spawned++
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, blockForever{}, noExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 
-	spec := launch.Spec{Subject: "demo:pr:1", Task: "review"}
+	spec := launch.Spec{Subject: "demo:pr:1", Prompt: "review"}
 	h1 := eng.Spawn("rev-1", spec)
 	h2 := eng.Spawn("rev-1", spec) // the same firing again
 	if spawned != 1 {
@@ -160,26 +160,26 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 		t.Fatal("a duplicate spawn must return the live handle, not nil or a new one")
 	}
 	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:1"))); n != 1 {
-		t.Fatalf("live registry holds %d processes for one id, want 1", n)
+		t.Fatalf("live registry holds %d tasks for one id, want 1", n)
 	}
 
 	// Once it is reaped, the id is free again — a later, genuinely new firing can run.
 	eng.reap(entity.Event{
 		Ref: mirror.Ref("rev-1"), Op: entity.Set,
-		To: entity.Obj{"status": string(process.Done)}.Payload(),
+		To: entity.Obj{"status": string(task.Done)}.Payload(),
 	})
 	if eng.Spawn("rev-1", spec) == nil || spawned != 2 {
 		t.Fatalf("after reap a fresh spawn should run; spawner invoked %d times", spawned)
 	}
 }
 
-// A distinct subject gets a distinct id and its own process, so dedupe is per subject rather
+// A distinct subject gets a distinct id and its own task, so dedupe is per subject rather
 // than per trigger.
 func TestSpawnDedupeIsPerSubject(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, blockForever{}, noExec{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 	a := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	b := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
@@ -187,7 +187,7 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 	eng.Spawn(spawnID("review", b), launch.Spec{Subject: b.String()})
 
 	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:*"))); n != 2 {
-		t.Fatalf("two subjects yielded %d live processes, want 2", n)
+		t.Fatalf("two subjects yielded %d live tasks, want 2", n)
 	}
 }
 
@@ -195,7 +195,7 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 // the goal subject's work after the registry change.
 func TestGoalSteeringUsesTheFlowQuery(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddGoal(GoalDef{
 		Name:     "ship",
 		Subject:  "change:pr:42",
@@ -210,12 +210,12 @@ func TestGoalSteeringUsesTheFlowQuery(t *testing.T) {
 	spawnFP(t, eng, "other", "change:pr:99")
 
 	if n := eng.PauseGoal("ship"); n != 2 {
-		t.Fatalf("PauseGoal reached %d processes, want 2 (its subject's work only)", n)
+		t.Fatalf("PauseGoal reached %d tasks, want 2 (its subject's work only)", n)
 	}
 	if n := eng.SteerGoal("ship", "hurry", "human:scott"); n != 2 {
 		t.Fatalf("SteerGoal reached %d, want 2", n)
 	}
 	if n := eng.CancelGoal("nope"); n != 0 {
-		t.Fatalf("an unknown goal steered %d processes", n)
+		t.Fatalf("an unknown goal steered %d tasks", n)
 	}
 }

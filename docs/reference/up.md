@@ -1,6 +1,6 @@
 # Starting a verse
 
-`verse up` runs the engine and the process runtime and brings up its store; every other
+`verse up` runs the engine and the task runtime and brings up its store; every other
 subcommand is a client of it. [Tutorial §1](../tutorial.md#1-start) starts one with no flags
 at all — this is what those defaults are, and what to say instead.
 
@@ -13,7 +13,7 @@ To point a client at a non-default address, `export VERSE_ADDR=host:port` or pas
 `--addr host:port` to any command. `verse down` stops the verse on `--addr`, and it reaps the
 daemons it spawned.
 
-`up` decides three things for the whole runtime, because it hosts the process runtime and the
+`up` decides three things for the whole runtime, because it hosts the task runtime and the
 clients do not.
 
 ## The store
@@ -33,19 +33,19 @@ verse up --docd-addr host:port --docd-mount-addr host:port   # attach to an alre
 
 ## The driver
 
-Which driver runs a process when nothing says otherwise. With LLM creds configured — an `llm`
+Which driver runs a task when nothing says otherwise. With LLM creds configured — an `llm`
 block in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment — the
-default is a real llm agent; with no creds it is `scripted`, which runs a task as a shell
+default is a real llm agent; with no creds it is `scripted`, which runs a prompt as a shell
 command.
 
 The creds are read by the **server**, so set them before `up`, not in the client's
 environment. `verse status` shows an `llm` block with `available` and a masked key.
 
 The driver is chosen per spawn, so a trigger's `spawn.driver`, `connect --driver` and
-`process run --driver` each select `scripted` or `llm` for that one process. Requesting `llm`
-with no configured creds fails that one process — status `failed`, with a message telling you
+`task run --driver` each select `scripted` or `llm` for that one task. Requesting `llm`
+with no configured creds fails that one task — status `failed`, with a message telling you
 to set the creds — and the engine keeps running. What each driver implies for gates is in
-[processes.md](processes.md#the-dial).
+[tasks.md](tasks.md#the-dial).
 
 ## The agent root
 
@@ -57,19 +57,19 @@ To let an agent read a tree *through* the verse instead — no shared filesystem
 runs — use [`verse connect`](connect.md). `--root` remains for a non-federated,
 single-machine agent.
 
-## Where processes run
+## Where tasks run
 
 Off by default: the local in-process supervisor runs them.
 
 ```sh
-verse up --runner http://other-verse:9797     # host processes on a remote verse
+verse up --runner http://other-verse:9797     # host tasks on a remote verse
 verse up --broker --broker-addr :9090         # …or behind a dial-in broker
 ```
 
-Both are the same seam, and every `verse process` verb works across all three. Either way this
+Both are the same seam, and every `verse task` verb works across all three. Either way this
 sets the DEFAULT: a spawn may name an installed runner instead, and go somewhere this flag
 never mentioned — see [runners.md](runners.md). See also
-[process control](../process-control.md) and [processes.md](processes.md).
+[task control](../task-control.md) and [tasks.md](tasks.md).
 
 ## Configuration
 
@@ -100,9 +100,9 @@ llm: {
 ```
 
 `addr` and `scope` are read by every command (they say which verse to talk to). The `llm`
-block, however, is read by the server (`verse up`) — it hosts the process runtime, so
+block, however, is read by the server (`verse up`) — it hosts the task runtime, so
 that's whose config/environment the agent driver reads for its model + creds; setting it for
-a `process run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
+a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
 `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `PORTKEY_BASE_URL` (which override the file).
 Precedence for any value is, low → high:
 `/etc/verse.tony` → `~/.config/verse.tony` → environment → CLI flag.

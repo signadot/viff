@@ -10,34 +10,34 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // structured completes with a tony object as its final answer, so the mirror projects `data`
 // beside `result` and a hook can deref into it.
 type structured struct{ r string }
 
-func (structured) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
-	return process.ToolUse{}, false, nil
+func (structured) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
+	return task.ToolUse{}, false, nil
 }
 func (d structured) Result() string { return d.r }
 
 // erroring fails on its first turn, the way the fail tool makes an llm driver fail.
 type erroring struct{ msg string }
 
-func (d erroring) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
-	return process.ToolUse{}, false, errors.New(d.msg)
+func (d erroring) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
+	return task.ToolUse{}, false, errors.New(d.msg)
 }
 
-func structuredEngine(t *testing.T, d process.Driver) (*Engine, entity.Store) {
+func structuredEngine(t *testing.T, d task.Driver) (*Engine, entity.Store) {
 	t.Helper()
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, d, noExec{})
+	eng := New(store, task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, d, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
-			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Task: spec.Task,
+			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
 		})
 		go p.Run(context.Background())
 		return p
@@ -48,7 +48,7 @@ func structuredEngine(t *testing.T, d process.Driver) (*Engine, entity.Store) {
 
 // A structured answer reaches the subject through a deref: the agent's own finding becomes an
 // ordinary field, at the depth the charter names.
-func TestDerefIntoProcessData(t *testing.T) {
+func TestDerefIntoTaskData(t *testing.T) {
 	eng, store := structuredEngine(t, structured{r: `{severity: high, findings: [{id: "f1"}]}`})
 
 	if err := eng.AddTrigger(Trigger{
@@ -56,7 +56,7 @@ func TestDerefIntoProcessData(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{
 				"stage":    "reviewed",
 				"severity": "$data.severity",
@@ -83,7 +83,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Task: "review $subject"},
+			Spawn:  &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed", "severity": "$data.severity"}.Payload()},
 		},
 	}); err != nil {
@@ -92,7 +92,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
-	// the failure is persisted against the process whose completion fired the hook
+	// the failure is persisted against the task whose completion fired the hook
 	pr := mirror.Ref("review@demo:pr:1")
 	waitPath(t, store, pr, "hook.status", "failed")
 
@@ -103,7 +103,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 	if got, _ := e.Payload.GetKPath("hook.err"); got == nil || got.String == "" {
 		t.Error("hook.err must say which reference did not resolve")
 	}
-	// the process's own text survives beside it, and status is still the mirror's
+	// the task's own text survives beside it, and status is still the mirror's
 	if r := entity.Str(e.Payload, "result"); r != "Error could not open file" {
 		t.Errorf("result = %q, want the agent's text", r)
 	}
@@ -117,7 +117,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 	}
 }
 
-// A driver error reaches the durable entity as `err`. status says only THAT a process ended.
+// A driver error reaches the durable entity as `err`. status says only THAT a task ended.
 func TestDriverErrorIsProjectedAsErr(t *testing.T) {
 	eng, store := structuredEngine(t, erroring{msg: "driver error: no credentials"})
 
@@ -126,7 +126,7 @@ func TestDriverErrorIsProjectedAsErr(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -173,7 +173,7 @@ func TestDerefReadsAFencedAnswer(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{
 				"stage":    "reviewed",
 				"severity": "$data.severity",

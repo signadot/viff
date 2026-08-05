@@ -10,18 +10,18 @@ import (
 
 // A CHAIN is the kpath of an action inside its trigger — `review`, `review.onDone`,
 // `review.seq[2].onFailed`. It is the join key the whole model hangs off: it names a spawned
-// process (the id is `<chain>@<subject>`), it is published on the process entity, and it is a
+// task (the id is `<chain>@<subject>`), it is published on the task entity, and it is a
 // LOOKUP KEY back into the charter, which is what navigate below makes good on.
 //
 // It has two renderings, and the reason is not aesthetics:
 //
 //	canonical   review.seq[2].onFailed    a real kpath — parses, prefix-matches, types its
 //	                                      segments (a field is a field, an index an index)
-//	id form     review.seq.2.onFailed     what goes in a process id
+//	id form     review.seq.2.onFailed     what goes in a task id
 //
 // The id cannot carry brackets. Under zsh `review.seq[2]@demo:pr:1` dies with "no matches
 // found" BEFORE verse runs, and ids are pasted back onto command lines constantly — the same
-// principle shortID states (cmd/verse/process.go). The flattening is lossless because
+// principle shortID states (cmd/verse/task.go). The flattening is lossless because
 // Action's field set is closed: a segment following `seq` is an element, everything else is a
 // field name, so nothing has to be guessed.
 
@@ -29,7 +29,7 @@ import (
 // renderings and the schema walk have to agree on it.
 const seqField = "seq"
 
-// chainID renders a chain for a process id: `review.seq[2]` → `review.seq.2`.
+// chainID renders a chain for a task id: `review.seq[2]` → `review.seq.2`.
 func chainID(canonical string) string {
 	r := strings.NewReplacer("[", ".", "]", "")
 	return r.Replace(canonical)
@@ -93,7 +93,7 @@ func seqIndexOf(chain string) (carrier string, idx int, ok bool) {
 
 // navigate resolves a chain to the Action it addresses inside t. This is what makes a chain a
 // lookup key into the charter rather than a label: given `review.seq[2].onFailed` off a
-// completed process, the engine can fetch exactly the action that spawned it — which is what
+// completed task, the engine can fetch exactly the action that spawned it — which is what
 // advancing a sequence needs, and what rehydrating hooks on resume needs
 // (docs/trigger-model.md).
 //

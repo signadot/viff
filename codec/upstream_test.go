@@ -179,7 +179,7 @@ func TestUpstreamReflectionDispatchIsUniform(t *testing.T) {
 		}
 	}
 	if !strings.Contains(got, "valText: TEXT") {
-		t.Error("a VALUE field's MarshalText was not honored — process.Mode depends on it")
+		t.Error("a VALUE field's MarshalText was not honored — task.Mode depends on it")
 	}
 
 	// When the method IS reached, the options carry the target format. Detag does not

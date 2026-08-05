@@ -1,25 +1,25 @@
-# Authority: where a process's permission comes from
+# Authority: where a task's permission comes from
 
 Status: design note, partly implemented. The **override** path under
 [The override](#the-override) is built: a spawn may *declare* a vector and a grant, both are
 resolved by name, and a grant is enforced per action. The **derivation** path — inferring an
 envelope from the request text — is not implemented and is the substance of what remains.
 
-It concerns the hard authority axis (`process.Grant`) and its relationship to the soft gate
-vector (`process.Vector`) — specifically, that the hard axis is enforced but never *produced*,
-which is why restraint still reaches an undeclared process as a prompt.
-[Tutorial §3](../tutorial.md#3-processes) states that rough edge from the user's side; this is
+It concerns the hard authority axis (`task.Grant`) and its relationship to the soft gate
+vector (`task.Vector`) — specifically, that the hard axis is enforced but never *produced*,
+which is why restraint still reaches an undeclared task as a prompt.
+[Tutorial §3](../tutorial.md#3-tasks) states that rough edge from the user's side; this is
 what should fix it.
 
 ## The complaint
 
 ```sh
-verse process run "go test ./..."
+verse task run "go test ./..."
 #   ⏸ gate "shell" (run_bash) — approve?
 ```
 
 You typed a command; you were asked to confirm the command. With LLM creds configured the
-default driver is `llm` (`cmd/verse/up.go`), so the task became an agent's prompt, the agent's
+default driver is `llm` (`cmd/verse/up.go`), so what you typed became an agent's prompt, the agent's
 first action was `run_bash`, and that action met `harness.Vector()`, whose own comment calls it
 *the demo gate vector*: ASK before writing a file, running a shell command, or delegating.
 
@@ -45,31 +45,31 @@ above are the same CLI. `go test ./...` is a command the caller could have run t
 "Write a file hello.txt containing hi" is an instruction to an agent. Today the runtime cannot
 tell them apart, because it never asks.
 
-`process say` is also a call-boundary crossing: a new instruction mid-run is new authorization,
-arriving from outside, and carries the same weight as the task that started the process.
+`task say` is also a call-boundary crossing: a new instruction mid-run is new authorization,
+arriving from outside, and carries the same weight as the prompt that started the task.
 
 ## The hard axis exists and has no producer
 
 Verse already models authority in two layers (see also the axes discussion in
 [expose](expose.md)):
 
-- `Grant` — the hard envelope. What the process may do *at all*. `Grant.Subset` enforces
+- `Grant` — the hard envelope. What the task may do *at all*. `Grant.Subset` enforces
   monotonicity down a delegation chain, checked in `NewChild` and again at the `call_agent`
   boundary in the loop.
 - `Vector` — the soft dial. Of what is permitted, which actions must *ask*. Slidable mid-run
   via `SetVector`.
 
 The hard layer binds a *declared* envelope: `Grant.Permits` checks each action against the
-process's scope in `process/loop.go`, ahead of the vector, and a spawn's `grant` installs that
-scope (`process.Launch`, applied in `processd`). What is missing is a producer. A root process
+task's scope in `task/loop.go`, ahead of the vector, and a spawn's `grant` installs that
+scope (`task.Launch`, applied in `taskd`). What is missing is a producer. A root task
 that declares no grant is initialized to a wildcard (`Grant{Allow: []GateMatch{{}}}` —
-`allowsAll`), and nothing but `NewChild` sets it, so an undeclared process begins unbounded and
+`allowsAll`), and nothing but `NewChild` sets it, so an undeclared task begins unbounded and
 the soft per-action gate is the only thing between it and an effect. That is what derivation is
 for.
 
 Two failure modes are worth naming for whoever builds that producer, because the second is the
 deeper one: a grant nothing sets bounds nothing, and a grant read only at the `call_agent`
-boundary — where `Grant.Subset` reads it — constrains what a process may **delegate** and never
+boundary — where `Grant.Subset` reads it — constrains what a task may **delegate** and never
 what it may **do**. Wiring declarative fields through without enforcing them per action
 reproduces the defect one layer deeper: a field that resolves, installs, and still stops
 nothing.
@@ -81,7 +81,7 @@ secure for it — a wildcard grant with an `ask` vector stops exactly one impati
 the cost is a prompt that reads as ridiculous.
 
 The declarative side does state the envelope of what a trigger spawns: `launch.Spec.Vector`
-and `launch.Spec.Grant` resolve (`process.NamedVector` / `process.NamedGrant`, called from
+and `launch.Spec.Grant` resolve (`task.NamedVector` / `task.NamedGrant`, called from
 versed's `launchOf`) and reach the runtime as predicates rather than names, so the two ends
 cannot drift apart on what a name means. A field `Bind` expands and nothing reads is the
 failure to avoid here, and it is worse than an absent one: a trigger states an envelope and is
@@ -100,7 +100,7 @@ already authorized.
 
 ## Deriving the envelope at the call boundary
 
-At spawn, convert the request into a `Grant`, install it as the process's scope, and let the
+At spawn, convert the request into a `Grant`, install it as the task's scope, and let the
 loop gate only what exceeds it.
 
 ### Why spawn is the sound place for that inference
@@ -119,11 +119,11 @@ runs decides whether it can be trusted:
 
 ### Stage 1 — register, no model required
 
-Classify the request as *command* or *instruction*. A task that parses as a command the caller
+Classify the request as *command* or *instruction*. A prompt that parses as a command the caller
 could have run themselves is a command execution: authorize that command, gate nothing for
 realizing it. This is the `--driver scripted` heuristic promoted from a flag the caller must
 remember to a property the runtime infers — and it already matches how the scripted driver is
-built (`Vector{Default: auto}`, no gates, because its task *is* the command).
+built (`Vector{Default: auto}`, no gates, because its prompt *is* the command).
 
 ### Stage 2 — a derived envelope
 
@@ -139,8 +139,8 @@ the gate asks — today's behavior, which remains the correct fallback rather th
 
 **Implemented.** An explicit vector or grant on the spawn wins over anything inferred. The
 `vector` / `grant` axes of `launch.Spec` finally have a consumer: a charter writes a name,
-versed resolves it, and the resolved predicate travels to whichever runtime hosts the process.
-The vocabulary is small on purpose — `auto|ask|park` for a vector, matching what `process
+versed resolves it, and the resolved predicate travels to whichever runtime hosts the task.
+The vocabulary is small on purpose — `auto|ask|park` for a vector, matching what `task
 vector` already accepts, and `read-only|no-delegate|none|all` for a grant — because every name
 is a promise the enforcement keeps, and a name that over-promises is worse than no name.
 
@@ -149,11 +149,10 @@ widening an envelope the author narrowed is the original defect wearing an error
 
 Two constraints this respects. Resolution runs on the engine side rather than at the runtime,
 so the two ends cannot disagree about what `read-only` means across a version skew. And,
-per the risk below, only the *declared* grant is honored — nothing is derived from the bound
-task, so a `$var` expanded out of an entity payload cannot widen anything.
+per the risk below, only the *declared* grant is honored — xprompt, so a `$var` expanded out of an entity payload cannot widen anything.
 
-Still to do here: `process run --vector auto|ask|park` for the CLI (the trigger side is done),
-and recording the installed envelope on the process entity so `process get` shows it.
+Still to do here: `task run --vector auto|ask|park` for the CLI (the trigger side is done),
+and recording the installed envelope on the task entity so `task get` shows it.
 
 ## What the loop gates afterward
 
@@ -170,7 +169,7 @@ granted it and the agent is not the party who may.
 - Supervision — a resolver's *sponsoring* grant is a second producer for this axis, and it
   produces at a different moment: derivation fixes a root envelope at spawn, where a sponsor
   authorises one action at the ask boundary — per action, attributed, and without changing the
-  process's own grant, so nothing ratchets ([attached
+  task's own grant, so nothing ratchets ([attached
   resolvers](../attached-resolvers.md)). It also asks for the outcome this note does not
   have, *askable-with-a-sponsor* between permitted and refused, and it wants a bound this note
   does not produce: an envelope attached to whoever installed the charter, since a sponsoring
@@ -184,7 +183,7 @@ granted it and the agent is not the party who may.
   and no wording fixes it, because the vector is per-spawn and slidable and a constant is
   neither. A spawn writes its own `frame` when it wants something else.
 - Triggers — a firing's `gates` authorize the firing; the spawn's `vector`/`grant` should
-  carry that authorization into the process, closing the double-ask.
+  carry that authorization into the task, closing the double-ask.
 - Environments — the unbypassable floor from [expose](expose.md) sits outside both:
   *possible* ⊇ *granted* ⊇ *auto*. The floor is enforced by construction, the grant by refusal,
   the vector by asking. A floor is also *infrastructural* and therefore non-semantic — it can
@@ -194,8 +193,8 @@ granted it and the agent is not the party who may.
   definition is shared and pre-warmable ([expose](expose.md)); a grant is derived from one
   request and belongs to that spawn alone. Folding it into the environment would make every
   environment single-use.
-- Naming — `Process.scope` (the field holding a `Grant`, `process/loop.go`) is the last
-  place in the process package where "scope" means authority rather than store isolation; it
+- Naming — `Task.scope` (the field holding a `Grant`, `task/loop.go`) is the last
+  place in the task package where "scope" means authority rather than store isolation; it
   wants the same rename `launch.Spec.Grant` got.
 
 ## Prior art: the same gap, approached from identity
@@ -240,7 +239,7 @@ their profiles map directly:
 
 The identity model behind all of it asks three questions of an agent: who deployed it, what is it
 authorized to do, and on whose behalf is it currently acting. The third is the open question
-at the end of this note — whether an envelope belongs to the process or to the (requester,
+at the end of this note — whether an envelope belongs to the task or to the (requester,
 request) pair — arriving from the other side.
 
 Runtimes are converging on the mechanics too. Google's Agent Executor (an open-source
@@ -248,15 +247,15 @@ distributed agent runtime, early as of 2026) keeps a durable event log with snap
 separately, resumes a session from a step rather than replaying it, and — the relevant part —
 treats *suspended while awaiting an approval* as a first-class runtime state rather than a
 blocked thread. That is `park`. Its single-writer session state is the same conclusion as the
-claim-and-report, compare-and-swap model in [external processes](../external-processes.md).
+claim-and-report, compare-and-swap model in [external tasks](../external-tasks.md).
 None of these systems, however, derives authority from the request; they carry a decision made
 elsewhere. The derivation is the part that is ours to design.
 
 ## Risks
 
-- A bound task is attacker-influenced text. This is the sharp edge. A trigger's task is a
+- A bound prompt is attacker-influenced text. This is the sharp edge. A trigger's prompt is a
   *template* whose `$vars` expand from the changed entity's payload — so if authority is derived
-  from the task string after binding, anyone who can write an entity field can widen an
+  from the prompt string after binding, anyone who can write an entity field can widen an
   envelope by writing into it. Derivation must therefore run over the authored template and
   the authoring party, never over bound values; a binding may narrow what it substitutes into
   but must never enlarge the envelope. Until that is settled, trigger spawns take a *declared*
@@ -264,9 +263,9 @@ elsewhere. The derivation is the part that is ours to design.
   string field `Bind` does **not** expand: a `$var` there could only name a tool that does not
   exist, or name one chosen by whoever last wrote the entity being matched.
 - Silent over-authorization. A wrong envelope does not surface as a prompt — that is the
-  point, and also the danger. The derived envelope must be recorded on the process entity so it
-  is inspectable (`process get`), reviewable after the fact, and diffable against what the
-  process actually did.
+  point, and also the danger. The derived envelope must be recorded on the task entity so it
+  is inspectable (`task get`), reviewable after the fact, and diffable against what the
+  task actually did.
 - Register misread. "Run the tests and fix whatever breaks" is both a command and an
   instruction. Misclassifying an instruction as a command authorizes a shell verb the caller
   only half-intended. Prefer classifying as *instruction* on doubt.
@@ -275,15 +274,15 @@ elsewhere. The derivation is the part that is ours to design.
 
 - Envelope from `say` — a mid-run instruction is a new authorization from outside. Does it
   widen the envelope (matching the call-boundary principle), or is widening a distinct,
-  explicitly-attributed act? The `--as` attribution on `process vector` suggests the latter.
+  explicitly-attributed act? The `--as` attribution on `task vector` suggests the latter.
 - Who answers when nobody is attached. An unattended run that hits a gate parks. With
   envelopes, the interesting case inverts: an action outside the envelope with no one to ask
   should probably fail fast rather than park indefinitely.
 - Escalation vocabulary — what counts as "beyond" needs to be predicate-level, and
   `Grant.Subset` is deliberately sound-but-incomplete (identity or wildcard only). Real
-  predicate subsumption is the same frontier flagged in `process/action.go`.
-- Does the envelope belong to the process or the request? Two `process run`s of the same
-  task by different callers may deserve different envelopes; that argues the envelope is a
+  predicate subsumption is the same frontier flagged in `task/action.go`.
+- Does the envelope belong to the task or the request? Two `task run`s of the same
+  prompt by different callers may deserve different envelopes; that argues the envelope is a
   property of the (requester, request) pair, which is where an identity model would enter.
 
 ## References

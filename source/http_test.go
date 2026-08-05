@@ -44,7 +44,7 @@ func TestReflectionIsTheSameAcrossBothTransports(t *testing.T) {
 
 	direct, err := g.Reflect(ctx, entity.Ref{})
 	if err != nil {
-		t.Fatalf("reflect in process: %v", err)
+		t.Fatalf("reflect in task: %v", err)
 	}
 	overHTTP, err := serve(t, g).Reflect(ctx, entity.Ref{})
 	if err != nil {

@@ -14,9 +14,9 @@ workaround today; the vector ordering is the smallest and the least certain.
 
 ## 1. Selecting a human
 
-**The gap.** A human *is* a provider. The dial-in broker already runs a process a person
-executes ([process control](../process-control.md),
-[reference/processes.md](../reference/processes.md#executing-one-by-hand)), so "this finding needs a
+**The gap.** A human *is* a provider. The dial-in broker already runs a task a person
+executes ([task control](../task-control.md),
+[reference/tasks.md](../reference/tasks.md#executing-one-by-hand)), so "this finding needs a
 person" ought to be a selection whose winner happens to be human — over the same votable,
 attributable surface as every other who-question — rather than a gate, or a separate rule
 whose whole job is to route to people.
@@ -24,7 +24,7 @@ whose whole job is to route to people.
 It isn't reachable, because a brokered doer is not a driver name. The runner is a property of
 the *verse*, not of a spawn: `versed.Server.runner` is a single field set once, the `Runner`
 interface's `Spawn(Launch, ContentReader)` takes no selector, and the runner reaches the
-process entity only as `mirror.Meta.Runner`. A provider entity can say `driver: broker` and it
+task entity only as `mirror.Meta.Runner`. A provider entity can say `driver: broker` and it
 will mean nothing.
 
 **Two shapes.**

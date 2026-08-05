@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // AddTrigger installs a trigger into the charter — durably: the rule is written into the
@@ -221,7 +221,7 @@ func (e *Engine) Triggers() []Trigger {
 	return out
 }
 
-// ChainSep bounds a process id's CHAIN from its SUBJECT: `review.onDone@demo:pr:1` is
+// ChainSep bounds a task id's CHAIN from its SUBJECT: `review.onDone@demo:pr:1` is
 // "the onDone hook of trigger review, about demo:pr:1". It is '@' because the chain is a
 // kpath (dots and, once actions hold lists, brackets) and the ref is an address (colons),
 // so the boundary needs a character neither grammar spends — and because '@' survives a
@@ -237,9 +237,9 @@ const ChainSep = "@"
 // routinely carry '-' (ship-reviewed).
 const hashSep = "+"
 
-// spawnID makes a legible, collision-resistant, URL- and shell-safe process id from a
+// spawnID makes a legible, collision-resistant, URL- and shell-safe task id from a
 // CHAIN (the kpath of the spawning action inside its trigger — "review", "review.onDone",
-// "review.onDone.onFailed") and the full ref. It routes through /processes/{id} (one path
+// "review.onDone.onFailed") and the full ref. It routes through /tasks/{id} (one path
 // segment), so it must not contain path-breaking characters, and it gets pasted back onto
 // a command line, so it must not contain shell globs either.
 //
@@ -348,15 +348,15 @@ func checkFields(node *ir.Node, what string, known map[string]bool, descend func
 // everything derived — rule names are unique across the charter and the id is injective in the
 // subject, so no two rules and no two subjects can address the same derived entity.
 //
-// It is spawnID's rule, deliberately: a derived entity and a spawned process are the same object
+// It is spawnID's rule, deliberately: a derived entity and a spawned task are the same object
 // in different clothes — a thing brought into being by one firing, about exactly one subject —
 // and giving them two id schemes would be two answers to one question. They cannot collide: a
-// process id addresses a process, a derived id addresses an entity at <system>:<kind>.
+// task id addresses a task, a derived id addresses an entity at <system>:<kind>.
 func deriveID(chain string, ref entity.Ref) string { return spawnID(chain, ref) }
 
 // chainOf splits a spawn id back into its chain and the (safeSeg'd) subject it is about.
 // Not the inverse of spawnID — safeSeg is lossy and the hash is not a ref — but the chain
-// half IS exact, which is what reads a process's position in its trigger's action tree.
+// half IS exact, which is what reads a task's position in its trigger's action tree.
 func chainOf(id string) (chain string, rest string, ok bool) {
 	chain, rest, ok = strings.Cut(id, ChainSep)
 	return chain, rest, ok
@@ -386,7 +386,7 @@ func validTriggerName(name string) error {
 			"contain '.', brackets, or anything needing quotes", name)
 	}
 	if i := strings.IndexAny(name, ChainSep+hashSep+"*?[]{}()\\ \t"); i >= 0 {
-		return fmt.Errorf("trigger name %q contains %q, which a process id built on it "+
+		return fmt.Errorf("trigger name %q contains %q, which a task id built on it "+
 			"would spend as punctuation — %q bounds the subject, %q marks a hash, and the "+
 			"rest are shell globs that make an id unpasteable", name, name[i], ChainSep, hashSep)
 	}
@@ -401,7 +401,7 @@ func validTriggerName(name string) error {
 // moment a trigger is re-evaluated rather than re-edged: the same decision, about the same
 // subjects, lands on the docket again and again, and an approver answers a queue of identical
 // questions. Derived from the subjects instead, a re-firing poses the id already standing
-// there and JOINS it (process.Registry.Resolve) — one entry, one decision, delivered to every
+// there and JOINS it (task.Registry.Resolve) — one entry, one decision, delivered to every
 // firing waiting on it.
 //
 // It HASHES the subject list rather than spelling it: the id crosses a URL path and a command
@@ -414,15 +414,15 @@ func gateID(trigger, gate string, subjects []entity.Ref) string {
 		_, _ = h.Write([]byte{0}) // a separator no ref can hold, so [ab,c] and [a,bc] differ
 	}
 	return fmt.Sprintf("trigger:%s:%s%s%08x",
-		safeSeg(trigger), safeSeg(gate), process.GateSep, h.Sum32())
+		safeSeg(trigger), safeSeg(gate), task.GateSep, h.Sum32())
 }
 
-// safeSeg makes s usable as a single URL path segment: a process id routes through
-// /processes/{id}, which matches one segment, so characters that break a path
-// (slashes, fragment/query, whitespace) become '_'. It also strips process.GateSep,
+// safeSeg makes s usable as a single URL path segment: a task id routes through
+// /tasks/{id}, which matches one segment, so characters that break a path
+// (slashes, fragment/query, whitespace) become '_'. It also strips task.GateSep,
 // which does not break a path but delimits a gate id from its owner — an owner id
 // carrying one would make `resolve` split it in the wrong place and route the answer
-// to a process that does not exist. It is lossy — see spawnID, which disambiguates
+// to a task that does not exist. It is lossy — see spawnID, which disambiguates
 // with a hash when a rewrite occurs.
 func safeSeg(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -430,7 +430,7 @@ func safeSeg(s string) string {
 		case '/', '\\', '#', '?', '%', ' ', '\t', '\n':
 			return '_'
 		}
-		if strings.ContainsRune(process.GateSep, r) {
+		if strings.ContainsRune(task.GateSep, r) {
 			return '_'
 		}
 		return r
@@ -479,17 +479,17 @@ func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	return b
 }
 
-// ParseMode maps a gate mode name to a process.Mode.
-func ParseMode(s string) (process.Mode, error) {
+// ParseMode maps a gate mode name to a task.Mode.
+func ParseMode(s string) (task.Mode, error) {
 	switch s {
 	case "auto", "":
-		return process.Auto, nil
+		return task.Auto, nil
 	case "ask":
-		return process.Ask, nil
+		return task.Ask, nil
 	case "park", "hold":
-		return process.Park, nil
+		return task.Park, nil
 	default:
-		return process.Auto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
+		return task.Auto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
 	}
 }
 

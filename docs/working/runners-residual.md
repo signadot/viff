@@ -9,7 +9,7 @@ and the question the vocabulary has not had to answer yet.
 **The contract does not say HOW control is applied**, and a url chosen per spawn is what makes
 that reachable.
 
-An answer accepted for a brokered process is *queued* for a worker that must dial in and pull it,
+An answer accepted for a brokered task is *queued* for a worker that must dial in and pull it,
 and the question record says so — `delivered: false` until the acknowledgement clears it. verse
 learns which case it is by asking the handle, in Go (`RelaysControl() bool`); `broker.handle`
 returns true, and **`runner.HTTP`'s handle does not implement it at all**, so anything reached
@@ -35,7 +35,7 @@ Where it should end up is a descriptor on the contract — `GET /runner`, saying
 how control is applied — which would answer both this and the install probe in one call, and
 would let a broker stop refusing. The residual under either: several workers stand behind one
 broker name, so "which worker took it" is a question the runner name cannot answer, and a drive
-debugging a stuck process will ask it.
+debugging a stuck task will ask it.
 
 ## Whether `local` should be nameable
 

@@ -39,9 +39,9 @@ An authored charter is code the system will run on its own state, so authoring i
 privileged act in the model — far beyond what any gate currently guards. The
 [authority](authority.md) note argues an envelope should be derived from the request; here the
 request produces rules rather than actions, and an envelope over "what rules may this agent
-write" is a different and harder object than one over "what may this process do".
+write" is a different and harder object than one over "what may this task do".
 
-The task is also attacker-influenced text, which authority already flags as the sharp edge: a
+The prompt is also attacker-influenced text, which authority already flags as the sharp edge: a
 diff is written by whoever opened the change. A charter authored from a hostile diff is a
 hostile program, installed by us.
 

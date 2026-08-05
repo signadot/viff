@@ -33,12 +33,12 @@ Which is why the flow is *derived and never stored*. `verse flow show <subject>`
 subject's shape per request by joining three sources, and the note in `trigger/flowtree.go` is
 blunt that no one of them is sufficient: the **charter** knows the future — a hook that has not
 fired yet is shown pending rather than missing — the **mirror** holds the history, since a
-finished process leaves the live registry and survives only as `process:instance` entities, and
+finished task leaves the live registry and survives only as `task:instance` entities, and
 the **registry** has the present. Materializing that tree would reintroduce exactly the stored
 per-subject index a query deliberately replaced.
 
 The consequence is that the model is in the addressing rather than in a structure somebody
-maintains. A process id is a function of (rule, subject). A resolver instance is
+maintains. A task id is a function of (rule, subject). A resolver instance is
 `binding@origin`, minted per subject and per run. Parent and child in a flow tree *are* prefix
 and extension of the chain kpath, so nesting needs no parent pointer to keep correct. There is
 no orchestrator to remove because there is nowhere for one to live.
@@ -61,7 +61,7 @@ flowchart LR
     docd["logd + docd"]
   end
 
-  remote["remote runner<br/>another verse / processd"]
+  remote["remote runner<br/>another verse / taskd"]
   src["sourced<br/>:9801"]
   ctl["content controller<br/>verse connect"]
   llm["model provider"]
@@ -104,19 +104,19 @@ you install a four-line shell script.
 | 1 | [Operator API](#1-the-operator-api) | client → verse | ~60 HTTP routes, two planes | built |
 | 2 | [Store](#2-the-store-two-faces-not-one) | verse → docd | logd session; client + mount faces | built |
 | 3 | [Content](#3-content-federation-a-read-that-follows-the-reference-out) | controller → docd | `libctl` controller on the mount face | built |
-| 4 | [Remote runner](#4-process-control-dialled-out) | verse → runner | `POST /processes`, `GET /events?since`, control | built |
-| 5 | [Broker](#5-process-control-dialled-in) | worker → verse | `claim` · `inbox` · `report` under a nonce | built |
+| 4 | [Remote runner](#4-task-control-dialled-out) | verse → runner | `POST /tasks`, `GET /events?since`, control | built |
+| 5 | [Broker](#5-task-control-dialled-in) | worker → verse | `claim` · `inbox` · `report` under a nonce | built |
 | 6 | [Sources](#6-sources--read-one-way-hint-the-other) | both, by question | `GET /source`, `GET /reflect`; `POST …/hint` | built (`dial-in` is not) |
 | 7 | [Webhooks](#7-webhooks-the-only-seam-facing-the-internet) | external → source | signed `POST` | built |
 | 8 | [Resolvers](#8-resolvers-answering-from-the-runs-own-stream) | resolver → verse | SSE frames; verdict; position | built |
-| 9 | [Model provider](#9-the-model-provider) | process → provider | the driver's client | built |
+| 9 | [Model provider](#9-the-model-provider) | task → provider | the driver's client | built |
 
 ## 1. The operator API
 
 The `verse` CLI, a script, or `curl` dials versed. Everything an operator does crosses here,
 and the surface keeps two planes apart on purpose: **observation** — `watch`, `entities`,
 `gates`, `flows` — may lag, while **control** — `gate resolve`, `flow` and `goal` steering,
-process `cancel`/`say` — is serviced ahead of it. An intervention that queues behind a backlog
+task `cancel`/`say` — is serviced ahead of it. An intervention that queues behind a backlog
 of observations is an intervention defeated ([deployment and steering](deployment-and-steering.md)).
 
 Representation is negotiated rather than fixed: tony by default, JSON or YAML on request
@@ -166,17 +166,17 @@ are what a charter reacts to. The write half — an agent changing a federated f
 [not built](roadmap/expose.md#the-write-half), because a write is an outbound effect rather than
 a read run backwards, and it needs a definite target that a read does not.
 
-## 4. Process control, dialled out
+## 4. Task control, dialled out
 
-`runner.HTTP(base)` drives another verse, a `processd`, or anything speaking the same contract:
+`runner.HTTP(base)` drives another verse, a `taskd`, or anything speaking the same contract:
 
 ```
-POST   {base}/processes                        spawn
-GET    {base}/processes                        list
-GET    {base}/processes/{id}                   snapshot
-GET    {base}/processes/{id}/events?since=<n>  the read plane, resumable
-POST   {base}/processes/{id}/cancel|say|resolve
-PUT    {base}/processes/{id}/vector
+POST   {base}/tasks                        spawn
+GET    {base}/tasks                        list
+GET    {base}/tasks/{id}                   snapshot
+GET    {base}/tasks/{id}/events?since=<n>  the read plane, resumable
+POST   {base}/tasks/{id}/cancel|say|resolve
+PUT    {base}/tasks/{id}/vector
 ```
 
 `?since=` is handed to the *remote's* own cursor, so the decision about what is still retained
@@ -187,7 +187,7 @@ The cost of this direction is the ordinary one: **verse must be able to reach th
 runtime on a private network, a laptop, or a cluster that permits no inbound connection cannot
 be a remote runner. That constraint is what seam 5 exists to remove.
 
-## 5. Process control, dialled in
+## 5. Task control, dialled in
 
 The broker is seam 4 turned inside out. Verse hosts a worker-facing handler under
 `/broker/<nonce>`, and the *worker* opens the connection:
@@ -199,17 +199,17 @@ sequenceDiagram
   participant V as versed
   participant S as the store
 
-  V->>B: spawn — in process, because the broker IS verse's runner here
+  V->>B: spawn — in task, because the broker IS verse's runner here
   Note over B: status: unclaimed
-  W->>B: POST /processes/{id}/claim  (--as who)
+  W->>B: POST /tasks/{id}/claim  (--as who)
   B-->>W: claim accepted — an epoch is minted
   Note over B: a later claim fences this one
   loop while running
-    W->>B: GET /processes/{id}/inbox
+    W->>B: GET /tasks/{id}/inbox
     B-->>W: queued control: say · pause · cancel
-    W->>B: POST /processes/{id}/report (frames, gates, result)
+    W->>B: POST /tasks/{id}/report (frames, gates, result)
     B->>V: the same frames an attached observer sees
-    V->>S: mirrored to process:instance:{id}
+    V->>S: mirrored to task:instance:{id}
   end
   Note over B: first terminal report wins — later ones are frozen no-ops
 ```
@@ -224,9 +224,9 @@ are idempotent no-ops.
 The well-known nonce `local` is the built-in supervisor, so the in-process runtime is reached
 through the same shape as everything else — there is no privileged local path.
 
-Because the seam is uniform, a **human is a runner**. `verse process do <verb> --as <who>`
+Because the seam is uniform, a **human is a runner**. `verse task do <verb> --as <who>`
 is the executor's leg of exactly this protocol, and `--as` is required because a claim must be
-attributable. Every `verse process` verb works the same whether the work is local, remote, or
+attributable. Every `verse task` verb works the same whether the work is local, remote, or
 in somebody's terminal.
 
 ## 6. Sources — read one way, hint the other
@@ -275,7 +275,7 @@ The direction split matters in deployment: in the Kubernetes build, verse reache
 client.
 
 Two variants avoid the network entirely or do not exist yet. `--dir` reflects a local git
-repository **in process** — no `sourced`, no port. And `dial-in`, for a source verse must not
+repository **in task** — no `sourced`, no port. And `dial-in`, for a source verse must not
 dial, is designed and **refused at install** until it is built ([sources](reference/sources.md)).
 
 ## 7. Webhooks: the only seam facing the internet
@@ -315,7 +315,7 @@ the gates still open, because the replay it missed is exactly where they were.
 
 ## 9. The model provider
 
-The `llm` driver dials a provider from wherever the process actually runs, which is not
+The `llm` driver dials a provider from wherever the task actually runs, which is not
 necessarily where the charter was installed. That is the common gotcha, so `GET /status`
 publishes a secrets-safe summary of the LLM configuration of *this* server — the one hosting
 the runtime — with the keys elided.
@@ -336,7 +336,7 @@ Read the whole note as this table.
 ## What is not a seam
 
 Worth naming, so the map is not read as bigger than it is. The **driver** (`scripted`, `llm`,
-your own `Next`) is a Go interface and never a wire. A `--dir` **source** runs in process. The
+your own `Next`) is a Go interface and never a wire. A `--dir` **source** runs in task. The
 **local runner** is a Go call. The `Store` interface admits a memory implementation with no
 daemon behind it, which is what the tests run on.
 

@@ -135,7 +135,7 @@ because `resolver → trigger → mirror` already exists. So the lookup arrives 
 
 It has cost twice already, which is why the TODO on it is not a tidiness note: an optional
 function field built by hand at each call site is silently forgettable, and *was* forgotten (a
-resumed process lost its standing layer in the commit that added it); and `mirror` spells
+resumed task lost its standing layer in the commit that added it); and `mirror` spells
 `"resolvers"` and `"instance"` as private constants because the real ones cannot be imported.
 
 The edge to cut is `resolver → trigger`, not `trigger → mirror`. `resolver` imports `trigger`

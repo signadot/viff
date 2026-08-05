@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // derefRoot is the payload the reference tests resolve against.
@@ -93,7 +93,7 @@ func TestDerefInterpolates(t *testing.T) {
 }
 
 // A composite has no text form: inventing one would make "saw $result" mean something
-// different depending on what a process happened to return.
+// different depending on what a task happened to return.
 func TestDerefCompositeInTextIsAnError(t *testing.T) {
 	_, err := expandString("saw $obj here", derefRoot())
 	if err == nil {
@@ -247,7 +247,7 @@ func TestRefRootScalarPayload(t *testing.T) {
 // somewhere else — where binding off the cause meant writing a CI status's fields onto a PR.
 func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewed", "branch": "hotfix-9"}.Payload())
@@ -293,7 +293,7 @@ func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 // references read the event's own level payload — no store read, and exact at the commit.
 func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	if err := eng.AddTrigger(Trigger{

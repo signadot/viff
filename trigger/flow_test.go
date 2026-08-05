@@ -11,37 +11,37 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
-// PauseFlow holds a subject's processes at their next boundary; ResumeFlow releases
+// PauseFlow holds a subject's tasks at their next boundary; ResumeFlow releases
 // them. It is per-flow (not the engine loop) and honored at the boundary — never a
-// store write. Here the flow is paused before its process runs, so it must hold at
+// store write. Here the flow is paused before its task runs, so it must hold at
 // its first boundary and only complete once resumed.
 func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
-	var proc *process.Process
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		proc = process.NewProcess(id, sup, immediate{}, noExec{})
-		mirror.Reflect(store, id, proc, mirror.Meta{Subject: spec.Subject, Runner: "local"})
-		return proc // the test starts Run after arranging the pause
+	var tk *task.Task
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		tk = task.NewTask(id, sup, immediate{}, noExec{})
+		mirror.Reflect(store, id, tk, mirror.Meta{Subject: spec.Subject, Runner: "local"})
+		return tk // the test starts Run after arranging the pause
 	})
 
 	subj := "demo:pr:1"
 	eng.Spawn("work-1", launch.Spec{Subject: subj})
-	if proc == nil {
+	if tk == nil {
 		t.Fatal("spawner was not invoked")
 	}
 
 	if n := eng.PauseFlow(mustExpr(t, subj)); n != 1 {
 		t.Fatalf("PauseFlow signalled %d, want 1", n)
 	}
-	go proc.Run(context.Background())
+	go tk.Run(context.Background())
 
-	// Held at the first boundary: an immediate process completes in microseconds
+	// Held at the first boundary: an immediate task completes in microseconds
 	// unpaused, so still-running well past that proves the hold.
 	ref := mirror.Ref("work-1")
 	time.Sleep(150 * time.Millisecond)
@@ -65,15 +65,15 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	}
 }
 
-// A flow is reaped when its process reaches a terminal status: the engine observes
-// the reflected process:instance completion and drops the handle, so Flows() shows
+// A flow is reaped when its task reaches a terminal status: the engine observes
+// the reflected task:instance completion and drops the handle, so Flows() shows
 // only in-flight work (no stale subjects).
 func TestFlowReapedOnCompletion(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, immediate{}, noExec{})
+	eng := New(store, task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		go p.Run(context.Background())
 		return p
@@ -100,16 +100,16 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 // matchFlow snapshots the live registry. Under -race this trips if either touches the map
 // unguarded. (Behavioral guard; -race is the assertion.)
 func TestReapVsCancelFlowNoRace(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	const subj = "demo:pr:1"
 	addr := mustExpr(t, subj)
-	mkproc := func(id string) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, immediate{}, noExec{})
+	mkTask := func(id string) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(id, sup, immediate{}, noExec{})
 	}
 	terminal := entity.Event{
 		Ref: mirror.Ref("b"), Op: entity.Delete,
-		To: entity.Obj{"status": string(process.Done), "flow": subj}.Payload(),
+		To: entity.Obj{"status": string(task.Done), "flow": subj}.Payload(),
 	}
 
 	var wg sync.WaitGroup
@@ -119,7 +119,7 @@ func TestReapVsCancelFlowNoRace(t *testing.T) {
 		for range 3000 {
 			eng.liveMu.Lock()
 			for _, id := range []string{"a", "b", "c"} {
-				eng.live[id] = flowProc{id: id, subject: subj, h: mkproc(id)}
+				eng.live[id] = flowTask{id: id, subject: subj, h: mkTask(id)}
 			}
 			eng.liveMu.Unlock()
 			eng.reap(terminal)
@@ -147,7 +147,7 @@ func mustExpr(t *testing.T, s string) Match {
 // do() must not deadlock when the loop has already exited (ctx cancelled): the
 // closure can never be drained, so the caller falls back to the stopped signal.
 func TestDoNoDeadlockAfterCancel(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	eng.Start(ctx)
 	cancel()
@@ -162,22 +162,22 @@ func TestDoNoDeadlockAfterCancel(t *testing.T) {
 	}
 }
 
-// On restart the durable store may hold process:instance entities a crashed run left
+// On restart the durable store may hold task:instance entities a crashed run left
 // running; ReconcileOrphans retires them (they have no live handle) without touching
 // already-terminal ones.
 func TestReconcileOrphans(t *testing.T) {
 	store := entitytest.Store(t)
-	entitytest.Set(t, store, mirror.Ref("old-running"), entity.Obj{"status": string(process.Running), "flow": "demo:pr:1"}.Payload())
-	entitytest.Set(t, store, mirror.Ref("old-done"), entity.Obj{"status": string(process.Done), "flow": "demo:pr:2"}.Payload())
+	entitytest.Set(t, store, mirror.Ref("old-running"), entity.Obj{"status": string(task.Running), "flow": "demo:pr:1"}.Payload())
+	entitytest.Set(t, store, mirror.Ref("old-done"), entity.Obj{"status": string(task.Done), "flow": "demo:pr:2"}.Payload())
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if n := eng.ReconcileOrphans(); n != 1 {
 		t.Fatalf("reconciled %d, want 1", n)
 	}
-	if e, _, _ := store.Get(mirror.Ref("old-running")); entity.ToObj(e.Payload)["status"] != string(process.Orphaned) {
-		t.Fatalf("running process not orphaned: %+v", e.Payload)
+	if e, _, _ := store.Get(mirror.Ref("old-running")); entity.ToObj(e.Payload)["status"] != string(task.Orphaned) {
+		t.Fatalf("running task not orphaned: %+v", e.Payload)
 	}
-	if e, _, _ := store.Get(mirror.Ref("old-done")); entity.ToObj(e.Payload)["status"] != string(process.Done) {
-		t.Fatalf("completed process wrongly touched: %+v", e.Payload)
+	if e, _, _ := store.Get(mirror.Ref("old-done")); entity.ToObj(e.Payload)["status"] != string(task.Done) {
+		t.Fatalf("completed task wrongly touched: %+v", e.Payload)
 	}
 }

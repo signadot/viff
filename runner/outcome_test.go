@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
 )
 
 type resolver interface {
@@ -20,7 +20,7 @@ type resolver interface {
 //
 // It used to say nothing at all: post() discarded the error and every signature returned
 // void, so a cancel that never left the building read exactly like a cancel that landed. An
-// operator was told the process was stopping and it was not.
+// operator was told the task was stopping and it was not.
 func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
@@ -35,10 +35,10 @@ func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 		{"pause", h.Pause()},
 		{"resume", h.Resume()},
 		{"steer", h.Steer("do it differently", "human:scott")},
-		{"set-vector", h.SetVector(&process.Vector{Default: process.Ask}, "human:scott")},
+		{"set-vector", h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")},
 		{"resolve", h.(resolver).Resolve("d1", true, "", "human:scott")},
 	} {
-		if !errors.Is(c.err, process.ErrUnreachable) {
+		if !errors.Is(c.err, task.ErrUnreachable) {
 			t.Errorf("%s against a dead remote = %v, want ErrUnreachable", c.what, c.err)
 		}
 	}
@@ -57,7 +57,7 @@ func TestControlAgainstARefusingRemoteIsNotUnreachable(t *testing.T) {
 	if err == nil {
 		t.Fatal("a refused cancel reported success")
 	}
-	if errors.Is(err, process.ErrUnreachable) {
+	if errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("a refusal was reported as unreachable: %v", err)
 	}
 	if got := err.Error(); got == "" || !contains(got, "out of capacity") {
@@ -72,9 +72,9 @@ func TestARemoteResolveDistinguishesItsRefusals(t *testing.T) {
 		status int
 		want   error
 	}{
-		{http.StatusNotFound, process.ErrNoSuchDecision},
-		{http.StatusConflict, process.ErrAlreadyAnswered},
-		{http.StatusNotImplemented, process.ErrUnsupported},
+		{http.StatusNotFound, task.ErrNoSuchDecision},
+		{http.StatusConflict, task.ErrAlreadyAnswered},
+		{http.StatusNotImplemented, task.ErrUnsupported},
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no", c.status)
@@ -91,7 +91,7 @@ func TestARemoteResolveDistinguishesItsRefusals(t *testing.T) {
 // caller waits on that forever, holding whatever goroutine issued the call — which is how a
 // spawn, a cancel and an answer each hang.
 //
-// The bound is the runner's OWN client. http.DefaultClient is shared process-wide, so a
+// The bound is the runner's OWN client. http.DefaultClient is shared task-wide, so a
 // timeout set on it would silently bound every other caller in the binary.
 func TestControlAgainstAHangingRemoteIsBounded(t *testing.T) {
 	// NOT RUN BY DEFAULT — set GOTEST_LONG=1. Its runtime IS what it demonstrates: the
@@ -118,7 +118,7 @@ func TestControlAgainstAHangingRemoteIsBounded(t *testing.T) {
 	go func() { done <- runner.HTTP(srv.URL).Attach("p").Cancel("stop") }()
 	select {
 	case err := <-done:
-		if !errors.Is(err, process.ErrUnreachable) {
+		if !errors.Is(err, task.ErrUnreachable) {
 			t.Fatalf("a timed-out cancel = %v, want ErrUnreachable", err)
 		}
 	case <-time.After(runner.ControlTimeout + 15*time.Second):

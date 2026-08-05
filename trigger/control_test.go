@@ -8,7 +8,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // Steering outranks observation: a Pause (control) takes effect ahead of a burst of
@@ -16,7 +16,7 @@ import (
 // observation backlog. On Resume the buffered burst dispatches.
 func TestControlOutranksObservation(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "count",
 		Condition: Condition{Subject: Match{"system": "demo"}},

@@ -33,19 +33,19 @@ In one terminal:
 verse up
 ```
 
-In another, connect your tree and give the validator a task — `$path` binds to each file's
+In another, connect your tree and give the validator a prompt — `$path` binds to each file's
 relative path. `connect` prints the scope it chose (e.g. `scope "a1b2c3"`):
 
 ```sh
 verse connect . --driver llm \
-  --task 'Read the file at path "$path" and report any problems in one sentence.'
+  --prompt 'Read the file at path "$path" and report any problems in one sentence.'
 ```
 
 In a third (using the scope `connect` printed):
 
 ```sh
-verse processes                                        # a validator per file
-verse process get <id>                                 # the agent's read-and-validated report
+verse tasks                                        # a validator per file
+verse task get <id>                                 # the agent's read-and-validated report
 verse entities --system local --scope <scope>          # your files, as dir-status entities
 verse entity get local:dir-content-<scope>:README.md   # a file's bytes, served on demand
 ```

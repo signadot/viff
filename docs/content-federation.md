@@ -9,10 +9,10 @@ This note records why `--root` cannot federate a tree, and how `connect` does.
 
 `connect` projects your working tree into the verse as entities carrying
 `path`/`size`/`mtime`/hash — an index, not the contents (the entity-verse
-doctrine: "an index, not a warehouse"). A process that must *act* on a file follows
+doctrine: "an index, not a warehouse"). A task that must *act* on a file follows
 the reference into the real system — it reads the file.
 
-A read straight through the process executor's `read_file` is confined to a
+A read straight through the task executor's `read_file` is confined to a
 server-side filesystem root (`fsExec.root`, set by `verse up --root .`), so
 the two halves of a file come from two different places:
 
@@ -48,15 +48,15 @@ The two kinds are deliberately symmetric — `dir-status-<scope>` and
 `dir-content-<scope>` — and sit at *different* paths so the content mount never
 shadows the metadata reads.
 
-### The process side
+### The task side
 
 A scoped validator's `read_file` resolves through the verse: it fetches
 `local:dir-content-<scope>:<path>`, which docd routes to the connect content
 controller, rather than `fsExec` hitting a path under `--root`. "Follow the reference
 into the real system" stays the rule; the real system is reachable via the verse,
-wherever the process runs. `--root` serves only the non-federated,
+wherever the task runs. `--root` serves only the non-federated,
 single-machine case (an agent reading its own working directory); a federated
-process never touches the server's disk for a file.
+task never touches the server's disk for a file.
 
 ```
   --root (single machine):

@@ -60,7 +60,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 // is the deterministic motion id for (trigger, gate, SUBJECTS) — what the firing is about, not
 // the entity whose change dispatched it. These used to be handed the cause, which is the
 // mis-keying the subject-keyed channel fixed: a completion trigger's motion belonged to the
-// process that finished rather than to the PR being decided about.
+// task that finished rather than to the PR being decided about.
 func castBallot(t *testing.T, s entity.Store, tr, gate string, subject entity.Ref, voter, choice string) {
 	t.Helper()
 	did := motionChannelID(gateID(tr, gate, []entity.Ref{subject}))

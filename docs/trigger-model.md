@@ -25,7 +25,7 @@ matches.
 | concept | grammar | what it expresses |
 |---|---|---|
 | `subject` | match — point-in-time | the entities a firing is *about*, selected at the commit. Required |
-| flow | match — point-in-time | which live processes to steer, by their subject |
+| flow | match — point-in-time | which live tasks to steer, by their subject |
 | `on` | formula — temporal | the **cause**: fire at the commit where this first holds, having not held before |
 | `when` | formula — temporal | the **condition**: this must hold at that commit for the firing to proceed |
 | gate | formula — temporal | proceed at a threshold — `quorum`/`fact`/`until`/`deadline` |
@@ -59,7 +59,7 @@ Omitted, it is unconstrained, which is what every rule here means.
   # the consequence
   action:
     patch: { stage: reviewing }
-    spawn: { driver: scripted, task: "echo reviewing $subject" }
+    spawn: { driver: scripted, prompt: "echo reviewing $subject" }
     onDone:
       patch: { stage: reviewed }
 ```
@@ -113,7 +113,7 @@ Installing a trigger writes it into the verse as `trigger:rule:<name>`; removing
 that entity; and a start reads them back before anything observes. So the program a verse
 comes back up running is the one it went down with.
 
-Everything else a restart needs is durable in the same way — a process is mirrored, a
+Everything else a restart needs is durable in the same way — a task is mirrored, a
 sequence's position is a fact on its subject, a claim is a lease in the store, and resume
 rehydrates a chain's hooks from it. The program has to be too, or a verse comes back with its
 work in progress intact and nothing left to react to it.
@@ -171,7 +171,7 @@ scoped store reads baseline layered underneath — so restoring one means enumer
 reading only the scope's own layer. That is the same gap scoped resume has.
 
 The charter is an observable slice like any other, so a trigger can watch the charter
-(`subject: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `process:*`
+(`subject: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `task:*`
 as the engine's own machinery, kept out of the default match set so the loop cannot ignite on
 itself. Meta-observation stays possible, and stays deliberate.
 
@@ -233,23 +233,23 @@ charter and `verse flow demo:pr:*` on the command line mean the same set, as the
 they should.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
-whose cause is a `process:instance` change and which acts on PRs acts on the PRs its own
-`subject` selects — every one of them — not on the one the completed process happened to name.
+whose cause is a `task:instance` change and which acts on PRs acts on the PRs its own
+`subject` selects — every one of them — not on the one the completed task happened to name.
 
 In particular, a `flow` field on the changed payload does not short-circuit that. Letting it
-resolve the firing onto whatever ref it holds would advance the single PR a completed process
+resolve the firing onto whatever ref it holds would advance the single PR a completed task
 was about — at the price that whether a firing acts on one entity or on a whole set turns on
 whether some entity happens to carry a key by that name, which no charter says and no reader
 of one could predict.
 
-What that shortcut does well — advancing exactly the subject a finished process was about —
+What that shortcut does well — advancing exactly the subject a finished task was about —
 is what [completion hooks](#completion-hooks-one-trigger-chaining-visible) do, and do exactly: the
-engine scopes a hook to *that* spawn's process, a correlation the store cannot fake because the
-engine is what spawned it. Reach for a hook when you mean "this process, this subject"; reach
+engine scopes a hook to *that* spawn's task, a correlation the store cannot fake because the
+engine is what spawned it. Reach for a hook when you mean "this task, this subject"; reach
 for an `on` when you mean "when this becomes true, act on that set".
 
 `flow` remains a convention published by `mirror.Reflect` and by a goal latch — the field IS
-the process's subject — read by the flow query, and by a rule whose subject carries it as
+the task's subject — read by the flow query, and by a rule whose subject carries it as
 `$subject.value.flow`. It is kept distinct from the reserved `$subject` binding, which is the
 firing's own resolved subject.
 
@@ -275,7 +275,7 @@ A selector subject advances a whole set:
 ```
 
 Every reviewed PR advances, while CI is green. Each is its OWN firing: its own `ask` gate and —
-with a `spawn` — its own process tagged with that member as its subject, so each is its own flow.
+with a `spawn` — its own task tagged with that member as its subject, so each is its own flow.
 
 One gate per member is worth saying out loud, because one gate for the whole set is the easier
 thing to assume. A firing is about one entity, so twelve reviewed PRs are twelve decisions;
@@ -502,8 +502,8 @@ id is the engine's, a function of (rule, subject). It is only installable inside
 level ordering, where it must land strictly above the rule that writes it: see
 [strata](strata.md).
 
-`spawn` launches a process from a `launch.Spec` — or, instead of a fixed `driver`, a governed
-`provider` selection of the doer. The spawned process is tagged with the subject, which is
+`spawn` launches a task from a `launch.Spec` — or, instead of a fixed `driver`, a governed
+`provider` selection of the doer. The spawned task is tagged with the subject, which is
 what makes it part of that subject's flow.
 
 A selection binds the whole doer, not just its driver: the winning provider entity's `driver`,
@@ -516,7 +516,7 @@ refused at *eligibility*, so it never appears on a ballot. See
 
 The spec's fields fall into three groups, and the difference decides what a charter can say.
 
-*The request* — `task` and `frame`. Both are text you write. `task` is the one job; `frame`
+*The request* — `prompt` and `frame`. Both are text you write. `prompt` is the one job; `frame`
 is the standing instructions it is read in (the agent's system prompt). A frame is worth
 writing whenever the charter reads the answer rather than a person: the default tells the
 agent its last message *is* the result and not to summarise, but only the charter knows what
@@ -526,13 +526,13 @@ shape it wants back.
 frame it is not advice: it is checked. See [the answer contract](#the-answer-contract) below.
 
 *The envelope* — `vector`, `grant`, `tools`. These name things rather than spelling them out.
-`vector: auto|ask|park` sets how much the process must confirm; a firing that already
+`vector: auto|ask|park` sets how much the task must confirm; a firing that already
 answered its own `gates` can say `vector: auto` rather than re-ask per action.
 `grant: read-only|no-delegate|none|all` is the hard authority: an action outside it is
 *refused*, not asked about, because nobody at a console was delegated the authority to widen
 what the charter granted. `tools` narrows what the driver offers at all — `tools: [read_file,
 list_dir]` on a review agent means shell and delegation never come up. `fail` is always
-offered whatever you list, since it is how a process reports it could not do the work.
+offered whatever you list, since it is how a task reports it could not do the work.
 
 An unknown `vector`, `grant`, or tool name fails the spawn rather than falling back to
 unbounded: a field that reads back as written and enforces nothing is the failure this is
@@ -542,7 +542,7 @@ built to avoid. `resolver` and `environment` remain declared and unread — see
 ```tony
 spawn:
   driver: llm
-  task:   "Review $subject for security defects."
+  prompt:   "Review $subject for security defects."
   answer:
     severity: !or [low, high]
     note:     !irtype string
@@ -552,13 +552,13 @@ spawn:
   retain: 4096
 ```
 
-`retain` is how many of this process's read-plane events are kept for a reader that resumes —
+`retain` is how many of this task's read-plane events are kept for a reader that resumes —
 the window a `?since=` below which gets a resync marker instead of the story. It is per spawn
-because the right number is a property of the work: a process that narrates every token and
+because the right number is a property of the work: a task that narrates every token and
 one that reports four boundaries an hour want windows two orders of magnitude apart, and no
 single default is right for both. The charter is the party that knows which it is. Omit it and
 the runtime's own modest default applies; a longer window is paid for in memory per live
-process, which is why the author chooses it rather than inheriting it.
+task, which is why the author chooses it rather than inheriting it.
 
 ### Who answers a rule's own gates
 
@@ -591,11 +591,11 @@ applies is a property of *why* the action is running.
 
 A trigger firing reads **the subject's own** payload. The change that dispatched it is a
 doorbell and may name an entirely different entity, whose fields would mean nothing on the
-subject being acted on. So `review $subject` in a spawn's task names the PR the firing is
-about, even when the entity that fired was a process, not the PR, and `$stage` is that PR's
-stage rather than the process's.
+subject being acted on. So `review $subject` in a spawn's prompt names the PR the firing is
+about, even when the entity that fired was a task, not the PR, and `$stage` is that PR's
+stage rather than the task's.
 
-A completion hook, or a sequence element one drives, reads **the finished process's** payload
+A completion hook, or a sequence element one drives, reads **the finished task's** payload
 instead: `$status`, `$result`, `$data` and `$err` are the facts it exists to read. The engine
 synthesises that payload rather than reading the store, because the mirror may not have written
 the terminal facts yet — which is both why those bindings resolve at all and why they are flat.
@@ -609,14 +609,14 @@ parts still means what it meant:
 | `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
 | `$subject.commit` | that commit's revision |
 
-A completion hook has no causing commit — it is woken by a process finishing rather than by a
+A completion hook has no causing commit — it is woken by a task finishing rather than by a
 write — so `.value` and `.commit` fail there by name rather than resolving to a silent zero. In a
 spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no text
 form and its top-level fields are already bound by name.
 
 ### `!get-path` and `!list-paths` — reaching another entity
 
-Everything above reads the firing's own subject, or the process that just finished. These two
+Everything above reads the firing's own subject, or the task that just finished. These two
 reach an entity neither of those is:
 
 ```tony
@@ -671,7 +671,7 @@ mean a JSON-shaped charter cannot write one, JSON having no tags.
 ### The answer contract
 
 That failure is late. `$data.class` is missing at PATCH time — after the work is done and
-the tokens are spent — and what is left is a hook error on the process entity and a subject
+the tokens are spent — and what is left is a hook error on the task entity and a subject
 stranded at a stage no rule matches. A frame asking for a shape does not prevent it: an
 agent that has just read nine files narrates and fences before it answers, and the frame is
 advice a model may ignore.
@@ -683,7 +683,7 @@ vocabulary `when` is written in, stored the same way, under the same `!raw` esca
 ```tony
 spawn:
   driver: llm
-  task:   "Review $subject."
+  prompt:   "Review $subject."
   answer:
     class:    !or [bug, nit, risk]
     severity: !or [low, high]
@@ -702,7 +702,7 @@ will not teach it.
 
 A run whose answer never satisfies its contract **fails**. That is the whole point:
 
-- `patch: { class: $data.class }` cannot fail at patch time, because a process that
+- `patch: { class: $data.class }` cannot fail at patch time, because a task that
   could not produce `class` did not succeed. The failure lands not on a hook nobody watches
   but on `onFailed`, which every rule already declares a branch for.
 - The check is on the answer, not the layout: a fenced answer is unwrapped, so the repair
@@ -726,7 +726,7 @@ substitution — it names a value, it does not compute one:
 onDone:
   patch:
     stage:    reviewed
-    severity: $result            # the process's own answer, as a fact on the subject
+    severity: $result            # the task's own answer, as a fact on the subject
     step:     $verse.review.step # any depth, and list indices: $result.findings[0].id
 ```
 
@@ -735,10 +735,10 @@ The reference grammar is [tony](https://signadot.github.io/tony-format/)'s, not 
 navigation that addresses an action inside its trigger (`review.seq[2].onFailed`). The
 familiar `$name` spelling *is* that kpath at depth one.
 
-This is what closes the loop. Before it, a process's output could reach the next *prompt* and
+This is what closes the loop. Before it, a task's output could reach the next *prompt* and
 nothing else, so a flow only ever advanced through state the charter wrote by hand. A result
 patched onto the subject is an ordinary fact, and an ordinary condition matches it — no
-knowledge of processes required:
+knowledge of tasks required:
 
 ```tony
 subject: { system: demo, kind: pr, value: { stage: reviewed, severity: high } }
@@ -761,11 +761,11 @@ patch: { note: "saw $n" }
 
 *A composite has no text form.* `"saw $result"` where `$result` is an object is an error, not
 a rendering — inventing one would make the same charter mean different things depending on
-what a process happened to return. Reference it on its own to write the whole value.
+what a task happened to return. Reference it on its own to write the whole value.
 
 *An absent reference fails the firing.* It is not dropped, and this follows from the store
-recording an absent key as different from a null one: omitting it would launder "the process
-never said" into "the process said nothing", which a match reads as a different fact. A field
+recording an absent key as different from a null one: omitting it would launder "the task
+never said" into "the task said nothing", which a match reads as a different fact. A field
 written null resolves to null, as it should. The failure is the same one a failed write takes
 — the action stops, and its spawn does not start.
 
@@ -775,7 +775,7 @@ is what keeps a charter that predates patch expansion meaning what it did.
 
 A spawn's strings are still the older, flatter substitution: top-level fields only, always as
 text, and an unresolved `$var` is left in place rather than failing. So `$verse.review.step`
-derefs in a `patch` and does not in a `spawn.task`. Unifying the two halves onto one
+derefs in a `patch` and does not in a `spawn.prompt`. Unifying the two halves onto one
 resolver is the obvious next step and deliberately not taken here, because making a spawn
 fail on an unbound variable would change what already-installed charters do.
 
@@ -785,32 +785,32 @@ An `Action` carries one hook per terminal status — `onDone` (status `done`), `
 `onCancelled`, `onOrphaned` — and each is itself a full `Action` (`patch` + `spawn` + its own
 hooks), so a chain (`review → merge → approve`) nests `onDone`s and reads top-to-bottom in one
 rule. When the action's `spawn` reaches a terminal status, the engine fires the matching hook
-about the *same subject*, scoped to exactly that process: the hook rides the live process
-registry (keyed by process id), so there is no `flow` match and no separate trigger.
+about the *same subject*, scoped to exactly that task: the hook rides the live task
+registry (keyed by task id), so there is no `flow` match and no separate trigger.
 
 ```tony
 action:
   patch:  { stage: reviewing }
-  spawn:  { driver: scripted, task: "review $subject" }
+  spawn:  { driver: scripted, prompt: "review $subject" }
   onDone: { patch: { stage: reviewed } }
 ```
 
 The alternative is a *decoupled* completion trigger — a separate rule that fires on the
-`process:instance` change and names the PR by pattern (`reviewed`, below). That is the tool
+`task:instance` change and names the PR by pattern (`reviewed`, below). That is the tool
 when a completion should fan into several reactions, advance a different subject, or be
 authored separately; the hook is the tool for a linear chain owned by one trigger, with the
-process step visible inline.
+task step visible inline.
 
 The four hooks are named fields rather than an `on map[status]*Action`, which is what makes
 an unknown status unwritable: there is no field to write it in, so nothing needs validating.
 The cost is that a fifth terminal status would be a schema change, and that a misspelled
 `onDoen` is dropped like any other unknown field.
 
-Hooks survive a restart: resume rehydrates them from the process's chain, so `done`,
+Hooks survive a restart: resume rehydrates them from the task's chain, so `done`,
 `failed` and `cancelled` still fire. `onOrphaned` is inert, and not for want of
-rehydration — orphaning and adopting are the two alternatives in reconcile, so a process
+rehydration — orphaning and adopting are the two alternatives in reconcile, so a task
 that can be re-attached is adopted and never marked orphaned, and one that cannot is
-orphaned and never tracked. No tracked process reaches that status.
+orphaned and never tracked. No tracked task reaches that status.
 
 ### `seq`: sequence along the chain, parallel across triggers
 
@@ -826,8 +826,8 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
   - { name: review, mode: ask }
   action:
     seq:
-    - spawn: { driver: scripted, task: "lint $subject" }
-    - spawn:    { driver: scripted, task: "review $subject" }
+    - spawn: { driver: scripted, prompt: "lint $subject" }
+    - spawn:    { driver: scripted, prompt: "review $subject" }
       onFailed: { patch: { stage: rejected } }
     - patch: { stage: reviewed }
     onDone:
@@ -835,7 +835,7 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
 ```
 
 There is deliberately no `par`. Breadth is what independent triggers matching the same
-condition already do, and a process id already carries both directions: `review@demo:pr:1`
+condition already do, and a task id already carries both directions: `review@demo:pr:1`
 and `hold@demo:pr:1` are two roots about one subject, while `review.onDone@demo:pr:1` is an
 extension of one chain. Putting breadth *inside* a chain would cost that reading.
 
@@ -851,18 +851,18 @@ The rules:
 - `onDone` on the action *carrying* the seq means "after the whole sequence", so a sequence
   is a unit with its own completion and nesting composes.
 - An element with no spawn completes immediately, so `seq: [{patch: …}, {patch: …}]` is two
-  ordered writes rather than an error. `seq` sequences actions, not processes.
+  ordered writes rather than an error. `seq` sequences actions, not tasks.
 - Gates gate the sequence, not the step: gates are per firing and a sequence is one firing,
   so one `ask` approves the whole thing.
 - No chain may contain two `seq` segments — stated over chains rather than elements, because
   an element's `onFailed` holding a sequence nests just as much, only further away. With at
-  most one `seq` per chain, "the sequence this process belongs to" is a unique ancestor
+  most one `seq` per chain, "the sequence this task belongs to" is a unique ancestor
   rather than a stack, which is what keeps re-fire idempotence a predicate rather than a
   search.
 
 ### Chains and ids
 
-A spawned process is identified by `<chain>@<subject>`, where the chain is the
+A spawned task is identified by `<chain>@<subject>`, where the chain is the
 [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath) of the action
 inside its trigger — dotted field names, brackets for list positions. Hooks descend by field
 name and sequence elements by index:
@@ -877,9 +877,9 @@ name and sequence elements by index:
 
 Because the chain addresses the action rather than naming it privately, it is deterministic,
 which is what makes a re-fire idempotent — a spawn dedups by id. It is also a lookup key back
-into the charter, which is how resume rehydrates a process's hooks and how a sequence finds
-its next step. And it is published on the process entity as `chain`, with its root as
-`trigger`, so "every process of this trigger" is a payload predicate rather than a glob over
+into the charter, which is how resume rehydrates a task's hooks and how a sequence finds
+its next step. And it is published on the task entity as `chain`, with its root as
+`trigger`, so "every task of this trigger" is a payload predicate rather than a glob over
 ids.
 
 The id drops the brackets because they are shell-hostile: `zsh` kills
@@ -917,7 +917,7 @@ subject: { system: demo, kind: pr, value: { verse: { charter: { review: { done: 
 One reserved name, not a family. The alternative — flat per-trigger keys like `review.step` —
 reserves an open-ended set of names out of a payload that is the author's own document. A
 single `verse` root reserves one name and documents once, the way `flow` is one reserved key
-on process entities. Nested predicates keep it readable, since `value` matches structurally
+on task entities. Nested predicates keep it readable, since `value` matches structurally
 and so matches a payload carrying any amount of other content.
 
 The two halves under it are separated because they grow differently — `charter` gains a key per
@@ -951,18 +951,18 @@ floor the store can never compact past. Refusing to continue needs detection, no
 reconstruction — so the error can say that the shape changed and name the trigger, but not
 what changed.
 
-## Flow — a subject-match over live processes
+## Flow — a subject-match over live tasks
 
-A flow is not a stored key. It is a match evaluated over the subjects of *live* processes:
+A flow is not a stored key. It is a match evaluated over the subjects of *live* tasks:
 
 ```sh
-verse flow pause demo:pr:1      # processes whose subject matches demo:pr:1
+verse flow pause demo:pr:1      # tasks whose subject matches demo:pr:1
 verse flow pause demo:pr:*      # …the whole kind
 ```
 
-Relating processes is what a match *does*, so "relational flows" are not a second primitive
+Relating tasks is what a match *does*, so "relational flows" are not a second primitive
 to add later — they are broader subject-matches. `verse flows` is the distinct subjects with
-live processes; steering applies the match and acts on the matched processes. A query, not a
+live tasks; steering applies the match and acts on the matched tasks. A query, not a
 maintained index.
 
 Goals sit here too, and split the same way: a goal is a subject (a point-in-time match — the
@@ -975,7 +975,7 @@ layer, no new machinery.
 { "name": "review",
   "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
   "gates":     [ { "name": "approval", "mode": "ask" } ],
-  "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "task": "review $subject" } } }
+  "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "prompt": "review $subject" } } }
 { "name": "ship-green",
   "condition": { "on":      { "system": "ci",   "kind": "status", "value": { "state": "green" } },
                  "subject": { "system": "demo", "kind": "pr", "value": { "stage": "reviewed" } } },
@@ -1091,7 +1091,7 @@ every firing completes, so the in-flight guards never engage; and the latch chec
 both rules do advance their subject out of their own selection, into each other's. What catches
 it is [the cycle throttle](cycle-throttle.md): a write made during a firing carries the causal
 depth of the chain that produced it, and a chain deeper than the installed trigger count has
-necessarily repeated a rule. A *paced* cycle — one passing through a process, the world, or a
+necessarily repeated a rule. A *paced* cycle — one passing through a task, the world, or a
 decision somebody answers — is a control loop rather than a bug, and never trips. Everything else
 about whether a charter settles is in [convergence](convergence.md), including the one
 rules-level ambiguity that is warned about rather than refused.

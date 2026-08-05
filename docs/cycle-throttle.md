@@ -16,7 +16,7 @@ to satisfy.
 Each engine keeps, in memory, a map from store revision to the chain that commit belongs to:
 how deep it stands, which firing wrote it, and the commit that woke that firing. A firing looks
 up the revision of the commit that woke it and stamps depth+1 on everything it writes. A commit
-that is not in the map was caused by somebody else — a person, a process completing, a mirror, a
+that is not in the map was caused by somebody else — a person, a task completing, a mirror, a
 peer engine, or this engine before a restart — and starts a fresh chain.
 
 This works because a write reports the revision it landed at (`Store.Write`), and that is the
@@ -83,7 +83,7 @@ declared rate at all.
 The chain propagates only where the engine hands it straight on. Everywhere real time enters, it
 does not survive:
 
-- through a **spawned process**, whose writes arrive later through the API as external;
+- through a **spawned task**, whose writes arrive later through the API as external;
 - through the **world**, where an effector's write returns via the mirror as external;
 - through a **blocking gate** — an ask, a park, a temporal formula. A person answering an approval
   paces a cycle exactly as a clock would. A firing that will wait begins a fresh chain, for the

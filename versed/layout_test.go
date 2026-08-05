@@ -28,7 +28,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 	// Everything bracketable, bracketed — including the two fields that used to keep it.
 	charter := `{ name: braced,
 	  condition: { subject: { system: demo, kind: pr, value: { stage: open } } },
-	  action: { patch: { stage: reviewing }, spawn: { driver: scripted, task: "echo hi" } } }`
+	  action: { patch: { stage: reviewing }, spawn: { driver: scripted, prompt: "echo hi" } } }`
 	resp, err := http.Post(ts.URL+"/triggers", "application/tony", strings.NewReader(charter))
 	if err != nil {
 		t.Fatalf("post charter: %v", err)

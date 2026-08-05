@@ -3,7 +3,7 @@ package runner
 import (
 	"errors"
 
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // Reach is what a url said when asked, and it is the whole of what verse knows about a
@@ -13,10 +13,10 @@ import (
 type Reach int
 
 const (
-	// IsRunner: it answered, and the body decoded as the process list the contract promises.
+	// IsRunner: it answered, and the body decoded as the task list the contract promises.
 	IsRunner Reach = iota
 	// NotRunner: it answered, and is not that. A broker's WORKER leg is the case worth
-	// catching — WorkerHandler serves claim, inbox and report and no GET /processes — and so
+	// catching — WorkerHandler serves claim, inbox and report and no GET /tasks — and so
 	// is a url pointed at some unrelated service.
 	NotRunner
 	// Unreachable: nothing answered, or what answered said nothing about what it is. Both are
@@ -35,10 +35,10 @@ func (r Reach) String() string {
 	}
 }
 
-// Probe asks a url what it is, with the cheapest question that has an answer: GET /processes,
+// Probe asks a url what it is, with the cheapest question that has an answer: GET /tasks,
 // which the verse-facing contract already serves and which has no effect on the runner.
 //
-// It needs nothing new because ListProcesses now reports how it failed. Its three outcomes are
+// It needs nothing new because ListTasks now reports how it failed. Its three outcomes are
 // already the three this wants — nil, ErrUnsupported, ErrUnreachable — for the reason a probe
 // is a control call carrying no work.
 //
@@ -48,15 +48,15 @@ func (r Reach) String() string {
 // having a bad day at least as often as it is the wrong url, and refusing the install on it
 // would be refusing a fact that fixes itself.
 func Probe(baseURL string) (Reach, error) {
-	l, ok := HTTP(baseURL).(process.Lister)
+	l, ok := HTTP(baseURL).(task.Lister)
 	if !ok {
-		return Unreachable, errors.New("runner: the HTTP client cannot list processes")
+		return Unreachable, errors.New("runner: the HTTP client cannot list tasks")
 	}
-	_, err := l.ListProcesses()
+	_, err := l.ListTasks()
 	switch {
 	case err == nil:
 		return IsRunner, nil
-	case errors.Is(err, process.ErrUnsupported):
+	case errors.Is(err, task.ErrUnsupported):
 		return NotRunner, err
 	default:
 		return Unreachable, err

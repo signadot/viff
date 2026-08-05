@@ -11,7 +11,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // get / list build the two tags. The tag is the whole of the spelling — a plain `{get-path: …}`
@@ -228,11 +228,11 @@ func TestReadInAPatchIsUnconstrained(t *testing.T) {
 }
 
 // A read inside a completion hook has no causing commit to be answered at — the hook is woken by
-// a process finishing rather than by a write — so it fails by name rather than reading whatever
+// a task finishing rather than by a write — so it fails by name rather than reading whatever
 // the store happens to hold now.
 func TestReadInAHookHasNoCommit(t *testing.T) {
 	eng, _ := newEng(t)
-	oc := occasion{} // what applyHook builds: the process event, and no commit
+	oc := occasion{} // what applyHook builds: the task event, and no commit
 	_, err := eng.resolveRead(get("git:repo:abc"), nil, oc)
 	if err == nil {
 		t.Fatal("a read resolved with no causing commit")
@@ -252,7 +252,7 @@ func TestReadInAHookHasNoCommit(t *testing.T) {
 func TestOneSnapshotPerFiring(t *testing.T) {
 	store := entitytest.Store(t)
 	counting := &countingStore{Store: store}
-	eng := New(counting, process.AutoResolver{})
+	eng := New(counting, task.AutoResolver{})
 	for _, id := range []string{"a", "b", "c"} {
 		entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: id}, entity.Obj{"n": id}.Payload())
 	}

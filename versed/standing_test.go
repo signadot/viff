@@ -18,8 +18,8 @@ import (
 // spawnFor starts a run about a subject, optionally naming a resolver for it.
 func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string) {
 	t.Helper()
-	resp := postTony(t, ts.URL+"/processes", map[string]any{
-		"id": id, "task": "true", "subject": subject, "resolver": resolverRef,
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{
+		"id": id, "prompt": "true", "subject": subject, "resolver": resolverRef,
 	})
 	defer resp.Body.Close()
 	// Loudly: a swallowed status is how a spawn bound to a binding that does not exist went
@@ -283,7 +283,7 @@ func instances(t *testing.T, srv *Server) map[string]map[string]any {
 // That is also what carrying a cursor pair means here — two positions as two records rather
 // than two fields, so there is no place for a merged order to be invented and no code that
 // could be tempted to invent one. Which plane an instance is on follows from its origin: one
-// under `process:instance` is a run, and anything else is a subject.
+// under `task:instance` is a run, and anything else is a subject.
 func TestAnInstanceFollowsItsOrigin(t *testing.T) {
 	srv := askingServer(t)
 	srv.Start(t.Context())
@@ -323,7 +323,7 @@ func TestAnInstanceFollowsItsOrigin(t *testing.T) {
 	waitQuestion(t, srv, "run-1")
 	got = instances(t, srv)
 	fine := got["payments-review@run-1"]
-	if fine == nil || fine["origin"] != "process:instance:run-1" {
+	if fine == nil || fine["origin"] != "task:instance:run-1" {
 		t.Fatalf("the run instance does not watch the run: %v", got)
 	}
 	if spine["binding"] != fine["binding"] {

@@ -10,7 +10,7 @@ import (
 // that cannot be talking to it.
 //
 // It wraps the WHOLE surface rather than living in writeOut, because the header has to be on
-// every answer — an error, a stream, a 404, the mounted process runtime — and not only on the
+// every answer — an error, a stream, a 404, the mounted task runtime — and not only on the
 // ones that render a document. A version header that appears on the successful replies is a
 // version header that is absent from every reply worth diagnosing.
 //

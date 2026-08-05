@@ -21,10 +21,10 @@ Most of what follows belongs to one of two strands, and the strands cross.
 
 ### Authority and the sandbox
 
-Where a process's permission comes from, and what a process can see when it runs.
+Where a task's permission comes from, and what a task can see when it runs.
 
-- [Authority](authority.md) — a process's hard envelope (`process.Grant`) is fully wired
-  and never produced: every process starts on a wildcard, so the soft per-action gate is
+- [Authority](authority.md) — a task's hard envelope (`task.Grant`) is fully wired
+  and never produced: every task starts on a wildcard, so the soft per-action gate is
   doing the hard axis's job. The proposal derives the envelope from the request, at the
   call boundary, where the request still exists as text.
 - [expose](expose.md) — `connect` fuses a directory surface, a scope lifetime, and a
@@ -57,7 +57,7 @@ it happens in, are not.
 Two ideas rather than designs.
 
 - [Named persistent channels](channel-observe.md) — agents need somewhere to talk that
-  outlives any one process. A `say` is conversational but dies with its process; a motion is
+  outlives any one task. A `say` is conversational but dies with its task; a motion is
   durable but is a governed decision, not a conversation; an entity is named and durable but
   is state, not a thread. The gap is the middle of those three.
 - [A charter authored per change](dynamic-charter.md) — a prompt and a diff spawn an agent
@@ -87,8 +87,8 @@ Dependencies, not dates.
 Two categories deliberately stay in `docs/`:
 
 - Notes about work that landed, kept for the reasoning — [external
-  processes](../external-processes.md) chose the seam that
-  [process control](../process-control.md) implements.
-- Notes about built things with a stated gap — [process control](../process-control.md)
+  tasks](../external-tasks.md) chose the seam that
+  [task control](../task-control.md) implements.
+- Notes about built things with a stated gap — [task control](../task-control.md)
   still owes an inbox long-poll, and [sources](../sources.md) cannot yet be reached by a
   source verse must not dial. A gap inside something that runs is recorded where it runs.

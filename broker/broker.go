@@ -1,11 +1,11 @@
 // Package broker is a runner whose runtime is an external DIAL-IN worker — a
 // laptop agent, a pod in a private cluster, or a human. verse drives it through the
-// process.Runner seam exactly as it drives a local or remote-processd runner; a
+// task.Runner seam exactly as it drives a local or remote-taskd runner; a
 // worker connects OUT to the broker's worker-facing HTTP (claim / inbox / report) and
 // the broker glues the two legs: a worker's reports become the events verse observes, and
 // verse's control becomes items the worker pulls. Both parties are clients; only the
 // broker is reachable — so a firewalled worker or a human works without verse inverting.
-// See docs/process-control.md "The worker-facing dial-in protocol".
+// See docs/task-control.md "The worker-facing dial-in protocol".
 package broker
 
 import (
@@ -17,21 +17,21 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
-// Broker hosts many processes, each awaiting a dial-in worker.
+// Broker hosts many tasks, each awaiting a dial-in worker.
 type Broker struct {
 	mu    sync.Mutex
 	base  string // worker-facing dial base (e.g. http://host:port/broker/<nonce>), if hosted
-	procs map[string]*procState
+	tasks map[string]*taskState
 }
 
-func New() *Broker { return &Broker{procs: map[string]*procState{}} }
+func New() *Broker { return &Broker{tasks: map[string]*taskState{}} }
 
 // SetBase records the externally-reachable worker-facing base this broker is hosted under
 // (verse mints it as <broker-face>/broker/<nonce> at HostBroker time). It is published on
-// each process's entity as `dialURL`, so a worker can be told where to dial in rather than
+// each task's entity as `dialURL`, so a worker can be told where to dial in rather than
 // being pre-configured with the URL. Empty until hosted.
 func (b *Broker) SetBase(url string) {
 	b.mu.Lock()
@@ -49,39 +49,39 @@ func (b *Broker) dialURL() string {
 // (parallel to how docd addresses are published) — where a worker dials in.
 func (b *Broker) Face() string { return b.dialURL() }
 
-// Ref identifies this runner on the process:instance entity for resume-or-orphan. An
+// Ref identifies this runner on the task:instance entity for resume-or-orphan. An
 // in-process broker's state is in memory, so like the local supervisor it is ephemeral
 // across a verse restart — the label, not a control URL (the worker-facing dial base is
 // published separately as `dialURL`; see SetBase).
 func (b *Broker) Ref() string { return "broker" }
 
-func (b *Broker) get(id string) *procState {
+func (b *Broker) get(id string) *taskState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.procs[id]
+	return b.tasks[id]
 }
 
-// Spawn registers a process for a worker to claim and returns the verse-side handle.
+// Spawn registers a task for a worker to claim and returns the verse-side handle.
 //
 // The frame, tool set, vector and grant are deliberately not recorded here. A brokered
-// process is performed by a dial-in worker that builds its own agent — or is a human — so
+// task is performed by a dial-in worker that builds its own agent — or is a human — so
 // the broker has no construction to shape and no boundary to enforce at: it observes
 // reports and relays control. Storing an envelope it cannot check would be a claim verse
 // is unable to keep, which is the exact failure this change exists to remove. Bounding a
 // remote worker is a real question, and it belongs to the claim protocol rather than to
-// this registration. See docs/external-processes.md.
-func (b *Broker) Spawn(l process.Launch, _ process.ContentReader) process.Handle {
+// this registration. See docs/external-tasks.md.
+func (b *Broker) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
 	b.mu.Lock()
-	b.procs[l.ID] = &procState{
-		id: l.ID, task: l.Task, driver: l.Driver, retain: l.Retain,
-		subs: map[int]chan process.Frame{}, pending: map[string]process.Frame{},
+	b.tasks[l.ID] = &taskState{
+		id: l.ID, prompt: l.Prompt, driver: l.Driver, retain: l.Retain,
+		subs: map[int]chan task.Frame{}, pending: map[string]task.Frame{},
 	}
 	b.mu.Unlock()
 	return &handle{b: b, id: l.ID}
 }
 
-// Attach re-attaches to an existing process (the resume path).
-func (b *Broker) Attach(id string) process.Handle {
+// Attach re-attaches to an existing task (the resume path).
+func (b *Broker) Attach(id string) task.Handle {
 	if b.get(id) == nil {
 		return nil
 	}
@@ -103,10 +103,10 @@ func (b *Broker) Revoke(id string) {
 	ps.mu.Unlock()
 }
 
-// procState is one process's two-legged state: the merged event log verse reads, the
+// taskState is one task's two-legged state: the merged event log verse reads, the
 // control inbox the worker pulls, and the verse-side subscribers.
-type procState struct {
-	id, task, driver string
+type taskState struct {
+	id, prompt, driver string
 
 	mu      sync.Mutex
 	claimBy string
@@ -115,12 +115,12 @@ type procState struct {
 	// inbox poll and every report is a renewal, so the lease needs no heartbeat of its own
 	// and a worker that already talks to the broker is already keeping it.
 	renewed time.Time
-	log     []process.Frame            // merged event log (worker reports + control-effects)
-	inbox   []api.InboxItem            // control directed at the worker
-	subs    map[int]chan process.Frame // verse-side Handle subscribers
+	log     []task.Frame            // merged event log (worker reports + control-effects)
+	inbox   []api.InboxItem         // control directed at the worker
+	subs    map[int]chan task.Frame // verse-side Handle subscribers
 	nextSub int
 	logCur  int64
-	// retain is this process's log window in events (0 = the package default). Set from the
+	// retain is this task's log window in events (0 = the package default). Set from the
 	// Launch, because how much of the past is worth keeping is a property of the work.
 	retain   int
 	inboxCur int64
@@ -133,7 +133,7 @@ type procState struct {
 	// rides in on Text, and a resolver reading `verse gates` needs it — that reason is the
 	// entire point of an executor escalating instead of deciding. Narrowing this to
 	// id -> gate silently blanked it on every brokered gate.
-	pending map[string]process.Frame
+	pending map[string]task.Frame
 	// answered remembers the gates that HAVE been decided, so a second answer can be told
 	// apart from an answer to nothing. Without it both are "not open", and the two mean
 	// opposite things to whoever asked.
@@ -157,18 +157,18 @@ type procState struct {
 	// told why it missed rather than being sent to look for a typo.
 	abandoned bool
 	result    string
-	err       string         // terminal failure reason (Failed only); see latchTerminal
-	status    process.Status // latched terminal status
+	err       string      // terminal failure reason (Failed only); see latchTerminal
+	status    task.Status // latched terminal status
 	terminal  bool
 }
 
 // emit appends an event to the merged log (stamping the next cursor) and broadcasts it to
 // verse-side subscribers — used both by worker reports and by operator-authored control
 // effects (a say-to). The terminal latch is separate (latchTerminal); emit only records.
-func (ps *procState) emit(e process.Frame) {
+func (ps *taskState) emit(e task.Frame) {
 	ps.mu.Lock()
 	ps.logCur++
-	e.Cursor, e.Process = ps.logCur, ps.id
+	e.Cursor, e.Task = ps.logCur, ps.id
 	ps.log = append(ps.log, e)
 	// Bounded, so the log does not grow for the life of the run — and so that the
 	// below-watermark resync frame subscribeFrom already writes can ever fire. It could not
@@ -176,10 +176,10 @@ func (ps *procState) emit(e process.Frame) {
 	if cap := ps.retainCap(); len(ps.log) > cap {
 		ps.log = ps.log[len(ps.log)-cap:]
 	}
-	switch e.Kind { // track open gate decisions so `process get`/resolve see them
-	case process.EvPending:
+	switch e.Kind { // track open gate decisions so `task get`/resolve see them
+	case task.EvPending:
 		ps.pending[e.ID] = e
-	case process.EvDecision:
+	case task.EvDecision:
 		delete(ps.pending, e.ID)
 		if ps.answered == nil {
 			ps.answered = map[string]bool{}
@@ -190,7 +190,7 @@ func (ps *procState) emit(e process.Frame) {
 	// costs nothing to hold — and it is what makes closing below safe: a copy of the channel
 	// list dropped the lock between collecting and sending, so an unsubscribe landing in
 	// that window closed a channel this loop was about to send on.
-	terminal := e.Kind == process.EvStatus && process.TerminalStatus(e.Text)
+	terminal := e.Kind == task.EvStatus && task.TerminalStatus(e.Text)
 	for id, c := range ps.subs {
 		// A slow verse-side subscriber drops and resyncs from the snapshot/log — except for
 		// the terminal, which nothing follows and no resync is prompted by. The last slot is
@@ -203,7 +203,7 @@ func (ps *procState) emit(e process.Frame) {
 		// bus does. Discarding in silence let a reader believe it had the whole story.
 		if n := ps.dropped[id]; n > 0 {
 			select {
-			case c <- process.Frame{Kind: process.EvGap, Process: ps.id, Dropped: n, Cursor: ps.logCur}:
+			case c <- task.Frame{Kind: task.EvGap, Task: ps.id, Dropped: n, Cursor: ps.logCur}:
 				delete(ps.dropped, id)
 			default:
 				ps.drop(id)
@@ -217,7 +217,7 @@ func (ps *procState) emit(e process.Frame) {
 		}
 		if terminal {
 			// Nothing will follow: end the stream rather than leave a reader listening to a
-			// process that has stopped speaking.
+			// task that has stopped speaking.
 			delete(ps.subs, id)
 			close(c)
 		}
@@ -228,7 +228,7 @@ func (ps *procState) emit(e process.Frame) {
 // enqueue appends one control item and returns the cursor it was stamped with, so a caller
 // that must know where its item landed does not have to re-read a counter another enqueue may
 // already have moved.
-func (ps *procState) enqueue(it api.InboxItem) int64 {
+func (ps *taskState) enqueue(it api.InboxItem) int64 {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	ps.inboxCur++
@@ -237,7 +237,7 @@ func (ps *procState) enqueue(it api.InboxItem) int64 {
 	return it.Cursor
 }
 
-// LogRetain is the DEFAULT number of events a brokered process's merged log keeps. A charter
+// LogRetain is the DEFAULT number of events a brokered task's merged log keeps. A charter
 // sets its own per spawn (launch.Spec.Retain); this is what a spawn that says nothing gets.
 //
 // It matches the local bus's window on purpose: the same `?since=` contract is served from
@@ -246,7 +246,7 @@ func (ps *procState) enqueue(it api.InboxItem) int64 {
 const LogRetain = 256
 
 // retainCap is the window in force, called under ps.mu.
-func (ps *procState) retainCap() int {
+func (ps *taskState) retainCap() int {
 	if ps.retain > 0 {
 		return ps.retain
 	}
@@ -254,7 +254,7 @@ func (ps *procState) retainCap() int {
 }
 
 // drop records that a subscriber missed one, called under ps.mu.
-func (ps *procState) drop(id int) {
+func (ps *taskState) drop(id int) {
 	if ps.dropped == nil {
 		ps.dropped = map[int]int{}
 	}
@@ -274,7 +274,7 @@ type reportAck struct {
 const appliedKeep = 64
 
 // rememberReport records a key's answer, evicting the oldest when full.
-func (ps *procState) rememberReport(key string, ack reportAck) {
+func (ps *taskState) rememberReport(key string, ack reportAck) {
 	if key == "" {
 		return
 	}
@@ -294,7 +294,7 @@ func (ps *procState) rememberReport(key string, ack reportAck) {
 }
 
 // reportSeen reports what a key was answered with, if it has been.
-func (ps *procState) reportSeen(key string) (reportAck, bool) {
+func (ps *taskState) reportSeen(key string) (reportAck, bool) {
 	if key == "" {
 		return reportAck{}, false
 	}
@@ -311,12 +311,12 @@ func (ps *procState) reportSeen(key string) (reportAck, bool) {
 //
 // The terminal text is filed by STATUS, not by which field it arrived in. `do complete <x>`
 // and `do fail <why>` both ride the report's `result`, so filing both as a result made a
-// failed brokered process report `result: "the migration is not reversible"` while an
+// failed brokered task report `result: "the migration is not reversible"` while an
 // identical local one reported `err: "exit status 3"` — the same question answered from a
 // different field depending on where the work ran. Worse downstream: the mirror runs
 // ParseResult over `result` looking for structured data, so a failure reason was being mined
 // for a payload it was never going to have.
-func (ps *procState) latchTerminal(status process.Status, text string) bool {
+func (ps *taskState) latchTerminal(status task.Status, text string) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.terminal {
@@ -326,14 +326,14 @@ func (ps *procState) latchTerminal(status process.Status, text string) bool {
 	ps.status = status
 	// The gates it never answered go with it. A terminal does not decide them — nobody did —
 	// but it does settle the question of whether they can still be acted on, and leaving
-	// them open let a dead process's gates be answered, with the decision written onto the
+	// them open let a dead task's gates be answered, with the decision written onto the
 	// log of a run that had already ended.
 	ps.abandoned = len(ps.pending) > 0
 	clear(ps.pending)
 	if text != "" {
 		// A running result already reported stays a result — only the terminal text is
 		// filed by status, and a failure does not retroactively turn it into an error.
-		if status == process.Failed {
+		if status == task.Failed {
 			ps.err = text
 		} else {
 			ps.result = text
@@ -345,7 +345,7 @@ func (ps *procState) latchTerminal(status process.Status, text string) bool {
 // terminalState reports the frozen terminal status/result/err, if any. All three ride the
 // idempotent re-ack to a worker retrying a terminal report, so a lost ack does not cost the
 // worker the reason it just gave.
-func (ps *procState) terminalState() (status process.Status, result, errText string, ok bool) {
+func (ps *taskState) terminalState() (status task.Status, result, errText string, ok bool) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.status, ps.result, ps.err, ps.terminal
@@ -353,7 +353,7 @@ func (ps *procState) terminalState() (status process.Status, result, errText str
 
 // fenced reports whether epoch is NOT the current claim generation. A stale generation (a
 // displaced or never-claimed worker) is fenced: its writes are rejected so it stops.
-func (ps *procState) fenced(epoch int64) bool {
+func (ps *taskState) fenced(epoch int64) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return epoch == 0 || epoch != ps.epoch
@@ -376,11 +376,11 @@ func (b *Broker) AgeClaimForTest(id string, by time.Duration) {
 
 // ClaimLease is how long a claim survives without the worker being heard from. A worker that
 // vanished — closed a laptop, lost a network, died — used to hold its claim, its gate and its
-// process forever, and the only release was an operator calling Revoke, which nothing calls.
+// task forever, and the only release was an operator calling Revoke, which nothing calls.
 //
 // Generous, because it is a liveness bound and not a latency budget: expiring it takes the
 // work away from somebody who may simply be on a slow link, and the cost of waiting is a
-// process that stays claimed a little longer than it had to.
+// task that stays claimed a little longer than it had to.
 //
 // This is the FIRST thing in these seams to depend on a clock for correctness. One clock —
 // the broker's — comparing two readings of its own, never a timestamp written elsewhere. That
@@ -389,7 +389,7 @@ func (b *Broker) AgeClaimForTest(id string, by time.Duration) {
 const ClaimLease = 2 * time.Minute
 
 // renew records that the claim's holder is alive, which every inbox poll and report says.
-func (ps *procState) renew(epoch int64) {
+func (ps *taskState) renew(epoch int64) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if epoch != 0 && epoch == ps.epoch {
@@ -400,10 +400,10 @@ func (ps *procState) renew(epoch int64) {
 // expireClaim releases a claim nobody has renewed, so another worker can take the work over.
 // It reports whether it released one.
 //
-// The process is NOT made terminal: the work may well still be running somewhere, and a
+// The task is NOT made terminal: the work may well still be running somewhere, and a
 // broker that cannot hear a worker knows nothing about whether it is working. What expires is
 // the exclusive right to report on it, which is the thing that was blocking a takeover.
-func (ps *procState) expireClaim(now time.Time) bool {
+func (ps *taskState) expireClaim(now time.Time) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	if ps.claimBy == "" || ps.terminal || ps.renewed.IsZero() || now.Sub(ps.renewed) < ClaimLease {
@@ -414,54 +414,54 @@ func (ps *procState) expireClaim(now time.Time) bool {
 	return true
 }
 
-func (ps *procState) cursorNow() int64 {
+func (ps *taskState) cursorNow() int64 {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.logCur
 }
 
-// snapshot renders this process in the shape the process API returns (id/task/status/
-// result/cursor/pending), so a brokered process appears in the unified `process list`
+// snapshot renders this task in the shape the task API returns (id/prompt/status/
+// result/cursor/pending), so a brokered task appears in the unified `task list`
 // alongside local ones. driver is included for context; status is unclaimed → running → terminal.
-func (ps *procState) snapshot() process.Instance {
+func (ps *taskState) snapshot() task.Instance {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	status := process.Unclaimed // spawned, hosted here, no executor yet
+	status := task.Unclaimed // spawned, hosted here, no executor yet
 	if ps.claimBy != "" {
-		status = process.Running // an executor claimed it and is working
+		status = task.Running // an executor claimed it and is working
 	}
 	if ps.terminal {
 		status = ps.status
 	}
 	// Mode and Origin stay empty on purpose: a worker raises a gate, it does not decide
 	// who answers it or under which dial — that is versed's to say, upstream of here.
-	pending := make([]process.PendingGate, 0, len(ps.pending))
+	pending := make([]task.PendingGate, 0, len(ps.pending))
 	for id, ev := range ps.pending {
-		pending = append(pending, process.PendingGate{
+		pending = append(pending, task.PendingGate{
 			ID: id, Gate: ev.Gate, Tool: ev.Tool, Reason: ev.Text,
 		})
 	}
-	return process.Instance{
-		ID: ps.id, Task: ps.task, Driver: ps.driver, Status: status,
+	return task.Instance{
+		ID: ps.id, Prompt: ps.prompt, Driver: ps.driver, Status: status,
 		Result: ps.result, Err: ps.err, Cursor: ps.logCur, Pending: pending,
 	}
 }
 
-// ListProcesses / ProcessSnapshot enumerate the broker's processes for versed's unified
-// process list. Each brokered process carries its dialURL so its worker face is discoverable
-// from `process list`/`get` (the same base for all of a broker's processes).
+// ListTasks / TaskSnapshot enumerate the broker's tasks for versed's unified
+// task list. Each brokered task carries its dialURL so its worker face is discoverable
+// from `task list`/`get` (the same base for all of a broker's tasks).
 // The error is always nil: this registry is in memory, so there is no unreachable case to
 // report. It is on the signature because the other implementation has one (a runner behind a
-// URL), and process.Lister is what both are held to.
-func (b *Broker) ListProcesses() ([]process.Instance, error) {
+// URL), and task.Lister is what both are held to.
+func (b *Broker) ListTasks() ([]task.Instance, error) {
 	b.mu.Lock()
 	base := b.base
-	pss := make([]*procState, 0, len(b.procs))
-	for _, ps := range b.procs {
+	pss := make([]*taskState, 0, len(b.tasks))
+	for _, ps := range b.tasks {
 		pss = append(pss, ps)
 	}
 	b.mu.Unlock()
-	out := make([]process.Instance, 0, len(pss))
+	out := make([]task.Instance, 0, len(pss))
 	for _, ps := range pss {
 		m := ps.snapshot()
 		if base != "" {
@@ -472,12 +472,12 @@ func (b *Broker) ListProcesses() ([]process.Instance, error) {
 	return out, nil
 }
 
-// ErrNoSuchProcess rather than an ok, and never ErrUnreachable: this registry is in memory,
+// ErrNoSuchTask rather than an ok, and never ErrUnreachable: this registry is in memory,
 // so "not here" is the whole of what can go wrong and it is always the truth.
-func (b *Broker) ProcessSnapshot(id string) (process.Instance, error) {
+func (b *Broker) TaskSnapshot(id string) (task.Instance, error) {
 	ps := b.get(id)
 	if ps == nil {
-		return process.Instance{}, fmt.Errorf("%w: %s", process.ErrNoSuchProcess, id)
+		return task.Instance{}, fmt.Errorf("%w: %s", task.ErrNoSuchTask, id)
 	}
 	m := ps.snapshot()
 	if base := b.dialURL(); base != "" {
@@ -486,10 +486,10 @@ func (b *Broker) ProcessSnapshot(id string) (process.Instance, error) {
 	return m, nil
 }
 
-// ProcessInbox returns the control items queued for a process's worker, WITHOUT the epoch
+// TaskInbox returns the control items queued for a task's worker, WITHOUT the epoch
 // fence — an operator observability peek ("what control is waiting for this worker?"), not
 // the worker's own consuming pull. It does not disturb a live worker's cursor.
-func (b *Broker) ProcessInbox(id string) ([]api.InboxItem, bool) {
+func (b *Broker) TaskInbox(id string) ([]api.InboxItem, bool) {
 	ps := b.get(id)
 	if ps == nil {
 		return nil, false
@@ -510,38 +510,38 @@ type handle struct {
 	id string
 }
 
-func (h *handle) Subscribe() (<-chan process.Frame, func()) {
+func (h *handle) Subscribe() (<-chan task.Frame, func()) {
 	// The whole log, so a (re)attach re-derives state from nothing.
 	return h.subscribeFrom(0, false)
 }
 
 // SubscribeSince resumes from a cursor: the log after it, then live. It is the same contract
-// process.SubscribeSince has locally, and it exists so `?since=` means ONE thing wherever the
-// work runs — a client that resumed against a brokered process used to be handed the log from
+// task.SubscribeSince has locally, and it exists so `?since=` means ONE thing wherever the
+// work runs — a client that resumed against a brokered task used to be handed the log from
 // the beginning and had to recognise what it had already seen.
 //
 // A reader that finds its cursor below the retained window gets an EvGap first, so "you are
 // resuming" and "you missed some" are distinguishable. Today a broker retains its whole log
 // and never emits one; the check is here because the semantics belong to the contract, not to
 // how much this implementation happens to keep.
-func (h *handle) SubscribeSince(since int64) (<-chan process.Frame, func()) {
+func (h *handle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 	return h.subscribeFrom(since, true)
 }
 
-func (h *handle) subscribeFrom(since int64, resume bool) (<-chan process.Frame, func()) {
+func (h *handle) subscribeFrom(since int64, resume bool) (<-chan task.Frame, func()) {
 	ps := h.b.get(h.id)
 	if ps == nil {
-		ch := make(chan process.Frame)
+		ch := make(chan task.Frame)
 		close(ch)
 		return ch, func() {}
 	}
-	ch := make(chan process.Frame, 256)
+	ch := make(chan task.Frame, 256)
 	ps.mu.Lock()
 	// Primed under the lock, as the local bus does, so no live event can interleave ahead of
 	// the replay and arrive out of order.
 	if resume && len(ps.log) > 0 && since+1 < ps.log[0].Cursor {
 		select {
-		case ch <- process.Frame{Kind: process.EvGap, Process: ps.id, Cursor: ps.logCur}:
+		case ch <- task.Frame{Kind: task.EvGap, Task: ps.id, Cursor: ps.logCur}:
 		default:
 		}
 	}
@@ -554,7 +554,7 @@ func (h *handle) subscribeFrom(since int64, resume bool) (<-chan process.Frame, 
 		default:
 		}
 	}
-	// A process that already ended is a finite record: hand over what it said and close,
+	// A task that already ended is a finite record: hand over what it said and close,
 	// rather than registering a subscriber for events that will never come.
 	if ps.terminal {
 		ps.mu.Unlock()
@@ -578,7 +578,7 @@ func (h *handle) subscribeFrom(since int64, resume bool) (<-chan process.Frame, 
 func (h *handle) enqueue(it api.InboxItem) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
-		return process.ErrNoSuchProcess
+		return task.ErrNoSuchTask
 	}
 	ps.enqueue(it)
 	return nil
@@ -593,30 +593,30 @@ func (h *handle) enqueue(it api.InboxItem) error {
 // same thing today, and a runner that relayed without one would break that silently.
 func (h *handle) RelaysControl() bool { return true }
 
-// DialURL is where a worker dials in to run this process (the broker's hosted base). mirror
+// DialURL is where a worker dials in to run this task (the broker's hosted base). mirror
 // type-asserts for this and publishes it as `dialURL`; handles without it (local, remote
-// processd) have no separate worker-facing address.
+// taskd) have no separate worker-facing address.
 func (h *handle) DialURL() string { return h.b.dialURL() }
 
 // The broker is in-process and its inbox is in memory, so a control call cannot fail to be
-// QUEUED. What it can fail to be is queued for a process that exists — and beyond that, the
+// QUEUED. What it can fail to be is queued for a task that exists — and beyond that, the
 // broker cannot speak for the worker: an item on the inbox is delivered when the worker pulls
 // it, which is a separate fact this signature does not claim.
 func (h *handle) Pause() error  { return h.enqueue(api.InboxItem{Kind: "pause"}) }
 func (h *handle) Resume() error { return h.enqueue(api.InboxItem{Kind: "resume"}) }
 
-// Cancel is verse-authoritative (Fork-1(b)): verse latches the process terminal
+// Cancel is verse-authoritative (Fork-1(b)): verse latches the task terminal
 // immediately — a dial-in worker may be unresponsive, which is often why we cancel — and
 // still enqueues a cancel item so a live worker winds down. A late worker `completed`
 // loses to the latch. The reason rides the inbox item and the terminal status event.
 func (h *handle) Cancel(reason string) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
-		return process.ErrNoSuchProcess
+		return task.ErrNoSuchTask
 	}
 	ps.enqueue(api.InboxItem{Kind: "cancel", Text: reason}) // relay to a live worker
-	if ps.latchTerminal(process.Cancelled, "") {
-		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Cancelled)})
+	if ps.latchTerminal(task.Cancelled, "") {
+		ps.emit(task.Frame{Kind: task.EvStatus, Text: string(task.Cancelled)})
 	}
 	return nil
 }
@@ -626,7 +626,7 @@ func (h *handle) Steer(instr, by string) error {
 		return err
 	}
 	if ps := h.b.get(h.id); ps != nil { // operator-authored: verse observes it too
-		ps.emit(process.Frame{Kind: process.EvSay, Text: instr, By: by})
+		ps.emit(task.Frame{Kind: task.EvSay, Text: instr, By: by})
 	}
 	return nil
 }
@@ -635,12 +635,12 @@ func (h *handle) Steer(instr, by string) error {
 // the worker applies it at its next boundary. Like a say-to, it is operator-authored, so verse
 // records an EvVector on the read plane immediately (the new default mode) rather than waiting
 // on the worker to echo it back.
-func (h *handle) SetVector(v *process.Vector, by string) error {
+func (h *handle) SetVector(v *task.Vector, by string) error {
 	if err := h.enqueue(api.InboxItem{Kind: "vector", Vector: v, By: by}); err != nil {
 		return err
 	}
 	if ps := h.b.get(h.id); ps != nil {
-		ps.emit(process.Frame{Kind: process.EvVector, Mode: v.Default.String(), By: by})
+		ps.emit(task.Frame{Kind: task.EvVector, Mode: v.Default.String(), By: by})
 	}
 	return nil
 }
@@ -650,13 +650,13 @@ func (h *handle) SetVector(v *process.Vector, by string) error {
 // so verse observes the resolution and the entity's pending clears — the return leg of the
 // gate loop. Governance (who may resolve) is versed's concern, upstream of this.
 // Resolve answers a gate the worker raised. It reports whether the decision was a
-// genuine open gate: an unknown id (typo, wrong process) or one already answered finds
+// genuine open gate: an unknown id (typo, wrong task) or one already answered finds
 // nothing in pending and returns false, so verse can surface a 404 rather than silently
 // enqueueing a resolve for a decision the worker will never recognize.
 func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
-		return process.ErrNoSuchProcess
+		return task.ErrNoSuchTask
 	}
 	ps.mu.Lock()
 	_, open := ps.pending[decision]
@@ -665,14 +665,14 @@ func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	ps.mu.Unlock()
 	if !open {
 		// Which it is matters to whoever asked: look for your typo, somebody was here
-		// first, or the process ended underneath you.
+		// first, or the task ended underneath you.
 		switch {
 		case answered:
-			return process.ErrAlreadyAnswered
+			return task.ErrAlreadyAnswered
 		case abandoned:
-			return process.ErrProcessEnded
+			return task.ErrTaskEnded
 		}
-		return process.ErrNoSuchDecision
+		return task.ErrNoSuchDecision
 	}
 	// by rides both legs: the worker sees who answered on its inbox item, and the read
 	// plane records it on the decision — the same By a locally-resolved gate carries.
@@ -704,9 +704,9 @@ func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	return nil
 }
 
-// Err is the reason a brokered process failed. It needed no change to the worker protocol,
+// Err is the reason a brokered task failed. It needed no change to the worker protocol,
 // contrary to what stood here: the protocol already carries the reason, because
-// `verse process do fail <id> <why>` reports it on the terminal event's result. What was
+// `verse task do fail <id> <why>` reports it on the terminal event's result. What was
 // missing was filing it as a failure rather than as an answer (see latchTerminal), which is
 // why this used to return "" and the mirror recorded a failure reason under `result`.
 func (h *handle) Err() string {
@@ -730,10 +730,10 @@ func (h *handle) Result() string {
 }
 
 var (
-	_ process.Runner = (*Broker)(nil)
+	_ task.Runner = (*Broker)(nil)
 	// Asserted so a change to Lister fails to compile here, rather than making versed's
-	// type assertion report false and silently drop every brokered process from the list.
-	_ process.Lister = (*Broker)(nil)
+	// type assertion report false and silently drop every brokered task from the list.
+	_ task.Lister = (*Broker)(nil)
 )
 
 // WorkerHandler serves the worker-facing dial-in protocol (claim / inbox / report). It is
@@ -741,16 +741,16 @@ var (
 // the worker are clients of the broker; this is the worker's leg.
 func (b *Broker) WorkerHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /processes/{id}/claim", b.claim)
-	mux.HandleFunc("GET /processes/{id}/inbox", b.inbox)
-	mux.HandleFunc("POST /processes/{id}/report", b.report)
+	mux.HandleFunc("POST /tasks/{id}/claim", b.claim)
+	mux.HandleFunc("GET /tasks/{id}/inbox", b.inbox)
+	mux.HandleFunc("POST /tasks/{id}/report", b.report)
 	return mux
 }
 
-// claim: a worker takes the process and gets the spec, resume cursors, and an epoch (the
+// claim: a worker takes the task and gets the spec, resume cursors, and an epoch (the
 // fencing token to carry on every subsequent report/inbox). Same-identity re-claim is
 // always allowed (a reconnect — it bumps the epoch, fencing its own zombie). A different
-// identity is rejected with 409 unless the claim was released (Revoke); a terminal process
+// identity is rejected with 409 unless the claim was released (Revoke); a terminal task
 // is 410 Gone. Every successful claim mints a fresh epoch (Fork-2(a)).
 func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	ps := b.get(r.PathValue("id"))
@@ -759,7 +759,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, _, ok := ps.terminalState(); ok {
-		http.Error(w, "process is terminal", http.StatusGone)
+		http.Error(w, "task is terminal", http.StatusGone)
 		return
 	}
 	var body struct {
@@ -770,8 +770,8 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	// asks for the work — which is the only moment it matters. No sweeper, no timer, and no
 	// clock read except this one, taken against the broker's own earlier reading.
 	if ps.expireClaim(time.Now()) {
-		ps.emit(process.Frame{
-			Kind: process.EvStatus, Text: string(process.Unclaimed),
+		ps.emit(task.Frame{
+			Kind: task.EvStatus, Text: string(task.Unclaimed),
 			Err: "claim expired: the worker was not heard from within " + ClaimLease.String(),
 		})
 	}
@@ -793,7 +793,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	ps.claimBy = body.Identity
 	ps.renewed = time.Now() // the lease starts now
 	resp := map[string]any{
-		"spec":  map[string]string{"task": ps.task, "driver": ps.driver},
+		"spec":  map[string]string{"prompt": ps.prompt, "driver": ps.driver},
 		"epoch": ps.epoch, // carry this on every report/inbox
 		// Resume control from what this worker ACKNOWLEDGED, not from where the broker has
 		// got to. Handing back the current cursor told a reconnecting worker to skip
@@ -808,7 +808,7 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	// An executor picked it up: leave the pre-running `unclaimed` state. emit takes ps.mu,
 	// so it must run off-lock. A re-claim by the same worker (resume) does not re-announce.
 	if firstClaim {
-		ps.emit(process.Frame{Kind: process.EvStatus, Text: string(process.Running)})
+		ps.emit(task.Frame{Kind: task.EvStatus, Text: string(task.Running)})
 	}
 	writeOut(w, r, resp)
 }
@@ -873,7 +873,7 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	status, terminal := ps.status, ps.terminal
 	ps.mu.Unlock()
 	for _, it := range landed {
-		ps.emit(process.Frame{Kind: process.EvDecision, ID: it.Decision, Proceed: it.Proceed, By: it.By})
+		ps.emit(task.Frame{Kind: task.EvDecision, ID: it.Decision, Proceed: it.Proceed, By: it.By})
 	}
 	writeOut(w, r, map[string]any{"items": out, "status": status, "terminal": terminal})
 }
@@ -900,9 +900,9 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Events []process.Frame `tony:"field=events"`
-		Result string          `tony:"field=result,omitzero"`
-		Epoch  int64           `tony:"field=epoch,omitzero"`
+		Events []task.Frame `tony:"field=events"`
+		Result string       `tony:"field=result,omitzero"`
+		Epoch  int64        `tony:"field=epoch,omitzero"`
 		// Key makes a report retryable. A worker whose response was lost cannot know
 		// whether its events landed, and without this its only choices were to drop what it
 		// observed or to report it twice — which is one deploy becoming two events with two
@@ -930,9 +930,9 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 	}
 	latched, applied := false, 0
 	for _, e := range body.Events {
-		if e.Kind == process.EvStatus && process.Status(e.Text).Terminal() {
+		if e.Kind == task.EvStatus && task.Status(e.Text).Terminal() {
 			latched = true
-			if ps.latchTerminal(process.Status(e.Text), body.Result) { // worker-authoritative done/fail
+			if ps.latchTerminal(task.Status(e.Text), body.Result) { // worker-authoritative done/fail
 				ps.emit(e)
 				applied++
 			}

@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A NO IS A DECISION, AND A DECISION HAS A CONSEQUENCE.
@@ -196,8 +196,8 @@ func TestAdviseReadsACompoundPredicate(t *testing.T) {
 // errResolver stands for every way an answer fails to arrive that is not a refusal.
 type errResolver struct{}
 
-func (errResolver) Resolve(context.Context, process.GateQuestion, process.ToolUse) (process.Resolution, error) {
-	return process.Resolution{}, errors.New("the resolver could not be reached")
+func (errResolver) Resolve(context.Context, task.GateQuestion, task.ToolUse) (task.Resolution, error) {
+	return task.Resolution{}, errors.New("the resolver could not be reached")
 }
 
 func stageOf(t *testing.T, s entity.Store, ref entity.Ref) string {

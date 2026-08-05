@@ -8,7 +8,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // Running a sequence.
@@ -16,7 +16,7 @@ import (
 // The facts below are not decoration. A parallel branch is woken by a `when`, and a `when`
 // matches facts — so a sequence must PUBLISH its position or the breadth axis (independent
 // triggers) cannot observe the depth axis (this) at all. They are also where re-fire
-// idempotence stands: between two elements NO process is live, so a registry-only check has a
+// idempotence stands: between two elements NO task is live, so a registry-only check has a
 // hole at exactly every step boundary, which is where a re-fire is most likely to land.
 //
 // Everything lands under the reserved root on the subject, in its charter half, keyed by
@@ -37,7 +37,7 @@ import (
 // to write a rule about, and "it finished" must not start meaning "it stopped somewhere".
 //
 // One reserved name rather than a family of flat keys, because the payload is the AUTHOR's
-// document — `flow` on a process entity is the same kind of reservation. The `charter` half
+// document — `flow` on a task entity is the same kind of reservation. The `charter` half
 // keeps rule bookkeeping apart from what verse records about the ENTITY (verse.meta, where the
 // lifecycle marker lives): they grow differently — a key per rule against a field per lifecycle
 // concern — and flat they collided, since a trigger NAMED `vanishing` would have written its
@@ -92,12 +92,12 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 }
 
 // advanceSeq runs elements from i onward until one SPAWNS — at which point the sequence waits
-// for that process to complete — or until the sequence ends.
+// for that task to complete — or until the sequence ends.
 //
 // The loop exists because an element need not spawn: `seq: [{patch: …}, {patch: …}]` is two
-// ordered writes, and an element that starts no process completes immediately. Without the
+// ordered writes, and an element that starts no task completes immediately. Without the
 // loop such an element would stall the sequence forever, waiting for a completion that no
-// process will ever report.
+// task will ever report.
 func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, subj entity.Ref, src refSource) {
 	for ; i < len(carrier.Seq); i++ {
 		el := carrier.Seq[i]
@@ -111,7 +111,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 			// off-ramp (stopSeq): a write that failed started nothing, and the reasons it fails
 			// are the transient ones — a reference that did not resolve at this commit, a store
 			// that was unavailable. Recording it would make a moment permanent. So this releases
-			// and lets the next commit try again, which costs an evaluation and no process.
+			// and lets the next commit try again, which costs an evaluation and no task.
 			e.tracef("seq %s: element %d failed (%v); sequence stops", chain, i, err)
 			e.releaseRun(chain, subj)
 			return
@@ -125,7 +125,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 }
 
 // finishSeq latches `done` and fires the carrier's own onDone — the hook that means "after the
-// whole sequence" rather than "after one process".
+// whole sequence" rather than "after one task".
 //
 // `done` is PUBLISHED rather than derived, because a match compares a value against a pattern
 // and never one field of a payload against another: a join written as `step == steps` cannot
@@ -137,10 +137,10 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 	if carrier.OnDone != nil {
 		hook := chain + "." + "onDone"
 		if err := carrier.OnDone.apply(hook, oc, []entity.Ref{subj}, e, src); err != nil {
-			// Record it against the process whose completion got us here. A sequence can also
+			// Record it against the task whose completion got us here. A sequence can also
 			// finish without one — every element being a bare patch completes immediately — and
 			// then ev is the original triggering change, whose ref is the subject rather than a
-			// process. There is no process to hang it on in that case, so it stays traced.
+			// task. There is no task to hang it on in that case, so it stays traced.
 			if oc.ev.Ref.System == mirror.System {
 				e.recordHookFailure(oc.ev.Ref, hook, err)
 			}
@@ -154,7 +154,7 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 //
 // It exists because fail-stop used to be implemented by a LEAK. The off-ramp path in applyHook
 // released nothing, so the run claim stood forever and blocked the next run — which looked like
-// fail-stop and was not one: `Server.reconcileClaims` clears a claim no resumed process
+// fail-stop and was not one: `Server.reconcileClaims` clears a claim no resumed task
 // explains, so a failed sequence ran again at the next restart and never before it. A repeat
 // policy that turns on whether anybody bounced the server is not a policy.
 //
@@ -165,12 +165,12 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 //
 // `step` is not touched: advanceSeq advances it only when an element COMPLETES, so it already
 // names the last one that did, and the element that failed is `step`+1.
-func (e *Engine) stopSeq(chain string, subj entity.Ref, status process.Status) {
+func (e *Engine) stopSeq(chain string, subj entity.Ref, status task.Status) {
 	carrier, _, ok := seqIndexOf(chain)
 	if !ok {
 		return
 	}
-	// No causing commit — an off-ramp is downstream of a process finishing, which is where a
+	// No causing commit — an off-ramp is downstream of a task finishing, which is where a
 	// causal chain ends (causal.go), the same parent resumeSeq publishes progress under.
 	e.publishSeq(carrier, 0, subj, entity.Obj{seqEnded: string(status)})
 	e.releaseRun(carrier, subj)
@@ -179,8 +179,8 @@ func (e *Engine) stopSeq(chain string, subj entity.Ref, status process.Status) {
 // resumeSeq continues the sequence a just-completed element belonged to. Returns false if the
 // chain does not address a sequence element, in which case the ordinary hook path applies.
 func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool {
-	// A resumed element is downstream of a process completing, so — like a hook — it has no
-	// causing commit and begins a fresh chain. The occasion carries the process event for its
+	// A resumed element is downstream of a task completing, so — like a hook — it has no
+	// causing commit and begins a fresh chain. The occasion carries the task event for its
 	// references and nothing else.
 	oc := occasion{ev: ev}
 	carrierChain, idx, ok := seqIndexOf(chain)
@@ -209,8 +209,8 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool 
 		return true
 	}
 	e.publishSeq(carrierChain, oc.parent, subj, entity.Obj{seqStep: idx + 1})
-	// A resumed sequence is downstream of the process that just completed, so its elements
-	// read that process's facts — $result and the rest — exactly as a hook does.
+	// A resumed sequence is downstream of the task that just completed, so its elements
+	// read that task's facts — $result and the rest — exactly as a hook does.
 	e.advanceSeq(carrierChain, *carrier, idx+1, oc, subj, fromCause)
 	return true
 }
@@ -276,7 +276,7 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 // the SUBJECT, under a root a charter can match on — `$verse.review.done` is a documented thing
 // to write a rule about — so a progress write can wake a rule exactly as an action's own write
 // can, and a hop it did not count would be a hop the throttle cannot see. parent is 0 wherever
-// the sequence resumed off a process completing, which is the world coming back and the right
+// the sequence resumed off a task completing, which is the world coming back and the right
 // place for a chain to end.
 func (e *Engine) publishSeq(chain string, parent int64, subj entity.Ref, fields entity.Obj) {
 	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
@@ -351,7 +351,7 @@ func collectShapes(chain string, a *Action, into map[string]string) {
 }
 
 // seqShapeHash fingerprints a declared sequence, so a charter edit under a RUNNING sequence is
-// detectable. A hash rather than a stored copy of the actions: these processes can run for a
+// detectable. A hash rather than a stored copy of the actions: these tasks can run for a
 // very long time, and a retained snapshot per live sequence would be a retention floor the
 // store could never compact past. Detecting that the shape moved is all refusing to continue
 // needs — reconstructing the old one is not.
@@ -375,7 +375,7 @@ func seqShapeHash(seq []Action) string {
 }
 
 // ChainUnder is chainUnder, exported for the resume path: reconcile has to ask whether a
-// resumed process's chain lies under a claim's, and the answer is segment-wise.
+// resumed task's chain lies under a claim's, and the answer is segment-wise.
 func ChainUnder(prefix, target string) bool { return chainUnder(prefix, target) }
 
 // chainUnder reports whether target lies at or below prefix, comparing SEGMENTS rather than
@@ -406,7 +406,7 @@ func chainUnder(prefix, target string) bool {
 // wins, and the loser does nothing.
 //
 // It is held for the WHOLE sequence, not per element, which is what closes the gap between
-// elements where no process is live and the registry therefore had nothing to say.
+// elements where no task is live and the registry therefore had nothing to say.
 func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
 	ref := mirror.ClaimRef(spawnID(chainID(chain), subj))
 	payload := entity.Obj{"flow": subj.String(), "chain": chain}.Payload()

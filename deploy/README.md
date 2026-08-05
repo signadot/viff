@@ -233,4 +233,4 @@ kubectl -n verse create secret generic verse-llm \
 ## Not here yet
 
 RBAC (a ServiceAccount + Role) lands when the k8s Jobs policy and k8s Source do — they're
-what need cluster API access. See `docs/sources.md` and `docs/process-control.md`.
+what need cluster API access. See `docs/sources.md` and `docs/task-control.md`.

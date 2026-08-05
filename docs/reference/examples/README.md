@@ -5,7 +5,7 @@ example in a fenced block goes stale the first time a signature moves and nobody
 
 | | |
 |---|---|
-| [runner/](runner/main.go) | a verse runner: the smallest thing that serves the process-control contract, with the two functions a drive changes marked |
+| [runner/](runner/main.go) | a verse runner: the smallest thing that serves the task-control contract, with the two functions a drive changes marked |
 | [source/](source/main.go) | a verse source: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
 
 ## Running the runner
@@ -18,12 +18,12 @@ Then, against a verse:
 
 ```sh
 verse runner add pool:gpu http://localhost:9800
-verse process run --runner runners:pool:gpu "fetch the data; retrain; report"
+verse task run --runner runners:pool:gpu "fetch the data; retrain; report"
 verse ps --runner runners:pool:gpu
 ```
 
-It is a placeholder driver — it splits the task on semicolons and does each part — so you can
-watch a process run end to end before replacing the two functions with the work you actually
+It is a placeholder driver — it splits the prompt on semicolons and does each part — so you can
+watch a task run end to end before replacing the two functions with the work you actually
 have. The `verse runner add` above will print `reach: a runner`, which is the install probe
 confirming that what is at that url really serves the contract.
 

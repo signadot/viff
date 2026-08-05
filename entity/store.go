@@ -27,7 +27,7 @@ type Store interface {
 	//
 	// Returns (committed, rev, err). committed == false means a precondition did not hold:
 	// the world said no, which is a normal answer and not an error. err means the store could
-	// not answer at all — a write over a network, through mounts owned by other processes,
+	// not answer at all — a write over a network, through mounts owned by other tasks,
 	// can fail, and a caller told otherwise reports success for work that did not happen.
 	//
 	// rev is the revision the write landed at, and is meaningful ONLY when committed is true;
@@ -40,7 +40,7 @@ type Store interface {
 	// the read could be performed at all.
 	//
 	// THE TWO ARE NOT THE SAME THING and the distinction is the point. A durable store
-	// reads over a network, through mounts owned by other processes; that read can fail
+	// reads over a network, through mounts owned by other tasks; that read can fail
 	// while the entity exists perfectly well. Collapsing both into a single "not found"
 	// tells a caller the opposite of the truth at exactly the moment it can least afford
 	// it — an agent is told the file it is looking at does not exist, and goes off to

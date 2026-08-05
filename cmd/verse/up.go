@@ -16,9 +16,9 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/process"
-	"github.com/signadot/verse/process/harness"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/harness"
 	"github.com/signadot/verse/versed"
 )
 
@@ -35,10 +35,10 @@ type upConfig struct {
 	DocdMountAddr string `cli:"name=docd-mount-addr desc='the running docd controller/MOUNT face (with --docd-addr)'"`
 	Data          string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
 	OBin          string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
-	// runner: where processes run. Default is the in-process local supervisor.
-	Runner     string `cli:"name=runner desc='process-control base URL to run processes on (default: local, in-process)'"`
+	// runner: where tasks run. Default is the in-process local supervisor.
+	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
-	Broker     bool   `cli:"name=broker desc='run processes on an in-process dial-in broker (requires --broker-addr; publishes each process dialURL from it)'"`
+	Broker     bool   `cli:"name=broker desc='run tasks on an in-process dial-in broker (requires --broker-addr; publishes each task dialURL from it)'"`
 }
 
 // validate rejects contradictory flag combinations BEFORE anything is started.
@@ -69,7 +69,7 @@ func (cfg *upConfig) validate() error {
 	return nil
 }
 
-// upCmd starts the monolith: store + engine + process runtime + the versed HTTP
+// upCmd starts the monolith: store + engine + task runtime + the versed HTTP
 // surface, in one process.
 func upCmd() *cli.Command {
 	cfg := &upConfig{}
@@ -78,7 +78,7 @@ func upCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "up").
-		WithSynopsis("up — start the monolith (engine + store + proc runtime)").
+		WithSynopsis("up — start the monolith (engine + store + task runtime)").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -101,7 +101,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// federated read_file goes through the verse; --root is the non-federated fallback.
 	root := cfg.Root
 	if root == "" {
-		t, err := os.MkdirTemp("", "verse-proc-*")
+		t, err := os.MkdirTemp("", "verse-task-*")
 		if err != nil {
 			return err
 		}
@@ -113,13 +113,13 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// uses the default. The default is llm when creds are configured (so agents are
 	// real out of the box), else scripted (so the runtime is demoable with no creds).
 	// An explicit --driver still wins, and an llm spawn with no creds fails *that*
-	// process, not the engine.
+	// task, not the engine.
 	defaultDriver := "scripted"
 	if appCfg.LLM.Available() {
 		defaultDriver = "llm"
 		fmt.Fprintf(cc.Err, "agents rooted at %s\n", root)
 	}
-	build := func(l process.Launch, reg *process.Registry, content process.ContentReader) *process.Process {
+	build := func(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
 		driver := l.Driver
 		if driver == "" {
 			driver = defaultDriver
@@ -131,12 +131,12 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			// and a dropped contract is worse than none: the charter downstream was
 			// written believing the shape is guaranteed.
 			if l.Answer != nil {
-				return process.NewFailed(l.ID, reg, "the scripted driver cannot enforce an answer contract")
+				return task.NewFailed(l.ID, reg, "the scripted driver cannot enforce an answer contract")
 			}
-			return versed.NewScriptedProcess(l.ID, l.Task, root, reg)
+			return versed.NewScriptedTask(l.ID, l.Prompt, root, reg)
 		case "llm":
 			if !appCfg.LLM.Available() {
-				return process.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
+				return task.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
 			}
 			// content (non-nil for a scoped federation) routes read_file through the
 			// verse; otherwise the agent reads the server-side --root tree.
@@ -148,14 +148,14 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			// it again after Build, which is idempotent and is also what bounds the
 			// scripted driver, so neither path depends on a builder remembering.
 			p, _ := harness.Build(harness.Config{
-				ID: l.ID, Task: l.Task, Root: root, Resolver: reg, Log: cc.Err, Content: content,
+				ID: l.ID, Prompt: l.Prompt, Root: root, Resolver: reg, Log: cc.Err, Content: content,
 				Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
 				LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
 				LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
 			})
 			return p
 		default:
-			return process.NewFailed(l.ID, reg, "unknown driver "+driver+" (want scripted or llm)")
+			return task.NewFailed(l.ID, reg, "unknown driver "+driver+" (want scripted or llm)")
 		}
 	}
 
@@ -186,10 +186,10 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	} else if set {
 		srv.SetTripPace(d)
 	}
-	if cfg.Runner != "" { // run processes on a remote runner instead of in-process
+	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process
 		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}
-	if cfg.Broker { // run processes on an in-process dial-in broker, hosted on the broker face
+	if cfg.Broker { // run tasks on an in-process dial-in broker, hosted on the broker face
 		face := brokerFace(cfg.BrokerAddr)
 		srv.UseBroker(face)
 		fmt.Fprintf(cc.Out, "verse up: dial-in broker runner; workers dial %s\n", face)
@@ -239,7 +239,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}()
 	}
 
-	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + proc[default:%s]). ctrl-c to stop.\n", g.Addr, storeKind, defaultDriver)
+	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + task[default:%s]). ctrl-c to stop.\n", g.Addr, storeKind, defaultDriver)
 
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err

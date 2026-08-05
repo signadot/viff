@@ -14,10 +14,10 @@ import (
 // An action could always NAME a value ($stage, $result) — but only inside a spawn's string
 // fields, and only as text, because launch.Binding is map[string]string built with
 // fmt.Sprint over the payload's top-level fields. Two consequences followed. A nested value
-// was unreachable at all ($verse.review.done had no spelling), and a process's output could
+// was unreachable at all ($verse.review.done had no spelling), and a task's output could
 // parameterize the next PROMPT but could never become a fact the next `when` matches on:
 // the loop closed through state transitions the charter wrote by hand, never through what a
-// process actually found.
+// task actually found.
 //
 // Expanding a `patch` closes it. An action can lift a value out of the payload that fired it
 // and write it onto the subject, TYPED, where the match grammar can see it. That is the same
@@ -37,7 +37,7 @@ type refSource int
 
 const (
 	// fromSubject — a trigger firing. The change that dispatched it is a doorbell and may
-	// name an entirely different entity (a CI status, a note, a process), whose fields have
+	// name an entirely different entity (a CI status, a note, a task), whose fields have
 	// no meaning on the subject being acted on. So references read the SUBJECT's own payload.
 	//
 	// This is the half of "sever the action from the cause" that a charter can see: a trigger
@@ -45,8 +45,8 @@ const (
 	// and the cause happened to be the same entity.
 	fromSubject refSource = iota
 	// fromCause — a completion hook, or a sequence element one drives. The action is
-	// downstream of a PROCESS, and $result / $err / $data are exactly the facts it exists to
-	// read. The engine synthesizes that payload (Engine.procEvent) rather than reading the
+	// downstream of a TASK, and $result / $err / $data are exactly the facts it exists to
+	// read. The engine synthesizes that payload (Engine.taskEvent) rather than reading the
 	// store, because the mirror may not have written the terminal facts yet — so this is not
 	// merely a different entity to read, it is a payload only the engine has.
 	fromCause
@@ -287,7 +287,7 @@ func expandString(s string, root entity.Payload) (entity.Payload, error) {
 
 // scalarText renders a leaf for interpolation. A composite has no text form here on purpose:
 // inventing one (JSON? tony?) would make `"saw $result"` mean something different depending
-// on what the process happened to return, and the whole-value form already says it exactly.
+// on what the task happened to return, and the whole-value form already says it exactly.
 func scalarText(n entity.Payload) (string, bool) {
 	switch n.Type {
 	case ir.StringType:
@@ -403,7 +403,7 @@ func (e *Engine) subjectFor(oc occasion, subj entity.Ref, w subjectWants) (*ir.N
 	if w.commit {
 		if oc.commit.Rev == 0 {
 			return nil, fmt.Errorf("$%s.%s: this firing has no causing commit — a completion "+
-				"hook is woken by a process finishing rather than by a write, which is why its "+
+				"hook is woken by a task finishing rather than by a write, which is why its "+
 				"chain starts again (see causal.go). There is no revision to name",
 				refSubject, subjPartCommit)
 		}
@@ -423,7 +423,7 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 	}
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("$%s.%s: this firing has no causing commit to read at — a "+
-			"completion hook is woken by a process finishing rather than by a write, so there "+
+			"completion hook is woken by a task finishing rather than by a write, so there "+
 			"is no revision at which to pin the subject's state",
 			refSubject, subjPartValue)
 	}
@@ -451,8 +451,8 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 
 // refPayload answers what an action's $references read, for one subject.
 //
-// fromCause hands back the cause's payload — a hook's process, which the engine may hold
-// facts about that the store does not yet (Engine.procEvent).
+// fromCause hands back the cause's payload — a hook's task, which the engine may hold
+// facts about that the store does not yet (Engine.taskEvent).
 //
 // fromSubject reads the SUBJECT. When the subject IS the entity that changed, the event
 // already carries its whole level state as of the dispatching commit, so that is used

@@ -9,10 +9,10 @@ deliberately skips. For what a charter's fields *mean*, see
 |---|---|
 | [up.md](up.md) | starting a verse: the store, the driver, the agent root, runners and brokers, the config layers, and the `o` binary |
 | [entities.md](entities.md) | refs, payloads, merging writes, conditional writes, selection, and watching |
-| [processes.md](processes.md) | the process surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
+| [tasks.md](tasks.md) | the task surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
 | [connect.md](connect.md) | federating a working tree, and scopes |
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
-| [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a process records |
+| [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
 | [sources.md](sources.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
 | [sourced.md](sourced.md) | the three sources verse ships: git (and mirrors), Slack, Linear — the flags, the credentials, the delivery endpoints, and what each reflects |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
@@ -24,7 +24,7 @@ deliberately skips. For what a charter's fields *mean*, see
 
 ```
 verse
-  up   [--root <dir>]                        start the monolith (engine + store + proc)
+  up   [--root <dir>]                        start the monolith (engine + store + tasks)
                                              the dir an llm agent reads/acts in; default: an
                                              isolated temp dir, printed at start
        [--data <dir>]                        bring logd+docd up on <dir> (default: fresh temp dir)
@@ -32,12 +32,12 @@ verse
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
        [--o-bin path]                        the o binary to spawn daemons with (default: resolved —
                                              see up.md)
-       [--runner <url>]                      run processes on a remote process-control base URL …
+       [--runner <url>]                      run tasks on a remote task-control base URL …
        [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
-                                             publishes each process's dialURL from it) …
+                                             publishes each task's dialURL from it) …
        [--broker-addr host:port]             … the sibling port serving this verse's broker face
                                              (/broker/<nonce>); all default off (local in-process
-                                             supervisor). See ../process-control.md.
+                                             supervisor). See ../task-control.md.
   status                                     engine/store snapshot
   schema [<name>]                            the whole schema: the root — what a verse looks like,
                                              by top-level path — then every shape it names.
@@ -65,8 +65,8 @@ verse
           approve: y, yes · deny: n, no · --say: -s
   triggers                                   the installed charter
   trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
-  processes (ps) [--runner <ref>]            every process, whatever runs it
-  process run <task…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
+  tasks (ps) [--runner <ref>]            every task, whatever runs it
+  task run <prompt…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>
@@ -80,13 +80,13 @@ verse
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
   sources                                    what reflects an external system in  [--probe]
   source  add <system>:<name> <url> [--no-probe] [--allow-overlap]
-          add --dir <d> <system>:<name>      a local git repo, reflected in process
+          add --dir <d> <system>:<name>      a local git repo, reflected in task
           add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask it what it is and what it claims, right now
           remove <ref> [--forget | --keep]   what becomes of what it reflected
   flows                                      the distinct subjects with live work
   flow    show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
-          <addr> addresses live processes by the subject they are about: demo:pr:1 (one),
+          <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
   goals                                      status / waitingOn / outcome, per goal
   goal    add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
@@ -97,7 +97,7 @@ verse
   vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
   providers                                  list the provider registry (provider:<capability>:<id>)
 
-  connect [path] [--task <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +
+  connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +
           [--interval <dur>]                  content controller + a validator per file
   disconnect                                  drop the --scope overlay (else remove local:* entities)
 
@@ -142,7 +142,7 @@ seeds.
 |---|---|
 | `./scripts/seed-demo.sh` | the whole demo at once: a charter, the entities it reacts to, one reaction that has already happened, and one gate waiting for you |
 | `./scripts/seed-entities.sh` | a dozen entities across three systems, and nothing that reacts to them ([tutorial §2](../tutorial.md#2-entities)) |
-| `./scripts/charter-shapes.sh` | the coarse shapes a rule comes in, one command each ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-processes)) |
+| `./scripts/charter-shapes.sh` | the coarse shapes a rule comes in, one command each ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-tasks)) |
 
 All three take `--scope <name>` and undo themselves (`--clean`, or `clean`). `./smoke.sh` is
 a different thing: it builds its own binaries and runs its own isolated server, and touches

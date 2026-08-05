@@ -1,8 +1,8 @@
-// Package runner provides the HTTP client of the verse-facing process-control
-// contract: an httpRunner drives a remote processd-shaped service at a base URL, so the
-// engine can run a process on another host, k8s, or a broker exactly as it runs one in
-// process. It is the mirror of versed's localRunner — same process.Runner seam,
-// HTTP transport. See docs/process-control.md.
+// Package runner provides the HTTP client of the verse-facing task-control
+// contract: an httpRunner drives a remote taskd-shaped service at a base URL, so the
+// engine can run a task on another host, k8s, or a broker exactly as it runs one in
+// task. It is the mirror of versed's localRunner — same task.Runner seam,
+// HTTP transport. See docs/task-control.md.
 package runner
 
 import (
@@ -19,7 +19,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // HTTP returns a Runner that drives the runner at baseURL.
@@ -31,10 +31,10 @@ import (
 // Generous rather than tight. It is a backstop against a hung peer, not a latency budget.
 const ControlTimeout = 30 * time.Second
 
-func HTTP(baseURL string) process.Runner {
+func HTTP(baseURL string) task.Runner {
 	return &httpRunner{
 		base: strings.TrimRight(baseURL, "/"),
-		// Its OWN client, never http.DefaultClient: that one is shared process-wide, so a
+		// Its OWN client, never http.DefaultClient: that one is shared task-wide, so a
 		// timeout set on it would silently bound every other caller's requests too.
 		cl: &http.Client{Timeout: ControlTimeout},
 		// The event stream is long-lived by design, so a whole-request deadline would cut
@@ -49,15 +49,15 @@ type httpRunner struct {
 	stream *http.Client // the event plane: unbounded, cancelled by its context
 }
 
-// Spawn POSTs /processes carrying the caller's id (so the remote uses it and it matches
-// the process:instance entity). content is not forwarded — a remote runtime resolves
+// Spawn POSTs /tasks carrying the caller's id (so the remote uses it and it matches
+// the task:instance entity). content is not forwarded — a remote runtime resolves
 // files its own way; federating a remote read_file is a later concern.
-func (p *httpRunner) Spawn(l process.Launch, _ process.ContentReader) process.Handle {
-	req := map[string]any{"id": l.ID, "task": l.Task, "driver": l.Driver}
+func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
+	req := map[string]any{"id": l.ID, "prompt": l.Prompt, "driver": l.Driver}
 	// Send only what the spawn actually said. An empty frame or an absent grant means "the
 	// remote's own default", and writing them out empty would be a claim rather than an
 	// absence — the grant especially, since the zero Grant permits nothing, so sending it
-	// unconditionally would refuse every action of every process nobody meant to bound.
+	// unconditionally would refuse every action of every task nobody meant to bound.
 	if l.Frame != "" {
 		req["frame"] = l.Frame
 	}
@@ -74,62 +74,62 @@ func (p *httpRunner) Spawn(l process.Launch, _ process.ContentReader) process.Ha
 		req["grant"] = l.Grant
 	}
 	body, _ := codec.Marshal(req, codec.Tony)
-	resp, err := p.cl.Post(p.base+"/processes", codec.MediaType(codec.Tony), bytes.NewReader(body))
+	resp, err := p.cl.Post(p.base+"/tasks", codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {
-		return process.FailedHandle(err.Error())
+		return task.FailedHandle(err.Error())
 	}
 	defer resp.Body.Close()
 	// A refusal is not an acceptance. The status used to be discarded here, so a runner
 	// answering 400, 403 or 501 got the same remote handle as one that took the work: versed
-	// mirrored a process:instance for it and the flow waited on a process that was never
+	// mirrored a task:instance for it and the flow waited on a task that was never
 	// started, so the refusal surfaced as a hang. The runner deciding it cannot host this
 	// launch is the DEFAULT way a runner declines — it is the whole reason a runner may refuse
 	// rather than verse having to detect what it is — and that answer is inert unless it is
 	// read (git-issue 6mnmxj6mh12krz3ae1n0).
 	if err := statusErr(resp); err != nil {
-		return process.FailedHandle(fmt.Sprintf("spawn refused by %s: %s", p.base, err))
+		return task.FailedHandle(fmt.Sprintf("spawn refused by %s: %s", p.base, err))
 	}
 	return &remoteHandle{base: p.base, id: l.ID, cl: p.cl, stream: p.stream}
 }
 
-// Attach re-attaches to an existing remote process (no spawn). remoteHandle.Subscribe
+// Attach re-attaches to an existing remote task (no spawn). remoteHandle.Subscribe
 // replays from the start (?since=0), so a resumed mirror re-derives current state.
-func (p *httpRunner) Attach(id string) process.Handle {
+func (p *httpRunner) Attach(id string) task.Handle {
 	return &remoteHandle{base: p.base, id: id, cl: p.cl, stream: p.stream}
 }
 
-// Ref is the base URL — how the process:instance entity records this runner so a restart
+// Ref is the base URL — how the task:instance entity records this runner so a restart
 // can reconstruct it.
 func (p *httpRunner) Ref() string { return p.base }
 
-// ListProcesses / ProcessSnapshot let versed union a remote runner's processes into the
-// unified `process list`/`get` (implementing the same process.Lister a broker does). Each call
+// ListTasks / TaskSnapshot let versed union a remote runner's tasks into the
+// unified `task list`/`get` (implementing the same task.Lister a broker does). Each call
 // is bounded by a short timeout, so an unreachable remote fails fast rather than hanging the
-// list. The verse-facing contract already serves GET /processes and GET /processes/{id}, so
+// list. The verse-facing contract already serves GET /tasks and GET /tasks/{id}, so
 // this is a thin client.
 //
 // It returns an error because nil could not carry one. It used to report nil for a runner with
-// no processes, for one that answered 500, and for one that never answered at all — and the
+// no tasks, for one that answered 500, and for one that never answered at all — and the
 // comment here claimed the mirror covered the difference. It does not: versed reads the mirror
 // as a scope-membership FILTER over what the runner reported, not as a fallback source, so an
-// unreachable runner's processes were absent from the list and the response was a clean 200
+// unreachable runner's tasks were absent from the list and the response was a clean 200
 // that was simply short. The same shape as the discarded spawn status above, on the read plane
 // (git-issue 6mnmxj6mh12krz3ae1n0).
-func (p *httpRunner) ListProcesses() ([]process.Instance, error) {
+func (p *httpRunner) ListTasks() ([]task.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks", nil)
 	resp, err := p.cl.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", process.ErrUnreachable, p.base, err)
+		return nil, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, p.base, err)
 	}
 	defer resp.Body.Close()
-	// Not statusErr: that reads a status against ONE process, where 404 means the far side
+	// Not statusErr: that reads a status against ONE task, where 404 means the far side
 	// has never heard of that id. On the collection there is no id to be wrong about, so a
 	// 404 says the same thing 501 does — whatever is at this URL, it does not serve the
 	// verse-facing runner contract.
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented {
-		return nil, fmt.Errorf("%w: %s serves no process list", process.ErrUnsupported, p.base)
+		return nil, fmt.Errorf("%w: %s serves no task list", task.ErrUnsupported, p.base)
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
@@ -137,40 +137,40 @@ func (p *httpRunner) ListProcesses() ([]process.Instance, error) {
 		if detail == "" {
 			detail = resp.Status
 		}
-		return nil, fmt.Errorf("listing processes on %s: %s", p.base, detail)
+		return nil, fmt.Errorf("listing tasks on %s: %s", p.base, detail)
 	}
-	var out []process.Instance
+	var out []task.Instance
 	if err := decodeResp(resp, &out); err != nil {
 		// A body that does not decode is not an empty verse. Discarding this error is how a
 		// format drift on either end reads as a runner that has nothing running.
-		return nil, fmt.Errorf("%w: %s answered an undecodable process list: %w",
-			process.ErrUnsupported, p.base, err)
+		return nil, fmt.Errorf("%w: %s answered an undecodable task list: %w",
+			task.ErrUnsupported, p.base, err)
 	}
 	return out, nil
 }
 
 // The status was already read here, so a refusal never passed for an answer — but every way
 // of failing collapsed into the same `false`, which the caller could only report as "no such
-// process". A process on a runner that did not answer is not a process that does not exist,
-// and `process get` said it was (git-issue 6mnmxj6mh12krz3ae1n0).
-func (p *httpRunner) ProcessSnapshot(id string) (process.Instance, error) {
+// task". A task on a runner that did not answer is not a task that does not exist,
+// and `task get` said it was (git-issue 6mnmxj6mh12krz3ae1n0).
+func (p *httpRunner) TaskSnapshot(id string) (task.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/processes/"+id, nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks/"+id, nil)
 	resp, err := p.cl.Do(req)
 	if err != nil {
-		return process.Instance{}, fmt.Errorf("%w: %s: %w", process.ErrUnreachable, p.base, err)
+		return task.Instance{}, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, p.base, err)
 	}
 	defer resp.Body.Close()
 	// Here a 404 IS about the id — this path names one — so statusErr's reading is the right
-	// one, and ErrNoSuchProcess is what it yields.
+	// one, and ErrNoSuchTask is what it yields.
 	if err := statusErr(resp); err != nil {
-		return process.Instance{}, err
+		return task.Instance{}, err
 	}
-	var m process.Instance
+	var m task.Instance
 	if err := decodeResp(resp, &m); err != nil {
-		return process.Instance{}, fmt.Errorf("%w: %s answered an undecodable process: %w",
-			process.ErrUnsupported, p.base, err)
+		return task.Instance{}, fmt.Errorf("%w: %s answered an undecodable task: %w",
+			task.ErrUnsupported, p.base, err)
 	}
 	return m, nil
 }
@@ -185,8 +185,8 @@ type remoteHandle struct {
 }
 
 // Subscribe replays the whole retained window then streams live, so the mirror sees the
-// process from as far back as the remote still holds.
-func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
+// task from as far back as the remote still holds.
+func (h *remoteHandle) Subscribe() (<-chan task.Frame, func()) {
 	return h.SubscribeSince(0)
 }
 
@@ -194,9 +194,9 @@ func (h *remoteHandle) Subscribe() (<-chan process.Frame, func()) {
 // honour, carried over HTTP by handing the cursor to the remote's own `?since=` rather than
 // asking for everything and discarding — the remote is the one that knows what it still has,
 // and it is the one that can say EvGap when the cursor is below its window.
-func (h *remoteHandle) SubscribeSince(since int64) (<-chan process.Frame, func()) {
+func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
-	out := make(chan process.Frame, 256)
+	out := make(chan task.Frame, 256)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
 		h.url("/events?since="+strconv.FormatInt(since, 10)), nil)
 	resp, err := h.stream.Do(req)
@@ -207,7 +207,7 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan process.Frame, func()
 	}
 	// A rejected subscribe is not an empty one. Subscribe cannot return an error, and the
 	// reader below keeps only "data: " lines, so a 4xx/5xx body would scan to nothing and
-	// close the channel — leaving the mirror to conclude the remote process simply had
+	// close the channel — leaving the mirror to conclude the remote task simply had
 	// nothing to say. Report it on the plane the caller is already reading, the way a
 	// cancel does below.
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -217,9 +217,9 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan process.Frame, func()
 			msg = resp.Status
 		}
 		resp.Body.Close()
-		out <- process.Frame{
-			Kind: process.EvStatus,
-			Text: string(process.Failed),
+		out <- task.Frame{
+			Kind: task.EvStatus,
+			Text: string(task.Failed),
 			Err:  fmt.Sprintf("subscribe %s: %s", h.id, msg),
 		}
 		close(out)
@@ -246,7 +246,7 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan process.Frame, func()
 			if !ok {
 				continue // blank line / comment
 			}
-			var ev process.Frame
+			var ev task.Frame
 			if codec.Unmarshal([]byte(data), &ev, frameFmt) != nil {
 				continue
 			}
@@ -267,7 +267,7 @@ func (h *remoteHandle) Steer(instr, by string) error {
 	return h.post("/say", map[string]string{"instruction": instr, "by": by})
 }
 
-func (h *remoteHandle) SetVector(v *process.Vector, by string) error {
+func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
 	b, err := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.Tony)
 	if err != nil {
 		return err
@@ -279,19 +279,19 @@ func (h *remoteHandle) SetVector(v *process.Vector, by string) error {
 	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
 	resp, err := h.cl.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %s: %w", process.ErrUnreachable, h.id, err)
+		return fmt.Errorf("%w: %s: %w", task.ErrUnreachable, h.id, err)
 	}
 	defer resp.Body.Close()
 	return statusErr(resp)
 }
 
-// Resolve answers a gate the remote's process is blocked on, and reports whether the answer
-// landed. It is what makes a remote-hosted process answerable at all: without it, this handle
+// Resolve answers a gate the remote's task is blocked on, and reports whether the answer
+// landed. It is what makes a remote-hosted task answerable at all: without it, this handle
 // is not a gateResolver, and every route into it fails with a message about the question
 // rather than about the runner.
 //
 // It speaks api.Resolve — the vocabulary every other answering surface uses — rather than the
-// runtime's older {decisionId, proceed}. processd accepts both, so an old runner on the other
+// runtime's older {decisionId, proceed}. taskd accepts both, so an old runner on the other
 // end still understands this.
 //
 // The bool is the point, and it is why this cannot go through post(): an answer that did not
@@ -307,19 +307,19 @@ func (h *remoteHandle) Resolve(decision string, proceed bool, say, by string) er
 	}
 	resp, err := h.cl.Post(h.url("/resolve"), codec.MediaType(codec.Tony), bytes.NewReader(b))
 	if err != nil {
-		return fmt.Errorf("%w: %s: %w", process.ErrUnreachable, h.id, err)
+		return fmt.Errorf("%w: %s: %w", task.ErrUnreachable, h.id, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		// A remote 404 on a resolve is about the DECISION, not the process: the request
-		// reached a runtime that hosts this process and it did not recognise the id.
+		// A remote 404 on a resolve is about the DECISION, not the task: the request
+		// reached a runtime that hosts this task and it did not recognise the id.
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return fmt.Errorf("%w: %s", process.ErrNoSuchDecision, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("%w: %s", task.ErrNoSuchDecision, strings.TrimSpace(string(msg)))
 	}
 	return statusErr(resp)
 }
 
-// Err reads the terminal failure detail off the snapshot — the remote's process.Instance
+// Err reads the terminal failure detail off the snapshot — the remote's task.Instance
 // already carries it, so this is the same read as Result against a different field.
 func (h *remoteHandle) Err() string {
 	resp, err := h.cl.Get(h.url(""))
@@ -348,7 +348,7 @@ func (h *remoteHandle) Result() string {
 	return snap.Result
 }
 
-func (h *remoteHandle) url(suffix string) string { return h.base + "/processes/" + h.id + suffix }
+func (h *remoteHandle) url(suffix string) string { return h.base + "/tasks/" + h.id + suffix }
 
 // decodeResp reads a response in the format it DECLARES.
 //
@@ -384,7 +384,7 @@ func (h *remoteHandle) post(path string, body any) error {
 	if err != nil {
 		// Nothing is known about whether the far side acted. That is the whole content of
 		// ErrUnreachable, and it is the only one of the three outcomes worth retrying.
-		return fmt.Errorf("%w: %s%s: %w", process.ErrUnreachable, h.id, path, err)
+		return fmt.Errorf("%w: %s%s: %w", task.ErrUnreachable, h.id, path, err)
 	}
 	defer resp.Body.Close()
 	return statusErr(resp)
@@ -404,19 +404,19 @@ func statusErr(resp *http.Response) error {
 	}
 	switch resp.StatusCode {
 	case http.StatusNotFound:
-		return fmt.Errorf("%w: %s", process.ErrNoSuchProcess, detail)
+		return fmt.Errorf("%w: %s", task.ErrNoSuchTask, detail)
 	case http.StatusConflict:
-		return fmt.Errorf("%w: %s", process.ErrAlreadyAnswered, detail)
+		return fmt.Errorf("%w: %s", task.ErrAlreadyAnswered, detail)
 	case http.StatusNotImplemented:
-		return fmt.Errorf("%w: %s", process.ErrUnsupported, detail)
+		return fmt.Errorf("%w: %s", task.ErrUnsupported, detail)
 	}
 	return errors.New(detail)
 }
 
 var (
-	_ process.Runner = (*httpRunner)(nil)
-	_ process.Handle = (*remoteHandle)(nil)
+	_ task.Runner = (*httpRunner)(nil)
+	_ task.Handle = (*remoteHandle)(nil)
 	// Asserted here so a change to Lister is a compile error in this file rather than a
 	// type assertion that quietly starts reporting false in versed.
-	_ process.Lister = (*httpRunner)(nil)
+	_ task.Lister = (*httpRunner)(nil)
 )

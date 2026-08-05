@@ -1,18 +1,18 @@
 // Package launch is the wire form of an action: a declarative, serializable
-// description of a process to launch when a trigger fires — the "action as data",
+// description of a task to launch when a trigger fires — the "action as data",
 // not a Go closure. This is what lets an action take the deployment shape: a Spec
-// can cross a network to a process runtime (processd), be persisted, or be
-// reflected as an entity (triggers-as-data). Nothing here depends on the process
+// can cross a network to a task runtime (taskd), be persisted, or be
+// reflected as an entity (triggers-as-data). Nothing here depends on the task
 // substrate; it is pure data + binding.
 //
 // Every field is a *reference* to something named elsewhere (a vector, a grant, an
 // environment) rather than the thing inlined — the same index-not-warehouse
 // discipline as the rest of the verse: the spec points at native semantics; the
-// runtime that builds the process resolves the references against its own
-// registries. It maps onto the process substrate's axes:
+// runtime that builds the task resolves the references against its own
+// registries. It maps onto the task substrate's axes:
 //
-//	Driver      → which runtime/Driver builds the process (LLM harness, scripted, …)
-//	Task        → the prompt/task the driver is seeded with
+//	Driver      → which runtime/Driver builds the task (LLM harness, scripted, …)
+//	Prompt        → the prompt/task the driver is seeded with
 //	Vector      → the gate vector (the autonomy dial) — soft, slidable
 //	Resolver    → how ASK gates are answered (human/auto/scm/…)
 //	Grant       → hard authority — what it may do at all
@@ -21,7 +21,7 @@
 // The authority axis is the GRANT, not the "scope": "scope" is taken everywhere else in
 // verse for the entity-store isolation overlay (entity.Store.Scope, config.Scope, --scope,
 // VERSE_SCOPE, connect's nonce), and this field is the one place it meant authority. The
-// word the type (process.Grant) and the delegation check (Grant.Subset) already use is the
+// word the type (task.Grant) and the delegation check (Grant.Subset) already use is the
 // right one. See docs/roadmap/expose.md.
 package launch
 
@@ -42,11 +42,11 @@ import (
 //tony:schemagen=verse-launch-spec,notag
 type Spec struct {
 	Driver string `tony:"field=driver,omitzero"`
-	Task   string `tony:"field=task,omitzero"`
-	// Frame is the standing instructions the Task is read in — the agent's system prompt.
+	Prompt string `tony:"field=prompt,omitzero"`
+	// Frame is the standing instructions the Prompt is read in — the agent's system prompt.
 	//
-	// It is INLINE, alongside Task, rather than a reference like the axes below, and the
-	// cut is request-versus-governance rather than an exception to the discipline: Task
+	// It is INLINE, alongside Prompt, rather than a reference like the axes below, and the
+	// cut is request-versus-governance rather than an exception to the discipline: Prompt
 	// and Frame are both text the authoring party wrote for this spawn, while Vector,
 	// Grant, Resolver and Environment name semantics the runtime holds. A frame is not a
 	// permission — a model may ignore every word of it — so making it a reference would
@@ -73,7 +73,7 @@ type Spec struct {
 	// thing without the wrapper). nil = no contract, and the run ends wherever the model
 	// stops.
 	//
-	// It is inline alongside Frame and Task rather than a name to resolve, for the reason
+	// It is inline alongside Frame and Prompt rather than a name to resolve, for the reason
 	// Frame gives: it is written by the authoring party for this spawn, and only the charter
 	// that derefs `$data.severity` knows what shape it needs.
 	//
@@ -87,23 +87,23 @@ type Spec struct {
 	//
 	// Unlike Frame it is not advice. A frame can ask for a shape and be ignored — that is
 	// exactly what was observed, three firings out of three — while a contract is checked
-	// when the model stops, fed back when it fails, and fails the process when it cannot be
+	// when the model stops, fed back when it fails, and fails the task when it cannot be
 	// met. That last part is what makes the deref downstream total: `patch: {class:
-	// $data.class}` can no longer fail at patch time, because a process that could not
+	// $data.class}` can no longer fail at patch time, because a task that could not
 	// produce `class` did not succeed.
 	Answer *ir.Node `tony:"field=answer,omitzero"`
-	// Retain is how many events of this process's read plane are kept for a reader that
+	// Retain is how many events of this task's read plane are kept for a reader that
 	// resumes — the window a `?since=` below which gets a resync marker instead of the
 	// story. In events, 0 = the runtime's default.
 	//
 	// It is per-spawn because the right number is a property of the WORK and nothing else
-	// knows it. A process that narrates every token and one that reports four boundaries an
+	// knows it. A task that narrates every token and one that reports four boundaries an
 	// hour want windows two orders of magnitude apart, and a package-level constant is
 	// wrong for both. The charter that spawns it is the party that knows which it is — the
 	// same argument Frame makes, applied to how much of the past is worth keeping.
 	//
 	// It bounds memory, so it is a cost the author is choosing: a long window on a chatty
-	// process is paid for in bytes per live process, and the default is deliberately modest
+	// task is paid for in bytes per live task, and the default is deliberately modest
 	// rather than generous.
 	Retain      int    `tony:"field=retain,omitzero"`
 	Vector      string `tony:"field=vector,omitzero"`
@@ -122,14 +122,14 @@ type Spec struct {
 	// else — see versed.runnerFor.
 	Runner string `tony:"field=runner,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The
-	// engine tracks a flow's processes by subject so it can be steered/cancelled as
+	// engine tracks a flow's tasks by subject so it can be steered/cancelled as
 	// a unit. Usually the concrete matched ref, not a template.
 	Subject string `tony:"field=subject,omitzero"`
 	// Chain is the kpath of the ACTION that spawned this, inside its trigger: "review" for
 	// the trigger's own spawn, "review.onDone" for its completion hook. Engine-owned like
 	// Subject — a charter that writes it is overwritten — and carried here only because the
-	// Spawner is what calls mirror.Reflect, which owns the process entity's payload. It is
-	// what lets a process say where in its trigger's action tree it came from.
+	// Spawner is what calls mirror.Reflect, which owns the task entity's payload. It is
+	// what lets a task say where in its trigger's action tree it came from.
 	Chain string `tony:"field=chain,omitzero"`
 	// Doer is WHO the selection picked: the winning provider's entity ref
 	// ("provider:treat:fixer"), or the bare name for an inline `eligible` list, which names no
@@ -138,7 +138,7 @@ type Spec struct {
 	//
 	// It is separate from Driver because the driver stopped identifying the doer. Two doers
 	// that differ in frame, tools and grant while sharing `driver: llm` is the case a
-	// Fragment exists to serve, so a process entity showing only the driver would report two
+	// Fragment exists to serve, so a task entity showing only the driver would report two
 	// quite different spawns as the same work by the same agent.
 	Doer string `tony:"field=doer,omitzero"`
 	// Provider, when set, makes the who-axis a GOVERNED SELECTION rather than a fixed
@@ -198,7 +198,7 @@ type Binding map[string]string
 func (s Spec) Bind(b Binding) Spec {
 	out := Spec{
 		Driver:      expand(s.Driver, b),
-		Task:        expand(s.Task, b),
+		Prompt:      expand(s.Prompt, b),
 		Frame:       expand(s.Frame, b),
 		Vector:      expand(s.Vector, b),
 		Resolver:    expand(s.Resolver, b),

@@ -22,12 +22,12 @@ define:
   environment: .[string]
   frame: .[string]
   grant: .[string]
+  prompt: .[string]
   provider: .[nullable(verse-launch-provider)]
   resolver: .[string]
   retain: .[int]
   runner: .[string]
   subject: .[string]
-  task: .[string]
   tools: .[array(string)]
   vector: .[string]
 signature:

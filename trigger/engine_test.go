@@ -8,13 +8,13 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 type denyResolver struct{}
 
-func (denyResolver) Resolve(context.Context, process.GateQuestion, process.ToolUse) (process.Resolution, error) {
-	return process.Resolution{Proceed: false, By: "deny"}, nil
+func (denyResolver) Resolve(context.Context, task.GateQuestion, task.ToolUse) (task.Resolution, error) {
+	return task.Resolution{Proceed: false, By: "deny"}, nil
 }
 
 // A DENIED FIRING IS NOT A FIRING. Five denied gates leave the counter at zero: what the
@@ -63,7 +63,7 @@ func waitStage(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 }
 
 // setStage is an action that advances the subject's stage — standing in for "a
-// process did its work and reported back" without needing a real driver.
+// task did its work and reported back" without needing a real driver.
 func setStage(stage string) Action {
 	return Action{Patch: entity.Obj{"stage": stage}.Payload()}
 }
@@ -73,7 +73,7 @@ func setStage(stage string) Action {
 // then stops because nothing matches "deployed". No path was authored.
 func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
+	eng := New(store, task.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -104,7 +104,7 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 
 // A trigger is reached only by commits touching what it READS — its cause, its condition and
 // its subject. That is what the ignition guard used to approximate: the engine's own
-// machinery (reflected process:* state, the durable trigger:* charter) was excluded from a
+// machinery (reflected task:* state, the durable trigger:* charter) was excluded from a
 // default match set, so a trigger had to opt in by naming it, and the loop could not ignite on
 // itself.
 //
@@ -113,7 +113,7 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 // machinery system IS the opt-in — there is no default set left to exclude anything from.
 func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "greedy",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "x"}},
@@ -126,11 +126,11 @@ func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// A process:* change is not in anything this trigger reads, so it never reaches it.
-	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
+	// A task:* change is not in anything this trigger reads, so it never reaches it.
+	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
-		t.Fatalf("fired on a process:* change it does not read (fired=%d)", f)
+		t.Fatalf("fired on a task:* change it does not read (fired=%d)", f)
 	}
 
 	// A change to what it does read wakes it.
@@ -157,7 +157,7 @@ func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 // larger number: it hangs, which is the honest failure.
 func TestRunawayOscillationIsStoppedByTheThrottle(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	// Refuse rather than pace. Under the default pace this would also settle at 3 within the
 	// window below, but for the wrong reason — the fourth firing merely not released yet — and
 	// a test that cannot tell "stopped" from "not yet" is not asserting what it says.
@@ -197,7 +197,7 @@ func TestRunawayOscillationIsStoppedByTheThrottle(t *testing.T) {
 // `>` and not `>=`, a distinction this shape is exactly what caught).
 func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "spin",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop"}}, // any change re-matches

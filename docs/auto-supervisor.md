@@ -21,10 +21,10 @@ the first thing to get right:
 
 | | what it decides | who writes it |
 |---|---|---|
-| `process.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running process proceeds | Go, per runtime — a spawn's `resolver` field is [declared and unread](roadmap/authority.md) |
+| `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go, per runtime — a spawn's `resolver` field is [declared and unread](roadmap/authority.md) |
 | the supervisor here | whether *a firing* proceeds — the charter-level question a gate would put to a person | a charter rule, installable over the wire |
 
-The first is the inside of a process: `write_file` on a path, a `call_agent`, a `run_bash`.
+The first is the inside of a task: `write_file` on a path, a `call_agent`, a `run_bash`.
 The second is the outside: this change, landing. An automatic supervisor of the second kind
 needs no new machinery, because a charter can already spawn an agent, enforce the shape of
 its answer, patch that answer onto the subject as an ordinary fact, and route on it. That is
@@ -44,7 +44,7 @@ verse trigger add -f - <<'TONY'
     patch: { stage: assessing }
     spawn:
       driver: llm
-      task:  "Assess $subject for landing. Read the change and the tests it touches."
+      prompt:  "Assess $subject for landing. Read the change and the tests it touches."
       frame: |
         You are a review supervisor. Decide what is yours to decide and promote what is
         not: answer `escalate` whenever a person should look at this, `reject` when it
@@ -165,7 +165,7 @@ review:
 ```
 
 The same route covers the crudest failure of all: with no model credentials configured,
-`verse up` builds an `llm` spawn as a process that fails at once (`llm driver unavailable:
+`verse up` builds an `llm` spawn as a task that fails at once (`llm driver unavailable:
 set llm.apiKey …`), so a charter installed on a verse with no key routes *every* change to a
 person. Both are worth trying on purpose. A supervisor that goes wrong should fail toward the
 human, and that is a property of where `onFailed` points, not of the agent behaving well.
@@ -235,18 +235,18 @@ decision re-reached is the same question rather than a second one.
 
 With credentials, `verse entity put change:pr:9 '{stage: proposed, tests: green}'` runs the
 real thing: `verse flows` shows the assessment in flight, `verse entity get
-process:instance:assess@change:pr:9` shows what the supervisor read and said, and the change
+task:instance:assess@change:pr:9` shows what the supervisor read and said, and the change
 ends `landed`, `closed`, or waiting at a gate.
 
 ## Where this stops
 
-- **Silence has no clock — for THIS shape.** A supervisor process that never terminates leaves
+- **Silence has no clock — for THIS shape.** A supervisor task that never terminates leaves
   its change at `stage: assessing` forever. `onFailed` covers failing; it does not cover
   hanging. The clocks nearby still do not fit: a gate's `!deadline` guards a firing that has not
   happened, and a goal's `deadline` is per goal, not per firing. Promote-on-silence wants a
   deadline on a spawn, and there isn't one. A [resolver](attached-resolvers.md) that owns a gate
   does have one — `deadline: {within, then}`, and silence past it escalates to the layer above —
-  but that is a clock on an unanswered QUESTION, not on a process that stopped reporting.
+  but that is a clock on an unanswered QUESTION, not on a task that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor
   wrote it, which is weaker than what the *whether* axis already gives a human: a `!quorum`
   gate keeps an attributable, retractable ballot per voter ([§6 of the

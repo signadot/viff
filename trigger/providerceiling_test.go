@@ -22,7 +22,7 @@ func TestSpawnWithProviderRequiresAGrant(t *testing.T) {
 			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
 			Spawn: &launch.Spec{
-				Task:     "treat $subject",
+				Prompt:   "treat $subject",
 				Provider: &launch.Provider{Capability: "treat", Select: "auto"},
 			},
 			OnDone: &Action{Patch: entity.Obj{"stage": "treated"}.Payload()},
@@ -47,7 +47,7 @@ func TestSpawnWithProviderRequiresAGrant(t *testing.T) {
 // The ceiling matrix over the whole grant vocabulary: which doer grants may run under which
 // spawn grant. It is a table rather than a couple of cases because `Grant.Subset` is
 // deliberately sound-but-incomplete (predicate-for-predicate identity, or a wildcard parent —
-// process/action.go), and what that costs depends entirely on how the named grants are built.
+// task/action.go), and what that costs depends entirely on how the named grants are built.
 //
 // Today it costs nothing: namedGrants composes read-only and no-delegate out of the SAME
 // per-verb atoms, so identity finds the real subset relations and every cell below is the
@@ -120,7 +120,7 @@ func TestUnknownDoerGrantIsIneligible(t *testing.T) {
 // The fields a provider may not set are refused, not ignored. `vector` is the sharp one: it
 // can take every action boundary off the docket without touching authority, so a doer that
 // sets it is a doer running under supervision nobody chose. Ignoring it would leave a
-// provider entity whose text says one thing and whose process does another.
+// provider entity whose text says one thing and whose task does another.
 func TestProviderSettingAnUnhonoredFieldIsIneligible(t *testing.T) {
 	for _, field := range unhonoredProviderFields {
 		t.Run(field, func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestBallotOffersOnlySeatableDoers(t *testing.T) {
 }
 
 // A doer that carries no grant of its own inherits the spawn's, rather than running
-// un-enveloped. Absent is not empty on this axis — process.NamedGrant returns an ok for
+// un-enveloped. Absent is not empty on this axis — task.NamedGrant returns an ok for
 // exactly this reason — and a doer that only narrows tools must keep the authority the
 // charter gave it.
 func TestDoerWithoutGrantInheritsTheSpawns(t *testing.T) {

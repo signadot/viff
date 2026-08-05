@@ -500,7 +500,7 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 // A clean shutdown is not a failure, and must not be recorded as one.
 //
 // Cancelling a reflector fails the pass in flight with context.Canceled. Written down, that
-// would outlive the process: every source would come back from a clean stop carrying it as
+// would outlive the task: every source would come back from a clean stop carrying it as
 // lastError, and an operator reading the listing after a restart would see a verse full of
 // broken sources that are all fine.
 func TestACleanShutdownIsNotRecordedAsAFailure(t *testing.T) {

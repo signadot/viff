@@ -153,15 +153,15 @@ func (t Trigger) touches(c entity.Commit) bool {
 	return false
 }
 
-// working reports whether this trigger already has a live process about this subject.
+// working reports whether this trigger already has a live task about this subject.
 //
 // It completes the firing guard, which is otherwise too short-lived: claimFlight is held for
 // the duration of the firing FUNCTION, but a firing that spawns hands off work that outlives
-// it — the function returns as soon as the process starts. Every commit meanwhile re-selects
-// the subject, because the write that would release it is what the process has not finished
+// it — the function returns as soon as the task starts. Every commit meanwhile re-selects
+// the subject, because the write that would release it is what the task has not finished
 // doing yet.
 //
-// Nothing new is prevented by this: spawnHooked already refuses to start a second process
+// Nothing new is prevented by this: spawnHooked already refuses to start a second task
 // under an id that is live, and the id is a pure function of (chain, subject). What changes is
 // WHEN the refusal happens — before the gates rather than after them, so a firing for work
 // already under way does not put a question on the docket, spend budget, or re-apply a patch

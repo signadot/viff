@@ -33,7 +33,7 @@ DERIVE_STRATA=(shapes-source shapes-derived)
 
 describe() {
 	case "$1" in
-	patch) echo "condition + patch. No process at all: a rule can be pure state." ;;
+	patch) echo "condition + patch. No task at all: a rule can be pure state." ;;
 	latch) echo "spawn + onDone. The shape that settles — the action advances the subject out of its own selection." ;;
 	ask) echo "one ask gate. The firing waits for a person (verse gates)." ;;
 	seq) echo "seq of two steps, with an onFailed off-ramp. The depth axis." ;;
@@ -64,7 +64,7 @@ shape_tony() {
 			    subject: { system: demo, kind: latch, value: { stage: open } }
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 2" }
+			    spawn:  { driver: scripted, prompt: "echo reviewing $subject; sleep 2" }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -77,7 +77,7 @@ shape_tony() {
 			  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 2" }
+			    spawn:  { driver: scripted, prompt: "echo reviewing $subject; sleep 2" }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -88,8 +88,8 @@ shape_tony() {
 			    subject: { system: demo, kind: seq, value: { stage: ready } }
 			  action:
 			    seq:
-			    - spawn: { driver: scripted, task: "echo lint $subject" }
-			    - spawn:    { driver: scripted, task: "echo test $subject" }
+			    - spawn: { driver: scripted, prompt: "echo lint $subject" }
+			    - spawn:    { driver: scripted, prompt: "echo test $subject" }
 			      onFailed: { patch: { stage: broken } }
 			    onDone:
 			      patch: { stage: built }

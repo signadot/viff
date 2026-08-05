@@ -34,9 +34,9 @@ func TestOverlayPerField(t *testing.T) {
 		want: Spec{Grant: "no-delegate", Tools: []string{"read_file"}},
 	}, {
 		name: "the task is never the doer's to write",
-		spec: Spec{Task: "review $subject", Driver: "llm"},
+		spec: Spec{Prompt: "review $subject", Driver: "llm"},
 		frag: Fragment{Driver: "scripted"},
-		want: Spec{Task: "review $subject", Driver: "scripted"},
+		want: Spec{Prompt: "review $subject", Driver: "scripted"},
 	}, {
 		name: "spawn offers all, doer narrows",
 		spec: Spec{},

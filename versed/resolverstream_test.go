@@ -12,8 +12,8 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/resolver"
+	"github.com/signadot/verse/task"
 )
 
 // A service dials in, reads the run, and answers — which is the whole of what a resolver does.
@@ -46,11 +46,11 @@ func TestAResolverReadsARunAndAnswersIt(t *testing.T) {
 		if !ok {
 			continue
 		}
-		var f process.Frame
+		var f task.Frame
 		if codec.Unmarshal([]byte(data), &f, codec.Tony) != nil {
 			continue
 		}
-		if f.Kind == process.EvPending {
+		if f.Kind == task.EvPending {
 			asked = f.ID
 			break
 		}
@@ -141,7 +141,7 @@ func TestAResolverReportsItsPosition(t *testing.T) {
 	if got["notes"] == nil {
 		t.Fatalf("the handover was dropped: %+v", got)
 	}
-	// And nothing about it reached the process's stream: what was WATCHED is not what was
+	// And nothing about it reached the task's stream: what was WATCHED is not what was
 	// decided, and only one of the two is the run's business.
 	if q := question(t, srv, waitQuestion(t, srv, "watched")); q["status"] != mirror.QuestionPending {
 		t.Fatalf("reporting a position settled a question: %+v", q)

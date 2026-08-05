@@ -21,7 +21,7 @@ import (
 // first ⇒ unachievable. status is the live Monitor fluent (retractable); the latches are
 // monotonic events (a downstream trigger reacting to "the goal was reached" never thrashes).
 //
-// A goal is a flow with a destination: its owned triggers spawn processes tracked as
+// A goal is a flow with a destination: its owned triggers spawn tasks tracked as
 // flow(s), so goal steering reuses PauseFlow/ResumeFlow/CancelFlow/SteerFlow keyed by the
 // goal's subject — no new steering path.
 
@@ -444,7 +444,7 @@ func waitingLabels(reqs []*Requirement) []string {
 // keyed by the goal's subject. ---
 
 // PauseGoal / ResumeGoal / CancelGoal / SteerGoal steer a goal's in-flight work by delegating
-// to the flow keyed by the goal's subject. Report how many processes were signalled (0 if the
+// to the flow keyed by the goal's subject. Report how many tasks were signalled (0 if the
 // goal has no subject or no in-flight work).
 func (e *Engine) PauseGoal(name string) int  { return e.onGoalFlow(name, e.PauseFlow) }
 func (e *Engine) ResumeGoal(name string) int { return e.onGoalFlow(name, e.ResumeFlow) }

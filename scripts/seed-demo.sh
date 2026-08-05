@@ -83,7 +83,7 @@ if $clean; then
 	ok "removed the seeded triggers"
 	for e in "${ENTITIES[@]}"; do v entity rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
-	printf '\nseeded state is gone. Live processes and answered gates are not touched.\n'
+	printf '\nseeded state is gone. Live tasks and answered gates are not touched.\n'
 	exit 0
 fi
 
@@ -102,7 +102,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
   - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
     patch: { stage: reviewing }
-    spawn: { driver: scripted, task: "echo reviewing $subject; sleep 45" }
+    spawn: { driver: scripted, prompt: "echo reviewing $subject; sleep 45" }
     onDone:
       patch: { stage: reviewed }
 
@@ -163,10 +163,10 @@ seeded. What to type next:
   $BIN$scope_note triggers                     the charter you just installed
   $BIN$scope_note gates                        the decision demo-review is holding
   $BIN$scope_note gate approve ${GID:-<id>} --as you
-                                        …and it spawns a 45s review process:
+                                        …and it spawns a 45s review task:
   $BIN$scope_note flows                        the subjects with live work
   $BIN$scope_note flow show demo:pr:1          what is happening to this one, and what comes next
-  $BIN$scope_note processes                    the review process itself
+  $BIN$scope_note tasks                    the review task itself
 
 Watch it move (another terminal, before approving):
 

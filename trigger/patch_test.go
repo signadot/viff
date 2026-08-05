@@ -10,13 +10,13 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // patchEngine is a started engine over a store, for the write-path tests.
 func patchEngine(t *testing.T, store *entity.LogdStore) *Engine {
 	t.Helper()
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	eng.Start(ctx)
@@ -123,14 +123,14 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 	waitField(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "stage", "noted")
 }
 
-// A failing patch must fail the FIRING, not just the write. Spawning a process about a state
-// the trigger failed to establish is worse than not firing: the process runs against a verse
+// A failing patch must fail the FIRING, not just the write. Spawning a task about a state
+// the trigger failed to establish is worse than not firing: the task runs against a verse
 // that never got the transition it was started for.
 func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	spawned := make(chan string, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		spawned <- id
 		return nil
 	})
@@ -149,7 +149,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: bad,
-			Spawn: &launch.Spec{Task: "must not run"},
+			Spawn: &launch.Spec{Prompt: "must not run"},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

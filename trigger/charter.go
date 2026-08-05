@@ -5,7 +5,7 @@ package trigger
 // carrying its definition on its own record — see goal.go's LoadGoals.
 //
 // Before this, a charter lived only in the engine's memory. Everything else a restart needs
-// was already durable — a process is mirrored, a sequence's position is a fact on its
+// was already durable — a task is mirrored, a sequence's position is a fact on its
 // subject, a claim is a lease in the store, and resume rehydrates a chain's hooks from it —
 // so the one thing that did not survive was the program itself. A verse came back up with
 // its work in progress intact and nothing left to react to it.

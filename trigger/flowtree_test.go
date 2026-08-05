@@ -7,15 +7,15 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // treeEngine is the onhook harness plus a mirrored task, which is what a tree renders.
 func treeEngine(t *testing.T, store *entity.LogdStore) *Engine {
 	t.Helper()
-	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		return startHookProc(store, id, spec)
+	eng := New(store, task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		return startHookTask(store, id, spec)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -62,12 +62,12 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{
 				Patch:    entity.Obj{"stage": "reviewed"}.Payload(),
-				Spawn:    &launch.Spec{Task: "merge $subject"},
+				Spawn:    &launch.Spec{Prompt: "merge $subject"},
 				OnDone:   &Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
-				OnFailed: &Action{Spawn: &launch.Spec{Task: "escalate $subject"}},
+				OnFailed: &Action{Spawn: &launch.Spec{Prompt: "escalate $subject"}},
 			},
 		},
 	}); err != nil {
@@ -88,13 +88,13 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		if !ok {
 			t.Fatalf("node %q missing from tree %+v", chain, tree.Roots)
 		}
-		if n.Status != string(process.Done) {
+		if n.Status != string(task.Done) {
 			t.Errorf("node %q status = %q; want done", chain, n.Status)
 		}
 		if n.ID != chain+ChainSep+"demo:pr:1" {
 			t.Errorf("node %q id = %q; want %q", chain, n.ID, chain+ChainSep+"demo:pr:1")
 		}
-		if n.Task == "" {
+		if n.Prompt == "" {
 			t.Errorf("node %q has no task", chain)
 		}
 	}
@@ -109,13 +109,13 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		t.Errorf("onFailed branch status = %q; want %q (its parent completed)", esc.Status, StatusSkipped)
 	}
 	if esc.ID != "" {
-		t.Errorf("unrun branch carries a process id %q", esc.ID)
+		t.Errorf("unrun branch carries a task id %q", esc.ID)
 	}
-	if esc.Task != "escalate $subject" {
-		t.Errorf("unrun branch task = %q; want the charter's declared (unbound) task", esc.Task)
+	if esc.Prompt != "escalate $subject" {
+		t.Errorf("unrun branch task = %q; want the charter's declared (unbound) task", esc.Prompt)
 	}
 	// A set-only hook still appears — a node is a position in the charter, not only a spawn.
-	// It spawned no process, so nothing observes it directly; its parent ended on exactly
+	// It spawned no task, so nothing observes it directly; its parent ended on exactly
 	// the status it answers to, so it fired, and saying "pending" would be plainly wrong.
 	set, ok := find(tree.Roots, "review.onDone.onDone")
 	if !ok {
@@ -140,8 +140,8 @@ func TestFlowTreeSeqCarrierHooks(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Task: "lint $subject"}},
-				{Spawn: &launch.Spec{Task: "test $subject"},
+				{Spawn: &launch.Spec{Prompt: "lint $subject"}},
+				{Spawn: &launch.Spec{Prompt: "test $subject"},
 					OnFailed: &Action{Patch: entity.Obj{"stage": "broken"}.Payload()}},
 			},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "built"}.Payload()},
@@ -180,21 +180,21 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	eng := treeEngine(t, store)
 
 	// A gate the test never resolves would be one way to hold it; simpler and race-free:
-	// mirror a running process by hand, exactly as a Spawner would, and read the tree.
+	// mirror a running task by hand, exactly as a Spawner would, and read the tree.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("never")},
 		Action: Action{
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{
-				Spawn: &launch.Spec{Task: "merge $subject"},
+				Spawn: &launch.Spec{Prompt: "merge $subject"},
 				Patch: entity.Obj{"stage": "merging"}.Payload(),
 			},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:2"},
+	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "review@demo:pr:2"},
 		entity.Obj{"status": "running", "flow": "demo:pr:2", "chain": "review", "trigger": "review"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:2")
@@ -211,31 +211,31 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	}
 }
 
-// A process with no trigger behind it (a bare `verse process run`) is still part of the
+// A task with no trigger behind it (a bare `verse task run`) is still part of the
 // subject's flow. It has no charter position, so it is a root of its own rather than being
 // dropped — a tree that silently omits work is worse than one with a bare node in it.
-func TestFlowTreeIncludesChainlessProcesses(t *testing.T) {
+func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "run-abc"},
-		entity.Obj{"status": "running", "flow": "demo:pr:3", "task": "poke at it"}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "run-abc"},
+		entity.Obj{"status": "running", "flow": "demo:pr:3", "prompt": "poke at it"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:3")
 	if len(tree.Roots) != 1 {
 		t.Fatalf("want one root; got %+v", tree.Roots)
 	}
 	n := tree.Roots[0]
-	if n.Kind != "process" || n.ID != "run-abc" || n.Chain != "" {
-		t.Errorf("chainless process rendered as %+v; want kind=process id=run-abc chain=\"\"", n)
+	if n.Kind != "task" || n.ID != "run-abc" || n.Chain != "" {
+		t.Errorf("chainless task rendered as %+v; want kind=task id=run-abc chain=\"\"", n)
 	}
 }
 
-// History outlives the charter: a trigger removed after its processes ran leaves a tree
+// History outlives the charter: a trigger removed after its tasks ran leaves a tree
 // that still shows what happened, with no shape to extend it by.
 func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "gone@demo:pr:4"},
+	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "gone@demo:pr:4"},
 		entity.Obj{"status": "done", "flow": "demo:pr:4", "chain": "gone", "trigger": "gone"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:4")
@@ -244,7 +244,7 @@ func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 		t.Fatalf("history lost when the trigger was gone: %+v", tree.Roots)
 	}
 	if n.Status != "done" || len(n.Children) != 0 {
-		t.Errorf("node = %+v; want the run process with no declared children", n)
+		t.Errorf("node = %+v; want the run task with no declared children", n)
 	}
 }
 
@@ -254,7 +254,7 @@ func TestFlowTreeAddressing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 	for _, id := range []string{"1", "2"} {
-		entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "review@demo:pr:" + id},
+		entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "review@demo:pr:" + id},
 			entity.Obj{"status": "done", "flow": "demo:pr:" + id, "chain": "review", "trigger": "review"}.Payload())
 	}
 	m, _ := ParseExpr("demo:pr:*")

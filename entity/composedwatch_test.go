@@ -13,7 +13,7 @@ import (
 	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
 )
 
-// These tests pin the reason MountRoot exists: a mount is process-driven, so it has no
+// These tests pin the reason MountRoot exists: a mount is task-driven, so it has no
 // history, and a history-bearing watch must never span one.
 //
 // LogdStore watches its root kpath and serves Since with a native FromCommit replay watch
@@ -229,7 +229,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 //
 // If this test starts failing, docd has likely grown FromCommit support for composed
 // watches; MountRoot would then no longer be required for THIS reason (the writer-priority
-// stall and "a process has no history" would still argue for it).
+// stall and "a task has no history" would still argue for it).
 func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
 	// NOT RUN BY DEFAULT — set GOTEST_LONG=1 to run it.
 	//
@@ -275,7 +275,7 @@ func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
 docd may have grown FromCommit support for composed watches. Re-read
 docd/server/watch.go:106,126 — if composition now honors FromCommit, MountRoot is no
 longer needed to keep Since working (though a mount below a watched root still costs
-the MountForceAfter stall, and a process-driven mount still has no history to replay).`,
+the MountForceAfter stall, and a task-driven mount still has no history to replay).`,
 			refB, ok, len(evs), elapsed)
 	}
 	t.Logf("confirmed: a mount below the watched root makes Since under-deliver silently "+

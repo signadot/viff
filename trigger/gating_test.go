@@ -6,7 +6,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 func rule(t *testing.T, doc string) Trigger {
@@ -68,7 +68,7 @@ func TestGatesWrittenTwiceAreRefused(t *testing.T) {
 		gating: {gates: [{name: new, mode: ask}]},
 		action: {patch: {stage: validated}},
 	}`)
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	err := eng.AddTrigger(trig)
 	if err == nil || !strings.Contains(err.Error(), "written twice") {
 		t.Fatalf("AddTrigger = %v, want a refusal naming both spellings", err)

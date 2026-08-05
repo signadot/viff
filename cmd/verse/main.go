@@ -189,7 +189,7 @@ func rootCmd() *cli.Command {
 			watchCmd(),
 			gatesCmd(), gateCmd(),
 			entitiesCmd(), entityCmd(),
-			processesCmd(), processCmd(),
+			tasksCmd(), taskCmd(),
 			flowsCmd(), flowCmd(),
 			triggersCmd(), triggerCmd(),
 			resolversCmd(), resolverCmd(),

@@ -9,7 +9,7 @@
 // WHAT IT REFLECTS is an index, not a warehouse: the channels the bot is in, a bounded tip
 // window of each one's messages, and the workspace's people. What an SDLC flow reacts to is
 // "somebody said this in #incidents", "the deploy thread got a ✅", "a channel was archived" —
-// not every byte the workspace has ever held. A process that needs the rest follows the
+// not every byte the workspace has ever held. A task that needs the rest follows the
 // message's url into Slack.
 package slack
 
@@ -79,7 +79,7 @@ var _ source.Source = (*Slack)(nil)
 // New builds a Slack source and asks the token who it is.
 //
 // The auth.test happens HERE rather than on the first reflect, and it is the same argument the
-// git mirror's clone makes: a bad token, a revoked app or a missing scope is then a process
+// git mirror's clone makes: a bad token, a revoked app or a missing scope is then a task
 // that does not start, in front of whoever just deployed it — instead of a source that
 // installs clean and writes a failure into lastError once a minute forever. It is also what
 // fills in the workspace name and the url a message's permalink is built from, so the answer

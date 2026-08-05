@@ -12,7 +12,7 @@ import (
 )
 
 // An id is the prefix of every gate question a run raises, and answering one recovers the owner
-// by cutting at the FIRST `~` — so an id carrying one hands its questions to a process that is
+// by cutting at the FIRST `~` — so an id carrying one hands its questions to a task that is
 // not it. The trigger side has stripped these all along; the ad-hoc face never had to, because
 // until `--name` it never let a caller near an id.
 func TestASpawnIdMayNotBreakTheSurfacesItCrosses(t *testing.T) {
@@ -21,7 +21,7 @@ func TestASpawnIdMayNotBreakTheSurfacesItCrosses(t *testing.T) {
 	defer ts.Close()
 
 	for _, bad := range []string{"a~b", "a/b", "a b", "a#b", "a?b"} {
-		resp := postTony(t, ts.URL+"/processes", api.Spawn{ID: bad, Task: "true"})
+		resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: bad, Prompt: "true"})
 		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		body := string(raw)
@@ -43,7 +43,7 @@ func TestANameBecomesASafeUniqueID(t *testing.T) {
 
 	ids := map[string]bool{}
 	for range 2 {
-		resp := postTony(t, ts.URL+"/processes", api.Spawn{Name: "re~view me", Task: "true"})
+		resp := postTony(t, ts.URL+"/tasks", api.Spawn{Name: "re~view me", Prompt: "true"})
 		sp := spawned(t, resp)
 		if strings.ContainsAny(sp.ID, "~/ ") {
 			t.Fatalf("a derived id kept a character the id space cannot carry: %q", sp.ID)
@@ -57,7 +57,7 @@ func TestANameBecomesASafeUniqueID(t *testing.T) {
 		ids[sp.ID] = true
 	}
 	// And with no name at all, the id it always minted.
-	resp := postTony(t, ts.URL+"/processes", api.Spawn{Task: "true"})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{Prompt: "true"})
 	sp := spawned(t, resp)
 	if !strings.HasPrefix(sp.ID, "run-") {
 		t.Fatalf("an unnamed run is %q, want run-…", sp.ID)

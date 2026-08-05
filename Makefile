@@ -79,7 +79,7 @@ E        ?=
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
 	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
 
-# config, launch and process carry //go:generate tony-codegen directives; their <pkg>_gen.go
+# config, launch and task carry //go:generate tony-codegen directives; their <pkg>_gen.go
 # and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.
 #
 # Why generated rather than reflected, now that gomap's reflection path is correct on its

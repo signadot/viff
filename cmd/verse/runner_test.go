@@ -9,34 +9,34 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
-	"github.com/signadot/verse/process/processd"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/taskd"
 )
 
-// runnerFace is a real runner for the client to install: the same processd handler verse's own
+// runnerFace is a real runner for the client to install: the same taskd handler verse's own
 // in-process runner is, so the install probe has something truthful to find.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
-	build := func(l process.Launch, _ *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(l.ID, sup, doneAfter{}, okExec{})
+	build := func(l task.Launch, _ *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	t.Cleanup(srv.Close)
 	return srv
 }
 
 type doneAfter struct{}
 
-func (doneAfter) Next(_ context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
-	return process.ToolUse{}, false, nil
+func (doneAfter) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bool, error) {
+	return task.ToolUse{}, false, nil
 }
 
 type okExec struct{}
 
-func (okExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
-	return process.StepResult{Use: tu}, nil, nil
+func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
+	return task.StepResult{Use: tu}, nil, nil
 }
 
 // `verse runner add` reaches the route, through the client the way a person types it.
@@ -131,6 +131,6 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 func writeInstance(t *testing.T, s entity.Store, id string, rec entity.Obj) {
 	t.Helper()
 	if _, _, err := s.Write(entity.Write{At: mirror.Ref(id).At(), Value: rec.Payload()}); err != nil {
-		t.Fatalf("writing the process:instance for %s: %v", id, err)
+		t.Fatalf("writing the task:instance for %s: %v", id, err)
 	}
 }

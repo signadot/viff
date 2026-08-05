@@ -5,7 +5,7 @@
 > the next shape is being argued out.
 
 Everything else in verse pushes the world forward: a change fires a rule, a gate decides
-whether and who, a process runs, and its completion fires the next rule. Nothing in that says
+whether and who, a task runs, and its completion fires the next rule. Nothing in that says
 where a flow is *going*, or when it is *done*. A goal adds an explicit target without giving
 up the emergent model — it drives by **owning charter**, not by reconciling. The triggers
 still do the doing; the goal owns them, watches for success or failure, and holds a live
@@ -85,7 +85,7 @@ subject, it does not choose it.)
 
 ## Steering, and durability
 
-A goal's owned triggers spawn processes tracked as flows, so a goal *is* a flow with a
+A goal's owned triggers spawn tasks tracked as flows, so a goal *is* a flow with a
 destination — steered by the same verbs, keyed by the goal:
 
 ```sh

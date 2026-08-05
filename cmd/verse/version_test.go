@@ -107,7 +107,7 @@ func TestIncompatibleFailsTheRequest(t *testing.T) {
 }
 
 // A server that says nothing is not a server that disagrees: the broker face does not stamp,
-// nor does anything older than this check, and a warning on every `verse process do` would be
+// nor does anything older than this check, and a warning on every `verse task do` would be
 // noise about a comparison that was never made.
 func TestNoVersionHeaderIsSilent(t *testing.T) {
 	ts, _ := stub(t, "")

@@ -22,12 +22,12 @@ nav:
   - provider-selection.md
 - Entities and the store:
   - change-events.md
-- Processes and autonomy:
-  - process-control.md
+- Tasks and autonomy:
+  - task-control.md
   - attached-resolvers.md
   - auto-supervisor.md
   - runners.md
-  - external-processes.md
+  - external-tasks.md
 - Steering:
   - deployment-and-steering.md
 - Federation:
@@ -39,7 +39,7 @@ nav:
   - reference/up.md
   - reference/entities.md
   - reference/store.md
-  - reference/processes.md
+  - reference/tasks.md
   - reference/runners.md
   - reference/resolvers.md
   - reference/sources.md
@@ -65,8 +65,8 @@ markdown_extensions:
   # tony-format's config, and it is not cosmetic: these docs are read on GitHub as much as on
   # the site, so every intra-page link in the tree is already written GitHub-style. The two
   # differ wherever a heading contains punctuation that is stripped — `## 4. Charters —
-  # relating entities to processes` is `#4-charters--relating-entities-to-processes` on GitHub
-  # and `#4-charters-relating-entities-to-processes` under the default, because the default
+  # relating entities to tasks` is `#4-charters--relating-entities-to-tasks` on GitHub
+  # and `#4-charters-relating-entities-to-tasks` under the default, because the default
   # collapses the run of separators the stripped em-dash leaves behind. Setting it here fixes
   # every such link at once and keeps one spelling correct in both places, which editing the
   # links to suit the site would not.

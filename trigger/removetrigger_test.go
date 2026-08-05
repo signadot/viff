@@ -6,7 +6,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A removed trigger stops firing. In subtree mode a trigger's observation is its own
@@ -16,7 +16,7 @@ import (
 // its effects continue).
 func TestRemovedTriggerStopsFiring(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -53,7 +53,7 @@ func TestRemovedTriggerStopsFiring(t *testing.T) {
 // so a shared ancestor context would take the whole charter down with the first removal.
 func TestRemovingOneTriggerLeavesTheOthersObserving(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -87,7 +87,7 @@ func TestRemovingOneTriggerLeavesTheOthersObserving(t *testing.T) {
 // remove/add cycle a dynamic charter does (rebind a trigger) is not a one-way door.
 func TestReAddedTriggerObservesAgain(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},

@@ -85,7 +85,7 @@ belongs to**:
   between running parts: an authoring interface, whose body is a document a person wrote and a
   CLI forwarded unread. → **strict**. This is exactly upstream's config-file case; it just
   arrives over HTTP.
-- **The rest of the mutation plane** — `POST /entity`, `POST /processes`, the steer routes.
+- **The rest of the mutation plane** — `POST /entity`, `POST /tasks`, the steer routes.
   Machine-written messages. → **lenient**.
 - **Responses, decoded by the client** (`cmd/verse/client.go:210`). This is the skew-sensitive
   direction, newer versed to older CLI, and it is the one `api/version.go` already has a
@@ -193,7 +193,7 @@ will have an example to be designed against.
 
 ## 8. Open
 
-- **`POST /processes`.** A launch spec is authored sometimes and generated sometimes. §3 leaves
+- **`POST /tasks`.** A launch spec is authored sometimes and generated sometimes. §3 leaves
   it lenient; the first person to typo a `grant` will disagree, and they will be right, because
   §4's clause plainly covers it — a grant is an authorization, and an unread one widens. Wants
   a read of `launch/` to say which of its fields are selection-shaped.

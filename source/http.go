@@ -99,7 +99,7 @@ func HTTP(system, baseURL string, tr http.RoundTripper) *Client {
 	return &Client{
 		system: system,
 		base:   strings.TrimRight(baseURL, "/"),
-		// Its OWN client, never http.DefaultClient: that one is shared process-wide, so the
+		// Its OWN client, never http.DefaultClient: that one is shared task-wide, so the
 		// timeout below would silently bound every other caller's requests too.
 		cl: &http.Client{Timeout: ReflectTimeout, Transport: tr},
 	}

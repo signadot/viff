@@ -10,7 +10,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A chain begins at an external write and gains a hop per firing.
@@ -23,7 +23,7 @@ import (
 // rather than a→b→a — so the chain climbs exactly as a runaway would without running forever.
 func TestCausalDepthClimbsWithEachHop(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	for _, tr := range []Trigger{
 		{
 			Name:      "fwd",
@@ -82,7 +82,7 @@ func TestCausalDepthClimbsWithEachHop(t *testing.T) {
 // stamp there would give the first firing of every rule a parent it never had.
 func TestMachineryWritesCarryNoChain(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	ch, unsub := store.Observe()
 	defer unsub()
@@ -109,11 +109,11 @@ func TestMachineryWritesCarryNoChain(t *testing.T) {
 }
 
 // A firing with no engine-caused cause starts a fresh chain rather than inheriting a stale one.
-// A completion hook is the case that matters — procEvent leaves Rev unset, because the cause is
-// a process finishing, which is the world coming back — and this pins the arithmetic that makes
+// A completion hook is the case that matters — taskEvent leaves Rev unset, because the cause is
+// a task finishing, which is the world coming back — and this pins the arithmetic that makes
 // "no parent" and "parent 0" the same answer.
 func TestUncausedFiringStartsAFreshChain(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 
 	eng.recordCause(100, "hook", 0)
 	if got := eng.depthOf(100); got != 1 {
@@ -136,7 +136,7 @@ func TestUncausedFiringStartsAFreshChain(t *testing.T) {
 // counting the attempts would inflate every chain by however busy the store happened to be.
 func TestRefusedWriteRecordsNothing(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	w := eng.caused("claimer", 0)
 
 	claim := entity.Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}
@@ -204,7 +204,7 @@ func waitForStage(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 // the test hangs rather than passing quietly on somebody else's backstop.
 func TestRunawayCycleStopsAtTheTriggerCount(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.SetTripPace(0) // refuse rather than pace: this test is about the chain ENDING
 	for _, tr := range []Trigger{
 		{
@@ -314,7 +314,7 @@ func TestPacedCycleNeverTrips(t *testing.T) {
 // regression the design is most likely to break, since the throttle's whole input is a counter.
 func TestBurstOfExternalWritesDoesNotTrip(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "greet",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "new"}}},
@@ -382,14 +382,14 @@ type budgetedResolver struct {
 	allow int
 }
 
-func (r *budgetedResolver) Resolve(context.Context, process.GateQuestion, process.ToolUse) (process.Resolution, error) {
+func (r *budgetedResolver) Resolve(context.Context, task.GateQuestion, task.ToolUse) (task.Resolution, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.allow <= 0 {
-		return process.Resolution{Proceed: false, By: "test:exhausted"}, nil
+		return task.Resolution{Proceed: false, By: "test:exhausted"}, nil
 	}
 	r.allow--
-	return process.Resolution{Proceed: true, By: "test"}, nil
+	return task.Resolution{Proceed: true, By: "test"}, nil
 }
 
 // THE REPORT IS THE DELIVERABLE. Stopping a runaway without saying which rules were involved
@@ -398,7 +398,7 @@ func (r *budgetedResolver) Resolve(context.Context, process.GateQuestion, proces
 // and that it says so when it is whole.
 func TestTripReportsTheCycleByName(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	var logged []slog.Record
 	var logMu sync.Mutex
 	eng.SetLogger(slog.New(recordingHandler{fn: func(r slog.Record) {
@@ -485,7 +485,7 @@ func TestTripReportsTheCycleByName(t *testing.T) {
 // the list is the one a reader goes and looks at, so naming the wrong rule as the origin is the
 // expensive way to be wrong. Here the chain's ancestors are evicted out from under it.
 func TestTruncatedChainReportsItself(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	// A chain of three, then drop the two oldest — an eviction, or a restart.
 	eng.recordCause(10, "a", 0)
 	eng.recordCause(11, "b", 10)
@@ -526,7 +526,7 @@ func (h recordingHandler) WithGroup(string) slog.Handler                 { retur
 func TestTrippedChainIsPacedNotStopped(t *testing.T) {
 	const D = 150 * time.Millisecond
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.SetTripPace(D)
 	for _, tr := range []Trigger{
 		{
@@ -587,7 +587,7 @@ func TestTrippedChainIsPacedNotStopped(t *testing.T) {
 // to its subject means the world moved: that write re-evaluated the rule and raised whatever
 // firing is now correct, so the held one is stale and must not land on top of it.
 func TestPacedFiringAbortsWhenTheSubjectMoves(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 
 	// It waits the full D when nothing disturbs it.

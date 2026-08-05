@@ -7,7 +7,7 @@ Four things stand on their own, and the rest are deep-dives on one subject each.
 
 - [Overview](overview.md) — the architecture, the model, and the load-bearing decisions.
   Read this first.
-- [Tutorial](tutorial.md) — five sections you drive: entities, processes, and the charters
+- [Tutorial](tutorial.md) — five sections you drive: entities, tasks, and the charters
   that relate them. Each has a script that seeds it in one command.
 - [Reference](reference/README.md) — the flat command surface, and a file per topic for the
   detail the tutorial skips.
@@ -41,7 +41,7 @@ core of the model, and almost everything else is something a rule can reach.
 
 | | |
 |---|---|
-| walk | [§4 charters](tutorial.md#4-charters--relating-entities-to-processes) · [§5 gates and the docket](tutorial.md#5-gates-and-the-docket) |
+| walk | [§4 charters](tutorial.md#4-charters--relating-entities-to-tasks) · [§5 gates and the docket](tutorial.md#5-gates-and-the-docket) |
 | read | [The trigger model](trigger-model.md) — the two grammars, and every field of a rule |
 | | [Convergence](convergence.md) — what ends a firing, what is checked at install, and what a read per commit costs |
 | | [The cycle throttle](cycle-throttle.md) — how a runaway across rules is caught at runtime, and why a paced cycle is not one |
@@ -51,27 +51,27 @@ core of the model, and almost everything else is something a rule can reach.
 | ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse entity rm` should mean |
 | | [Dynamic charter](roadmap/dynamic-charter.md) — where goals are headed |
 
-### Processes and autonomy
+### Tasks and autonomy
 
-A process is a governed unit of agentic work. How it *runs* is a seam, so the same verbs
+A task is a governed unit of agentic work. How it *runs* is a seam, so the same verbs
 drive a local agent, a remote one, and a human.
 
 | | |
 |---|---|
-| walk | [§3 processes](tutorial.md#3-processes) · [attached-resolver.sh](../scripts/attached-resolver.sh) — five acts of supervision, one command each |
-| read | [reference/processes.md](reference/processes.md) — the whole surface: drivers and vectors, gates, the mirror, steering, and executing one by hand |
-| | [Process control](process-control.md) — the base-URL contract and the dial-in protocol |
+| walk | [§3 tasks](tutorial.md#3-tasks) · [attached-resolver.sh](../scripts/attached-resolver.sh) — five acts of supervision, one command each |
+| read | [reference/tasks.md](reference/tasks.md) — the whole surface: drivers and vectors, gates, the mirror, steering, and executing one by hand |
+| | [Task control](task-control.md) — the base-URL contract and the dial-in protocol |
 | | [Attached resolvers](attached-resolvers.md) — a service that answers gates: the two doors, the layers, and whose answer counts |
 | | [reference/resolvers.md](reference/resolvers.md) — the binding, the two entities, and the routes a resolver lives on |
 | | [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides, and promotes what is not its to decide |
 | | [Runners](runners.md) — where work runs: installing one, naming it on a spawn, and what removing one does to the work on it |
-| | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a process records |
+| | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a task records |
 | | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
-| | [External processes](external-processes.md) — how the seam was chosen |
+| | [External tasks](external-tasks.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
 | | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |
-| | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a process can see |
+| | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a task can see |
 
 ### Steering
 
@@ -130,7 +130,7 @@ into an existing note — which is why promotion is rarely a `git mv`.
   durable verse.
 - [go-tony](https://pkg.go.dev/github.com/signadot/tony-format/go-tony) on pkg.go.dev —
   including [`ir/kpath`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)
-  (the addressing a process chain uses),
+  (the addressing a task chain uses),
   [`mergeop`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop) (the patch
   and match operators), and
   [`system/libctl`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl)

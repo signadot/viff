@@ -13,11 +13,11 @@ different one at each level:
 | | mechanism | who owns it | scope |
 |---|---|---|---|
 | a **latch** | the action writes what the predicate refuses | the CHARTER | per entry into the state |
-| a **live check** | `spawnHooked` refuses a second process under one id | the engine, in memory | while the process runs |
+| a **live check** | `spawnHooked` refuses a second task under one id | the engine, in memory | while the task runs |
 | a **record** | `seqDone`: a store fact saying this already ran | the engine, durably | per subject, per shape, ever |
 
 The check exists because a bare spawn has only the middle one, and the middle one is a lease on
-a running process: once it is reaped the next commit spawns again. That is the whole argument
+a running task: once it is reaped the next commit spawns again. That is the whole argument
 for refusing an unlatched spawn at install.
 
 The obvious move, then: **give a bare spawn the third one.** A `seq` already has it — which is
@@ -64,7 +64,7 @@ state — and much tighter than today's "every commit touching what the rule rea
 (`verse.charter.<rule>`, as `seqDone` does) it needs no new entity, but it pollutes the author's
 document, shows up in `verse get`, and is a commit that wakes the rule that wrote it — the
 record must then be excluded from the version it records, or it invalidates itself. In its OWN
-entity (as the run claim is, `process:claim:<chain>@<subject>`) the subject stays clean, but
+entity (as the run claim is, `task:claim:<chain>@<subject>`) the subject stays clean, but
 nothing reaps it: one entity per (rule, subject) that ever fired, durable by design. A fan-out
 over ten thousand subjects is ten thousand records either way.
 
@@ -73,7 +73,7 @@ that ends in a status other than `done` takes the hook path in `Engine.applyHook
 on that path releases the run claim.
 
 ```
-after a failed element: claim process:claim:review@demo:pr:1 held = true
+after a failed element: claim task:claim:review@demo:pr:1 held = true
 spawns before stir = 1, after = 1
 ```
 

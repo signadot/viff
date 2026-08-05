@@ -29,9 +29,9 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["driver"] = ir.FromString(string(s.Driver))
 	}
 
-	// Field: Task
-	if s.Task != "" {
-		irMap["task"] = ir.FromString(string(s.Task))
+	// Field: Prompt
+	if s.Prompt != "" {
+		irMap["prompt"] = ir.FromString(string(s.Prompt))
 	}
 
 	// Field: Frame
@@ -146,12 +146,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "driver", fieldNodeUnwrapped.Type)
 			}
 			s.Driver = string(fieldNodeUnwrapped.String)
-		case "task":
-			// Field: Task
+		case "prompt":
+			// Field: Prompt
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
-			s.Task = string(fieldNodeUnwrapped.String)
+			s.Prompt = string(fieldNodeUnwrapped.String)
 		case "frame":
 			// Field: Frame
 			if fieldNodeUnwrapped.Type != ir.StringType {

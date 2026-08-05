@@ -10,20 +10,20 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // seqEngine records the ids it spawns, in order, and drives them to completion.
 func seqEngine(t *testing.T, store entity.Store) (*Engine, func() []string) {
 	t.Helper()
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	var mu sync.Mutex
 	var ids []string
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		mu.Lock()
 		ids = append(ids, id)
 		mu.Unlock()
-		return startHookProc(store, id, spec)
+		return startHookTask(store, id, spec)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -44,7 +44,7 @@ func seqFacts(t *testing.T, store entity.Store, ref entity.Ref, trig string) ent
 	return entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), trig)
 }
 
-// The elements run IN ORDER, one process at a time, each id naming its position in the
+// The elements run IN ORDER, one task at a time, each id naming its position in the
 // charter — which is the whole reason a chain is a kpath rather than a label.
 func TestSeqRunsInOrder(t *testing.T) {
 	store := entitytest.Store(t)
@@ -55,8 +55,8 @@ func TestSeqRunsInOrder(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Task: "lint $subject"}},
-				{Spawn: &launch.Spec{Task: "review $subject"}},
+				{Spawn: &launch.Spec{Prompt: "lint $subject"}},
+				{Spawn: &launch.Spec{Prompt: "review $subject"}},
 				{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			},
 		},
@@ -79,7 +79,7 @@ func TestSeqRunsInOrder(t *testing.T) {
 	}
 }
 
-// A set-only element completes immediately — it starts no process, so nothing will ever
+// A set-only element completes immediately — it starts no task, so nothing will ever
 // report its completion. Without the advance loop it would stall the sequence forever.
 func TestSeqSetOnlyElementDoesNotStall(t *testing.T) {
 	store := entitytest.Store(t)
@@ -109,8 +109,8 @@ func TestSeqPublishesProgress(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
-			{Spawn: &launch.Spec{Task: "one"}},
-			{Spawn: &launch.Spec{Task: "two"}},
+			{Spawn: &launch.Spec{Prompt: "one"}},
+			{Spawn: &launch.Spec{Prompt: "two"}},
 		}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -149,8 +149,8 @@ func TestSeqCarrierOnDoneFiresAfterAll(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Task: "one"}},
-				{Spawn: &launch.Spec{Task: "two"}},
+				{Spawn: &launch.Spec{Prompt: "one"}},
+				{Spawn: &launch.Spec{Prompt: "two"}},
 			},
 			OnDone: &Action{Patch: entity.Obj{"stage": "sequence-done"}.Payload()},
 		},
@@ -177,10 +177,10 @@ func TestSeqFailStops(t *testing.T) {
 		Action: Action{
 			Seq: []Action{
 				{
-					Spawn:    &launch.Spec{Task: "this will fail"},
+					Spawn:    &launch.Spec{Prompt: "this will fail"},
 					OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 				},
-				{Spawn: &launch.Spec{Task: "must not run"}},
+				{Spawn: &launch.Spec{Prompt: "must not run"}},
 			},
 			OnDone: &Action{Patch: entity.Obj{"stage": "must-not-reach"}.Payload()},
 		},
@@ -203,7 +203,7 @@ func TestSeqFailStops(t *testing.T) {
 // Overlap is prevented by an atomic CLAIM, not by a predicate over facts. That distinction is
 // what this pins: the claim is taken in the store, so two firings racing through
 // `go e.fire(...)` cannot both win it — and it covers the window BETWEEN elements, where no
-// process is live and a registry-based check had nothing to say.
+// task is live and a registry-based check had nothing to say.
 func TestSeqClaimExcludesOverlap(t *testing.T) {
 	store := entitytest.Store(t)
 	eng, _ := seqEngine(t, store)
@@ -225,12 +225,12 @@ func TestSeqClaimExcludesOverlap(t *testing.T) {
 	}
 }
 
-// The claim lives in the `process` system, which the engine holds out of the default match
+// The claim lives in the `task` system, which the engine holds out of the default match
 // set — so taking one cannot wake the trigger that took it. Machinery must not be reactive
-// fuel; this is the same guard reflected processes already ride.
+// fuel; this is the same guard reflected tasks already ride.
 func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	eng.Start(ctx) // root dispatch, so a bare `{}` match is installable at all
@@ -267,8 +267,8 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
-			{Spawn: &launch.Spec{Task: "one"}},
-			{Spawn: &launch.Spec{Task: "two"}},
+			{Spawn: &launch.Spec{Prompt: "one"}},
+			{Spawn: &launch.Spec{Prompt: "two"}},
 		}, OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()}},
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -296,7 +296,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 //
 // Fail-stop used to be implemented by a leak: the off-ramp path released no claim, so the next
 // run lost it forever — which is not a repeat policy but the absence of one, and it came undone
-// at the next restart, where `reconcileClaims` clears a claim no resumed process explains. What
+// at the next restart, where `reconcileClaims` clears a claim no resumed task explains. What
 // is pinned here is the pair: the claim comes BACK, and the sequence still does not re-run.
 func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 	store := entitytest.Store(t)
@@ -307,12 +307,12 @@ func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
 			{
-				Spawn: &launch.Spec{Task: "this will fail"},
+				Spawn: &launch.Spec{Prompt: "this will fail"},
 				// An off-ramp that does NOT advance the subject, so nothing but the run's own
 				// record can be what stops it running again.
 				OnFailed: &Action{Patch: entity.Obj{"note": "failed"}.Payload()},
 			},
-			{Spawn: &launch.Spec{Task: "must not run"}},
+			{Spawn: &launch.Spec{Prompt: "must not run"}},
 		}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -333,8 +333,8 @@ func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 			"restart would free it", claim)
 	}
 	// And the conclusion is a FACT, which is what stops the re-run now.
-	if got := entity.Str(seqFacts(t, store, ref, "review"), seqEnded); got != string(process.Failed) {
-		t.Errorf("verse.charter.review.%s = %q, want %q", seqEnded, got, process.Failed)
+	if got := entity.Str(seqFacts(t, store, ref, "review"), seqEnded); got != string(task.Failed) {
+		t.Errorf("verse.charter.review.%s = %q, want %q", seqEnded, got, task.Failed)
 	}
 
 	// Stir the subject: it still matches, the claim is free, and it must still not re-run.
@@ -361,7 +361,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 		if err := eng.AddTrigger(Trigger{
 			Name:      name,
 			Condition: Condition{Subject: prSubject("open")},
-			Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Task: "work"}}}},
+			Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Prompt: "work"}}}},
 		}); err != nil {
 			t.Fatalf("AddTrigger %s: %v", name, err)
 		}
@@ -387,13 +387,13 @@ func TestNavigate(t *testing.T) {
 		Name: "review",
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Task: "zero"}},
+				{Spawn: &launch.Spec{Prompt: "zero"}},
 				{
-					Spawn:    &launch.Spec{Task: "one"},
-					OnFailed: &Action{Spawn: &launch.Spec{Task: "one-failed"}},
+					Spawn:    &launch.Spec{Prompt: "one"},
+					OnFailed: &Action{Spawn: &launch.Spec{Prompt: "one-failed"}},
 				},
 			},
-			OnDone: &Action{Spawn: &launch.Spec{Task: "after"}},
+			OnDone: &Action{Spawn: &launch.Spec{Prompt: "after"}},
 		},
 	}
 	for chain, want := range map[string]string{
@@ -411,7 +411,7 @@ func TestNavigate(t *testing.T) {
 		if want == "" {
 			continue // the root action itself has no spawn here
 		}
-		if got.Spawn == nil || got.Spawn.Task != want {
+		if got.Spawn == nil || got.Spawn.Prompt != want {
 			t.Errorf("navigate(%q) = %+v; want the action spawning %q", chain, got.Spawn, want)
 		}
 	}
@@ -477,7 +477,7 @@ func TestSeqIndexOf(t *testing.T) {
 
 // The install-time rules, each with the reason it exists.
 func TestSeqValidation(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	// A subject the action can advance past: these cases are about seq validation, and a
 	// charter that would re-spawn forever is a poor example to make them from.
 	cond := Condition{Subject: Match{"system": "demo", "kind": "pr",
@@ -487,20 +487,20 @@ func TestSeqValidation(t *testing.T) {
 		act  Action
 	}{
 		{"spawn and seq together", Action{
-			Spawn: &launch.Spec{Task: "x"},
-			Seq:   []Action{{Spawn: &launch.Spec{Task: "y"}}},
+			Spawn: &launch.Spec{Prompt: "x"},
+			Seq:   []Action{{Spawn: &launch.Spec{Prompt: "y"}}},
 		}},
 		{"onDone on a non-last element", Action{Seq: []Action{
-			{Spawn: &launch.Spec{Task: "x"}, OnDone: &Action{Patch: entity.Obj{"a": 1}.Payload()}},
-			{Spawn: &launch.Spec{Task: "y"}},
+			{Spawn: &launch.Spec{Prompt: "x"}, OnDone: &Action{Patch: entity.Obj{"a": 1}.Payload()}},
+			{Spawn: &launch.Spec{Prompt: "y"}},
 		}}},
 		{"nested seq via an element", Action{Seq: []Action{
-			{Seq: []Action{{Spawn: &launch.Spec{Task: "inner"}}}},
+			{Seq: []Action{{Spawn: &launch.Spec{Prompt: "inner"}}}},
 		}}},
 		{"nested seq via an element's hook", Action{Seq: []Action{
 			{
-				Spawn:    &launch.Spec{Task: "x"},
-				OnFailed: &Action{Seq: []Action{{Spawn: &launch.Spec{Task: "inner"}}}},
+				Spawn:    &launch.Spec{Prompt: "x"},
+				OnFailed: &Action{Seq: []Action{{Spawn: &launch.Spec{Prompt: "inner"}}}},
 			},
 		}}},
 	}
@@ -515,7 +515,7 @@ func TestSeqValidation(t *testing.T) {
 		Name:      "ok",
 		Condition: cond,
 		Action: Action{
-			Seq:    []Action{{Spawn: &launch.Spec{Task: "x"}}},
+			Seq:    []Action{{Spawn: &launch.Spec{Prompt: "x"}}},
 			OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()},
 		},
 	}); err != nil {
@@ -531,7 +531,7 @@ func TestSeqMirrorsCanonicalChain(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
-		Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Task: "work"}}}},
+		Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Prompt: "work"}}}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -540,7 +540,7 @@ func TestSeqMirrorsCanonicalChain(t *testing.T) {
 	ref := mirror.Ref("review.seq.0@demo:pr:1")
 	waitFor(t, store, ref, func(p entity.Payload) bool {
 		return entity.Str(p, "chain") == "review.seq[0]"
-	}, `process entity carries chain "review.seq[0]"`)
+	}, `task entity carries chain "review.seq[0]"`)
 }
 
 func containsRune(s string, r rune) bool {

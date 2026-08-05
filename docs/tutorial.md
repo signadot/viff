@@ -1,7 +1,7 @@
 # Verse — a hands-on tutorial
 
 Five sections, each one you can drive. Two things exist in a verse — **entities**, which are
-what the world is, and **processes**, which are the work being done to it — and everything
+what the world is, and **tasks**, which are the work being done to it — and everything
 after §3 is about relating the two.
 
 Every section has a script that puts the world there in one command, so you spend your time
@@ -16,7 +16,7 @@ per-topic detail this tutorial skips, [the reference](reference/README.md).
 ```sh
 go build -o verse ./cmd/verse     # or: make bin
 export VERSE_ADDR=localhost:9797  # where clients reach it (this is the default)
-./verse up                        # engine + process runtime + store, in one process
+./verse up                        # engine + task runtime + store, in one process
 ```
 
 Leave it running; every other subcommand is a client, so open a second terminal. Then, to
@@ -29,11 +29,11 @@ see it working before reading about it:
 `up` decides three things for the whole runtime, and the defaults are chosen so that none of
 them need your attention now: the **store** is a fresh docd on a temp dir (`--data <dir>` to
 keep it), the default **driver** is a real llm agent when creds are configured and `scripted`
-— a task run as a shell command — when they are not, and an agent's **root** is an isolated
+— a prompt run as a shell command — when they are not, and an agent's **root** is an isolated
 temp dir it prints at start. Which is why a file an agent writes is not in your cwd.
 
 All three, plus the config layers, the `o` binary `up` resolves to host its daemons, and the
-flags for pointing at a store or a process runner you already have, are in
+flags for pointing at a store or a task runner you already have, are in
 [reference/up.md](reference/up.md).
 
 ---
@@ -70,7 +70,7 @@ path that leads nowhere does not match.
 The pattern language is tony's, not verse's — `!or`, `!glob`, `!not`, `!and` and the rest are
 [tony match operators](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop),
 and they mean the same thing here, in a charter's `value`, and in an answer contract. Learn
-it once. What verse adds is *where* a match may be asked, which is [§4](#4-charters--relating-entities-to-processes).
+it once. What verse adds is *where* a match may be asked, which is [§4](#4-charters--relating-entities-to-tasks).
 
 ### Write
 
@@ -137,23 +137,23 @@ More on refs, deep writes, cursors and `--since` in
 
 ---
 
-## 3. Processes
+## 3. Tasks
 
-A process is a governed unit of work — an agent, a shell command, a remote worker, a person.
+A task is a governed unit of work — an agent, a shell command, a remote worker, a person.
 Run one directly:
 
 ```sh
-verse process run --driver scripted "echo summarizing; sleep 3"   # prints a run-… id
-verse process run --driver scripted --wait "echo done"            # …and block for the result
-verse processes
-verse process get <id>                # status, task, driver, runner, result, pending gates
-verse process say <id> "also mention the dial"        # re-prompt the agent mid-run
-verse process vector <id> ask --as human:scott        # slide its autonomy (auto|ask|park)
-verse process cancel <id>
+verse task run --driver scripted "echo summarizing; sleep 3"   # prints a run-… id
+verse task run --driver scripted --wait "echo done"            # …and block for the result
+verse tasks
+verse task get <id>                # status, prompt, driver, runner, result, pending gates
+verse task say <id> "also mention the dial"        # re-prompt the agent mid-run
+verse task vector <id> ask --as human:scott        # slide its autonomy (auto|ask|park)
+verse task cancel <id>
 ```
 
 `--driver` is explicit here because the default is not: with LLM creds configured a bare
-`process run "echo done"` hands your sentence to an *agent* ([reference/up.md](reference/up.md#the-driver)).
+`task run "echo done"` hands your sentence to an *agent* ([reference/up.md](reference/up.md#the-driver)).
 
 `say` and `vector` are different levers: `say` gives the agent new instructions, `vector`
 swaps the gate vector governing how much it must confirm, applied at its next boundary with
@@ -164,20 +164,20 @@ no restart.
 The two drivers carry different vectors, and the difference is the whole point of a gate: it
 asks about what you have **not** already authorized.
 
-`scripted` runs ungated — its task *is* the shell command, so you authorized it by typing it.
+`scripted` runs ungated — its prompt *is* the shell command, so you authorized it by typing it.
 `llm` asks before effects, because the agent *chose* them. Reads run freely; writing a file,
 running a command, and delegating to a sub-agent block:
 
 ```sh
-verse process run 'Write a file hello.txt containing "hi".'
+verse task run 'Write a file hello.txt containing "hi".'
 verse gates
 # - gate: write
 #   id: run-f3e31ed0390f~d1
 #   mode: ASK
-#   process: run-f3e31ed0390f
+#   task: run-f3e31ed0390f
 #   reason: "verb write"
 #   tool: write_file
-#   where: process
+#   where: task
 verse gate approve run-f3e31ed0390f~d1 --as human:you
 ```
 
@@ -185,17 +185,17 @@ verse gate approve run-f3e31ed0390f~d1 --as human:you
 (`⏸ gate "write" (write_file) — approve? [y/N]`) — while the same gate stays resolvable from
 anywhere else by its id, since it is the same question either way. There is a rough edge in
 which of the two rules applies when you hand verse a *command* and it satisfies it with an
-*agent*; [reference/processes.md](reference/processes.md#who-you-addressed) states it, and
+*agent*; [reference/tasks.md](reference/tasks.md#who-you-addressed) states it, and
 [authority](roadmap/authority.md) is where it gets fixed.
 
-### A process is an entity too
+### A task is an entity too
 
-This is the join between the two halves of the verse. Every process is mirrored into the
-store as `process:instance:<id>`, so observing the fleet is observing entities:
+This is the join between the two halves of the verse. Every task is mirrored into the
+store as `task:instance:<id>`, so observing the fleet is observing entities:
 
 ```sh
-verse watch --system process              # the whole fleet's lifecycle
-verse entity get process:instance:<id>    # its result, still there after it finished
+verse watch --system task              # the whole fleet's lifecycle
+verse entity get task:instance:<id>    # its result, still there after it finished
 ```
 
 ```tony
@@ -218,24 +218,24 @@ out-of-band from observation, so it never queues behind a backlog of changes:
 
 ```sh
 verse flows                             # the distinct subjects with live work
-verse flow pause  demo:latch:1          # freeze its processes at their next boundary
+verse flow pause  demo:latch:1          # freeze its tasks at their next boundary
 verse flow resume demo:latch:1
 verse flow say    demo:latch:1 "hurry"
 verse flow cancel demo:latch:1          # stop them (destructive)
 verse flow say 'demo:*:*' "hurry"       # the address is a selector: * per segment
 ```
 
-A flow is not a stored thing — it is a query over the subjects of live processes — so
-`verse flows` is empty until something is running, and each verb reports how many processes
+A flow is not a stored thing — it is a query over the subjects of live tasks — so
+`verse flows` is empty until something is running, and each verb reports how many tasks
 it actually reached. §4 gives you one to steer. See
 [deployment and steering](deployment-and-steering.md) for why control never rides the change
 stream.
 
-### Where a process runs is a seam
+### Where a task runs is a seam
 
-It need not run here. The same verbs drive a process hosted on a remote verse
+It need not run here. The same verbs drive a task hosted on a remote verse
 (`up --runner <url>`), one behind a dial-in broker that a firewalled worker claims
-(`up --broker`), and one a **person** executes by hand (`verse process do …`). verse drives
+(`up --broker`), and one a **person** executes by hand (`verse task do …`). verse drives
 all three through one handle, so nothing above changes.
 
 Those choose for the whole verse. A single spawn can also choose for itself: install a runner,
@@ -244,27 +244,27 @@ name it, and that work runs there while every spawn that names none goes to the 
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
 verse runner add pool:demo http://localhost:9800      # `reach: a runner` — the install probes it
-verse process run --runner runners:pool:demo "fetch the data; retrain; report"
+verse task run --runner runners:pool:demo "fetch the data; retrain; report"
 verse ps --runner runners:pool:demo
 ```
 
 That is its own subject: [runners](runners.md) for installing one, naming it on a spawn, and
-what removing one does to the work on it; [process control](process-control.md) for the seam
-and the dial-in protocol; [external processes](external-processes.md) for why it was cut
-there; and [reference/processes.md](reference/processes.md) for the commands.
+what removing one does to the work on it; [task control](task-control.md) for the seam
+and the dial-in protocol; [external tasks](external-tasks.md) for why it was cut
+there; and [reference/tasks.md](reference/tasks.md) for the commands.
 
 ---
 
-## 4. Charters — relating entities to processes
+## 4. Charters — relating entities to tasks
 
 A **charter** is a list of rules. A rule says: when a matching entity changes and the gates
-resolve, act on it — patch it, spawn a process about it, and react to what that process did.
-Entities and processes, related declaratively; nothing else in verse authors a flow.
+resolve, act on it — patch it, spawn a task about it, and react to what that task did.
+Entities and tasks, related declaratively; nothing else in verse authors a flow.
 
 Every rule has the same four parts, and the whole firing rule is one sentence:
 
 > At each commit, if the cause has risen and the condition holds, fire once for **every
-> entity `subject` selects** — one firing per entity, each with its own gate, its own process
+> entity `subject` selects** — one firing per entity, each with its own gate, its own task
 > id, its own budget.
 
 What varies between rules is which parts are present. Those variations are the shapes worth
@@ -313,7 +313,7 @@ A trigger's observation replays what it reads when it opens, so a rule is a stat
 the world rather than a subscription to future changes: you never have to re-touch an entity
 to announce a state it has held all along, and a restart re-reaches the same verdicts.
 
-### latch — spawn a process, and react to it finishing
+### latch — spawn a task, and react to it finishing
 
 ```tony
 - name: shape-latch
@@ -321,13 +321,13 @@ to announce a state it has held all along, and a restart re-reaches the same ver
     subject: { system: demo, kind: latch, value: { stage: open } }
   action:
     patch:  { stage: reviewing }
-    spawn:  { driver: scripted, task: "echo reviewing $subject; sleep 2" }
+    spawn:  { driver: scripted, prompt: "echo reviewing $subject; sleep 2" }
     onDone: { patch: { stage: reviewed } }
 ```
 
 `$subject` — and every field of the subject's payload — is bound in the action. `onDone` is a
-completion hook: when *that* process reaches `done`, the engine fires the hook about the same
-subject, so the process step and its follow-up read top-to-bottom in one rule.
+completion hook: when *that* task reaches `done`, the engine fires the hook about the same
+subject, so the task step and its follow-up read top-to-bottom in one rule.
 (`onFailed`, `onCancelled` and `onOrphaned` are the other branches.)
 
 The shape that matters here is the **latch**: the action advances `stage` past `open`, so an
@@ -391,8 +391,8 @@ answer that counts.
 ```tony
   action:
     seq:
-    - spawn: { driver: scripted, task: "echo lint $subject" }
-    - spawn:    { driver: scripted, task: "echo test $subject" }
+    - spawn: { driver: scripted, prompt: "echo lint $subject" }
+    - spawn:    { driver: scripted, prompt: "echo test $subject" }
       onFailed: { patch: { stage: broken } }
     onDone:
       patch: { stage: built }
@@ -418,7 +418,7 @@ verse flow show demo:seq:1
     - chain: shape-seq.seq[0]
       id: shape-seq.seq.0@demo:seq:1
       status: done
-      task: "echo lint demo:seq:1"
+      prompt: "echo lint demo:seq:1"
     - chain: shape-seq.seq[1]
       children:
       - chain: shape-seq.seq[1].onFailed
@@ -431,9 +431,9 @@ verse flow show demo:seq:1
 ```
 
 Each node is one action in the charter, addressed by its `chain` — the position of that
-action inside its rule — and that same string is the id the process spawns under
+action inside its rule — and that same string is the id the task spawns under
 (`shape-seq.seq.0@demo:seq:1`). So the tree is not a second model of the work; it is the
-charter and the runtime read together. Statuses that come from no process are the point:
+charter and the runtime read together. Statuses that come from no task are the point:
 `applied` fired but only set fields, `skipped` is a branch its parent's outcome did not
 answer to, `pending` may still fire.
 
@@ -653,8 +653,8 @@ scope and spawns a validator per file, serving contents through the store so the
 not share a filesystem with you. *Left to do: file reads are still truncated.*
 
 **Remote runners, brokers, and human-executed work** —
-[process control](process-control.md), [external processes](external-processes.md),
-[reference/processes.md](reference/processes.md). *Left to do: the inbox long-poll.*
+[task control](task-control.md), [external tasks](external-tasks.md),
+[reference/tasks.md](reference/tasks.md). *Left to do: the inbox long-poll.*
 
 **Goals** — [reference/goals.md](reference/goals.md). An explicit target over the reactive
 substrate: a `doneWhen` formula, a deadline, and a bundle of owned triggers, latching `done`

@@ -8,7 +8,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A hold that outlasts the live observe buffer drops live commits — but none are LOST: on
@@ -23,7 +23,7 @@ import (
 // firing half is TestReplayedCommitsFireTriggers below, at a size where the reads are free.
 func TestDropRecoveryViaReplay(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	// Reads `audit`, and the burst writes `demo` — so no commit in the burst is evaluated and
 	// the walk is not paying a read per commit. What is under test is that the walk HAPPENS.
 	eng.AddTrigger(Trigger{
@@ -73,7 +73,7 @@ func TestDropRecoveryViaReplay(t *testing.T) {
 // behaviour where it is cheap and leaves the volume to the test above.
 func TestReplayedCommitsFireTriggers(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name: "advance",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "x",

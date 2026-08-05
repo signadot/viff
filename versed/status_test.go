@@ -34,7 +34,7 @@ func TestStatus(t *testing.T) {
 	}
 
 	m := get()
-	for _, k := range []string{"storeRev", "triggers", "flows", "gates", "processes", "fired"} {
+	for _, k := range []string{"storeRev", "triggers", "flows", "gates", "tasks", "fired"} {
 		if _, ok := m[k]; !ok {
 			t.Fatalf("status missing %q: %v", k, m)
 		}

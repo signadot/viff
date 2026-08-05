@@ -49,7 +49,7 @@ func downCmd() *cli.Command {
 				return fmt.Errorf("verse down: bad pidfile %s: %w", pidPath, err)
 			}
 			if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-				_ = os.Remove(pidPath) // stale pidfile: the process is already gone
+				_ = os.Remove(pidPath) // stale pidfile: the task is already gone
 				return fmt.Errorf("verse down: verse (pid %d) not running on %s", pid, g.Addr)
 			}
 			// Wait for it to actually exit (it reaps its daemons on the way out).

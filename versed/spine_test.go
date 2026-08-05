@@ -187,7 +187,7 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 
 // The spine carries the ANCHORS, and the fine grain hangs off them.
 //
-// A run about the subject writes a `process:instance` entity naming it as its flow, and a
+// A run about the subject writes a `task:instance` entity naming it as its flow, and a
 // spawn is a commit there because the mirror writes it. So a resolver reading the spine learns
 // a run began — and its own instance for that run is where the frames are. That is the whole
 // of the navigation between the two planes: no sequencer, and no merged order for anything to

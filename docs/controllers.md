@@ -5,7 +5,7 @@ storage: a [`libctl.Handler`](https://pkg.go.dev/github.com/signadot/tony-format
 mounted at a [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath), to
 which docd routes every client operation (`Match`/`Patch`/`Watch`) for that subtree by
 longest-prefix mount. To verse's store client — which points at docd's client address — a
-controller-served subtree is indistinguishable *to a read*: `demo:*`/`process:*` resolve to
+controller-served subtree is indistinguishable *to a read*: `demo:*`/`task:*` resolve to
 logd, `local:dir-content-*` resolves to a controller, with no store rewrite. To a *watch* it is
 not indistinguishable at all, which is the first thing to know and is below.
 
@@ -21,7 +21,7 @@ controller at all.
 ## The first question: should this be a controller at all?
 
 **A mounted slice fires no triggers.** Mounts live under `entity.MountRoot`, a top-level segment
-disjoint from the entity root, because a mount is process-driven and so has no history, and a
+disjoint from the entity root, because a mount is task-driven and so has no history, and a
 history-bearing watch must never span one (`entity/logdstore.go`, and the "no root watches"
 invariant below is the other half of the same story). `refPath` renders a mount-owned slice
 under `MountRoot`; `LogdStore.WatchSubtree` renders only under the entity root. So a

@@ -12,17 +12,17 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
-// The full two-legged dial-in loop: verse drives a process through the Runner seam
+// The full two-legged dial-in loop: verse drives a task through the Runner seam
 // (Spawn + Subscribe + Cancel) while a worker dials in over claim/inbox/report. Worker
 // reports become the events verse observes; verse control becomes items the worker pulls.
 func TestBrokerDialInLoop(t *testing.T) {
 	b := broker.New()
 
 	// verse side: spawn + observe.
-	h := b.Spawn(process.Launch{ID: "t1", Task: "review PR #42", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "t1", Prompt: "review PR #42", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -34,22 +34,22 @@ func TestBrokerDialInLoop(t *testing.T) {
 	// claim → the worker gets the spec + an epoch (the fencing token).
 	var claim struct {
 		Spec struct {
-			Task   string `tony:"field=task"`
+			Prompt string `tony:"field=prompt"`
 			Driver string `tony:"field=driver"`
 		} `tony:"field=spec"`
 		Epoch   int64 `tony:"field=epoch"`
 		CCursor int64 `tony:"field=cCursor"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/t1/claim", `{"identity":"human:scott"}`, &claim)
-	if claim.Spec.Task != "review PR #42" {
-		t.Fatalf("claim spec.task=%q, want the spawn task", claim.Spec.Task)
+	postJSON(t, cl, srv.URL+"/tasks/t1/claim", `{"identity":"human:scott"}`, &claim)
+	if claim.Spec.Prompt != "review PR #42" {
+		t.Fatalf("claim spec.task=%q, want the spawn task", claim.Spec.Prompt)
 	}
 	if claim.Epoch == 0 {
 		t.Fatal("claim returned no epoch")
 	}
 
 	// report → the worker's utterances/lifecycle land on verse's read plane (carrying epoch).
-	postJSON(t, cl, srv.URL+"/processes/t1/report",
+	postJSON(t, cl, srv.URL+"/tasks/t1/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"say","text":"looking"},{"kind":"status","text":"done"}],"result":"looks good"}`, nil)
 
 	// Read until both worker reports arrive (the claim also emitted a running transition).
@@ -70,22 +70,22 @@ func TestBrokerDialInLoop(t *testing.T) {
 		t.Fatalf("Result()=%q, want the reported result", h.Result())
 	}
 
-	// verse control → the worker's inbox (a fresh process, so the cancel is observable
-	// before terminal). Uses a second process to keep this assertion independent of the
+	// verse control → the worker's inbox (a fresh task, so the cancel is observable
+	// before terminal). Uses a second task to keep this assertion independent of the
 	// completed one above.
-	h2 := b.Spawn(process.Launch{ID: "t2", Task: "watch", Driver: "human"}, nil)
+	h2 := b.Spawn(task.Launch{ID: "t2", Prompt: "watch", Driver: "human"}, nil)
 	var claim2 struct {
 		Epoch   int64 `tony:"field=epoch"`
 		CCursor int64 `tony:"field=cCursor"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/t2/claim", `{"identity":"human:scott"}`, &claim2)
+	postJSON(t, cl, srv.URL+"/tasks/t2/claim", `{"identity":"human:scott"}`, &claim2)
 	h2.Cancel("stop")
 	var inbox struct {
 		Items []struct {
 			Kind string `tony:"field=kind"`
 		} `tony:"field=items"`
 	}
-	getJSON(t, cl, srv.URL+"/processes/t2/inbox?since="+itoa(claim2.CCursor)+"&epoch="+itoa(claim2.Epoch), &inbox)
+	getJSON(t, cl, srv.URL+"/tasks/t2/inbox?since="+itoa(claim2.CCursor)+"&epoch="+itoa(claim2.Epoch), &inbox)
 	var gotCancel bool
 	for _, it := range inbox.Items {
 		if it.Kind == "cancel" {
@@ -101,7 +101,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 // stays authoritative, and a lost-ack retry reads as success (200 + terminal), not error.
 func TestTerminalOnce(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -109,9 +109,9 @@ func TestTerminalOnce(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"a"}`, &claim)
 
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"done"}],"result":"first"}`, nil)
 
 	var second struct {
@@ -119,7 +119,7 @@ func TestTerminalOnce(t *testing.T) {
 		Result   string `tony:"field=result"`
 		Terminal bool   `tony:"field=terminal"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"second"}`, &second)
 	if !second.Terminal || second.Status != "done" || second.Result != "first" {
 		t.Fatalf("post-terminal report should echo the frozen terminal, got %+v", second)
@@ -133,7 +133,7 @@ func TestTerminalOnce(t *testing.T) {
 // worker report — and a late worker `completed` loses to the latch.
 func TestVerseAuthoritativeCancel(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 	srv := httptest.NewServer(b.WorkerHandler())
@@ -143,7 +143,7 @@ func TestVerseAuthoritativeCancel(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"a"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"a"}`, &claim)
 
 	h.Cancel("operator stop") // no worker report involved
 
@@ -155,7 +155,7 @@ loop:
 	for {
 		select {
 		case ev := <-ch:
-			if ev.Kind == process.EvStatus && ev.Text != string(process.Running) {
+			if ev.Kind == task.EvStatus && ev.Text != string(task.Running) {
 				got = ev.Text
 				break loop
 			}
@@ -163,7 +163,7 @@ loop:
 			t.Fatal("verse Cancel did not surface a cancelled status")
 		}
 	}
-	if got != string(process.Cancelled) {
+	if got != string(task.Cancelled) {
 		t.Fatalf("status after cancel = %q, want cancelled from the verse-side latch", got)
 	}
 
@@ -171,7 +171,7 @@ loop:
 	var late struct {
 		Status string `tony:"field=status"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"done"}],"result":"done"}`, &late)
 	if late.Status != "cancelled" {
 		t.Fatalf("late completion status=%q, want the latched cancelled", late.Status)
@@ -183,7 +183,7 @@ loop:
 // the claim is released (Revoke).
 func TestFenceAndTakeover(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -192,22 +192,22 @@ func TestFenceAndTakeover(t *testing.T) {
 	var c1, c2 struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"A"}`, &c1)
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"A"}`, &c2)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"A"}`, &c1)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"A"}`, &c2)
 	if c2.Epoch <= c1.Epoch {
 		t.Fatalf("reconnect epoch %d did not advance past %d", c2.Epoch, c1.Epoch)
 	}
-	if code := postCode(t, cl, srv.URL+"/processes/p/report",
+	if code := postCode(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(c1.Epoch)+`,"events":[{"kind":"say","text":"stale"}]}`); code != http.StatusConflict {
 		t.Fatalf("stale-epoch report = %d, want 409 fenced", code)
 	}
-	if code := postCode(t, cl, srv.URL+"/processes/p/report",
+	if code := postCode(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(c2.Epoch)+`,"events":[{"kind":"say","text":"live"}]}`); code != http.StatusOK {
 		t.Fatalf("current-epoch report = %d, want 200", code)
 	}
 
 	// B cannot take over a live claim...
-	if code := postCode(t, cl, srv.URL+"/processes/p/claim", `{"identity":"B"}`); code != http.StatusConflict {
+	if code := postCode(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"B"}`); code != http.StatusConflict {
 		t.Fatalf("uninvited takeover = %d, want 409", code)
 	}
 	// ...until verse revokes, which also fences A's current epoch.
@@ -215,11 +215,11 @@ func TestFenceAndTakeover(t *testing.T) {
 	var c3 struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"B"}`, &c3)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"B"}`, &c3)
 	if c3.Epoch <= c2.Epoch {
 		t.Fatalf("post-revoke claim epoch %d did not advance", c3.Epoch)
 	}
-	if code := postCode(t, cl, srv.URL+"/processes/p/report",
+	if code := postCode(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(c2.Epoch)+`,"events":[{"kind":"say","text":"zombie"}]}`); code != http.StatusConflict {
 		t.Fatalf("revoked A's report = %d, want 409 fenced", code)
 	}
@@ -230,7 +230,7 @@ func TestFenceAndTakeover(t *testing.T) {
 // records the decision (clearing pending). The executor never resolves its own gate.
 func TestGateLoop(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 	srv := httptest.NewServer(b.WorkerHandler())
@@ -240,18 +240,18 @@ func TestGateLoop(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	// worker raises a gate (report EvPending), carrying the --reason on text.
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"deploy-1","gate":"deploy",`+
 			`"tool":"deploy_prod","text":"prod, off-hours"}]}`, nil)
 	drainFor(t, ch, "pending") // verse observes the pending gate
 
-	if _, err := b.ProcessSnapshot("p"); err != nil {
+	if _, err := b.TaskSnapshot("p"); err != nil {
 		t.Fatalf("no snapshot: %v", err)
 	}
-	snap, _ := b.ProcessSnapshot("p")
+	snap, _ := b.TaskSnapshot("p")
 	if len(snap.Pending) != 1 || snap.Pending[0].ID != "deploy-1" {
 		t.Fatalf("snapshot pending = %+v, want the raised gate", snap.Pending)
 	}
@@ -271,9 +271,9 @@ func TestGateLoop(t *testing.T) {
 		Resolve(decision string, proceed bool, say, by string) error
 	})
 
-	// An unknown decision id (typo, wrong process) matches no open gate and says so as
+	// An unknown decision id (typo, wrong task) matches no open gate and says so as
 	// ErrNoSuchDecision — so verse can 404 rather than silently enqueue a phantom resolve.
-	if err := rh.Resolve("deploy-nope", true, "oops", "human:ops"); !errors.Is(err, process.ErrNoSuchDecision) {
+	if err := rh.Resolve("deploy-nope", true, "oops", "human:ops"); !errors.Is(err, task.ErrNoSuchDecision) {
 		t.Fatalf("Resolve of an unknown decision = %v, want ErrNoSuchDecision", err)
 	}
 
@@ -287,24 +287,24 @@ func TestGateLoop(t *testing.T) {
 	var pulled struct {
 		Items []api.InboxItem `tony:"field=items"`
 	}
-	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
+	getJSON(t, cl, srv.URL+"/tasks/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
 	if len(pulled.Items) == 0 {
 		t.Fatal("the answer never reached the worker's inbox")
 	}
 	// And the poll that ACKNOWLEDGES it is the next one, asking for what comes after —
 	// receiving is not taking, since that response is exactly what a lost one looks like.
-	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(pulled.Items[len(pulled.Items)-1].Cursor)+
+	getJSON(t, cl, srv.URL+"/tasks/p/inbox?since="+itoa(pulled.Items[len(pulled.Items)-1].Cursor)+
 		"&epoch="+itoa(claim.Epoch), &pulled)
 	drainFor(t, ch, "decision")
 
 	// Resolving it a second time is a DIFFERENT refusal from the first one above, and the
 	// two must not collapse: one means look for your typo, the other means somebody was
 	// here first. That distinction is what lets versed answer 404 and 409 respectively.
-	if err := rh.Resolve("deploy-1", true, "again", "human:ops"); !errors.Is(err, process.ErrAlreadyAnswered) {
+	if err := rh.Resolve("deploy-1", true, "again", "human:ops"); !errors.Is(err, task.ErrAlreadyAnswered) {
 		t.Fatalf("second Resolve of an answered decision = %v, want ErrAlreadyAnswered", err)
 	}
 
-	inbox, ok := b.ProcessInbox("p")
+	inbox, ok := b.TaskInbox("p")
 	if !ok {
 		t.Fatal("no inbox")
 	}
@@ -322,7 +322,7 @@ func TestGateLoop(t *testing.T) {
 	if got.By != "human:ops" {
 		t.Fatalf("resolve inbox item By = %q, want human:ops — the answerer must survive the relay", got.By)
 	}
-	if snap, _ := b.ProcessSnapshot("p"); len(snap.Pending) != 0 {
+	if snap, _ := b.TaskSnapshot("p"); len(snap.Pending) != 0 {
 		t.Fatalf("pending should clear after resolve: %+v", snap.Pending)
 	}
 }
@@ -333,11 +333,11 @@ func TestGateLoop(t *testing.T) {
 // "vector" marker and drop the vector, so the worker had nothing to apply.)
 func TestSetVectorRelaysPayload(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
 
-	h.SetVector(&process.Vector{Default: process.Ask}, "human:scott")
+	h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")
 
-	inbox, ok := b.ProcessInbox("p")
+	inbox, ok := b.TaskInbox("p")
 	if !ok {
 		t.Fatal("no inbox")
 	}
@@ -352,9 +352,9 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 	}
 	// The vector rode the item, and it is just the vector. This used to type-assert out of a
 	// map[string]any and fall back to marshalling JSON and matching a substring, because
-	// ProcessInbox rebuilt each item as a map and the nested vector's Go type depended on
+	// TaskInbox rebuilt each item as a map and the nested vector's Go type depended on
 	// who had decoded it. A typed item needs neither.
-	if got.Vector == nil || got.Vector.Default != process.Ask {
+	if got.Vector == nil || got.Vector.Default != task.Ask {
 		t.Fatalf("vector item did not carry default=ask: %+v", got.Vector)
 	}
 }
@@ -363,21 +363,21 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 // EvVector carrying the new default mode) — like a say-to, not waiting on the worker to echo.
 func TestSetVectorObservable(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
-	h.SetVector(&process.Vector{Default: process.Ask}, "human:scott")
+	h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")
 
 	deadline := time.After(2 * time.Second)
 	for {
 		select {
 		case ev := <-ch:
-			if ev.Kind != process.EvVector {
+			if ev.Kind != task.EvVector {
 				continue
 			}
-			if ev.Mode != process.Ask.String() {
-				t.Fatalf("EvVector should carry the new default mode %q, got %q", process.Ask.String(), ev.Mode)
+			if ev.Mode != task.Ask.String() {
+				t.Fatalf("EvVector should carry the new default mode %q, got %q", task.Ask.String(), ev.Mode)
 			}
 			if ev.By != "human:scott" {
 				t.Fatalf("EvVector should attribute the operator, got By=%q", ev.By)
@@ -390,7 +390,7 @@ func TestSetVectorObservable(t *testing.T) {
 }
 
 // drainFor reads events until one of the given kind arrives (or times out).
-func drainFor(t *testing.T, ch <-chan process.Frame, kind string) {
+func drainFor(t *testing.T, ch <-chan task.Frame, kind string) {
 	t.Helper()
 	for {
 		select {
@@ -468,19 +468,19 @@ func itoa(n int64) string {
 	return string(b[i:])
 }
 
-var _ = process.EvSay
+var _ = task.EvSay
 
 // A failure reason is filed as a failure, not as an answer.
 //
 // `do complete <x>` and `do fail <why>` both ride the report's `result` field, so the broker
-// used to latch both into Result — and a failed brokered process reported
+// used to latch both into Result — and a failed brokered task reported
 // `result: "the migration is not reversible"` where an identical LOCAL one reported
 // `err: "exit status 3"`. Same question, different field, decided by where the work ran.
 // The mirror then ran ParseResult over that result hunting structured data in a sentence
 // that was never going to carry any.
 func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "migrate the schema", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "migrate the schema", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -488,24 +488,24 @@ func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"human:scott"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"human:scott"}`, &claim)
 
 	const why = "the migration is not reversible"
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"failed"}],"result":"`+why+`"}`, nil)
 
-	snap, err := b.ProcessSnapshot("p")
+	snap, err := b.TaskSnapshot("p")
 	if err != nil {
 		t.Fatalf("no snapshot: %v", err)
 	}
-	if snap.Status != process.Failed {
+	if snap.Status != task.Failed {
 		t.Fatalf("status = %q, want failed", snap.Status)
 	}
 	if snap.Err != why {
 		t.Errorf("snapshot Err = %q, want the reason %q — a failure reason belongs in Err", snap.Err, why)
 	}
 	if snap.Result != "" {
-		t.Errorf("snapshot Result = %q, want empty — the reason is not the process's answer", snap.Result)
+		t.Errorf("snapshot Result = %q, want empty — the reason is not the task's answer", snap.Result)
 	}
 	// The Handle agrees, since that is what the mirror projects onto the entity.
 	if h.Err() != why {
@@ -520,7 +520,7 @@ func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 // stays empty — the routing keys off the status, not off the presence of text.
 func TestCompletionTextStaysAResult(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p", Task: "review", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "review", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -528,11 +528,11 @@ func TestCompletionTextStaysAResult(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"human:scott"}`, &claim)
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"human:scott"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"status","text":"done"}],"result":"LGTM"}`, nil)
 
-	snap, _ := b.ProcessSnapshot("p")
+	snap, _ := b.TaskSnapshot("p")
 	if snap.Result != "LGTM" || snap.Err != "" {
 		t.Fatalf("snapshot = {Result:%q Err:%q}, want {LGTM, empty}", snap.Result, snap.Err)
 	}
@@ -543,12 +543,12 @@ func TestCompletionTextStaysAResult(t *testing.T) {
 
 // A terminal takes the gates it never answered with it.
 //
-// It did not: the latch left the pending set untouched, so a cancelled process's open gate
+// It did not: the latch left the pending set untouched, so a cancelled task's open gate
 // could still be answered — reporting success, and writing a decision onto the log of a run
 // that had already ended. `report` was guarded post-terminal and the gate set was not.
 func TestATerminalAbandonsItsOpenGates(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	h := b.Attach("p")
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
@@ -556,25 +556,25 @@ func TestATerminalAbandonsItsOpenGates(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
 
 	if err := h.Cancel("operator changed their mind"); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
-	inst, _ := b.ProcessSnapshot("p")
+	inst, _ := b.TaskSnapshot("p")
 	if len(inst.Pending) != 0 {
-		t.Fatalf("a cancelled process still holds %d open gate(s)", len(inst.Pending))
+		t.Fatalf("a cancelled task still holds %d open gate(s)", len(inst.Pending))
 	}
 
 	rh := h.(interface {
 		Resolve(decision string, proceed bool, say, by string) error
 	})
 	// And the refusal says WHICH refusal it is. "No such decision" would send the answerer
-	// looking for a typo; the gate was real and the process ended underneath them.
-	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); !errors.Is(err, process.ErrProcessEnded) {
-		t.Fatalf("answering a gate on an ended process = %v, want ErrProcessEnded", err)
+	// looking for a typo; the gate was real and the task ended underneath them.
+	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); !errors.Is(err, task.ErrTaskEnded) {
+		t.Fatalf("answering a gate on an ended task = %v, want ErrTaskEnded", err)
 	}
 }
 
@@ -585,19 +585,19 @@ func TestATerminalAbandonsItsOpenGates(t *testing.T) {
 // whole wind-down had landed while part of it was on the floor, with no way to find out.
 func TestAReportSaysWhatItApplied(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	var out struct {
 		Applied int `tony:"field=applied"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[`+
 			`{"kind":"exec","tool":"deploy"},`+
 			`{"kind":"status","text":"done"},`+
@@ -616,11 +616,11 @@ func TestAReportSaysWhatItApplied(t *testing.T) {
 // The claim used to answer with the broker's current inbox cursor, which told a worker that
 // had just come back to skip everything queued during its outage — and an outage is exactly
 // when control is most likely to have been issued. Composed with a decision recorded at
-// enqueue time, the process then waited forever on an answer every other surface reported as
+// enqueue time, the task then waited forever on an answer every other surface reported as
 // delivered.
 func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -631,7 +631,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 			Epoch   int64 `tony:"field=epoch"`
 			CCursor int64 `tony:"field=cCursor"`
 		}
-		postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &c)
+		postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &c)
 		return c.Epoch, c.CCursor
 	}
 	items := func(epoch, since int64) int {
@@ -639,7 +639,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 		var out struct {
 			Items []api.InboxItem `tony:"field=items"`
 		}
-		getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(since)+"&epoch="+itoa(epoch), &out)
+		getJSON(t, cl, srv.URL+"/tasks/p/inbox?since="+itoa(since)+"&epoch="+itoa(epoch), &out)
 		return len(out.Items)
 	}
 
@@ -659,7 +659,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 	}
 	acked := int64(2) // it took both, so it has acknowledged through cursor 2
 
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(epoch)+`,"events":[{"kind":"pending","id":"p~d1","gate":"write"}]}`, nil)
 	items(epoch, acked) // polls again from where it got to, then drops
 
@@ -686,7 +686,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 // A claim nobody renews is released, so the work can be taken over.
 //
 // It could not be. A worker that claimed and vanished held its claim, its open gate and its
-// process forever; a second worker was refused 409, and the only release was an operator
+// task forever; a second worker was refused 409, and the only release was an operator
 // calling Revoke, which nothing calls. The code's own comment said "the eventual health-check
 // calls it" and there was no health check.
 //
@@ -694,7 +694,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 // so a worker that talks to the broker at all is already keeping its lease.
 func TestAnUnrenewedClaimIsReleased(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -702,31 +702,31 @@ func TestAnUnrenewedClaimIsReleased(t *testing.T) {
 	var first struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:one"}`, &first)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:one"}`, &first)
 	// …and it is never heard from again. Age the lease rather than waiting it out.
 	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
 
 	var second struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`, &second)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:two"}`, &second)
 	if second.Epoch <= first.Epoch {
 		t.Fatalf("takeover epoch %d did not fence the silent holder at %d", second.Epoch, first.Epoch)
 	}
 
 	// The silent one is fenced: if it comes back it comes back as a stranger, and cannot
 	// write onto a log another worker now owns.
-	code := postCode(t, cl, srv.URL+"/processes/p/report",
+	code := postCode(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(first.Epoch)+`,"events":[{"kind":"exec","tool":"deploy"}]}`)
 	if code != http.StatusConflict {
 		t.Fatalf("the displaced worker's report = %d, want 409", code)
 	}
 
-	// And the process is NOT terminal. The broker cannot hear the worker, which says nothing
+	// And the task is NOT terminal. The broker cannot hear the worker, which says nothing
 	// about whether the work is running — only that nobody may claim to speak for it.
-	inst, _ := b.ProcessSnapshot("p")
-	if process.Status(inst.Status).Terminal() {
-		t.Fatalf("an expired claim ended the process: %q", inst.Status)
+	inst, _ := b.TaskSnapshot("p")
+	if task.Status(inst.Status).Terminal() {
+		t.Fatalf("an expired claim ended the task: %q", inst.Status)
 	}
 }
 
@@ -734,7 +734,7 @@ func TestAnUnrenewedClaimIsReleased(t *testing.T) {
 // is simply on a slow link but still polling.
 func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -742,16 +742,16 @@ func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
 	var first struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:one"}`, &first)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:one"}`, &first)
 	b.AgeClaimForTest("p", broker.ClaimLease+time.Second)
 
 	// It polls — which is what a worker waiting on control does, and is the renewal.
 	var out struct {
 		Items []api.InboxItem `tony:"field=items"`
 	}
-	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(first.Epoch), &out)
+	getJSON(t, cl, srv.URL+"/tasks/p/inbox?since=0&epoch="+itoa(first.Epoch), &out)
 
-	if code := postCode(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:two"}`); code != http.StatusConflict {
+	if code := postCode(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:two"}`); code != http.StatusConflict {
 		t.Fatalf("a takeover of a claim that was just renewed = %d, want 409", code)
 	}
 }
@@ -769,7 +769,7 @@ func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
 // acknowledgement.
 func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -779,8 +779,8 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[{"kind":"pending","id":"d1","gate":"deploy"}]}`, nil)
 	drainFor(t, ch, "pending")
 
@@ -794,14 +794,14 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	// Queued, and NOT yet a decision: the worker has not been heard from since.
 	select {
 	case ev := <-ch:
-		if ev.Kind == process.EvDecision {
+		if ev.Kind == task.EvDecision {
 			t.Fatal("the answer was recorded as a decision before the worker had taken it")
 		}
 	case <-time.After(150 * time.Millisecond):
 	}
 
 	// But the gate is closed to a second answerer straight away.
-	if err := rh.Resolve("d1", false, "no", "human:other"); !errors.Is(err, process.ErrAlreadyAnswered) {
+	if err := rh.Resolve("d1", false, "no", "human:other"); !errors.Is(err, task.ErrAlreadyAnswered) {
 		t.Fatalf("a second answer = %v, want ErrAlreadyAnswered", err)
 	}
 
@@ -809,9 +809,9 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	var pulled struct {
 		Items []api.InboxItem `tony:"field=items"`
 	}
-	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
+	getJSON(t, cl, srv.URL+"/tasks/p/inbox?since=0&epoch="+itoa(claim.Epoch), &pulled)
 	last := pulled.Items[len(pulled.Items)-1].Cursor
-	getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(last)+"&epoch="+itoa(claim.Epoch), &pulled)
+	getJSON(t, cl, srv.URL+"/tasks/p/inbox?since="+itoa(last)+"&epoch="+itoa(claim.Epoch), &pulled)
 	drainFor(t, ch, "decision")
 }
 
@@ -823,28 +823,28 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 // twice.
 func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	body := `{"epoch":` + itoa(claim.Epoch) + `,"key":"r1","events":[{"kind":"exec","tool":"deploy"}]}`
 	var first, again struct {
 		RCursor int64 `tony:"field=rCursor"`
 		Applied int   `tony:"field=applied"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/report", body, &first)
-	postJSON(t, cl, srv.URL+"/processes/p/report", body, &again) // the response never arrived
+	postJSON(t, cl, srv.URL+"/tasks/p/report", body, &first)
+	postJSON(t, cl, srv.URL+"/tasks/p/report", body, &again) // the response never arrived
 
 	if again != first {
 		t.Fatalf("the retry was answered %+v and the original %+v; a worker cannot tell "+
 			"a retry that landed from one that did not", again, first)
 	}
-	inst, _ := b.ProcessSnapshot("p")
+	inst, _ := b.TaskSnapshot("p")
 	if inst.Cursor != first.RCursor {
 		t.Fatalf("cursor moved to %d on a retry of one deploy the worker performed once "+
 			"(answered at %d)", inst.Cursor, first.RCursor)
@@ -855,7 +855,7 @@ func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
 		RCursor int64 `tony:"field=rCursor"`
 		Applied int   `tony:"field=applied"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"key":"r2","events":[{"kind":"exec","tool":"deploy"}]}`, &third)
 	if third.RCursor <= first.RCursor {
 		t.Fatalf("a second, distinct report did not advance the log: %d → %d", first.RCursor, third.RCursor)
@@ -869,14 +869,14 @@ func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
 // it has NOT taken is still waiting for it, which is the part that matters.
 func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	h := b.Attach("p")
 	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
@@ -890,7 +890,7 @@ func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 		var out struct {
 			Items []api.InboxItem `tony:"field=items"`
 		}
-		getJSON(t, cl, srv.URL+"/processes/p/inbox?since="+itoa(since)+"&epoch="+itoa(claim.Epoch), &out)
+		getJSON(t, cl, srv.URL+"/tasks/p/inbox?since="+itoa(since)+"&epoch="+itoa(claim.Epoch), &out)
 		return out.Items
 	}
 	got := items(0)
@@ -911,11 +911,11 @@ func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 	var second struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:other"}`, &second)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:other"}`, &second)
 	var out struct {
 		Items []api.InboxItem `tony:"field=items"`
 	}
-	getJSON(t, cl, srv.URL+"/processes/p/inbox?since=0&epoch="+itoa(second.Epoch), &out)
+	getJSON(t, cl, srv.URL+"/tasks/p/inbox?since=0&epoch="+itoa(second.Epoch), &out)
 	if len(out.Items) != 2 {
 		t.Fatalf("a new worker taking over saw %d items, want the 2 still queued", len(out.Items))
 	}
@@ -929,14 +929,14 @@ func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 // already wrote could never fire, because an unbounded log has no watermark to be below.
 func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p", Task: "work", Driver: "human", Retain: 32}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human", Retain: 32}, nil)
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
 	var claim struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/claim", `{"identity":"agent:ci"}`, &claim)
+	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	var evs strings.Builder
 	for i := range 200 {
@@ -945,27 +945,27 @@ func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
 		}
 		evs.WriteString(`{"kind":"exec","tool":"noop"}`)
 	}
-	postJSON(t, cl, srv.URL+"/processes/p/report",
+	postJSON(t, cl, srv.URL+"/tasks/p/report",
 		`{"epoch":`+itoa(claim.Epoch)+`,"events":[`+evs.String()+`]}`, nil)
 
-	inst, _ := b.ProcessSnapshot("p")
+	inst, _ := b.TaskSnapshot("p")
 	if inst.Cursor != 201 { // 200 events plus the claim's running status
 		t.Fatalf("cursor = %d, want 201 — the cursor counts everything, trimmed or not", inst.Cursor)
 	}
 
 	// Resuming from the beginning is now below the window, and says so before the replay.
 	rh := b.Attach("p").(interface {
-		SubscribeSince(int64) (<-chan process.Frame, func())
+		SubscribeSince(int64) (<-chan task.Frame, func())
 	})
 	ch, unsub := rh.SubscribeSince(1)
 	defer unsub()
-	var first process.Frame
+	var first task.Frame
 	select {
 	case first = <-ch:
 	case <-time.After(time.Second):
 		t.Fatal("the resume delivered nothing")
 	}
-	if first.Kind != process.EvGap {
+	if first.Kind != task.EvGap {
 		t.Fatalf("first frame = %q, want a resync marker: the reader's cursor is below a "+
 			"window that is now 32 events of a 201-event log", first.Kind)
 	}

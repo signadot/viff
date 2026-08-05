@@ -21,7 +21,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // Trigger is one ECA rule — fully declarative (JSON-serializable, no Go closure), so a
@@ -98,7 +98,7 @@ type Condition struct {
 	// Subject is what the firing is ABOUT, selected at the fire instant — never
 	// accumulated, so it carries no temporal operators. An address names one entity; a
 	// system+kind selector is a pattern — the changed entity when there is no When,
-	// otherwise the firing's own subject (a reflected process's `flow`) when it carries
+	// otherwise the firing's own subject (a reflected task's `flow`) when it carries
 	// one, else the SET of matching entities in the store, one action per member.
 	Subject Match `tony:"field=subject"`
 	// On is the CAUSE, as a rising edge of a store predicate: the trigger fires at the commit
@@ -128,7 +128,7 @@ type Condition struct {
 	// Optional, and an omitted When IS the Subject: the ordinary rule reacts to the thing it
 	// is about ("when a pr goes open, review that pr"), so saying the same match twice would
 	// be the common case paying for the general one. A When is what a trigger adds when the
-	// cause and the subject come apart — a completion trigger firing on `process:instance`
+	// cause and the subject come apart — a completion trigger firing on `task:instance`
 	// but acting on the PR, or one change advancing a whole selected set.
 	When *Formula `tony:"field=when,omitzero"`
 }
@@ -240,14 +240,14 @@ type Gate struct {
 	// It hangs off the GATE rather than the action because a no is the gate's outcome: two
 	// gates on one rule refuse for different reasons, and each says what its own refusal
 	// means. That also keeps it clear of onDone/onFailed/onCancelled/onOrphaned, which are
-	// completion hooks for a spawn — a denied gate has no process to complete, which is why
+	// completion hooks for a spawn — a denied gate has no task to complete, which is why
 	// Action.validate requires a spawn for those and must not for this one.
 	OnDenied *Action `tony:"field=onDenied,omitzero"`
 }
 
 // mode resolves the gate's autonomy mode. A temporal gate (Formula set) with no explicit
 // mode blocks — it is monitored until its formula holds; an empty mode is otherwise auto.
-func (g Gate) mode() (process.Mode, error) {
+func (g Gate) mode() (task.Mode, error) {
 	m := g.Mode
 	if m == "" && g.Formula != nil {
 		m = "ask"
@@ -270,7 +270,7 @@ func (g Gate) mode() (process.Mode, error) {
 // Before this they were one field and `parent` won, so a firing held at a gate reported no
 // causing commit at all.
 type occasion struct {
-	// ev is the CHANGE, carried for a completion hook, whose references read the process's
+	// ev is the CHANGE, carried for a completion hook, whose references read the task's
 	// payload rather than the subject's (see refSource). Zero for a subject-dispatched firing,
 	// where the change is a doorbell and nothing reads it.
 	ev entity.Event
@@ -303,7 +303,7 @@ type snapCache struct {
 func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("this firing has no causing commit to read at — it was woken by a " +
-			"process finishing rather than by a write, so there is no revision to be as of")
+			"task finishing rather than by a write, so there is no revision to be as of")
 	}
 	if oc.snap == nil {
 		return e.store.AsOf(oc.commit.Rev) // no cache wired: correct, just unshared
@@ -316,7 +316,7 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 
 // Action is what a trigger does when it fires and its gates proceed — declarative data,
 // not a Go closure: optionally set fields on an entity (a state transition) and/or spawn a
-// process (a launch.Spec). The engine interprets it via apply.
+// task (a launch.Spec). The engine interprets it via apply.
 //
 // It has no target of its own: what an action acts on is the Condition's Subject. (This
 // replaced a `setRef` field and a charter-set `spawn.subject`, which expressed the same
@@ -327,7 +327,7 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 // $path, …), and $subject — the RESOLVED subject, set last so a payload field cannot
 // shadow it. A Patch resolves the same names as a kpath deref, at any depth and keeping the
 // value's type ($result, $verse.review.step, $result.findings[0].id) — see deref.go, which
-// is what lets a process's output become a fact the next `when` can match rather than only
+// is what lets a task's output become a fact the next `when` can match rather than only
 // text in the next prompt. A Spawn's strings keep the older flat substitution (launch.Bind).
 //
 //tony:schemagen=verse-action,notag
@@ -386,7 +386,7 @@ type Action struct {
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
-	// it scoped to exactly this spawn's process (see Engine.applyHook / hookFor). onOrphaned is
+	// it scoped to exactly this spawn's task (see Engine.applyHook / hookFor). onOrphaned is
 	// inert until resume rehydrates hooks (see docs/trigger-model.md).
 	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
 	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
@@ -396,15 +396,15 @@ type Action struct {
 
 // hookFor returns the completion hook for a terminal status (nil if none). The four terminal
 // statuses map to the four onX fields; non-terminal statuses have no hook.
-func (a *Action) hookFor(s process.Status) *Action {
+func (a *Action) hookFor(s task.Status) *Action {
 	switch s {
-	case process.Done:
+	case task.Done:
 		return a.OnDone
-	case process.Failed:
+	case task.Failed:
 		return a.OnFailed
-	case process.Cancelled:
+	case task.Cancelled:
 		return a.OnCancelled
-	case process.Orphaned:
+	case task.Orphaned:
 		return a.OnOrphaned
 	}
 	return nil
@@ -414,15 +414,15 @@ func (a *Action) hookFor(s process.Status) *Action {
 // is the segment a chain kpath descends by. `review` + status done → `review.onDone`, which
 // is the address of that hook inside the trigger — so a chain reads back as a lookup into
 // the charter rather than as a private naming scheme. Empty for a non-terminal status.
-func hookField(s process.Status) string {
+func hookField(s task.Status) string {
 	switch s {
-	case process.Done:
+	case task.Done:
 		return "onDone"
-	case process.Failed:
+	case task.Failed:
 		return "onFailed"
-	case process.Cancelled:
+	case task.Cancelled:
 		return "onCancelled"
-	case process.Orphaned:
+	case task.Orphaned:
 		return "onOrphaned"
 	}
 	return ""
@@ -434,7 +434,7 @@ func (a *Action) hasHooks() bool {
 }
 
 // validate reports whether the action is installable (called from AddTrigger). A completion
-// hook needs a process to complete, so any onX requires a spawn; each hook is itself an action
+// hook needs a task to complete, so any onX requires a spawn; each hook is itself an action
 // and is validated recursively.
 func (a Action) validate() error {
 	// The derive's own shape and its content rule. Checked here so it runs over every action in
@@ -465,7 +465,7 @@ func (a Action) validate() error {
 	// A governed selection needs a ceiling to select within. A provider entity is an ordinary
 	// entity — anyone who can write one can create a doer — so a doer's `grant` is only safe
 	// as a NARROWING of something the charter declared. An omitted grant is not a small
-	// ceiling but an unbounded one (process.Launch.Grant nil = unbounded), which would make
+	// ceiling but an unbounded one (task.Launch.Grant nil = unbounded), which would make
 	// "a provider may only narrow" a check against everything. Refuse at install, where the
 	// charter's author is present to answer, rather than at fire time: `grant: all` is
 	// spellable precisely so a charter can SAY it means unbounded instead of omitting it.
@@ -503,13 +503,13 @@ func (a Action) validate() error {
 // a sequence nests just as much as an element holding one directly, only further away.
 //
 // It is what keeps re-fire idempotence a PREDICATE rather than a search: with at most one seq
-// per chain, "the sequence this live process belongs to" is a unique ancestor rather than a
+// per chain, "the sequence this live task belongs to" is a unique ancestor rather than a
 // stack of them (docs/trigger-model.md).
 func (a Action) noNestedSeq(inSeq bool) error {
 	if len(a.Seq) > 0 {
 		if inSeq {
 			return fmt.Errorf("a sequence inside a sequence: no chain may carry two `seq` " +
-				"segments, because then which sequence a running process belongs to has more " +
+				"segments, because then which sequence a running task belongs to has more " +
 				"than one answer")
 		}
 		inSeq = true
@@ -532,12 +532,12 @@ func (a Action) noNestedSeq(inSeq bool) error {
 
 // apply runs the action once per resolved subject: apply the Set (a state transition on
 // that subject) then spawn (if any). chain is this action's kpath inside its trigger (the
-// trigger name at the top, `review.onDone` for a hook), used to derive the spawned process
+// trigger name at the top, `review.onDone` for a hook), used to derive the spawned task
 // id. Writing entities advances state — which wakes the next trigger, closing the loop.
 // It returns the first subject's failure, if any. A fan-out still attempts every subject —
 // one member's bad reference must not stop the others — but the error is reported rather
 // than only traced, so a caller that has somewhere to record it (a completion hook, which
-// knows the process it belongs to) can persist it instead of dropping it into the log.
+// knows the task it belongs to) can persist it instead of dropping it into the log.
 func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engine, src refSource) error {
 	var first error
 	for _, subj := range subjects {
@@ -558,20 +558,20 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 }
 
 // applyOne is apply for exactly one subject: the write, then the spawn. It returns the
-// spawned process (nil when the action starts none) and the write's error, which is what lets
+// spawned task (nil when the action starts none) and the write's error, which is what lets
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
-func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (process.Handle, error) {
+func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (task.Handle, error) {
 	// What $references read: the cause's payload for a hook, the subject's own otherwise.
 	// Resolved once, so a patch and a spawn in one action cannot disagree about what $x means.
 	root := e.refPayload(oc.ev, subj, src)
 	if a.Patch != nil {
 		// Resolve $references against the payload that fired this action, so a patch can
-		// write a value it read (a completed process's $result, a nested $verse.review.done)
+		// write a value it read (a completed task's $result, a nested $verse.review.done)
 		// rather than only a constant. An unresolved reference fails the firing for the same
 		// reason a failed write does — and specifically must not be dropped: the store
 		// distinguishes an absent key from a null one, so omitting it would launder "the
-		// process never said" into "the process said nothing", which a match reads as a
+		// task never said" into "the task said nothing", which a match reads as a
 		// different fact.
 		sn, err := e.subjectFor(oc, subj, wantsOf(a.Patch))
 		if err != nil {
@@ -585,19 +585,19 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		}
 		// ev.Rev is the commit that woke this firing, and carrying it into the write is what
 		// makes the resulting commit a HOP rather than a fresh cause. It is 0 for a firing with
-		// no engine-caused cause — a completion hook, whose event comes off a process finishing
-		// (procEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
+		// no engine-caused cause — a completion hook, whose event comes off a task finishing
+		// (taskEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
 		// the chain starts again. See causal.go.
 		if err := e.patchEntity(chain, oc.parent, subj, patch); err != nil {
-			// Fail the firing rather than continuing into the spawn: a process started about
-			// a state the trigger FAILED to establish is worse than no process at all, and it
+			// Fail the firing rather than continuing into the spawn: a task started about
+			// a state the trigger FAILED to establish is worse than no task at all, and it
 			// would be the harder failure to read afterwards.
 			e.tracef("trigger %s: patch on %s failed (%v); not spawning", chain, subj, err)
 			return nil, err
 		}
 	}
 	// DERIVATIONS, after the subject's own write and before the spawn — a derive is state, and
-	// a process started about a state the trigger failed to establish is the same failure the
+	// a task started about a state the trigger failed to establish is the same failure the
 	// patch above already refuses to create.
 	//
 	// The only reference a derive may carry is $subject, checked at install (validateDerive) and
@@ -625,7 +625,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		return nil, nil
 	}
 	spec := a.Spawn.Bind(bindingFor(root, subj))
-	// The subject is the engine's to set, not the charter's: a process is about exactly
+	// The subject is the engine's to set, not the charter's: a task is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()
 	// who-axis: if the spawn declares a governed provider selection, resolve it and overlay
@@ -651,13 +651,13 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		}
 		spec = overlaid
 	}
-	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the process
+	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the task
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
 	// would be clobbered. Engine-owned, like Subject above.
 	spec.Chain = chain
 	// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject is
 	// idempotent (and, under fan-out, each member gets its own deterministic id). The action
-	// carries its own completion hooks (onX): they ride the spawned process's flowProc and
+	// carries its own completion hooks (onX): they ride the spawned task's flowTask and
 	// fire when it reaches a terminal status. chain is this action's kpath, so a hook's own
 	// spawn — or a sequence's next element — gets a distinct, deterministic id.
 	hooks := a

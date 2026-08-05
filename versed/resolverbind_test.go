@@ -14,7 +14,7 @@ import (
 	"github.com/signadot/verse/resolver"
 )
 
-// askingRun spawns a process that blocks on its first action, so there is a real question to
+// askingRun spawns a task that blocks on its first action, so there is a real question to
 // look at, and returns its id.
 func askingRun(t *testing.T, srv *Server, ts *httptest.Server, id, resolverRef string) {
 	t.Helper()
@@ -30,7 +30,7 @@ func askingRun(t *testing.T, srv *Server, ts *httptest.Server, id, resolverRef s
 		installResolver(t, ts.URL, `{name: `+parts[1]+`, kind: `+parts[0]+
 			`, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
 	}
-	spawn := postTony(t, ts.URL+"/processes", api.Spawn{ID: id, Task: "true", Resolver: resolverRef})
+	spawn := postTony(t, ts.URL+"/tasks", api.Spawn{ID: id, Prompt: "true", Resolver: resolverRef})
 	defer spawn.Body.Close()
 	if spawn.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(spawn.Body)
@@ -122,8 +122,8 @@ func TestAResolversDocketIsASelection(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("{resolver: %q} selected %v, want only the watched run's question", ref, got)
 	}
-	if q, _, _ := srv.Store.Get(got[0]); entity.Str(q.Payload, "process") != "watched" {
-		t.Fatalf("it selected a question of %q", entity.Str(q.Payload, "process"))
+	if q, _, _ := srv.Store.Get(got[0]); entity.Str(q.Payload, "task") != "watched" {
+		t.Fatalf("it selected a question of %q", entity.Str(q.Payload, "task"))
 	}
 }
 
@@ -141,8 +141,8 @@ func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	pr(t, srv, "1", "payments")
 
-	resp := postTony(t, ts.URL+"/processes", api.Spawn{
-		ID: "run-1", Task: "true", Subject: "change:pr:1", Resolver: "resolvers:security:ghost",
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{
+		ID: "run-1", Prompt: "true", Subject: "change:pr:1", Resolver: "resolvers:security:ghost",
 	})
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)

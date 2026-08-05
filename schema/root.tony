@@ -10,7 +10,7 @@
 # and the API is what has to agree with it, which is a test (TestTheRootIsTheServedSurface)
 # rather than a construction.
 #
-# A key is a BARE top-level path — entities, not flow/tree or processes/{id}/inbox. One level
+# A key is a BARE top-level path — entities, not flow/tree or tasks/{id}/inbox. One level
 # down belongs to the route table at GET /api, which is the complete surface; this is the root.
 #
 # What is missing, and why:
@@ -33,7 +33,7 @@ define:
   entity: .[verse-entity]
   flows: .[array(string)]
   goals: .[array(verse-goal)]
-  processes: .[array(verse-instance)]
+  tasks: .[array(verse-instance)]
   status: .[verse-status]
   strata: .[array(verse-stratum)]
   triggers: .[array(verse-trigger)]

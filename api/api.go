@@ -5,7 +5,7 @@
 // with tony field tags inside each handler, and a `map[string]any{"…": …}` literal at
 // each call site — with no symbol in common and nothing to check one against the other.
 // That is not hypothetical drift: `/gate/resolve` took `{id, approve}` while
-// `/processes/{id}/resolve` took `{decisionId, proceed}` for what the CLI presents as
+// `/tasks/{id}/resolve` took `{decisionId, proceed}` for what the CLI presents as
 // the same operation, and `say` was a list on one and a string on the other. Nobody
 // wrote that on purpose; there was simply nowhere for the two halves to disagree in
 // front of a compiler.
@@ -25,7 +25,7 @@ package api
 
 import (
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // PutEntity is one conditional write (`POST /entity`) — the store's single write, on the
@@ -74,9 +74,9 @@ type Condition struct {
 }
 
 // Resolve answers ONE pending gate, by its id, wherever it lives — an engine gate the
-// trigger registry raised, or a process gate raised inside a running agent. The routing
-// is the server's problem (a process gate's id carries its owner ahead of
-// process.GateSep); a caller just names the gate and says yes or no.
+// trigger registry raised, or a task gate raised inside a running agent. The routing
+// is the server's problem (a task gate's id carries its owner ahead of
+// task.GateSep); a caller just names the gate and says yes or no.
 //
 // This is the type that unified two spellings. `id`/`approve` won over
 // `decisionId`/`proceed` because they are the words the CLI, `gate list`, and the docs
@@ -95,7 +95,7 @@ type Resolve struct {
 	// reason — a decision has no meaning without whoever made it.
 	By string `tony:"field=by"`
 	// Say rides along with the answer as steering — "yes, but do it this way". It is a
-	// list because process.Resolution.Steer is: an answer may carry several instructions,
+	// list because task.Resolution.Steer is: an answer may carry several instructions,
 	// and collapsing them at the boundary would lose an author's paragraphing.
 	Say []string `tony:"field=say,omitzero"`
 	// Override answers a question an exclusive binding owns, as somebody else.
@@ -107,15 +107,15 @@ type Resolve struct {
 	Override bool `tony:"field=override,omitzero"`
 }
 
-// Spawn runs an ad-hoc process (`POST /processes`) — the `process run` path, which has
+// Spawn runs an ad-hoc task (`POST /tasks`) — the `task run` path, which has
 // no subject or flow, unlike a trigger's spawn.
 //
 //tony:schemagen=verse-spawn,notag
 type Spawn struct {
 	// ID names the run. It is validated rather than taken as given: an id is the prefix of
 	// every gate question the run raises (`<id>~d1`), and answering one recovers the owner by
-	// cutting at the first `~` — so an id carrying one hands its questions to a process that
-	// is not it. It also lands in a URL path (`/processes/{id}`).
+	// cutting at the first `~` — so an id carrying one hands its questions to a task that
+	// is not it. It also lands in a URL path (`/tasks/{id}`).
 	//
 	// Prefer Name, which is a label the runtime derives a safe id FROM.
 	ID string `tony:"field=id,omitzero"` // empty → derived from Name, or a minted `run-…`
@@ -123,26 +123,26 @@ type Spawn struct {
 	// caller can say what a run IS without choosing its address: `--name review` becomes
 	// `review-8f306077b1c2`, which is readable, unique, and cannot be malformed.
 	Name   string `tony:"field=name,omitzero"`
-	Task   string `tony:"field=task"`
+	Prompt string `tony:"field=prompt"`
 	Driver string `tony:"field=driver,omitzero"` // empty → the runtime default
 	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
 	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
-	// of the same field, so `verse process run` and a firing can ask for the same thing.
+	// of the same field, so `verse task run` and a firing can ask for the same thing.
 	Retain int `tony:"field=retain,omitzero"`
 	// Subject is the flow this run belongs to — the entity it is about. A trigger spawn
 	// carries one from its firing; this is the ad-hoc face of the same field, and without it
-	// a `process run` is about nothing, which is a real state and not a useful default.
+	// a `task run` is about nothing, which is a real state and not a useful default.
 	Subject string `tony:"field=subject,omitzero"`
 	// Vector is the autonomy dial — `auto`, `ask` or `park` — the ad-hoc face of a spawn's
 	// `vector:`. Without it the runtime's own default stands, which for a scripted run is
 	// `auto`: it asks nothing, and a `resolver` bound to it would have nothing to answer.
 	Vector string `tony:"field=vector,omitzero"`
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
-	// spawn's `resolver:`, so `verse process run` and a firing can bind the same way.
+	// spawn's `resolver:`, so `verse task run` and a firing can bind the same way.
 	Resolver string `tony:"field=resolver,omitzero"`
 	// Runner names WHERE this run runs — `runners:<kind>:<name>`, installed with `verse
 	// runner add`. Empty means the verse's own default runner, which is what `local` means
-	// on a process:instance.
+	// on a task:instance.
 	//
 	// It is orthogonal to Resolver and to a provider: a provider picks the DOER, a resolver
 	// picks who answers for it, and this picks the place. The same doer may run in either of
@@ -151,7 +151,7 @@ type Spawn struct {
 	Runner string `tony:"field=runner,omitzero"`
 }
 
-// Spawned is what a spawn answers with: the id to address the new process by.
+// Spawned is what a spawn answers with: the id to address the new task by.
 //
 //tony:schemagen=verse-spawned,notag
 type Spawned struct {
@@ -170,7 +170,7 @@ type Verdict struct {
 	// and what the docket shows are one word rather than a mapping. `escalate` is the third
 	// and arrives with the layer that can receive it.
 	Verdict string `tony:"field=verdict"`
-	// Why is the reasoning, for the record. Say is what to tell the process — "yes, but do
+	// Why is the reasoning, for the record. Say is what to tell the task — "yes, but do
 	// it this way" — and rides the same Steer a person's `--say` does.
 	Why string   `tony:"field=why,omitzero"`
 	Say []string `tony:"field=say,omitzero"`
@@ -190,8 +190,8 @@ type Position struct {
 	Notes    string `tony:"field=notes,omitzero"`
 }
 
-// Say re-prompts a running process with a new instruction
-// (`POST /processes/{id}/say`).
+// Say re-prompts a running task with a new instruction
+// (`POST /tasks/{id}/say`).
 //
 //tony:schemagen=verse-say,notag
 type Say struct {
@@ -199,10 +199,10 @@ type Say struct {
 	By          string `tony:"field=by,omitzero"` // attribution; empty → human:cli
 }
 
-// SetVector slides a running process's gate vector — the autonomy dial — applied at its
-// next boundary with no restart (`PUT /processes/{id}/vector`).
+// SetVector slides a running task's gate vector — the autonomy dial — applied at its
+// next boundary with no restart (`PUT /tasks/{id}/vector`).
 //
-// Vector is a pointer because that is what process.SetVector takes and because an absent
+// Vector is a pointer because that is what task.SetVector takes and because an absent
 // vector and a zero one are different requests — a distinction this route needs, since
 // "slide to this vector" and "slide to the zero vector" are not the same instruction.
 //
@@ -213,8 +213,8 @@ type Say struct {
 //
 //tony:schemagen=verse-set-vector,notag
 type SetVector struct {
-	Vector *process.Vector `tony:"field=vector"`
-	By     string          `tony:"field=by,omitzero"` // who slid it, for the record
+	Vector *task.Vector `tony:"field=vector"`
+	By     string       `tony:"field=by,omitzero"` // who slid it, for the record
 }
 
 // GoalSteer addresses one goal by name: pause, resume, cancel (name alone), or say
@@ -227,7 +227,7 @@ type GoalSteer struct {
 	By   string `tony:"field=by,omitzero"`
 }
 
-// FlowSteer addresses a flow — every live process whose subject matches — and pauses,
+// FlowSteer addresses a flow — every live task whose subject matches — and pauses,
 // resumes, cancels, or says to all of them as a unit. Subject is an address or a
 // pattern, so one call can steer a subject, a kind, or a whole system.
 //
@@ -307,12 +307,12 @@ type Routes struct {
 // shape for all eight routes instead of eight.
 //
 // Affected is a count for both, because a goal steer IS a flow steer — Engine.PauseGoal and
-// friends delegate to the flow methods over the goal's own processes.
+// friends delegate to the flow methods over the goal's own tasks.
 //
 //tony:schemagen=verse-steered,notag
 type Steered struct {
 	// Subject and Goal are the two ways the same operation is addressed: a flow by the
-	// entity address (or pattern) its processes are about, a goal by name. Exactly one is
+	// entity address (or pattern) its tasks are about, a goal by name. Exactly one is
 	// set — they are kept as distinct fields rather than collapsed into a `target` because
 	// "subject" is a first-class word in this model and a synonym would cost more than the
 	// uniformity it buys.
@@ -320,16 +320,16 @@ type Steered struct {
 	Goal    string `tony:"field=goal,omitzero"`
 	// Verb is what was done: pause | resume | cancel | say.
 	Verb string `tony:"field=verb"`
-	// Affected is how many live processes it reached. Zero is a normal answer — an address
+	// Affected is how many live tasks it reached. Zero is a normal answer — an address
 	// that names no running work is not an error, it is a flow that has finished.
 	Affected int `tony:"field=affected"`
 }
 
-// InboxItem is one control instruction queued for a process's worker — the broker's
+// InboxItem is one control instruction queued for a task's worker — the broker's
 // dial-in leg. It is cursored so a reconnecting worker resumes with ?since=<cursor>.
 //
 // It lives here because it was spelled THREE times: the broker's own queue element, a
-// map[string]any re-spelling of that element in ProcessInbox, and a partial copy in the CLI
+// map[string]any re-spelling of that element in TaskInbox, and a partial copy in the CLI
 // carrying the four fields an executor acts on. Three spellings of one message, none of
 // which a compiler could compare — the same defect this package was created to remove for
 // request bodies, surviving on the response side because nobody looked.
@@ -341,7 +341,7 @@ type Steered struct {
 type InboxItem struct {
 	Cursor int64  `tony:"field=cursor"`
 	Kind   string `tony:"field=kind"` // spec | say | cancel | pause | resume | vector | resolve
-	Task   string `tony:"field=task,omitzero"`
+	Prompt string `tony:"field=prompt,omitzero"`
 	Driver string `tony:"field=driver,omitzero"`
 	Text   string `tony:"field=text,omitzero"`
 	By     string `tony:"field=by,omitzero"`
@@ -349,7 +349,7 @@ type InboxItem struct {
 	Decision string `tony:"field=decision,omitzero"`
 	Proceed  bool   `tony:"field=proceed,omitzero"`
 	// Vector slides the worker's autonomy dial mid-run.
-	Vector *process.Vector `tony:"field=vector,omitzero"`
+	Vector *task.Vector `tony:"field=vector,omitzero"`
 }
 
 // Status is what GET /status answers: what this verse is, what it is running, and where to
@@ -363,12 +363,12 @@ type InboxItem struct {
 //
 //tony:schemagen=verse-status,notag
 type Status struct {
-	StoreRev  int64 `tony:"field=storeRev"`
-	Triggers  int   `tony:"field=triggers"`
-	Flows     int   `tony:"field=flows"`
-	Gates     int   `tony:"field=gates"`
-	Processes int   `tony:"field=processes"`
-	Fired     int   `tony:"field=fired"`
+	StoreRev int64 `tony:"field=storeRev"`
+	Triggers int   `tony:"field=triggers"`
+	Flows    int   `tony:"field=flows"`
+	Gates    int   `tony:"field=gates"`
+	Tasks    int   `tony:"field=tasks"`
+	Fired    int   `tony:"field=fired"`
 
 	Runner *RunnerStatus `tony:"field=runner,omitzero"`
 	Docd   *Docd         `tony:"field=docd,omitzero"`
@@ -376,7 +376,7 @@ type Status struct {
 	Listen *Listen       `tony:"field=listen,omitzero"`
 }
 
-// RunnerStatus is how this verse runs processes: local (in-process), broker (a dial-in
+// RunnerStatus is how this verse runs tasks: local (in-process), broker (a dial-in
 // worker face), or remote (a runner base URL). Resume says what survives a restart,
 // and Dial is the worker-facing address when there is one.
 //
@@ -388,7 +388,7 @@ type RunnerStatus struct {
 }
 
 // Docd is the document store's two faces: the client address store clients connect to, and
-// the mount address a controller process reaches.
+// the mount address a controller task reaches.
 //
 //tony:schemagen=verse-docd,notag
 type Docd struct {
@@ -396,7 +396,7 @@ type Docd struct {
 	Mount  string `tony:"field=mount,omitzero"`
 }
 
-// LLM is a SECRETS-SAFE summary of the process runtime's model config: whether it is usable
+// LLM is a SECRETS-SAFE summary of the task runtime's model config: whether it is usable
 // at all, and masked keys so an operator can tell which credential is configured without the
 // credential leaving the server.
 //

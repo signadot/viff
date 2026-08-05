@@ -6,7 +6,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // waitEcho polls for the value an action's patch wrote, which is the only proof that
@@ -59,7 +59,7 @@ func TestTriggerFiresOnTheBacklogAtInstall(t *testing.T) {
 	entitytest.Set(t, store, ready2, entity.Obj{"stage": "ready", "note": "two"}.Payload())
 	entitytest.Set(t, store, queued, entity.Obj{"stage": "queued", "note": "three"}.Payload())
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(echoTrigger("announce")); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestTriggerFiresOnTheBacklogAtInstall(t *testing.T) {
 // what comes later) and a backlog that only one of them replays would be the subtler bug.
 func TestTriggerAddedLaterFiresOnTheBacklog(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 
 	ref := entity.Ref{System: "demo", Kind: "task", ID: "t1"}

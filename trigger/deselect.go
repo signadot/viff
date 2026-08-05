@@ -378,7 +378,7 @@ const (
 // latchOf decides which of the four an action is, for one subject predicate. A way of ending
 // that writes nothing the predicate reads is one that still matches, which is why a `patch`
 // beside the spawn and a `patch` in an onDone are both latches on their own: the state where
-// the hook has not fired is the one the process is running in.
+// the hook has not fired is the one the task is running in.
 func latchOf(pred *ir.Node, a Action) latch {
 	if pred == nil {
 		return latchUntouched // no predicate is a predicate nothing can falsify

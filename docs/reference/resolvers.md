@@ -70,9 +70,9 @@ from there:
 | `overrode` | whom an answer was taken over, when `--override` was used |
 | `askedAgain` | this id was posed again after settling; the prior answer is at the commit that made it |
 
-Everything else on the record — `id`, `status`, `subject`, `process`, `origin`, `gate`, `mode`,
+Everything else on the record — `id`, `status`, `subject`, `task`, `origin`, `gate`, `mode`,
 `tool`, `effects`, `reason`, `spawns`, `verdict`, `say`, `answeredAt` — is
-[the question record](processes.md) generally, and is not resolver-specific.
+[the question record](tasks.md) generally, and is not resolver-specific.
 
 ## The routes
 
@@ -108,7 +108,7 @@ DELETE /resolvers/{kind}/{name}      remove one, handing on what it held
 ## What an observer sees
 
 Answering is emitted on the run's **one ordered stream**, so a supervised run is not a run with
-a hidden answerer — `verse process attach <run>` shows the whole exchange in order:
+a hidden answerer — `verse task attach <run>` shows the whole exchange in order:
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
@@ -123,7 +123,7 @@ there is no supervised run that reads as unsupervised, and no way to answer invi
 
 What the stream does *not* show is what was **watched**: a position advancing with no verdict
 emits nothing. That is the resolver's own record, which is why there are two —
-the process stream is what was decided, the instance is who was watching and on what evidence.
+the task stream is what was decided, the instance is who was watching and on what evidence.
 
 `./scripts/attached-resolver.sh attach` is this view; `watch` is the resolver's side of the same
 moment.
@@ -148,7 +148,7 @@ spellings of one thing. The leading `resolvers:` may be dropped.
 ## Binding one to work
 
 ```sh
-verse process run 'check the migration' \
+verse task run 'check the migration' \
   --subject change:pr:1 \
   --vector ask \
   --resolver resolvers:security:review

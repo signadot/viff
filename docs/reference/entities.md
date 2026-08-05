@@ -1,7 +1,7 @@
 # Entities
 
 An entity is anything the flow refers to — a PR, a build, a person, a CI status, a running
-process — addressed by a `system:kind:id` triple and carrying a document.
+task — addressed by a `system:kind:id` triple and carrying a document.
 [Tutorial §2](../tutorial.md#2-entities) drives all of this; here is the surface flat, with
 the corners that section leaves out.
 
@@ -10,15 +10,15 @@ the corners that section leaves out.
 ```
 demo:pr:1                     system=demo   kind=pr      id=1
 github:pr:org/repo#42         only the first two colons split, so an id may hold one
-process:instance:run-a1b2     what verse writes about its own processes
+task:instance:run-a1b2     what verse writes about its own tasks
 ```
 
 Three segments, in one grammar shared by the CLI and the charter wire: `*` is a wildcard per
 segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow demo:pr:*` and a charter's
 `"subject": "demo:pr:*"` mean the same set.
 
-Systems verse itself writes into: `process:instance:*` (the mirror of every running process)
-and `process:claim:*` (its run claim), `gate:question:*` (every gate awaiting an answer),
+Systems verse itself writes into: `task:instance:*` (the mirror of every running task)
+and `task:claim:*` (its run claim), `gate:question:*` (every gate awaiting an answer),
 `resolvers:*` (who answers them, and `resolvers:instance:*` for who is watching one run — see
 [resolvers.md](resolvers.md)),
 `trigger:rule:*` (the installed charter), `goal:*`, `motion:channel:*` and `vote:*` (the

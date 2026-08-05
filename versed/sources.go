@@ -27,7 +27,7 @@ import (
 // net.Conn comes from; Reflect is the same call down all three.
 //
 // It is here rather than in package source because `dir` needs a *source.Git built in this
-// process, which is a choice about how verse hosts a source rather than part of the contract.
+// task, which is a choice about how verse hosts a source rather than part of the contract.
 func (s *Server) sourceFor(e source.Entity) (source.Source, error) {
 	switch {
 	case e.URL != "":
@@ -142,7 +142,7 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Single-writer is what makes a reflected slice need no CAS. In process it held because
+	// Single-writer is what makes a reflected slice need no CAS. In task it held because
 	// there was one Git value; across deployments nothing holds it but this.
 	if r.URL.Query().Get("allow-overlap") != "true" {
 		if why := overlaps(store, e); why != "" {
@@ -607,7 +607,7 @@ func (s *Server) stopAllSources() {
 // lastPass above is for, and why it is reported rather than written.
 func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.Ref, run *sourceRun, p source.Pass) {
 	// A cancelled pass is a SHUTDOWN, not a fault, and recording it would be a lie that
-	// outlives the process: every source would come back from a clean stop carrying
+	// outlives the task: every source would come back from a clean stop carrying
 	// "context canceled" as its last error, and an operator reading the listing after a
 	// restart would see a verse full of broken sources that are all fine.
 	if errors.Is(p.Err, context.Canceled) {

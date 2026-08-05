@@ -1,9 +1,9 @@
-// Package mirror reflects a running Process's state into the entity-verse as a
-// process:instance:<id> entity — one-way, index-not-warehouse. This is what makes
-// "observe another process" the same act as "observe an entity": once a process
+// Package mirror reflects a running Task's state into the entity-verse as a
+// task:instance:<id> entity — one-way, index-not-warehouse. This is what makes
+// "observe another task" the same act as "observe an entity": once a task
 // is in the verse, a trigger can match on its state like any other entity.
 //
-// Reflected entities live in the "process" system, which the trigger engine keeps
+// Reflected entities live in the "task" system, which the trigger engine keeps
 // OUT of the default match set — meta-observation is opt-in, so the loop cannot
 // ignite on its own machinery.
 package mirror
@@ -14,34 +14,34 @@ import (
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
-// System is the entity-verse system reflected processes live under. Keep it out
+// System is the entity-verse system reflected tasks live under. Keep it out
 // of any default/ambient trigger match set.
-const System = "process"
+const System = "task"
 
-// The reflected status vocabulary is process.Status (running/completed/cancelled/
+// The reflected status vocabulary is task.Status (running/completed/cancelled/
 // failed/orphaned), carried on the entity payload as the "status" field; its
 // Terminal() decides when to stop projecting.
 
-// InstanceKind is the kind a mirrored process lives under. Named, because a reader selecting
+// InstanceKind is the kind a mirrored task lives under. Named, because a reader selecting
 // instances has to say so — the system also holds claims, which carry no status and would fall
 // through a check that only looks at one.
 const InstanceKind = "instance"
 
-// Ref is the entity that mirrors process id.
+// Ref is the entity that mirrors task id.
 func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: InstanceKind, ID: id} }
 
-// Meta is the provenance Reflect publishes alongside a process's own state: where it runs
+// Meta is the provenance Reflect publishes alongside a task's own state: where it runs
 // and what it is about. Grouped rather than passed as four positional strings, which is
 // both unreadable at the call site and easy to transpose.
 type Meta struct {
-	// Subject is the flow this process belongs to. It is carried on the entity as "flow"
-	// so a completion trigger can advance that subject when the process finishes, and does
+	// Subject is the flow this task belongs to. It is carried on the entity as "flow"
+	// so a completion trigger can advance that subject when the task finishes, and does
 	// not collide with the $subject binding (the matched ref).
 	Subject string
-	// Runner is the process-control backend hosting it — "local", "broker", or a remote URL — so a
+	// Runner is the task-control backend hosting it — "local", "broker", or a remote URL — so a
 	// restart can decide resume-or-orphan.
 	Runner string
 	// RunnerName is the runner ENTITY a spawn named — `runners:<kind>:<name>` — when it named
@@ -54,24 +54,24 @@ type Meta struct {
 	// so removing one would orphan running work by making it unreconstructible — a deletion
 	// with an action at a distance.
 	RunnerName string
-	// StartedAt is when the process began, RFC3339. Empty on a fresh spawn — Reflect stamps
+	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
-	// knows this process is older than this verse.
+	// knows this task is older than this verse.
 	StartedAt string
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
-	// "review.onDone". Empty for a process with no trigger behind it (`verse process run`).
+	// "review.onDone". Empty for a task with no trigger behind it (`verse task run`).
 	Chain string
-	// Task is what the process was asked to do, already bound. Small, and the process's
-	// identity to a reader — so it belongs on the index next to what the process produced,
+	// Prompt is what the task was asked to do, already bound. Small, and the task's
+	// identity to a reader — so it belongs on the index next to what the task produced,
 	// not only on the read plane that outlives nothing.
-	Task string
-	// Doer, Grant and Tools are the ENVELOPE the process runs under: which doer a governed
+	Prompt string
+	// Doer, Grant and Tools are the ENVELOPE the task runs under: which doer a governed
 	// selection picked, and what the resulting launch may do.
 	//
 	// They are published for every spawn, not only voted ones, because the surface that would
 	// otherwise carry them does not exist for most of them. `select: auto` opens no motion at
 	// all — deliberately, since an auto pick has no voter and casts no ballot — so a doer
-	// chosen that way appeared on no docket, and the process entity showed only a driver that
+	// chosen that way appeared on no docket, and the task entity showed only a driver that
 	// two different doers can share. A reader asking "what was this allowed to do" had
 	// nowhere to look.
 	//
@@ -95,7 +95,7 @@ type Meta struct {
 	//
 	// TODO: cut the cycle rather than routing around it, before the resolver work
 	// multiplies this. Two symptoms already: an optional field three call sites build by
-	// hand lost the standing layer for resumed processes in the commit that added it (see
+	// hand lost the standing layer for resumed tasks in the commit that added it (see
 	// versed.Server.reflect), and the resolver system and instance kind are spelled here as
 	// private constants because the real ones cannot be imported — one fact, two spellings.
 	//
@@ -120,25 +120,25 @@ func TriggerOf(chain string) string {
 }
 
 // Reflect subscribes to p's read plane and mirrors its state into store as a
-// process:instance:<id> entity, until p reaches a terminal status. It projects
+// task:instance:<id> entity, until p reaches a terminal status. It projects
 // significant transitions (pending gate, last action, status) plus a bounded view
-// of the process's output — the latest narration ("say") and last tool output
+// of the task's output — the latest narration ("say") and last tool output
 // ("lastOutput") as previews, and the full final answer ("result") on completion.
 // It stays an index, not a warehouse: the running fine grain (and any large output)
 // lives on the read plane; the entity keeps the outcome, durably, so `entity get
-// process:instance:<id>` shows what a process said and produced even after its
+// task:instance:<id>` shows what a task said and produced even after its
 // ephemeral read plane is gone. Projection is one-way: an entity is a view, never a
-// handle (control still goes through the process API).
+// handle (control still goes through the task API).
 //
-// The provenance a process carries beyond its own state is Meta.
-func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
+// The provenance a task carries beyond its own state is Meta.
+func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	ch, unsub := h.Subscribe()
-	// A brokered process starts in the pre-running `unclaimed` state — it is hosted on
+	// A brokered task starts in the pre-running `unclaimed` state — it is hosted on
 	// the broker awaiting an executor; the claim emits an EvStatus{running} that moves it
-	// on. Local/remote processes execute immediately, so they start `running`.
-	initial := process.Running
+	// on. Local/remote tasks execute immediately, so they start `running`.
+	initial := task.Running
 	if m.Runner == "broker" {
-		initial = process.Unclaimed
+		initial = task.Unclaimed
 	}
 	st := entity.Obj{"status": string(initial)}
 	if m.Subject != "" {
@@ -153,26 +153,26 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	if m.RunnerName != "" {
 		st["runnerName"] = m.RunnerName
 	}
-	// When this process began, so `verse runners` can say when a runner was last used and a
+	// When this task began, so `verse runners` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and
-	// carried across a re-attach rather than re-stamped — a resumed process did not start
+	// carried across a re-attach rather than re-stamped — a resumed task did not start
 	// again, and a clock that restarts on every restart measures the verse, not the work.
 	if m.StartedAt != "" {
 		st["startedAt"] = m.StartedAt
 	} else {
 		st["startedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	// Where this process came from in the charter. `chain` is the spawning action's kpath
+	// Where this task came from in the charter. `chain` is the spawning action's kpath
 	// inside its trigger (review, review.onDone, …) and `trigger` is its root segment,
 	// published separately because a payload predicate reads VALUES, not fragments of an id:
-	// "every process of the review trigger" is then `value: {trigger: review}` rather than a
+	// "every task of the review trigger" is then `value: {trigger: review}` rather than a
 	// glob over ids.
 	if m.Chain != "" {
 		st["chain"] = m.Chain
 		st["trigger"] = TriggerOf(m.Chain)
 	}
-	if m.Task != "" {
-		st["task"] = m.Task
+	if m.Prompt != "" {
+		st["prompt"] = m.Prompt
 	}
 	// The envelope: who was picked, and what the launch may do. See Meta.
 	if m.Doer != "" {
@@ -189,7 +189,7 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
-	// dial loop) rather than being pre-configured. Local/remote-processd handles have none.
+	// dial loop) rather than being pre-configured. Local/remote-taskd handles have none.
 	if d, ok := h.(interface{ DialURL() string }); ok {
 		if u := d.DialURL(); u != "" {
 			st["dialURL"] = u
@@ -197,12 +197,12 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 	}
 	write(store, id, st)
 	go func() {
-		// A stream ending is not the same fact as a process ending, and treating them as one
+		// A stream ending is not the same fact as a task ending, and treating them as one
 		// is what let a mirror stop forever: the connection died, Reflect returned, and the
 		// entity kept saying `running` about work that had long since finished.
 		//
-		// The terminal is what says the process ended — always the last frame, never dropped
-		// and never absent (see process/event.go). A channel that closes without one closed
+		// The terminal is what says the task ended — always the last frame, never dropped
+		// and never absent (see task/event.go). A channel that closes without one closed
 		// for a reason of its own, and the answer is to resume from the cursor this loop has
 		// been keeping all along.
 		attempt := 0
@@ -234,7 +234,7 @@ func Reflect(store entity.Store, id string, h process.Handle, m Meta) {
 
 // reconnectAttempts bounds how long a mirror keeps trying to reopen a stream that keeps
 // dying. With the backoff below it is a few minutes — long enough to outlast a runner
-// restart, short enough that a process on a runner that is never coming back does not hold a
+// restart, short enough that a task on a runner that is never coming back does not hold a
 // goroutine and a retry loop forever. A stream that delivers anything at all resets it.
 const reconnectAttempts = 40
 
@@ -245,9 +245,9 @@ func backoff(attempt int) time.Duration {
 	return min(d, 8*time.Second)
 }
 
-// drainInto projects one subscription's frames, reporting whether the PROCESS ended (true) or
+// drainInto projects one subscription's frames, reporting whether the TASK ended (true) or
 // merely the stream did (false).
-func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.Handle, ch <-chan process.Frame) (ended, heard bool) {
+func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Frame) (ended, heard bool) {
 	{
 		for ev := range ch {
 			if !heard {
@@ -264,7 +264,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.H
 				st["cursor"] = ev.Cursor
 			}
 			switch ev.Kind {
-			case process.EvPending: // now blocked on a gate — visible to other processes
+			case task.EvPending: // now blocked on a gate — visible to other tasks
 				// A REF to the question rather than a copy of it. The question is its own
 				// entity (see question.go), so the gate name, mode, tool and derived effects
 				// live there; duplicating any of them here would be a second spelling of one
@@ -280,30 +280,30 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.H
 					owner = m.Owner(subject)
 				}
 				PostFrameQuestion(store, ev, id, subject, owner)
-			case process.EvDecision:
+			case task.EvDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays
 				// as it was. Saying "this is gone" is the writer's job, and it is the whole
-				// difference between a gate that clears and a process that looks blocked
+				// difference between a gate that clears and a task that looks blocked
 				// forever. (Under whole-value replace this was `delete` and read the same.)
 				// Settle the record only if this decision ANSWERED a standing question.
 				// A gate the vector allowed outright reports a decision without ever having
 				// been pending, and settling that would mint a `gate:question:` entity for a
 				// question nobody was ever asked.
 				if st["pending"] != nil {
-					AnswerQuestion(store, ev.ID, process.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+					AnswerQuestion(store, ev.ID, task.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
 				}
 				st["pending"] = nil
 				st["lastAction"] = ev.Tool
-			case process.EvExec:
+			case task.EvExec:
 				st["lastAction"] = ev.Tool
 				if ev.Text != "" { // the last action's output (already a bounded summary)
 					st["lastOutput"] = ev.Text
 				}
-			case process.EvSay: // an utterance; only the process's OWN words are the preview
+			case task.EvSay: // an utterance; only the task's OWN words are the preview
 				if ev.By == "" { // By set = a say-to folded in, not the agent's narration
 					st["say"] = preview(ev.Text)
 				}
-			case process.EvStatus:
+			case task.EvStatus:
 				// paused/resumed ride the same channel as lifecycle status but are
 				// transient control acks, not a lifecycle state — project them as a
 				// `paused` flag so `status` stays running→completed/cancelled.
@@ -314,7 +314,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.H
 					st["paused"] = false
 				default:
 					st["status"] = ev.Text
-					if process.Status(ev.Text).Terminal() {
+					if task.Status(ev.Text).Terminal() {
 						if r := h.Result(); r != "" { // keep the full final answer, durably
 							st["result"] = r
 							if d := ParseResult(r); d != nil {
@@ -326,16 +326,16 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.H
 						}
 						write(store, id, st)
 						// Whatever it was still asking, it will never hear the answer to.
-						// A brokered process ends with an EvStatus and no EvDecision, so
+						// A brokered task ends with an EvStatus and no EvDecision, so
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
 						OrphanQuestions(store, id)
-						return true, heard // the PROCESS ended; the entity remains, terminal
+						return true, heard // the TASK ended; the entity remains, terminal
 					}
 				}
 				write(store, id, st)
 				continue
-			case process.EvVector: // an autonomy slide — project the dial so `entity get` shows it
+			case task.EvVector: // an autonomy slide — project the dial so `entity get` shows it
 				st["vector"] = ev.Mode
 				if ev.By != "" {
 					st["vectorBy"] = ev.By
@@ -358,8 +358,8 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h process.H
 // It carries the binding and the origin as fields as well as in its address, because an
 // address is for finding one and a field is for selecting many: "every instance of the
 // security reviewer" is a predicate, not a glob.
-func BindResolver(store entity.Store, binding, name, processID string) {
-	Watch(store, binding, name, Ref(processID))
+func BindResolver(store entity.Store, binding, name, taskID string) {
+	Watch(store, binding, name, Ref(taskID))
 }
 
 // Watch mints the record of one binding watching one origin, and does nothing if it already
@@ -372,7 +372,7 @@ func BindResolver(store entity.Store, binding, name, processID string) {
 // fields, so there is no place for a merged order to be invented.
 //
 // Which plane an instance is on follows from its origin and is not stored beside it: an origin
-// under `process:instance` is a run, whose position is a cursor, and anything else is a
+// under `task:instance` is a run, whose position is a cursor, and anything else is a
 // subject, whose position is a revision. One fact, one spelling.
 //
 // Create-only, and the precondition is the whole point rather than an optimisation: this is
@@ -385,7 +385,7 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 	}
 	ref := entity.Ref{System: resolverSystem, Kind: resolverInstance, ID: name + "@" + origin.ID}
 	if origin.System != System {
-		// A subject's id may not be unique across systems the way a process id is, so its
+		// A subject's id may not be unique across systems the way a task id is, so its
 		// address carries the whole ref.
 		ref.ID = name + "@" + origin.String()
 	}
@@ -414,11 +414,11 @@ const (
 	resolverInstance = "instance"
 )
 
-// write projects the accumulated state onto the process's entity. A failed write is
+// write projects the accumulated state onto the task's entity. A failed write is
 // DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the
-// process's own event goroutine with nobody to return to, and a process must not stall
+// task's own event goroutine with nobody to return to, and a task must not stall
 // because its index could not be updated. What it costs is that the entity can lag the
-// process it mirrors — the index is a projection, and the read plane remains the record.
+// task it mirrors — the index is a projection, and the read plane remains the record.
 func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
 	ref := Ref(id)
 	if len(at) == 1 {
@@ -442,13 +442,13 @@ func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
 // This is what makes a reference the declaration: a charter that derefs $data.severity has
 // said it expects structure, and gets a loud failure when the agent returned prose instead —
 // no schema to declare up front, and no reliance on the agent reporting its own failure
-// honestly. A spawn that wants that failure moved EARLIER, onto the process rather than onto
+// honestly. A spawn that wants that failure moved EARLIER, onto the task rather than onto
 // the patch, declares an answer contract (launch.Spec.Answer) — and the two agree by
 // construction, because the contract validates exactly the document this returns.
 //
 // It is exported because the mirror is not the only writer that has to answer this question:
-// the trigger engine synthesizes a completed process's payload when it beats the mirror to
-// the terminal (see trigger.Engine.procEvent), and if the two derived `data` differently a
+// the trigger engine synthesizes a completed task's payload when it beats the mirror to
+// the terminal (see trigger.Engine.taskEvent), and if the two derived `data` differently a
 // hook would deref against a different document than the one the store ends up holding. The
 // answer contract's check is a third such reader, which is why the extraction itself lives
 // in one place rather than being written out again here.
@@ -470,12 +470,12 @@ func preview(s string) string {
 	return s[:max] + "…"
 }
 
-// ClaimKind is the kind a run CLAIM lives under: process:claim:<chain>@<subject>. It shares
-// the process system deliberately — the engine keeps that system out of the default trigger
+// ClaimKind is the kind a run CLAIM lives under: task:claim:<chain>@<subject>. It shares
+// the task system deliberately — the engine keeps that system out of the default trigger
 // match set, so writing a claim cannot wake the very trigger that took it. A claim is
 // machinery, and the ignition guard is where machinery belongs.
 const ClaimKind = "claim"
 
 // ClaimRef is the entity a run is claimed at. The id is the spawn id, so the claim and the
-// process it guards share one address — there is nothing to keep in step.
+// task it guards share one address — there is nothing to keep in step.
 func ClaimRef(id string) entity.Ref { return entity.Ref{System: System, Kind: ClaimKind, ID: id} }

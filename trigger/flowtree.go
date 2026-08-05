@@ -5,12 +5,12 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // The flow TREE is what a subject's work looks like as a shape rather than a list: the
-// trigger that acted on it, the process that ran, and the completion hooks hanging off that
-// process — each hook a branch, nested as deep as the charter nests them.
+// trigger that acted on it, the task that ran, and the completion hooks hanging off that
+// task — each hook a branch, nested as deep as the charter nests them.
 //
 // It is DERIVED, never stored. Materializing it would rebuild the flows[subject] index that
 // migration step 4 deliberately replaced with a query (docs/trigger-model.md), and a stored
@@ -20,17 +20,17 @@ import (
 //   - the CHARTER gives the shape. A trigger's Action tree is known before anything runs, so
 //     a hook that has not fired yet can be shown as pending rather than be missing. Nothing
 //     in the runtime knows this — it is the only source that can speak about the future.
-//   - the MIRROR gives the history. `retire` deletes a finished process from the live
-//     registry (engine.go), so a completed chain exists ONLY as process:instance entities.
+//   - the MIRROR gives the history. `retire` deletes a finished task from the live
+//     registry (engine.go), so a completed chain exists ONLY as task:instance entities.
 //     This is why the chain is published there: without it, reading history back would mean
 //     parsing ids.
 //   - the LIVE registry gives the present — what is still tracked and steerable.
 //
-// The join key is the chain: a kpath naming the action that spawned each process inside its
+// The join key is the chain: a kpath naming the action that spawned each task inside its
 // trigger. Parent/child in the tree IS prefix/extension in the kpath, so the nesting needs
 // no separate parent pointer to maintain.
 
-// FlowNode is one position in a subject's flow: an action in some trigger, and the process
+// FlowNode is one position in a subject's flow: an action in some trigger, and the task
 // it did or did not spawn.
 //
 // It stays in `trigger` rather than moving to `api`: `api` is for types that exist only as
@@ -42,35 +42,35 @@ import (
 //tony:schemagen=verse-flow-node,notag
 type FlowNode struct {
 	// Chain is the action's kpath inside its trigger — "review", "review.onDone". Empty for
-	// a process with no trigger behind it (`verse process run`, or an adopted process whose
+	// a task with no trigger behind it (`verse task run`, or an adopted task whose
 	// chain was never published).
 	Chain string `tony:"field=chain,omitzero"`
 	// Kind is what KIND of position this is: "root" for the trigger's own spawn, the hook's
-	// field name ("onDone", "onFailed", …) for a completion branch, and "process" for a
-	// process that answers to no charter action. It is carried explicitly rather than left to
+	// field name ("onDone", "onFailed", …) for a completion branch, and "task" for a
+	// task that answers to no charter action. It is carried explicitly rather than left to
 	// be re-derived from the chain's last segment, because typing a node is the response's
 	// job — the id's job is only to be unique and pasteable.
 	Kind string `tony:"field=kind"`
-	// ID is the process this position spawned; empty when it has not run.
+	// ID is the task this position spawned; empty when it has not run.
 	ID     string `tony:"field=id,omitzero"`
-	Task   string `tony:"field=task,omitzero"`
+	Prompt string `tony:"field=prompt,omitzero"`
 	Status string `tony:"field=status"`
-	// Pending, Gate and LastAction are the live detail, present only while a process is
+	// Pending, Gate and LastAction are the live detail, present only while a task is
 	// in flight.
 	Gate       string     `tony:"field=gate,omitzero"`
 	LastAction string     `tony:"field=lastAction,omitzero"`
 	Children   []FlowNode `tony:"field=children,omitzero"`
 }
 
-// Statuses a node carries that no process ever reports: a position in the charter that has
+// Statuses a node carries that no task ever reports: a position in the charter that has
 // not run. Distinguishing them matters — "pending" invites waiting for something that is
 // still coming, "skipped" says the branch is dead because its parent ended another way.
 const (
 	StatusPending = "pending" // its parent has not finished, so this may still run
 	StatusSkipped = "skipped" // its parent ended on a DIFFERENT terminal status
-	// StatusApplied is a hook that fired but spawned nothing — a `set` leaves no process,
+	// StatusApplied is a hook that fired but spawned nothing — a `set` leaves no task,
 	// so there is no runtime trace to read it back from. It is INFERRED from the engine's
-	// own rule (a hook fires exactly when its process reaches that status), which is the
+	// own rule (a hook fires exactly when its task reaches that status), which is the
 	// same kind of inference pending/skipped already are. Reporting it as pending would be
 	// worse than inferring: the act is over, and nothing is coming.
 	StatusApplied = "applied"
@@ -85,7 +85,7 @@ type FlowTree struct {
 }
 
 // FlowTrees renders the flow tree of every subject the address selects. A concrete address
-// yields one tree (possibly empty); a pattern yields one per subject that has processes.
+// yields one tree (possibly empty); a pattern yields one per subject that has tasks.
 //
 // Subjects come from the mirror rather than from the live registry, so a subject whose work
 // has all finished still has a tree — which is the point of asking after the fact.
@@ -94,7 +94,7 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		subj := entity.Str(ent.Payload, "flow")
 		if subj == "" {
-			continue // a process about nothing is in no flow
+			continue // a task about nothing is in no flow
 		}
 		ref, err := entity.ParseRef(subj)
 		if err != nil || !m.MatchRef(ref) {
@@ -102,7 +102,7 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 		}
 		bySubject[subj] = append(bySubject[subj], ent)
 	}
-	// A live process whose mirror has not landed yet still belongs in the tree: the
+	// A live task whose mirror has not landed yet still belongs in the tree: the
 	// registry is the present, and a tree that omits what is running now would be worse
 	// than one that omits what ran yesterday.
 	for _, fp := range e.matchFlow(m) {
@@ -124,17 +124,17 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 	return trees
 }
 
-// rootsFor builds one subject's roots from its mirrored processes, then extends each root
+// rootsFor builds one subject's roots from its mirrored tasks, then extends each root
 // with the charter shape it has not reached yet.
 func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
-	// Index the run processes by chain. A chain is unique per (trigger, subject) by
+	// Index the run tasks by chain. A chain is unique per (trigger, subject) by
 	// construction — spawnID derives from exactly that pair — so this cannot collide.
 	run := map[string]entity.Entity{}
-	var bare []FlowNode // processes with no chain: no charter action to hang them under
+	var bare []FlowNode // tasks with no chain: no charter action to hang them under
 	for _, ent := range ents {
 		chain := entity.Str(ent.Payload, "chain")
 		if chain == "" {
-			bare = append(bare, e.nodeFrom("", "process", ent))
+			bare = append(bare, e.nodeFrom("", "task", ent))
 			continue
 		}
 		run[chain] = ent
@@ -179,7 +179,7 @@ func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
 
 // node builds the node at chain and recurses into the action's completion hooks. act is the
 // charter action at this position (nil once the charter runs out — a removed trigger, or a
-// process whose action is gone); parentStatus is the terminal status of the process above,
+// task whose action is gone); parentStatus is the terminal status of the task above,
 // which decides whether an unrun branch is still coming or is dead.
 func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Action, parentStatus string) FlowNode {
 	n := FlowNode{Chain: chain, Kind: kind, Status: StatusPending}
@@ -188,15 +188,15 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 	case didRun:
 		n = e.nodeFrom(chain, kind, ent)
 	case kind == "root": // nothing above it to be unreachable from
-	case act != nil && act.Spawn == nil && process.TerminalStatus(parentStatus) &&
-		kind == hookField(process.Status(parentStatus)):
+	case act != nil && act.Spawn == nil && task.TerminalStatus(parentStatus) &&
+		kind == hookField(task.Status(parentStatus)):
 		// A set-only hook whose parent ended on exactly this status: it fired, and left no
-		// process to say so.
+		// task to say so.
 		n.Status = StatusApplied
 	case parentStatus == StatusSkipped:
 		// Unreachable by inheritance: a branch under a dead branch is dead too.
 		n.Status = StatusSkipped
-	case process.TerminalStatus(parentStatus) && kind != hookField(process.Status(parentStatus)):
+	case task.TerminalStatus(parentStatus) && kind != hookField(task.Status(parentStatus)):
 		// The parent ENDED, and on a different status than this hook answers to, so this
 		// branch will never fire. Only a terminal parent can decide that — a running one
 		// has not chosen yet, and calling its branches dead would be a lie with a deadline.
@@ -218,7 +218,7 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 			// waiting — the sequence is fail-stop.
 			el.Status = StatusSkipped
 		}
-		if st := el.Status; process.TerminalStatus(st) && st != string(process.Done) {
+		if st := el.Status; task.TerminalStatus(st) && st != string(task.Done) {
 			stopped = true
 		}
 		n.Children = append(n.Children, el)
@@ -226,7 +226,7 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 	if !didRun && act.Spawn != nil {
 		// An unrun node's task can only come from the charter, and it is the declared
 		// (unbound) form — `review $subject` — because there was no firing to bind it.
-		n.Task = act.Spawn.Task
+		n.Prompt = act.Spawn.Prompt
 	}
 	for _, h := range []struct {
 		field string
@@ -248,7 +248,7 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 // reviseHooks rebuilds a node's completion-hook children against the node's CURRENT status.
 // It exists for the one node whose status is settled after its children were built — a `seq`
 // carrier, whose own status comes from the sequence's progress facts rather than from a
-// process of its own. Rebuilding rather than patching keeps one inference: whatever `node`
+// task of its own. Rebuilding rather than patching keeps one inference: whatever `node`
 // decides an unrun hook means under a terminal parent is what a carrier's hook means too.
 func (e *Engine) reviseHooks(n *FlowNode, chain string, run map[string]entity.Entity, act *Action) {
 	if act == nil {
@@ -256,7 +256,7 @@ func (e *Engine) reviseHooks(n *FlowNode, chain string, run map[string]entity.En
 	}
 	for i := range n.Children {
 		c := &n.Children[i]
-		if c.Kind == "seq" || c.Kind == "process" {
+		if c.Kind == "seq" || c.Kind == "task" {
 			continue
 		}
 		h := hookAction(act, c.Kind)
@@ -282,10 +282,10 @@ func hookAction(act *Action, field string) *Action {
 	return nil
 }
 
-// nodeFrom projects a mirrored process onto a node. The mirror is an index, not a warehouse,
+// nodeFrom projects a mirrored task onto a node. The mirror is an index, not a warehouse,
 // so this reads exactly the fields it publishes — and `pending` is a ref, so the gate's NAME
-// is one hop away, on the question itself. Following it costs a read per blocked process and
-// keeps the name in one place; carrying a copy on the process would be the second spelling
+// is one hop away, on the question itself. Following it costs a read per blocked task and
+// keeps the name in one place; carrying a copy on the task would be the second spelling
 // this step exists to remove.
 func (e *Engine) nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
 	str := func(k string) string { return entity.Str(ent.Payload, k) }
@@ -293,13 +293,13 @@ func (e *Engine) nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
 		Chain:      chain,
 		Kind:       kind,
 		ID:         ent.Ref.ID,
-		Task:       str("task"),
+		Prompt:     str("prompt"),
 		Status:     str("status"),
 		Gate:       e.gateNameOf(str("pending")),
 		LastAction: str("lastAction"),
 	}
 	if n.Status == "" {
-		n.Status = string(process.Running)
+		n.Status = string(task.Running)
 	}
 	return n
 }
@@ -318,8 +318,8 @@ func (e *Engine) triggerNamed(name string) (Trigger, bool) {
 }
 
 // seqProgress is what the subject's own payload says about a sequence: how far it got, and
-// whether it finished. The processes alone cannot answer this — an element that only patches
-// leaves no process behind, so without the facts it would render as never having run.
+// whether it finished. The tasks alone cannot answer this — an element that only patches
+// leaves no task behind, so without the facts it would render as never having run.
 type seqProgress struct {
 	step int
 	done bool
@@ -351,7 +351,7 @@ func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
 }
 
 // applySeqProgress corrects the statuses only the facts can know: a carrier's own state, and
-// elements that completed without leaving a process.
+// elements that completed without leaving a task.
 func applySeqProgress(carrier *FlowNode, p seqProgress) {
 	if !p.has {
 		return
@@ -359,9 +359,9 @@ func applySeqProgress(carrier *FlowNode, p seqProgress) {
 	if carrier.ID == "" { // the carrier itself never spawns
 		switch {
 		case p.done:
-			carrier.Status = string(process.Done)
+			carrier.Status = string(task.Done)
 		default:
-			carrier.Status = string(process.Running)
+			carrier.Status = string(task.Running)
 		}
 	}
 	seen := 0
@@ -371,16 +371,16 @@ func applySeqProgress(carrier *FlowNode, p seqProgress) {
 			continue
 		}
 		if c.ID == "" && c.Status == StatusPending && seen < p.step {
-			// It is behind the step count and left no process: it ran and only wrote.
+			// It is behind the step count and left no task: it ran and only wrote.
 			c.Status = StatusApplied
 		}
 		seen++
 	}
 }
 
-// gateNameOf follows a process's `pending` ref to the question it names and reads the gate
+// gateNameOf follows a task's `pending` ref to the question it names and reads the gate
 // off it. Empty when nothing is pending, or when the question has already been reaped — a
-// blocked-looking process with no question is a display question, not a correctness one.
+// blocked-looking task with no question is a display question, not a correctness one.
 func (e *Engine) gateNameOf(pendingRef string) string {
 	if pendingRef == "" {
 		return ""

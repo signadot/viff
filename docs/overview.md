@@ -10,7 +10,7 @@ the territory.
 
 Verse is a small runtime for governing SDLC work across systems it does not own, on a dial of
 agentic autonomy. You install a *charter* of trigger rules; the runtime reacts to changes in a
-shared, observable entity store and does the work with governed agent processes. Every reaction
+shared, observable entity store and does the work with governed agent tasks. Every reaction
 passes a gate — *auto*, *ask*, or *park* — so how much runs on its own is turned up or down per
 action.
 
@@ -29,14 +29,14 @@ The entire system is one feedback loop:
         └───────────── actions write entities ◀───────────────┘
 ```
 
-A process completing is itself an entity change — its state is mirrored into the store — so a
+A task completing is itself an entity change — its state is mirrored into the store — so a
 completion can trigger the next reaction. That is how multi-step flows close: through the
 store, not through a scheduler.
 
 ## The model, in five nouns
 
 An *entity* is anything the SDLC refers to, named by a `system:kind:id` triple (`demo:pr:1`,
-`github:pr:org/repo#42`, `process:instance:review-1`) and carrying an arbitrary payload
+`github:pr:org/repo#42`, `task:instance:review-1`) and carrying an arbitrary payload
 value. The entity store is the shared, observable, cursored log of these.
 
 A *trigger* is one charter rule: when the condition holds and its gates resolve, an action
@@ -49,19 +49,19 @@ A *gate* is `auto` (fire), `ask` (a human or agent must approve), or `park` (hol
 the autonomy dial, expressed per action.
 
 An *action* is data, not code: `patch` an entity's payload for a state transition, and/or
-`spawn` a process from a `launch.Spec`. It acts on the condition's subject and carries no
+`spawn` a task from a `launch.Spec`. It acts on the condition's subject and carries no
 target of its own; template bindings — `$subject`, and every field of the changed payload —
 parameterize it.
 
-A *process* is a governed unit of agentic work, hosted by a runtime, observable and
-steerable. Processes are themselves entities (`process:instance:<id>`), so the fleet's
+A *task* is a governed unit of agentic work, hosted by a runtime, observable and
+steerable. Tasks are themselves entities (`task:instance:<id>`), so the fleet's
 lifecycle is visible by watching the store.
 
 Two derived notions matter, and *derived* is meant literally — neither is a record anything
 keeps. A *subject* is the entity a piece of work is about, the PR moving through its lifecycle;
 it is what a rule's condition selects, and it is half of nearly every identity in the system —
 a spawn's id, a gate's question, a resolver's instance. A *flow* is a subject's in-flight
-processes, steerable as a unit, and it is assembled per request rather than maintained.
+tasks, steerable as a unit, and it is assembled per request rather than maintained.
 
 ## Components
 
@@ -73,16 +73,16 @@ they separate into services without changing callers.
                                                              ▼
    ┌─────────────────────────────  versed.Server  ─────────────────────────────┐
    │  observation plane          │           control plane                      │
-   │  watch · get · list         │  gate approve · flow steer · process control │
+   │  watch · get · list         │  gate approve · flow steer · task control │
    └───────┬───────────────────────────────┬───────────────────────┬───────────┘
            │                                │                        │
-      entity.Store                    trigger.Engine           process control
-      (logd/docd)                 (reactive, per-subtree      (how a process RUNS)
-   Write(conditional)/Get/watch    watches, gate registry)     ├─ local  (processd, in-proc)
+      entity.Store                    trigger.Engine           task control
+      (logd/docd)                 (reactive, per-subtree      (how a task RUNS)
+   Write(conditional)/Get/watch    watches, gate registry)     ├─ local  (taskd, in-proc)
            ▲                                │  spawn           ├─ remote (runner.HTTP)
-           │  mirror (process → entity)     ▼                  └─ broker (dial-in worker)
-           └──────────────  process runtime (process/processd)  ◀──┘
-                            Process · Supervisor · Vector · Event stream · gate registry
+           │  mirror (task → entity)     ▼                  └─ broker (dial-in worker)
+           └──────────────  task runtime (task/taskd)  ◀──┘
+                            Task · Supervisor · Vector · Event stream · gate registry
 ```
 
 `entity` is the store, and it has ONE write: a value merges in at a place — a whole entity
@@ -97,20 +97,20 @@ copy-on-write scopes, and controller federation. See [change events](change-even
 `trigger` is the reactive engine. It observes the store through per-subtree watches — each
 trigger watches exactly the `system.kind` it matches, and there is no root watch — matches
 installed `Def`s, resolves gates through a shared registry, and fires actions. A spawn action
-goes through the engine's `Spawner`, which hosts the process via process control and
+goes through the engine's `Spawner`, which hosts the task via task control and
 mirrors it back.
 
-`process` and `process/processd` are the process runtime. A `Process` runs a driver
+`task` and `task/taskd` are the task runtime. A `Task` runs a driver
 (`Next() → ToolUse`, either `scripted` or `llm`) under a `Supervisor` governed by a `Vector`,
-the per-process autonomy defaults. It emits a cursored, ring-buffered, resumable event stream
-and posts gate decisions to a registry. `processd` is the HTTP daemon face of that runtime.
+the per-task autonomy defaults. It emits a cursored, ring-buffered, resumable event stream
+and posts gate decisions to a registry. `taskd` is the HTTP daemon face of that runtime.
 
-`mirror` projects a process's ephemeral read plane onto its durable `process:instance:<id>`
+`mirror` projects a task's ephemeral read plane onto its durable `task:instance:<id>`
 entity: status, a `say` preview, last tool output, final `result`, the resume `cursor`, the
 `runner`, and a broker's `dialURL`. It is one-way, and an index rather than a warehouse. This
-is the bridge that lets process completion drive the next trigger.
+is the bridge that lets task completion drive the next trigger.
 
-`runner` and `broker` are the two off-box process-control backends, described below.
+`runner` and `broker` are the two off-box task-control backends, described below.
 
 `versed` is the assembly and the HTTP surface. It also owns scopes — per-scope engines over a
 copy-on-write store view — hosts brokers under `/broker/<nonce>`, and runs resume-or-orphan
@@ -152,11 +152,11 @@ This is the one item in this section that was not decided. It is what [above](#w
 leaves behind: verse observes and requests, so there is no position in a plan for it to hold,
 and an orchestrator is a component with nowhere to live rather than a component left out.
 
-Nothing sequences "review, then reviewed." The review process completing becomes a
-`process:instance` change, and either the trigger's own `onDone` hook or a separate
+Nothing sequences "review, then reviewed." The review task completing becomes a
+`task:instance` change, and either the trigger's own `onDone` hook or a separate
 `reviewed` trigger reacts to it and advances the subject. Composition is triggers reacting to
 shared state, which is why the model scales to many concurrent, independent flows with no
-central plan. Triggers must opt in to `process:*` matches, so the loop cannot ignite on its
+central plan. Triggers must opt in to `task:*` matches, so the loop cannot ignite on its
 own machinery.
 
 What follows from having no plan to read is that a flow is *derived*, never stored:
@@ -164,32 +164,32 @@ What follows from having no plan to read is that a flow is *derived*, never stor
 (what may yet happen), the mirror (what already did) and the live registry (what is running).
 No one of the three is sufficient, which is why none of them is the plan.
 
-### Processes are entities
+### Tasks are entities
 
 Because `mirror` projects the read plane into the store, the whole fleet is observable by
-watching `process:instance:*`, completions are ordinary change events, and a process's
+watching `task:instance:*`, completions are ordinary change events, and a task's
 outcome survives its ephemeral runtime.
 
-### How a process runs is a seam
+### How a task runs is a seam
 
-`process.Runner{Spawn, Attach, Ref}` returns a
-`ProcHandle{Subscribe, Pause/Resume/Cancel/Steer/SetVector/Result}`. The engine drives every
-process through that handle and never touches the runtime directly. There is no privileged
+`task.Runner{Spawn, Attach, Ref}` returns a
+`task.Handle{Subscribe, Pause/Resume/Cancel/Steer/SetVector/Result}`. The engine drives every
+task through that handle and never touches the runtime directly. There is no privileged
 local path. Three implementations sit behind it:
 
-- *local* — the in-process `processd` supervisor, reached by a Go call.
+- *local* — the in-process `taskd` supervisor, reached by a Go call.
 - *remote* — `runner.HTTP(baseURL)`, driving another verse or host over the
-  verse-facing contract: `GET /processes`, `GET /events?since`, and control POSTs.
-- *broker* — a process whose runtime is an external dial-in worker: a laptop agent, a
+  verse-facing contract: `GET /tasks`, `GET /events?since`, and control POSTs.
+- *broker* — a task whose runtime is an external dial-in worker: a laptop agent, a
   firewalled pod, or a human. The worker connects out to the broker (`claim`, `inbox`,
-  `report`), and the broker glues that leg to verse's handle. It is the `ProcHandle` turned
-  inside-out — the same process behind two handles, one where it runs and one where it is
+  `report`), and the broker glues that leg to verse's handle. It is the `task.Handle` turned
+  inside-out — the same task behind two handles, one where it runs and one where it is
   observed.
 
-Because the seam is uniform, `verse processes` and
-`verse process get/attach/cancel/say/approve` work whether a process is local, remote, or
-brokered, and a human executes a process via `verse process do` exactly as an agent would.
-See [process control](process-control.md).
+Because the seam is uniform, `verse tasks` and
+`verse task get/attach/cancel/say/approve` work whether a task is local, remote, or
+brokered, and a human executes a task via `verse task do` exactly as an agent would.
+See [task control](task-control.md).
 
 ### Gates are the dial, and they point up
 
@@ -201,7 +201,7 @@ the mirror.
 ## Data and failure model
 
 *Refs and cursors.* A ref is `system:kind:id`; a store revision is monotonic but sparse and
-is treated as an opaque cursor. The process event stream carries its own per-process cursor
+is treated as an opaque cursor. The task event stream carries its own per-task cursor
 for resume. Nothing assumes dense or gap-free numbering, and everything reconciles via
 `since`.
 
@@ -216,10 +216,10 @@ the state it acts on. Restoring replays, exactly as installing does: a change th
 while verse was down is acted on, and a goal reached while it was down latches on the way back
 up. See [the trigger model](trigger-model.md#the-charter-is-durable).
 
-*Resume, not orphan.* On restart, `versed.reconcileProcesses` re-attaches a non-terminal
-process whose work outlived verse — one on a remote runner — replaying to recover a terminal
+*Resume, not orphan.* On restart, `versed.reconcileTasks` re-attaches a non-terminal
+task whose work outlived verse — one on a remote runner — replaying to recover a terminal
 reached while down, and orphans one whose in-process runtime died with the previous run. Open
-gate questions follow their asker: a resumed process keeps its docket entries answerable, and
+gate questions follow their asker: a resumed task keeps its docket entries answerable, and
 an orphaned one's are settled off the docket.
 
 *CAS at every contended write.* A store write carries its preconditions, checked with it in
@@ -232,8 +232,8 @@ generation is rejected — so a displaced or zombie worker cannot corrupt the lo
 
 Each seam is where you plug in without touching the core.
 
-- *Driver* — how a process thinks: `scripted`, `llm`, or your own `Next`.
-- *Process control* — where and how a process runs: a k8s Job, a lambda, a broker for humans.
+- *Driver* — how a task thinks: `scripted`, `llm`, or your own `Next`.
+- *Task control* — where and how a task runs: a k8s Job, a lambda, a broker for humans.
 - *Store* — logd/docd, or anything implementing the `Store` interface.
 - *Source* — reflect an external system into an owned slice of the verse, as a program you
   deploy and install ([sources](sources.md)). Distinct from a *docd controller*, which serves
@@ -242,10 +242,10 @@ Each seam is where you plug in without touching the core.
 
 ## Deployment shape
 
-Today `verse up` runs the engine, process runtime, and HTTP surface in one process, and
+Today `verse up` runs the engine, task runtime, and HTTP surface in one process, and
 either brings up logd and docd as children or attaches to a running docd. The pieces — store,
-engine (`versed`), process runtime (`proc`) — are separable services behind these same
-interfaces, and process control already lets processes run off-box.
+engine (`versed`), task runtime (`task`) — are separable services behind these same
+interfaces, and task control already lets tasks run off-box.
 
 Which of the seams above can actually be a *wire*, and — the property that decides what each
 is good for — which side opens the connection, is [seams](seams.md). It is the view across the

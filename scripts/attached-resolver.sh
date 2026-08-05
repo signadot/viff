@@ -145,14 +145,14 @@ setup() {
 	# one every time — the default driver is an llm, which may answer in prose and call no
 	# tool at all, and a demo that sometimes poses no question teaches nothing.
 	local run
-	run=$(v process run 'echo reviewing' --name "$RUN_NAME" --subject "$SUBJECT" \
+	run=$(v task run 'echo reviewing' --name "$RUN_NAME" --subject "$SUBJECT" \
 		--driver scripted --vector ask ${bound:+--resolver "$bound"})
 	ok "spawned $run${bound:+, bound to $bound}"
 }
 
 # ── looking at it ────────────────────────────────────────────────────────────
 
-# The run, asked for rather than remembered: the process about this subject that is STILL
+# The run, asked for rather than remembered: the task about this subject that is STILL
 # HOLDING A QUESTION. `pending` is the ref of the question it is stopped at, so asking for the
 # runs that have one asks exactly the question this script is about — and an act that has been
 # answered leaves nothing behind to be mistaken for the next one.
@@ -160,9 +160,9 @@ setup() {
 # Not "the last one listed": store order is not spawn order, so that picked an arbitrary run
 # about the subject — sometimes one already finished, whose question never came and never would.
 run_id() {
-	v entities --system process --kind instance \
+	v entities --system task --kind instance \
 		--if "{flow: \"$SUBJECT\", pending: null}" -o tony |
-		sed -n 's|^[[:space:]]*ref:[[:space:]]*process:instance:||p' | head -1
+		sed -n 's|^[[:space:]]*ref:[[:space:]]*task:instance:||p' | head -1
 }
 
 # Whatever this subject was left holding from an earlier act. One act at a time is the whole
@@ -171,7 +171,7 @@ run_id() {
 retire_previous() {
 	local old
 	while old=$(run_id) && [ -n "$old" ]; do
-		v process cancel "$old" >/dev/null 2>&1 || break
+		v task cancel "$old" >/dev/null 2>&1 || break
 		sleep 0.2
 	done
 }
@@ -257,7 +257,7 @@ attach() {
 	[ -n "$run" ] || die "no run is holding a question — run an act first"
 	step "attaching to $run — what an OBSERVER sees"
 	printf '  answer it from another terminal (%s answer) and watch the decision land here.\n\n' "$0"
-	v process attach "$run"
+	v task attach "$run"
 }
 
 watch() {
@@ -349,7 +349,7 @@ next() {
 clean() {
 	local run
 	run=$(run_id)
-	[ -n "$run" ] && v process cancel "$run" >/dev/null 2>&1 || true
+	[ -n "$run" ] && v task cancel "$run" >/dev/null 2>&1 || true
 	for kn in security:reviewer security:payments-review; do
 		v resolver remove "$kn" >/dev/null 2>&1 || true
 	done

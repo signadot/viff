@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // vanish marks an entity as on its way out, through the ordinary write path.
@@ -31,7 +31,7 @@ func vanish(t *testing.T, store entity.Store, ref entity.Ref) {
 // a gate on it — all work about something that will not be there.
 func TestSelectionSkipsAVanishingEntity(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	live := entity.Ref{System: "demo", Kind: "pr", ID: "live"}
 	going := entity.Ref{System: "demo", Kind: "pr", ID: "going"}
@@ -62,7 +62,7 @@ func TestSelectionSkipsAVanishingEntity(t *testing.T) {
 // select what is leaving, and remove it. A patch of null at the root is the removal.
 func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	going := entity.Ref{System: "demo", Kind: "pr", ID: "going"}
 	staying := entity.Ref{System: "demo", Kind: "pr", ID: "staying"}
@@ -103,7 +103,7 @@ func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 // written down: `on` says "this now exists", and there is no way to say the negative.
 func TestVanishingIsARisingEdge(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	going := entity.Ref{System: "demo", Kind: "pr", ID: "going"}
 	audit := entity.Ref{System: "audit", Kind: "record", ID: "latest"}
@@ -169,7 +169,7 @@ func mustWriteNil(t *testing.T, store entity.Store, ref entity.Ref) {
 // Measured before the fix: `exists=true payload=map[farewell:noted]`.
 func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 

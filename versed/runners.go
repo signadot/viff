@@ -9,8 +9,8 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
 )
 
 // ── runners: where work runs ─────────────────────────────────────────────────
@@ -19,7 +19,7 @@ import (
 // is not a provider: a provider picks the DOER — which driver, under which frame, with which
 // grant — and a runner is WHERE the work runs. The two are orthogonal, so folding runners into
 // provider selection would make one selection answer two questions and force a doer entity per
-// (doer, place) pair. See docs/working/per-process-runners.md.
+// (doer, place) pair. See docs/working/per-task-runners.md.
 
 // addRunner installs one, after asking the url what it is.
 //
@@ -145,7 +145,7 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 // removeRunner takes the entity away, and answers the question a delete cannot: what happens to
 // the work still on it.
 //
-// verse cannot MOVE a running process between runners. It can cancel one, or leave it — and the
+// verse cannot MOVE a running task between runners. It can cancel one, or leave it — and the
 // difference between those is an intent verse cannot read from a delete. Retiring the name (a
 // rename, a retarget) means the work is fine and should be left alone; tearing the place down
 // means the work is doomed and the only question is whether it ends cleanly. Neither default
@@ -171,7 +171,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 
 	if len(live) > 0 && !cancelling && !leaving {
 		http.Error(w, fmt.Sprintf(
-			"refused: %d process(es) are running on %s, and removing it means one of two "+
+			"refused: %d task(es) are running on %s, and removing it means one of two "+
 				"things this cannot tell apart:\n"+
 				"    --cancel \"<why>\"   the place is going away; end them with a reason "+
 				"their charters see\n"+
@@ -199,11 +199,11 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// liveOn returns the ids of processes still running on a runner.
+// liveOn returns the ids of tasks still running on a runner.
 //
-// Matched on the process:instance mirror, by the NAME a spawn used or by the url stamped on it.
+// Matched on the task:instance mirror, by the NAME a spawn used or by the url stamped on it.
 // Both, because the two answer different halves: the name finds work this verse placed there,
-// and the url finds work placed there before a rename — and a process carries the url precisely
+// and the url finds work placed there before a rename — and a task carries the url precisely
 // so that removing the entity cannot strand it.
 func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 	var out []string
@@ -214,7 +214,7 @@ func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 		if rec == nil {
 			continue
 		}
-		if st, _ := rec["status"].(string); process.TerminalStatus(st) {
+		if st, _ := rec["status"].(string); task.TerminalStatus(st) {
 			continue
 		}
 		named, _ := rec["runnerName"].(string)
@@ -227,7 +227,7 @@ func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 	return out
 }
 
-// cancelOn ends each process on a runner, and separates the ones it ended from the ones it
+// cancelOn ends each task on a runner, and separates the ones it ended from the ones it
 // could not reach. A cancel that never arrived must not be counted as one that did.
 func cancelOn(url string, ids []string, why string) (cancelled, unreachable []string) {
 	p := runner.HTTP(url)
@@ -265,7 +265,7 @@ func runnerCounts(r entity.Reader, ref entity.Ref, url string) map[string]any {
 			continue
 		}
 		total++
-		if st, _ := rec["status"].(string); !process.TerminalStatus(st) {
+		if st, _ := rec["status"].(string); !task.TerminalStatus(st) {
 			running++
 		}
 		if at, _ := rec["startedAt"].(string); at > last {
@@ -285,7 +285,7 @@ func runnerCounts(r entity.Reader, ref entity.Ref, url string) map[string]any {
 // the default. A misspelled runner that ran the work in-process would be the same class of bug
 // as a misspelled resolver that quietly left work unsupervised: the deployment says one thing
 // and the verse does another.
-func (s *Server) runnerFor(store entity.Reader, name string) (process.Runner, string, error) {
+func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, string, error) {
 	if name == "" {
 		return s.runner, "", nil
 	}

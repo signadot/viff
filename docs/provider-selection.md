@@ -1,6 +1,6 @@
 # Provider selection: how a doer is chosen, and what it may bring
 
-Every `spawn` answers two questions. *What* is the work — the task, the frame, the contract.
+Every `spawn` answers two questions. *What* is the work — the prompt, the frame, the contract.
 *Who* does it. This is the second one.
 
 A spawn can answer it outright by naming a `driver`. Or it can leave the answer to the verse:
@@ -44,7 +44,7 @@ a code change.
 ```tony
 action:
   spawn:
-    task: "treat $subject"
+    prompt: "treat $subject"
     grant: no-delegate
     provider: { capability: treat, match: { risk: low }, select: auto }
 ```
@@ -92,14 +92,14 @@ The overlay only ever narrows.
 | `frame` | replaces when set; absent inherits the spawn's |
 | `tools` | **intersect** — never replace |
 | `grant` | replaces when set and must be within the spawn's; absent inherits the spawn's |
-| `task`, `vector`, everything else | the charter's, untouched |
+| `prompt`, `vector`, everything else | the charter's, untouched |
 
 Two of those need their reasons stated, because the obvious rule is the wrong one.
 
 **A doer that sets `tools` and not `grant` keeps the spawn's grant.** Absent and empty are
-different values on both sides — which is why `process.NamedGrant` returns an `ok` rather than
+different values on both sides — which is why `task.NamedGrant` returns an `ok` rather than
 a zero `Grant`, since the zero envelope permits nothing and would refuse every action of a
-process that never mentioned one.
+task that never mentioned one.
 
 **`tools` intersects because an empty list means *all* of the driver's tools.** A replace would
 let a doer offering `[read_file, run_bash]` add `run_bash` to a spawn that offered only
@@ -116,14 +116,14 @@ doer that can use no tool the spawn permits cannot do the work.
 
 A `provider:*` entity is an ordinary entity. **Anyone who can write one can create a doer** —
 so if a doer's `grant` were taken as-is, writing an entity would be a privilege escalation,
-and the charter that spawned the process never said so.
+and the charter that spawned the task never said so.
 
-The rule is the one delegation already uses (`process.Grant.Subset`, the check `NewChild`
+The rule is the one delegation already uses (`task.Grant.Subset`, the check `NewChild`
 makes at a call_agent boundary): the charter sets a ceiling, a doer may only narrow.
 
 **A spawn that declares `provider:` must declare `grant:`, or it will not install.** This is
-not fussiness. An omitted grant is not a small ceiling but an unbounded one — `process.Launch`
-treats a nil grant as unbounded, which is what every process got before a spawn could say
+not fussiness. An omitted grant is not a small ceiling but an unbounded one — `task.Launch`
+treats a nil grant as unbounded, which is what every task got before a spawn could say
 otherwise — so without the requirement, "a doer may only narrow" would be a check against
 everything in the common case. `grant: all` is spellable for exactly this: say unbounded
 rather than defaulting into it.
@@ -140,7 +140,7 @@ A doer that would widen is not trimmed and not failed at launch. It is **ineligi
 never enters the option set, so it cannot be picked and cannot be voted for.
 
 Both halves of that matter. Trimming — quietly dropping the offending field and running the
-doer anyway — would put a process under an envelope different from the one its own entity
+doer anyway — would put a task under an envelope different from the one its own entity
 states, which is the defect the named-grant vocabulary exists to prevent. And checking after
 the pick would let a group deliberate, reach a threshold, and elect a doer that then cannot be
 seated: a decision with no seat, which no voter could have known they were making.
@@ -169,7 +169,7 @@ resolving to nothing. A typo must not be a route to running un-enveloped.
 ### What a doer may not set
 
 `vector`, `resolver` and `environment` on a provider entity make it ineligible — refused,
-again, rather than ignored, so a doer's entity and the process it produces cannot disagree.
+again, rather than ignored, so a doer's entity and the task it produces cannot disagree.
 
 `vector` is the sharp one, and the reason it is not in the fragment. It is the one axis that
 widens without touching authority: `vector: auto` means "this firing already answered its
@@ -181,16 +181,16 @@ resolve to yet, so honoring them would be a promise nothing keeps.
 
 ## What you can see
 
-Because a selection changes what a process may do, three surfaces say what it did.
+Because a selection changes what a task may do, three surfaces say what it did.
 
-**The process entity** carries `doer`, `grant` and `tools` for every spawn — including `auto`,
+**The task entity** carries `doer`, `grant` and `tools` for every spawn — including `auto`,
 which raises no motion and therefore has no other surface at all. `doer` is separate from
 `driver` because the driver stopped identifying the doer: two doers on one driver is the case
-this whole feature serves, so a process showing only `llm` would report quite different work
+this whole feature serves, so a task showing only `llm` would report quite different work
 as the same agent.
 
 ```sh
-verse entity get process:instance:<id>
+verse entity get task:instance:<id>
 # doer: provider:treat:fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 

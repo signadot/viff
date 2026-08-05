@@ -11,23 +11,23 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 
 	"github.com/signadot/verse/codec"
 )
 
-// A `when` over process:instance SWEEPS its subject: the firing acts on every entity the
-// subject selects, not on the one the completed process happened to name.
+// A `when` over task:instance SWEEPS its subject: the firing acts on every entity the
+// subject selects, not on the one the completed task happened to name.
 //
 // That `flow` redirect is gone. It read one field of the changed payload and let it decide
 // whether a firing was about one entity or a whole set — a charter could not say which it
 // wanted, and a reader of one could not tell. What it did well, advancing exactly the subject
-// a finished process was about, is what completion HOOKS do exactly: the engine scopes a hook
-// to that spawn's process, a correlation the store cannot fake because the engine spawned it.
+// a finished task was about, is what completion HOOKS do exactly: the engine scopes a hook
+// to that spawn's task, a correlation the store cannot fake because the engine spawned it.
 // See TestOnDoneAdvancesOnlyItsOwnSubject, and docs/trigger-model.md §Bindings.
 func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
@@ -37,7 +37,7 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -49,14 +49,14 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// One completed process, carrying pr:1 as its flow — exactly what mirror.Reflect writes.
+	// One completed task, carrying pr:1 as its flow — exactly what mirror.Reflect writes.
 	entitytest.Set(t, store, mirror.Ref("rev-1"), entity.Obj{"status": "done", "flow": one.String()}.Payload())
 
 	// BOTH advance. The `flow` field names pr:1 and no longer narrows anything.
 	waitStage(t, store, one, "reviewed")
 	waitStage(t, store, two, "reviewed")
 
-	// The process entity itself is still not advanced — the firing is about the subject the
+	// The task entity itself is still not advanced — the firing is about the subject the
 	// charter named, which is what the Subject/When split has always been for.
 	if e, _, _ := store.Get(mirror.Ref("rev-1")); entity.ToObj(e.Payload)["stage"] != nil {
 		t.Fatalf("the action was applied to the matched entity, not the subject: %#v", e.Payload)
@@ -67,10 +67,10 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 // rather than whatever entity happened to fire the trigger.
 func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	specs := make(chan launch.Spec, 4)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		specs <- spec
 		return nil
 	})
@@ -83,12 +83,12 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When: MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When: MatchWhen(Match{"system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			// A predicate the action advances past, so the rule has an end state.
 			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Task: "follow up on $subject"},
+			Spawn:  &launch.Spec{Prompt: "follow up on $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "followed"}.Payload()},
 		},
 	}); err != nil {
@@ -101,10 +101,10 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	entitytest.Set(t, store, mirror.Ref("p1"), entity.Obj{"status": "done", "flow": pr.String()}.Payload())
 
 	spec := <-specs
-	if spec.Task != "follow up on "+pr.String() {
-		t.Fatalf("$subject did not bind to the resolved subject: %q", spec.Task)
+	if spec.Prompt != "follow up on "+pr.String() {
+		t.Fatalf("$subject did not bind to the resolved subject: %q", spec.Prompt)
 	}
-	// And the spawned process is tagged with that subject, so its flow is the PR's.
+	// And the spawned task is tagged with that subject, so its flow is the PR's.
 	if spec.Subject != pr.String() {
 		t.Fatalf("spawn.Subject = %q, want the resolved subject %q", spec.Subject, pr.String())
 	}
@@ -134,7 +134,7 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 // the goal's own subject, readable as $flow by an action and by the flow query.
 func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddGoal(GoalDef{
 		Name:     "ship",
 		Subject:  "change:pr:42",
@@ -170,7 +170,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "needs-flow",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance"}),
+			When:    MatchWhen(Match{"system": "task", "kind": "instance"}),
 			Subject: mm("demo:pr:*"),
 		},
 		Gates:  []Gate{{Mode: "ask"}},
@@ -195,9 +195,9 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 // not trouble an approver.
 type denyIfAsked struct{ t *testing.T }
 
-func (d denyIfAsked) Resolve(context.Context, process.GateQuestion, process.ToolUse) (process.Resolution, error) {
+func (d denyIfAsked) Resolve(context.Context, task.GateQuestion, task.ToolUse) (task.Resolution, error) {
 	d.t.Error("a gate was posed for a firing whose subject could not resolve")
-	return process.Resolution{Proceed: false}, nil
+	return task.Resolution{Proceed: false}, nil
 }
 
 // A charter that cannot mean what it says must fail at INSTALL, not silently match nothing.
@@ -244,7 +244,7 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			eng := New(entitytest.Store(t), process.AutoResolver{})
+			eng := New(entitytest.Store(t), task.AutoResolver{})
 			err := eng.AddTrigger(Trigger{Name: "t", Condition: c.cond})
 			if err == nil {
 				t.Fatalf("installed an invalid condition (%+v)", c.cond)
@@ -260,7 +260,7 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 // so it is never asked to select a set out of the store and needs no definite kind. This is the
 // case the "must name a kind" rule must NOT catch — the ordinary rule that reacts to a system.
 func TestSubjectOnlyNeedsNoKind(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "any-demo-change",
 		Condition: Condition{Subject: Match{"system": "demo"}},
@@ -282,7 +282,7 @@ func TestSubjectOnlyNeedsNoKind(t *testing.T) {
 // there, not where it ends up.
 func TestSubjectIsASelectionNotTheChangedEntity(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 
 	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
@@ -383,7 +383,7 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 // A `when` round-trips as authored, so `trigger show` reads like the installed charter
 // rather than exposing the internal parse node; the subject round-trips as its dimensions.
 func TestConditionJSONRoundTrip(t *testing.T) {
-	const in = `{"name":"reviewed","condition":{"when":{"system":"process","kind":"instance",` +
+	const in = `{"name":"reviewed","condition":{"when":{"system":"task","kind":"instance",` +
 		`"value":{"status":"done"}},"subject":"demo:pr:*"},"action":{"patch":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(in), &tr, codec.JSON); err != nil {

@@ -96,10 +96,10 @@ var Baseline = Tony
 // invocation and passes it explicitly.
 var defaultFormat atomic.Int32
 
-// SetDefault sets the process-wide default format.
+// SetDefault sets the task-wide default format.
 func SetDefault(f Format) { defaultFormat.Store(int32(f) + 1) }
 
-// Default reports the process-wide default format, or the Baseline if none was set.
+// Default reports the task-wide default format, or the Baseline if none was set.
 func Default() Format {
 	if v := defaultFormat.Load(); v != 0 {
 		return Format(v - 1)

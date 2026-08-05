@@ -109,7 +109,7 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	}
 	for _, want := range []string{
 		"GET /status", "GET /entity", "POST /entity", "POST /gate/resolve",
-		"GET /processes", "POST /processes", "GET /schema", "GET /api",
+		"GET /tasks", "POST /tasks", "GET /schema", "GET /api",
 	} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("route table is missing %q", want)
@@ -329,7 +329,7 @@ func TestTheRootIsTheServedSurface(t *testing.T) {
 }
 
 // topLevel reports the single path segment of a bare top-level route, and whether the path is
-// one. "/entities" is; "/flow/tree", "/processes/{id}" and "/" are not. It lives with the walk
+// one. "/entities" is; "/flow/tree", "/tasks/{id}" and "/" are not. It lives with the walk
 // because the walk is the only thing that asks: the schema names the paths, and this is how the
 // route table's spelling of one is compared with it.
 func topLevel(path string) (string, bool) {
@@ -340,7 +340,7 @@ func topLevel(path string) (string, bool) {
 	return seg, true
 }
 
-// The difference between /processes and /processes/{id} is the difference between the root
+// The difference between /tasks and /tasks/{id} is the difference between the root
 // having a key and the route table owning it, so the predicate deciding it is pinned on its own.
 func TestTopLevelIsABarePathSegment(t *testing.T) {
 	for _, c := range []struct {
@@ -350,9 +350,9 @@ func TestTopLevelIsABarePathSegment(t *testing.T) {
 		{"/entities", "entities"},
 		{"/schema", "schema"},
 		{"/flow/tree", ""},
-		{"/processes", "processes"},
-		{"/processes/{id}", ""},
-		{"/processes/{id}/inbox", ""},
+		{"/tasks", "tasks"},
+		{"/tasks/{id}", ""},
+		{"/tasks/{id}/inbox", ""},
 		{"/schema/{name}", ""},
 		{"/", ""},
 		{"", ""},

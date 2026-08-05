@@ -16,7 +16,7 @@ delivered when it is merely queued (`A2`), and an index that stopped being writt
 nothing at all (`P5`). Underneath is one habit: a call whose failure has nowhere to go.
 
 The second habit is a reader that cannot tell what it does not know. A closed stream means
-both "the process ended" and "your connection died" (`R3`, `R4`); a truncated replay carries
+both "the task ended" and "your connection died" (`R3`, `R4`); a truncated replay carries
 no marker (`B4`); a resume across a standing gate silently omits the gate (`P6`).
 
 Neither is a distributed-systems subtlety. They are places where a return value was left out.
@@ -54,7 +54,7 @@ thinking:
 
 **A stream that ends without a terminal is a broken stream.** That rule needs no machinery —
 it fell out of `ba1e492`, which made the bus close after the terminal and never before. It is
-what lets a reader tell `R3` from a completed process.
+what lets a reader tell `R3` from a completed task.
 
 **Reconnect at the last cursor.** `mirror.Reflect` already writes `cursor` to the entity, so
 it already knows where it was. On a stream that ended without a terminal it re-subscribes
@@ -71,7 +71,7 @@ today; the resume path does not, on the stated grounds that the ring carries the
 **A silent stream is not a healthy one.** A keepalive comment every N seconds; a reader that
 has heard nothing in 2N treats the stream as dead and reconnects. With a client timeout on the
 control calls — on a dedicated client, never `http.DefaultClient`, which is shared
-process-wide — that closes `R2`.
+task-wide — that closes `R2`.
 
 Closes `R2`, `R3`, `R4`, `P6`, and makes `B4`'s truncation visible.
 
@@ -91,11 +91,11 @@ where it was; `P2` skips it because the broker assumed. One rule fixes both, and
 keys on `report` (`B2`) make a replay harmless rather than merely unlikely.
 
 Spawn is the sharp case, and it got sharper while this note was being written. `R6`: two
-spawns of one id do not merely create two processes — the second REPLACES the first in the
+spawns of one id do not merely create two tasks — the second REPLACES the first in the
 daemon's map. The original keeps running with nothing addressing it, and every control, event
 and gate for that id reaches the replacement. So a retry of the request `R5` describes, the
 one whose response was lost, destroys the work it was retrying. Spawn must be idempotent by
-id — a repeat returns the existing process — before anything is allowed to retry it.
+id — a repeat returns the existing task — before anything is allowed to retry it.
 
 `P8` belongs here too: a report whose batch contains a terminal drops everything after it and
 answers 200. It should answer with how many events it applied, which is what makes a retry
@@ -105,13 +105,13 @@ Closes `R5`, `R6`, `B2`, `B3`, `P2`, `P8`.
 
 ### 4. A claim is a lease, and an answer is delivered when it is acknowledged
 
-`B1`: a worker that claims and vanishes holds its claim, its gate and its process forever.
+`B1`: a worker that claims and vanishes holds its claim, its gate and its task forever.
 There is no lease, no heartbeat, no health check — the code's own comment says "the eventual
 health-check calls `Revoke`", and nothing calls `Revoke`.
 
 The renewal already exists, again: a worker polls its inbox. Each poll or report renews the
 lease. On expiry the broker releases the claim so another worker may take over, and publishes
-that it did — the process is not terminal, because the work may well still be running
+that it did — the task is not terminal, because the work may well still be running
 somewhere.
 
 `A2` is the same shape one layer up. An answer is recorded as settled the moment it is queued:
@@ -140,7 +140,7 @@ defect in either.
 - **`P9`** — a cancelled sole waiter is dropped from the registry and the record stays
   `pending`. `OnPost` fires on the way in and has no counterpart on the way out. A few lines,
   no design cost, and it prejudices nothing.
-- **`P5`** — a store that stops accepting writes leaves a finished process reading `running`
+- **`P5`** — a store that stops accepting writes leaves a finished task reading `running`
   forever, and a gate on no docket. The policy (drop rather than stall the loop) is right; the
   silence is the defect. The minimum is that the failure is countable and visible on
   `verse status`, since by construction it cannot be written to the store.

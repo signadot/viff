@@ -11,7 +11,7 @@ A source is an entity at `sources:<system>:<name>`:
 | `system` | the slice this source reflects and is the single writer of (`git`, `github`, …). Required |
 | `name` | its name within that system. Required |
 | `url` | verse dials this base for the reflection contract |
-| `dir` | a local git repository, reflected in process — no network |
+| `dir` | a local git repository, reflected in task — no network |
 | `dial-in` | the source dials verse. Designed, refused at install until it is built |
 | `owns` | ref globs this source claims to be the single writer of (see below) |
 | `scope` | the copy-on-write scope it reflects into; empty is baseline |
@@ -61,7 +61,7 @@ proved apart from nothing, so it is refused beside anything else in its system.
 verse sources                                what is installed, with lastReflect/lastError
         [--probe]                            …and what each one says right now (not recorded)
 verse source add <system>:<name> <url>       install one, probing the url first
-       add --dir <d> <system>:<name>         …or a local git repo, reflected in process
+       add --dir <d> <system>:<name>         …or a local git repo, reflected in task
        add [--file <f>] | [file] | stdin     …or as a document (.tony/.json/.yaml)
            [--no-probe]                      install without asking it what it is
            [--allow-overlap]                 install though another source may write the same slice

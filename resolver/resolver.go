@@ -24,7 +24,7 @@ import (
 // `resolvers:instance:<name>@<origin>` for one that is live.
 //
 // One system, so a single `--system resolvers` shows what is installed and who is watching
-// what. And a reserved KIND rather than a second system, for the reason process:claim gives:
+// what. And a reserved KIND rather than a second system, for the reason task:claim gives:
 // the pair would differ by one letter, which is a thing to mistype rather than a thing to
 // read.
 const System = "resolvers"
@@ -42,7 +42,7 @@ func Ref(kind, name string) entity.Ref {
 // InstanceRef addresses one binding watching one origin — a run, for now.
 //
 // The `@` composition is the one verse already uses for a thing that exists per pair
-// (`process:claim:<chain>@<subject>`, a gate question's `<origin>~d<n>`), and it is what lets
+// (`task:claim:<chain>@<subject>`, a gate question's `<origin>~d<n>`), and it is what lets
 // the routes that serve a resolver name a stream with one ref instead of a ref and a query
 // parameter the caller has to keep in step.
 //

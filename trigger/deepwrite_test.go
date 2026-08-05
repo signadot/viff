@@ -8,7 +8,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A trigger reads the ENTITY, not the write that touched it. A when over two fields must
@@ -20,7 +20,7 @@ import (
 // Nothing errored — the trigger simply never ran.
 func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{Subject: Match{
@@ -74,7 +74,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 // "$note" where the note should be.
 func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "announce",
 		Condition: Condition{Subject: Match{

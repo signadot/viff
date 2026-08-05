@@ -1,7 +1,7 @@
 // Package answer is the contract a spawn puts on its own final message.
 //
 // An agent ends by talking: the loop stops when the model stops calling tools, and the
-// result is whatever prose it stopped on (process/harness/llm.go). So "the model finished
+// result is whatever prose it stopped on (task/harness/llm.go). So "the model finished
 // the job" and "the model stopped talking" are the same observation, and a charter that
 // derefs `$data.class` finds out at PATCH time — after the work is done and the tokens are
 // spent — that the agent narrated instead of answering. The failure lands on a hook nobody
@@ -12,7 +12,7 @@
 // before it will call the run done; a failure is fed back to the model as a DIAGNOSIS it
 // can act on, bounded at a couple of attempts; and a run that still cannot produce the
 // shape FAILS, which is `onFailed`, which every rule already declares a branch for. If a
-// process cannot succeed without satisfying its contract, the deref downstream of it
+// task cannot succeed without satisfying its contract, the deref downstream of it
 // cannot fail — the failure mode is deleted rather than made rarer.
 //
 // The contract is written as a tony schema's `accept` clause, which is the vocabulary
@@ -50,7 +50,7 @@ type Contract struct {
 // DefaultRepairs is how many times a driver re-asks after a failed check. Two, and bounded
 // on purpose: if a model cannot produce the shape with the specific complaint in front of
 // it, more turns will not teach it, and an unbounded repair loop is a token sink whose
-// failure is invisible. The honest end of an unconvincible model is a failed process.
+// failure is invisible. The honest end of an unconvincible model is a failed task.
 const DefaultRepairs = 2
 
 // ParseSource reads a contract from tony source — the hand-written form, for a test or a

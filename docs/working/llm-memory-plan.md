@@ -17,13 +17,13 @@ to a user, step 3 is the first with observable behaviour. The dependency order i
 
 The one piece of pure wiring. `Spec.Doer` exists and is set (`launch/fragment.go` `Overlay`,
 resolved in `trigger/trigger.go`); its only reader is `mirror.go`. Add the field to
-`process.Launch` (`process/runner.go`), copy it in `launchOf` (`versed/server.go`), add it to
-`harness.Config` (`process/harness/build.go`), carry it onto `llmDriver`.
+`task.Launch` (`task/runner.go`), copy it in `launchOf` (`versed/server.go`), add it to
+`harness.Config` (`task/harness/build.go`), carry it onto `llmDriver`.
 
 Note in the `Launch` field's doc *why* it is there — that comment block explains each field's
 presence, and `Doer` is the first one that is identity rather than build input.
 
-**Proves:** a spawn's selected doer reaches the process builder. Test: build a process from a
+**Proves:** a spawn's selected doer reaches the task builder. Test: build a task from a
 spec carrying `Provider`, assert `Doer` arrives at `harness.Config`. Also assert the negative —
 a spawn with no provider leaves it empty, and empty must be handled everywhere downstream
 (no provider selection ⇒ no memory, not memory under the key `""`).
@@ -45,7 +45,7 @@ out to want isolating — decide when the import lands, not now):
   and a retry cap (see step 5).
 
 `harness.Config` gains a `Store entity.Store`. **Nil is legal and means no memory** — `verse up`
-(`cmd/verse/up.go`) builds a harness directly and ad-hoc `process run` has no verse behind it.
+(`cmd/verse/up.go`) builds a harness directly and ad-hoc `task run` has no verse behind it.
 Every call site must tolerate it; a nil store makes `recall`/`remember` unofferable rather than
 panicking.
 
@@ -55,8 +55,8 @@ write to a different key without retrying, two writers to the *same* key don't l
 
 ### 3. The tools
 
-`toolDefs()` in `process/harness/llm.go` gains two entries; `fsExec.Execute`
-(`process/harness/exec.go`) gains two cases beside `read_file`/`write_file`.
+`toolDefs()` in `task/harness/llm.go` gains two entries; `fsExec.Execute`
+(`task/harness/exec.go`) gains two cases beside `read_file`/`write_file`.
 
 - `recall(key)` → `read`, returns the payload rendered for the model, or a plain "no note under
   that key" when `ok` is false.
@@ -86,14 +86,14 @@ with no store fails rather than launching short.
 Without this, step 3 is refused under every named grant except `all` — see the design note's
 authority section. Two edits:
 
-- `process/effect.go`: `KindMemory ResourceKind = "memory"` and a `Memory(key) Resource`
+- `task/effect.go`: `KindMemory ResourceKind = "memory"` and a `Memory(key) Resource`
   constructor beside `File`/`AgentRes`.
 - `Derive`: cases for both tools, emitting `Effect{Verb: Read, Resource: Memory(key)}` and
   `Effect{Verb: Write, Resource: Memory(key)}`.
 
-`Derive` lives in **two** places — `demoDeriver` (`process/harness/exec.go`) and `BasicDeriver`
-(`process/deriver.go`, the `NewSupervisor` default). Update both, or the envelope differs by
-which deriver a process happened to get, which is the exact failure `Grant.Permits`'s doc warns
+`Derive` lives in **two** places — `demoDeriver` (`task/harness/exec.go`) and `BasicDeriver`
+(`task/deriver.go`, the `NewSupervisor` default). Update both, or the envelope differs by
+which deriver a task happened to get, which is the exact failure `Grant.Permits`'s doc warns
 about ("a Grant has no deriver, and one that classified actions with a different deriver than
 the vector uses would be enforcing a different envelope").
 
@@ -147,7 +147,7 @@ and every spawn pays for every note the doer ever wrote.
 **A doer writing its own future instructions.** `remember` persists content that re-enters this
 doer's later runs via `recall`. A doer that ingested hostile text (a PR body, an issue
 description) and wrote it to memory has planted it in its own future context — persistent
-injection across process boundaries. The grant boundary in step 4 bounds *who* may write memory;
+injection across task boundaries. The grant boundary in step 4 bounds *who* may write memory;
 it says nothing about *what*. Not a reason to withhold the feature, and not solvable by this
 plan, but it should be written down somewhere with authority's name on it before memory is handed
 to a doer that reads untrusted input.

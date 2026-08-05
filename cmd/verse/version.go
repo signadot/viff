@@ -64,7 +64,7 @@ func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 	// this check, or the broker face, or a proxy, or curl's idea of a good time — and none of
 	// those is a version to compare against. The check is between two things that both speak
 	// this contract; where one does not, there is nothing to report and reporting it anyway
-	// would put a warning on every `verse process do` that dials a broker.
+	// would put a warning on every `verse task do` that dials a broker.
 	theirs := resp.Header.Get(api.VersionHeader)
 	if theirs == "" {
 		return resp, nil

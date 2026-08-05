@@ -2,8 +2,8 @@
 
 Status: proposal, nothing here runs.
 
-Every LLM-driven process starts blank. `llmDriver.messages` lives only for the run
-(`process/harness/llm.go`); when the process ends, whatever the model figured out about the
+Every LLM-driven task starts blank. `llmDriver.messages` lives only for the run
+(`task/harness/llm.go`); when the task ends, whatever the model figured out about the
 task, the codebase, or its own past mistakes ends with it. The next spawn — even the next spawn
 of the *same doer* — starts from the same frame and learns the same lessons again. This note
 proposes closing that gap by giving a doer a small, durable memory backed by the entity store,
@@ -11,12 +11,12 @@ keyed to the doer's own identity rather than to which LLM vendor happened to ans
 
 ## The gap, precisely
 
-Nothing today persists a conversation. `mirror.go` reflects a process's status (`doer`,
-`grant`, `tools`, lifecycle) into `process:instance:<id>` — durable, but index-only and
-one-way, built for "observe another process," not "recall what a process learned"
+Nothing today persists a conversation. `mirror.go` reflects a task's status (`doer`,
+`grant`, `tools`, lifecycle) into `task:instance:<id>` — durable, but index-only and
+one-way, built for "observe another task," not "recall what a task learned"
 ([change events](../change-events.md) is why an event is a level, not a transcript). There is
 no embeddings/vector-search path anywhere in verse to build on: the one `Vector` type in the
-codebase is the gate/autonomy dial (`process/vector.go`), unrelated. So this note is scoped
+codebase is the gate/autonomy dial (`task/vector.go`), unrelated. So this note is scoped
 deliberately small — a doer keeping a handful of notes about itself, not similarity search over
 history. If the real want turns out to be "surface roughly related past incidents," that is a
 different (and much bigger) feature than the one proposed here.
@@ -36,14 +36,14 @@ would share a memory).
 The hook already exists, one layer short of the loop. `launch.Fragment.ID` is documented as
 "the doer's own identity... an entity ref (`provider:treat:fixer`) for a registry doer, the
 bare name for an inline `eligible` list." It survives `Spec.Overlay` into `Spec.Doer`
-(`launch/launch.go`), resolved in `trigger.go` before a process is ever built. Today its only
-consumer is `mirror.go`, which stamps it onto the process entity as a status field — pure
-provenance, read by nobody. `process.Launch` (the runner-facing subset of a spec,
-`process/runner.go`) does not carry `Doer` at all, and `launchOf` (`versed/server.go`), the one
+(`launch/launch.go`), resolved in `trigger.go` before a task is ever built. Today its only
+consumer is `mirror.go`, which stamps it onto the task entity as a status field — pure
+provenance, read by nobody. `task.Launch` (the runner-facing subset of a spec,
+`task/runner.go`) does not carry `Doer` at all, and `launchOf` (`versed/server.go`), the one
 place that builds a `Launch` from a `Spec`, does not copy it across — not a deliberate exclusion
 (unlike `vector`/`grant`/`environment`, which `launchOf`'s own comment explains), just a field
-nobody has needed yet. `harness.Config` (`process/harness/build.go`) has no `Doer` field either.
-Closing that chain — `Spec.Doer` → `process.Launch.Doer` → `harness.Config.Doer` — is the one
+nobody has needed yet. `harness.Config` (`task/harness/build.go`) has no `Doer` field either.
+Closing that chain — `Spec.Doer` → `task.Launch.Doer` → `harness.Config.Doer` — is the one
 piece of wiring this proposal actually requires; everything else is new, additive code.
 
 **Corner:** an inline `eligible: [fixer, memo]` doer has no entity behind it — `Doer` falls back
@@ -116,7 +116,7 @@ snapshot-vs-log fork to design around.
 
 ## The tools: `recall` and `remember`
 
-`Spec.Doer` is resolved before the process is ever built — `trigger.go` overlays the winning
+`Spec.Doer` is resolved before the task is ever built — `trigger.go` overlays the winning
 fragment before calling into the spawner, well before `harness.Build` runs. That's what makes a
 cheap push possible: at spawn, `harness.Build` lists `memory:note:<doer>:*` — key names only,
 via `List` — and folds that listing into the frame at the same seam that already appends the
@@ -127,8 +127,8 @@ Content itself is pull, not push, and that's a scaling argument as much as a des
 memory is leveled into an open-ended set of keys, injecting every key's content into every frame
 stops being cheap the moment a doer accumulates more than a handful. So:
 
-- **`recall(key)`** — a new tool (`toolDefs()` in `process/harness/llm.go`, dispatched in
-  `process/harness/exec.go`) that does one `Get` on `memory:note:<doer>:<key>` and returns its
+- **`recall(key)`** — a new tool (`toolDefs()` in `task/harness/llm.go`, dispatched in
+  `task/harness/exec.go`) that does one `Get` on `memory:note:<doer>:<key>` and returns its
   payload. Uncontended, no CAS — a read is a read.
 - **`remember(key, value)`** — the write side, through `entity.Modify` against the same ref:
   read, apply the new value, write under a precondition that nothing changed since the read,
@@ -145,18 +145,18 @@ discovering later.
 
 Not a corner — a prerequisite, and the reason is structural. `Grant.Permits` is fail-closed by
 design: *"an action with no derived effects matches no verb predicate and is refused under any
-non-wildcard grant"* (`process/authority.go`). Tools become typed capabilities only by way of
-`Derive` (`process/harness/exec.go`, `process/deriver.go`), so a `remember` that no deriver
+non-wildcard grant"* (`task/authority.go`). Tools become typed capabilities only by way of
+`Derive` (`task/harness/exec.go`, `task/deriver.go`), so a `remember` that no deriver
 classifies produces no effects, matches nothing, and is **refused for every doer carrying a
 named grant** — working only under `grant: all`. The feature would silently be absent for
 exactly the governed doers it is most useful to.
 
 So `recall`/`remember` need a resource kind of their own — `KindMemory` alongside `KindFile`,
-`KindProcess`, `KindAgent` (`process/effect.go`) — and a `Derive` case emitting
+`KindTask`, `KindAgent` (`task/effect.go`) — and a `Derive` case emitting
 `Effect{Verb: Read, Resource: Memory(key)}` and `Effect{Verb: Write, Resource: Memory(key)}`.
 
 What makes this cheap is that the named grants match on **verb alone**, with no resource
-predicate (`namedGrants` in `process/authority.go`). Nothing in the vocabulary needs editing;
+predicate (`namedGrants` in `task/authority.go`). Nothing in the vocabulary needs editing;
 every existing name already answers sensibly:
 
 | grant | `recall` | `remember` |
@@ -182,7 +182,7 @@ runs into the same structured-grant frontier
 
 ## Corners
 
-- **Scope — settled: use whatever store the process was handed.** A process running under a
+- **Scope — settled: use whatever store the task was handed.** A task running under a
   dev/sandbox `Store.Scope` ([scope lifecycle](../roadmap/scope-lifecycle.md)) reads and writes
   memory through that scope, and this needs no special-casing because copy-on-write already has
   the wanted semantics: reads see the baseline layered with the scope, writes land in the scope
@@ -220,7 +220,7 @@ runs into the same structured-grant frontier
 
 ## Staging
 
-Smallest slice first: thread `Doer` through (`Spec` → `process.Launch` → `harness.Config`),
+Smallest slice first: thread `Doer` through (`Spec` → `task.Launch` → `harness.Config`),
 inject the key listing into the frame at spawn, add `recall`/`remember` against per-key entities
 with CAS writes from the start. The leveled shape and the CAS write aren't separable extras to
 add later — leveling is *why* uniform CAS is affordable (see Shape), so shipping one without the

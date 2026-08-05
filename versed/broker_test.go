@@ -13,21 +13,21 @@ import (
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
 )
 
-// process run (POST /processes) goes through the runner, not straight to the local
+// task run (POST /tasks) goes through the runner, not straight to the local
 // runtime: under a broker runner the ad-hoc run lands on the broker, and it is mirrored as a
-// process:instance entity like any other process.
-func TestProcessRunHonorsRunner(t *testing.T) {
+// task:instance entity like any other task.
+func TestTaskRunHonorsRunner(t *testing.T) {
 	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := ts.Client().Post(ts.URL+"/processes", "application/json",
-		strings.NewReader(`{"task":"ad-hoc run","driver":"human"}`))
+	resp, err := ts.Client().Post(ts.URL+"/tasks", "application/json",
+		strings.NewReader(`{"prompt":"ad-hoc run","driver":"human"}`))
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -37,11 +37,11 @@ func TestProcessRunHonorsRunner(t *testing.T) {
 	decodeResp(t, resp, &sp)
 	resp.Body.Close()
 	if sp.ID == "" {
-		t.Fatal("no id returned from process run")
+		t.Fatal("no id returned from task run")
 	}
 
 	// honored the runner: the run is on the broker, not the local runtime.
-	lr, _ := ts.Client().Get(ts.URL + "/processes")
+	lr, _ := ts.Client().Get(ts.URL + "/tasks")
 	var list []map[string]any
 	decodeResp(t, lr, &list)
 	lr.Body.Close()
@@ -52,26 +52,26 @@ func TestProcessRunHonorsRunner(t *testing.T) {
 		}
 	}
 	if pol != "broker" {
-		t.Fatalf("runner=%q, want broker (process run should honor the runner)", pol)
+		t.Fatalf("runner=%q, want broker (task run should honor the runner)", pol)
 	}
 
-	// mirrored: it is a process:instance entity like any other process.
-	if _, ok, _ := srv.Store.Get(entity.Ref{System: "process", Kind: "instance", ID: sp.ID}); !ok {
-		t.Fatal("process run was not mirrored as a process:instance entity")
+	// mirrored: it is a task:instance entity like any other task.
+	if _, ok, _ := srv.Store.Get(entity.Ref{System: "task", Kind: "instance", ID: sp.ID}); !ok {
+		t.Fatal("task run was not mirrored as a task:instance entity")
 	}
 }
 
-// attach bridges across backends: a brokered process's events are streamed as SSE by
+// attach bridges across backends: a brokered task's events are streamed as SSE by
 // versed subscribing the broker handle (which replays the merged log then goes live).
 func TestBrokeredAttachStreams(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
-	h := b.Spawn(process.Launch{ID: "bp1", Task: "t", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "bp1", Prompt: "t", Driver: "human"}, nil)
 	h.Steer("hello there", "op") // an EvSay lands on the merged log before attach
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := ts.Client().Get(ts.URL + "/processes/bp1/events")
+	resp, err := ts.Client().Get(ts.URL + "/tasks/bp1/events")
 	if err != nil {
 		t.Fatalf("attach: %v", err)
 	}
@@ -160,27 +160,27 @@ func TestStatusShowsLocalRunner(t *testing.T) {
 	}
 }
 
-// process list unions the local runtime with the active runner's own processes: under a
-// broker runner, a brokered process appears with runner=broker and its dialURL, and get
-// resolves it across backends. This is how a broker URL is found via `process list`/`get`.
-func TestProcessListUnionsBrokered(t *testing.T) {
+// task list unions the local runtime with the active runner's own tasks: under a
+// broker runner, a brokered task appears with runner=broker and its dialURL, and get
+// resolves it across backends. This is how a broker URL is found via `task list`/`get`.
+func TestTaskListUnionsBrokered(t *testing.T) {
 	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// Spawn through the API (not the broker directly) so it mirrors a process:instance
+	// Spawn through the API (not the broker directly) so it mirrors a task:instance
 	// entity, as production does — the unified list filters by scope membership via that
-	// entity, so a process with no entity would (correctly) not appear.
-	sp, err := ts.Client().Post(ts.URL+"/processes", "application/json",
-		strings.NewReader(`{"id":"bp1","task":"brokered review","driver":"human"}`))
+	// entity, so a task with no entity would (correctly) not appear.
+	sp, err := ts.Client().Post(ts.URL+"/tasks", "application/json",
+		strings.NewReader(`{"id":"bp1","prompt":"brokered review","driver":"human"}`))
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
 	sp.Body.Close()
 
-	// list: the brokered process shows up, tagged and carrying its dial base.
-	resp, err := ts.Client().Get(ts.URL + "/processes")
+	// list: the brokered task shows up, tagged and carrying its dial base.
+	resp, err := ts.Client().Get(ts.URL + "/tasks")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 		}
 	}
 	if found == nil {
-		t.Fatalf("brokered process not in unified list: %+v", list)
+		t.Fatalf("brokered task not in unified list: %+v", list)
 	}
 	if found["runner"] != "broker" {
 		t.Fatalf("runner=%v, want broker", found["runner"])
@@ -204,7 +204,7 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 	}
 
 	// get: resolves the brokered id across backends.
-	gr, err := ts.Client().Get(ts.URL + "/processes/bp1")
+	gr, err := ts.Client().Get(ts.URL + "/tasks/bp1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -214,23 +214,23 @@ func TestProcessListUnionsBrokered(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, gr, &got)
-	if got["runner"] != "broker" || got["task"] != "brokered review" {
-		t.Fatalf("get = %+v, want the brokered process tagged broker", got)
+	if got["runner"] != "broker" || got["prompt"] != "brokered review" {
+		t.Fatalf("get = %+v, want the brokered task tagged broker", got)
 	}
 }
 
-// process inbox is an operator peek at the control queued for a brokered process's worker
-// (unfenced), and cancel/say route to the runner handle so they work for brokered processes.
-func TestProcessInboxAndControlRouting(t *testing.T) {
+// task inbox is an operator peek at the control queued for a brokered task's worker
+// (unfenced), and cancel/say route to the runner handle so they work for brokered tasks.
+func TestTaskInboxAndControlRouting(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
-	b.Spawn(process.Launch{ID: "bp1", Task: "brokered task", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "bp1", Prompt: "brokered task", Driver: "human"}, nil)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	cl := ts.Client()
 
 	// say routes to the broker: it enqueues a control item for the worker.
-	resp, err := cl.Post(ts.URL+"/processes/bp1/say", "application/json",
+	resp, err := cl.Post(ts.URL+"/tasks/bp1/say", "application/json",
 		strings.NewReader(`{"instruction":"focus on auth","by":"op"}`))
 	if err != nil {
 		t.Fatalf("say: %v", err)
@@ -241,7 +241,7 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 	}
 
 	// inbox shows it, unfenced.
-	ir, err := cl.Get(ts.URL + "/processes/bp1/inbox")
+	ir, err := cl.Get(ts.URL + "/tasks/bp1/inbox")
 	if err != nil {
 		t.Fatalf("inbox: %v", err)
 	}
@@ -260,8 +260,8 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 		t.Fatalf("inbox missing the routed say: %+v", items)
 	}
 
-	// cancel routes to the broker too: the process latches terminal (verse-authoritative).
-	cr, err := cl.Post(ts.URL+"/processes/bp1/cancel", "application/json", nil)
+	// cancel routes to the broker too: the task latches terminal (verse-authoritative).
+	cr, err := cl.Post(ts.URL+"/tasks/bp1/cancel", "application/json", nil)
 	if err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 	if cr.StatusCode != http.StatusNoContent {
 		t.Fatalf("cancel routing = %d, want 204", cr.StatusCode)
 	}
-	gr, _ := cl.Get(ts.URL + "/processes/bp1")
+	gr, _ := cl.Get(ts.URL + "/tasks/bp1")
 	var snap struct {
 		Status string `tony:"field=status"`
 	}
@@ -281,13 +281,13 @@ func TestProcessInboxAndControlRouting(t *testing.T) {
 }
 
 // UseBroker installs a dial-in broker as the runner and composes its published dial base
-// from the given verse-reachable face + the minted nonce, so a spawned process advertises
+// from the given verse-reachable face + the minted nonce, so a spawned task advertises
 // where a worker dials in.
 func TestUseBrokerPublishesDialBase(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090/")
 
-	h := b.Spawn(process.Launch{ID: "x", Task: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "x", Prompt: "task", Driver: "human"}, nil)
 	u := h.(interface{ DialURL() string }).DialURL()
 	if !strings.HasPrefix(u, "http://verse.test:9090/broker/") {
 		t.Fatalf("dial base = %q, want <face>/broker/<nonce>", u)
@@ -305,15 +305,15 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	srv := testServer(t)
 
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p1", Task: "review PR #7", Driver: "human"}, nil) // verse side registers the process
+	b.Spawn(task.Launch{ID: "p1", Prompt: "review PR #7", Driver: "human"}, nil) // verse side registers the task
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
 	ts := httptest.NewServer(srv.BrokerHandler())
 	defer ts.Close()
 
-	// claim, routed through /broker/<nonce>/processes/p1/claim.
+	// claim, routed through /broker/<nonce>/tasks/p1/claim.
 	resp, err := ts.Client().Post(
-		ts.URL+"/broker/"+nonce+"/processes/p1/claim", "application/json",
+		ts.URL+"/broker/"+nonce+"/tasks/p1/claim", "application/json",
 		strings.NewReader(`{"identity":"human:scott"}`))
 	if err != nil {
 		t.Fatalf("claim: %v", err)
@@ -324,17 +324,17 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	}
 	var claim struct {
 		Spec struct {
-			Task string `tony:"field=task"`
+			Prompt string `tony:"field=prompt"`
 		} `tony:"field=spec"`
 	}
 	decodeResp(t, resp, &claim)
-	if claim.Spec.Task != "review PR #7" {
-		t.Fatalf("claim spec.task=%q, want the spawn task through the mount", claim.Spec.Task)
+	if claim.Spec.Prompt != "review PR #7" {
+		t.Fatalf("claim spec.task=%q, want the spawn task through the mount", claim.Spec.Prompt)
 	}
 
 	// an unregistered nonce is not found.
 	bad, err := ts.Client().Post(
-		ts.URL+"/broker/deadbeef/processes/p1/claim", "application/json",
+		ts.URL+"/broker/deadbeef/tasks/p1/claim", "application/json",
 		strings.NewReader(`{}`))
 	if err != nil {
 		t.Fatalf("bad-nonce claim: %v", err)
@@ -349,14 +349,14 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 //
 // It first read that way silently — the union dropped its rows and answered a clean, short 200
 // (git-issue 6mnmxj6mh12krz3ae1n0). Then it failed the whole list, which was right while the
-// LIST depended on the runner. It no longer does: per-process runners made the rows come from
-// the process:instance mirror, which is written at spawn and complete without asking anybody,
+// LIST depended on the runner. It no longer does: per-task runners made the rows come from
+// the task:instance mirror, which is written at spawn and complete without asking anybody,
 // so an unreachable runner now costs live DETAIL and not rows. This pins the property all three
 // were reaching for — the answer never quietly gets shorter.
-func TestProcessListSurvivesAnUnreachableRunner(t *testing.T) {
+func TestTaskListSurvivesAnUnreachableRunner(t *testing.T) {
 	srv := testServer(t)
 	// A runner url that is listening at bind time and gone by the call — the torn-down
-	// runner, which with per-process runners is an ordinary state rather than an exotic one.
+	// runner, which with per-task runners is an ordinary state rather than an exotic one.
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	deadURL := dead.URL
 	dead.Close()
@@ -366,16 +366,16 @@ func TestProcessListSurvivesAnUnreachableRunner(t *testing.T) {
 	if _, _, err := srv.Store.Write(entity.Write{
 		At: mirror.Ref("stranded").At(),
 		Value: entity.Obj{
-			"status": "running", "task": "on the dead runner", "runner": deadURL,
+			"status": "running", "prompt": "on the dead runner", "runner": deadURL,
 		}.Payload(),
 	}); err != nil {
-		t.Fatalf("writing the process:instance: %v", err)
+		t.Fatalf("writing the task:instance: %v", err)
 	}
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := ts.Client().Get(ts.URL + "/processes")
+	resp, err := ts.Client().Get(ts.URL + "/tasks")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestProcessListSurvivesAnUnreachableRunner(t *testing.T) {
 		}
 	}
 	if found == nil {
-		t.Fatalf("list = %+v, want the process on the unreachable runner — a verse with less "+
+		t.Fatalf("list = %+v, want the task on the unreachable runner — a verse with less "+
 			"work in it than it has is the failure this whole line of work is about", list)
 	}
 	if found["runner"] != deadURL {
@@ -405,12 +405,12 @@ func TestProcessListSurvivesAnUnreachableRunner(t *testing.T) {
 	}
 }
 
-// `process get` on an unreachable runner is not a 404. ProcessSnapshot always read its status,
+// `task get` on an unreachable runner is not a 404. TaskSnapshot always read its status,
 // so no refusal passed for an answer — but unreachable, refused and never-heard-of all
 // collapsed into one false, and the route could only render that as not-found. So an operator
-// was sent to look for a typo in an id that was never wrong, for a process that is running
+// was sent to look for a typo in an id that was never wrong, for a task that is running
 // somewhere they cannot currently see (git-issue 6mnmxj6mh12krz3ae1n0).
-func TestProcessGetSeparatesUnreachableFromUnknown(t *testing.T) {
+func TestTaskGetSeparatesUnreachableFromUnknown(t *testing.T) {
 	srv := testServer(t)
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	deadURL := dead.URL
@@ -420,7 +420,7 @@ func TestProcessGetSeparatesUnreachableFromUnknown(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := ts.Client().Get(ts.URL + "/processes/whatever")
+	resp, err := ts.Client().Get(ts.URL + "/tasks/whatever")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestProcessGetSeparatesUnreachableFromUnknown(t *testing.T) {
 	live := testServer(t)
 	lts := httptest.NewServer(live.Handler())
 	defer lts.Close()
-	miss, err := lts.Client().Get(lts.URL + "/processes/nope")
+	miss, err := lts.Client().Get(lts.URL + "/tasks/nope")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}

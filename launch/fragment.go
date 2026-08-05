@@ -22,7 +22,7 @@ import "fmt"
 // because a doer running under an envelope different from the one its entity states is the
 // failure this whole design is closing.
 type Fragment struct {
-	// ID is who this is — the doer's own identity, carried so the spawned process can say
+	// ID is who this is — the doer's own identity, carried so the spawned task can say
 	// WHICH doer was selected and not only which driver ran. Two doers sharing a driver is
 	// the case this whole feature exists for, so the driver alone no longer identifies the
 	// pick. An entity ref ("provider:treat:fixer") for a registry doer; the bare name for an
@@ -52,7 +52,7 @@ func (f Fragment) IsZero() bool {
 //
 //   - Driver, Frame, Grant: set replaces, absent inherits. A provider that says `tools` and
 //     not `grant` keeps the spawn's grant rather than losing it — "absent" and "empty" are
-//     different values on both sides, which is exactly why process.NamedGrant returns an ok
+//     different values on both sides, which is exactly why task.NamedGrant returns an ok
 //     rather than a zero Grant.
 //   - Tools: INTERSECT, never replace. Empty means all of the driver's tools (see Spec.Tools),
 //     so a replace would let `tools: [read_file, run_bash]` on a provider WIDEN a spawn that

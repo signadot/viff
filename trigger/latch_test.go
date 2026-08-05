@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // The latch check, over the shapes a charter actually comes in. It is advisory today (see
@@ -23,7 +23,7 @@ func TestLatchCheck(t *testing.T) {
 		}
 		return m
 	}
-	spawn := &launch.Spec{Task: "review $subject"}
+	spawn := &launch.Spec{Prompt: "review $subject"}
 
 	ok := map[string]Trigger{
 		// The canonical shape: spawn the work, let its completion advance the subject past
@@ -97,7 +97,7 @@ func TestConnectValidatorShapeLatches(t *testing.T) {
 			{Key: ir.FromString("validated"), Val: ir.Null()},
 		}).WithTag("!not"),
 	}}
-	spawn := &launch.Spec{Task: `Read the file at path "$path" and report any problems.`}
+	spawn := &launch.Spec{Prompt: `Read the file at path "$path" and report any problems.`}
 
 	// What connect installs today: a literal.
 	act := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": true}.Payload()}}
@@ -114,7 +114,7 @@ func TestConnectValidatorShapeLatches(t *testing.T) {
 	}
 	// And it installs.
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	tr := Trigger{Name: "validate-abc", Condition: unvalidated, Action: act}
 	if err := eng.AddTrigger(tr); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -125,7 +125,7 @@ func TestConnectValidatorShapeLatches(t *testing.T) {
 // (git-issue 2xth4bxsh12krsfwdxn0). A payload is any tony value, and both sides of that check
 // were collapsed to the top-level keys of an object.
 func TestLatchDecidesShapesKeysCouldNot(t *testing.T) {
-	spawn := &launch.Spec{Task: "review $subject"}
+	spawn := &launch.Spec{Prompt: "review $subject"}
 	subject := func(pred *ir.Node) Condition {
 		return Condition{Subject: Match{"system": "demo", "kind": "pr", "value": pred}}
 	}
@@ -221,7 +221,7 @@ func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			act := Action{Spawn: &launch.Spec{Task: "work"}, OnDone: &Action{Patch: c.patch}}
+			act := Action{Spawn: &launch.Spec{Prompt: "work"}, OnDone: &Action{Patch: c.patch}}
 			if got := latchOf(c.pred, act); got != c.want {
 				t.Fatalf("latchOf = %d, want %d", got, c.want)
 			}
@@ -231,10 +231,10 @@ func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
 
 // The three answers the relation gives, and which of them a REFUSAL rests on. Undecided is not
 // a no: a check that refused everything it could not decide would refuse the ordinary shape of
-// writing a value out of a process (`patch: {stage: $result.status}`), which may well latch.
+// writing a value out of a task (`patch: {stage: $result.status}`), which may well latch.
 func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 	pred := entity.Obj{"stage": "open"}.Payload()
-	spawn := &launch.Spec{Task: "review $subject"}
+	spawn := &launch.Spec{Prompt: "review $subject"}
 	hook := func(p entity.Payload) Action { return Action{Spawn: spawn, OnDone: &Action{Patch: p}} }
 
 	cases := []struct {
@@ -265,31 +265,31 @@ func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 }
 
 // A firing whose work is already running does not ask again. The subject stays selected for as
-// long as the process runs — the write that would release it is what the process has not
+// long as the task runs — the write that would release it is what the task has not
 // finished doing — so every commit meanwhile re-selects it.
 //
-// spawnHooked has always refused the second process; what this pins is that the refusal now
+// spawnHooked has always refused the second task; what this pins is that the refusal now
 // happens BEFORE the gates, so a firing for work already under way does not put a question on
 // the docket or spend budget on its way to being told no.
 func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 	store := entitytest.Store(t)
-	reg := process.NewRegistry()
+	reg := task.NewRegistry()
 	eng := New(store, reg)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, blockForever{}, noExec{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 
 	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
 	if err := eng.AddTrigger(Trigger{
 		Name: "review",
-		// Latches through its onDone — but the process blocks forever, so the latch never
+		// Latches through its onDone — but the task blocks forever, so the latch never
 		// lands and the subject stays selected the whole time.
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
 			"value": map[string]any{"stage": "open"}}},
 		Gates: []Gate{{Name: "go", Mode: "ask"}},
 		Action: Action{
-			Spawn:  &launch.Spec{Task: "review $subject"},
+			Spawn:  &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -301,7 +301,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 
-	// The first firing asks; approve it so the process starts.
+	// The first firing asks; approve it so the task starts.
 	var id string
 	deadline := time.After(3 * time.Second)
 	for id == "" {
@@ -315,11 +315,11 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	reg.Answer(id, process.Resolution{Proceed: true, By: "alice"})
+	reg.Answer(id, task.Resolution{Proceed: true, By: "alice"})
 	waitFlow(t, eng, ref, 1)
 
 	fired := eng.Fired()
-	// Now stir the subtree while the process runs. The subject still matches — the latch is
+	// Now stir the subtree while the task runs. The subject still matches — the latch is
 	// waiting on a completion that never comes — so every one of these re-selects it.
 	for i := range 4 {
 		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "other"},
@@ -334,11 +334,11 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 		t.Fatalf("budget spent %d more times on work already running", now-fired)
 	}
 	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:1"))); n != 1 {
-		t.Fatalf("%d processes for one subject, want 1", n)
+		t.Fatalf("%d tasks for one subject, want 1", n)
 	}
 }
 
-// waitFlow blocks until the subject has n live processes.
+// waitFlow blocks until the subject has n live tasks.
 func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 	t.Helper()
 	deadline := time.After(3 * time.Second)
@@ -348,7 +348,7 @@ func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("timed out waiting for %d live process(es) about %s", n, ref)
+			t.Fatalf("timed out waiting for %d live task(es) about %s", n, ref)
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
@@ -356,17 +356,17 @@ func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 
 // A SEQUENCE bounds itself, so the check does not demand a subject latch of one. startSeq
 // refuses to re-run a sequence that has completed for this subject at this shape, and that
-// claim is a fact in the store rather than a live-process check — so unlike a bare spawn it
+// claim is a fact in the store rather than a live-task check — so unlike a bare spawn it
 // survives the reap. Demanding a subject latch as well would be demanding the same guarantee
 // twice, and it is the shape half the sequence tests are written in.
 func TestLatchCheckLeavesSequencesAlone(t *testing.T) {
 	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}} // no predicate at all
-	seq := Action{Seq: []Action{{Spawn: &launch.Spec{Task: "one"}}, {Spawn: &launch.Spec{Task: "two"}}}}
+	seq := Action{Seq: []Action{{Spawn: &launch.Spec{Prompt: "one"}}, {Spawn: &launch.Spec{Prompt: "two"}}}}
 	if err := checkLatch(cond, seq); err != nil {
 		t.Fatalf("a sequence was asked to latch: %v", err)
 	}
 	// A bare spawn under the same subject is not excused.
-	if err := checkLatch(cond, Action{Spawn: &launch.Spec{Task: "one"}}); err == nil {
+	if err := checkLatch(cond, Action{Spawn: &launch.Spec{Prompt: "one"}}); err == nil {
 		t.Fatal("a bare spawn with nothing to latch on was accepted")
 	}
 }
@@ -374,11 +374,11 @@ func TestLatchCheckLeavesSequencesAlone(t *testing.T) {
 // The check REFUSES now rather than warning, and it runs last so a charter that is wrong some
 // other way is told about that instead.
 func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
-	eng := New(entitytest.Store(t), process.AutoResolver{})
+	eng := New(entitytest.Store(t), task.AutoResolver{})
 	err := eng.AddTrigger(Trigger{
 		Name:      "spin",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
-		Action:    Action{Spawn: &launch.Spec{Task: "review $subject"}},
+		Action:    Action{Spawn: &launch.Spec{Prompt: "review $subject"}},
 	})
 	if err == nil {
 		t.Fatal("installed a charter that cannot stop spawning")
@@ -390,7 +390,7 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 	err = eng.AddTrigger(Trigger{
 		Name:      "nested",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
-		Action:    Action{Seq: []Action{{Seq: []Action{{Spawn: &launch.Spec{Task: "inner"}}}}}},
+		Action:    Action{Seq: []Action{{Seq: []Action{{Spawn: &launch.Spec{Prompt: "inner"}}}}}},
 	})
 	if err == nil {
 		t.Fatal("installed a nested sequence")

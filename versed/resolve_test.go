@@ -12,12 +12,12 @@ import (
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // The resolve body is one type for both routes (api.Resolve), and these are the tests
 // that keep it that way. They exist because the two routes previously carried two
-// vocabularies — `{id, approve}` here, `{decisionId, proceed}` on the process route —
+// vocabularies — `{id, approve}` here, `{decisionId, proceed}` on the task route —
 // and nothing noticed: no test posted either body, so the drift was invisible to
 // everything except a person reading both handlers at once.
 //
@@ -49,11 +49,11 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 
 	// Raise a gate the way the engine does, and block on it as the engine would.
 	const id = "trigger:review:review~1"
-	answered := make(chan process.Resolution, 1)
+	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
-			process.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: process.Ask},
-			process.ToolUse{Name: "trigger:review"})
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.ToolUse{Name: "trigger:review"})
 		answered <- res
 	}()
 	waitPending(t, srv, id)
@@ -78,16 +78,16 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 }
 
 // The unification regression, on a REAL pending decision: a body naming its gate `id`
-// and its answer `approve` must resolve it on the process route too.
+// and its answer `approve` must resolve it on the task route too.
 //
 // It has to be a real one. Against the old handler this same body decoded to an empty
 // decision id, and an empty id looks up nothing — so every cheaper assertion (400? 404?
 // 501?) comes out identical whether the body decoded or not. Only a decision that is
 // actually open distinguishes "answered it" from "silently answered nothing".
-func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
+func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p1", Task: "review PR #7", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p1", Prompt: "review PR #7", Driver: "human"}, nil)
 	srv.SetRunner(b) // the resolve route relays to a worker only under a broker runner
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
@@ -96,9 +96,9 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	// A worker claims the process and reports a gate it is blocked on — which is how a
+	// A worker claims the task and reports a gate it is blocked on — which is how a
 	// decision becomes open and resolvable.
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/claim", map[string]any{"identity": "human:scott"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:scott"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
@@ -106,23 +106,23 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 	claim.Body.Close()
 
 	const decision = "p1~d1"
-	rep := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/report", map[string]any{
+	rep := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/report", map[string]any{
 		"epoch":  cl.Epoch,
-		"events": []process.Frame{{Kind: process.EvPending, ID: decision, Gate: "write"}},
+		"events": []task.Frame{{Kind: task.EvPending, ID: decision, Gate: "write"}},
 	})
 	rep.Body.Close()
 
-	// Now answer it the way `verse process resolve` does.
-	resp := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:scott"})
+	// Now answer it the way `verse task resolve` does.
+	resp := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("process resolve = %s, want 204 — api.Resolve did not reach the decision (the routes have drifted apart again)", resp.Status)
+		t.Fatalf("task resolve = %s, want 204 — api.Resolve did not reach the decision (the routes have drifted apart again)", resp.Status)
 	}
 
 	// And it is gone: a second answer finds nothing open, which is what proves the first
 	// one landed on the named decision rather than on an empty id. It is a CONFLICT, not a
 	// 404 — the question exists and somebody else settled it.
-	again := postTony(t, ops.URL+"/processes/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
+	again := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
 	defer again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
 		t.Errorf("re-resolve = %s, want 409 (already answered)", again.Status)
@@ -131,16 +131,16 @@ func TestProcessResolveAcceptsAPIResolve(t *testing.T) {
 
 // `verse gate approve` must answer an EXECUTOR-raised gate, whose id carries no owner.
 //
-// The unified `verse gates` lists engine and process gates together and tells the reader to
-// "answer one with `verse gate`". For a gate raised by `process do gate` that was false: the
+// The unified `verse gates` lists engine and task gates together and tells the reader to
+// "answer one with `verse gate`". For a gate raised by `task do gate` that was false: the
 // id is <name>-<hex>, deliberately free of GateSep (shortID keeps it clear of anything a
-// shell or URL reads as punctuation), so splitting on GateSep recovered no owner, no process
+// shell or URL reads as punctuation), so splitting on GateSep recovered no owner, no task
 // matched, and the answer fell through to the engine registry — which has never heard of it.
-// 404, on a gate listed one line above with its `process:` field populated.
-func TestGateResolveRoutesAnOwnerlessProcessGate(t *testing.T) {
+// 404, on a gate listed one line above with its `task:` field populated.
+func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn(process.Launch{ID: "p1", Task: "review the auth change", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p1", Prompt: "review the auth change", Driver: "human"}, nil)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
@@ -149,34 +149,34 @@ func TestGateResolveRoutesAnOwnerlessProcessGate(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/claim", map[string]any{"identity": "human:scott"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:scott"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
 	decodeResp(t, claim, &cl)
 	claim.Body.Close()
 
-	// The shape `process do gate` mints: a gate name and a hex suffix, no GateSep anywhere.
+	// The shape `task do gate` mints: a gate name and a hex suffix, no GateSep anywhere.
 	const decision = "deploy-approval-dbc7b607"
-	if strings.Contains(decision, process.GateSep) {
+	if strings.Contains(decision, task.GateSep) {
 		t.Fatalf("decision %q carries GateSep; this test is about ids that do NOT", decision)
 	}
-	rep := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/report", map[string]any{
+	rep := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/report", map[string]any{
 		"epoch":  cl.Epoch,
-		"events": []process.Frame{{Kind: process.EvPending, ID: decision, Gate: "deploy-approval"}},
+		"events": []task.Frame{{Kind: task.EvPending, ID: decision, Gate: "deploy-approval"}},
 	})
 	rep.Body.Close()
 
 	// Answer it the way an operator reading `verse gates` does — by id alone, with no
-	// process id to help, through the same route `verse gate approve` posts to.
+	// task id to help, through the same route `verse gate approve` posts to.
 	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("gate resolve = %s, want 204 — an ownerless process gate must still route", resp.Status)
+		t.Fatalf("gate resolve = %s, want 204 — an ownerless task gate must still route", resp.Status)
 	}
 
 	// It reached the worker, carrying who answered.
-	inbox, ok := b.ProcessInbox("p1")
+	inbox, ok := b.TaskInbox("p1")
 	if !ok {
 		t.Fatal("no inbox")
 	}
@@ -216,10 +216,10 @@ func waitPending(t *testing.T, srv *Server, id string) {
 func TestGateListingOmitsAbsentFields(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	h := b.Spawn(process.Launch{ID: "p1", Task: "migrate the schema", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p1", Prompt: "migrate the schema", Driver: "human"}, nil)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
-	// The docket is a slice of the store, so what puts a process on it is the same thing
+	// The docket is a slice of the store, so what puts a task on it is the same thing
 	// that makes it a member of a scope: the mirror. Spawning straight on the broker skips
 	// the mirror, so attach one — otherwise the listing is empty and this test passes for
 	// the wrong reason.
@@ -230,17 +230,17 @@ func TestGateListingOmitsAbsentFields(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/claim", map[string]any{"identity": "human:scott"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:scott"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
 	decodeResp(t, claim, &cl)
 	claim.Body.Close()
 
-	rep := postTony(t, work.URL+"/broker/"+nonce+"/processes/p1/report", map[string]any{
+	rep := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/report", map[string]any{
 		"epoch": cl.Epoch,
-		"events": []process.Frame{{
-			Kind: process.EvPending, ID: "deploy-1", Gate: "deploy-approval", Text: "prod, off-hours",
+		"events": []task.Frame{{
+			Kind: task.EvPending, ID: "deploy-1", Gate: "deploy-approval", Text: "prod, off-hours",
 		}},
 	})
 	rep.Body.Close()
@@ -274,7 +274,7 @@ func TestGateListingOmitsAbsentFields(t *testing.T) {
 	// What the worker reported is present, including the reason a resolver reads to decide.
 	for k, want := range map[string]string{
 		"id": "deploy-1", "gate": "deploy-approval", "reason": "prod, off-hours",
-		"process": "p1", "where": "process",
+		"task": "p1", "where": "task",
 	} {
 		if got, _ := g[k].(string); got != want {
 			t.Errorf("gate[%q] = %q, want %q", k, got, want)

@@ -61,7 +61,7 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 
 // collections pairs each plural listing with the singular whose verbs it also answers to.
 var collections = map[string]string{
-	"gates": "gate", "entities": "entity", "processes": "process",
+	"gates": "gate", "entities": "entity", "tasks": "task",
 	"flows": "flow", "triggers": "trigger", "goals": "goal",
 }
 
@@ -93,10 +93,10 @@ func TestCollectionsArePluralAtTheTop(t *testing.T) {
 			}
 		}
 	}
-	// ps means "list the processes" wherever else it is typed; as a GROUP alias it meant
+	// ps means "list the tasks" wherever else it is typed; as a GROUP alias it meant
 	// nothing runnable at all.
-	if root.FindSub(cli.DefaultContext(), "ps") != root.FindSub(cli.DefaultContext(), "processes") {
-		t.Error("ps does not resolve to the processes listing")
+	if root.FindSub(cli.DefaultContext(), "ps") != root.FindSub(cli.DefaultContext(), "tasks") {
+		t.Error("ps does not resolve to the tasks listing")
 	}
 }
 
@@ -164,13 +164,13 @@ func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {
 // decision (neither flag, both flags) are unrepresentable rather than validated. Each verb
 // carries the short forms the interactive prompt already teaches (`approve? [y/N]`), and
 // --say/-s rides along on both, since "no, because X" is worth as much as "yes, but".
-func TestGateAndProcessAnswerVerbs(t *testing.T) {
+func TestGateAndTaskAnswerVerbs(t *testing.T) {
 	root := rootCmd()
 	for _, c := range []struct{ group, verb string }{
 		{"gate", "approve"},
 		{"gate", "deny"},
-		{"process", "approve"},
-		{"process", "deny"},
+		{"task", "approve"},
+		{"task", "deny"},
 	} {
 		group := root.FindSub(cli.DefaultContext(), c.group)
 		if group == nil {
@@ -202,7 +202,7 @@ func TestGateAndProcessAnswerVerbs(t *testing.T) {
 	}
 	// `resolve` was replaced, not kept alongside: two ways to answer a gate is the thing
 	// this removed.
-	for _, group := range []string{"gate", "process"} {
+	for _, group := range []string{"gate", "task"} {
 		g := root.FindSub(cli.DefaultContext(), group)
 		if g.FindSub(cli.DefaultContext(), "resolve") != nil {
 			t.Errorf("%s resolve still exists", group)

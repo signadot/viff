@@ -149,7 +149,7 @@ func (f FormatConfig) ResolveWire() codec.Format {
 	return f.ResolveDefault()
 }
 
-// LLMConfig configures the llm process driver. When creds are absent the driver is
+// LLMConfig configures the llm task driver. When creds are absent the driver is
 // unavailable and an llm spawn fails (that spawn, not the engine).
 //
 //tony:schemagen=verse-llm,notag
@@ -167,7 +167,7 @@ func (l LLMConfig) Available() bool { return l.APIKey != "" }
 
 // Status is a secrets-safe summary for /status: whether the llm driver is usable, the model
 // and base URL (not secret), and MASKED key fragments — enough to tell which key is set (and
-// catch a stale/typo'd one) without exposing it. The full keys never leave the process.
+// catch a stale/typo'd one) without exposing it. The full keys never leave the task.
 func (l LLMConfig) Status() *api.LLM {
 	return &api.LLM{
 		Available:  l.Available(),

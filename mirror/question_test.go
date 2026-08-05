@@ -6,18 +6,18 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // pose publishes one question, the way the registry's OnPost does.
-func pose(t *testing.T, store entity.Store, id, gate, processID string, effs ...process.Effect) {
+func pose(t *testing.T, store entity.Store, id, gate, taskID string, effs ...task.Effect) {
 	t.Helper()
-	origin, _, _ := strings.Cut(id, process.GateSep)
-	PostQuestion(store, process.Pending{
-		Question: process.GateQuestion{ID: id, Origin: origin, Gate: gate, Subject: "demo:pr:1"},
+	origin, _, _ := strings.Cut(id, task.GateSep)
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: id, Origin: origin, Gate: gate, Subject: "demo:pr:1"},
 		Tool:     "write",
 		Effects:  effs,
-	}, processID)
+	}, taskID)
 }
 
 // ids returns the question ids a pattern picks, so a test can say what a rule would fire on.
@@ -44,11 +44,11 @@ func only(t *testing.T, got []string, want string) {
 func TestAPatternSelectsPendingQuestions(t *testing.T) {
 	store := entitytest.Store(t)
 	pose(t, store, "run-a~d1", "write-guard", "run-a",
-		process.Effect{Verb: process.Write, Resource: process.File("cfg/app.tony")})
+		task.Effect{Verb: task.Write, Resource: task.File("cfg/app.tony")})
 	pose(t, store, "run-a~d2", "net-guard", "run-a",
-		process.Effect{Verb: process.Network, Resource: process.Resource{Kind: process.KindHost, Ref: "api.example"}})
+		task.Effect{Verb: task.Network, Resource: task.Resource{Kind: task.KindHost, Ref: "api.example"}})
 	pose(t, store, "run-b~d1", "write-guard", "run-b",
-		process.Effect{Verb: process.Write, Resource: process.File("cfg/other.tony")})
+		task.Effect{Verb: task.Write, Resource: task.File("cfg/other.tony")})
 
 	// By the run that raised it. The id carries its origin, so one run's questions are
 	// selectable without a second field to join on.
@@ -138,7 +138,7 @@ func TestAQuestionWithNoEffectsIsStillOnTheDocket(t *testing.T) {
 func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
 	store := entitytest.Store(t)
 	pose(t, store, "guard~1", "approval", "")
-	AnswerQuestion(store, "guard~1", process.Resolution{
+	AnswerQuestion(store, "guard~1", task.Resolution{
 		Proceed: true, By: "human:scott", Steer: []string{"ship it"}})
 
 	pose(t, store, "guard~1", "approval", "") // the rule fires again

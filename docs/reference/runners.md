@@ -2,14 +2,14 @@
 
 The surface. For what a runner *is* and why it is shaped this way, see
 [../runners.md](../runners.md); for the contract a runner serves,
-[../process-control.md](../process-control.md). To build one, copy
+[../task-control.md](../task-control.md). To build one, copy
 [examples/runner](examples/runner/main.go).
 
 A runner is an entity at `runners:<kind>:<name>` carrying one field:
 
 | | |
 |---|---|
-| `url` | the verse-facing process-control base — what `runner.HTTP` drives and what a restart reconstructs from. Required |
+| `url` | the verse-facing task-control base — what `runner.HTTP` drives and what a restart reconstructs from. Required |
 
 `kind` is the operator's own category (what this runner *is*: pool, host, sandbox); `name` is
 its name within that kind. Neither may contain `/`, and `kind` may not contain `:` — both are
@@ -33,11 +33,11 @@ verse runner add <kind>:<name> <url>       install one, probing the url first
 A `<ref>` is `runners:pool:gpu` or `pool:gpu` — the prefix is optional everywhere, so an
 operator reading `verse entities` and one typing `verse runner show` need not know two spellings.
 
-On the process side:
+On the task side:
 
 ```
 verse ps  [--runner <ref>]                 only the work on that runner (`local` = named none)
-verse process run --runner <ref> <task>    run this one there
+verse task run --runner <ref> <prompt>    run this one there
 ```
 
 ## Routes
@@ -49,7 +49,7 @@ verse process run --runner <ref> <task>    run this one there
 | `GET /runners/{kind}/{name}` | the entity |
 | `GET /runners/{kind}/{name}/check` | `{ref, url, reach}` and `why` when it is not a runner |
 | `DELETE /runners/{kind}/{name}` | remove. `?cancel=<why>` or `?leave=true`; `409` with both named when work is running and neither is given |
-| `GET /processes?runner=<ref>` | the work on one runner |
+| `GET /tasks?runner=<ref>` | the work on one runner |
 
 `reach` is one of `a runner`, `not a runner`, `unreachable`. Nothing about it is written to the
 store — it is answered live and discarded, so a reachability column is always as of now.
@@ -63,15 +63,15 @@ A spawn naming a runner that is not installed is **refused** on both paths — a
 `400` and the name in the message, a charter spawn as a failed spawn whose reason travels onto
 the flow. It is never quietly run somewhere else.
 
-## On the process
+## On the task
 
-`process:instance` carries both:
+`task:instance` carries both:
 
 | | |
 |---|---|
 | `runner` | the resolved url (or `local`) — what a restart re-attaches with |
 | `runnerName` | the `runners:<kind>:<name>` the spawn named, when it named one |
-| `startedAt` | when the process began; carried across a re-attach rather than re-stamped |
+| `startedAt` | when the task began; carried across a re-attach rather than re-stamped |
 
 Both, deliberately: the url is what a restart can act on with nothing else present, so removing
 a runner entity cannot strand running work; the name is what a person reads and what

@@ -38,7 +38,7 @@ signature:
 ---
 context:
 - tony-format/context
-- process: github.com/signadot/verse/process
+- task: github.com/signadot/verse/task
 define:
   by: .[string]
   cursor: .[int]
@@ -46,9 +46,9 @@ define:
   driver: .[string]
   kind: .[string]
   proceed: .[bool]
-  task: .[string]
+  prompt: .[string]
   text: .[string]
-  vector: .[nullable(process:verse-vector)]
+  vector: .[nullable(task:verse-vector)]
 signature:
   name: verse-inbox-item
 ---
@@ -138,10 +138,10 @@ signature:
 ---
 context:
 - tony-format/context
-- process: github.com/signadot/verse/process
+- task: github.com/signadot/verse/task
 define:
   by: .[string]
-  vector: .[nullable(process:verse-vector)]
+  vector: .[nullable(task:verse-vector)]
 signature:
   name: verse-set-vector
 ---
@@ -151,11 +151,11 @@ define:
   driver: .[string]
   id: .[string]
   name: .[string]
+  prompt: .[string]
   resolver: .[string]
   retain: .[int]
   runner: .[string]
   subject: .[string]
-  task: .[string]
   vector: .[string]
 signature:
   name: verse-spawn
@@ -176,9 +176,9 @@ define:
   gates: .[int]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
-  processes: .[int]
   runner: .[nullable(verse-runner-status)]
   storeRev: .[int]
+  tasks: .[int]
   triggers: .[int]
 signature:
   name: verse-status

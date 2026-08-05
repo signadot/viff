@@ -169,7 +169,7 @@ func (cfg *sourceRemoveConfig) run(cc *cli.Context, args []string) error {
 type sourceAddConfig struct {
 	*cli.Command
 	File         string `cli:"name=file aliases=f desc='read the source from FILE (- = stdin); also accepts a positional [file]'"`
-	Dir          string `cli:"name=dir desc='reflect this local git repository, in process — instead of a url'"`
+	Dir          string `cli:"name=dir desc='reflect this local git repository, in task — instead of a url'"`
 	NoProbe      bool   `cli:"name=no-probe desc='install without asking it what it is'"`
 	AllowOverlap bool   `cli:"name=allow-overlap desc='install even though another source may write the same slice (both will tombstone what the other reflected)'"`
 }

@@ -1,0 +1,472 @@
+// Package taskd hosts Tasks behind an HTTP control + read plane: spawn
+// tasks, stream their events (SSE), resolve their gates by id, steer them,
+// rebind their vector, and pause/cancel their subtrees — all over the wire, so
+// autonomy is observed and adjusted live and remotely. Control ops are task-
+// or subtree-scoped (never per-child); the read plane is drop-with-gap.
+//
+// It is the cleaned, renamed core of agentgated, with the LLM harness dependency
+// severed: how a Task is built is injected as a Builder, so the daemon carries
+// no coupling to any particular driver/runtime.
+package taskd
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"sync/atomic"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/task"
+)
+
+// Builder constructs a hosted task from a task.Launch — the id, the prompt, the
+// requested driver (e.g. "scripted"/"llm"; "" = the builder's default), and the frame and
+// tool set that shape the agent — plus the Registry that serves as its gate resolver and
+// an optional ContentReader (nil = read from the local filesystem; non-nil = read
+// federated files through the verse). It is injected so the daemon stays decoupled from
+// any particular driver/runtime, and picks the driver per spawn.
+type Builder func(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task
+
+// Daemon hosts a set of running tasks.
+type Daemon struct {
+	mu    sync.Mutex
+	tasks map[string]*hosted
+	seq   atomic.Uint64
+	build Builder
+	log   io.Writer
+	// onQuestion, when set, is called as each hosted task poses a gate question. The
+	// daemon holds no store and should not: publishing a question is the job of whoever
+	// owns one, and this is the seam that hands it over with the derived effects still
+	// attached — the read plane's own EvPending frame carries only what an attached client
+	// needs to see, which is less than a record needs to be matchable.
+	onQuestion func(taskID string, p task.Pending)
+}
+
+// OnQuestion registers the publisher. Optional: taskd runs standalone in tests and under
+// `verse task run` with nothing behind it.
+func (d *Daemon) OnQuestion(f func(taskID string, p task.Pending)) { d.onQuestion = f }
+
+type hosted struct {
+	task   *task.Task
+	reg    *task.Registry
+	prompt string
+	// driver is retained, not just passed to build, because it is the only durable record
+	// of WHO was picked when a spawn's doer came from a `provider` selection. The broker's
+	// snapshot has always reported it; a locally-run task did not, so an auto-selected
+	// doer was observable nowhere but a trace line.
+	driver string
+
+	mu     sync.Mutex
+	status task.Status
+	reason string
+	err    string
+	result string // the task's final output (driver's last message), once completed
+}
+
+func (h *hosted) snapshot() task.Instance {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	pend := h.reg.Pending()
+	pending := make([]task.PendingGate, 0, len(pend))
+	for _, p := range pend {
+		pending = append(pending, task.PendingGate{
+			ID: p.Question.ID, Origin: p.Question.Origin, Tool: p.Tool,
+			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Reason: p.Question.Reason,
+		})
+	}
+	return task.Instance{
+		ID: h.task.ID, Prompt: h.prompt, Driver: h.driver, Status: h.status,
+		Err: h.err, Result: h.result, Pending: pending,
+		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
+	}
+}
+
+// New returns a Daemon that builds hosted tasks with the given Builder.
+func New(build Builder) *Daemon {
+	return &Daemon{tasks: map[string]*hosted{}, build: build, log: os.Stderr}
+}
+
+// Handler returns the HTTP routes (Go 1.22 method+wildcard patterns).
+func (d *Daemon) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /tasks", d.spawn)
+	mux.HandleFunc("GET /tasks", d.list)
+	mux.HandleFunc("GET /tasks/{id}", d.get)
+	mux.HandleFunc("GET /tasks/{id}/events", d.events)
+	mux.HandleFunc("POST /tasks/{id}/resolve", d.resolve)
+	mux.HandleFunc("POST /tasks/{id}/say", d.say)
+	mux.HandleFunc("POST /tasks/{id}/cancel", d.control("cancel"))
+	mux.HandleFunc("POST /tasks/{id}/pause", d.control("pause"))
+	mux.HandleFunc("POST /tasks/{id}/resume", d.control("resume"))
+	mux.HandleFunc("PUT /tasks/{id}/vector", d.setVector)
+	return mux
+}
+
+func (d *Daemon) lookup(r *http.Request) *hosted {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.tasks[r.PathValue("id")]
+}
+
+// Lookup returns the live hosted task for id, or nil — the local re-attach path.
+func (d *Daemon) Lookup(id string) *task.Task {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if h := d.tasks[id]; h != nil {
+		return h.task
+	}
+	return nil
+}
+
+// Spawn builds, hosts, and runs a task for the given prompt — the programmatic
+// seam the engine's Spawner uses, so a trigger-spawned task is hosted and
+// controllable (list/get/attach/cancel) exactly like a `verse task run` one.
+// Returns the running task (already Run in the background).
+func (d *Daemon) Spawn(l task.Launch, content task.ContentReader) *task.Task {
+	h, _ := d.spawnHosted(l, content)
+	return h.task
+}
+
+// spawnHosted builds, registers, wires the read plane, and runs a task. Shared
+// by Spawn and the HTTP spawn handler. The bool reports whether it BUILT one; false means
+// the id was already hosted and that task is what came back.
+//
+// An id is spawned ONCE. A second spawn of one that is already hosted returns the existing
+// task rather than building beside it — because the alternative is not two tasks but
+// one lost one: registration is a map assignment, so the newcomer took the id and the
+// original kept running with nothing able to reach it, address it, or stop it.
+//
+// That makes the spawn safe to RETRY, which is the point. A caller whose spawn request
+// timed out cannot know whether the far side acted, and until now its only options were to
+// abandon real work or to destroy it.
+func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted, bool) {
+	d.mu.Lock()
+	if h, ok := d.tasks[l.ID]; ok {
+		d.mu.Unlock()
+		return h, false
+	}
+	d.mu.Unlock()
+
+	reg := task.NewRegistry()
+	tk := d.build(l, reg, content)
+
+	// Install the spawn's authority axes here rather than in the Builder, because they are
+	// properties of the RUNTIME's contract with verse, not of any driver: a scripted
+	// task and an LLM one are bounded the same way, and a Builder that forgot to apply
+	// them would silently hand back an unbounded task. Both are conditional — a spawn
+	// that named neither gets exactly what it got before (wildcard scope, the builder's
+	// own vector), so this narrows only what a caller asked to have narrowed.
+	if l.Grant != nil {
+		tk.SetScope(*l.Grant)
+	}
+	if l.Vector != nil {
+		tk.SetVector(l.Vector, "launch")
+	}
+	tk.SetRetain(l.Retain)    // how much of its read plane a resuming reader can still see
+	tk.SetBoundTo(l.Resolver) // who owns the questions it raises
+	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver, status: task.Running}
+
+	// Surface pending decisions on the same read plane as the loop's events, so an
+	// attached client sees what a gate is blocked on and can resolve it by id.
+	reg.OnPost(func(p task.Pending) {
+		if d.onQuestion != nil {
+			d.onQuestion(l.ID, p)
+		}
+		tk.Emit(task.Frame{
+			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
+			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
+		})
+	})
+
+	// Re-checked under the lock: two concurrent spawns of one id race the check above, and
+	// the loser must not start a second loop. Whoever registered first is the task.
+	d.mu.Lock()
+	if existing, ok := d.tasks[l.ID]; ok {
+		d.mu.Unlock()
+		return existing, false
+	}
+	d.tasks[l.ID] = h
+	d.mu.Unlock()
+
+	go func() {
+		// A hosted task outlives its spawn call, so it must NOT derive from a
+		// request context. Its own subtree cancel (task.Cancel, via POST /cancel) is
+		// the stop path.
+		out, err := tk.Run(context.Background())
+		h.mu.Lock()
+		h.reason, h.status = out.Reason, task.Status(out.Reason)
+		h.result = tk.Result() // the driver's final answer, if any
+		if err != nil {
+			h.status, h.err = task.Failed, err.Error()
+		}
+		h.mu.Unlock()
+	}()
+	return h, true
+}
+
+func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Id     string       `tony:"field=id"`
+		Prompt string       `tony:"field=prompt"`
+		Driver string       `tony:"field=driver"`
+		Frame  string       `tony:"field=frame"`
+		Tools  []string     `tony:"field=tools"`
+		Answer *ir.Node     `tony:"field=answer,omitzero"`
+		Vector *task.Vector `tony:"field=vector,omitzero"`
+		Grant  *task.Grant  `tony:"field=grant,omitzero"`
+	}
+	_ = codec.Read(r, &body)
+	id := body.Id // a runner client (the engine) passes its own id so it matches
+	if id == "" { // the task:instance entity; an ad-hoc `task run` gets a fresh one
+		id = fmt.Sprintf("p%d", d.seq.Add(1))
+	}
+	// ad-hoc `task run`: local filesystem. Everything that shapes or bounds the agent
+	// rides the wire, so a task hosted on a REMOTE runner is framed and bounded exactly
+	// as a local one — the seam is complete or the guarantee is local-only. The vector and
+	// grant arrive as resolved predicates rather than names for the reason task.Launch
+	// gives: the vocabulary lives at one end, so the two cannot drift apart.
+	h, created := d.spawnHosted(task.Launch{
+		ID: id, Prompt: body.Prompt, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
+		Answer: body.Answer, Vector: body.Vector, Grant: body.Grant,
+	}, nil)
+	// 201 built it, 200 found it already running. A retrying client needs no more than
+	// that, and a client that does not care can ignore it: both mean "this id is running".
+	status := http.StatusCreated
+	if !created {
+		status = http.StatusOK
+	}
+	writeOut(w, r, status, map[string]any{"id": h.task.ID})
+}
+
+// Count returns the number of hosted tasks (live and completed-but-unreaped).
+func (d *Daemon) Count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.tasks)
+}
+
+func (d *Daemon) list(w http.ResponseWriter, r *http.Request) {
+	writeOut(w, r, http.StatusOK, d.Snapshots())
+}
+
+// Snapshots returns every hosted task in the shape the task API returns — for versed
+// to union the local runtime with a runner's own tasks (e.g. a broker's) in one list.
+func (d *Daemon) Snapshots() []task.Instance {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := make([]task.Instance, 0, len(d.tasks))
+	for _, h := range d.tasks {
+		out = append(out, h.snapshot())
+	}
+	return out
+}
+
+// SnapshotOf returns one hosted task's snapshot, or false if this daemon doesn't host it.
+func (d *Daemon) SnapshotOf(id string) (task.Instance, bool) {
+	d.mu.Lock()
+	h := d.tasks[id]
+	d.mu.Unlock()
+	if h == nil {
+		return task.Instance{}, false
+	}
+	return h.snapshot(), true
+}
+
+func (d *Daemon) get(w http.ResponseWriter, r *http.Request) {
+	h := d.lookup(r)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	writeOut(w, r, http.StatusOK, h.snapshot())
+}
+
+func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
+	h := d.lookup(r)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var ch <-chan task.Frame
+	var unsub func()
+	if s := r.URL.Query().Get("since"); s != "" {
+		// Resumable: replay the retained window after the client's cursor, then live.
+		// The ring already carries any EvPending, so no separate gate replay is needed.
+		since, _ := strconv.ParseInt(s, 10, 64)
+		ch, unsub = h.task.SubscribeSince(since)
+	} else {
+		// Live attach from now: replay currently-blocked gates so it knows what to resolve.
+		// A finished task needs no special case here — the bus hands a late subscriber
+		// the terminal and closes, so an attach after completion exits rather than blocking
+		// on a stream that will never emit again.
+		ch, unsub = h.task.Subscribe()
+		for _, p := range h.reg.Pending() {
+			_ = sse.Send(task.Frame{
+				Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
+				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
+			})
+		}
+	}
+	defer unsub()
+	sse.Flush()
+
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			_ = sse.Send(ev)
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// Resolve answers a hosted task's pending decision by id — the Go entry versed's unified
+// gate surface uses to resolve a task gate (write/shell/delegate) the same way it resolves
+// an engine gate. Reports whether the decision matched.
+func (d *Daemon) Resolve(taskID, decisionID string, res task.Resolution) bool {
+	d.mu.Lock()
+	h := d.tasks[taskID]
+	d.mu.Unlock()
+	return h != nil && h.reg.Answer(decisionID, res)
+}
+
+func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
+	h := d.lookup(r)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	// Spellings of one answer, because this face predates api.Resolve and things dial in
+	// against it. `id`/`approve` is what every other answering surface speaks; `decisionId`
+	// and `proceed` are the runtime's own older names, still read so a client written against
+	// them is not broken by the newer spelling arriving. The contract as documented in
+	// task-control.md mixes them — `{id, proceed}` — so both halves are read independently
+	// rather than as two fixed vocabularies.
+	//
+	// The verdict is the OR, and it is not lossy: a yes is `true` in whichever field the
+	// client used, and a no is `false` in both AND absent from both. There is no answer the
+	// two fields can express that this reads wrongly, short of a client setting them against
+	// each other on purpose.
+	var body struct {
+		ID      string `tony:"field=id"`
+		Approve bool   `tony:"field=approve"`
+
+		DecisionID string   `tony:"field=decisionId"`
+		Proceed    bool     `tony:"field=proceed"`
+		ChildMode  string   `tony:"field=childMode"`
+		By         string   `tony:"field=by"`  // who answered; empty = an unattributed caller
+		Say        []string `tony:"field=say"` // words to say on resolution (a gate that informs)
+	}
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	decision := body.ID
+	if decision == "" {
+		decision = body.DecisionID
+	}
+	proceed := body.Approve || body.Proceed
+	by := body.By
+	if by == "" {
+		by = "human:daemon"
+	}
+	res := task.Resolution{
+		Proceed: proceed, By: by,
+		ChildMode: parseChildMode(body.ChildMode), Steer: body.Say,
+	}
+	if !h.reg.Answer(decision, res) {
+		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
+	h := d.lookup(r)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	var body struct {
+		Instruction string `tony:"field=instruction"`
+		By          string `tony:"field=by"`
+	}
+	if err := codec.Read(r, &body); err != nil || body.Instruction == "" {
+		http.Error(w, "instruction required", http.StatusBadRequest)
+		return
+	}
+	by := body.By
+	if by == "" {
+		by = "human:cli"
+	}
+	h.task.Steer(body.Instruction, by)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// control returns a handler for the subtree ops that take no body.
+func (d *Daemon) control(op string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h := d.lookup(r)
+		if h == nil {
+			http.NotFound(w, r)
+			return
+		}
+		switch op {
+		case "cancel":
+			h.task.Cancel("cancelled via daemon")
+		case "pause":
+			h.task.Pause()
+		case "resume":
+			h.task.Resume()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
+	h := d.lookup(r)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	var body struct {
+		Vector task.Vector `tony:"field=vector"`
+		By     string      `tony:"field=by"`
+	}
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.task.SetVector(&body.Vector, body.By)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func parseChildMode(s string) task.ChildMode {
+	switch s {
+	case "autonomous":
+		return task.ChildAutonomous
+	case "careful":
+		return task.ChildCareful
+	default:
+		return task.ChildInheritGates
+	}
+}
+
+func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {
+	codec.Write(w, r, code, v)
+}

@@ -7,54 +7,54 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // steps drives a fixed number of trivial actions, then completes.
 type steps struct{ n, i int }
 
-func (s *steps) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
+func (s *steps) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
 	if s.i >= s.n {
-		return process.ToolUse{}, false, nil
+		return task.ToolUse{}, false, nil
 	}
 	s.i++
-	return process.ToolUse{Name: "act"}, true, nil
+	return task.ToolUse{Name: "act"}, true, nil
 }
 
 type noopExec struct{}
 
-func (noopExec) Execute(context.Context, process.ToolUse) (process.StepResult, []process.ToolUse, error) {
-	return process.StepResult{Output: "ok"}, nil, nil
+func (noopExec) Execute(context.Context, task.ToolUse) (task.StepResult, []task.ToolUse, error) {
+	return task.StepResult{Output: "ok"}, nil, nil
 }
 
 // sayer narrates (EvSay), runs one action, completes, and reports a final result —
-// exercising the output projection. emit is wired to the process's read plane.
+// exercising the output projection. emit is wired to the task's read plane.
 type sayer struct {
-	emit   func(process.Frame)
+	emit   func(task.Frame)
 	result string
 	step   int
 }
 
-func (s *sayer) Next(_ context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
+func (s *sayer) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bool, error) {
 	s.step++
 	if s.step == 1 {
 		if s.emit != nil {
-			s.emit(process.Frame{Kind: process.EvSay, Text: "working on it"})
+			s.emit(task.Frame{Kind: task.EvSay, Text: "working on it"})
 		}
-		return process.ToolUse{Name: "act"}, true, nil // an action → EvExec → lastOutput
+		return task.ToolUse{Name: "act"}, true, nil // an action → EvExec → lastOutput
 	}
-	return process.ToolUse{}, false, nil // complete
+	return task.ToolUse{}, false, nil // complete
 }
 
 func (s *sayer) Result() string { return s.result }
 
-// A process's output is durable in the verse: its narration, last tool output, and
-// full final answer land on the process:instance entity, readable after the run.
+// A task's output is durable in the verse: its narration, last tool output, and
+// full final answer land on the task:instance entity, readable after the run.
 func TestReflectProjectsOutput(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 	d := &sayer{result: "here is the summary you asked for"}
-	p := process.NewProcess("p2", sup, d, noopExec{})
+	p := task.NewTask("p2", sup, d, noopExec{})
 	d.emit = p.Emit // narration onto the read plane, as harness.Build wires it
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	go func() { p.Run(context.Background()) }()
@@ -85,7 +85,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 
 // dialer wraps a handle with a worker-facing dial URL, as the broker's handle does.
 type dialer struct {
-	process.Handle
+	task.Handle
 	url string
 }
 
@@ -93,11 +93,11 @@ func (d dialer) DialURL() string { return d.url }
 
 // A dial-in runner publishes where a worker connects: Reflect projects a handle's DialURL
 // onto the entity as `dialURL`, so a worker can be told where to dial in (mint→publish→dial)
-// rather than being pre-configured. A handle without one (local, remote-processd) sets none.
+// rather than being pre-configured. A handle without one (local, remote-taskd) sets none.
 func TestReflectPublishesDialURL(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess("d1", sup, &steps{n: 1}, noopExec{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("d1", sup, &steps{n: 1}, noopExec{})
 	const url = "http://verse.test:9090/broker/abc123"
 	Reflect(store, p.ID, dialer{p, url}, Meta{Runner: "broker"}) // initial Put is synchronous
 
@@ -107,23 +107,23 @@ func TestReflectPublishesDialURL(t *testing.T) {
 	}
 
 	// a plain handle (no DialURL) publishes no dialURL key.
-	p2 := process.NewProcess("d2", sup, &steps{n: 1}, noopExec{})
+	p2 := task.NewTask("d2", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p2.ID, p2, Meta{Runner: "local"})
 	if g2, _, _ := store.Get(Ref("d2")); entity.ToObj(g2.Payload)["dialURL"] != nil {
 		t.Fatalf("local handle should publish no dialURL: %+v", g2.Payload)
 	}
 }
 
-// A running process shows up in the verse as a process:instance:<id> entity that
+// A running task shows up in the verse as a task:instance:<id> entity that
 // progresses to a terminal status — so another observer sees its lifecycle purely
 // by watching entities.
-func TestReflectProjectsProcessState(t *testing.T) {
+func TestReflectProjectsTaskState(t *testing.T) {
 	store := entitytest.Store(t)
 	ch, unsub := store.Observe()
 	defer unsub()
 
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess("p1", sup, &steps{n: 2}, noopExec{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("p1", sup, &steps{n: 2}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
 	go func() { p.Run(context.Background()) }()
@@ -150,7 +150,7 @@ func TestReflectProjectsProcessState(t *testing.T) {
 		}
 	}
 	if !sawRunning {
-		t.Fatal("never saw the process appear as running in the verse")
+		t.Fatal("never saw the task appear as running in the verse")
 	}
 
 	// the terminal entity remains, queryable, marked completed
@@ -160,14 +160,14 @@ func TestReflectProjectsProcessState(t *testing.T) {
 	}
 }
 
-// Provenance is published with the process, not derived from its id by a reader: `chain`
+// Provenance is published with the task, not derived from its id by a reader: `chain`
 // is the kpath of the action that spawned it and `trigger` is that chain's root, so
-// "every process of the review trigger" is a payload predicate — which is all a `fields`
+// "every task of the review trigger" is a payload predicate — which is all a `fields`
 // match can express — rather than a glob over ids.
 func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess("p-chain", sup, &sayer{}, noopExec{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("p-chain", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{
 		Subject: "demo:pr:1",
 		Runner:  "local",
@@ -175,7 +175,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	})
 	e, ok, _ := store.Get(Ref("p-chain")) // the initial Put is synchronous
 	if !ok {
-		t.Fatal("process entity not mirrored")
+		t.Fatal("task entity not mirrored")
 	}
 	for k, want := range map[string]string{
 		"chain":   "review.onDone",
@@ -188,48 +188,48 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	}
 }
 
-// A process with no trigger behind it (`verse process run`) carries no chain, and must not
+// A task with no trigger behind it (`verse task run`) carries no chain, and must not
 // be given an empty one — an empty `trigger` field would match a predicate looking for it.
 func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess("p-bare", sup, &sayer{}, noopExec{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("p-bare", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	e, ok, _ := store.Get(Ref("p-bare"))
 	if !ok {
-		t.Fatal("process entity not mirrored")
+		t.Fatal("task entity not mirrored")
 	}
 	if _, present := entity.ToObj(e.Payload)["chain"]; present {
-		t.Errorf("chain published for a process with none: %+v", e.Payload)
+		t.Errorf("chain published for a task with none: %+v", e.Payload)
 	}
 	if _, present := entity.ToObj(e.Payload)["trigger"]; present {
-		t.Errorf("trigger published for a process with none: %+v", e.Payload)
+		t.Errorf("trigger published for a task with none: %+v", e.Payload)
 	}
 }
 
-// fakeHandle is a process.Handle whose read plane is a channel the test drives, so a
+// fakeHandle is a task.Handle whose read plane is a channel the test drives, so a
 // transition can be observed at the instant it happens rather than raced against.
-type fakeHandle struct{ ch chan process.Frame }
+type fakeHandle struct{ ch chan task.Frame }
 
-func (f *fakeHandle) Subscribe() (<-chan process.Frame, func()) { return f.ch, func() {} }
-func (f *fakeHandle) SubscribeSince(int64) (<-chan process.Frame, func()) {
+func (f *fakeHandle) Subscribe() (<-chan task.Frame, func()) { return f.ch, func() {} }
+func (f *fakeHandle) SubscribeSince(int64) (<-chan task.Frame, func()) {
 	return f.ch, func() {}
 }
-func (f *fakeHandle) Pause() error                            { return nil }
-func (f *fakeHandle) Resume() error                           { return nil }
-func (f *fakeHandle) Cancel(string) error                     { return nil }
-func (f *fakeHandle) Steer(string, string) error              { return nil }
-func (f *fakeHandle) SetVector(*process.Vector, string) error { return nil }
-func (f *fakeHandle) Result() string                          { return "" }
-func (f *fakeHandle) Err() string                             { return "" }
+func (f *fakeHandle) Pause() error                         { return nil }
+func (f *fakeHandle) Resume() error                        { return nil }
+func (f *fakeHandle) Cancel(string) error                  { return nil }
+func (f *fakeHandle) Steer(string, string) error           { return nil }
+func (f *fakeHandle) SetVector(*task.Vector, string) error { return nil }
+func (f *fakeHandle) Result() string                       { return "" }
+func (f *fakeHandle) Err() string                          { return "" }
 
 // A gate that has been answered must LEAVE the entity, not linger on it. Reflect writes the
 // state it knows, and a write merges — so clearing a field means saying so, and the field
-// that says "this process is blocked on a human" is the one nobody may get wrong: a stale
-// `pending` reads as a process waiting forever on a gate that was already answered.
+// that says "this task is blocked on a human" is the one nobody may get wrong: a stale
+// `pending` reads as a task waiting forever on a gate that was already answered.
 func TestReflectClearsAnAnsweredGate(t *testing.T) {
 	store := entitytest.Store(t)
-	h := &fakeHandle{ch: make(chan process.Frame)}
+	h := &fakeHandle{ch: make(chan task.Frame)}
 	Reflect(store, "g1", h, Meta{Runner: "local"})
 
 	fields := func() map[string]any {
@@ -252,12 +252,12 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 		}
 	}
 
-	h.ch <- process.Frame{Kind: process.EvPending, ID: "gate1", Gate: "write"}
+	h.ch <- task.Frame{Kind: task.EvPending, ID: "gate1", Gate: "write"}
 	await("the gate to appear", func(f map[string]any) bool {
 		return f["pending"] == QuestionRef("gate1").String()
 	})
 
-	h.ch <- process.Frame{Kind: process.EvDecision, ID: "gate1", Tool: "act", Proceed: true}
+	h.ch <- task.Frame{Kind: task.EvDecision, ID: "gate1", Tool: "act", Proceed: true}
 	f := await("the gate to clear", func(f map[string]any) bool { return f["pending"] == nil })
 	if f["lastAction"] != "act" {
 		t.Fatalf("clearing the gate lost the rest of the state: %+v", f)
@@ -276,14 +276,14 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 	}
 }
 
-// The envelope a process runs under is on its entity: which doer was picked, and what the
+// The envelope a task runs under is on its entity: which doer was picked, and what the
 // launch may do. It is published for EVERY spawn because the alternative surface does not
 // exist for most of them — `select: auto` opens no motion, so an auto-picked doer appeared on
 // no docket, and a driver name no longer identifies a doer now that two can share one.
 func TestReflectPublishesTheEnvelope(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess("e1", sup, &steps{n: 1}, noopExec{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("e1", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{ // the initial Put is synchronous
 		Runner: "local", Doer: "provider:treat:fixer", Grant: "no-delegate",
 		Tools: []string{"read_file", "run_bash"},
@@ -307,8 +307,8 @@ func TestReflectPublishesTheEnvelope(t *testing.T) {
 // omission" from "bounded to nothing".
 func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-	p := process.NewProcess("e2", sup, &steps{n: 1}, noopExec{})
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("e2", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
 	got, _, _ := store.Get(Ref("e2"))

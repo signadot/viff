@@ -14,42 +14,42 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
-	"github.com/signadot/verse/process/processd"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/taskd"
 )
 
 // a driver that takes `steps` no-op actions then completes.
 type doneDriver struct{ steps int }
 
-func (d *doneDriver) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
+func (d *doneDriver) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
 	if d.steps <= 0 {
-		return process.ToolUse{}, false, nil // complete
+		return task.ToolUse{}, false, nil // complete
 	}
 	d.steps--
-	return process.ToolUse{Name: "noop"}, true, nil
+	return task.ToolUse{Name: "noop"}, true, nil
 }
 
 type okExec struct{}
 
-func (okExec) Execute(_ context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
-	return process.StepResult{Use: tu}, nil, nil
+func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
+	return task.StepResult{Use: tu}, nil, nil
 }
 
-// The engine drives a REMOTE processd entirely over HTTP: httpRunner.Spawn issues the
-// spawn, remoteHandle.Subscribe streams the SSE read plane (cursored), and the process
+// The engine drives a REMOTE taskd entirely over HTTP: httpRunner.Spawn issues the
+// spawn, remoteHandle.Subscribe streams the SSE read plane (cursored), and the task
 // runs to a terminal status — no in-process handle. This is the Phase-3 proof of the
 // base-URL decoupling.
-func TestHTTPRunnerDrivesRemoteProcessd(t *testing.T) {
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(l.ID, sup, &doneDriver{steps: 2}, okExec{})
+func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
+	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(process.Launch{ID: "t1", Task: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t1", Prompt: "do a thing", Driver: "scripted"}, nil)
 
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -66,15 +66,15 @@ loop:
 			if ev.Cursor > 0 {
 				sawCursor = true
 			}
-			if ev.Kind == process.EvExec {
+			if ev.Kind == task.EvExec {
 				sawExec = true
 			}
-			if ev.Kind == process.EvStatus && ev.Text == "done" {
+			if ev.Kind == task.EvStatus && ev.Text == "done" {
 				completed = true
 				break loop
 			}
 		case <-timeout:
-			t.Fatal("timed out waiting for the remote process to complete")
+			t.Fatal("timed out waiting for the remote task to complete")
 		}
 	}
 	if !completed {
@@ -88,29 +88,29 @@ loop:
 	}
 }
 
-// A remote runner enumerates its processes so versed can union them into `process list`/
-// `get`: ListProcesses/ProcessSnapshot are a thin client over the remote's GET /processes.
-func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(l.ID, sup, &doneDriver{steps: 2}, okExec{})
+// A remote runner enumerates its tasks so versed can union them into `task list`/
+// `get`: ListTasks/TaskSnapshot are a thin client over the remote's GET /tasks.
+func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
+	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	pol.Spawn(process.Launch{ID: "r1", Task: "remote task", Driver: "scripted"}, nil)
+	pol.Spawn(task.Launch{ID: "r1", Prompt: "remote task", Driver: "scripted"}, nil)
 
-	// process.Lister by NAME, not a structural assertion written out here. Spelling the
+	// task.Lister by NAME, not a structural assertion written out here. Spelling the
 	// signature inline is what let a widened one report false instead of failing to build.
-	lister, ok := pol.(process.Lister)
+	lister, ok := pol.(task.Lister)
 	if !ok {
-		t.Fatal("httpRunner should implement process.Lister")
+		t.Fatal("httpRunner should implement task.Lister")
 	}
 
-	insts, err := lister.ListProcesses()
+	insts, err := lister.ListTasks()
 	if err != nil {
-		t.Fatalf("ListProcesses against a live runner = %v, want no error", err)
+		t.Fatalf("ListTasks against a live runner = %v, want no error", err)
 	}
 	var found bool
 	for _, m := range insts {
@@ -119,23 +119,23 @@ func TestHTTPRunnerListsRemoteProcesses(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("remote process r1 not in the runner's ListProcesses")
+		t.Fatal("remote task r1 not in the runner's ListTasks")
 	}
 
-	snap, err := lister.ProcessSnapshot("r1")
-	if err != nil || snap.Task != "remote task" {
-		t.Fatalf("ProcessSnapshot(r1) = %+v, %v; want the remote task", snap, err)
+	snap, err := lister.TaskSnapshot("r1")
+	if err != nil || snap.Prompt != "remote task" {
+		t.Fatalf("TaskSnapshot(r1) = %+v, %v; want the remote task", snap, err)
 	}
-	// An id the runner has never heard of is ErrNoSuchProcess — the one error that means
-	// "look for your typo", and the only one `process get` may answer 404 to.
-	if _, err := lister.ProcessSnapshot("nope"); !errors.Is(err, process.ErrNoSuchProcess) {
-		t.Fatalf("ProcessSnapshot of an unknown id = %v, want ErrNoSuchProcess", err)
+	// An id the runner has never heard of is ErrNoSuchTask — the one error that means
+	// "look for your typo", and the only one `task get` may answer 404 to.
+	if _, err := lister.TaskSnapshot("nope"); !errors.Is(err, task.ErrNoSuchTask) {
+		t.Fatalf("TaskSnapshot of an unknown id = %v, want ErrNoSuchTask", err)
 	}
 }
 
 // A runner that REFUSES a spawn must not read as one that took it. The status used to be
 // discarded, so 400/403/501 all came back as a live remote handle: versed mirrored a
-// process:instance for work that was never started and the flow waited on it forever, so the
+// task:instance for work that was never started and the flow waited on it forever, so the
 // refusal surfaced as a hang. A runner declining a launch it cannot host is the whole
 // mechanism by which a runner gets to refuse, and it is inert unless this reads it.
 func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
@@ -154,7 +154,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			h := runner.HTTP(srv.URL).Spawn(process.Launch{ID: "x", Task: "t", Driver: "scripted"}, nil)
+			h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "x", Prompt: "t", Driver: "scripted"}, nil)
 
 			// The refusal has to arrive as a terminal on the plane the flow already reads,
 			// which is what FailedHandle is for.
@@ -163,7 +163,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 			if !open {
 				t.Fatal("a refused spawn produced no frame at all; the flow waits forever")
 			}
-			if ev.Kind != process.EvStatus || ev.Text != string(process.Failed) {
+			if ev.Kind != task.EvStatus || ev.Text != string(task.Failed) {
 				t.Fatalf("frame = %+v, want a failed status — the refusal read as an accepted spawn", ev)
 			}
 			if ev.Err == "" {
@@ -177,7 +177,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 }
 
 // And the read plane: a list that could not be taken must not read as an empty one. nil could
-// not carry the difference, so an unreachable runner's processes were absent from the unified
+// not carry the difference, so an unreachable runner's tasks were absent from the unified
 // list and the response was a clean 200 that was simply short.
 func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	// Unreachable: a server that is listening at bind time and gone at call time — the
@@ -186,25 +186,25 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	deadURL := dead.URL
 	dead.Close()
 
-	if _, err := runner.HTTP(deadURL).(process.Lister).ListProcesses(); !errors.Is(err, process.ErrUnreachable) {
+	if _, err := runner.HTTP(deadURL).(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("a dead runner's list = %v, want ErrUnreachable", err)
 	}
 
 	// Answering, but not as a runner: a broker's WORKER leg serves claim/inbox/report and no
-	// GET /processes, so a url pointed at one 404s. That is a different fact from unreachable
+	// GET /tasks, so a url pointed at one 404s. That is a different fact from unreachable
 	// — something is there, and it is not this contract.
 	worker := httptest.NewServer(http.NewServeMux())
 	defer worker.Close()
-	if _, err := runner.HTTP(worker.URL).(process.Lister).ListProcesses(); !errors.Is(err, process.ErrUnsupported) {
+	if _, err := runner.HTTP(worker.URL).(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnsupported) {
 		t.Fatalf("a non-runner url's list = %v, want ErrUnsupported", err)
 	}
 
-	// And the single-process read tells the same three apart. This one always DID check its
+	// And the single-task read tells the same three apart. This one always DID check its
 	// status, so no refusal ever passed for an answer — but every failure collapsed into one
-	// `false`, which the caller could only report as "no such process".
-	if _, err := runner.HTTP(deadURL).(process.Lister).ProcessSnapshot("p"); !errors.Is(err, process.ErrUnreachable) {
-		t.Fatalf("a dead runner's snapshot = %v, want ErrUnreachable — a process on an "+
-			"unreachable runner is not a process that does not exist", err)
+	// `false`, which the caller could only report as "no such task".
+	if _, err := runner.HTTP(deadURL).(task.Lister).TaskSnapshot("p"); !errors.Is(err, task.ErrUnreachable) {
+		t.Fatalf("a dead runner's snapshot = %v, want ErrUnreachable — a task on an "+
+			"unreachable runner is not a task that does not exist", err)
 	}
 
 	// Answering with something undecodable is also not an empty verse: discarding this is how
@@ -214,38 +214,38 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 		_, _ = w.Write([]byte(`{"not":"a list"`))
 	}))
 	defer junk.Close()
-	if _, err := runner.HTTP(junk.URL).(process.Lister).ListProcesses(); err == nil {
-		t.Fatal("an undecodable body listed as no processes at all")
+	if _, err := runner.HTTP(junk.URL).(task.Lister).ListTasks(); err == nil {
+		t.Fatal("an undecodable body listed as no tasks at all")
 	}
 }
 
-// Phase 4 resume: a process:instance left stuck "running" (verse crashed mid-run),
+// Phase 4 resume: a task:instance left stuck "running" (verse crashed mid-run),
 // tagged with a remote runner, is re-attached on restart — the replay from the remote
 // (which kept running and finished) converges the entity to its terminal status. This is
-// what versed.reconcileProcesses does: resume, not orphan, when the work outlived verse.
-func TestResumeReAttachesToRemoteProcess(t *testing.T) {
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(l.ID, sup, &doneDriver{steps: 2}, okExec{})
+// what versed.reconcileTasks does: resume, not orphan, when the work outlived verse.
+func TestResumeReAttachesToRemoteTask(t *testing.T) {
+	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	pol.Spawn(process.Launch{ID: "t1", Task: "task", Driver: "scripted"}, nil) // runs on the remote to completion
-	time.Sleep(300 * time.Millisecond)                                         // let it finish (retained in the ring)
+	pol.Spawn(task.Launch{ID: "t1", Prompt: "task", Driver: "scripted"}, nil) // runs on the remote to completion
+	time.Sleep(300 * time.Millisecond)                                        // let it finish (retained in the ring)
 
 	// "verse restart": a fresh store with a STALE running entity tagged with the runner.
 	store := entitytest.Store(t)
 	entitytest.Set(t, store, mirror.Ref("t1"), entity.Obj{"status": "running", "runner": srv.URL}.Payload())
 
-	// resume: re-attach and re-mirror (the core of reconcileProcesses).
+	// resume: re-attach and re-mirror (the core of reconcileTasks).
 	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Runner: srv.URL})
 
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _, _ := store.Get(mirror.Ref("t1"))
-		if s, _ := entity.ToObj(e.Payload)["status"].(string); s == string(process.Done) {
+		if s, _ := entity.ToObj(e.Payload)["status"].(string); s == string(task.Done) {
 			return // converged: resume recovered the terminal from the remote
 		}
 		select {
@@ -257,25 +257,25 @@ func TestResumeReAttachesToRemoteProcess(t *testing.T) {
 	}
 }
 
-// A gate on a REMOTE process is answerable. Without remoteHandle.Resolve this handle was not
+// A gate on a REMOTE task is answerable. Without remoteHandle.Resolve this handle was not
 // a gateResolver at all, so every route into it refused with a message about the question —
-// a process on another host could be blocked on a decision that no operator could give.
+// a task on another host could be blocked on a decision that no operator could give.
 //
 // It also pins the vocabulary: the handle sends api.Resolve (`id`/`approve`), and the remote
 // runtime understands it. When those two disagree the answer decodes to an empty id, answers
 // nothing, and comes back as though the decision were unknown.
 func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		// Ask, and resolved by the daemon's own registry — so the process really blocks and
+	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		// Ask, and resolved by the daemon's own registry — so the task really blocks and
 		// really waits for an answer to arrive over HTTP.
-		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
-		return process.NewProcess(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(process.Launch{ID: "t-gate", Task: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t-gate", Prompt: "do a thing", Driver: "scripted"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -283,7 +283,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 		Resolve(decision string, proceed bool, say, by string) error
 	})
 	if !ok {
-		t.Fatal("a remote handle cannot answer a gate, so a remote process can block forever")
+		t.Fatal("a remote handle cannot answer a gate, so a remote task can block forever")
 	}
 
 	var decision string
@@ -292,20 +292,20 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 		select {
 		case ev, open := <-ch:
 			if !open {
-				t.Fatal("the stream ended before the process gated")
+				t.Fatal("the stream ended before the task gated")
 			}
-			if ev.Kind == process.EvPending {
+			if ev.Kind == task.EvPending {
 				decision = ev.ID
 			}
 		case <-timeout:
-			t.Fatal("the remote process never raised a gate")
+			t.Fatal("the remote task never raised a gate")
 		}
 	}
 
 	if err := rh.Resolve(decision, true, "go ahead", "human:scott"); err != nil {
 		t.Fatalf("answering the remote gate %s = %v", decision, err)
 	}
-	// Reported success is not delivery. The process has to actually go on, and the answer has
+	// Reported success is not delivery. The task has to actually go on, and the answer has
 	// to arrive attributed — an answer that lost its `by` on the wire is an unattributable
 	// decision recorded as though it were attributed.
 	timeout = time.After(5 * time.Second)
@@ -315,7 +315,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 			if !open {
 				t.Fatal("the stream ended without a decision")
 			}
-			if ev.Kind == process.EvDecision && ev.ID == decision {
+			if ev.Kind == task.EvDecision && ev.ID == decision {
 				if !ev.Proceed {
 					t.Fatalf("the remote read a deny from an approve: %+v", ev)
 				}
@@ -325,7 +325,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 				return
 			}
 		case <-timeout:
-			t.Fatal("the remote process never acted on the answer")
+			t.Fatal("the remote task never acted on the answer")
 		}
 	}
 }
@@ -333,16 +333,16 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 // And the older spelling still works, because things dial in against this face. A client
 // sending {decisionId, proceed} must still be understood, or adding the new vocabulary would
 // have been a break dressed as an addition.
-func TestProcessdStillReadsTheOlderResolveSpelling(t *testing.T) {
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
-		return process.NewProcess(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
+	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(process.Launch{ID: "t-old", Task: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t-old", Prompt: "do a thing", Driver: "scripted"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -352,13 +352,13 @@ func TestProcessdStillReadsTheOlderResolveSpelling(t *testing.T) {
 		select {
 		case ev, open := <-ch:
 			if !open {
-				t.Fatal("the stream ended before the process gated")
+				t.Fatal("the stream ended before the task gated")
 			}
-			if ev.Kind == process.EvPending {
+			if ev.Kind == task.EvPending {
 				decision = ev.ID
 			}
 		case <-timeout:
-			t.Fatal("the remote process never raised a gate")
+			t.Fatal("the remote task never raised a gate")
 		}
 	}
 
@@ -368,7 +368,7 @@ func TestProcessdStillReadsTheOlderResolveSpelling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp, err := http.Post(srv.URL+"/processes/t-old/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
+	resp, err := http.Post(srv.URL+"/tasks/t-old/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
@@ -381,17 +381,17 @@ func TestProcessdStillReadsTheOlderResolveSpelling(t *testing.T) {
 // The contract as documented mixes the two spellings — `{id, proceed}` — and things dial in
 // against the document, not against the struct. Read as two fixed vocabularies that combination
 // yields a DENY: the id is recognised and the verdict field beside it is not, so an approval
-// arrives as a refusal and the process stops. It has to be read as an approval.
-func TestProcessdReadsTheDocumentedMixedSpelling(t *testing.T) {
-	build := func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Ask}, reg)
-		return process.NewProcess(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+// arrives as a refusal and the task stops. It has to be read as an approval.
+func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
+	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(processd.New(build).Handler())
+	srv := httptest.NewServer(taskd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(process.Launch{ID: "t-mixed", Task: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t-mixed", Prompt: "do a thing", Driver: "scripted"}, nil)
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -401,13 +401,13 @@ func TestProcessdReadsTheDocumentedMixedSpelling(t *testing.T) {
 		select {
 		case ev, open := <-ch:
 			if !open {
-				t.Fatal("the stream ended before the process gated")
+				t.Fatal("the stream ended before the task gated")
 			}
-			if ev.Kind == process.EvPending {
+			if ev.Kind == task.EvPending {
 				decision = ev.ID
 			}
 		case <-timeout:
-			t.Fatal("the remote process never raised a gate")
+			t.Fatal("the remote task never raised a gate")
 		}
 	}
 
@@ -415,7 +415,7 @@ func TestProcessdReadsTheDocumentedMixedSpelling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp, err := http.Post(srv.URL+"/processes/t-mixed/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
+	resp, err := http.Post(srv.URL+"/tasks/t-mixed/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
@@ -431,14 +431,14 @@ func TestProcessdReadsTheDocumentedMixedSpelling(t *testing.T) {
 			if !open {
 				t.Fatal("the stream ended without a decision")
 			}
-			if ev.Kind == process.EvDecision && ev.ID == decision {
+			if ev.Kind == task.EvDecision && ev.ID == decision {
 				if !ev.Proceed {
 					t.Fatal("`{id, proceed: true}` was read as a deny — an approval became a refusal")
 				}
 				return
 			}
 		case <-timeout:
-			t.Fatal("the remote process never acted on the answer")
+			t.Fatal("the remote task never acted on the answer")
 		}
 	}
 }

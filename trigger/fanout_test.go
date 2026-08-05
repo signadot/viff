@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 
 	"github.com/signadot/verse/codec"
 )
@@ -36,7 +36,7 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	reviewed := prs(t, store, "reviewed", "1", "2", "3")
 	prs(t, store, "open", "4") // not selected — wrong stage
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship-all-reviewed",
 		Condition: Condition{
@@ -71,22 +71,22 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	}
 }
 
-// Each fanned-out member gets its own process, with $subject bound to THAT member — so a
-// broadcast spawn is N processes each about one subject, not one process about a set.
+// Each fanned-out member gets its own task, with $subject bound to THAT member — so a
+// broadcast spawn is N tasks each about one subject, not one task about a set.
 func TestFanOutSpawnsPerMember(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "1", "2", "3")
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	type spawned struct {
 		id   string
 		spec launch.Spec
 	}
 	got := make(chan spawned, 8)
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		got <- spawned{id, spec}
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, blockForever{}, noExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
@@ -95,7 +95,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Task: "ship $subject"},
+			Spawn:  &launch.Spec{Prompt: "ship $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -109,12 +109,12 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	seen := map[string]string{} // subject -> task
 	ids := map[string]bool{}
 	// Until all three members have spawned, not exactly three sends: a re-evaluation about a
-	// member whose process is already live is deduped by spawnHooked and never reaches the
+	// member whose task is already live is deduped by spawnHooked and never reaches the
 	// spawner, but the count is about members, so count members.
 	for len(seen) < 3 {
 		select {
 		case s := <-got:
-			seen[s.spec.Subject] = s.spec.Task
+			seen[s.spec.Subject] = s.spec.Prompt
 			ids[s.id] = true
 		case <-time.After(5 * time.Second):
 			t.Fatalf("only %d of 3 members spawned: %v", len(seen), seen)
@@ -131,7 +131,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	}
 	// And each is its own flow, addressable as a set.
 	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:*"))); n != 3 {
-		t.Fatalf("%d live processes for 3 members", n)
+		t.Fatalf("%d live tasks for 3 members", n)
 	}
 }
 
@@ -142,14 +142,14 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "1", "2")
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	// The spawner runs on an engine goroutine while the test polls, so the counter must be
 	// atomic — a plain int here is a data race, not a flake.
 	var spawns atomic.Int64
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		spawns.Add(1)
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		return process.NewProcess(id, sup, blockForever{}, noExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
@@ -158,7 +158,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Task: "ship $subject"},
+			Spawn:  &launch.Spec{Prompt: "ship $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -172,11 +172,11 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	entitytest.Set(t, store, ci, entity.Obj{"state": "green"}.Payload())
 	eventuallyN(t, "2 spawns", func() bool { return spawns.Load() == 2 })
 
-	// Fire again over the same set — same members, same ids, so no new processes.
+	// Fire again over the same set — same members, same ids, so no new tasks.
 	entitytest.Set(t, store, ci, entity.Obj{"state": "green", "run": "2"}.Payload())
 	time.Sleep(300 * time.Millisecond)
 	if n := spawns.Load(); n != 2 {
-		t.Fatalf("a re-fire spawned %d processes; want 2 (idempotent per member)", n)
+		t.Fatalf("a re-fire spawned %d tasks; want 2 (idempotent per member)", n)
 	}
 }
 
@@ -198,7 +198,7 @@ func TestFanOutActsOnEveryMemberWithoutTripping(t *testing.T) {
 	}
 	prs(t, store, "reviewed", ids...)
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
@@ -240,7 +240,7 @@ func TestFanOutActsOnEveryMemberWithoutTripping(t *testing.T) {
 // simply has no members to be about.
 func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
@@ -290,7 +290,7 @@ func TestEachSubjectRaisesItsOwnGate(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "1", "2", "3")
 
-	asked := make(chan process.GateQuestion, 32)
+	asked := make(chan task.GateQuestion, 32)
 	eng := New(store, countingResolver{asked})
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
@@ -326,11 +326,11 @@ func TestEachSubjectRaisesItsOwnGate(t *testing.T) {
 }
 
 // countingResolver approves everything and records what it was asked.
-type countingResolver struct{ asked chan process.GateQuestion }
+type countingResolver struct{ asked chan task.GateQuestion }
 
-func (c countingResolver) Resolve(_ context.Context, q process.GateQuestion, _ process.ToolUse) (process.Resolution, error) {
+func (c countingResolver) Resolve(_ context.Context, q task.GateQuestion, _ task.ToolUse) (task.Resolution, error) {
 	c.asked <- q
-	return process.Resolution{Proceed: true, By: "test"}, nil
+	return task.Resolution{Proceed: true, By: "test"}, nil
 }
 
 func eventuallyN(t *testing.T, why string, cond func() bool) {
@@ -350,13 +350,13 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 
 // An ADDRESS GLOB is the string spelling of a set-valued Subject, and it must dispatch
 // identically to the object form — `"demo:pr:*"` is the whole kind, exactly as `verse flow
-// demo:pr:*` addresses the whole kind's live processes. It used to parse to a `ref` naming an
+// demo:pr:*` addresses the whole kind's live tasks. It used to parse to a `ref` naming an
 // entity literally called "*", so nothing fanned out and `set` created `demo:pr:*` instead.
 func TestGlobSubjectFansOut(t *testing.T) {
 	store := entitytest.Store(t)
 	open := prs(t, store, "open", "1", "2", "3")
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-all",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:*"},
@@ -386,7 +386,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "open", "hotfix-1", "hotfix-2", "feature-9")
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-hotfixes",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:hotfix-*"},
@@ -414,7 +414,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 // grammar must not quietly turn this into a select-what-exists no-op.
 func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"record",
 		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit:record:latest"},
@@ -436,20 +436,20 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 // dispatched the firing points somewhere else entirely.
 //
 // This replaces a test of the `flow` redirect, which asserted the filtering half of it: a
-// process whose flow was not a demo:pr was a no-op. With the redirect gone the payload has no
+// task whose flow was not a demo:pr was a no-op. With the redirect gone the payload has no
 // say at all, and the property that remains is the plainer one — a subject is what the charter
-// says. The entity the process named is untouched not because it was filtered out, but because
+// says. The entity the task named is untouched not because it was filtered out, but because
 // the charter never named it.
 func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	store := entitytest.Store(t)
 	other := entity.Ref{System: "other", Kind: "thing", ID: "1"}
 	entitytest.Set(t, store, other, entity.Obj{"stage": "x"}.Payload())
 
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "process", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"), // acts on demo:pr, whatever the cause carries
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -460,8 +460,8 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// A completed process whose payload names `other` — which the subject does not select.
-	entitytest.Set(t, store, entity.Ref{System: "process", Kind: "instance", ID: "rev-1"},
+	// A completed task whose payload names `other` — which the subject does not select.
+	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "rev-1"},
 		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
@@ -489,7 +489,7 @@ func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 		}
 	}
 
-	// A set-only action starts nothing, and must not invent an id for a process that will
+	// A set-only action starts nothing, and must not invent an id for a task that will
 	// never exist.
 	if got := spawnLabel(Trigger{Name: "reviewed"}, refs); got != "" {
 		t.Errorf("a set-only trigger announced a spawn: %q", got)

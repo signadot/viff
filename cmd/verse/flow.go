@@ -21,13 +21,13 @@ func flowSubs() []*cli.Command {
 
 func flowsCmd() *cli.Command {
 	return collection("flows", "/flows",
-		"flows — list the distinct subjects with in-flight processes (steer one with `verse flow`)", "flow",
+		"flows — list the distinct subjects with in-flight tasks (steer one with `verse flow`)", "flow",
 		flowSubs()...)
 }
 
 func flowCmd() *cli.Command {
 	return cli.NewCommand("flow").
-		WithSynopsis("flow — steer live processes by the subject they are about (list them with `verse flows`)").
+		WithSynopsis("flow — steer live tasks by the subject they are about (list them with `verse flows`)").
 		WithSubs(flowSubs()...)
 }
 
@@ -60,7 +60,7 @@ type flowPauseConfig struct{ *cli.Command }
 func flowPauseCmd() *cli.Command {
 	cfg := &flowPauseConfig{}
 	return cli.NewCommandAt(&cfg.Command, "pause").
-		WithSynopsis("pause the addressed processes at their next boundary: pause <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("pause the addressed tasks at their next boundary: pause <subject|demo:pr:*>").WithRun(cfg.run)
 }
 
 func (cfg *flowPauseConfig) run(cc *cli.Context, args []string) error {
@@ -80,7 +80,7 @@ type flowResumeConfig struct{ *cli.Command }
 func flowResumeCmd() *cli.Command {
 	cfg := &flowResumeConfig{}
 	return cli.NewCommandAt(&cfg.Command, "resume").
-		WithSynopsis("resume held processes: resume <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("resume held tasks: resume <subject|demo:pr:*>").WithRun(cfg.run)
 }
 
 func (cfg *flowResumeConfig) run(cc *cli.Context, args []string) error {
@@ -100,7 +100,7 @@ type flowCancelConfig struct{ *cli.Command }
 func flowCancelCmd() *cli.Command {
 	cfg := &flowCancelConfig{}
 	return cli.NewCommandAt(&cfg.Command, "cancel").
-		WithSynopsis("cancel the addressed processes (destructive): cancel <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("cancel the addressed tasks (destructive): cancel <subject|demo:pr:*>").WithRun(cfg.run)
 }
 
 func (cfg *flowCancelConfig) run(cc *cli.Context, args []string) error {
@@ -120,7 +120,7 @@ type flowSayConfig struct{ *cli.Command }
 func flowSayCmd() *cli.Command {
 	cfg := &flowSayConfig{}
 	return cli.NewCommandAt(&cfg.Command, "say").
-		WithSynopsis("say an instruction into the addressed processes: say <subject|demo:pr:*> <text…>").WithRun(cfg.run)
+		WithSynopsis("say an instruction into the addressed tasks: say <subject|demo:pr:*> <text…>").WithRun(cfg.run)
 }
 
 func (cfg *flowSayConfig) run(cc *cli.Context, args []string) error {

@@ -21,7 +21,7 @@ worth knowing why that route was taken, because it is what removes the clock fro
 problem. The distinction to draw is *a cycle is not wrong; an UNPACED cycle is* — a combinational
 loop being an error where a cycle through a register is a state machine — and pacing turns out to
 be a property of how a chain RUNS rather than of how it is written: a chain breaks wherever real
-time enters, through a spawned process, through the world via the mirror, through a decision
+time enters, through a spawned task, through the world via the mirror, through a decision
 somebody answers. So no ticker had to exist first, and no static analysis over the charter can
 draw the distinction at all — through templated patches it could only ever have warned.
 
@@ -121,7 +121,7 @@ stops meaning "it is gone" and starts meaning "it is marked, and it goes when th
 
 Only (1) makes the mechanism worth having. Only (2) leaves `rm` meaning what it says.
 
-Whichever wins, **machinery deletes should stay one-phase.** `process:instance`,
+Whichever wins, **machinery deletes should stay one-phase.** `task:instance`,
 `motion:channel`, `trigger:rule`, a scope teardown: nothing reacts to their departure, and
 two-phasing them buys lingering entities and a second commit for no reader. `connect`'s teardown
 (one delete per federated entity) is the case to think about — N markers and a reaper sweep,
@@ -140,7 +140,7 @@ a charter.
 This is the ticker again, and a tick that is a fact which gets CONSUMED answers both: a reaper
 woken by the tick, selecting what was marked before it.
 
-An interim that needs no new machinery: the reaper's action spawns a process that sleeps and then
+An interim that needs no new machinery: the reaper's action spawns a task that sleeps and then
 writes the tombstone. Ugly, but it puts the grace in the charter where it belongs, and it is what
 `scripted` is for.
 

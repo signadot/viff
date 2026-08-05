@@ -19,26 +19,26 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
-// Spawner turns a (bound) launch.Spec into a running, hosted process and returns
+// Spawner turns a (bound) launch.Spec into a running, hosted task and returns
 // it. It owns the full lifecycle — resolve the spec's references (driver, runner,
 // resolver, scope, environment), build, mirror into the verse, and run/host — so
-// the engine stays agnostic to how processes are hosted (a processd runtime here,
+// the engine stays agnostic to how tasks are hosted (a taskd runtime here,
 // an RPC to a remote runtime when distributed).
-type Spawner func(id string, spec launch.Spec) process.Handle
+type Spawner func(id string, spec launch.Spec) task.Handle
 
-// flowProc is one LIVE process: its id (for store-driven reap by ref), the subject it is
-// about, and its governing handle (the control target — a *Process locally, a remote handle
-// behind a runner URL later). The engine holds handles, not concrete processes.
-type flowProc struct {
+// flowTask is one LIVE task: its id (for store-driven reap by ref), the subject it is
+// about, and its governing handle (the control target — a *Task locally, a remote handle
+// behind a runner URL later). The engine holds handles, not concrete tasks.
+type flowTask struct {
 	id      string
-	subject string // the resolved subject this process is about — a flow is a query over these
-	h       process.Handle
+	subject string // the resolved subject this task is about — a flow is a query over these
+	h       task.Handle
 	// hooks is the spawning action, carried so the engine can fire its completion hook (onX)
-	// when THIS process reaches a terminal status — scoped to this process, not every process
-	// about the subject. nil for Adopt (a resumed process has no charter action to hook).
+	// when THIS task reaches a terminal status — scoped to this task, not every task
+	// about the subject. nil for Adopt (a resumed task has no charter action to hook).
 	hooks *Action
 	// chain is this spawn's position in its trigger's action tree, as a KPATH: the trigger
 	// name at the top, then review.onDone, review.onDone.onFailed, … So it is not a private
@@ -52,7 +52,7 @@ type flowProc struct {
 //
 // ONE BASELINE ENGINE PER STORE. Everything the engine knows about what it has already done is
 // per-engine and in memory — the per-trigger watermark (seen), the in-flight firings (inflight),
-// the live process registry, the fire budget — and every one of them reads a write this engine
+// the live task registry, the fire budget — and every one of them reads a write this engine
 // did not make as somebody else's business. That is right for a scope and wrong for a peer:
 //
 //   - A SCOPED engine composes, structurally. Store.Scope's contract is that writes land in the
@@ -70,8 +70,8 @@ type flowProc struct {
 // is throttled by neither, because each sees only its own half of it.
 type Engine struct {
 	store    entity.Store
-	resolver process.Resolver // answers trigger ASK/PARK gates
-	spawn    Spawner          // optional: how actions spawn processes
+	resolver task.Resolver // answers trigger ASK/PARK gates
+	spawn    Spawner       // optional: how actions spawn tasks
 	triggers []Trigger
 	// logger carries both the running dispatch commentary (Debug) and anything an
 	// operator has to act on (Warn). One channel with levels, rather than a verbose
@@ -91,7 +91,7 @@ type Engine struct {
 
 	// causes places the commits this engine wrote in their causal chains: revision → how far
 	// it stands from the external write that started it, and what wrote it. A commit that is
-	// not here was caused by somebody else, which is the answer for a person, a process, a
+	// not here was caused by somebody else, which is the answer for a person, a task, a
 	// mirror, a peer, and a restart alike. Written by a firing's store (see causal.go), read
 	// per commit on the dispatch path — so it is guarded on its own rather than behind the
 	// loop, which firings do not run on.
@@ -135,13 +135,13 @@ type Engine struct {
 	paused  bool
 	cursor  int64 // highest processed store revision (the catch-up cursor)
 
-	// Live processes, keyed by process id. A FLOW IS NOT STORED HERE: it is a QUERY over
-	// these processes' subjects (see matchFlow), so "the processes of demo:pr:1" and "…of
+	// Live tasks, keyed by task id. A FLOW IS NOT STORED HERE: it is a QUERY over
+	// these tasks' subjects (see matchFlow), so "the tasks of demo:pr:1" and "…of
 	// every demo:pr" are the same operation at two settings — relational steering falls out
 	// of the selector rather than needing a second index. Keying by id also makes reap a
 	// delete and spawn-dedupe a lookup. Guarded independently of the loop.
 	liveMu sync.Mutex
-	live   map[string]flowProc
+	live   map[string]flowTask
 
 	// the charter (e.triggers, declared above). Guarded because triggers can be
 	// added/removed at runtime (over the wire) while the loop dispatches.
@@ -183,12 +183,12 @@ type Engine struct {
 }
 
 // New builds an engine over store, using resolver for trigger gates.
-func New(store entity.Store, resolver process.Resolver) *Engine {
+func New(store entity.Store, resolver task.Resolver) *Engine {
 	return &Engine{
 		store: store, resolver: resolver, logger: slog.Default(),
 		control:  make(chan func(), 64),
 		stopped:  make(chan struct{}),
-		live:     map[string]flowProc{},
+		live:     map[string]flowTask{},
 		causes:   map[int64]link{},
 		tripPace: DefaultTripPace,
 		goals:    map[string]*Goal{},
@@ -247,9 +247,9 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 			e.tracef("subtree watch for %q: %v", t.Name, err)
 		}
 	}
-	// Watch the process:instance mirror subtree directly, independent of any charter trigger:
+	// Watch the task:instance mirror subtree directly, independent of any charter trigger:
 	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
-	// where no root dispatch loop runs. Store-driven means race-free for a fast process (unlike
+	// where no root dispatch loop runs. Store-driven means race-free for a fast task (unlike
 	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
 	if ch, unsub, err := e.store.WatchSubtree(mirror.System, "instance"); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
@@ -310,7 +310,7 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 						return
 					}
 					// Fire on bgctx, not this trigger's ctx: a firing already under way — a
-					// posed gate, a spawned process — belongs to the work, not to the charter
+					// posed gate, a spawned task — belongs to the work, not to the charter
 					// entry, and removing the trigger stops FURTHER firings rather than
 					// cancelling one in flight.
 					//
@@ -479,14 +479,14 @@ func (e *Engine) Do(fn func()) { e.do(fn) }
 // The commit is the unit throughout: a trigger's rule is a question about the store at a
 // revision, not about one entity, so every trigger is asked once and the commit's changes are
 // only consulted to decide whether asking is worth it (Trigger.touches). Reaping still walks
-// them, because retiring a finished process IS per-entity bookkeeping.
+// them, because retiring a finished task IS per-entity bookkeeping.
 func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	e.trigMu.Lock()
 	trigs := make([]Trigger, len(e.triggers))
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
 	for _, ev := range c.Changes {
-		e.reap(ev)             // retire completed processes from their flow (store-driven bookkeeping)
+		e.reap(ev)             // retire completed tasks from their flow (store-driven bookkeeping)
 		e.subjectMoved(ev.Ref) // a paced firing about this entity is now stale; let it go
 	}
 	for i := range trigs {
@@ -529,13 +529,13 @@ func (e *Engine) countFire() {
 // a long approval then cannot slide it (and, under fan-out, cannot change the member set
 // between asking and acting), and a firing that resolves to nothing never troubles an
 // approver. Gates are per FIRING, not per subject — a broadcast raises one approval.
-// spawnLabel names the process a firing WILL start if its gates pass. spawnID is a pure
+// spawnLabel names the task a firing WILL start if its gates pass. spawnID is a pure
 // function of the trigger name and the subject, both settled before the gate is raised, so
 // this is the very id the spawn will use — not a guess and not a second scheme. apply() calls
 // the same function, and a test pins the two together so they cannot drift apart.
 //
-// Empty when the action has no spawn: a set-only trigger starts no process, and inventing an
-// id for one would be worse than saying nothing. Note the id is what the process WILL be
+// Empty when the action has no spawn: a set-only trigger starts no task, and inventing an
+// id for one would be worse than saying nothing. Note the id is what the task WILL be
 // called — the gate may be denied, or a provider selection may fail to resolve a doer, and
 // then nothing by that name is ever created.
 func spawnLabel(t Trigger, subjects []entity.Ref) string {
@@ -585,11 +585,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// because a firing can outlive its own function call:
 	//
 	//   claimFlight  covers the firing itself: the gates being answered, the action applied.
-	//   working      covers what it started: a spawned process still running.
+	//   working      covers what it started: a spawned task still running.
 	//
 	// Every commit meanwhile re-selects the subject, since the write that would release it is
 	// exactly what has not happened yet. Neither check changes what RUNS — spawnHooked already
-	// refuses a second process under a live id — but together they stop a firing for work
+	// refuses a second task under a live id — but together they stop a firing for work
 	// already under way from posing a question and spending budget before being told so.
 	if e.working(t, subj) {
 		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
@@ -661,7 +661,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 		if gname == "" {
 			gname = t.Name
 		}
-		d := process.GateQuestion{
+		d := task.GateQuestion{
 			ID: gateID(t.Name, gname, subjects), Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, subj),
 			// What the approver is deciding about, and what saying yes starts. One subject,
@@ -674,9 +674,9 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			BoundTo: t.GateResolver(),
 		}
 		wg.Add(1)
-		go func(g Gate, d process.GateQuestion, gname string) {
+		go func(g Gate, d task.GateQuestion, gname string) {
 			defer wg.Done()
-			res, err := e.resolver.Resolve(ctx, d, process.ToolUse{Name: "trigger:" + t.Name})
+			res, err := e.resolver.Resolve(ctx, d, task.ToolUse{Name: "trigger:" + t.Name})
 			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
 			if err == nil && res.Proceed {
 				return
@@ -1030,7 +1030,7 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 	if len(options) == 0 {
 		// A motion needs options, so there is no question to pose and nothing reaches the
 		// docket. That is indistinguishable from "the trigger never matched" unless we say
-		// so HERE: the firing matched, its gates passed, and then it produced no process,
+		// so HERE: the firing matched, its gates passed, and then it produced no task,
 		// no motion, and no error. Every other exit from this function traces; this one is
 		// the likeliest to be hit (a capability whose registry is empty, or a match that
 		// excludes everyone) and was the only one silent.
@@ -1045,9 +1045,9 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 	// as the group's that nobody made. This is the rule the whether-axis already follows: a
 	// channel is opened only for a gate carrying a Formula, never for `mode: auto`.
 	//
-	// The pick stays observable on the spawned process (its Driver). What a motion would add
+	// The pick stays observable on the spawned task (its Driver). What a motion would add
 	// is the alternatives, and those are provenance of a spawn rather than a decision anyone
-	// took — if they are wanted, they belong on the process entity.
+	// took — if they are wanted, they belong on the task entity.
 	//
 	// Not latching also retires a failure mode: a committed auto pick outlived the registry
 	// and went on naming a retired doer (what fragmentFor's fallback exists to absorb).
@@ -1137,14 +1137,14 @@ type providerCandidate struct {
 // A refused candidate is INELIGIBLE, not trimmed. It never reaches a ballot, so a vote cannot
 // elect a doer that then fails to be seated — a decision with no seat, which no voter could
 // have known they were making. The alternative, quietly dropping the offending field and
-// running the doer anyway, would put a process under an envelope different from the one its
-// own entity states; process/authority.go was written to end exactly that.
+// running the doer anyway, would put a task under an envelope different from the one its
+// own entity states; task/authority.go was written to end exactly that.
 func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
 	p := spawn.Provider
 	if p == nil {
 		return nil
 	}
-	ceiling, declared, ceilErr := process.NamedGrant(spawn.Grant)
+	ceiling, declared, ceilErr := task.NamedGrant(spawn.Grant)
 	var out []providerCandidate
 	seen := map[string]bool{}
 	add := func(id string, f launch.Fragment, payload entity.Payload) {
@@ -1183,7 +1183,7 @@ func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
 //
 // `vector` is here because it is the one axis that can widen without touching authority — it
 // says whether a person sees an action at all, and `vector: auto` means "this firing already
-// answered its gates" (process/authority.go), which is the charter's claim to make. An
+// answered its gates" (task/authority.go), which is the charter's claim to make. An
 // ordering over auto|ask|park that would let a doer TIGHTEN autonomy is a later question.
 // `resolver` and `environment` are here because neither has semantics to resolve to yet
 // (versed.launchOf), so honoring them would be a promise nothing keeps.
@@ -1193,7 +1193,7 @@ var unhonoredProviderFields = []string{"vector", "resolver", "environment"}
 // refusals are the three ways a provider entity — an ordinary entity, writable by anyone who
 // can write entities — could otherwise obtain authority the charter never granted.
 func refuseProvider(f launch.Fragment, payload entity.Payload, spawn launch.Spec,
-	ceiling process.Grant, declared bool, ceilErr error) string {
+	ceiling task.Grant, declared bool, ceilErr error) string {
 
 	for _, name := range unhonoredProviderFields {
 		if entity.Get(payload, name) != nil {
@@ -1207,11 +1207,11 @@ func refuseProvider(f launch.Fragment, payload entity.Payload, spawn launch.Spec
 		case !declared:
 			// Unreachable through AddTrigger, which requires a grant on any spawn carrying a
 			// provider. Kept because the reachable-today answer and the safe answer differ: an
-			// undeclared ceiling is UNBOUNDED (process.Launch.Grant nil), so taking it as the
+			// undeclared ceiling is UNBOUNDED (task.Launch.Grant nil), so taking it as the
 			// bound would make every provider grant a "narrowing" of everything.
 			return "it declares a grant and the spawn declares none, so there is no ceiling to check it against"
 		}
-		g, ok, err := process.NamedGrant(f.Grant)
+		g, ok, err := task.NamedGrant(f.Grant)
 		if err != nil || !ok {
 			return fmt.Sprintf("its grant %q does not resolve (%v)", f.Grant, err)
 		}
@@ -1311,77 +1311,77 @@ func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
 	return err == nil && ok
 }
 
-// Spawn asks the Spawner to launch a process from a launch.Spec — non-blocking.
-// The Spawner owns build/mirror/run; the process's state appears in the verse and
+// Spawn asks the Spawner to launch a task from a launch.Spec — non-blocking.
+// The Spawner owns build/mirror/run; the task's state appears in the verse and
 // its acts write entities, closing the loop. Requires a Spawner.
-func (e *Engine) Spawn(id string, spec launch.Spec) process.Handle {
+func (e *Engine) Spawn(id string, spec launch.Spec) task.Handle {
 	return e.spawnHooked(id, spec, nil, "")
 }
 
 // spawnHooked is Spawn with completion hooks: hooks is the spawning action (its onX fire when
-// this process ends), chain is this spawn's position in a hook chain (for deterministic nested
+// this task ends), chain is this spawn's position in a hook chain (for deterministic nested
 // ids). Public Spawn passes nil/"" — an ordinary spawn with no chaining.
-func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) process.Handle {
+func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) task.Handle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
 		return nil
 	}
 	// Idempotent per id: spawnID is deterministic per (trigger, subject), so a re-fire about
-	// the same subject must not start a second process. The runtime would not stop it — a
-	// processd Spawn overwrites its registry entry while the old process keeps running — so
+	// the same subject must not start a second task. The runtime would not stop it — a
+	// taskd Spawn overwrites its registry entry while the old task keeps running — so
 	// the engine, which owns the live registry, is where this belongs.
 	e.liveMu.Lock()
 	if fp, running := e.live[id]; running {
 		e.liveMu.Unlock()
-		e.tracef("process %s already live (subject %s); not respawning", id, fp.subject)
+		e.tracef("task %s already live (subject %s); not respawning", id, fp.subject)
 		return fp.h
 	}
 	e.liveMu.Unlock()
 
-	e.tracef("spawn process %s (driver=%s): %s", id, spec.Driver, spec.Task)
+	e.tracef("spawn task %s (driver=%s): %s", id, spec.Driver, spec.Prompt)
 	h := e.spawn(id, spec)
 	if h != nil && spec.Subject != "" {
-		e.track(flowProc{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain})
+		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain})
 	}
 	return h
 }
 
-// track registers a live process and arms its lifecycle-driven reaper.
-func (e *Engine) track(fp flowProc) {
+// track registers a live task and arms its lifecycle-driven reaper.
+func (e *Engine) track(fp flowTask) {
 	e.liveMu.Lock()
 	e.live[fp.id] = fp
 	e.liveMu.Unlock()
 	go e.reapOnDone(fp) // retire it when it ends
 }
 
-// Adopt registers an already-running process (id + governing handle) under a flow — the
-// resume path on restart, when a remote-hosted process outlived verse. It re-tracks it
-// exactly as Spawn does a fresh one, so the resumed process is steerable (flow
+// Adopt registers an already-running task (id + governing handle) under a flow — the
+// resume path on restart, when a remote-hosted task outlived verse. It re-tracks it
+// exactly as Spawn does a fresh one, so the resumed task is steerable (flow
 // cancel/say/pause) and reaped from the flow when it ends — not merely observed. subject
 // "" is a no-op.
-func (e *Engine) Adopt(subject, id string, h process.Handle) {
+func (e *Engine) Adopt(subject, id string, h task.Handle) {
 	e.AdoptChain(subject, id, "", h)
 }
 
-// AdoptChain is Adopt for a process that came from the charter: chain is the kpath of the
-// action that spawned it, read back off its process entity. The engine navigates to that
-// action and re-attaches its completion hooks, so a resumed process finishes the way it
+// AdoptChain is Adopt for a task that came from the charter: chain is the kpath of the
+// action that spawned it, read back off its task entity. The engine navigates to that
+// action and re-attaches its completion hooks, so a resumed task finishes the way it
 // would have — its onDone fires, and a sequence it belongs to advances.
 //
 // This is what a chain being a LOOKUP KEY into the charter is for. Before it, resume tracked
-// a process with no hooks at all, which meant a completion after a restart silently ended a
+// a task with no hooks at all, which meant a completion after a restart silently ended a
 // chain: docs/trigger-model.md records that as a limitation, and it is why `onOrphaned`
 // never fires (the only orphan is written by this very reconcile, on a fresh engine).
 //
 // Rehydration is best-effort by nature, and the failures are ordinary rather than alarming:
-// a trigger removed while its process ran, or a charter edited so the chain no longer
+// a trigger removed while its task ran, or a charter edited so the chain no longer
 // resolves. Both mean there is no action left to run, which is the correct outcome — the
-// process is still adopted, so it stays steerable and is still reaped.
-func (e *Engine) AdoptChain(subject, id, chain string, h process.Handle) {
+// task is still adopted, so it stays steerable and is still reaped.
+func (e *Engine) AdoptChain(subject, id, chain string, h task.Handle) {
 	if h == nil || subject == "" {
 		return
 	}
-	fp := flowProc{id: id, subject: subject, h: h, chain: chain}
+	fp := flowTask{id: id, subject: subject, h: h, chain: chain}
 	if chain != "" {
 		if t, ok := e.triggerNamed(mirror.TriggerOf(chain)); ok {
 			if act, ok := navigate(t, chain); ok {
@@ -1396,37 +1396,37 @@ func (e *Engine) AdoptChain(subject, id, chain string, h process.Handle) {
 	e.track(fp)
 }
 
-// reapOnDone retires a process from its flow's tracking once it reaches a terminal
+// reapOnDone retires a task from its flow's tracking once it reaches a terminal
 // status — the lifecycle-driven reaper for scoped (subtree) mode, where no root dispatch
-// loop runs so the store-driven reap never fires. Reaping is purely process bookkeeping,
-// so it hangs off the process's own completion (its handle's bus). NOTE: it can race a
-// fast process that finishes before this subscribes (Subscribe is live-from-now, no ring
+// loop runs so the store-driven reap never fires. Reaping is purely task bookkeeping,
+// so it hangs off the task's own completion (its handle's bus). NOTE: it can race a
+// fast task that finishes before this subscribes (Subscribe is live-from-now, no ring
 // replay) — in baseline mode reap (store-driven, via the root watch) is the race-free
 // path; this is the backstop and the scoped-mode path. The range also exits if the
-// process closes its bus, so this cannot outlive p.
-func (e *Engine) reapOnDone(fp flowProc) {
+// task closes its bus, so this cannot outlive p.
+func (e *Engine) reapOnDone(fp flowTask) {
 	ch, unsub := fp.h.Subscribe()
 	defer unsub()
 	var status string
 	for ev := range ch {
-		if ev.Kind == process.EvStatus && process.TerminalStatus(ev.Text) {
+		if ev.Kind == task.EvStatus && task.TerminalStatus(ev.Text) {
 			status = ev.Text
 			break
 		}
 	}
-	// Retire whether or not we saw a terminal status (a closed bus means the process is gone).
+	// Retire whether or not we saw a terminal status (a closed bus means the task is gone).
 	// Apply the completion hook only when we both observed a terminal status AND won the retire
 	// (retireHandle is atomic, so the store-driven reapLoop/reap and this can't double-fire).
 	got, ok := e.retireHandle(fp.id, fp.h)
 	if ok && status != "" {
-		e.applyHook(got, process.Status(status), e.procEvent(got, process.Status(status)))
+		e.applyHook(got, task.Status(status), e.taskEvent(got, task.Status(status)))
 	}
 }
 
-// retire atomically removes a live process by id, returning its flowProc. Whoever retires it
+// retire atomically removes a live task by id, returning its flowTask. Whoever retires it
 // first (the store-driven reapLoop/reap, or the bus-driven reapOnDone) is the one that applies
 // its completion hook — the once-guard for exactly-once hook application.
-func (e *Engine) retire(id string) (flowProc, bool) {
+func (e *Engine) retire(id string) (flowTask, bool) {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
 	fp, ok := e.live[id]
@@ -1438,27 +1438,27 @@ func (e *Engine) retire(id string) (flowProc, bool) {
 
 // retireHandle is retire scoped to a specific handle: it removes the entry only if the tracked
 // handle still matches (not a successor that reused the id). The reapOnDone path uses it.
-func (e *Engine) retireHandle(id string, h process.Handle) (flowProc, bool) {
+func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
 	if fp, ok := e.live[id]; ok && fp.h == h {
 		delete(e.live, id)
 		return fp, true
 	}
-	return flowProc{}, false
+	return flowTask{}, false
 }
 
-// applyHook fires the completion hook for a terminated process's status (if any), scoped to
-// exactly that process: the hook (a full Action) runs about the process's own subject. The chain
+// applyHook fires the completion hook for a terminated task's status (if any), scoped to
+// exactly that task: the hook (a full Action) runs about the task's own subject. The chain
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
-// completed process:instance payload, so the hook's templates can read $status/$flow/$result.
-func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) {
+// completed task:instance payload, so the hook's templates can read $status/$flow/$result.
+func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	subject, serr := entity.ParseRef(fp.subject)
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only
 	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so
 	// the element's own onFailed/onCancelled can run and the sequence stops there (fail-stop).
-	if status == process.Done && serr == nil {
+	if status == task.Done && serr == nil {
 		if e.resumeSeq(fp.chain, subject, ev) {
 			return
 		}
@@ -1467,7 +1467,7 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	// Before the two returns below, because a sequence stops at an off-ramp whether or not the
 	// element carries a hook for it — a failure nobody wrote an `onFailed` for is still a
 	// failure, and the run behind it is still over.
-	if status != process.Done && serr == nil {
+	if status != task.Done && serr == nil {
 		e.stopSeq(fp.chain, subject, status)
 	}
 	if fp.hooks == nil {
@@ -1494,16 +1494,16 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
-	// A hook has no causing commit — it is woken by a process finishing rather than by a
+	// A hook has no causing commit — it is woken by a task finishing rather than by a
 	// write, which is exactly why its chain starts again (causal.go). So the occasion carries
-	// the process event for its references and nothing for $subject.value/$subject.commit,
+	// the task event for its references and nothing for $subject.value/$subject.commit,
 	// which then fail by name rather than resolving to a silent zero.
 	if err := hook.apply(chain, occasion{ev: ev}, []entity.Ref{subj}, e, fromCause); err != nil {
 		e.recordHookFailure(mirror.Ref(fp.id), chain, err)
 	}
 }
 
-// recordHookFailure persists a completion hook's failure onto the process whose completion
+// recordHookFailure persists a completion hook's failure onto the task whose completion
 // fired it, under a `hook` record:
 //
 //	hook: { chain: review.onDone, status: failed, err: "$data.severity is not present …" }
@@ -1511,11 +1511,11 @@ func (e *Engine) applyHook(fp flowProc, status process.Status, ev entity.Event) 
 // A hook is where an unverifiable claim turns into a state transition, so its failure is the
 // one an operator most needs to see — and a trace line is invisible to everything that reads
 // the verse. Written here rather than onto the SUBJECT because the failure is a fact about
-// this process's completion, not about the PR: the subject deliberately did not advance, and
+// this task's completion, not about the PR: the subject deliberately did not advance, and
 // putting an error in a field a charter matches on is what would make `value: {stage: X}`
 // quietly stop matching.
 //
-// Writing to the process entity is safe despite the mirror owning that payload, because a
+// Writing to the task entity is safe despite the mirror owning that payload, because a
 // store write MERGES: a field the mirror never names survives its re-Put (see mirror.go,
 // which relies on the same property for `pending`). That also makes it ordering-independent,
 // which matters — this can run before the mirror's own terminal write, since the two race.
@@ -1531,13 +1531,13 @@ func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
 	})
 }
 
-// procEvent synthesizes the store event for a completed process — the bus-driven reapOnDone
-// path has no entity.Event, so it reads the process:instance payload to give the hook the
+// taskEvent synthesizes the store event for a completed task — the bus-driven reapOnDone
+// path has no entity.Event, so it reads the task:instance payload to give the hook the
 // same bindings the store-driven path has.
 //
 // The mirror entity is NOT authoritative for the terminal facts. reapOnDone and
-// mirror.Reflect are two independent subscribers to the same process bus, so when this path
-// wins the retire — which for a fast process it reliably does, the engine's reader getting
+// mirror.Reflect are two independent subscribers to the same task bus, so when this path
+// wins the retire — which for a fast task it reliably does, the engine's reader getting
 // there first — the store still holds the PRE-terminal projection. The hook then bound
 // $status to "running" and found no $result at all, which is exactly the payload a
 // completion hook exists to read. The store-driven path never had this problem: mirror
@@ -1547,8 +1547,8 @@ func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
 // So the facts this path knows first-hand are overlaid on whatever the mirror has managed to
 // write: the terminal status this reap just observed, and the handle's final answer. flow and
 // chain come from the engine's own record for the same reason — a hook must bind them even
-// when the mirror has written nothing about this process yet.
-func (e *Engine) procEvent(fp flowProc, status process.Status) entity.Event {
+// when the mirror has written nothing about this task yet.
+func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
 	ref := mirror.Ref(fp.id)
 	ev := entity.Event{Ref: ref}
 	st := entity.Obj{}
@@ -1582,14 +1582,14 @@ func (e *Engine) procEvent(fp flowProc, status process.Status) entity.Event {
 	return ev
 }
 
-// Flows lists the distinct subjects with in-flight processes — a QUERY over the live
-// registry, not a maintained index. Terminal processes are reaped, so a subject drops off
-// once its work finishes; the handles behind it are this engine's live processes (control
+// Flows lists the distinct subjects with in-flight tasks — a QUERY over the live
+// registry, not a maintained index. Terminal tasks are reaped, so a subject drops off
+// once its work finishes; the handles behind it are this engine's live tasks (control
 // targets), not a durable membership view.
-// SubjectOf returns the subject a live process is about, or "" if the engine does not know
-// it — a process spawned directly by `process run` genuinely has none, and one that has
+// SubjectOf returns the subject a live task is about, or "" if the engine does not know
+// it — a task spawned directly by `task run` genuinely has none, and one that has
 // already been reaped is no longer live. A flow is a query over these subjects, so this is
-// that query at its narrowest setting: one process.
+// that query at its narrowest setting: one task.
 func (e *Engine) SubjectOf(id string) string {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
@@ -1611,20 +1611,20 @@ func (e *Engine) Flows() []string {
 	return out
 }
 
-// matchFlow selects the live processes a subject-Match addresses. This IS the flow
-// primitive: a flow is not a stored key but the answer to "which live processes are about
+// matchFlow selects the live tasks a subject-Match addresses. This IS the flow
+// primitive: a flow is not a stored key but the answer to "which live tasks are about
 // entities matching this". A payload predicate (`fields`) is applied by reading the subject
 // entity, so "pause every open PR's work" is the same selector at a wider setting.
-func (e *Engine) matchFlow(m Match) []flowProc {
+func (e *Engine) matchFlow(m Match) []flowTask {
 	e.liveMu.Lock()
-	all := make([]flowProc, 0, len(e.live))
+	all := make([]flowTask, 0, len(e.live))
 	for _, fp := range e.live {
 		all = append(all, fp)
 	}
 	e.liveMu.Unlock()
 
 	hasPredicate := m.HasPredicate()
-	out := make([]flowProc, 0, len(all))
+	out := make([]flowTask, 0, len(all))
 	for _, fp := range all {
 		ref, err := entity.ParseRef(fp.subject)
 		if err != nil || !m.MatchRef(ref) {
@@ -1644,8 +1644,8 @@ func (e *Engine) matchFlow(m Match) []flowProc {
 	return out
 }
 
-// CancelFlow cancels every process the address selects (out-of-band control, honored at
-// each process's next boundary — never a store write). Returns how many were signalled.
+// CancelFlow cancels every task the address selects (out-of-band control, honored at
+// each task's next boundary — never a store write). Returns how many were signalled.
 func (e *Engine) CancelFlow(m Match) int {
 	ps := e.matchFlow(m)
 	for _, fp := range ps {
@@ -1654,7 +1654,7 @@ func (e *Engine) CancelFlow(m Match) int {
 	return len(ps)
 }
 
-// SteerFlow says an instruction to every process the address selects, attributed to by.
+// SteerFlow says an instruction to every task the address selects, attributed to by.
 // Returns how many were said-to.
 func (e *Engine) SteerFlow(m Match, text, by string) int {
 	ps := e.matchFlow(m)
@@ -1664,7 +1664,7 @@ func (e *Engine) SteerFlow(m Match, text, by string) int {
 	return len(ps)
 }
 
-// PauseFlow holds every process of a flow at its next boundary — an operator's
+// PauseFlow holds every task of a flow at its next boundary — an operator's
 // ad-hoc freeze of one subject's live work (distinct from cancel, which is
 // destructive, and from a park gate, which is a charter-declared hold). Out-of-band
 // control, honored at the boundary, never a store write. Lift it with ResumeFlow.
@@ -1678,7 +1678,7 @@ func (e *Engine) PauseFlow(m Match) int {
 	return len(ps)
 }
 
-// ResumeFlow lifts a PauseFlow, releasing each process to run from its held
+// ResumeFlow lifts a PauseFlow, releasing each task to run from its held
 // boundary. Returns how many were signalled.
 func (e *Engine) ResumeFlow(m Match) int {
 	ps := e.matchFlow(m)
@@ -1688,10 +1688,10 @@ func (e *Engine) ResumeFlow(m Match) int {
 	return len(ps)
 }
 
-// reap retires a process when its reflected entity reaches a terminal status, so
+// reap retires a task when its reflected entity reaches a terminal status, so
 // Flows()/matchFlow see only in-flight work — no lingering completed handles. It is
-// store-driven: the same process:instance change a completion trigger reacts to also
-// releases the handle. Keyed by process id, so this is one delete — no scan of subjects, and
+// store-driven: the same task:instance change a completion trigger reacts to also
+// releases the handle. Keyed by task id, so this is one delete — no scan of subjects, and
 // none of the "never filter in place" hazard the per-subject slices used to carry (the
 // control ops copied a slice header under the lock and iterated it unlocked).
 func (e *Engine) reap(ev entity.Event) {
@@ -1699,20 +1699,20 @@ func (e *Engine) reap(ev entity.Event) {
 		return
 	}
 	status := entity.Str(ev.To, "status")
-	if !process.TerminalStatus(status) {
+	if !task.TerminalStatus(status) {
 		return
 	}
 	if fp, ok := e.retire(ev.Ref.ID); ok {
-		e.applyHook(fp, process.Status(status), ev)
+		e.applyHook(fp, task.Status(status), ev)
 	}
 }
 
 // reapLoop is the store-driven completion path for scoped (subtree) mode: it watches the
-// process:instance mirror subtree and, on each terminal status, retires the process and fires its
+// task:instance mirror subtree and, on each terminal status, retires the task and fires its
 // completion hook. Opened in ObserveScoped BEFORE any spawn (WatchSubtree replays then edges), so
-// it is race-free for a fast process — the property reapOnDone's live-from-now bus lacks. The
+// it is race-free for a fast task — the property reapOnDone's live-from-now bus lacks. The
 // atomic retire makes it and the reapOnDone backstop exactly-once. Replayed old terminals are
-// harmless: retire finds no live entry for a process this engine never tracked.
+// harmless: retire finds no live entry for a task this engine never tracked.
 func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub func()) {
 	defer unsub()
 	for {
@@ -1725,33 +1725,33 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 			}
 			for _, ev := range c.Changes {
 				status := entity.Str(ev.To, "status")
-				if !process.TerminalStatus(status) {
+				if !task.TerminalStatus(status) {
 					continue
 				}
 				if fp, ok := e.retire(ev.Ref.ID); ok {
-					e.applyHook(fp, process.Status(status), ev)
+					e.applyHook(fp, task.Status(status), ev)
 				}
 			}
 		}
 	}
 }
 
-// ReconcileOrphans retires process:instance entities that a previous run left
-// non-terminal: a fresh runtime holds no handle for them (processd is in-memory, so
-// a restart kills every process), so their last durable state is marked orphaned
+// ReconcileOrphans retires task:instance entities that a previous run left
+// non-terminal: a fresh runtime holds no handle for them (taskd is in-memory, so
+// a restart kills every task), so their last durable state is marked orphaned
 // rather than left claiming to run. Returns how many were reconciled.
 //
 // Call it once at monolith startup, before Start. Do NOT call it in a split
-// deployment where the process runtime outlives the engine — there the processes are
+// deployment where the task runtime outlives the engine — there the tasks are
 // real and reconnectable, not orphans.
 func (e *Engine) ReconcileOrphans() int {
 	n := 0
 	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		status := entity.Str(ent.Payload, "status")
-		if status == "" || process.TerminalStatus(status) {
+		if status == "" || task.TerminalStatus(status) {
 			continue
 		}
-		e.write(ent.Ref.At("status"), entity.Val(string(process.Orphaned)))
+		e.write(ent.Ref.At("status"), entity.Val(string(task.Orphaned)))
 		n++
 	}
 	return n

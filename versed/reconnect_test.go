@@ -11,13 +11,13 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
-	"github.com/signadot/verse/process/processd"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/taskd"
 )
 
 // cuttingProxy relays a runner's HTTP faithfully and severs the event stream after the first
-// n bytes of it — a connection that dies mid-process, which is the ordinary way a stream ends
+// n bytes of it — a connection that dies mid-task, which is the ordinary way a stream ends
 // when nothing is wrong with the work.
 func cuttingProxy(t *testing.T, upstream string, cutAfter int) *httptest.Server {
 	t.Helper()
@@ -62,9 +62,9 @@ func cuttingProxy(t *testing.T, upstream string, cutAfter int) *httptest.Server 
 
 func remoteRuntime(t *testing.T, steps int) *httptest.Server {
 	t.Helper()
-	d := processd.New(func(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
-		return process.NewProcess(l.ID, sup, &pacedDriver{n: steps}, noopExecutor{})
+	d := taskd.New(func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+		return task.NewTask(l.ID, sup, &pacedDriver{n: steps}, noopExecutor{})
 	})
 	srv := httptest.NewServer(d.Handler())
 	t.Cleanup(srv.Close)
@@ -74,21 +74,21 @@ func remoteRuntime(t *testing.T, steps int) *httptest.Server {
 // pacedDriver takes n steps slowly enough that a stream can be cut partway through the run.
 type pacedDriver struct{ n int }
 
-func (d *pacedDriver) Next(ctx context.Context, _ process.StepResult) (process.ToolUse, bool, error) {
+func (d *pacedDriver) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, bool, error) {
 	if d.n <= 0 {
-		return process.ToolUse{}, false, nil
+		return task.ToolUse{}, false, nil
 	}
 	d.n--
 	select {
 	case <-time.After(20 * time.Millisecond):
 	case <-ctx.Done():
 	}
-	return process.ToolUse{Name: "noop"}, true, nil
+	return task.ToolUse{Name: "noop"}, true, nil
 }
 
-// A stream that dies mid-process is reconnected, and the entity ends up telling the truth.
+// A stream that dies mid-task is reconnected, and the entity ends up telling the truth.
 //
-// It did not. A closed channel meant both "the process ended" and "your connection died", so
+// It did not. A closed channel meant both "the task ended" and "your connection died", so
 // Reflect returned on the second as though it were the first: the remote finished, and the
 // entity said `running` permanently — with the goroutine and the HTTP connection behind it
 // leaked for good measure.
@@ -96,7 +96,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 	remote := remoteRuntime(t, 40)
 	proxy := cuttingProxy(t, remote.URL, 300)
 
-	runner.HTTP(remote.URL).Spawn(process.Launch{ID: "p", Task: "work"}, nil)
+	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"}, nil)
 	store := entitytest.Store(t)
 	mirror.Reflect(store, "p", runner.HTTP(proxy.URL).Attach("p"), mirror.Meta{Runner: proxy.URL})
 
@@ -104,7 +104,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 	for {
 		e, _, _ := store.Get(mirror.Ref("p"))
 		got := entity.ToObj(e.Payload)
-		if process.Status(entity.Str(e.Payload, "status")).Terminal() {
+		if task.Status(entity.Str(e.Payload, "status")).Terminal() {
 			// And it is not still claiming to be disconnected: the reconnect that carried
 			// it to the terminal cleared that on its first frame.
 			if got["observed"] == false {
@@ -114,7 +114,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("the remote process finished and the entity still says %v", got["status"])
+			t.Fatalf("the remote task finished and the entity still says %v", got["status"])
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -123,15 +123,15 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 // While it is disconnected, the entity says so.
 //
 // A mirror that is retrying is not a mirror that is current, and an index that reads as
-// confident while it is merely stale is the difference between "this process is running" and
+// confident while it is merely stale is the difference between "this task is running" and
 // "the last thing I heard was that it was running".
 func TestADisconnectedMirrorSaysSo(t *testing.T) {
 	remote := remoteRuntime(t, 200) // long enough to still be running while we look
-	runner.HTTP(remote.URL).Spawn(process.Launch{ID: "p", Task: "work"}, nil)
+	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"}, nil)
 
 	// Mirrored through a runner that cannot be REACHED, which is distinct from one that
 	// answers with an error: a rejected subscribe is deliberately reported as a failed
-	// process on the read plane, while an unreachable one has nothing to report at all and
+	// task on the read plane, while an unreachable one has nothing to report at all and
 	// is exactly what the reconnect loop is for.
 	gone := httptest.NewServer(http.NotFoundHandler())
 	goneURL := gone.URL

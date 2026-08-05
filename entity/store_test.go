@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseRefRoundTrip(t *testing.T) {
-	cases := []string{"linear:issue:1090", "github:pr:signadot/hack#12", "process:instance:p1"}
+	cases := []string{"linear:issue:1090", "github:pr:signadot/hack#12", "task:instance:p1"}
 	for _, s := range cases {
 		r, err := ParseRef(s)
 		if err != nil {

@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // restart stands a second engine up over the same substrate, the way `verse up` does after
@@ -21,7 +21,7 @@ import (
 func restart(t *testing.T, addr string) (*Engine, entity.Store) {
 	t.Helper()
 	store := entitytest.StoreAt(t, addr)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context()) // versed's order: observe, then restore into it
 	if err := eng.LoadCharter(); err != nil {
 		t.Fatalf("LoadCharter: %v", err)
@@ -30,12 +30,12 @@ func restart(t *testing.T, addr string) (*Engine, entity.Store) {
 }
 
 // A trigger installed before a restart still fires after it. This is the whole point: a
-// verse whose processes, sequence positions and claims all survive but whose CHARTER does
+// verse whose tasks, sequence positions and claims all survive but whose CHARTER does
 // not comes back up with its work in progress intact and nothing left to react to it.
 func TestCharterSurvivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -57,7 +57,7 @@ func TestCharterSurvivesARestart(t *testing.T) {
 func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -78,7 +78,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -110,7 +110,7 @@ func TestRemovedTriggerStaysRemoved(t *testing.T) {
 // the rule is an ordinary document on its entity rather than a string holding one.
 func TestCharterRoundTripsOperators(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	// Written the way a charter is, so the operators are the real thing.
 	var trig Trigger
 	if err := codec.Unmarshal([]byte(`{
@@ -124,7 +124,7 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 			patch:  {stage: reviewed, tmp: !delete null},
 			spawn:  {
 				driver: llm,
-				task:   "review $subject",
+				prompt: "review ",
 				answer: {class: !or [bug, nit], severity: !or [low, high]},
 			},
 			onDone: {patch: {stage: shipped}},
@@ -190,7 +190,7 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 // wrote, which nothing in the charter file would explain.
 func TestReinstallReplacesTheRule(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
@@ -222,7 +222,7 @@ func TestReinstallReplacesTheRule(t *testing.T) {
 func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -233,7 +233,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	entitytest.Set(t, first, CharterRef("junk"), entity.Obj{specField: "this is not a trigger: [ {"}.Payload())
 
 	store := entitytest.StoreAt(t, addr)
-	back := New(store, process.AutoResolver{})
+	back := New(store, task.AutoResolver{})
 	err := back.LoadCharter()
 	if err == nil {
 		t.Fatal("LoadCharter reported success over an undecodable rule")
@@ -251,7 +251,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 // `verse trigger remove` cannot get rid of.
 func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
@@ -280,7 +280,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 func TestGoalSurvivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 	if err := eng.AddGoal(shipGoal()); err != nil {
 		t.Fatalf("AddGoal: %v", err)
@@ -306,7 +306,7 @@ func TestGoalSurvivesARestart(t *testing.T) {
 func TestGoalReachedWhileDownLatchesOnRestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 	if err := eng.AddGoal(shipGoal()); err != nil {
 		t.Fatalf("AddGoal: %v", err)
@@ -325,7 +325,7 @@ func TestGoalReachedWhileDownLatchesOnRestart(t *testing.T) {
 func TestTerminalGoalIsNotRestored(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 	if err := eng.AddGoal(shipGoal()); err != nil {
 		t.Fatalf("AddGoal: %v", err)
@@ -353,7 +353,7 @@ func TestTerminalGoalIsNotRestored(t *testing.T) {
 func TestRemovedGoalStaysRemoved(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
-	eng := New(first, process.AutoResolver{})
+	eng := New(first, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 	if err := eng.AddGoal(shipGoal()); err != nil {
 		t.Fatalf("AddGoal: %v", err)
@@ -383,7 +383,7 @@ func TestRemovedGoalStaysRemoved(t *testing.T) {
 // nobody is pursuing.
 func TestGoalOwnedTriggersAreNotStandaloneCharter(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	if err := eng.AddGoal(shipGoal()); err != nil {
 		t.Fatalf("AddGoal: %v", err)
 	}
@@ -423,7 +423,7 @@ func shipGoal() GoalDef {
 func restartWithGoals(t *testing.T, addr string) (*Engine, entity.Store) {
 	t.Helper()
 	store := entitytest.StoreAt(t, addr)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 	if err := eng.LoadCharter(); err != nil {
 		t.Fatalf("LoadCharter: %v", err)

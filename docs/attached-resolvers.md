@@ -38,8 +38,8 @@ exclusive: true
 ```
 
 `condition` selects *entities*, in the vocabulary a trigger already uses. It does not match
-rules and does not need to: a process gate is reachable by the same `subject`, because a
-question's subject is filled from the process's `flow` when it is posed. So "the payments PRs"
+rules and does not need to: a task gate is reachable by the same `subject`, because a
+question's subject is filled from the task's `flow` when it is posed. So "the payments PRs"
 covers the gates a run raises about one as well as the firings that spawn it.
 
 `method` says how it answers and what the answering may do. `vector`, `tools` and `grant` bound
@@ -68,7 +68,7 @@ gating:
 action:
   spawn:
     driver:   llm
-    task:     "Validate $subject and fix what is trivially wrong."
+    prompt:     "Validate $subject and fix what is trivially wrong."
     grant:    no-delegate                        # what the WORK may do at all
     vector:   ask                                # …and how much of it asks
     resolver: resolvers:security:security-review # answers this RUN's gates
@@ -229,13 +229,13 @@ one nobody may answer. That is checked at install.
 
 The stream carries what was reported — narration, tool calls and their outputs, boundaries,
 children, status. A *boundary* is the point between actions where the loop services control
-before proposing the next one, so it is on the stream because it says the process stopped to
+before proposing the next one, so it is on the stream because it says the task stopped to
 check rather than that nothing happened.
 
-For a process that is exactly what `verse process attach` shows: the read plane, whole and in
+For a task that is exactly what `verse task attach` shows: the read plane, whole and in
 order, not a projection. There is no supervisor's view to design. What the stream does not carry
 is the driver's internal reasoning, which is the line
-[external processes](external-processes.md) already draws between intercepting and attesting —
+[external tasks](external-tasks.md) already draws between intercepting and attesting —
 and what makes one resolver work identically over a local loop, a k8s Job, and a human dialing
 into a broker.
 
@@ -245,7 +245,7 @@ Control application is emitted on the one ordered stream, so an observer reads t
 exchange in order: the ask, the decision with its `by`, the say, the action that followed. There
 is no supervised run that reads as unsupervised, and no way to answer invisibly.
 
-`verse process attach <run>` shows it, and it is worth seeing rather than being told:
+`verse task attach <run>` shows it, and it is worth seeing rather than being told:
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
@@ -258,17 +258,17 @@ Nothing about that `decision` frame differs in shape from a person's answer — 
 
 What the stream does not show is what was *watched* — a position advancing with no verdict emits
 nothing. So the resolver is a second subject with a record of its own, and the rule of thumb is
-worth keeping: **the process stream is what was decided, the resolver's record is who was
+worth keeping: **the task stream is what was decided, the resolver's record is who was
 watching and on what evidence.** That is also why a position is written on the instance rather
 than on the binding: who was watching is per run, so writing it on the binding would be one
 resolver's second run overwriting what its first one saw.
 
 ### Two planes, one spine
 
-A resolver above one process reads two streams with independent cursors and no common order.
+A resolver above one task reads two streams with independent cursors and no common order.
 There is no sequencer for it, deliberately. It carries a cursor pair and leans on a property
-that already holds: a process's spawn and its terminal are both store commits, because `mirror`
-writes them. The store stream is the spine, ordered and durable, carrying the anchors; process
+that already holds: a task's spawn and its terminal are both store commits, because `mirror`
+writes them. The store stream is the spine, ordered and durable, carrying the anchors; task
 streams hang off it as fine grain between anchors.
 
 ### Where a resolver lives

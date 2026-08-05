@@ -50,7 +50,7 @@ problem — which is the escape hatch for the parked CAS finding: reflected slic
 compare-and-swap because they have one writer. (CAS still matters where several triggers write
 a *shared subject*, not a reflected slice.)
 
-In process that held because there was one `Git` value. Across deployments nothing holds it but
+In task that held because there was one `Git` value. Across deployments nothing holds it but
 the install check below.
 
 **And converge now spends it**, which it did not until a deployment made the cost visible: every
@@ -112,7 +112,7 @@ pass forever, firing its triggers each time.
 
 `source/sourced` serves the contract as two routes — `GET /source` for a descriptor, `GET
 /reflect` for a `Reflection` — and `source.HTTP` is the client verse drives it with. That is
-`processd`'s trick, for `processd`'s reason: `source.Git` behind `sourced` *is* the sample
+`taskd`'s trick, for `taskd`'s reason: `source.Git` behind `sourced` *is* the sample
 external source, and the same value behind verse's own reflector is the built-in, so there is
 no privileged local path for a deployed one to differ from.
 
@@ -235,7 +235,7 @@ sources that happen to be maintained here, and the sample program is still the t
 for a fourth.
 
 **Only one thing actually differs between them, and it is the credential.** git needs none, so
-it can also run in process (`--dir`) and its "webhook" is a four-line shell script. The other
+it can also run in task (`--dir`) and its "webhook" is a four-line shell script. The other
 two hold a token, which is what puts them on the far side of the seam for good — and what
 "nothing new about credentials" below turns out to mean in practice.
 
@@ -281,7 +281,7 @@ payload rule, which is right for an owned slice and wrong for a shared one. The
 A git source carries commits under **no** cover, so history stays. The Slack source covers its
 messages, so the last `-depth` per channel is a window that slides and what falls out is
 tombstoned. The difference is not a preference: a repository's history is finite and immutable,
-and a process that wants more follows a ref into the real repo — while a channel is an unbounded
+and a task that wants more follows a ref into the real repo — while a channel is an unbounded
 event stream, and an entity-verse that keeps all of it is exactly the warehouse a source is not
 supposed to be. Covering it also makes the source *more* truthful, not less: a message deleted
 inside the window goes, where an uncovered one would stand forever.
@@ -301,7 +301,7 @@ and is SDLC-native.
   pass is per-repo, so one repo's reconcile never tombstones another's refs.
 - It reflects git-*aware* state — branch, HEAD, dirty, ahead/behind — which is what SDLC flows
   react to ("commit landed on main", "branch deleted", "tag created"), not "a byte changed". An
-  index, not a warehouse: a process needing a diff follows the ref into the real repo.
+  index, not a warehouse: a task needing a diff follows the ref into the real repo.
 
 ## A Source is not a controller, and cannot be
 
@@ -312,7 +312,7 @@ deleted because the mistake is an easy one to make twice — the shape really do
 until you ask what fires.
 
 **A mounted slice fires no triggers.** Mounts render under `entity.MountRoot`, a top-level
-segment disjoint from the entity root, because a mount is process-driven and so has no history,
+segment disjoint from the entity root, because a mount is task-driven and so has no history,
 and a history-bearing watch must never span one. `LogdStore.WatchSubtree` renders only under the
 entity root. So a controller-served slice is readable by its ordinary ref and invisible to every
 watch there is: no change events, no `Since` replay, nothing a charter can react to. A git

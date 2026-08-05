@@ -38,9 +38,9 @@ func (s *FlowNode) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["id"] = ir.FromString(string(s.ID))
 	}
 
-	// Field: Task
-	if s.Task != "" {
-		irMap["task"] = ir.FromString(string(s.Task))
+	// Field: Prompt
+	if s.Prompt != "" {
+		irMap["prompt"] = ir.FromString(string(s.Prompt))
 	}
 
 	// Field: Status
@@ -120,12 +120,12 @@ func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "id", fieldNodeUnwrapped.Type)
 			}
 			s.ID = string(fieldNodeUnwrapped.String)
-		case "task":
-			// Field: Task
+		case "prompt":
+			// Field: Prompt
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
-			s.Task = string(fieldNodeUnwrapped.String)
+			s.Prompt = string(fieldNodeUnwrapped.String)
 		case "status":
 			// Field: Status
 			if fieldNodeUnwrapped.Type != ir.StringType {

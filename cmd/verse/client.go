@@ -42,12 +42,12 @@ func urlFor(path string, q url.Values) string {
 	// Build the URL rather than concatenating it, so the path gets ESCAPED. Ids reach here
 	// straight from the command line, so they may contain anything a shell will pass along.
 	// A "#" is the one that punishes concatenation: it starts a URL fragment, which silently
-	// truncates the path (`/processes/run-x#d1/events` requests `/processes/run-x`) and takes
+	// truncates the path (`/tasks/run-x#d1/events` requests `/tasks/run-x`) and takes
 	// the query string with it, since the "?" would land inside the fragment. The request
 	// then succeeds against the WRONG route, with no scope and no format. url.URL.String()
 	// escapes it to %23 and the server 404s, which is what a bad id should do.
 	//
-	// Gate ids no longer carry one — they delimit with process.GateSep, which is unreserved
+	// Gate ids no longer carry one — they delimit with task.GateSep, which is unreserved
 	// and reaches the route as itself — so this is now a guard against a hostile id rather
 	// than the everyday path. It stays because the everyday path is not the dangerous one.
 	u := url.URL{Scheme: "http", Host: g.Addr, Path: path}
@@ -223,7 +223,7 @@ func decodeBody(resp *http.Response, v any) {
 	_ = codec.Unmarshal(data, v, respFmt(resp))
 }
 
-// httpPostURL posts to an ABSOLUTE url — used for a process's broker face (its dialURL),
+// httpPostURL posts to an ABSOLUTE url — used for a task's broker face (its dialURL),
 // which lives on a sibling port, not the operator API at g.Addr.
 func httpPostURL(u string, body any) (*http.Response, error) {
 	f := wireFmt()
@@ -239,11 +239,11 @@ func httpPostURL(u string, body any) (*http.Response, error) {
 	return verse.Do(req)
 }
 
-// brokerClaim claims a process at its broker face as identity, returning the epoch (the
+// brokerClaim claims a task at its broker face as identity, returning the epoch (the
 // fencing token to carry on report/inbox) and the control cursor (cCursor, where to read the
 // inbox from). Same-identity re-claim is idempotent, so an executor can claim afresh.
 func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
-	resp, err := httpPostURL(base+"/processes/"+id+"/claim", map[string]any{"identity": identity})
+	resp, err := httpPostURL(base+"/tasks/"+id+"/claim", map[string]any{"identity": identity})
 	if err != nil {
 		return 0, 0, err
 	}
@@ -263,7 +263,7 @@ func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
 // brokerInbox pulls the worker inbox at base for id — items with cursor > since, carrying
 // epoch for the fence — returning the items and the highest cursor seen (to advance since).
 func brokerInbox(base, id string, since, epoch int64) ([]api.InboxItem, int64, error) {
-	u := base + "/processes/" + id + "/inbox?since=" +
+	u := base + "/tasks/" + id + "/inbox?since=" +
 		strconv.FormatInt(since, 10) + "&epoch=" + strconv.FormatInt(epoch, 10)
 	resp, err := verse.Get(u)
 	if err != nil {
@@ -465,7 +465,7 @@ func gateCmd() *cli.Command {
 // `gate resolve <id> --approve|--deny`, a flag pair that could be left empty or set both
 // ways and so needed a runtime check to police two states the grammar should never have
 // allowed. Every other verb in this CLI is already a subcommand (flow pause/resume/cancel,
-// goals pause/resume/cancel, process cancel/say); the gate's answer was the one that had
+// goals pause/resume/cancel, task cancel/say); the gate's answer was the one that had
 // been demoted into a flag, mirroring api.Resolve's `Approve bool` rather than the operator.
 //
 // `vote <motion> <choice>` deliberately stays a positional: a select motion's choice is an

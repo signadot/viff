@@ -5,8 +5,8 @@
 // into the real system on its own.
 //
 // The store is observable: every change is an Event on a stream. That stream is
-// what triggers (elsewhere) match on, and where process state is reflected — so
-// "observe another process" is just "observe an entity."
+// what triggers (elsewhere) match on, and where task state is reflected — so
+// "observe another task" is just "observe an entity."
 package entity
 
 //go:generate go tool tony-codegen -dir .
@@ -29,7 +29,7 @@ func (r Ref) String() string { return r.System + ":" + r.Kind + ":" + r.ID }
 // surface agrees on would have two spellings depending on who wrote it.
 //
 // TextMarshaler is the hook both gomap paths honor (reflection and generated), the same
-// reason process.Verb and process.Mode have it.
+// reason task.Verb and task.Mode have it.
 func (r Ref) MarshalText() ([]byte, error) { return []byte(r.String()), nil }
 
 func (r *Ref) UnmarshalText(b []byte) error {
@@ -85,7 +85,7 @@ const (
 
 // MarshalText / UnmarshalText spell an Op as its text, which is what it already is.
 //
-// Same standing as process.Verb's: required until go-tony v0.0.94 (a named scalar generated
+// Same standing as task.Verb's: required until go-tony v0.0.94 (a named scalar generated
 // as an int64 conversion, then as an unconverted assignment — neither compiled), kept now
 // because declaring a scalar vocabulary's wire form explicitly is right on its own terms
 // rather than because a generator needs it.

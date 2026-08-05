@@ -45,7 +45,7 @@ type link struct {
 // that keeps this from being a stamp at ten call sites that an eleventh bypasses.
 //
 // parent is the revision of the commit that woke the firing, and 0 means the firing had no
-// engine-caused cause: a person, a process completing, a mirror, a peer. Both are handled by the
+// engine-caused cause: a person, a task completing, a mirror, a peer. Both are handled by the
 // same lookup — an absent parent has depth 0, so its children stamp 1, which is exactly "an
 // external write starts a fresh chain".
 func (e *Engine) caused(chain string, parent int64) entity.Store {
@@ -88,7 +88,7 @@ func (c causal) Scope(name string) entity.Store {
 //
 // A parent this engine did not cause is not in the map and reads as depth 0, so its children
 // stamp 1. That covers every way a chain can begin — a person writing over the API, a spawned
-// process's result arriving through the mirror, a git source reflecting, another engine — with
+// task's result arriving through the mirror, a git source reflecting, another engine — with
 // no case analysis and no way to be told which is which.
 func (e *Engine) recordCause(rev int64, chain string, parent int64) {
 	e.chainMu.Lock()
@@ -289,7 +289,7 @@ func (e *Engine) walkChain(from int64) (names []string, chainRoot int64, complet
 		root = rev
 		if l.depth <= 1 {
 			// Depth 1 IS the beginning: its parent had depth 0, which is the external write —
-			// a person, a process completing, a mirror — that started this off. Testing the
+			// a person, a task completing, a mirror — that started this off. Testing the
 			// parent for absence instead would report every healthy chain as truncated, since
 			// an external commit is by definition not in the map.
 			complete = true

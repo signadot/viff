@@ -317,25 +317,25 @@ ok "gate y + -s released it: demo:release:1 open → shipped"
 has "$(v gates)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
-# ── process runtime + the re-vector surface (scripted driver: hermetic) ──────
+# ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
-# live process to exercise the control surfaces against (and observe the slide on).
-step "process run + control surfaces"
-v process run --driver scripted "sleep 30" >/dev/null || die "process run failed"
-ID=$(v processes -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
-[ -n "$ID" ] || die "no process id from list"
+# live task to exercise the control surfaces against (and observe the slide on).
+step "task run + control surfaces"
+v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
+ID=$(v tasks -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
+[ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
-has "$(v process get "$ID")" "$ID" || die "process get missing the id"
-ok "process get"
-v process say "$ID" "also mention the token TTL" >/dev/null || die "process say failed"
-ok "process say (re-prompt)"
-out=$(v process vector "$ID" ask --as human:smoke) || die "process vector failed"
-has "$out" "ask" || die "process vector did not report the new mode"
-ok "process vector → ask (as human:smoke)"
-# the slide is observable on the read plane (the process is live, so the mirror projects it)
+has "$(v task get "$ID")" "$ID" || die "task get missing the id"
+ok "task get"
+v task say "$ID" "also mention the token TTL" >/dev/null || die "task say failed"
+ok "task say (re-prompt)"
+out=$(v task vector "$ID" ask --as human:smoke) || die "task vector failed"
+has "$out" "ask" || die "task vector did not report the new mode"
+ok "task vector → ask (as human:smoke)"
+# the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v entity get "process:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
+	if haskv "$(v entity get "task:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
 		observed=1
 		break
 	fi
@@ -343,8 +343,8 @@ for _ in $(seq 1 25); do
 done
 [ -n "$observed" ] || die "slide not observable on the entity (vector/vectorBy not projected)"
 ok "slide observable on the entity (vector/vectorBy projected)"
-v process cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
-ok "process cancel (kills the running command)"
+v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
+ok "task cancel (kills the running command)"
 
 # ── connect: federate a local tree into a scope (docd-only path) ─────────────
 step "connect (federate a local tree)"
@@ -354,7 +354,7 @@ printf 'hello from b\n' >"$tmp/tree/b.txt"
 SCOPE="smoke$$"
 # direct invocation (see the up launch above) so kill -INT reaches connect, not a wrapper.
 "$BIN" --addr "$ADDR" --scope "$SCOPE" connect "$tmp/tree" --driver scripted \
-	--task 'echo checked $path' >"$tmp/connect.log" 2>&1 &
+	--prompt 'echo checked $path' >"$tmp/connect.log" 2>&1 &
 CONN=$!
 fed=
 for _ in $(seq 1 150); do
@@ -387,15 +387,15 @@ for _ in $(seq 1 60); do
 	fi
 	sleep 0.5
 done
-[ -n "$val" ] || { v --scope "$SCOPE" entities --system process >&2; die "the per-file validator never validated a.txt"; }
+[ -n "$val" ] || { v --scope "$SCOPE" entities --system task >&2; die "the per-file validator never validated a.txt"; }
 ok "the validator ran and latched: a.txt is marked validated"
 # And it LATCHES: a validated file is not selected again, which is the whole reason the
 # subject says what is outstanding rather than what exists.
-before=$(v --scope "$SCOPE" entities --system process -o tony | grep -c 'ref:' || true)
+before=$(v --scope "$SCOPE" entities --system task -o tony | grep -c 'ref:' || true)
 sleep 3
-after=$(v --scope "$SCOPE" entities --system process -o tony | grep -c 'ref:' || true)
+after=$(v --scope "$SCOPE" entities --system task -o tony | grep -c 'ref:' || true)
 [ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
-ok "a validated file is not validated again ($after process)"
+ok "a validated file is not validated again ($after tasks)"
 
 kill -INT "$CONN" 2>/dev/null || true # ctrl-c tears the scope down
 wait "$CONN" 2>/dev/null || true

@@ -14,7 +14,7 @@ import (
 // The Slack Web API, as much of it as a reflection needs.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
-// the reason process/harness/llm.go is: this is somebody else's wire format. verse renders in
+// the reason task/harness/llm.go is: this is somebody else's wire format. verse renders in
 // tony; Slack does not, and re-rendering its schema through codec would buy nothing but a
 // second place for it to be wrong.
 //
@@ -204,7 +204,7 @@ type authTestResp struct {
 }
 
 // authTest asks who this token is. It is the cheapest call with an answer, so it doubles as
-// the startup check: a bad token fails the process rather than every reflect.
+// the startup check: a bad token fails the task rather than every reflect.
 func (a *api) authTest(ctx context.Context) (Identity, error) {
 	var r authTestResp
 	if err := a.call(ctx, "auth.test", nil, &r); err != nil {

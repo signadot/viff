@@ -80,7 +80,7 @@ func (cfg *triggerRemoveConfig) run(cc *cli.Context, args []string) error {
 
 type triggerAddConfig struct {
 	*cli.Command
-	// --file everywhere a command reads a document (goals add, process vector), -f kept as
+	// --file everywhere a command reads a document (goals add, task vector), -f kept as
 	// the alias: this was `-f` here, `-f` on goals and `--file` on vector, so the same idea
 	// had three spellings and knowing one told you nothing about the next.
 	File string `cli:"name=file aliases=f desc='read the charter from FILE (- = stdin); also accepts a positional [file]'"`

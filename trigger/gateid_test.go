@@ -8,7 +8,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A gate id is a function of (trigger, gate, subjects) and nothing else — so the SAME
@@ -33,11 +33,11 @@ func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
 		}
 	}
 	// The id still splits back to its owner on GateSep, exactly once — that is how an answer
-	// finds what posed it (process.GateSep).
+	// finds what posed it (task.GateSep).
 	id := gateID("ship", "ok", both)
-	owner, rest, ok := strings.Cut(id, process.GateSep)
-	if !ok || owner == "" || strings.Contains(rest, process.GateSep) {
-		t.Fatalf("gate id %q does not split cleanly on %q", id, process.GateSep)
+	owner, rest, ok := strings.Cut(id, task.GateSep)
+	if !ok || owner == "" || strings.Contains(rest, task.GateSep) {
+		t.Fatalf("gate id %q does not split cleanly on %q", id, task.GateSep)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
 // blocked on a question nothing could answer.
 func TestRepeatedFiringsShareOneGateQuestion(t *testing.T) {
 	store := entitytest.Store(t)
-	reg := process.NewRegistry()
+	reg := task.NewRegistry()
 	eng := New(store, reg)
 
 	ref := entity.Ref{System: "demo", Kind: "release", ID: "1"}
@@ -99,7 +99,7 @@ func TestRepeatedFiringsShareOneGateQuestion(t *testing.T) {
 
 	// Answering it once releases the action.
 	id := reg.Pending()[0].Question.ID
-	if !reg.Answer(id, process.Resolution{Proceed: true, By: "alice"}) {
+	if !reg.Answer(id, task.Resolution{Proceed: true, By: "alice"}) {
 		t.Fatalf("Answer(%q) found nothing", id)
 	}
 	waitStage(t, store, ref, "shipped")

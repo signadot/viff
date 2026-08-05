@@ -43,7 +43,7 @@ live buffer drops events, and all 300 changes still dispatch on resume.
 
 ## Where it is enforced
 
-In the process runtime, a boundary services control before the next action, cancel beats
+In the task runtime, a boundary services control before the next action, cancel beats
 pause beats say, and the read plane is fire-and-forget so it can never block control.
 
 In gate resolution, a pending gate is *observed* through the store — `mirror` projects
@@ -58,13 +58,13 @@ closures run on the loop goroutine, so they serialize with dispatch instead of r
 
 ## What runs where
 
-`verse up` runs the engine, the process runtime, and the HTTP surface in one process, and
+`verse up` runs the engine, the task runtime, and the HTTP surface in one process, and
 either brings up logd and docd as children or attaches to a running docd. Everything else is
 a client of it.
 
 The pieces are separable services behind the interfaces they already use: the store is
-reached through a client rather than embedded, the process runtime is already an HTTP control
-and read plane, and [process control](process-control.md) already runs a process off-box.
+reached through a client rather than embedded, the task runtime is already an HTTP control
+and read plane, and [task control](task-control.md) already runs a task off-box.
 Splitting them is a deployment change, not a redesign.
 
 Next: [the reference](reference/README.md#commands) for the commands this shape produces, and

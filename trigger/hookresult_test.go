@@ -8,7 +8,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // answering is a driver that completes immediately with a final answer — fast enough that
@@ -16,20 +16,20 @@ import (
 // condition the terminal bindings used to be wrong under.
 type answering struct{ r string }
 
-func (answering) Next(context.Context, process.StepResult) (process.ToolUse, bool, error) {
-	return process.ToolUse{}, false, nil
+func (answering) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
+	return task.ToolUse{}, false, nil
 }
 func (d answering) Result() string { return d.r }
 
 func hookResultEngine(t *testing.T, answer string) (*Engine, entity.Store) {
 	t.Helper()
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, answering{r: answer}, noExec{})
+	eng := New(store, task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, answering{r: answer}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
-			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Task: spec.Task,
+			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
 		})
 		go p.Run(context.Background())
 		return p
@@ -39,23 +39,23 @@ func hookResultEngine(t *testing.T, answer string) (*Engine, entity.Store) {
 }
 
 // A completion hook binds the TERMINAL payload. reapOnDone and mirror.Reflect are two
-// independent readers of the same process bus, so the hook used to see the pre-terminal
+// independent readers of the same task bus, so the hook used to see the pre-terminal
 // projection instead: $status bound "running" and $result was absent — the payload a
 // completion hook exists to read.
 func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 	eng, store := hookResultEngine(t, "SHIPIT")
 
-	var hookTask string
+	var hookPrompt string
 	done := make(chan struct{})
-	eng.SetSpawner(func(id string, spec launch.Spec) process.Handle {
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		if spec.Chain == "review.onDone" {
-			hookTask = spec.Task
+			hookPrompt = spec.Prompt
 			close(done)
 		}
-		sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, process.AutoResolver{})
-		p := process.NewProcess(id, sup, answering{r: "SHIPIT"}, noExec{})
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		p := task.NewTask(id, sup, answering{r: "SHIPIT"}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
-			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Task: spec.Task,
+			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
 		})
 		go p.Run(context.Background())
 		return p
@@ -66,9 +66,9 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{
-				Spawn: &launch.Spec{Task: "s=$status r=$result f=$flow"},
+				Spawn: &launch.Spec{Prompt: "s=$status r=$result f=$flow"},
 			},
 		},
 	}); err != nil {
@@ -81,12 +81,12 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 	case <-t.Context().Done():
 		t.Fatal("hook never spawned")
 	}
-	if want := "s=done r=SHIPIT f=demo:pr:1"; hookTask != want {
-		t.Errorf("hook task = %q, want %q", hookTask, want)
+	if want := "s=done r=SHIPIT f=demo:pr:1"; hookPrompt != want {
+		t.Errorf("hook task = %q, want %q", hookPrompt, want)
 	}
 }
 
-// The loop closes: a process's own output is written onto the subject by the hook's patch,
+// The loop closes: a task's own output is written onto the subject by the hook's patch,
 // where it becomes an ordinary fact — and a second trigger fires on it. Before patch
 // expansion a result could only reach the next PROMPT, never the next `when`.
 func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
@@ -97,16 +97,16 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{
-				// the process's finding becomes a field on the subject
+				// the task's finding becomes a field on the subject
 				Patch: entity.Obj{"stage": "reviewed", "severity": "$result"}.Payload(),
 			},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger review: %v", err)
 	}
-	// an ordinary trigger matching that finding — no knowledge of processes at all
+	// an ordinary trigger matching that finding — no knowledge of tasks at all
 	if err := eng.AddTrigger(Trigger{
 		Name: "escalate",
 		Condition: Condition{Subject: Match{
@@ -125,7 +125,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 
 // A patch naming something the payload does not carry fails the firing rather than writing a
 // partial state: an absent key and a null one are different facts in the store, so dropping
-// the reference would launder "the process never said" into "the process said nothing".
+// the reference would launder "the task never said" into "the task said nothing".
 func TestHookUnresolvedReferenceFailsTheFiring(t *testing.T) {
 	eng, store := hookResultEngine(t, "SHIPIT")
 
@@ -134,7 +134,7 @@ func TestHookUnresolvedReferenceFailsTheFiring(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Task: "review $subject"},
+			Spawn: &launch.Spec{Prompt: "review $subject"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed", "sev": "$nosuchfield"}.Payload(),
 			},

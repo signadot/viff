@@ -18,12 +18,12 @@ import (
 // address from the config layers every time it is built, so it has to be re-pointed after.
 var testAddr string
 
-// runCLI drives the real command tree against a real verse, in process: the args a person
+// runCLI drives the real command tree against a real verse, in task: the args a person
 // would type, through flag parsing and the wire, onto a store. Returns stdout and the
 // command's error.
 //
 // It walks to the leaf itself rather than calling Run on the root, because cli's Run
-// os.Exit()s once a parent has dispatched — fine for a binary, fatal for a test process.
+// os.Exit()s once a parent has dispatched — fine for a binary, fatal for a test task.
 // The leaf parses its own flags, which is what is under test here.
 func runCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()

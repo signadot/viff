@@ -1,7 +1,7 @@
 # Runners: where work runs
 
-A runner is a place verse runs a process. One is installed as an entity, a spawn names one, and
-the process records which it went to — so a drive can deploy somewhere to run work the verse
+A runner is a place verse runs a task. One is installed as an entity, a spawn names one, and
+the task records which it went to — so a drive can deploy somewhere to run work the verse
 deployment does not otherwise need to know about, and use it for *some* of the work rather than
 all of it.
 
@@ -17,7 +17,7 @@ program that compiles with the tree, and the two functions you change are marked
 ## Installing one
 
 A runner lives at `runners:<kind>:<name>` and carries a url — the verse-facing
-[process-control](process-control.md) base. `kind` is the operator's own category, what this
+[task-control](task-control.md) base. `kind` is the operator's own category, what this
 runner *is*, the way a resolver's kind is what it is *for*.
 
 ```sh
@@ -39,19 +39,19 @@ There is no default and no local special case here. `local` is what the *absence
 a spawn means, so every installed runner is somewhere to reach — which keeps the entity honest
 and is why a runner with no `url` is refused.
 
-**Adding one probes it**, with the cheapest question that has an answer: `GET /processes`, which
+**Adding one probes it**, with the cheapest question that has an answer: `GET /tasks`, which
 the contract already serves and which has no effect on the runner. Three outcomes, and only one
 of them refuses the install:
 
 | | |
 |---|---|
-| *a runner* | it answered, and the body decoded as the process list the contract promises |
+| *a runner* | it answered, and the body decoded as the task list the contract promises |
 | *not a runner* | it answered, and is not that — the install is **refused** |
 | *unreachable* | nothing answered — **installed, with a warning** |
 
 They differ on whether waiting could change the answer. A url that answers wrongly is answering
 *now*: something is at that address and it is not a runner face. A broker's worker leg is exactly
-this — it serves claim, inbox and report and no `GET /processes` — and it is the confusion
+this — it serves claim, inbox and report and no `GET /tasks` — and it is the confusion
 worth catching at install rather than at the first spawn. A url nothing answers, by contrast,
 is the ordinary state of a runner deployed alongside the entity that names it: the manifest
 lands, the pod is pending, the entity is already written. Refusing that would make deployment
@@ -70,7 +70,7 @@ condition:
   subject: { system: demo, kind: model, value: { stage: ready } }
 action:
   spawn:
-    task:   "retrain the ranker on $subject"
+    prompt:   "retrain the ranker on $subject"
     runner: runners:pool:gpu          # ← where it runs
     driver: scripted                  # ← what runs it
     grant:  no-delegate               # ← what it may do
@@ -81,7 +81,7 @@ action:
 and so does an ad-hoc run:
 
 ```sh
-verse process run --runner runners:pool:gpu "retrain the ranker"
+verse task run --runner runners:pool:gpu "retrain the ranker"
 ```
 
 A **name**, not a url, and the indirection is the point: a url on the spawn would spread the
@@ -109,7 +109,7 @@ entity per (doer, place) pair.
 ## Seeing where
 
 ```sh
-verse ps                              # each process names its runner; the default reads `local`
+verse ps                              # each task names its runner; the default reads `local`
 verse ps --runner runners:pool:gpu    # only that runner's work
 verse runners                         # what is installed, and what each is carrying
 verse runners --probe                 # …and what each of them says right now
@@ -130,13 +130,13 @@ whether a runner is well, the next ask is that it act on one.
 keeps answering for a runner that has since been removed — which is when an operator most wants
 it, that being exactly the case `verse runners` does not show.
 
-`verse ps` reads the `process:instance` mirror rather than asking each installed runner, so one
+`verse ps` reads the `task:instance` mirror rather than asking each installed runner, so one
 runner being down costs live detail and not rows. A fan-out would let a single dead runner take
 out the whole list, in a feature whose point is that runners come and go.
 
 ## What a restart does
 
-`process:instance` records both the resolved **url** and the **name** the spawn used. The url is
+`task:instance` records both the resolved **url** and the **name** the spawn used. The url is
 what a restart reconstructs the runner from, so work outlives the verse that started it *and*
 outlives the entity that named its runner: removing a runner entity cannot orphan work by making
 it unreconstructible. The name is what a person reads and what `verse ps --runner` selects on.
@@ -147,13 +147,13 @@ running perfectly well — a deletion with an action at a distance.
 
 ## Removing one
 
-verse cannot *move* a running process between runners. It can cancel one, or leave it — and the
+verse cannot *move* a running task between runners. It can cancel one, or leave it — and the
 difference is an intent it cannot read from a delete. So **removal with work on it is refused
 until told which**:
 
 ```
 $ verse runner remove runners:pool:gpu
-refused: 3 process(es) are running on runners:pool:gpu, and removing it means one of two
+refused: 3 task(es) are running on runners:pool:gpu, and removing it means one of two
   things this cannot tell apart:
     --cancel "<why>"   the place is going away; end them with a reason their charters see
     --leave            the place stays; they keep running on the url already stamped on them
@@ -162,7 +162,7 @@ $ verse runner remove runners:pool:gpu --cancel "gpu pool retired"
 
 Neither default survives the motivating use. *Leave* looks safe and is not: the lifecycle this
 feature exists for is a drive deploying a runner, using it, tearing it down — so `remove` **is**
-teardown, and leaving the work means the process never reports a terminal at all when the place
+teardown, and leaving the work means the task never reports a terminal at all when the place
 disappears, so a flow waiting on it waits forever. *Cancel* is not safe either: retargeting a url
 leaves running work talking to a place that still exists, and a rename is an add and a remove of
 the same physical runner. Cancelling there destroys live work for a bookkeeping change.
@@ -179,7 +179,7 @@ delivered. Those are orphans, and the orphan path covers them.
 
 The removal itself is never refused: `--leave` always succeeds, because there is no drain here
 and a refusal with no way to satisfy it would be a trap. Its visible cost, stated rather than
-discovered: `verse ps` shows processes on a runner that `verse runners` does not list. That is
+discovered: `verse ps` shows tasks on a runner that `verse runners` does not list. That is
 the true state, and the alternatives are worse.
 
 Removing a resolver binding *hands on* what it held, because a question has a layer above to go
@@ -221,8 +221,8 @@ same narrowing a doer answers, and answering it in two places without deciding h
 is how a ceiling comes to mean two things.
 
 **Running work cannot be moved.** Named because the entity model invites the assumption: entities
-are level truth, so writing a different runner onto a `process:instance` looks like it should move
-the process. It does not. That field is a record of where the work went, not an instruction about
+are level truth, so writing a different runner onto a `task:instance` looks like it should move
+the task. It does not. That field is a record of where the work went, not an instruction about
 where it should go.
 
 ## What holds by convention

@@ -93,7 +93,7 @@ every other `$reference` is refused at install. (A path read may reach further, 
 next section states.)
 
 The line is where it is because of what a re-fire has to be. A `$reference` cannot reach another
-entity at all — it reads the firing's own subject, or a process's result — and nothing above can
+entity at all — it reads the firing's own subject, or a task's result — and nothing above can
 write the subject, since a patch touches only its own subject and a derive only climbs. So an
 upward read that wakes the rule without changing the subject resolves to the same bytes, writes
 them to the same address, and dies as a no-op. That is what makes reading upward safe: a rule may
@@ -121,11 +121,11 @@ late would write from a state nobody evaluated. It costs nothing when the causin
 the subject, which is the ordinary rule about the entity that changed; a fan-out member the commit
 did not touch is read at that revision, which the store answers by replaying its log.
 
-A completion hook has neither. It is woken by a process finishing rather than by a write — which
+A completion hook has neither. It is woken by a task finishing rather than by a write — which
 is why its chain starts again — so there is no revision to read at or to name, and both fail by
 name rather than resolving to a silent zero.
 
-In a spawn's strings the identity parts work too (`task: "approve $subject.id"`), because those
+In a spawn's strings the identity parts work too (`prompt: "approve $subject.id"`), because those
 are published as flat bindings. `.value` is not: a payload has no text form, and the subject's own
 top-level fields are already flat there (`$stage`).
 
@@ -151,7 +151,7 @@ The linkage is the spawn's rule, for the spawn's reason: a derivation is about e
 subject, and which one is the condition's answer rather than something a charter should have to
 interpolate. So `do:approve` can say "approve the thing this is about" and the linkage says which,
 whether or not the charter also wrote `$subject` somewhere it finds convenient — under its own
-key, where a consumer's spawn can bind it flatly (`task: "approve $pr"`, after `pr: $subject`).
+key, where a consumer's spawn can bind it flatly (`prompt: "approve $pr"`, after `pr: $subject`).
 
 Two consequences fall out. A re-fire about the same subject writes the same address, so it is
 idempotent. And **no two rules can ever address one derived entity**: names are unique across the
@@ -202,7 +202,7 @@ than by how fast the store accepts writes, and the loop a person would draw on a
 anyway. Worth saying plainly, because "well founded" reads as "nothing loops", and the first
 person to watch GitHub come back around will think they have found a bug.
 
-**Processes are outside the ordering.** A spawned agent writes wherever its tools reach, at no
+**Tasks are outside the ordering.** A spawned agent writes wherever its tools reach, at no
 level. So the guarantee reads: *the ordering covers a charter to the extent its writes are
 declared.* `derive` moves cross-entity writes from "an agent did it, unanalyzable" into "the
 charter said it, checkable"; every write still going through a spawn is outside it. Fencing those

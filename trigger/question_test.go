@@ -8,7 +8,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // A supervisor is a charter rule about questions. Nothing in the engine knows that — this is
@@ -20,7 +20,7 @@ import (
 // works when a test constructs it in Go is not a shape an operator has.
 func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, process.AutoResolver{})
+	eng := New(store, task.AutoResolver{})
 	eng.Start(t.Context())
 
 	var trig Trigger
@@ -41,15 +41,15 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	pose := func(id, gate string, eff process.Effect) {
-		mirror.PostQuestion(store, process.Pending{
-			Question: process.GateQuestion{ID: id, Origin: "run-a", Gate: gate},
+	pose := func(id, gate string, eff task.Effect) {
+		mirror.PostQuestion(store, task.Pending{
+			Question: task.GateQuestion{ID: id, Origin: "run-a", Gate: gate},
 			Tool:     "act",
-			Effects:  []process.Effect{eff},
+			Effects:  []task.Effect{eff},
 		}, "run-a")
 	}
-	pose("run-a~d1", "write-guard", process.Effect{Verb: process.Write, Resource: process.File("cfg/app.tony")})
-	pose("run-a~d2", "read-guard", process.Effect{Verb: process.Read, Resource: process.File("cfg/app.tony")})
+	pose("run-a~d1", "write-guard", task.Effect{Verb: task.Write, Resource: task.File("cfg/app.tony")})
+	pose("run-a~d2", "read-guard", task.Effect{Verb: task.Read, Resource: task.File("cfg/app.tony")})
 
 	escalated := func(id string) bool {
 		e, _, _ := store.Get(mirror.QuestionRef(id))

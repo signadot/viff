@@ -4,7 +4,7 @@
 // (watch, entity reads) separate from control (gate resolve, and later flow
 // steering) — per docs/deployment-and-steering.md.
 //
-// Scaffold status: the process runtime (proc) is not yet mounted; spawning actions
+// Scaffold status: the task runtime (task) is not yet mounted; spawning actions
 // no-op until it is wired.
 package versed
 
@@ -30,38 +30,38 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
-	"github.com/signadot/verse/process/processd"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/source"
+	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/taskd"
 	"github.com/signadot/verse/trigger"
 )
 
 // Server is the monolith's in-process assembly: one store, one engine, one gate
-// registry, and the process runtime, behind one HTTP surface.
+// registry, and the task runtime, behind one HTTP surface.
 type Server struct {
 	Store  entity.Store
-	Reg    *process.Registry
+	Reg    *task.Registry
 	Eng    *trigger.Engine
-	Procd  *processd.Daemon
-	runner process.Runner // how processes are run/governed; local (processd) today
+	Taskd  *taskd.Daemon
+	runner task.Runner // how tasks are run/governed; local (taskd) today
 
 	// Addr/BrokerAddr are this verse's OWN listen addresses — the operator API and (if
 	// served) the broker face — published on /status so a client or worker can discover
 	// where verse listens, as the docd addresses are published for a controller. Set by the
-	// process that binds them (cmd/verse up); empty until then.
+	// task that binds them (cmd/verse up); empty until then.
 	Addr       string
 	BrokerAddr string
 
-	// LLM is a secrets-safe summary of the process runtime's LLM config, published on
+	// LLM is a secrets-safe summary of the task runtime's LLM config, published on
 	// /status so you can see whether agent creds are configured on THIS server (the one
 	// that hosts the runtime) — the common gotcha. Set by `up`; nil when unconfigured.
 	LLM *api.LLM
 
 	// DocdClient/DocdMount are the addresses of the docd this verse is backed by,
 	// when store-kind is docd. They are published on GET /status so a separately-run
-	// controller process (e.g. `verse connect`) can find docd's mount face without
+	// controller task (e.g. `verse connect`) can find docd's mount face without
 	// guessing the ephemeral ports `up` chose.
 	DocdClient string
 	DocdMount  string
@@ -127,25 +127,25 @@ type scopeEngine struct {
 	cancel context.CancelFunc
 }
 
-// NewWithStore assembles the server with the given process driver builder (scripted,
+// NewWithStore assembles the server with the given task driver builder (scripted,
 // LLM, …) over a store. The engine resolves trigger gates through the shared registry,
 // so a human answers them out-of-band via POST /gate/resolve; a trigger's spawn action
-// goes through the process runtime (hosted, mirrored into the verse).
-func NewWithStore(build processd.Builder, store entity.Store) *Server {
-	reg := process.NewRegistry()
+// goes through the task runtime (hosted, mirrored into the verse).
+func NewWithStore(build taskd.Builder, store entity.Store) *Server {
+	reg := task.NewRegistry()
 	eng := trigger.New(store, reg)
-	procd := processd.New(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Procd: procd,
+	taskd := taskd.New(build)
+	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd,
 		scopeEngs: map[string]*scopeEngine{}, srcRuns: map[string]*sourceRun{},
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
 		// check at every use: a source installed on a server nobody started still needs a
 		// context to run under, and one that is never cancelled would be worse than one
-		// cancelled at process exit.
+		// cancelled at task exit.
 		ctx: context.Background()}
-	s.runner = localRunner{procd} // the in-process runner ("/broker/local")
+	s.runner = localRunner{taskd} // the in-process runner ("/broker/local")
 
 	// Publish every posed question as `gate:question:<id>`, from both places questions are
-	// raised: the engine's own registry for a firing's gates, and each hosted process for a
+	// raised: the engine's own registry for a firing's gates, and each hosted task for a
 	// run's. One record shape either way — the docket, a charter predicate and an auditor all
 	// read the same fact, and neither source is privileged.
 	// The layer rule, applied where a question is posed. A question carries the owner its
@@ -154,7 +154,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	//
 	// Absent layers are skipped rather than ranked. A standing binding is not a wider claim
 	// on a named one's questions; it answers a different set.
-	owner := func(q *process.GateQuestion) {
+	owner := func(q *task.GateQuestion) {
 		if q.BoundTo != "" || q.Subject == "" {
 			return
 		}
@@ -182,13 +182,13 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	// resolver should be reading before the first ask; a standing binding cannot be minted
 	// that early, because one installed mid-run would own questions an earlier mint never
 	// heard of. Both call the same create-only Watch, so the two are one act done twice.
-	watch := func(q process.GateQuestion, processID string) {
+	watch := func(q task.GateQuestion, taskID string) {
 		if q.BoundTo == "" {
 			return
 		}
 		origin, err := entity.ParseRef(q.Subject)
-		if processID != "" {
-			origin, err = mirror.Ref(processID), nil // a run's questions are watched over the run
+		if taskID != "" {
+			origin, err = mirror.Ref(taskID), nil // a run's questions are watched over the run
 		}
 		if err != nil {
 			return
@@ -198,7 +198,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	// The clock a binding puts on its own silence, stamped when the question is posed and
 	// ABSOLUTE so a restart cannot slide it. A binding cannot know when a question will
 	// arrive, so it says a duration and the question says an instant.
-	arm := func(q process.GateQuestion) {
+	arm := func(q task.GateQuestion) {
 		if q.BoundTo == "" {
 			return
 		}
@@ -215,7 +215,7 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 			Value: entity.Obj{"escalatesAt": time.Now().Add(after).UTC().Format(time.RFC3339Nano)}.Payload(),
 		})
 	}
-	reg.OnPost(func(p process.Pending) {
+	reg.OnPost(func(p task.Pending) {
 		owner(&p.Question)
 		watch(p.Question, "")
 		mirror.PostQuestion(store, p, "")
@@ -224,21 +224,21 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	// And the counterpart. A question whose last waiter was cancelled leaves the registry
 	// silently; without this the record it published stays `pending` on the docket, offering
 	// a decision nothing is left to receive.
-	reg.OnDrop(func(q process.GateQuestion) { mirror.DropQuestion(store, q.ID) })
-	procd.OnQuestion(func(processID string, p process.Pending) {
-		// A process gate's question knows what it would DO but not what it is about: the
-		// flow belongs to the process, not to the action. Fill it in from the mirror, so a
+	reg.OnDrop(func(q task.GateQuestion) { mirror.DropQuestion(store, q.ID) })
+	taskd.OnQuestion(func(taskID string, p task.Pending) {
+		// A task gate's question knows what it would DO but not what it is about: the
+		// flow belongs to the task, not to the action. Fill it in from the mirror, so a
 		// rule can select "the questions about demo:pr:1" by matching one record rather
 		// than joining two. The docket read it off the engine before; the engine forgets
 		// when it restarts, and the record does not.
 		if p.Question.Subject == "" {
-			if e, ok, _ := store.Get(mirror.Ref(processID)); ok {
+			if e, ok, _ := store.Get(mirror.Ref(taskID)); ok {
 				p.Question.Subject = entity.Str(e.Payload, "flow")
 			}
 		}
 		owner(&p.Question)
-		watch(p.Question, processID)
-		mirror.PostQuestion(store, p, processID)
+		watch(p.Question, taskID)
+		mirror.PostQuestion(store, p, taskID)
 		arm(p.Question)
 	})
 
@@ -248,19 +248,19 @@ func NewWithStore(build processd.Builder, store entity.Store) *Server {
 	return s
 }
 
-// localRunner is the in-process runner: it hosts processes on the embedded
-// processd runtime — the "/broker/local" handler. Remote runners (a base
-// URL: k8s, lambda, a human broker) implement the same process.Runner behind the
-// wire contract; the engine drives them through the identical seam. See docs/process-control.md.
-type localRunner struct{ d *processd.Daemon }
+// localRunner is the in-process runner: it hosts tasks on the embedded
+// taskd runtime — the "/broker/local" handler. Remote runners (a base
+// URL: k8s, lambda, a human broker) implement the same task.Runner behind the
+// wire contract; the engine drives them through the identical seam. See docs/task-control.md.
+type localRunner struct{ d *taskd.Daemon }
 
-func (l localRunner) Spawn(spec process.Launch, content process.ContentReader) process.Handle {
+func (l localRunner) Spawn(spec task.Launch, content task.ContentReader) task.Handle {
 	return l.d.Spawn(spec, content)
 }
 
 // Attach returns the still-live in-process handle for id, or nil — after a restart the
-// in-memory runtime is gone, so the caller orphans (a local process cannot outlive verse).
-func (l localRunner) Attach(id string) process.Handle {
+// in-memory runtime is gone, so the caller orphans (a local task cannot outlive verse).
+func (l localRunner) Attach(id string) task.Handle {
 	if p := l.d.Lookup(id); p != nil {
 		return p
 	}
@@ -269,16 +269,16 @@ func (l localRunner) Attach(id string) process.Handle {
 
 func (localRunner) Ref() string { return "local" }
 
-// SetRunner rebinds how this server runs processes — e.g. to a remote runner base
+// SetRunner rebinds how this server runs tasks — e.g. to a remote runner base
 // URL (runner.HTTP) instead of the in-process local supervisor. The spawnerFor
 // closures read s.runner at spawn time, so this takes effect for subsequent spawns
 // (baseline and scoped). content federation is not forwarded to a remote runner yet.
-func (s *Server) SetRunner(p process.Runner) { s.runner = p }
+func (s *Server) SetRunner(p task.Runner) { s.runner = p }
 
 // UseBroker installs an in-process dial-in broker as the runner, hosted under a
 // minted nonce, and returns it (e.g. for the operator to Revoke a claim). face is this
 // verse's externally-reachable broker base (scheme://host:broker-addr — what a worker can
-// reach); the broker publishes <face>/broker/<nonce> as each process's `dialURL`, closing
+// reach); the broker publishes <face>/broker/<nonce> as each task's `dialURL`, closing
 // the mint→publish→dial loop so a worker is told where to dial in rather than pre-configured.
 func (s *Server) UseBroker(face string) *broker.Broker {
 	b := broker.New()
@@ -290,8 +290,8 @@ func (s *Server) UseBroker(face string) *broker.Broker {
 
 // BrokerHandler serves this verse's broker face — the runner contract hosted under
 // /broker/<nonce>, so a remote verse or a worker reaches a runner through verse's own URL
-// rather than a separate service (see docs/process-control.md "Hosting"). The well-known
-// "local" nonce is the built-in supervisor (processd); any other nonce is a handler
+// rather than a separate service (see docs/task-control.md "Hosting"). The well-known
+// "local" nonce is the built-in supervisor (taskd); any other nonce is a handler
 // registered via HostBroker (e.g. a dial-in broker's WorkerHandler). It is intended for a
 // SIBLING port, kept distinct from the trusted operator API.
 func (s *Server) BrokerHandler() http.Handler {
@@ -303,7 +303,7 @@ func (s *Server) BrokerHandler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		// Strip /broker/<nonce> so the mounted handler sees its own /processes/... paths,
+		// Strip /broker/<nonce> so the mounted handler sees its own /tasks/... paths,
 		// exactly as it would if hosted at a root.
 		http.StripPrefix("/broker/"+nonce, h).ServeHTTP(w, r)
 	})
@@ -314,7 +314,7 @@ func (s *Server) BrokerHandler() http.Handler {
 // supervisor; every other nonce must have been registered via HostBroker.
 func (s *Server) brokerFor(nonce string) http.Handler {
 	if nonce == "local" {
-		return s.Procd.Handler()
+		return s.Taskd.Handler()
 	}
 	s.brokerMu.Lock()
 	defer s.brokerMu.Unlock()
@@ -346,20 +346,20 @@ func mintNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
-// spawnerFor builds a Spawner that hosts a process via the runner and mirrors its
+// spawnerFor builds a Spawner that hosts a task via the runner and mirrors its
 // state into st — the baseline store for the baseline engine, a scoped store for a
-// per-scope engine, so a scoped flow's process state stays in that scope. content (nil
+// per-scope engine, so a scoped flow's task state stays in that scope. content (nil
 // for baseline) routes a spawned agent's read_file through the verse.
-func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trigger.Spawner {
-	return func(id string, spec launch.Spec) process.Handle {
+func (s *Server) spawnerFor(st entity.Store, content task.ContentReader) trigger.Spawner {
+	return func(id string, spec launch.Spec) task.Handle {
 		// WHERE this runs, resolved before anything is attempted, so the meta below records
 		// the runner the work actually went to rather than the default it did not.
 		place, placeName, err := s.runnerFor(st, spec.Runner)
 		if err != nil {
 			// Same shape as the envelope and the resolver below: a spawn that cannot run
 			// where it said does not run somewhere else instead.
-			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Task: spec.Task}
-			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt}
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
 			s.reflect(st, id, h, meta)
 			return h
 		}
@@ -368,14 +368,14 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 		// and the running path cannot disagree about what was attempted.
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
-			Chain: spec.Chain, Task: spec.Task,
+			Chain: spec.Chain, Prompt: spec.Prompt,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
 			Resolver: spec.Resolver,
 		}
 		if why := ghostResolver(st, spec.Resolver); why != "" {
 			// The same shape as an envelope this build does not have, below: a spawn that
 			// cannot be supervised as written does not run unsupervised instead.
-			h := process.FailedHandle(fmt.Sprintf("spawn %s: %s", id, why))
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %s", id, why))
 			s.reflect(st, id, h, meta)
 			return h
 		}
@@ -386,7 +386,7 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 			// in the first place, and defaulting a misspelling to the wildcard is the same
 			// mistake with an error message attached. So the spawn fails, visibly, and the
 			// trigger's own failure path carries the reason.
-			h := process.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
 			s.reflect(st, id, h, meta)
 			return h
 		}
@@ -399,14 +399,14 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 	}
 }
 
-// launchOf turns a bound launch.Spec into the runner-facing process.Launch, resolving the
+// launchOf turns a bound launch.Spec into the runner-facing task.Launch, resolving the
 // two axes that are named rather than written out.
 //
 // This is the consumer those fields never had. `vector:` and `grant:` have been on the spec
 // since it was written — parsed, persisted, expanded by Bind, rendered back by `trigger
 // show` — and read by nothing, so a charter could state an envelope, see it echoed, and get
 // an agent that ignored it. Resolution happens HERE, on the engine side, rather than at
-// whatever runtime ends up hosting the process: the vocabulary then lives in one place, and
+// whatever runtime ends up hosting the task: the vocabulary then lives in one place, and
 // what crosses the wire is the predicate rather than a word two builds might read
 // differently.
 //
@@ -414,9 +414,9 @@ func (s *Server) spawnerFor(st entity.Store, content process.ContentReader) trig
 // resolved here because neither has semantics to resolve TO yet — there is no registry of
 // named resolvers, and the environment floor is a design note (docs/roadmap/expose.md).
 // Naming that plainly is better than another silent drop.
-func launchOf(id string, spec launch.Spec) (process.Launch, error) {
-	l := process.Launch{
-		ID: id, Task: spec.Task, Driver: spec.Driver,
+func launchOf(id string, spec launch.Spec) (task.Launch, error) {
+	l := task.Launch{
+		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
 		Resolver: spec.Resolver,
 	}
@@ -428,17 +428,17 @@ func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	// a gate, not a hand-off.)
 	if spec.Answer != nil {
 		if _, err := answer.Parse(spec.Answer); err != nil {
-			return process.Launch{}, fmt.Errorf("answer contract: %w", err)
+			return task.Launch{}, fmt.Errorf("answer contract: %w", err)
 		}
 	}
-	vec, err := process.NamedVector(spec.Vector)
+	vec, err := task.NamedVector(spec.Vector)
 	if err != nil {
-		return process.Launch{}, err
+		return task.Launch{}, err
 	}
 	l.Vector = vec
-	g, ok, err := process.NamedGrant(spec.Grant)
+	g, ok, err := task.NamedGrant(spec.Grant)
 	if err != nil {
-		return process.Launch{}, err
+		return task.Launch{}, err
 	}
 	if ok {
 		l.Grant = &g
@@ -446,30 +446,30 @@ func launchOf(id string, spec launch.Spec) (process.Launch, error) {
 	return l, nil
 }
 
-// reconcileProcesses runs on Start: for each non-terminal process:instance, either RESUME
+// reconcileTasks runs on Start: for each non-terminal task:instance, either RESUME
 // (a remote runner still running the work — re-attach and re-mirror from the entity's
 // runner + cursor) or ORPHAN (a local in-process runtime that died with the previous
-// run). This refines the old orphan-only reconcile now that a process can outlive verse
-// behind a remote runner. Control re-tracking (cancel/say a resumed process) is a
+// run). This refines the old orphan-only reconcile now that a task can outlive verse
+// behind a remote runner. Control re-tracking (cancel/say a resumed task) is a
 // follow-on; this keeps the entity truthful.
-func (s *Server) reconcileProcesses() {
+func (s *Server) reconcileTasks() {
 	var resumed []resumedRun
 	for _, ent := range s.Store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		if ent.Ref.Kind == mirror.ClaimKind {
-			// A run claim, not a process. It is cleared below rather than here, and it is
+			// A run claim, not a task. It is cleared below rather than here, and it is
 			// named explicitly so it is not merely skipped by accident (a claim carries no
 			// `status`, so it would fall through the check that follows).
 			continue
 		}
 		status := entity.Str(ent.Payload, "status")
-		if status == "" || process.TerminalStatus(status) {
+		if status == "" || task.TerminalStatus(status) {
 			continue
 		}
 		runnerRef := entity.Str(ent.Payload, "runner")
 		subject := entity.Str(ent.Payload, "flow")
 		// Reflect REPLACES the entity's payload, so provenance it does not carry is lost on
 		// re-attach. Read the chain back off the entity and hand it straight in: it is the
-		// address of the action that spawned this process, and a resumed process should not
+		// address of the action that spawned this task, and a resumed task should not
 		// forget where it came from. AdoptChain re-derives its hooks from that address —
 		// see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
@@ -482,17 +482,17 @@ func (s *Server) reconcileProcesses() {
 			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID); h != nil {
 				// re-attach: observe
 				// The binding its spawn named is read back off the entity rather than
-				// remembered: a resumed process must be watched by whoever was watching
+				// remembered: a resumed task must be watched by whoever was watching
 				// it, and the launch that said so is long gone.
 				s.reflect(s.Store, ent.Ref.ID, h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
-					// provenance this does not hand back is provenance the resumed process
-					// forgets. `verse ps --runner <name>` reads this field, and a process
+					// provenance this does not hand back is provenance the resumed task
+					// forgets. `verse ps --runner <name>` reads this field, and a task
 					// that lost it on restart would drop out of the answer while still
 					// running there.
 					RunnerName: entity.Str(ent.Payload, "runnerName"),
-					// Carried, not re-stamped: a resumed process did not start again.
+					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
 					Resolver:  entity.Str(ent.Payload, "resolver"),
 				})
@@ -504,9 +504,9 @@ func (s *Server) reconcileProcesses() {
 			}
 		}
 		// local (or unresolvable): the in-process runtime is gone → orphan. Only the status
-		// changes, so only the status is written — the rest of what the process recorded is
+		// changes, so only the status is written — the rest of what the task recorded is
 		// none of this reconcile's business.
-		s.write(ent.Ref.At("status"), entity.Val(string(process.Orphaned)))
+		s.write(ent.Ref.At("status"), entity.Val(string(task.Orphaned)))
 	}
 	s.reconcileClaims(resumed)
 	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
@@ -521,8 +521,8 @@ func (s *Server) reconcileProcesses() {
 //
 // Two cases, and the second is the one that is easy to miss:
 //
-//   - A PROCESS raised it. It survives exactly as its process does, which is the distinction
-//     reconcileProcesses already draws: resumed behind a runner that is still there, orphaned
+//   - A TASK raised it. It survives exactly as its task does, which is the distinction
+//     reconcileTasks already draws: resumed behind a runner that is still there, orphaned
 //     when the runtime died with us. The question does not get its own opinion.
 //   - A FIRING raised it, before anything spawned. That waiter was in this verse, always, so
 //     a restart ends it unconditionally. If the rule still matches, its replay poses the
@@ -531,14 +531,14 @@ func (s *Server) reconcileProcesses() {
 //     question was about a world that has moved on, and it should not be on a docket.
 func (s *Server) reconcileQuestions() {
 	for _, ent := range pendingQuestions(s.Store) {
-		procID, _ := entity.ToObj(ent.Payload)["process"].(string)
-		if procID != "" {
-			e, ok, err := s.Store.Get(mirror.Ref(procID))
+		taskID, _ := entity.ToObj(ent.Payload)["task"].(string)
+		if taskID != "" {
+			e, ok, err := s.Store.Get(mirror.Ref(taskID))
 			if err != nil {
 				continue // the store is unwell; leave the record alone rather than guess
 			}
-			if ok && !process.TerminalStatus(entity.Str(e.Payload, "status")) {
-				continue // its process is still believed alive, so the answer still has a reader
+			if ok && !task.TerminalStatus(entity.Str(e.Payload, "status")) {
+				continue // its task is still believed alive, so the answer still has a reader
 			}
 		}
 		s.write(ent.Ref.At("status"), entity.Val(mirror.QuestionOrphaned))
@@ -548,7 +548,7 @@ func (s *Server) reconcileQuestions() {
 
 // write applies a value at a path during startup reconciliation, reporting a failure on
 // stderr. Reconcile runs before the server serves, with no request to fail: a write that did
-// not land leaves the verse claiming something untrue about a process, and the operator
+// not land leaves the verse claiming something untrue about a task, and the operator
 // deserves to see that at the point it happens rather than to deduce it later.
 func (s *Server) write(at entity.Path, v entity.Payload) {
 	if _, _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
@@ -556,7 +556,7 @@ func (s *Server) write(at entity.Path, v entity.Payload) {
 	}
 }
 
-// resumedRun is a process that survived the restart, and the chain it came from — enough to
+// resumedRun is a task that survived the restart, and the chain it came from — enough to
 // tell whether the sequence a claim guards is still alive.
 type resumedRun struct{ subject, chain string }
 
@@ -567,13 +567,13 @@ type resumedRun struct{ subject, chain string }
 // function as the only thing that ever freed it. Nothing releases a claim across a RESTART, so
 // what reaches here is a run that was interrupted, and the question is whether it survived.
 //
-// It survives when its process was re-adopted WITH its hooks — that process will complete,
+// It survives when its task was re-adopted WITH its hooks — that task will complete,
 // and its completion advances the sequence. Then the claim must stay: dropping it would let a
 // concurrent firing start a second run alongside the one still going.
 //
-// It does not survive when the process was orphaned (a local runtime cannot outlive verse) or
+// It does not survive when the task was orphaned (a local runtime cannot outlive verse) or
 // when nothing was resumed at all. Then no completion is coming, and a surviving claim would
-// block that sequence forever with no live process to explain why.
+// block that sequence forever with no live task to explain why.
 //
 // So a claim is exactly as durable as the run it guards — which is what makes a durable lease
 // safe rather than a liability, and is only decidable now that resume rehydrates hooks.
@@ -592,7 +592,7 @@ func (s *Server) reconcileClaims(resumed []resumedRun) {
 	}
 }
 
-// claimIsLive reports whether any resumed process belongs to the sequence this claim holds:
+// claimIsLive reports whether any resumed task belongs to the sequence this claim holds:
 // same subject, and a chain at or below the claim's own.
 func claimIsLive(claim entity.Entity, resumed []resumedRun) bool {
 	subject := entity.Str(claim.Payload, "flow")
@@ -675,11 +675,11 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 
 // Start begins the engine's reactive loop (observing the store). It returns
 // immediately; the loop runs until ctx is cancelled. It first reconciles orphans —
-// process:instance entities a previous run left running — since this is the monolith
-// (the process runtime restarts with the engine, so those processes are gone).
+// task:instance entities a previous run left running — since this is the monolith
+// (the task runtime restarts with the engine, so those tasks are gone).
 func (s *Server) Start(ctx context.Context) {
-	s.ctx = ctx            // scoped engines (created later, per federation) start under this
-	s.reconcileProcesses() // resume remote-hosted processes; orphan local-dead ones
+	s.ctx = ctx        // scoped engines (created later, per federation) start under this
+	s.reconcileTasks() // resume remote-hosted tasks; orphan local-dead ones
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
 	// model the scoped engines use; a mount under verse no longer collides with (and
@@ -691,7 +691,7 @@ func (s *Server) Start(ctx context.Context) {
 	// The durable charter: the rules standing in the verse are reinstalled, so the program a
 	// restart comes back to is the one it went down with. Each opens its own watch as it
 	// installs and REPLAYS what already matches it — which is why this follows reconcile: a
-	// restored trigger should see a process entity that tells the truth about the restart
+	// restored trigger should see a task entity that tells the truth about the restart
 	// rather than the `running` a dead runtime left behind.
 	//
 	// And why it follows ObserveScoped, which is what binds ctx to the engine: a goal
@@ -764,7 +764,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
 	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
 	// at startup, so a drive can add one for work this verse does not otherwise need to know
-	// about. See docs/working/per-process-runners.md.
+	// about. See docs/working/per-task-runners.md.
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
 	// Addressed by the slice reflected, because that is a question verse already asks: who
 	// writes `git:*`. See docs/sources.md.
@@ -800,31 +800,31 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", one("verse-steered"))
 	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", one("verse-steered"))
-	// process runtime (proc) — mounted; serves /processes[/{id}[/…]]. versed intercepts the
-	// two READ routes to union the local runtime with the active runner's own processes
+	// task runtime (task) — mounted; serves /tasks[/{id}[/…]]. versed intercepts the
+	// two READ routes to union the local runtime with the active runner's own tasks
 	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
 	// control) falls through to the local runtime.
-	ph := s.Procd.Handler()
-	rt.handle("GET /processes", s.listProcesses, "", list("verse-instance"))
-	rt.handle("POST /processes", s.spawnProcess, "verse-spawn", one("verse-spawned"))
-	rt.handle("GET /processes/{id}", s.getProcess, "", one("verse-instance"))
-	rt.handle("GET /processes/{id}/inbox", s.processInbox, "", list("verse-inbox-item"))
-	rt.handle("GET /processes/{id}/events", func(w http.ResponseWriter, r *http.Request) {
-		s.processEvents(w, r, ph)
+	ph := s.Taskd.Handler()
+	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
+	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
+	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
+	rt.handle("GET /tasks/{id}/inbox", s.taskInbox, "", list("verse-inbox-item"))
+	rt.handle("GET /tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
+		s.taskEvents(w, r, ph)
 	}, "", stream("verse-frame"))
-	// cancel/say are runner-agnostic: local processes go to the runtime, brokered/remote
-	// ones to the runner's handle — so `process cancel`/`say` work wherever a process runs.
-	rt.handle("POST /processes/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
-		s.processControl(w, r, ph, "cancel")
+	// cancel/say are runner-agnostic: local tasks go to the runtime, brokered/remote
+	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs.
+	rt.handle("POST /tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		s.taskControl(w, r, ph, "cancel")
 	}, "", nothing)
-	rt.handle("POST /processes/{id}/say", func(w http.ResponseWriter, r *http.Request) {
-		s.processControl(w, r, ph, "say")
+	rt.handle("POST /tasks/{id}/say", func(w http.ResponseWriter, r *http.Request) {
+		s.taskControl(w, r, ph, "say")
 	}, "verse-say", nothing)
-	// Answering is the ONE path (answerQuestion), not a case of processControl: this route
-	// differs from `/gate/resolve` only in being TOLD which process holds the question
+	// Answering is the ONE path (answerQuestion), not a case of taskControl: this route
+	// differs from `/gate/resolve` only in being TOLD which task holds the question
 	// instead of working it out. Everything that follows — attribution, delivery, the record,
 	// a stale answer — is the same act and must not have two implementations.
-	rt.handle("POST /processes/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
+	rt.handle("POST /tasks/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		var body api.Resolve
 		if err := codec.Read(r, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -832,70 +832,70 @@ func (s *Server) Handler() http.Handler {
 		}
 		s.answerQuestion(w, r, body, r.PathValue("id"))
 	}, "verse-resolve", nothing)
-	// re-vector (slide autonomy on a running process) — runner-agnostic like cancel/say: a
-	// local process is served by the runtime mount (processd's setVector), a brokered/remote
+	// re-vector (slide autonomy on a running task) — runner-agnostic like cancel/say: a
+	// local task is served by the runtime mount (taskd's setVector), a brokered/remote
 	// one goes to the runner handle's SetVector.
-	rt.handle("PUT /processes/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
-		s.processControl(w, r, ph, "vector")
+	rt.handle("PUT /tasks/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
+		s.taskControl(w, r, ph, "vector")
 	}, "verse-set-vector", nothing)
-	rt.mount("/processes", ph)
-	rt.mount("/processes/", ph)
+	rt.mount("/tasks", ph)
+	rt.mount("/tasks/", ph)
 	s.routes = rt.routes
 	// Every answer says which verse gave it, and a client that cannot be talking to this one
 	// is turned away before any of the above runs. See versioned.
 	return versioned(rt.mux)
 }
 
-// ── scripted driver: the default process runtime driver ─────────────────────
+// ── scripted driver: the default task runtime driver ─────────────────────
 //
 // A dependency-free driver that performs a few steps of "work" then completes, so
 // the runtime is exercisable without model credentials. `verse up --llm` swaps in
 // the LLM harness.
 
-// ScriptedBuilder builds the credential-free process runtime driver: it runs the task as a real
-// shell command (`bash -lc`), confined to root and cancellable via the process context — a
-// governed shell command as a process. It is the dependency-free stand-in for an LLM agent, so
+// ScriptedBuilder builds the credential-free task runtime driver: it runs the prompt as a real
+// shell command (`bash -lc`), confined to root and cancellable via the task context — a
+// governed shell command as a task. It is the dependency-free stand-in for an LLM agent, so
 // the runtime is exercisable and steerable (and can run real work like `sleep`) without model
 // credentials. The gate vector is Auto — a scripted command runs freely; the LLM harness is what
 // wires the effect-gating vector.
-// ScriptedBuilder is the processd.Builder form (root = the process's cwd). `verse up` uses
-// NewScriptedProcess directly to confine scripted commands to the agent root.
-func ScriptedBuilder(l process.Launch, reg *process.Registry, _ process.ContentReader) *process.Process {
-	return NewScriptedProcess(l.ID, l.Task, "", reg)
+// ScriptedBuilder is the taskd.Builder form (root = the task's cwd). `verse up` uses
+// NewScriptedTask directly to confine scripted commands to the agent root.
+func ScriptedBuilder(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	return NewScriptedTask(l.ID, l.Prompt, "", reg)
 }
 
-// NewScriptedProcess builds a scripted process rooted at root.
-func NewScriptedProcess(id, task, root string, reg *process.Registry) *process.Process {
-	sup := process.NewSupervisor(&process.Vector{Default: process.Auto}, reg)
-	return process.NewProcess(id, sup, &scriptDriver{command: task}, &shellExec{root: root})
+// NewScriptedTask builds a scripted task rooted at root.
+func NewScriptedTask(id, prompt, root string, reg *task.Registry) *task.Task {
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	return task.NewTask(id, sup, &scriptDriver{command: prompt}, &shellExec{root: root})
 }
 
-// scriptDriver runs its task as a single shell command, then completes.
+// scriptDriver runs its prompt as a single shell command, then completes.
 type scriptDriver struct {
 	command string
 	done    bool
 }
 
-func (d *scriptDriver) Next(_ context.Context, prev process.StepResult) (process.ToolUse, bool, error) {
-	// A non-zero exit ends the process as FAILED. The llm driver can afford to read a
-	// failure as just another step result and re-plan around it; a scripted process has
+func (d *scriptDriver) Next(_ context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
+	// A non-zero exit ends the task as FAILED. The llm driver can afford to read a
+	// failure as just another step result and re-plan around it; a scripted task has
 	// no one to do the re-planning, so a failure nothing reports is a failure that reads
 	// as success — and a trigger's onDone fires on a command that never worked.
 	if prev.Err != nil {
-		return process.ToolUse{}, false, prev.Err
+		return task.ToolUse{}, false, prev.Err
 	}
 	if d.done || strings.TrimSpace(d.command) == "" {
-		return process.ToolUse{}, false, nil
+		return task.ToolUse{}, false, nil
 	}
 	d.done = true
-	return process.ToolUse{Name: "run_bash", Input: map[string]any{"command": d.command}}, true, nil
+	return task.ToolUse{Name: "run_bash", Input: map[string]any{"command": d.command}}, true, nil
 }
 
 // shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),
 // confined to root. It is the scripted driver's counterpart of the harness's fsExec.
 type shellExec struct{ root string }
 
-func (e *shellExec) Execute(ctx context.Context, tu process.ToolUse) (process.StepResult, []process.ToolUse, error) {
+func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
 	// bash -c (non-login): inherits the server's env/PATH, and avoids the login shell's
 	// job-control setpgid ("failed to change group ID") that fails in restricted envs (CI, sandboxes).
 	c := exec.CommandContext(ctx, "bash", "-c", str(tu.Input, "command"))
@@ -919,7 +919,7 @@ func (e *shellExec) Execute(ctx context.Context, tu process.ToolUse) (process.St
 	if ctx.Err() != nil {
 		err = nil
 	}
-	return process.StepResult{Use: tu, Output: res, Err: err}, nil, nil
+	return task.StepResult{Use: tu, Output: res, Err: err}, nil, nil
 }
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
@@ -1196,7 +1196,7 @@ func conditions(cs []api.Condition) ([]entity.Require, error) {
 }
 
 // listGates is the unified pending-gate view: engine (trigger) gates raised by a firing AND
-// per-process gates (an agent blocked on write/shell/delegate). Both are published as
+// per-task gates (an agent blocked on write/shell/delegate). Both are published as
 // `gate:question:<id>` records, and both are resolvable by id.
 func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// The docket is a slice of the store, not a walk of two in-memory registries. That is
@@ -1223,10 +1223,10 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// where says which plane raised it, and is derived rather than stored: a question
-		// with a process is a run's, one without is a firing's. Storing it would be a third
-		// spelling of what `process` already says.
-		if _, ok := rec["process"]; ok {
-			rec["where"] = "process"
+		// with a task is a run's, one without is a firing's. Storing it would be a third
+		// spelling of what `task` already says.
+		if _, ok := rec["task"]; ok {
+			rec["where"] = "task"
 		} else {
 			rec["where"] = "engine"
 		}
@@ -1235,57 +1235,57 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// relaysControl reports whether an answer to this process's gates is QUEUED for a worker
-// rather than applied. A local process's registry takes it on the spot and a remote runtime
+// relaysControl reports whether an answer to this task's gates is QUEUED for a worker
+// rather than applied. A local task's registry takes it on the spot and a remote runtime
 // takes it over the wire that carried it; a broker holds it until somebody dials in.
-func (s *Server) relaysControl(procID string) bool {
-	if procID == "" {
+func (s *Server) relaysControl(taskID string) bool {
+	if taskID == "" {
 		return false // a firing's gate: the registry answers it here, now
 	}
-	if _, ok := s.Procd.SnapshotOf(procID); ok {
+	if _, ok := s.Taskd.SnapshotOf(taskID); ok {
 		return false
 	}
-	if h := s.runner.Attach(procID); h != nil {
+	if h := s.runner.Attach(taskID); h != nil {
 		r, ok := h.(interface{ RelaysControl() bool })
 		return ok && r.RelaysControl()
 	}
 	return false
 }
 
-// ownerOf says which process holds a question, empty for a firing's gate.
+// ownerOf says which task holds a question, empty for a firing's gate.
 //
 // The RECORD is asked first, and it is the only source that answers while the runner holding
-// the work is down. The alternatives all interrogate the fleet — is this id a process, does
+// the work is down. The alternatives all interrogate the fleet — is this id a task, does
 // any snapshot hold this gate — so an unreachable runner made every question on it look like
 // a question about nothing, and the operator was sent hunting a typo for a gate that was open
 // and waiting. Which is the one case where retrying is exactly right.
 //
 // The fallbacks remain for a question this verse never published: the id's own prefix (a
-// runtime gate is `<process-id>~dN`), then a sweep of the snapshots for an executor-raised
+// runtime gate is `<task-id>~dN`), then a sweep of the snapshots for an executor-raised
 // gate, whose id carries no owner by construction.
 func (s *Server) ownerOf(store entity.Store, questionID string) string {
 	if e, ok, err := store.Get(mirror.QuestionRef(questionID)); err == nil && ok {
-		if p := entity.Str(e.Payload, "process"); p != "" {
+		if p := entity.Str(e.Payload, "task"); p != "" {
 			return p
 		}
-		// The record exists and names no process: a firing raised it, and the registry is
+		// The record exists and names no task: a firing raised it, and the registry is
 		// where it lives. Answering that is not a fleet question at all.
 		return ""
 	}
 	owner := questionID
-	if i := strings.Index(owner, process.GateSep); i >= 0 {
+	if i := strings.Index(owner, task.GateSep); i >= 0 {
 		owner = owner[:i]
 	}
-	if s.isProcess(owner) {
+	if s.isTask(owner) {
 		return owner
 	}
-	return s.processHoldingGate(questionID)
+	return s.taskHoldingGate(questionID)
 }
 
 // pendingQuestions selects the open questions: the docket, as a slice of the store.
 //
 // One selector, because `verse gates` and `verse status` must name the same set. They did not
-// before — status counted the engine registry, which never held a process's questions and
+// before — status counted the engine registry, which never held a task's questions and
 // holds nothing at all after a restart, so it could report no gates beside a docket listing
 // several.
 func pendingQuestions(store entity.Store) []entity.Entity {
@@ -1310,14 +1310,14 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 }
 
 // answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
-// finds the owner from the id, and `/processes/{id}/resolve`, which is told it — because the
+// finds the owner from the id, and `/tasks/{id}/resolve`, which is told it — because the
 // two differ in how the question is addressed and in nothing else. Having had two
 // implementations is how `decisionId`/`proceed` drifted from `id`/`approve` unnoticed, and an
 // answer's attribution and its record are exactly the things that must not drift.
 //
-// procID is the process the answer is addressed to, empty when the caller did not say and the
+// taskID is the task the answer is addressed to, empty when the caller did not say and the
 // id must be read for it.
-func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, procID string) {
+func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, taskID string) {
 	if body.ID == "" {
 		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
 		return
@@ -1330,7 +1330,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		http.Error(w, "by is required: a decision names who made it", http.StatusBadRequest)
 		return
 	}
-	res := process.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
+	res := task.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
 
 	store := s.scopedStore(r)
 	// `exclusive` governs whose answer COUNTS. Not who may SEE the question: the docket is
@@ -1345,16 +1345,16 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		return
 	}
 	overriding := exclusive && body.By != holder
-	owner := procID
+	owner := taskID
 	if owner == "" {
 		owner = s.ownerOf(store, body.ID)
 	}
 
 	var err error
 	if owner != "" {
-		err = s.resolveProcessDecision(owner, body.ID, res)
+		err = s.resolveTaskDecision(owner, body.ID, res)
 	} else if !s.Reg.Answer(body.ID, res) {
-		err = process.ErrNoSuchDecision
+		err = task.ErrNoSuchDecision
 	}
 	if err == nil {
 		// Accepted is not the same as delivered. A broker takes an answer for a worker that
@@ -1379,12 +1379,12 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// The runner could not be reached. Nothing is known about the question — it may be open
 	// and waiting — so this is not an answer about the question at all, and calling it "no
 	// such question" sent the operator hunting a typo for a runner that was simply down.
-	if errors.Is(err, process.ErrUnreachable) {
+	if errors.Is(err, task.ErrUnreachable) {
 		http.Error(w, "the runner holding this question could not be reached: "+err.Error(),
 			http.StatusBadGateway)
 		return
 	}
-	if errors.Is(err, process.ErrUnsupported) {
+	if errors.Is(err, task.ErrUnsupported) {
 		http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
 		return
 	}
@@ -1392,7 +1392,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// docket answering at once is normal, and a docket that keeps only the winner cannot
 	// show that the question was contested.
 	won, settled := mirror.SettledBy(store, body.ID)
-	if settled || errors.Is(err, process.ErrAlreadyAnswered) {
+	if settled || errors.Is(err, task.ErrAlreadyAnswered) {
 		if won == "" {
 			won = "an earlier answer"
 		}
@@ -1403,7 +1403,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	http.Error(w, "no such question", http.StatusNotFound)
 }
 
-// instanceOf reads one resolver instance: the binding it is, and the process it watches.
+// instanceOf reads one resolver instance: the binding it is, and the task it watches.
 //
 // Both come off the record rather than being parsed out of the address. The address is for
 // finding it; the fields are what the checks below compare, and a check that re-derives its
@@ -1429,7 +1429,7 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 // a property of what you are watching rather than a flag that could disagree with it.
 func watchesARun(origin entity.Ref) bool { return origin.System == mirror.System }
 
-// resolverEvents hands a resolver the stream of the run it watches — the process's OWN read
+// resolverEvents hands a resolver the stream of the run it watches — the task's OWN read
 // plane, from `?since=`, not a projection of it.
 //
 // Context arrives before the ask, which is the whole reason a resolver is attached rather than
@@ -1447,7 +1447,7 @@ func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	// No local special case: the runner attaches a live in-process handle by the same call,
 	// so a resolver over a local run and one over a brokered run read through one path. The
-	// process route splits only because it forwards to the runtime's own mount, and a
+	// task route splits only because it forwards to the runtime's own mount, and a
 	// resolver is not asking that route's question.
 	s.streamEvents(w, r, origin.ID)
 }
@@ -1464,9 +1464,9 @@ func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
 // late and still read everything that led to a question: the store keeps its commits, so the
 // subject's history is re-readable in a way a run's bounded ring is not.
 //
-// It also carries the ANCHORS: a run about this subject writes a `process:instance` entity
+// It also carries the ANCHORS: a run about this subject writes a `task:instance` entity
 // naming it as its flow, and a spawn and a terminal are both commits there because the mirror
-// writes them. That is what makes this the spine and process streams the fine grain hanging
+// writes them. That is what makes this the spine and task streams the fine grain hanging
 // off it — a resolver reading here learns a run began, and its own instance for that run is
 // where the frames are. Without them the spine would be a subject's history with the work
 // about it left out, which is most of what a supervisor is watching for.
@@ -1504,7 +1504,7 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 		// for a question that had already been asked.
 		//
 		// Say that it happened, and then say WHAT — which is the half that matters, and the
-		// same two moves SubscribeSince makes on the process plane for the same reason.
+		// same two moves SubscribeSince makes on the task plane for the same reason.
 		_ = sse.Send(entity.Event{Gap: 1})
 		for _, ent := range pendingQuestions(store) {
 			if entity.Str(ent.Payload, "subject") != subject.String() {
@@ -1549,7 +1549,7 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 //
 // The subject half is BY REF and unfiltered — a predicate reads a payload and a deletion has
 // none, so a payload-narrowed spine would hide the end of a life. The run half must read one:
-// a process names its subject in `flow`, and there is nothing in its address that says so. A
+// a task names its subject in `flow`, and there is nothing in its address that says so. A
 // run's terminal is a set rather than a delete, so the anchors that matter carry a payload to
 // be read.
 func spineCarries(ev entity.Event, subject entity.Ref) bool {
@@ -1614,16 +1614,16 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	// Attribution is verse's: `by` is the binding, stamped here. A service says what it
 	// decided, never who it is.
 	//
-	// The process id is what routes the answer, and a firing's question has none — it is
+	// The task id is what routes the answer, and a firing's question has none — it is
 	// answered through the engine's own registry, which answerQuestion reaches when told no
-	// process holds it.
-	var procID string
+	// task holds it.
+	var taskID string
 	if watchesARun(origin) {
-		procID = origin.ID
+		taskID = origin.ID
 	}
 	s.answerQuestion(w, r, api.Resolve{
 		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
-	}, procID)
+	}, taskID)
 }
 
 // ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
@@ -1739,7 +1739,7 @@ func exclusiveOwner(store entity.Store, id string) (string, bool) {
 // subject it is about when a firing did. It is the same distinction an instance's address
 // carries, read off the question rather than guessed.
 func questionOrigin(q map[string]any, subject string) entity.Ref {
-	if p, _ := q["process"].(string); p != "" {
+	if p, _ := q["task"].(string); p != "" {
 		return mirror.Ref(p)
 	}
 	ref, _ := entity.ParseRef(subject)
@@ -1754,7 +1754,7 @@ func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
 		return false
 	}
 	if watchesARun(origin) {
-		return q["process"] == origin.ID
+		return q["task"] == origin.ID
 	}
 	return q["subject"] == origin.String()
 }
@@ -1784,15 +1784,15 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reflect mirrors a process, filling in the provenance every call site shares rather than
+// reflect mirrors a task, filling in the provenance every call site shares rather than
 // asking each to remember it.
 //
 // The standing-owner lookup is the reason it exists. It is a callback because mirror must not
 // import resolver — resolver reads the charter's match vocabulary, trigger reads mirror, and
 // the cycle closes — and an optional field on a struct three call sites build by hand is a
 // field one of them will forget. One did, within the commit that introduced it: reconcile
-// rebuilt its own Meta and a resumed process's questions lost their layer in silence.
-func (s *Server) reflect(store entity.Store, id string, h process.Handle, m mirror.Meta) {
+// rebuilt its own Meta and a resumed task's questions lost their layer in silence.
+func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
 	m.Owner = s.standingOwner
 	mirror.Reflect(store, id, h, m)
 }
@@ -2046,19 +2046,19 @@ func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 
 // status is a one-shot summary of the running verse: the store's revision and the
 // live counts across the planes — the charter size, in-flight flows, pending gates,
-// hosted processes, and total firings.
+// hosted tasks, and total firings.
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	out := api.Status{
-		StoreRev:  s.Store.Rev(),
-		Triggers:  len(s.Eng.Triggers()),
-		Flows:     len(s.Eng.Flows()),
-		Gates:     len(pendingQuestions(s.scopedStore(r))),
-		Processes: s.Procd.Count(),
-		Fired:     s.Eng.Fired(),
-		Runner:    s.runnerStatus(), // how processes run: kind + resume + dial legs
-		LLM:       s.LLM,            // secrets-safe: are agent creds configured on THIS server
+		StoreRev: s.Store.Rev(),
+		Triggers: len(s.Eng.Triggers()),
+		Flows:    len(s.Eng.Flows()),
+		Gates:    len(pendingQuestions(s.scopedStore(r))),
+		Tasks:    s.Taskd.Count(),
+		Fired:    s.Eng.Fired(),
+		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
+		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
-	// When docd-backed, publish its addresses so a controller process (verse connect)
+	// When docd-backed, publish its addresses so a controller task (verse connect)
 	// can reach the mount face; the client face is where store clients connect.
 	if s.DocdMount != "" || s.DocdClient != "" {
 		out.Docd = &api.Docd{Client: s.DocdClient, Mount: s.DocdMount}
@@ -2073,8 +2073,8 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 // runnerStatus describes the runner along its two independent legs, so the two are not
 // confused: `resume` is the VERSE-facing control/re-attach address (what a restart needs),
 // `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
-// a remote processd (one URL, no separate worker leg) and diverge for a broker (verse drives
-// it in-process — ephemeral — while a worker dials a separate face). See docs/process-control.md.
+// a remote taskd (one URL, no separate worker leg) and diverge for a broker (verse drives
+// it in-process — ephemeral — while a worker dials a separate face). See docs/task-control.md.
 func (s *Server) runnerStatus() *api.RunnerStatus {
 	pol := &api.RunnerStatus{Resume: "ephemeral"}
 	switch {
@@ -2092,25 +2092,25 @@ func (s *Server) runnerStatus() *api.RunnerStatus {
 	return pol
 }
 
-func hasFace(p process.Runner) bool {
+func hasFace(p task.Runner) bool {
 	_, ok := p.(interface{ Face() string })
 	return ok
 }
 
-// processLister is process.Lister: a runner that keeps its OWN process registry (a broker),
+// taskLister is task.Lister: a runner that keeps its OWN task registry (a broker),
 // distinct from the local runtime. localRunner does NOT implement it — it delegates to the
-// same processd the union already lists — so brokered processes are added without
+// same taskd the union already lists — so brokered tasks are added without
 // double-counting local ones.
 //
-// The declaration moved to the process package so both implementations assert against it and
+// The declaration moved to the task package so both implementations assert against it and
 // a signature change is a compile error where the implementation is. Asserting it structurally
 // here, as this did, meant a widened signature made the assertion report false rather than
 // fail to build — which is how the same mistake took out gate resolution once already.
-type processLister = process.Lister
+type taskLister = task.Lister
 
 // gateResolver is a Handle that can answer a gate its worker raised, by relaying the
 // outcome to that worker. It is optional on Handle because only a runner with a worker leg
-// has one to relay to — a local process resolves through its own registry instead.
+// has one to relay to — a local task resolves through its own registry instead.
 //
 // It is NAMED, and that is the point. It was written inline at both of its call sites, and a
 // structural assertion is checked with `, ok`: widening the signature on one side alone does
@@ -2122,18 +2122,18 @@ type gateResolver interface {
 	Resolve(decision string, proceed bool, say, by string) error
 }
 
-// spawnProcess is the ad-hoc `process run` path. Unlike a trigger spawn it has no
+// spawnTask is the ad-hoc `task run` path. Unlike a trigger spawn it has no
 // subject/flow, but it goes through the SAME seam: host it via the runner (so a run
 // honors --runner/--broker, not just trigger spawns) and mirror it into the store (so a run
-// is a process:instance entity — observable, and its completion can drive triggers) — the
-// consistency the "processes are entities" model wants.
+// is a task:instance entity — observable, and its completion can drive triggers) — the
+// consistency the "tasks are entities" model wants.
 // spawnID settles what a run is called, and refuses an id that would break the surfaces an id
 // crosses.
 //
-// `~` is the separator between a process and its questions (process.GateSep), and answering one
+// `~` is the separator between a task and its questions (task.GateSep), and answering one
 // recovers the owner by cutting at the FIRST occurrence — so `a~b` raises `a~b~d1` and hands it
-// to a process called `a`, which is either nothing or somebody else's run. The rest are the
-// characters an id cannot survive in a URL path, since ids are addressed at `/processes/{id}`.
+// to a task called `a`, which is either nothing or somebody else's run. The rest are the
+// characters an id cannot survive in a URL path, since ids are addressed at `/tasks/{id}`.
 // The trigger side has stripped exactly these from subject-derived ids all along (safeSeg); the
 // ad-hoc face never had to, because until `--name` it never let a caller near one.
 //
@@ -2142,7 +2142,7 @@ type gateResolver interface {
 func spawnID(body api.Spawn) (string, error) {
 	if body.ID != "" {
 		if bad := strings.IndexAny(body.ID, badInID); bad >= 0 {
-			return "", fmt.Errorf("process id %q may not contain %q: it is the prefix of every "+
+			return "", fmt.Errorf("task id %q may not contain %q: it is the prefix of every "+
 				"gate question this run raises (<id>~d1) and it is addressed in a URL path. "+
 				"Use `name` instead and the id is derived from it", body.ID, body.ID[bad:bad+1])
 		}
@@ -2164,14 +2164,14 @@ func spawnID(body api.Spawn) (string, error) {
 // badInID is `~` plus what an id cannot survive in a URL path.
 const badInID = "~/\\#?% \t\n"
 
-func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
+func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	var body api.Spawn
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.Task == "" {
-		http.Error(w, "task is required", http.StatusBadRequest)
+	if body.Prompt == "" {
+		http.Error(w, "prompt is required", http.StatusBadRequest)
 		return
 	}
 	id, err := spawnID(body)
@@ -2179,7 +2179,7 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// Honor --scope: mirror the process:instance into that scope's copy-on-write view, not
+	// Honor --scope: mirror the task:instance into that scope's copy-on-write view, not
 	// baseline — else a scoped run leaks into baseline (a baseline watch would see it). On the
 	// memory store Scope is a passthrough, so isolation only applies to the docd/logd store.
 	store := s.Store
@@ -2190,7 +2190,7 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, why, http.StatusBadRequest)
 		return
 	}
-	vec, err := process.NamedVector(body.Vector)
+	vec, err := task.NamedVector(body.Vector)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -2204,8 +2204,8 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h := place.Spawn(process.Launch{
-		ID: id, Task: body.Task, Driver: body.Driver, Retain: body.Retain,
+	h := place.Spawn(task.Launch{
+		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver, Vector: vec,
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{
@@ -2216,11 +2216,11 @@ func (s *Server) spawnProcess(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
-// listProcesses is the unified process list: the local runtime plus, when the runner is a
-// broker (or any runner with its own registry), its processes — each stamped with its runner
-// so a client sees whether a process is local or brokered (and, for a broker, its dialURL).
-func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
-	out, err := s.processSnapshots(s.scopedStore(r))
+// listTasks is the unified task list: the local runtime plus, when the runner is a
+// broker (or any runner with its own registry), its tasks — each stamped with its runner
+// so a client sees whether a task is local or brokered (and, for a broker, its dialURL).
+func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
+	out, err := s.taskSnapshots(s.scopedStore(r))
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusBadGateway, err.Error())
 		return
@@ -2230,7 +2230,7 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 	// been removed — which is when an operator most wants it, since that is exactly the case
 	// `verse runners` can no longer show. `--runner local` selects the ones that named none.
 	if want := r.URL.Query().Get("runner"); want != "" {
-		kept := make([]process.Instance, 0, len(out))
+		kept := make([]task.Instance, 0, len(out))
 		for _, inst := range out {
 			if inst.RunnerName == want ||
 				(inst.RunnerName == "" && want == "local" && inst.Runner == "local") {
@@ -2242,43 +2242,43 @@ func (s *Server) listProcesses(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// processSnapshots is the unified process list for one store view (baseline, or a ?scope
-// overlay): the local runtime plus the active runner's own processes (a broker's), each
+// taskSnapshots is the unified task list for one store view (baseline, or a ?scope
+// overlay): the local runtime plus the active runner's own tasks (a broker's), each
 // stamped with its runner.
 //
-// The runtime and the broker are scope-blind — they hold every process globally — so a
-// bare list would leak a `verse connect` scope's processes into baseline (and across
-// scopes). The one record that carries scope is the process:instance:<id> entity that
+// The runtime and the broker are scope-blind — they hold every task globally — so a
+// bare list would leak a `verse connect` scope's tasks into baseline (and across
+// scopes). The one record that carries scope is the task:instance:<id> entity that
 // mirror.Reflect writes (synchronously, at spawn) into the spawning scope's copy-on-write
-// store. So a process belongs to this view iff its instance entity is visible here: the
+// store. So a task belongs to this view iff its instance entity is visible here: the
 // overlay's own writes, plus baseline seen through the overlay. On a store without real
 // scopes every instance would be visible in every scope, making this a no-op — the
 // isolation boundary is the store's (real on docd/logd).
 //
-// The ROWS come from the process:instance mirror, and the runtimes are consulted only to
-// enrich them. That inversion is what per-process runners require: a process on a named runner
+// The ROWS come from the task:instance mirror, and the runtimes are consulted only to
+// enrich them. That inversion is what per-task runners require: a task on a named runner
 // is in neither the local runtime nor the default runner's registry, so a union over those two
 // would simply not list it — and the fix is not to fan out over every installed runner, which
 // would let one dead runner take out the whole list in a feature whose whole point is that
 // runners come and go. The mirror is written at spawn and is complete without asking anybody.
 //
 // It also settles what an unreachable runner costs here. It used to cost ROWS, silently
-// (git-issue 6mnmxj6mh12krz3ae1n0), and then — once ListProcesses could say so — the whole
+// (git-issue 6mnmxj6mh12krz3ae1n0), and then — once ListTasks could say so — the whole
 // list. Now it costs neither: the rows are already here, and a runtime that does not answer
 // only means its live detail is missing, so the record's own account stands in.
-func (s *Server) processSnapshots(store entity.Store) ([]process.Instance, error) {
+func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
 	// the default runner when it keeps its own registry (a broker).
-	live := map[string]process.Instance{}
-	for _, inst := range s.Procd.Snapshots() {
+	live := map[string]task.Instance{}
+	for _, inst := range s.Taskd.Snapshots() {
 		inst.Runner = "local"
 		live[inst.ID] = inst
 	}
-	if l, ok := s.runner.(processLister); ok {
+	if l, ok := s.runner.(taskLister); ok {
 		// Best effort, deliberately: an error here means this runner's DETAIL is missing, and
 		// the row survives without it. Failing the list on it would be trading a complete
 		// answer for no answer.
-		if insts, err := l.ListProcesses(); err == nil {
+		if insts, err := l.ListTasks(); err == nil {
 			ref := s.runner.Ref()
 			for _, inst := range insts {
 				inst.Runner = ref
@@ -2286,7 +2286,7 @@ func (s *Server) processSnapshots(store entity.Store) ([]process.Instance, error
 			}
 		}
 	}
-	out := make([]process.Instance, 0)
+	out := make([]task.Instance, 0)
 	for _, ent := range store.List(func(r entity.Ref) bool {
 		return r.System == mirror.System && r.Kind == mirror.InstanceKind
 	}) {
@@ -2299,7 +2299,7 @@ func (s *Server) processSnapshots(store entity.Store) ([]process.Instance, error
 			inst = instanceFromRecord(ent.Ref.ID, rec)
 		}
 		// Where it ran is the RECORD's to say, not the runtime's: the runtime knows it hosts
-		// the process, and the record knows which installed runner that is and what the
+		// the task, and the record knows which installed runner that is and what the
 		// charter called it.
 		if on, _ := rec["runner"].(string); on != "" {
 			inst.Runner = on
@@ -2312,19 +2312,19 @@ func (s *Server) processSnapshots(store entity.Store) ([]process.Instance, error
 	return out, nil
 }
 
-// instanceFromRecord is what verse can say about a process it is not currently holding a
+// instanceFromRecord is what verse can say about a task it is not currently holding a
 // handle on — one on a named runner, or one whose runtime has not been asked. It is the
 // durable account rather than a live one, which is exactly what the mirror is for.
-func instanceFromRecord(id string, rec map[string]any) process.Instance {
+func instanceFromRecord(id string, rec map[string]any) task.Instance {
 	str := func(k string) string { v, _ := rec[k].(string); return v }
-	return process.Instance{
-		ID: id, Task: str("task"), Status: process.Status(str("status")),
+	return task.Instance{
+		ID: id, Prompt: str("prompt"), Status: task.Status(str("status")),
 		Runner: str("runner"), RunnerName: str("runnerName"),
 		Result: str("result"), Err: str("err"),
 	}
 }
 
-// scopeMembers returns the set of process ids whose process:instance entity is visible in
+// scopeMembers returns the set of task ids whose task:instance entity is visible in
 // store — the scope's membership.
 func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	ids := map[string]bool{}
@@ -2336,38 +2336,38 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	return ids
 }
 
-// isProcess reports whether id names a process in the runtime or the active runner.
+// isTask reports whether id names a task in the runtime or the active runner.
 //
 // A runner that did not answer reports false here, which is not the same fact and is the best
 // this signature can hold. It is bounded: the one caller uses this to decide whether a gate id
-// is addressed to a process, having already consulted the mirror's question record, and it
+// is addressed to a task, having already consulted the mirror's question record, and it
 // falls through to the same answer it would have given anyway. Widening it would widen the
 // gate-routing chain above for a case that chain cannot act on.
-func (s *Server) isProcess(id string) bool {
-	if _, ok := s.Procd.SnapshotOf(id); ok {
+func (s *Server) isTask(id string) bool {
+	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		return true
 	}
-	if l, ok := s.runner.(processLister); ok {
-		_, err := l.ProcessSnapshot(id)
+	if l, ok := s.runner.(taskLister); ok {
+		_, err := l.TaskSnapshot(id)
 		return err == nil
 	}
 	return false
 }
 
-// processHoldingGate finds which process has decisionID open, for a gate id that does not
+// taskHoldingGate finds which task has decisionID open, for a gate id that does not
 // carry its owner.
 //
-// A gate the RUNTIME raises is <process-id>~dN, so its owner is readable off the id. One an
-// EXECUTOR raises (`process do gate`) is <name>-<hex>, deliberately free of GateSep —
+// A gate the RUNTIME raises is <task-id>~dN, so its owner is readable off the id. One an
+// EXECUTOR raises (`task do gate`) is <name>-<hex>, deliberately free of GateSep —
 // shortID avoids it so the id survives a shell and a URL intact — with the consequence that
 // splitting on GateSep recovers nothing and `verse gate approve` answered 404 on a gate
-// `verse gates` was listing one line above, `process:` and all. The routing information was
+// `verse gates` was listing one line above, `task:` and all. The routing information was
 // never missing; it was in the snapshot rather than in the id. This reads it from there.
 //
-// Unscoped, like isProcess beside it: a resolve is addressed by a unique decision id, not
-// discovered by listing, so it does not go through processSnapshots' scope filter.
-func (s *Server) processHoldingGate(decisionID string) string {
-	holds := func(inst process.Instance) bool {
+// Unscoped, like isTask beside it: a resolve is addressed by a unique decision id, not
+// discovered by listing, so it does not go through taskSnapshots' scope filter.
+func (s *Server) taskHoldingGate(decisionID string) string {
+	holds := func(inst task.Instance) bool {
 		for _, pg := range inst.Pending {
 			if pg.ID == decisionID {
 				return true
@@ -2375,18 +2375,18 @@ func (s *Server) processHoldingGate(decisionID string) string {
 		}
 		return false
 	}
-	for _, inst := range s.Procd.Snapshots() {
+	for _, inst := range s.Taskd.Snapshots() {
 		if holds(inst) {
 			return inst.ID
 		}
 	}
-	if l, ok := s.runner.(processLister); ok {
+	if l, ok := s.runner.(taskLister); ok {
 		// A runner that did not answer is not a runner holding no gate, and this does not
 		// distinguish them — deliberately, because it is already the fallback: the caller
 		// consults the mirror's question record first and only lands here when no record
-		// names a process. There is nothing better to say from here, and saying it would
+		// names a task. There is nothing better to say from here, and saying it would
 		// mean widening every caller between this and the resolve.
-		insts, _ := l.ListProcesses()
+		insts, _ := l.ListTasks()
 		for _, inst := range insts {
 			if holds(inst) {
 				return inst.ID
@@ -2396,61 +2396,61 @@ func (s *Server) processHoldingGate(decisionID string) string {
 	return ""
 }
 
-// resolveProcessDecision answers a process's pending gate (write/shell/delegate) — the
-// runtime for a local process, the runner handle for a brokered one.
-func (s *Server) resolveProcessDecision(procID, decisionID string, res process.Resolution) error {
-	if _, ok := s.Procd.SnapshotOf(procID); ok {
-		if s.Procd.Resolve(procID, decisionID, res) {
+// resolveTaskDecision answers a task's pending gate (write/shell/delegate) — the
+// runtime for a local task, the runner handle for a brokered one.
+func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolution) error {
+	if _, ok := s.Taskd.SnapshotOf(taskID); ok {
+		if s.Taskd.Resolve(taskID, decisionID, res) {
 			return nil
 		}
 		// The local registry answers by id and cannot say which of the two it was. The
 		// record can, and the caller consults it; here the honest answer is "not open".
-		return process.ErrNoSuchDecision
+		return task.ErrNoSuchDecision
 	}
-	if h := s.runner.Attach(procID); h != nil {
+	if h := s.runner.Attach(taskID); h != nil {
 		// by is carried across this seam, not dropped: the local leg above takes the whole
 		// Resolution, so a brokered gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.
 		if rh, ok := h.(gateResolver); ok {
 			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
 		}
-		return process.ErrUnsupported
+		return task.ErrUnsupported
 	}
-	return process.ErrNoSuchProcess
+	return task.ErrNoSuchTask
 }
 
-// getProcess resolves one process across backends: the local runtime first (live detail),
-// then the runner's own registry (a brokered process) — so `process get <id>` works whether
-// the process runs locally or behind a broker.
-func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
+// getTask resolves one task across backends: the local runtime first (live detail),
+// then the runner's own registry (a brokered task) — so `task get <id>` works whether
+// the task runs locally or behind a broker.
+func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if inst, ok := s.Procd.SnapshotOf(id); ok {
+	if inst, ok := s.Taskd.SnapshotOf(id); ok {
 		inst.Runner = "local"
 		writeOut(w, r, http.StatusOK, inst)
 		return
 	}
-	if l, ok := s.runner.(processLister); ok {
-		inst, err := l.ProcessSnapshot(id)
+	if l, ok := s.runner.(taskLister); ok {
+		inst, err := l.TaskSnapshot(id)
 		switch {
 		case err == nil:
 			inst.Runner = s.runner.Ref()
 			writeOut(w, r, http.StatusOK, inst)
 			return
-		case errors.Is(err, process.ErrNoSuchProcess):
+		case errors.Is(err, task.ErrNoSuchTask):
 			// The runner answered and has never heard of it. That is a 404 about the id, and
-			// it is the only case below that is — but not yet, because a process on a NAMED
+			// it is the only case below that is — but not yet, because a task on a NAMED
 			// runner is in nobody's registry here. The record is asked before anyone gives up.
 		default:
-			// A runner that did not answer is not a runner without this process. Reporting
+			// A runner that did not answer is not a runner without this task. Reporting
 			// 404 sent an operator to look for a typo in an id that was never wrong, for a
-			// process that is running somewhere they cannot currently see.
+			// task that is running somewhere they cannot currently see.
 			codec.HTTPError(w, r, http.StatusBadGateway,
 				fmt.Sprintf("runner %s: %s", s.runner.Ref(), err))
 			return
 		}
 	}
-	// The mirror, last: a process on a named runner is held by neither the local runtime nor
-	// the default runner, so without this `process get` would 404 for work that is running.
+	// The mirror, last: a task on a named runner is held by neither the local runtime nor
+	// the default runner, so without this `task get` would 404 for work that is running.
 	// The account is durable rather than live, which is what the record is for.
 	if e, ok, _ := s.scopedStore(r).Get(mirror.Ref(id)); ok {
 		if rec := entity.ToObj(e.Payload); rec != nil {
@@ -2461,41 +2461,41 @@ func (s *Server) getProcess(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-// inboxReader is a runner (a broker) that can surface a process's queued worker control for
+// inboxReader is a runner (a broker) that can surface a task's queued worker control for
 // operator observability, unfenced. localRunner doesn't implement it (no dial-in worker).
 type inboxReader interface {
-	ProcessInbox(id string) ([]api.InboxItem, bool)
+	TaskInbox(id string) ([]api.InboxItem, bool)
 }
 
-// processInbox is an operator peek at the control queued for a brokered process's worker —
-// unfenced, so it doesn't disturb a live worker. A local process has no worker inbox → empty.
-func (s *Server) processInbox(w http.ResponseWriter, r *http.Request) {
+// taskInbox is an operator peek at the control queued for a brokered task's worker —
+// unfenced, so it doesn't disturb a live worker. A local task has no worker inbox → empty.
+func (s *Server) taskInbox(w http.ResponseWriter, r *http.Request) {
 	items := []api.InboxItem{}
 	if ir, ok := s.runner.(inboxReader); ok {
-		if got, ok := ir.ProcessInbox(r.PathValue("id")); ok {
+		if got, ok := ir.TaskInbox(r.PathValue("id")); ok {
 			items = got
 		}
 	}
 	// The bare list, not {items: [...]}. Every other collection this server serves is a
-	// bare array — triggers, gates, goals, flows, processes, flow trees — and the wrapper
+	// bare array — triggers, gates, goals, flows, tasks, flow trees — and the wrapper
 	// here was a JSON habit rather than a decision. Nothing decoded it structurally:
-	// `verse process inbox` re-renders the document.
+	// `verse task inbox` re-renders the document.
 	writeOut(w, r, http.StatusOK, items)
 }
 
-// processEvents bridges `attach` across backends: a locally-hosted process streams from the
+// taskEvents bridges `attach` across backends: a locally-hosted task streams from the
 // runtime (its native SSE); a brokered/remote one is bridged here — Subscribe the runner
 // handle (which replays the merged log then goes live) and re-emit each event as SSE.
-func (s *Server) processEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
+func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
 	id := r.PathValue("id")
-	if _, ok := s.Procd.SnapshotOf(id); ok {
+	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
 	s.streamEvents(w, r, id)
 }
 
-// streamEvents serves one process's read plane over SSE, from `?since=` if it carries one.
+// streamEvents serves one task's read plane over SSE, from `?since=` if it carries one.
 //
 // It is factored out because a resolver reads THIS stream, not a projection of it: the design
 // requires that a resolver sees what an attached observer sees, and the moment it is a
@@ -2528,25 +2528,25 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string)
 	}
 }
 
-// sinceSubscriber is a handle that can resume from a cursor. It is optional on process.Handle
+// sinceSubscriber is a handle that can resume from a cursor. It is optional on task.Handle
 // rather than part of it, the way gate resolution is: a handle wraps somebody else's runtime,
 // and one that cannot replay should say so by not implementing this rather than by pretending.
 type sinceSubscriber interface {
-	SubscribeSince(since int64) (<-chan process.Frame, func())
+	SubscribeSince(since int64) (<-chan task.Frame, func())
 }
 
 // subscribeAt opens the read plane at the cursor the client asked for, so `?since=` means the
 // same thing on this route as it does on the local runtime's: the frames AFTER that cursor,
 // then live, with an EvGap first if the cursor is below what is still retained.
 //
-// It read nothing before, so a brokered or remote process replayed from the beginning however
+// It read nothing before, so a brokered or remote task replayed from the beginning however
 // far along the client already was. A resumable client would then see events it had already
 // acted on — which is not a cosmetic difference for a reader that acts on what it sees.
 //
 // An absent `since` is a live attach, and a handle that cannot resume falls back to one. That
 // fallback delivers MORE than was asked for rather than less, which a cursor-carrying reader
 // can discard; the opposite — silently delivering less — is what EvGap exists to prevent.
-func subscribeAt(h process.Handle, since string) (<-chan process.Frame, func()) {
+func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 	if since == "" {
 		return h.Subscribe()
 	}
@@ -2561,12 +2561,12 @@ func subscribeAt(h process.Handle, since string) (<-chan process.Frame, func()) 
 	return sub.SubscribeSince(n)
 }
 
-// processControl routes cancel/say: a process the local runtime hosts is served by it (live
-// detail); otherwise the request goes to the runner's handle (a brokered/remote process),
-// so the same command works wherever a process runs.
-func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
+// taskControl routes cancel/say: a task the local runtime hosts is served by it (live
+// detail); otherwise the request goes to the runner's handle (a brokered/remote task),
+// so the same command works wherever a task runs.
+func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
 	id := r.PathValue("id")
-	if _, ok := s.Procd.SnapshotOf(id); ok {
+	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
@@ -2583,7 +2583,7 @@ func (s *Server) processControl(w http.ResponseWriter, r *http.Request, runtime 
 		_ = codec.Read(r, &body)
 		h.Steer(body.Instruction, body.By)
 	case "vector":
-		// slide autonomy on a running (brokered/remote) process: {vector, by} is relayed to
+		// slide autonomy on a running (brokered/remote) task: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
 		var body api.SetVector
 		if err := codec.Read(r, &body); err != nil {
@@ -2849,7 +2849,7 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, eng.Flows())
 }
 
-// flowTree renders a subject's work as a SHAPE — the trigger that acted on it, the process
+// flowTree renders a subject's work as a SHAPE — the trigger that acted on it, the task
 // that ran, and the completion hooks branching off it, including the ones that have not run
 // yet. A read, so the address rides the query string rather than a body (steering is POST).
 //
@@ -2877,7 +2877,7 @@ func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
 
 // flowAddress decodes the steering body's `subject` — an entity ADDRESS, not just a ref:
 // "demo:pr:1" names one subject, "demo:pr:*" the whole kind. A flow is a query over live
-// processes' subjects, so one field serves both, and a plain ref stays valid (no client
+// tasks' subjects, so one field serves both, and a plain ref stays valid (no client
 // breaks). Returns false having already written the error response.
 func flowAddress(w http.ResponseWriter, r *http.Request, body *api.FlowSteer) (trigger.Match, bool) {
 	if err := codec.Read(r, body); err != nil || body.Subject == "" {
@@ -2892,7 +2892,7 @@ func flowAddress(w http.ResponseWriter, r *http.Request, body *api.FlowSteer) (t
 	return m, true
 }
 
-// flowPause/flowResume hold the addressed processes at their next boundary — serviced with
+// flowPause/flowResume hold the addressed tasks at their next boundary — serviced with
 // priority over observation by the engine's control plane (see
 // docs/deployment-and-steering.md).
 func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
@@ -2946,7 +2946,7 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 // coincidence.
 
 // writeOut renders a response in the format the request asked for. It takes the request
-// because that is where the answer lives — ?format=, then Accept, then the process default.
+// because that is where the answer lives — ?format=, then Accept, then the task default.
 func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {
 	codec.Write(w, r, code, v)
 }

@@ -90,7 +90,7 @@ failed precondition, so it prevents lost updates rather than repeated work.
 **A latch takes the subject out of the selection.** Write a value the subject's predicate
 refuses and the next evaluation does not select it. This is the ordinary shape, and for a
 SPAWN it is the only one: a spawn is not a store write, nothing about it is inert on repetition,
-and the engine's dedupe holds only while the process is live — once reaped, the next commit
+and the engine's dedupe holds only while the task is live — once reaped, the next commit
 spawns again. So a **spawning action whose subject can still match after it runs is refused at
 install**, with a diagnostic naming the paths it could latch on.
 
@@ -106,7 +106,7 @@ the predicate satisfied — writing the same value back latches a store write, a
 
 **A sequence bounds itself.** `startSeq` refuses to re-run a sequence that has already run to a
 conclusion for a subject at a shape — `done` if it finished, `ended` if an off-ramp stopped it —
-and that is a fact in the store rather than a live-process check, so unlike a bare spawn it
+and that is a fact in the store rather than a live-task check, so unlike a bare spawn it
 survives the reap. Demanding a subject latch of a `seq` as well would be
 demanding the same guarantee twice, so the check excludes it — as it does a completion hook's
 spawn, which is bounded by the completion above it.
@@ -114,8 +114,8 @@ spawn, which is bounded by the completion above it.
 **In-flight guards cover the gap before the latch lands.** Every commit re-selects a subject
 whose latch write has not happened yet, so a firing is held for as long as its work lasts, and
 that is two things: `claimFlight` covers the firing itself (gates being answered, action
-applied), and `working` covers what it started (a spawned process still running). Neither
-changes what RUNS — `spawnHooked` already refuses a second process under a live id — but
+applied), and `working` covers what it started (a spawned task still running). Neither
+changes what RUNS — `spawnHooked` already refuses a second task under a live id — but
 together they stop a firing for work already under way from posing a question or spending
 budget on its way to being told no. Both key on (trigger, subject), the same identity the spawn
 id, the gate question and the motion channel use.
@@ -181,7 +181,7 @@ The check is dynamic rather than an install-time graph over the charter, and tha
 reason it can tell a runaway from a control loop instead of refusing both. A cycle is how you
 write a control loop; what makes the pair above pathological is not that it cycles but that it
 cycles at the speed of the store. Pacing is a property of how a chain RUNS — it breaks wherever
-real time enters, through a spawned process, through the world, through a decision somebody
+real time enters, through a spawned task, through the world, through a decision somebody
 answers — not of how the charter is written, so no static analysis of the rules could distinguish
 them. A cycle through a gate never trips, however many laps it runs; an unpaced one stops after
 the trigger count and is reported by name.

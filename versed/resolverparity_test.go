@@ -12,15 +12,15 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/process"
 	"github.com/signadot/verse/resolver"
+	"github.com/signadot/verse/task"
 )
 
-// planeOf reads a process's read plane from the beginning until its gate is decided, and
+// planeOf reads a task's read plane from the beginning until its gate is decided, and
 // returns the frames.
-func planeOf(t *testing.T, ts *httptest.Server, procID string, answer func(questionID string)) []process.Frame {
+func planeOf(t *testing.T, ts *httptest.Server, taskID string, answer func(questionID string)) []task.Frame {
 	t.Helper()
-	resp, err := http.Get(ts.URL + "/processes/" + procID + "/events?since=0")
+	resp, err := http.Get(ts.URL + "/tasks/" + taskID + "/events?since=0")
 	if err != nil {
 		t.Fatalf("events: %v", err)
 	}
@@ -41,7 +41,7 @@ func planeOf(t *testing.T, ts *httptest.Server, procID string, answer func(quest
 		close(lines)
 	}()
 
-	var got []process.Frame
+	var got []task.Frame
 	answered := false
 	deadline := time.After(5 * time.Second)
 	for {
@@ -50,16 +50,16 @@ func planeOf(t *testing.T, ts *httptest.Server, procID string, answer func(quest
 			if !open {
 				t.Fatalf("the stream ended with the gate undecided; read %d frames", len(got))
 			}
-			var f process.Frame
+			var f task.Frame
 			if codec.Unmarshal([]byte(data), &f, codec.Tony) != nil {
 				continue
 			}
 			got = append(got, f)
-			if f.Kind == process.EvPending && !answered {
+			if f.Kind == task.EvPending && !answered {
 				answered = true
 				answer(f.ID)
 			}
-			if f.Kind == process.EvDecision {
+			if f.Kind == task.EvDecision {
 				return got
 			}
 		case <-deadline:
@@ -72,7 +72,7 @@ func planeOf(t *testing.T, ts *httptest.Server, procID string, answer func(quest
 }
 
 // shape is what two runs of the same work should have in common: the kinds, in order.
-func shape(fs []process.Frame) []string {
+func shape(fs []task.Frame) []string {
 	out := make([]string, 0, len(fs))
 	for _, f := range fs {
 		out = append(out, f.Kind)
@@ -80,15 +80,15 @@ func shape(fs []process.Frame) []string {
 	return out
 }
 
-func decisionOf(t *testing.T, fs []process.Frame) process.Frame {
+func decisionOf(t *testing.T, fs []task.Frame) task.Frame {
 	t.Helper()
 	for _, f := range fs {
-		if f.Kind == process.EvDecision {
+		if f.Kind == task.EvDecision {
 			return f
 		}
 	}
 	t.Fatal("no decision on the plane")
-	return process.Frame{}
+	return task.Frame{}
 }
 
 // A supervised run reads exactly like a human-supervised one, except in WHO decided.
@@ -138,10 +138,10 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 
 	// And both settle their question the same way — the docket cannot tell them apart
 	// either, except by reading who answered.
-	for _, c := range []struct{ proc, by string }{{"byhand", "human:scott"}, {"watched", binding}} {
-		q := question(t, srv, c.proc+"~d1")
+	for _, c := range []struct{ task, by string }{{"byhand", "human:scott"}, {"watched", binding}} {
+		q := question(t, srv, c.task+"~d1")
 		if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" || q["by"] != c.by {
-			t.Fatalf("%s settled as %+v", c.proc, q)
+			t.Fatalf("%s settled as %+v", c.task, q)
 		}
 	}
 	if got := docket(t, srv); len(got) != 0 {
@@ -149,7 +149,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	}
 }
 
-// A position that advances with no verdict emits NOTHING on the process's stream, and shows on
+// A position that advances with no verdict emits NOTHING on the task's stream, and shows on
 // the resolver's record.
 //
 // That is the whole of "what was watched" being a separate fact from "what was decided": a
@@ -164,13 +164,13 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 	qid := waitQuestion(t, srv, "watched")
 	ref := resolver.InstanceRef("security-review", "watched")
 
-	before := framesSoFar(t, ts.URL+"/processes/watched/events?since=0")
+	before := framesSoFar(t, ts.URL+"/tasks/watched/events?since=0")
 	for _, p := range []int64{3, 7, 11} {
 		r := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID+"/position",
 			api.Position{Position: p, Notes: "still reading"})
 		r.Body.Close()
 	}
-	after := framesSoFar(t, ts.URL+"/processes/watched/events?since=0")
+	after := framesSoFar(t, ts.URL+"/tasks/watched/events?since=0")
 
 	if len(after) != len(before) {
 		t.Fatalf("watching put %d frame(s) on the run's stream: %v",
@@ -188,7 +188,7 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 
 // framesSoFar reads a stream that is deliberately NOT finished — a run parked on a gate
 // nobody has answered — and returns what it has said so far.
-func framesSoFar(t *testing.T, url string) []process.Frame {
+func framesSoFar(t *testing.T, url string) []task.Frame {
 	t.Helper()
 	resp, err := http.Get(url)
 	if err != nil {
@@ -205,14 +205,14 @@ func framesSoFar(t *testing.T, url string) []process.Frame {
 		}
 		close(lines)
 	}()
-	var out []process.Frame
+	var out []task.Frame
 	for {
 		select {
 		case d, ok := <-lines:
 			if !ok {
 				return out
 			}
-			var f process.Frame
+			var f task.Frame
 			if codec.Unmarshal([]byte(d), &f, codec.Tony) == nil {
 				out = append(out, f)
 			}

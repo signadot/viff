@@ -29,7 +29,7 @@ const GitSystem = "git"
 // that id (as the `repo` field and as an id prefix), and reconcile is per-repo — so a webhook
 // for one repo never tombstones another's refs. It reflects git-*aware* state (what SDLC flows
 // react to — "commit landed on main", "branch deleted", "tag created"), an index not a
-// warehouse: a process needing a diff follows the ref into the real repo (`git show`). Acting
+// warehouse: a task needing a diff follows the ref into the real repo (`git show`). Acting
 // back on a repo (commit, tag, push) is the separate outbound executor path, not here.
 type Git struct {
 	mu          sync.Mutex
@@ -78,7 +78,7 @@ func (g *Git) AddRepo(id, dir string) string {
 // outbound executor path, and none of them is here.
 //
 // The clone happens HERE, at startup, rather than lazily inside a reflect: an unreachable
-// remote or a bad credential is then a process that does not start, in front of the operator
+// remote or a bad credential is then a task that does not start, in front of the operator
 // who just deployed it, instead of a registration that installs clean and reports a failure
 // into lastError once a minute forever.
 func (g *Git) AddMirror(ctx context.Context, id, remote, dir string) (string, error) {

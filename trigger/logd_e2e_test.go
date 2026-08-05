@@ -7,7 +7,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 
 	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
 	"github.com/signadot/tony-format/go-tony/system/logd/storage"
@@ -40,7 +40,7 @@ func TestEmergentChainOverLogd(t *testing.T) {
 	}
 	defer store.Close()
 
-	eng := New(store, process.AutoResolver{}) // Ask gates auto-proceed
+	eng := New(store, task.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},

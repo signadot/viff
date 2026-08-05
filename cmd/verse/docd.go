@@ -92,7 +92,7 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 	child.Stdout, child.Stderr = cc.Err, cc.Err
 	// Own process group, so stop() can reap the WHOLE tree: `o sys up` runs logd and docd
 	// as children, so signalling only child.Process would orphan the daemons — the leak
-	// that piled up abandoned processes.
+	// that piled up abandoned tasks.
 	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := child.Start(); err != nil {
 		return docd{}, fmt.Errorf("start `%s sys up`: %w", oBin, err)

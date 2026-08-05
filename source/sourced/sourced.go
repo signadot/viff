@@ -7,7 +7,7 @@
 // verse's side (see source.Reflector). A source handed a way to write would be a source that
 // could get the tombstone rules wrong.
 //
-// It is the same trick processd plays for runners, for the same reason: verse's own
+// It is the same trick taskd plays for runners, for the same reason: verse's own
 // in-process source is the same value behind the same handler, so there is no privileged
 // local path for a deployed one to differ from.
 package sourced

@@ -4,40 +4,40 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/process"
+	"github.com/signadot/verse/task"
 )
 
 // The complaint, at the seam it was lost on. `vector:` and `grant:` were expanded by Bind
-// and read by nothing: the Spawner took Task and Driver off the spec and dropped the rest.
+// and read by nothing: the Spawner took Prompt and Driver off the spec and dropped the rest.
 // A charter could state an envelope, watch `trigger show` render it back, and get an agent
 // that ignored it.
 func TestLaunchOfResolvesTheNamedAxes(t *testing.T) {
 	l, err := launchOf("rev-1", launch.Spec{
-		Task: "review it", Driver: "llm", Vector: "auto", Grant: "read-only",
+		Prompt: "review it", Driver: "llm", Vector: "auto", Grant: "read-only",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Vector == nil || l.Vector.Default != process.Auto {
+	if l.Vector == nil || l.Vector.Default != task.Auto {
 		t.Errorf("vector = %v, want the named auto vector", l.Vector)
 	}
 	if l.Grant == nil {
 		t.Fatal("grant = nil; `grant: read-only` must reach the spawn")
 	}
-	read := process.ToolUse{Name: "read", Input: map[string]any{"path": "x"}}
-	exec := process.ToolUse{Name: "run_bash", Input: map[string]any{"command": "x"}}
-	process.BasicDeriver{}.Derive(&read)
-	process.BasicDeriver{}.Derive(&exec)
+	read := task.ToolUse{Name: "read", Input: map[string]any{"path": "x"}}
+	exec := task.ToolUse{Name: "run_bash", Input: map[string]any{"command": "x"}}
+	task.BasicDeriver{}.Derive(&read)
+	task.BasicDeriver{}.Derive(&exec)
 	if !l.Grant.Permits(read) || l.Grant.Permits(exec) {
 		t.Error("the resolved grant does not behave as read-only")
 	}
 }
 
-// A spec that names neither axis must produce neither, so a process that declared nothing
+// A spec that names neither axis must produce neither, so a task that declared nothing
 // keeps exactly the behaviour it had: the runtime's own vector, and an unbounded scope.
 // Resolving "unstated" to a value — any value — would change every existing charter.
 func TestLaunchOfLeavesUnstatedAxesUnset(t *testing.T) {
-	l, err := launchOf("p1", launch.Spec{Task: "go"})
+	l, err := launchOf("p1", launch.Spec{Prompt: "go"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +50,10 @@ func TestLaunchOfLeavesUnstatedAxesUnset(t *testing.T) {
 // defaulting it to the wildcard would be the same bug with an error message attached, and
 // strictly worse than the original because it reads as though it was honored.
 func TestLaunchOfRefusesAnUnknownGrantRatherThanWidening(t *testing.T) {
-	if _, err := launchOf("p1", launch.Spec{Task: "go", Grant: "reed-only"}); err == nil {
+	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Grant: "reed-only"}); err == nil {
 		t.Fatal("an unknown grant name must fail the spawn, not resolve to unbounded")
 	}
-	if _, err := launchOf("p1", launch.Spec{Task: "go", Vector: "sometimes"}); err == nil {
+	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Vector: "sometimes"}); err == nil {
 		t.Fatal("an unknown vector name must fail the spawn")
 	}
 }
@@ -62,7 +62,7 @@ func TestLaunchOfRefusesAnUnknownGrantRatherThanWidening(t *testing.T) {
 // there is nothing to resolve and nothing that may be dropped.
 func TestLaunchOfCarriesFrameAndTools(t *testing.T) {
 	l, err := launchOf("p1", launch.Spec{
-		Task: "go", Frame: "answer with a severity", Tools: []string{"read_file"},
+		Prompt: "go", Frame: "answer with a severity", Tools: []string{"read_file"},
 	})
 	if err != nil {
 		t.Fatal(err)
