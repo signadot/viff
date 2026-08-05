@@ -65,13 +65,22 @@ entities, processes, and the charters that relate them.
   works whichever it is.
 - `mirror/` — reflects a running process into the verse as a `process:instance` entity, so
   "observe or steer another process" is just "observe an entity."
+- `resolver/` — who answers a gate. A binding is *installed* rather than written into a
+  charter, because it outlives any one rule and belongs to whoever supervises rather than to
+  whoever wrote the work. It covers a subject by match or a run by name, and one instance is
+  minted per thing it watches (`resolvers:instance:<name>@<origin>`), carrying that watcher's
+  own position. A binding that goes silent past its deadline hands the question to the layer
+  above, and the second hop is always the docket a person reads.
 - `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you
   deploy and install (`verse source add`), reflecting an owned slice like `git:*` that triggers
   react to. Three ship (`sourced git|slack|linear`); anything else is the sample program plus
   one function. `verse connect` federates your working tree the same way, into a scope.
-- `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI: `up`, `down`, `watch`,
-  `entity`, `gate`, `trigger`, `process` including the `do` executor verbs, `flow`, and
-  `connect`.
+- `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
+  `trigger`, `stratum`, `goal`, `process` (including the `do` executor verbs), `flow`,
+  `resolver`, `runner`, `source`. What it answers with: `gate`, `docket`, `vote`. What it
+  reads: `status`, `watch`, `providers`, `schema`. What it runs: `up`, `down`, `connect`,
+  `disconnect`. Most come as a pair — the plural lists, the singular acts on one — which is
+  also how the HTTP surface addresses them.
 - `deploy/` and `Makefile` — a checked-in `o build` and a local-build image pipeline to run
   verse on Kubernetes.
 
@@ -93,6 +102,8 @@ is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
 - [Reference](docs/reference/README.md) — the command surface, the config layers, and a
   per-topic deep end: [starting a verse](docs/reference/up.md),
   [entities](docs/reference/entities.md), [processes](docs/reference/processes.md),
+  [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
+  [sources](docs/reference/sources.md) and [the three that ship](docs/reference/sourced.md),
   [connect and scopes](docs/reference/connect.md), [goals](docs/reference/goals.md),
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a
