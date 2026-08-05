@@ -52,7 +52,8 @@ flowchart LR
   cli["verse CLI<br/>operator"]
   res["resolver<br/>an answerer"]
   worker["worker<br/>laptop · pod · human"]
-  ext["Slack · Linear · git hook"]
+  wh["Slack · Linear"]
+  hook["git hook<br/>reference-transaction"]
 
   subgraph host["the verse"]
     versed["versed<br/>:9797 operator API"]
@@ -67,8 +68,8 @@ flowchart LR
 
   cli -->|"HTTP"| versed
   res -->|"events · verdicts · position"| versed
-  ext -->|"webhook · hint"| src
-  ext -->|"hint"| versed
+  wh -->|"signed webhook"| src
+  hook -->|"POST .../hint"| versed
   worker -->|"claim · inbox · report"| bface
 
   versed -->|"session: read · write · watch"| docd
@@ -80,12 +81,21 @@ flowchart LR
 
   classDef dialsIn fill:#e8f4ff,stroke:#4a90d9
   classDef dialsOut fill:#f2f7ec,stroke:#7aa352
-  class cli,res,worker,ext,src,ctl dialsIn
+  class cli,res,worker,wh,hook,src,ctl dialsIn
   class remote,llm,docd dialsOut
 ```
 
 Blue dials *into* verse. Green is dialled *by* verse. `sourced` is both, and that is the point
 of [seam 6](#6-sources--read-one-way-hint-the-other).
+
+The two paths into a hint are not a choice between routes — they are different systems, and
+which one a source takes is decided by what its external system will let you install. Slack and
+Linear will only *call* you, so `sourced` has to be there to receive the delivery, verify its
+signature, and turn it into a hint. Git will run a script for you, so `Git.InstallHook` writes
+a four-line `reference-transaction` hook that curls the hint route itself — and `sourced git`
+consequently serves **no delivery routes at all** and is not in that path. The comment in
+`cmd/sourced/git.go` calls that the shape every source would have if every external system let
+you install a four-line shell script.
 
 ## The seams at a glance
 
