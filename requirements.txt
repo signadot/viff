@@ -1,19 +1,29 @@
 mkdocs==1.6.1
 mkdocs-mermaid2-plugin==1.2.3
-pymdown-extensions==10.17.1
 
-# The tony lexer, so ```tony fences highlight — there are 59 of them here, most in
-# trigger-model.md and the tutorial, and they are the charter grammar itself.
+# These two move TOGETHER, and tony-format found out the hard way: Pygments 2.20.0 escapes the
+# HTML formatter's `filename` option, which pymdown-extensions 10.17.1 passes as None for a
+# fenced block whose first line is blank and whose body is indented — `mkdocs build` then exits
+# 1 without writing a page. 11.0.1 is the release that stopped passing None. Pinning Pygments
+# is the point: it was the one dependency left resolving on its own, so a fresh install here
+# would have picked up 2.20.0 against the old pymdown-extensions and broken for the next person
+# rather than for whoever changed something.
+pymdown-extensions==11.0.1
+pygments==2.20.0
+
+# The tony lexer, so ```tony fences highlight — 61 of them here, most in trigger-model.md and
+# the tutorial, and they are the charter grammar itself.
 #
-# It is not on PyPI. It lives in tony-format as a small setuptools package registering a
-# `pygments.lexers` entry point (`tony = pygments_tony:TonyLexer`), which is all Pygments
-# needs to resolve the fence language, so pip takes it from there.
+# It is not on PyPI. It lives in tony-format as a setuptools package registering a
+# `pygments.lexers` entry point (`tony = pygments_tony:TonyLexer`), which is all Pygments needs
+# to resolve a fence language, so pip takes it from there.
 #
-# Pinned to the tag carrying the go-tony this tree builds against, so the lexer and the parser
-# come from ONE revision rather than drifting apart — the highlighter's idea of the grammar
-# and the engine's stay the same age.
+# PINNED TO A COMMIT, and that is a downgrade worth naming. It was pinned to the go-tony tag
+# this tree builds against, so the highlighter's grammar and the engine's could not drift apart.
+# The rewritten lexer (tony-format 9871b27) landed after go-tony/v0.0.116, so no tag reaches it
+# and a commit is the only ref that does. If a later go-tony tag contains the lexer, move this
+# back to it — the same-age guarantee is worth more than the precision of a SHA.
 #
 # The path is inside that repo's docs/sketchy/, where notes live that owe no coherence yet, so
-# it can move. That is the fragility to know about, and it fails the right way: loudly, at
-# install, rather than quietly at render as a page of unhighlighted charter.
-pygments-tony @ git+https://github.com/signadot/tony-format@go-tony/v0.0.116#subdirectory=docs/sketchy/pygments-tony
+# it can still move. That fails the right way: loudly, at install, rather than quietly at render.
+pygments-tony @ git+https://github.com/signadot/tony-format@d44697c68b226138029d329be6a5e4e0fb7e2ab8#subdirectory=docs/sketchy/pygments-tony
