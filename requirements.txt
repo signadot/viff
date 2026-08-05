@@ -1,3 +1,19 @@
 mkdocs==1.6.1
 mkdocs-mermaid2-plugin==1.2.3
 pymdown-extensions==10.17.1
+
+# The tony lexer, so ```tony fences highlight — there are 59 of them here, most in
+# trigger-model.md and the tutorial, and they are the charter grammar itself.
+#
+# It is not on PyPI. It lives in tony-format as a small setuptools package registering a
+# `pygments.lexers` entry point (`tony = pygments_tony:TonyLexer`), which is all Pygments
+# needs to resolve the fence language, so pip takes it from there.
+#
+# Pinned to the tag carrying the go-tony this tree builds against, so the lexer and the parser
+# come from ONE revision rather than drifting apart — the highlighter's idea of the grammar
+# and the engine's stay the same age.
+#
+# The path is inside that repo's docs/sketchy/, where notes live that owe no coherence yet, so
+# it can move. That is the fragility to know about, and it fails the right way: loudly, at
+# install, rather than quietly at render as a page of unhighlighted charter.
+pygments-tony @ git+https://github.com/signadot/tony-format@go-tony/v0.0.116#subdirectory=docs/sketchy/pygments-tony
