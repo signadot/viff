@@ -165,6 +165,12 @@ seed-entities: ## seed a RUNNING verse with a world of entities and no charter (
 shapes: ## list the charter shapes (./scripts/charter-shapes.sh run <shape> to install and fire one)
 	@./scripts/charter-shapes.sh
 
+# Correlation across systems, run rather than argued: three id schemes, the derived link the
+# engine names f(rule, subject), and the set read that reassembles the chain.
+.PHONY: lineage
+lineage: ## seed a RUNNING verse with a commit → PR → release chain (./scripts/lineage.sh --help)
+	@./scripts/lineage.sh
+
 # The representation is a DEFAULT, not a fixture: tony out of the box, JSON when asked for.
 # Running the suite only one way would let the other rot silently — and the JSON path is what
 # every existing client and `curl | jq` still uses. This is the target CI should call.
