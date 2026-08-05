@@ -3,6 +3,8 @@
 /verse
 /o
 dist/
+# mkdocs build output (`mkdocs build` defaults here; `mkdocs serve` needs nothing)
+site/
 # working space inside the repo: probes, one-off harnesses, throwaway mains.
 # In-tree so a Go file there can import the module; ignored so none of it is a commit.
 scratchpad/

@@ -1,0 +1,94 @@
+site_name: Verse
+
+# The nav follows docs/README.md's subject grouping rather than the directory layout, because
+# that index is the reading order somebody was given: three things that stand on their own,
+# then a deep-dive per subject. Where the two disagree, the index wins and this follows it.
+#
+# working/ is deliberately absent. It is the one directory that owes no coherence — to the
+# roadmap or to another working note — so it has no place in an ordered nav. The pages still
+# BUILD, because docs/README.md links into them from its "ahead" rows and a nav is not a
+# publication boundary; they are simply not listed.
+nav:
+- Start:
+  - README.md
+  - overview.md
+  - tutorial.md
+  - seams.md
+- Charters and triggers:
+  - trigger-model.md
+  - convergence.md
+  - cycle-throttle.md
+  - strata.md
+  - provider-selection.md
+- Entities and the store:
+  - change-events.md
+- Processes and autonomy:
+  - process-control.md
+  - attached-resolvers.md
+  - auto-supervisor.md
+  - runners.md
+  - external-processes.md
+- Steering:
+  - deployment-and-steering.md
+- Federation:
+  - sources.md
+  - content-federation.md
+  - controllers.md
+- Reference:
+  - reference/README.md
+  - reference/up.md
+  - reference/entities.md
+  - reference/store.md
+  - reference/processes.md
+  - reference/runners.md
+  - reference/resolvers.md
+  - reference/sources.md
+  - reference/sourced.md
+  - reference/connect.md
+  - reference/goals.md
+  - reference/representation.md
+- Roadmap:
+  - roadmap/README.md
+  - roadmap/scope-lifecycle.md
+  - roadmap/expose.md
+  - roadmap/authority.md
+  - roadmap/channel-observe.md
+  - roadmap/dynamic-charter.md
+
+theme:
+  name: mkdocs
+  highlightjs: false
+
+markdown_extensions:
+  - tables: {}
+  # GitHub's slug algorithm, not python-markdown's default. This is the one deviation from
+  # tony-format's config, and it is not cosmetic: these docs are read on GitHub as much as on
+  # the site, so every intra-page link in the tree is already written GitHub-style. The two
+  # differ wherever a heading contains punctuation that is stripped — `## 4. Charters —
+  # relating entities to processes` is `#4-charters--relating-entities-to-processes` on GitHub
+  # and `#4-charters-relating-entities-to-processes` under the default, because the default
+  # collapses the run of separators the stripped em-dash leaves behind. Setting it here fixes
+  # every such link at once and keeps one spelling correct in both places, which editing the
+  # links to suit the site would not.
+  - toc:
+      permalink: '#'
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+  - admonition
+  # Use pymdownx.highlight - works better with superfences than codehilite
+  - pymdownx.highlight:
+      use_pygments: true
+      css_class: codehilite
+      anchor_linenums: true
+  - pymdownx.superfences:
+      # Custom fence for mermaid diagrams only
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+      # Explicitly tell superfences to use pymdownx.highlight for other languages
+      # This ensures tony code blocks get pygments highlighting
+
+extra_css:
+  - pygments.css
+plugins:
+  - mermaid2
