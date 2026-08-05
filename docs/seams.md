@@ -185,11 +185,11 @@ The broker is seam 4 turned inside out. Verse hosts a worker-facing handler unde
 ```mermaid
 sequenceDiagram
   participant W as worker · laptop · pod · human
-  participant B as broker face<br/>/broker/&lt;nonce&gt;
+  participant B as broker face<br/>/broker/{nonce}
   participant V as versed
   participant S as the store
 
-  V->>B: spawn — in process; the broker IS verse's runner here
+  V->>B: spawn — in process, because the broker IS verse's runner here
   Note over B: status: unclaimed
   W->>B: POST /processes/{id}/claim  (--as who)
   B-->>W: claim accepted — an epoch is minted
@@ -201,7 +201,7 @@ sequenceDiagram
     B->>V: the same frames an attached observer sees
     V->>S: mirrored to process:instance:{id}
   end
-  Note over B: first terminal report wins; later ones are frozen no-ops
+  Note over B: first terminal report wins — later ones are frozen no-ops
 ```
 
 Three things make this more than a polling loop. The **nonce is the capability** — 128 bits of
