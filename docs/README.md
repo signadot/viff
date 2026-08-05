@@ -3,7 +3,7 @@
 Everything here describes what verse does today. Design notes for work that is not built
 live in [roadmap/](roadmap/README.md).
 
-Three things stand on their own, and the rest are deep-dives on one subject each.
+Four things stand on their own, and the rest are deep-dives on one subject each.
 
 - [Overview](overview.md) — the architecture, the model, and the load-bearing decisions.
   Read this first.
@@ -11,6 +11,9 @@ Three things stand on their own, and the rest are deep-dives on one subject each
   that relate them. Each has a script that seeds it in one command.
 - [Reference](reference/README.md) — the flat command surface, and a file per topic for the
   detail the tutorial skips.
+- [Seams](seams.md) — the nine seams that can be a *network*, and which side opens each one.
+  The view across the subjects below rather than one of them: what may be remote, what may sit
+  behind a firewall, and why the same payload travels in both directions.
 
 ## By subject
 

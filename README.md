@@ -88,6 +88,8 @@ is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
   charters that relate them, each with a script that seeds it.
 - [Trigger model](docs/trigger-model.md) — the two grammars a charter is written in, and
   what every field of a rule means.
+- [Seams](docs/seams.md) — the nine seams that can be a network, and which side opens each:
+  what may run remote, what may sit behind a firewall, and what that costs.
 - [Reference](docs/reference/README.md) — the command surface, the config layers, and a
   per-topic deep end: [starting a verse](docs/reference/up.md),
   [entities](docs/reference/entities.md), [processes](docs/reference/processes.md),

@@ -245,7 +245,12 @@ Each seam is where you plug in without touching the core.
 Today `verse up` runs the engine, process runtime, and HTTP surface in one process, and
 either brings up logd and docd as children or attaches to a running docd. The pieces — store,
 engine (`versed`), process runtime (`proc`) — are separable services behind these same
-interfaces, and process control already lets processes run off-box. See
+interfaces, and process control already lets processes run off-box.
+
+Which of the seams above can actually be a *wire*, and — the property that decides what each
+is good for — which side opens the connection, is [seams](seams.md). It is the view across the
+subjects here rather than one of them, and the reason two seams carrying nearly the same
+payload in opposite directions both have to exist. See also
 [deployment and steering](deployment-and-steering.md).
 
 ## Where to go next
