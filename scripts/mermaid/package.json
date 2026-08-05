@@ -1,0 +1,9 @@
+{
+  "name": "verse-mermaid-check",
+  "private": true,
+  "description": "Deps for scripts/check-mermaid.sh. Versions are resolved by that script (mermaid must match the site); this file only exists so npm has a directory to install into.",
+  "dependencies": {
+    "jsdom": "^24.1.3",
+    "mermaid": "^10.4.0"
+  }
+}

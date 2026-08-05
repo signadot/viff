@@ -131,8 +131,19 @@ test-long: ## go test ./... including the long, timeout-waiting tests (GOTEST_LO
 check-json: ## fail if non-test code imports encoding/json outside the allowlist
 	@./scripts/check-json.sh
 
+# A diagram is the one thing in this tree nothing reads until a browser does, months later —
+# mkdocs copies the block through untouched, so a syntax error is invisible at build time and
+# surfaces as mermaid's error text printed where the picture should be. This parses every block
+# with the mermaid the SITE loads, asking mkdocs-mermaid2-plugin which version that is.
+#
+# It needs node, which this repo otherwise does not, so it SKIPS loudly rather than failing
+# when there is none: `make check` has to stay runnable on a machine with nothing but Go.
+.PHONY: check-mermaid
+check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is absent)
+	@./scripts/check-mermaid.sh
+
 .PHONY: check
-check: check-generate check-json ## every static check (what CI should run before the tests)
+check: check-generate check-json check-mermaid ## every static check (what CI should run before the tests)
 
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a free port)
