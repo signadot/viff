@@ -90,8 +90,8 @@ has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 TRIGGERS=(lin-pr-lineage lin-release-manifest)
 STRATA=(lin-source lin-change lin-trace)
 ENTITIES=(
-	lingit:commit:a1b2c3 lingit:commit:d4e5f6
-	lingh:pr:42 lingh:pr:43 lingh:pr:44
+	lingit:commit:a1b2c3 lingit:commit:d4e5f6 lingit:commit:g7h8i9
+	lingh:pr:42 lingh:pr:43 lingh:pr:44 lingh:pr:45
 )
 
 if $clean; then
@@ -145,6 +145,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "the charter did not install"
         trace:
           pr:      $subject
           commit:  $subject.value.head
+          target:  $subject.value.target
           # The commit is a different system's entity, reached by identity. This is the copy
           # that makes the trace answer on its own, without a join at read time.
           message: !get-path { system: lingit, kind: commit, id: $subject.value.head, path: message }
@@ -153,15 +154,19 @@ v trigger add -f - >/dev/null <<'TONY' || die "the charter did not install"
 # The release does not correlate anything; it READS THE SET. A derive is about exactly one
 # subject, so fifty traces cannot feed one release — the level above reads them instead.
 # `patch` rather than `derive` on purpose: reads inside a patch are unconstrained.
+#
+# The predicate is what keeps that read from being a walk of every trace in the verse, and it
+# is expanded like the rest of the address — `$subject.value.target` is the release's OWN
+# branch, so this is one rule rather than one rule per branch.
 - name: lin-release-manifest
   condition:
     subject: { system: lintag, kind: release, value: { stage: cut } }
   action:
     patch:
       stage:   shipped
-      prs:     !list-paths { system: lineage, kind: trace, id: "*", path: pr }
-      commits: !list-paths { system: lineage, kind: trace, id: "*", path: commit }
-      authors: !list-paths { system: lineage, kind: trace, id: "*", path: author }
+      prs:     !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: pr }
+      commits: !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: commit }
+      authors: !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: author }
     spawn: { driver: scripted, prompt: "echo shipping $subject; sleep 30" }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"
@@ -172,12 +177,14 @@ ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the s
 step "three systems, three id schemes, no coordination"
 v entity put lingit:commit:a1b2c3 '{message: "add the token TTL", author: ana}' >/dev/null
 v entity put lingit:commit:d4e5f6 '{message: "fix the docket label", author: bo}' >/dev/null
-ok "lingit:commit:a1b2c3, lingit:commit:d4e5f6 — a sha is the id"
+v entity put lingit:commit:g7h8i9 '{message: "widen the gate vector", author: cy}' >/dev/null
+ok "three commits — a sha is the id"
 
-v entity put lingh:pr:42 '{stage: merged, head: a1b2c3, title: "token TTL"}' >/dev/null
-v entity put lingh:pr:43 '{stage: merged, head: d4e5f6, title: "docket label"}' >/dev/null
-v entity put lingh:pr:44 '{stage: open,   head: a1b2c3, title: "still in review"}' >/dev/null
-ok "lingh:pr:42, :43 merged and :44 open — a number is the id"
+v entity put lingh:pr:42 '{stage: merged, head: a1b2c3, target: main, title: "token TTL"}' >/dev/null
+v entity put lingh:pr:45 '{stage: merged, head: g7h8i9, target: main, title: "gate vector"}' >/dev/null
+v entity put lingh:pr:43 '{stage: merged, head: d4e5f6, target: next, title: "docket label"}' >/dev/null
+v entity put lingh:pr:44 '{stage: open,   head: a1b2c3, target: main, title: "still in review"}' >/dev/null
+ok "four PRs — a number is the id; :42 and :45 target main, :43 targets next, :44 is open"
 
 # ── the correlation, which is a derived entity ───────────────────────────────
 step "the link verse writes, and the id it gives it"
@@ -209,12 +216,18 @@ step "the release: three ids reassembled without a fourth"
 # however many times the script is run or cleaned.
 n=$(v entities --system task -o tony 2>/dev/null | grep -c 'ref: task:instance:lin-release-manifest@' || true)
 REL="lintag:release:v1.4.$n"
-v entity put "$REL" '{stage: cut}' >/dev/null
+v entity put "$REL" '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \
 	bash -c "$BIN ${scope[*]} entity get '$REL' 2>/dev/null | grep -q shipped"
 v entity get "$REL"
 printf '\n'
 ok "the release carries the PRs and the commits, each still in its own system's id scheme"
+# The predicate did the narrowing: :43 is merged and traced, and is not in this release
+# because it targets `next`. That is a different exclusion from :44's, which is not traced
+# at all — one is the read's predicate, the other is the rule's subject.
+v entity get "$REL" | grep -q 'lingh:pr:43' &&
+	die "a trace targeting next is in a release cut from main — the predicate did not narrow"
+ok "lingh:pr:43 is traced but absent: it targets next, and this release asked for its own branch"
 
 # ── the flow ─────────────────────────────────────────────────────────────────
 # The literal question was how these ids live in a FLOW, and the answer is that a flow is
@@ -229,22 +242,21 @@ note "the task can reach the others because the manifest is on its subject: \`ve
 # ── what this does not do ────────────────────────────────────────────────────
 step "two edges, stated rather than hidden"
 cat <<'EDGES'
-  1. A PATH READ SELECTS BY IDENTITY, NEVER BY PAYLOAD. The manifest above globs
-     `id: "*"`, so it collects every trace in the verse — not the ones in this release.
-     Narrowing it is refused at install, on purpose:
+  1. A PREDICATE NARROWS BY WHAT A TRACE LOOKS LIKE — NOT BY WHICH RELEASE IT IS IN.
+     The manifest asks for traces whose `target` is this release's own, which is why
+     :43 is absent. What it still cannot ask is "the ones in THIS release": nothing on
+     a trace says so, and the trace's address is the engine's, f(rule, subject), so
+     there is nowhere to put it. Membership would have to be a fact somebody writes —
+     the release patching each trace, or a second correlation keyed on the pair — and
+     a derive is about exactly one subject, so it is not the derive that would do it.
+     Pairwise correlation and a predicate over the set; still nothing in between.
 
-       !list-paths { system: lineage, kind: trace, id: "*", value: "..." }
-       → "a path read addresses entities by identity. Selecting by what they LOOK
-          like is a different question, and one whose answer changes as rules fire"
-
-     So scoping a manifest to a release wants the scope to be in the ADDRESS — and the
-     derived address is the engine's, f(rule, subject). That is the open corner: this
-     correlates pairwise and rolls up globally, with nothing in between.
-
-  2. THE MANIFEST COPIES; IT DOES NOT TRACK. Merge another PR now and v1.4.0 does not
-     change — the read happened at the commit that fired the rule. That is by design
-     (trigger/path.go), and the proposed `!view.*` spelling for the other half is in
-     docs/working/derived-views.md.
+  2. THE MANIFEST COPIES; IT DOES NOT TRACK. Merge another PR onto main now and this
+     release does not change — the read happened at the commit that fired the rule.
+     That is by design (trigger/path.go), and it is also what makes the predicate safe
+     to have: it is evaluated against the one snapshot the whole firing reads, not
+     against whatever the store reaches later. The proposed `!view.*` spelling for the
+     tracking half is in docs/working/derived-views.md.
 EDGES
 
 step "poke at it"

@@ -21,6 +21,24 @@ package trigger
 // value slot takes one thing, and "this is a list" should be legible in the charter rather than
 // depending on whether some id turned out to hold a `*`.
 //
+// A PAYLOAD PREDICATE IS THE LIST FORM'S, and only the list form's:
+//
+//	green: !list-paths { system: ci, kind: status, id: "*", value: {state: green}, path: sha }
+//
+// `!get-path` refuses one for the reason it refuses a globbed id — it can name several, and a
+// value slot takes one. `!list-paths` takes one because it has already paid for it. The refusal
+// used to cover both, inherited from `!read`, which named exactly one entity and bought four
+// things by doing so: no ordering to define, no "it matched three", no truncation, and no cost
+// that grows with the verse. The cardinality split paid three of them on the list side — the
+// order is Match.Select's, "it matched three" is what a list IS, and `id: "*"` already walks a
+// whole kind — so what was left was the refusal without its argument. Narrowing a walk of the
+// kind is the CHEAPER read, not the more expensive one. (Truncation is the fourth and is still
+// unpaid, for globs and predicates alike; see docs/working/path-read-predicates.md.)
+//
+// It does not reintroduce a read that slides, because a firing's reads do not slide: every path
+// read is answered from ONE snapshot taken at the causing commit (occasion.snapshot), so a
+// predicate is evaluated against the same world the rule was evaluated against.
+//
 // SYSTEM AND KIND ARE ALWAYS LITERAL, in both. That is not style: the level check reads exactly
 // those two segments, so a reference or a glob there would make it undecidable at install — the
 // same reason a stratum's own pattern may not constrain an id.
@@ -74,9 +92,17 @@ type pathSpec struct {
 	System, Kind string // always literal
 	ID           string // literal, a $reference, or (list only) a glob
 	Path         string // a kpath into the payload; "" is the whole payload
+	// Value is the payload predicate, list only — "of the ones that are there, the ones
+	// that look like this". nil is no predicate, which is every id the address selects.
+	Value *ir.Node
 }
 
 func (p pathSpec) target() string { return p.System + ":" + p.Kind }
+
+// String is the address the read names — what the level check's refusals quote when they say
+// which entity a derive reached for. The predicate is deliberately not in it: those messages
+// are about WHERE a read lands, which is the two literal segments and nothing else.
+func (p pathSpec) String() string { return p.target() + ":" + p.ID }
 
 // readSpec pulls a path read out of a node in either spelling, and reports what is wrong with it.
 //
@@ -108,6 +134,18 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 	case ir.ObjectType:
 		for i, f := range body.Fields {
 			v := unwrap(body.Values[i])
+			// `value` is the one key whose content is a tony match rather than a string, so
+			// it is taken before the string check the address segments answer to.
+			if f.String == mKeyValue {
+				if kind == GetPathTag {
+					return spec, fmt.Errorf("!%s carries a payload predicate, which can name "+
+						"several entities — an entity that is not there does not satisfy it, and "+
+						"one that is there might not either. A value slot takes one thing. Use "+
+						"!%s, which answers with a list", kind, ListPathsTag)
+				}
+				spec.Value = body.Values[i]
+				continue
+			}
 			if v.Type != ir.StringType {
 				return spec, fmt.Errorf("!%s: %q must be a string", kind, f.String)
 			}
@@ -120,13 +158,10 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 				spec.ID = v.String
 			case pathKey:
 				spec.Path = v.String
-			case mKeyValue:
-				return spec, fmt.Errorf("!%s carries a payload predicate: a path read addresses "+
-					"entities by identity. Selecting by what they LOOK like is a different question, "+
-					"and one whose answer changes as rules fire", kind)
 			default:
-				return spec, fmt.Errorf("!%s: unknown key %q (want %s, %s, %s, %s)",
-					kind, f.String, mKeySystem, mKeyKind, mKeyID, pathKey)
+				return spec, fmt.Errorf("!%s: unknown key %q (want %s, %s, %s, %s%s)",
+					kind, f.String, mKeySystem, mKeyKind, mKeyID, pathKey,
+					map[bool]string{true: ", " + mKeyValue}[kind == ListPathsTag])
 			}
 		}
 	default:
@@ -260,6 +295,9 @@ func (p pathSpec) get(snap entity.Snapshot) (entity.Payload, error) {
 // the same set in a different order would write a real change every lap.
 func (p pathSpec) list(snap entity.Snapshot) (entity.Payload, error) {
 	m := Match{mKeySystem: p.System, mKeyKind: p.Kind, mKeyID: p.ID}
+	if p.Value != nil {
+		m[mKeyValue] = p.Value // narrows the selection; Match.Select already resolves it
+	}
 	out := []*ir.Node{}
 	for _, ref := range m.Select(snap) {
 		ent, ok, err := snap.Get(ref)

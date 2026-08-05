@@ -431,3 +431,126 @@ func TestListPathsInADeriveMustBeAtOrBelow(t *testing.T) {
 		t.Fatal("a derive listed a higher level, which is how a cycle crosses a level")
 	}
 }
+
+// A PAYLOAD PREDICATE narrows the list to the ones that look like it. The refusal this
+// replaces was written for `!read`, which named exactly one entity — "no ordering to define,
+// no 'it matched three', no truncation, no cost that grows with the verse" — and every one of
+// those was paid on the list side when the tag split by cardinality. What is left is the
+// cheaper read: `id: "*"` walks the whole kind, and a predicate is what narrows it.
+func TestListPathsNarrowsByPredicate(t *testing.T) {
+	eng, store := newEng(t)
+	for _, r := range []struct{ id, branch, state string }{
+		{"a", "one", "green"}, {"b", "two", "red"}, {"c", "three", "green"},
+	} {
+		entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: r.id},
+			entity.Obj{"branch": r.branch, "state": r.state}.Payload())
+	}
+	if err := eng.AddTrigger(Trigger{
+		Name:      "narrow",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: Action{Patch: entity.Obj{
+			"stage": "read",
+			"green": list(entity.Obj{
+				"system": "git", "kind": "repo", "id": "*",
+				"value": entity.Obj{"state": "green"}, "path": "branch",
+			}),
+			// A predicate nothing satisfies is an empty list, exactly as an id glob that
+			// selects nothing is: the asymmetry is with `!get-path`, not within the list form.
+			"none": list(entity.Obj{
+				"system": "git", "kind": "repo", "id": "*",
+				"value": entity.Obj{"state": "chartreuse"}, "path": "branch",
+			}),
+		}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	waitStage(t, store, ref, "read")
+	got, _, _ := store.Get(ref)
+
+	green := entity.Get(got.Payload, "green")
+	if green == nil || green.Type != ir.ArrayType {
+		t.Fatalf("green is not a list: %v", green)
+	}
+	var vals []string
+	for _, v := range green.Values {
+		vals = append(vals, v.String)
+	}
+	if strings.Join(vals, ",") != "one,three" {
+		t.Fatalf("green = %v, want [one three] — b is red and the predicate excludes it", vals)
+	}
+	none := entity.Get(got.Payload, "none")
+	if none == nil || none.Type != ir.ArrayType || len(none.Values) != 0 {
+		t.Fatalf("a predicate matching nothing should be an empty list, got %v", none)
+	}
+}
+
+// …and `!get-path` still refuses one, on the argument that always applied to it: a value slot
+// takes one thing, and a predicate can name several. The asymmetry is the cardinality split
+// doing its job, not a leftover.
+func TestGetPathStillRefusesAPredicate(t *testing.T) {
+	eng, _ := newEng(t)
+	err := eng.AddTrigger(Trigger{
+		Name:      "refused",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: readAction(entity.Obj{
+			"system": "git", "kind": "repo", "id": "abc", "value": entity.Obj{"state": "green"},
+		}),
+	})
+	if err == nil {
+		t.Fatal("!get-path accepted a payload predicate, which can name several entities")
+	}
+	if !strings.Contains(err.Error(), ListPathsTag) {
+		t.Fatalf("the refusal does not name the tag that answers instead: %v", err)
+	}
+}
+
+// The predicate is part of the ADDRESS, so it is expanded before the read like the rest of it:
+// a release can select the traces for its own branch without the charter naming that branch.
+// This is what makes a predicate worth having over a hardcoded one — the alternative is a rule
+// per value.
+func TestListPathsPredicateExpandsAReference(t *testing.T) {
+	eng, store := newEng(t)
+	for _, r := range []struct{ id, pr, target string }{
+		{"x", "pr:1", "main"}, {"y", "pr:2", "next"}, {"z", "pr:3", "main"},
+	} {
+		entitytest.Set(t, store, entity.Ref{System: "tr", Kind: "trace", ID: r.id},
+			entity.Obj{"pr": r.pr, "target": r.target}.Payload())
+	}
+	if err := eng.AddTrigger(Trigger{
+		Name:      "picks",
+		Condition: Condition{Subject: Match{"system": "rel", "kind": "tag", "value": map[string]any{"stage": "cut"}}},
+		Action: Action{Patch: entity.Obj{
+			"stage": "shipped",
+			"picked": list(entity.Obj{
+				"system": "tr", "kind": "trace", "id": "*",
+				"value": entity.Obj{"target": "$subject.value.target"}, "path": "pr",
+			}),
+		}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	ref := entity.Ref{System: "rel", Kind: "tag", ID: "v1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "cut", "target": "main"}.Payload())
+	waitStage(t, store, ref, "shipped")
+	got, _, _ := store.Get(ref)
+
+	picked := entity.Get(got.Payload, "picked")
+	if picked == nil || picked.Type != ir.ArrayType {
+		t.Fatalf("picked is not a list: %v", picked)
+	}
+	var vals []string
+	for _, v := range picked.Values {
+		vals = append(vals, v.String)
+	}
+	if strings.Join(vals, ",") != "pr:1,pr:3" {
+		t.Fatalf("picked = %v, want [pr:1 pr:3] — the two on main, the reference having expanded", vals)
+	}
+}

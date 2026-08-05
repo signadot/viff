@@ -625,6 +625,8 @@ action:
     repo:     !get-path { system: git, kind: repo, id: $subject.value.head }
     branch:   !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
     branches: !list-paths { system: git, kind: repo, id: "*", path: branch }
+    # …and a predicate narrows the walk to the ones that look like this (list only)
+    green:    !list-paths { system: git, kind: repo, id: "*", value: {state: green}, path: branch }
     # the string form addresses an entity and stops there
     also:     !get-path "git:repo:$subject.value.head"
 ```
@@ -644,6 +646,14 @@ answers that question instead.
 | `system`, `kind` | always literal — no reference, no glob |
 | `id` | literal, a `$reference`, or (list only) a glob |
 | `path` | a kpath into the payload; wildcards are list-only. Omitted, you get the whole payload |
+| `value` | a payload predicate, **list only** — of the ids the address selects, the ones that look like this |
+
+`!get-path` refuses a `value` for the reason it refuses a globbing id: a predicate can name
+several, and an entity that is not there does not satisfy one — while one that is there might not
+either. On the list form a predicate is the *cheaper* read, because `id: "*"` already walks the
+whole kind and this is what narrows it. Neither form is a query that slides: both are answered
+from one snapshot at the causing commit, so a predicate is evaluated against the same world the
+rule was.
 
 The string form stops at the entity, because an id may itself contain dots and
 `"git:repo:abc.branch"` has no unambiguous split. Going deeper is the object form's `path:`.
