@@ -1,18 +1,30 @@
 # verse
 
-A small runtime for emergent SDLC flows on a dial of agentic autonomy. You install a
-*charter* of event-condition-action rules; the runtime reacts to changes in a shared,
-observable entity-verse and does the work with governed agents. Every reaction passes a
-gate — *auto*, *ask* (a human or agent approves), or *park* — so you set how much runs on
-its own, action by action, and the agents doing the work stay observable and steerable.
-Nobody authors the flow: it emerges from triggers reacting to state that other actions
-write, and you decide how much autonomy it runs with.
+A small runtime for governing SDLC work across systems you do not own, on a dial of agentic
+autonomy. You install a *charter* of event-condition-action rules; the runtime reacts to
+changes in a shared, observable entity-verse and does the work with governed agents. Every
+reaction passes a gate — *auto*, *ask* (a human or agent approves), or *park* — so you set how
+much runs on its own, action by action, and the agents doing the work stay observable and
+steerable.
 
 ```
 entity change ──▶ trigger matches ──▶ gate resolves ──▶ action fires
      ▲                                                       │
      └───────────── actions write entities ◀────────────────┘
 ```
+
+There is no orchestrator, and that is a consequence rather than a preference. A repository, a
+chat workspace, a colleague's afternoon: verse can *observe* these and *request* that they
+change, and it can do nothing else — it cannot hold them still. Sequencing the work would mean
+holding a position in a plan, and that position is a second claim about state verse does not
+own, wrong the moment the world moves between two steps. Reacting to what was last observed is
+what remains once that is admitted, and it is why the loop above closes through the store
+rather than through a scheduler.
+
+So the flow is not written down anywhere, because there is nowhere for it to live. It is
+*derived*: `verse flow show <subject>` assembles a subject's shape per request from the charter
+(what may yet happen), the mirror (what already did) and the live registry (what is running).
+What you author is the rules, and how much autonomy each of them runs with.
 
 ## Quick start
 

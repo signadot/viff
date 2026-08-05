@@ -8,12 +8,18 @@ the territory.
 
 ## What it is
 
-Verse is a small runtime for SDLC as emergent flows on a dial of agentic autonomy. You don't
-author a workflow. You install a *charter* of trigger rules; the runtime reacts to changes in
-a shared, observable entity store and does the work with governed agent processes. Every
-reaction passes a gate — *auto*, *ask*, or *park* — so how much runs on its own is turned up
-or down per action. The flow is not written down anywhere; it emerges from triggers reacting
-to state that other actions write.
+Verse is a small runtime for governing SDLC work across systems it does not own, on a dial of
+agentic autonomy. You install a *charter* of trigger rules; the runtime reacts to changes in a
+shared, observable entity store and does the work with governed agent processes. Every reaction
+passes a gate — *auto*, *ask*, or *park* — so how much runs on its own is turned up or down per
+action.
+
+You don't author a workflow, and that is a constraint before it is a feature. A repository, a
+chat workspace, a colleague's afternoon: verse can *observe* these and *request* that they
+change, and it can do nothing else. Sequencing the work would mean holding a position in a
+plan, and a position is a second claim about state verse does not own — wrong the moment the
+world moves between two steps. Reacting to what was last observed is what remains once that is
+admitted, and everything below follows from it.
 
 The entire system is one feedback loop:
 
@@ -51,9 +57,11 @@ A *process* is a governed unit of agentic work, hosted by a runtime, observable 
 steerable. Processes are themselves entities (`process:instance:<id>`), so the fleet's
 lifecycle is visible by watching the store.
 
-Two derived notions matter. A *subject* is the entity a piece of work is about — the PR
-moving through its lifecycle. A *flow* is a subject's in-flight processes, steerable as a
-unit.
+Two derived notions matter, and *derived* is meant literally — neither is a record anything
+keeps. A *subject* is the entity a piece of work is about, the PR moving through its lifecycle;
+it is what a rule's condition selects, and it is half of nearly every identity in the system —
+a spawn's id, a gate's question, a resolver's instance. A *flow* is a subject's in-flight
+processes, steerable as a unit, and it is assembled per request rather than maintained.
 
 ## Components
 
@@ -138,7 +146,11 @@ A trigger's action is a declarative `patch`/`spawn`, not a callback. The charter
 inspectable, diffable, and installable at runtime, and the "when" is kept small because that
 is where complexity hides.
 
-### No orchestrator — flows emerge
+### No orchestrator, because there is nowhere to put one
+
+This is the one item in this section that was not decided. It is what [above](#what-it-is)
+leaves behind: verse observes and requests, so there is no position in a plan for it to hold,
+and an orchestrator is a component with nowhere to live rather than a component left out.
 
 Nothing sequences "review, then reviewed." The review process completing becomes a
 `process:instance` change, and either the trigger's own `onDone` hook or a separate
@@ -146,6 +158,11 @@ Nothing sequences "review, then reviewed." The review process completing becomes
 shared state, which is why the model scales to many concurrent, independent flows with no
 central plan. Triggers must opt in to `process:*` matches, so the loop cannot ignite on its
 own machinery.
+
+What follows from having no plan to read is that a flow is *derived*, never stored:
+`verse flow show <subject>` assembles a subject's shape per request by joining the charter
+(what may yet happen), the mirror (what already did) and the live registry (what is running).
+No one of the three is sufficient, which is why none of them is the plan.
 
 ### Processes are entities
 
