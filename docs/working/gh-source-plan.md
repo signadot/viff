@@ -158,12 +158,20 @@ The delivery half, owned by the source, as the git hook and the Slack and Linear
 - **The hint names the thing, not its container** — this is the first source where that pays,
   because GitHub answers a single issue in one request. Which is what makes the targeted cover of
   step 1 load-bearing rather than theoretical.
-- Where no webhook is available, `GET /repos/{o}/{r}/events` at the `X-Poll-Interval` GitHub asks
-  for is a hint stream with about five minutes of delay, and it stays inside the source.
+- ~~Where no webhook is available, `GET /repos/{o}/{r}/events` at the `X-Poll-Interval` GitHub
+  asks for is a hint stream with about five minutes of delay, and it stays inside the source.~~
+  **Deferred, and named rather than dropped.** verse's resync net already converges a repository
+  with no hook; what the events poller buys is latency, and it costs a background loop, a cursor
+  over deliveries already seen, and a request per repository per poll — against a budget this
+  connector is already short of. The trigger that would revive it: a repository somebody drives
+  where they cannot install a hook and a minute of latency is too much.
 
-**Proves:** an unsigned or wrongly-signed delivery is refused; a valid one hints exactly one ref;
-an unplaceable one hints nothing, which is a full pass; and no delivery ever writes an entity —
-the law, asserted rather than assumed, as the other three connectors assert it.
+**Proves:** an unsigned or wrongly-signed delivery is refused, and so is every delivery when no
+secret is configured; a valid one hints exactly one ref, including the `issue_comment` on a pull
+request that arrives looking like an issue; a delivery naming no repository hints nothing, which
+is a full pass, while one naming another source's repository hints not at all; no delivery ever
+writes an entity — asserted by sending a forged title and reading GitHub's own back; and a
+targeted run pass covers that run alone and lands its state on the pull request it ran for.
 
 ### 5. Conditional requests, and the budget
 

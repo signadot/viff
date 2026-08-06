@@ -193,6 +193,29 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.reply(w, r, map[string]any{"object": map[string]any{"sha": repo.sha}})
+	case len(rest) == 3 && rest[0] == "actions" && rest[1] == "runs":
+		id, _ := strconv.ParseInt(rest[2], 10, 64)
+		var found *fakeRun
+		for _, x := range repo.runs {
+			if x.id == id {
+				found = x
+			}
+		}
+		if found == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		f.reply(w, r, f.renderRun(found))
+	case len(rest) == 3 && rest[0] == "commits" && rest[2] == "pulls":
+		// The pull requests whose head is this commit, which is the one question a finished
+		// run raises: whose proposal was that.
+		out := []map[string]any{}
+		for _, i := range repo.items {
+			if i.pull && i.headSHA == rest[1] {
+				out = append(out, i.render(true))
+			}
+		}
+		f.reply(w, r, out)
 	case len(rest) == 2 && rest[0] == "actions" && rest[1] == "runs":
 		f.reply(w, r, map[string]any{
 			"total_count":   len(repo.runs),
@@ -300,20 +323,26 @@ func (f *fakeGitHub) listRuns(repo *fakeRepo, r *http.Request) []map[string]any 
 	from, to := pageBounds(r, len(runs))
 	out := make([]map[string]any, 0, to-from)
 	for _, x := range runs[from:to] {
-		m := map[string]any{
-			"id": x.id, "name": x.name, "event": "push", "status": x.status,
-			"head_branch": "main", "head_sha": x.headSHA,
-			"run_number": int(x.id), "run_attempt": 1,
-			"html_url":   "https://github.com/x/y/actions/runs/" + strconv.FormatInt(x.id, 10),
-			"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:01:00Z",
-			"actor": map[string]any{"login": "ana"},
-		}
-		if x.conclusion != "" {
-			m["conclusion"] = x.conclusion
-		}
-		out = append(out, m)
+		out = append(out, f.renderRun(x))
 	}
 	return out
+}
+
+// renderRun is shared by the listing and the single-run read, so the two cannot disagree about
+// the shape of a run — which is exactly how a targeted pass comes to differ from a full one.
+func (f *fakeGitHub) renderRun(x *fakeRun) map[string]any {
+	m := map[string]any{
+		"id": x.id, "name": x.name, "event": "push", "status": x.status,
+		"head_branch": "main", "head_sha": x.headSHA,
+		"run_number": int(x.id), "run_attempt": 1,
+		"html_url":   "https://github.com/x/y/actions/runs/" + strconv.FormatInt(x.id, 10),
+		"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:01:00Z",
+		"actor": map[string]any{"login": "ana"},
+	}
+	if x.conclusion != "" {
+		m["conclusion"] = x.conclusion
+	}
+	return m
 }
 
 // pageBounds reads per_page and page the way the API does.

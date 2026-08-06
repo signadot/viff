@@ -220,6 +220,9 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 	if item, ok := g.targetItem(ref); ok {
 		return g.reflectItem(ctx, item)
 	}
+	if repo, id, ok := g.targetRun(ref); ok {
+		return g.reflectRun(ctx, repo, id)
+	}
 	var out source.Reflection
 	for _, repo := range g.targetRepos(ref) {
 		rn, err := g.reflectRepo(ctx, repo)

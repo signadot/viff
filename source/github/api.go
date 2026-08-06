@@ -589,3 +589,14 @@ func (a *api) graphqlURL() string {
 	}
 	return a.base + "/graphql"
 }
+
+// pullsForSHA lists the open pull requests whose head is this commit — `GET
+// /repos/{o}/{r}/commits/{sha}/pulls`, which is one request and answers the only question a
+// finished run raises: whose proposal was that.
+func (a *api) pullsForSHA(ctx context.Context, repo, sha string) ([]pull, error) {
+	var out []pull
+	if err := a.get(ctx, "/repos/"+repo+"/commits/"+sha+"/pulls", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
