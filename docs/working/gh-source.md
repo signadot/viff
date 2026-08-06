@@ -18,6 +18,24 @@ was argued about, what CI said. Those are different systems in the vocabulary's 
 can be installed against the same repository and the disjointness check has nothing to say
 about it — `git:*` and `github:*` are disjoint on the first segment.
 
+> The github source reflects what GitHub **knows** about a repository; the git source reflects
+> what the repository **contains**.
+
+The default branch and where it points is the one fact that is genuinely both, and it is on
+`github:repo` for a reason worth stating: taking it from GitHub costs one un-paginated call,
+taking it from git costs a deployed mirror. **Refs and commits stay on the far side of that
+line**, and the reason is budget rather than taste. A git source gets them in one `fetch` and a
+`for-each-ref`, at no API cost and cursorlessly — comparing shas against the stored entities IS
+the diff — while through the API they are the highest-cardinality paginated reads in the
+repository. The residual has the measurement: one repo reflected as 3,377 entities, 3,000 of them
+`refs/pull/*`. Paying a rate limit for what git gives away free is the wrong trade at one
+repository and impossible at many.
+
+So a git source is not a prerequisite for anything here — building happens on a runner, which
+clones for itself — it is the *cheap* way to watch ref-level history. A repository whose branches
+and tags a charter reacts to wants one; a repository where the question is only "where is main"
+needs nothing but `github:repo`, which is most of them.
+
 They are also not joined by verse. A PR carries its head sha; a `git:commit:<repo>/<sha>` is
 addressed by the same sha; a charter that wants "the commit this PR is proposing" reads both
 and joins on the field. That is what [`scripts/lineage.sh`](../../scripts/lineage.sh) already
@@ -50,7 +68,7 @@ default and is **the operator's to choose** (`sourced github -system …`) — s
 
 | entity | payload |
 |---|---|
-| `github:repo:<org>/<name>` | `repo, org, name, private, archived, fork, defaultBranch`, and `description, topics, homepage` |
+| `github:repo:<org>/<name>` | `repo, org, name, private, archived, fork, defaultBranch, defaultBranchSha, cloneUrl, sshUrl`, and `description, topics, homepage` |
 | `github:issue:<org>/<name>#<n>` | `repo, number, title, state, author, url, createdAt, updatedAt`, and `stateReason, assignees, labels, milestone, comments, closedAt, body` |
 | `github:pr:<org>/<name>#<n>` | `repo, number, title, state, draft, author, base, head, headSha, url, createdAt, updatedAt`, and `merged, mergedAt, mergeable, reviewDecision, checks, labels, assignees, comments, closedAt, body` |
 | `github:discussion:<org>/<name>#<n>` | `repo, number, title, category, state, answered, author, url, createdAt, updatedAt`, and `comments, body` |
@@ -75,6 +93,14 @@ The number space stays shared and the kinds keep them apart.
 `github:discussion:org/repo#1` are different things with the same number. That is fine — a ref
 is (system, kind, id) — and it is worth saying out loud because `#1` alone reads like an
 identifier and is not one.
+
+**`cloneUrl` and `sshUrl` are the join, and are not decoration.** A git source's repo id is the
+operator's (`AddRepo` defaults to the directory's base name, `AddMirror` to the remote's less
+`.git`), so `git:head:verse` and `github:repo:signadot/verse` do not line up and nothing should
+make them: a source inventing a cross-system key is what this design forbids. The remote a mirror
+was cloned *from* is the one field that identifies the same repository across both slices, so a
+charter that wants to pair them joins on it — and the pairing is a derived entity, `(rule,
+subject)`, exactly as `lineage.sh` does it.
 
 **Match `state` and `conclusion`, never a display string.** This is Linear's `stateType`
 lesson, and GitHub gives it for free: `state` is `open`/`closed`, a run's `conclusion` is

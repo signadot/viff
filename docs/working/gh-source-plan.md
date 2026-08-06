@@ -49,9 +49,18 @@ Six steps. Each leaves the tree green; 1–3 are a package with a fake and no de
 it deployable, 6 is the drive. Nothing in `source/`, `versed/` or the CLI changes at any point —
 that is the seam's claim, and this is the third connector that gets to test it.
 
-### 1. The read, its covers, and the two kinds that share a number space
+### 1. The repo, and the two kinds that share a number space
 
-`source/github/` — the package, its API client, and `Reflect` over issues and pull requests.
+`source/github/` — the package, its API client, and `Reflect` over the repository, its issues
+and its pull requests.
+
+**Three kinds, not two.** `github:repo:<org>/<name>` moved here from step 2 because it is what
+makes a github-only deployment useful standing alone: it carries `defaultBranch` and its head
+sha, which for a repository nobody watches at ref level is the whole of the git-shaped fact
+anyone wants, and it costs one un-paginated call plus one for the sha. It is also cheap in every
+other sense — one entity, a whole-entity cover, no window, no cursor, no paging — and it is the
+natural byproduct of the credential check this step needs anyway. Its `cloneUrl` is the field a
+charter joins to a git source on; see the note.
 
 - **`-system`, defaulting to `github`.** The connector's `System()` is a flag rather than a
   constant, so a deployer who wants a slice of their own has one and owes nobody a disjointness
@@ -81,17 +90,22 @@ that is the seam's claim, and this is the third connector that gets to test it.
 - **Startup checks the credential**, as Slack's `auth.test` and Linear's `teams` do: a bad token
   is a task that does not start, not a source that installs clean and fails once a minute.
 
+**`Owns()` grows with the steps, and must not run ahead of them.** A source claims what it
+writes and no more: three claims per repo here, four after step 2, five after step 3. Claiming a
+kind this build does not reflect refuses a neighbouring install over entities nobody is writing,
+and the git source has a test for exactly that invariant (`TestGitOwnsCoversWhatItReflects`). A
+registration installed mid-way needs re-installing to pick up the later claims.
+
 **Proves:** a targeted pass covers `{repo, number}` and tombstones nothing else — the
 mass-deletion test, written first and watched fail; two passes over one fixture write nothing on
 the second; an issue that closes appears in the settled half with `state: closed` and is
 tombstoned when it ages out; `-max-open` exceeded is an error and writes nothing; a PR never
 appears as an issue.
 
-### 2. The repo entity, and Actions runs
+### 2. Actions runs
 
-The window-only kind, and the anchor entity.
+The window-only kind, alone now that the repo entity has moved to step 1.
 
-- `github:repo:<org>/<name>` — one entity, whole-entity cover.
 - `github:run:<org>/<name>/<id>` — the last `-runs`, covered by `{repo}`, tombstoned as they
   slide. No live/settled split: a queued run becomes a completed run in minutes and a completed
   one is never interesting again, and since runs are ordered by creation a run in flight is
@@ -170,6 +184,13 @@ The subcommand, the manifest, the docs, and the only step anybody can see.
 - `cmd/sourced/github.go`, `deploy/github-source` (off by default, its own knob), the rows in
   [reference/sourced.md](../reference/sourced.md), and the index edits.
 - `GITHUB_TOKEN` and `GITHUB_WEBHOOK_SECRET` from the environment, never a flag.
+
+**The join needs a git source from somewhere**, and that is a decision rather than a detail.
+`lineage.sh` correlates a commit, a PR and a release; this connector supplies the PR and the
+release, and `git:commit:<repo>/<sha>` is the other half. Runners clone for themselves, so
+nothing else in a deployment requires a git source — which means the drive has to deploy one for
+the repository it correlates, or demonstrate the two-system half and say so. Worth settling
+before the step rather than discovering at it.
 
 **Proves:** the whole thing, against a real repository — and the acceptance test is the one the
 note names: [`scripts/lineage.sh`](../../scripts/lineage.sh) runs with its `lingh:` seeding
