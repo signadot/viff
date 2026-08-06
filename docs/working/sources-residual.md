@@ -229,18 +229,27 @@ What a shared entity would need on top of it, in the order the trouble arrives:
   each other forever — the same "differs on every pass, fires its triggers every time" failure
   the merge rule was written to avoid, arriving from the other side.
 - **Only the tombstone is genuinely contended**, and that is where the precondition earns its
-  keep: the last owner out deletes, and nobody else may. The gap is that the match grammar can
-  say "OPS is absent" (`!not {OPS: null}`) but not "no key other than mine", so either the
+  keep: the last owner out deletes, and nobody else may. ~~The gap is that the match grammar
+  can say "OPS is absent" (`!not {OPS: null}`) but not "no key other than mine", so either the
   condition names a known set — which no source has — or the entity carries a **count** and the
   delete is `Value: nil, When: [{At: …owners.n, Pattern: 0}]`, with CAS making the decrement
-  safe. A count is expressible with what exists; "no other keys" is not.
+  safe. A count is expressible with what exists; "no other keys" is not.~~ **Wrong, and no
+  count is needed**: `!all.or [!field "ENG", !irtype null]` says "every key here is mine or a
+  tombstone", which is the last-owner-out question exactly. Run against the store in
+  [shared-ownership.md](shared-ownership.md#what-is-already-true-and-what-was-not), which also
+  has the trap — the obvious `!all.field "ENG"` passes over a hand-built payload and refuses
+  every delete against a real store, because logd keeps a removed key as a null leaf.
 - **And the install check would have to admit it.** `owns` proves single-writership; a shared
   entity is by construction not that. It wants a second declaration — *these I share, by slot* —
   or it lands under `--allow-overlap`, where the safety comes from the write discipline instead
   of from a proof, which is exactly the thing the flag is supposed to warn about.
 
 Nothing here is built, and it is a change to converge's contract rather than to a connector, so
-it is not something the Linear source should do on its own. The cheap version, if projects are
+it is not something the Linear source should do on its own. [shared-ownership.md](shared-ownership.md)
+takes the four items above further: a claim that is a `Path` rather than a `Ref`, which makes
+sharing single-writership at a deeper address rather than an exception to it.
+
+The cheap version, if projects are
 wanted before any of that: reflect them under **no cover** — the way git carries commits — so
 each source writes its slot and nothing ever tombstones. That costs a husk per project that
 leaves every team, and buys the entity today.
