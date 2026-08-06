@@ -14,11 +14,10 @@ and every claim is an address. `github:project:*` is the one kind that needs a s
 shared-ownership work was argued *from* GitHub and got used by Linear — that is not a
 prerequisite relationship, and treating it as one would hold this behind work it does not need.
 
-## Before anything: the note is stale in one place
+## Before anything: the note was stale in one place — done
 
-`gh-source.md:84` spells `owns` as a list of ref globs, which stopped parsing when a claim became
-a document. Every claim in the note wants `{ref: "github:issue:signadot/verse#*"}`. One edit, and
-it goes first so nobody builds from the old spelling.
+`gh-source.md` spelled `owns` as a list of ref globs, which stopped parsing when a claim became a
+document. Fixed in place, so nobody builds from the old spelling.
 
 ## Two lessons from the last six commits that this connector will meet
 
@@ -54,6 +53,19 @@ that is the seam's claim, and this is the third connector that gets to test it.
 
 `source/github/` — the package, its API client, and `Reflect` over issues and pull requests.
 
+- **`-system`, defaulting to `github`.** The connector's `System()` is a flag rather than a
+  constant, so a deployer who wants a slice of their own has one and owes nobody a disjointness
+  proof, while the default keeps one vocabulary and one watched subtree. It costs a few lines
+  here and is easiest to carry from the start, because every claim prefix and every cover is
+  spelled from it. See [one slice or several](gh-source.md#one-slice-or-several).
+- **The client carries ETags from the beginning**, rather than waiting for step 5. That is a
+  reorder from the note's own advice and the reason is scale: at four surfaces and a one-minute
+  resync the note computes 240 requests/hour/repo, and this step's read is nearer six requests a
+  pass, so a PAT's 5,000/hour is spent somewhere around a dozen repositories. With 304s not
+  counting against the primary limit a quiet repo costs nothing, which is what makes more than a
+  handful possible at all. Conditional requests are a transport concern and cheaper to build in
+  than to retrofit around a client that never had a cache; what stays in step 5 is the
+  measurement, the throttle, and the decision the numbers inform.
 - **Two covers per kind**: `{repo, state: open}` complete, `{repo, state: closed}` a window of
   the most recent `-settled`.
 - **Two reads per pass**: the live set to exhaustion, and everything updated since a high-water
@@ -131,7 +143,9 @@ the law, asserted rather than assumed, as the other three connectors assert it.
 
 ### 5. Conditional requests, and the budget
 
-The optimisation, last, because the pass must be correct without it.
+The measurement, and the throttle. The cache itself arrives with the client in step 1 — see
+there for why the note's ordering did not survive contact with more than a handful of repos —
+so what is left here is proving it behaves and finding out what it bought.
 
 - An ETag per endpoint, `If-None-Match`, and a 304 answered from the last successful reflection.
   GitHub documents a 304 as not counting against the primary rate limit, which is what makes a

@@ -44,7 +44,9 @@ Two things make this connector worth building rather than merely possible:
 
 ## The vocabulary
 
-Five kinds, all repo-scoped, spelled the way GitHub spells them:
+Five kinds, all repo-scoped, spelled the way GitHub spells them. The system is `github` by
+default and is **the operator's to choose** (`sourced github -system …`) — see
+[one slice or several](#one-slice-or-several).
 
 | entity | payload |
 |---|---|
@@ -109,6 +111,41 @@ that a glob would weld shut. See [what is not reflected](#what-is-not-reflected-
 An **org-wide** source is the same five with `<org>/*` in place of `<org>/<name>`. It is
 correctly refused beside a per-repo source in the same org, since one id prefix prefixes the
 other, and that refusal is right: they would each tombstone what the other reflected.
+
+## One slice or several
+
+A source is deployed, and more than one of them will be: different credentials, different
+budgets, different networks, and a partition drawn by whoever runs them — by which repos are
+busy, or big, or reachable — which has no reason to line up with how GitHub organises itself.
+
+**Two deployments over one `github` is the ordinary case and needs nothing new.** It is what git
+already does: many sources, one slice, kept apart by claims. Nobody writes those claims by hand
+— `Owns()` is computed from the source's own `-repo` set and an install with no `owns` takes
+what the probe reported — so re-partitioning is a flag change and a re-install rather than a
+document to maintain.
+
+What it does cost is an ordered dance: a repo moving between deployments must be released by one
+before the other can claim it, or the install is refused. That refusal is correct — it is two
+writers on one slice — but the boundary being moved is an operational one, and paying for it in
+GitHub's vocabulary is a real friction rather than an imagined one.
+
+**So the system is a flag, defaulting to `github`.** A deployer who wants no coordination at all
+runs `-system github-internal` and owns a slice of their own; two systems are disjoint on the
+first segment, so there is nothing to prove and nothing to release. A deployer who joins the
+default keeps `github:pr:org/repo#42`, one watched subtree, and charters that never name a
+deployment.
+
+The cost of separating is then paid by whoever chose it, in their own charters, rather than by
+everyone forever — which is the whole reason this is a flag and not the shape. **A charter
+cannot glob a system**: it names the subtree to watch and the set to list, so it must be a
+literal (`trigger/match.go`). Every rule about a separated slice names it. Mandating a
+per-deployment system would make that the tax on every GitHub charter ever written; offering it
+makes it a trade someone takes knowingly.
+
+It is also the answer to more than one GitHub **instance**. `org/repo#42` is unique within one
+host and not across two, so a GitHub Enterprise Server beside github.com is genuinely a second
+world rather than a second deployment — and a system of its own says so, with no convention to
+learn and no `/` in a name that is a route segment.
 
 ## The four surfaces are not four of the same thing
 
@@ -402,6 +439,16 @@ something; the webhook second; the ETag cache last, because it is an optimisatio
 must be correct without it.
 
 ## Open questions
+
+- **When does a charter need to glob a system?** Not yet, and the trade above is why: a
+  separated slice is opt-in, so the rules that name one are written by the person who separated
+  it. It becomes a thing the first time somebody wants one rule over several GitHub deployments
+  — an org-wide policy charter across slices that were split for operational reasons, which is
+  exactly the shape a big install grows into. The limitation is not incidental: `system` names
+  the subtree a watch is established on (`WatchSubtree(system, kind)`), so globbing it means a
+  rule watching several subtrees, which is a change to how a trigger subscribes rather than to
+  the match grammar. Cheap to want, not cheap to build, and worth doing when it is wanted rather
+  than in anticipation.
 
 - **Do comments want to be entities?** The first cut says no, on the Slack argument: a comment
   stream is an unbounded event stream and would want a window, and the SDLC facts are on the
