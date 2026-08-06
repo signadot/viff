@@ -263,10 +263,8 @@ func TestReflectionCheckRefusals(t *testing.T) {
 		{"entity with no id", source.Reflection{
 			Entities: []entity.Entity{{Ref: ref("x", "a", "")}},
 		}},
-		// Designed and not honoured yet, refused rather than ignored — converge still replaces
-		// whole payloads, so a slot cover would delete every other owner of what it matched.
-		{"cover narrowed to a slot", source.Reflection{
-			Covers: []entity.Pattern{{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}},
+		{"cover with an empty slot segment", source.Reflection{
+			Covers: []entity.Pattern{{System: "x", Kind: "a", Slot: []string{"owners", ""}}},
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -280,15 +278,43 @@ func TestReflectionCheckRefusals(t *testing.T) {
 	if err := ok.Check("x"); err != nil {
 		t.Fatalf("a well-formed reflection should pass: %v", err)
 	}
-	// The refusal has to say what is missing rather than that the field is wrong: the vocabulary
-	// is right, converge has not caught up with it, and whoever wrote the cover is reading this
-	// message to find out which.
-	err := source.Reflection{Covers: []entity.Pattern{
-		{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}}}.Check("x")
-	for _, want := range []string{"owners.ENG", "does not honour that yet", "whole payloads"} {
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Fatalf("the slot refusal does not say %q: %v", want, err)
+	// And a slot cover is well-formed: converge honours it.
+	slotted := source.Reflection{Covers: []entity.Pattern{
+		{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}}}
+	if err := slotted.Check("x"); err != nil {
+		t.Fatalf("a slot cover should be accepted: %v", err)
+	}
+}
+
+// A source whose covers say both "complete for this entity" and "complete for one slot of it"
+// has contradicted itself, and BOTH readings destroy something: taking the whole spells nulls
+// over the other owners, taking the slot leaves what the source meant to tombstone standing
+// forever. So the pass fails, and nothing is written.
+func TestCoveringAnEntityWholeAndBySlotIsRefused(t *testing.T) {
+	store := entitytest.Store(t)
+	shared := ref("x", "project", "p1")
+	entitytest.Set(t, store, shared, entity.Obj{"owners": map[string]any{"ENG": map[string]any{}}}.Payload())
+
+	rn := source.Reflection{Covers: []entity.Pattern{
+		cover("x", "project"),
+		{System: "x", Kind: "project", Slot: []string{"owners", "ENG"}},
+	}}
+	rn.Add(shared, entity.Obj{"owners": map[string]any{"ENG": map[string]any{"n": 1}}})
+
+	rf := source.NewReflector(&fakeSource{system: "x", answer: func() source.Reflection { return rn }}, store, 0)
+	err := rf.Reconcile(context.Background(), entity.Ref{})
+	if err == nil {
+		t.Fatal("a contradiction between covers should fail the pass")
+	}
+	for _, want := range []string{"whole", "slot"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal does not say %q: %v", want, err)
 		}
+	}
+	// Nothing written: the entity still holds exactly what it did.
+	got, ok, _ := store.Get(shared)
+	if !ok || len(entity.Fields(entity.Get(got.Payload, "owners"))) != 1 {
+		t.Fatalf("a refused pass wrote something: %v", got.Payload)
 	}
 }
 
@@ -386,5 +412,185 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 	}
 	if _, ok, _ := counting.Get(entity.Ref{System: "demo", Kind: "thing", ID: "19"}); ok {
 		t.Fatal("thing:19 left the answer and was not tombstoned")
+	}
+}
+
+// TWO SOURCES, ONE ENTITY, AND A PASS COUNT THAT STOPS GROWING. This is the failure the whole
+// slot design exists not to have, and it is asserted as a count rather than as an equality
+// because the damage is unbounded rather than wrong-once: with a whole-payload replace each
+// source spells a null over the other's slot, the other restores it, and every pass after that
+// commits — forever, at the resync interval, with no error anywhere and both sources reporting
+// success. Nothing in verse would catch it; the install-time disjointness proof is the only
+// protection there is, and this is what makes that proof mean something.
+//
+// Wrote counts writes ISSUED, not commits produced, so asserting zero is stronger than counting
+// commits: it says converge did not even ask.
+func TestTwoSourcesShareAnEntityWithoutRewritingEachOther(t *testing.T) {
+	store := entitytest.Store(t)
+	shared := ref("x", "project", "p1")
+
+	// Each source answers with a whole-entity-shaped payload carrying only its own slot, and a
+	// cover that says which slot that is. Neither has heard of the other.
+	owner := func(team, name string) *source.Reflector {
+		src := &fakeSource{system: "x", answer: func() source.Reflection {
+			rn := source.Reflection{Covers: []entity.Pattern{
+				{System: "x", Kind: "project", Slot: []string{"owners", team}},
+			}}
+			rn.Add(shared, entity.Obj{"owners": map[string]any{team: map[string]any{"name": name}}})
+			return rn
+		}}
+		return source.NewReflector(src, store, 0)
+	}
+	eng, ops := owner("ENG", "Migration"), owner("OPS", "Migration")
+
+	wrote := func(rf *source.Reflector) int {
+		n := 0
+		rf.OnPass(func(p source.Pass) {
+			if p.Err != nil {
+				t.Fatalf("pass failed: %v", p.Err)
+			}
+			n = p.Wrote
+		})
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	if got := wrote(eng); got != 1 {
+		t.Fatalf("ENG's first pass wrote %d, want 1", got)
+	}
+	if got := wrote(ops); got != 1 {
+		t.Fatalf("OPS's first pass wrote %d, want 1", got)
+	}
+	// Both slots stand, and neither source deleted the other's.
+	owners := entity.Fields(entity.Get(mustGet(t, store, shared), "owners"))
+	if len(owners) != 2 || owners["ENG"] == nil || owners["OPS"] == nil {
+		t.Fatalf("one source overwrote the other: %v", owners)
+	}
+	// And now the part that would run forever: four alternating passes, nothing to do in any.
+	for i := 0; i < 2; i++ {
+		if got := wrote(eng); got != 0 {
+			t.Fatalf("ENG rewrote %d after OPS's pass — the comparison is not at the slot", got)
+		}
+		if got := wrote(ops); got != 0 {
+			t.Fatalf("OPS rewrote %d after ENG's pass — the comparison is not at the slot", got)
+		}
+	}
+}
+
+// The last owner out takes the entity, and nobody else may. The delete is the one contended
+// write in the design — every other one is at a path a single source owns — so it is
+// conditional, and the condition has to tolerate the tombstone logd leaves where a departed
+// sibling's key was.
+func TestTheLastOwnerOutTakesTheEntity(t *testing.T) {
+	store := entitytest.Store(t)
+	shared := ref("x", "project", "p1")
+
+	// A source that reflects its slot only while `has` says so; when it stops, its cover still
+	// claims the slot, which is what makes the absence a tombstone rather than a silence.
+	owner := func(team string, has *bool) *source.Reflector {
+		src := &fakeSource{system: "x", answer: func() source.Reflection {
+			rn := source.Reflection{Covers: []entity.Pattern{
+				{System: "x", Kind: "project", Slot: []string{"owners", team}},
+			}}
+			if *has {
+				rn.Add(shared, entity.Obj{"owners": map[string]any{team: map[string]any{"n": 1}}})
+			}
+			return rn
+		}}
+		return source.NewReflector(src, store, 0)
+	}
+	engHas, opsHas := true, true
+	eng, ops := owner("ENG", &engHas), owner("OPS", &opsHas)
+	pass := func(rf *source.Reflector) {
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pass(eng)
+	pass(ops)
+
+	// ENG leaves. Its slot goes; the entity stays, because OPS is still in it.
+	engHas = false
+	pass(eng)
+	owners := entity.Fields(entity.Get(mustGet(t, store, shared), "owners"))
+	if owners["ENG"] != nil {
+		t.Fatalf("ENG's slot survived its own tombstone: %v", owners)
+	}
+	if owners["OPS"] == nil {
+		t.Fatalf("ENG's departure took OPS with it: %v", owners)
+	}
+
+	// OPS leaves too, and now there is nobody left to hold the entity up.
+	opsHas = false
+	pass(ops)
+	if _, ok, err := store.Get(shared); err != nil || ok {
+		t.Fatalf("the last owner left and the entity stands: ok=%v err=%v", ok, err)
+	}
+}
+
+func mustGet(t *testing.T, s entity.Store, r entity.Ref) entity.Payload {
+	t.Helper()
+	e, ok, err := s.Get(r)
+	if err != nil || !ok {
+		t.Fatalf("get %s: ok=%v err=%v", r, ok, err)
+	}
+	return e.Payload
+}
+
+// A slot is REPLACED, not merged: a field the source stops reporting inside its own slot goes
+// away, and a sibling slot is not touched to do it.
+//
+// This is the half of the whole-payload write that actually hurts, and it is not the half it
+// looks like. A replace at the entity root spells its nulls at the TOP level only (withRemovals),
+// and the top level of a shared entity is the container both owners write under — so a root
+// write merges deeply and leaves the other owner's slot standing. What it does NOT do is remove
+// anything inside the writer's own slot, so a field that has gone away stands forever, the
+// entity differs from the answer on every pass, and every trigger over it fires each time.
+func TestASlotIsReplacedNotMerged(t *testing.T) {
+	store := entitytest.Store(t)
+	shared := ref("x", "project", "p1")
+	entitytest.Set(t, store, shared, entity.Obj{"owners": map[string]any{
+		"OPS": map[string]any{"name": "theirs"},
+	}}.Payload())
+
+	fields := map[string]any{"name": "Migration", "lead": "ana"}
+	src := &fakeSource{system: "x", answer: func() source.Reflection {
+		rn := source.Reflection{Covers: []entity.Pattern{
+			{System: "x", Kind: "project", Slot: []string{"owners", "ENG"}},
+		}}
+		rn.Add(shared, entity.Obj{"owners": map[string]any{"ENG": fields}})
+		return rn
+	}}
+	rf := source.NewReflector(src, store, 0)
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The lead goes away upstream.
+	fields = map[string]any{"name": "Migration"}
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	eng := entity.Fields(entity.Get(entity.Get(mustGet(t, store, shared), "owners"), "ENG"))
+	if _, still := eng["lead"]; still {
+		t.Fatalf("a field the source stopped reporting stands inside its slot: %v", eng)
+	}
+	if eng["name"] == nil {
+		t.Fatalf("the replace took what the source is still reporting: %v", eng)
+	}
+	ops := entity.Fields(entity.Get(entity.Get(mustGet(t, store, shared), "owners"), "OPS"))
+	if ops["name"] == nil {
+		t.Fatalf("replacing ENG's slot reached into OPS's: %v", ops)
+	}
+	// And the pass that changes nothing writes nothing — the same entity, compared at the slot.
+	n := -1
+	rf.OnPass(func(p source.Pass) { n = p.Wrote })
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("a settled slot wrote %d", n)
 	}
 }

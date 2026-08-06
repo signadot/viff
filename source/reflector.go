@@ -85,21 +85,14 @@ func (r Reflection) Check(system string) error {
 			return fmt.Errorf("reflection: cover over system %q carries op %q — a cover selects "+
 				"stored entities, which have no op", p.System, p.Op)
 		}
-		// A SLOT COVER IS DESIGNED AND NOT HONOURED YET, and it is refused rather than ignored
-		// for the reason a `dial-in` registration is: the failure of accepting it is silent and
-		// destructive. converge still writes a whole payload — a replace, spelling a null at
-		// every field the answer does not carry — so a source narrowing its cover to a slot
-		// would install clean, be proved disjoint from the entity's other owners, and then
-		// delete their slots on its first pass. That is `--allow-overlap`'s damage arriving
-		// through a claim the install PROVED, which is worse than not having slots at all.
-		//
-		// What is missing is converge writing, comparing and tombstoning at the slot
-		// (docs/working/gh-source/1-path-claim-plan.md, step 4). This refusal goes away with it.
-		if len(p.Slot) > 0 {
-			return fmt.Errorf("reflection: cover over %s:%s claims only the slot %s, and converge "+
-				"does not honour that yet — it still replaces whole payloads, so this cover would "+
-				"delete the other owners of every entity it matched",
-				p.System, p.Kind, strings.Join(p.Slot, "."))
+		// A slot cover claims only the value at a path. converge writes, compares and tombstones
+		// there and nowhere else, which is what lets two sources own two slots of one entity.
+		for _, seg := range p.Slot {
+			if seg == "" {
+				return fmt.Errorf("reflection: cover over %s:%s has an empty segment in its slot "+
+					"%q — a path segment is a field name, and an empty one addresses nothing",
+					p.System, p.Kind, strings.Join(p.Slot, "."))
+			}
 		}
 	}
 	for _, e := range r.Entities {
@@ -203,9 +196,18 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 	}
 	wrote := 0
 	current := rf.current(rn)
-	desired := make(map[entity.Ref]bool, len(rn.Entities))
+	// Keyed by PLACE rather than by ref, because a slot cover makes "this answer carried it" a
+	// question about a path inside an entity: a project whose ENG slot is in the answer must not
+	// have that slot tombstoned, and says nothing about anybody else's.
+	desired := make(map[string]bool, len(rn.Entities))
 	for _, e := range rn.Entities {
-		desired[e.Ref] = true
+		at, err := places(rn.Covers, e.Ref, e.Payload)
+		if err != nil {
+			return 0, err
+		}
+		for _, p := range at {
+			desired[p.String()] = true
+		}
 	}
 	for _, e := range rn.Entities {
 		// THE FENCE: a cancelled reflector stops WRITING, not merely stops looping.
@@ -228,35 +230,68 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		if err := ctx.Err(); err != nil {
 			return wrote, err
 		}
-		// Compared against the payload AS THE STORE WILL HOLD IT: a read strips null fields
-		// (they are how the log spells a tombstone), so comparing against the raw answer would
-		// make a source that writes one differ from itself on every pass.
 		cur, exists := current[e.Ref]
-		if exists && entity.Equal(cur, asStored(e.Payload)) {
-			continue
+		// Where this answer is authoritative for this entity: the whole of it when no cover
+		// claims a slot, which is every source in the tree, and one path per slot cover
+		// otherwise. An entity no cover matches at all is written whole and never tombstoned —
+		// git's commits, unchanged.
+		at, err := places(rn.Covers, e.Ref, e.Payload)
+		if err != nil {
+			return wrote, err
 		}
-		// NO PRECONDITION, and this is the ownership rule finally being spent rather than
-		// merely stated. A source is the single writer of its slice, so the compare-and-swap a
-		// Modify carries defends against a concurrent writer that does not exist — and it is
-		// not free: measured against a local logd, an unconditional patch runs at ~1500/second
-		// and does not slow as the document grows, while a conditional one runs at 3–24/second.
-		// That factor is what made a 700-entity first pass take a quarter of an hour, on a
-		// laptop as much as on a cluster.
-		//
-		// `cur` is what keeps it a REPLACE: a write merges at its path, so a field the source
-		// has stopped reporting goes away only because an explicit null is written at it. The
-		// List above is where cur comes from, in the same pass, from the only writer there is.
-		//
-		// What is given up is the last thing --allow-overlap warns about: two sources on one
-		// slice now race rather than retry. They were already tombstoning each other's
-		// entities, which is the louder half of the same problem.
-		if err := entity.ReplaceFrom(rf.store, e.Ref, cur, e.Payload); err != nil {
-			return wrote, fmt.Errorf("reflecting %s: %w", e.Ref, err)
+		if len(at) == 0 {
+			at = []entity.Path{e.Ref.At()}
 		}
-		wrote++
+		for _, p := range at {
+			// Compared AT THE PLACE, which is what stops two owners of one entity from rewriting
+			// each other forever: comparing whole payloads would make a change by OPS look like a
+			// change to ENG's answer, and each pass would write a value nobody asked to change.
+			//
+			// And against the payload AS THE STORE WILL HOLD IT: a read strips null fields (they
+			// are how the log spells a tombstone), so comparing against the raw answer would make
+			// a source that writes one differ from itself on every pass.
+			curAt, nextAt := valueAt(cur, p.Field), valueAt(e.Payload, p.Field)
+			if exists && entity.Equal(curAt, asStored(nextAt)) {
+				continue
+			}
+			// An answer that carries nothing at its own slot is saying the slot is empty, which
+			// is a removal and wants the same last-owner-out question a tombstone does.
+			if nextAt == nil && !p.IsEntity() {
+				if err := rf.removeAt(p); err != nil {
+					return wrote, err
+				}
+				wrote++
+				continue
+			}
+			// NO PRECONDITION, and this is the ownership rule finally being spent rather than
+			// merely stated. A source is the single writer of its slice, so the compare-and-swap
+			// a Modify carries defends against a concurrent writer that does not exist — and it
+			// is not free: measured against a local logd, an unconditional patch runs at
+			// ~1500/second and does not slow as the document grows, while a conditional one runs
+			// at 3–24/second. That factor is what made a 700-entity first pass take a quarter of
+			// an hour, on a laptop as much as on a cluster.
+			//
+			// It holds one level down too: two sources at DISJOINT paths of one entity are not
+			// two writers of anything, so there is still no update to lose. What makes that true
+			// is the install-time proof that their claims are apart, and nothing here re-checks
+			// it.
+			//
+			// `curAt` is what keeps it a REPLACE: a write merges at its path, so a field the
+			// source has stopped reporting goes away only because an explicit null is written at
+			// it. The List above is where it comes from, in the same pass, from the only writer
+			// there is — and scoped to the place, so a null can never land on a sibling slot.
+			if err := entity.ReplaceAt(rf.store, p, curAt, nextAt); err != nil {
+				return wrote, fmt.Errorf("reflecting %s: %w", p, err)
+			}
+			wrote++
+		}
 	}
-	for _, ref := range covered(rn.Covers, current) {
-		if desired[ref] {
+	tombstones, err := covered(rn.Covers, current)
+	if err != nil {
+		return wrote, err
+	}
+	for _, p := range tombstones {
+		if desired[p.String()] {
 			continue
 		}
 		// Fenced as the writes above are, and for the sharper reason: a tombstone written into
@@ -264,12 +299,92 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		if err := ctx.Err(); err != nil {
 			return wrote, err
 		}
-		if _, _, err := rf.store.Write(entity.Write{At: ref.At()}); err != nil {
-			return wrote, fmt.Errorf("tombstoning %s: %w", ref, err)
+		if err := rf.removeAt(p); err != nil {
+			return wrote, err
 		}
 		wrote++
 	}
 	return wrote, nil
+}
+
+// removeAt tombstones a place, and — when the place is a slot rather than a whole entity — asks
+// whether that was the last owner and takes the entity if it was.
+//
+// THE DELETE IS CONDITIONAL, and it is the only contended write in the whole design. Every
+// other write here is at a path one source owns alone; this one is about the entity, which
+// nobody owns alone. The precondition asks the container "is every key here mine, or a
+// tombstone" — and the tombstone arm is not optional, because logd keeps a removed key as a
+// null leaf, so a departed sibling is still a key. Without it the condition is false forever
+// and a shared entity is never collected (docs/working/shared-ownership.md has the transcript).
+//
+// A refused delete is not an error: it means somebody else is still here, which is the ordinary
+// case and the reason the write is conditional at all.
+func (rf *Reflector) removeAt(p entity.Path) error {
+	if _, _, err := rf.store.Write(entity.Write{At: p}); err != nil {
+		return fmt.Errorf("tombstoning %s: %w", p, err)
+	}
+	if p.IsEntity() {
+		return nil
+	}
+	mine := p.Field[len(p.Field)-1]
+	container := entity.Path{Ref: p.Ref, Field: p.Field[:len(p.Field)-1]}
+	only := ir.FromSlice([]*ir.Node{
+		ir.FromString(mine).WithTag("!field"),
+		ir.Null().WithTag("!irtype"),
+	}).WithTag("!all.or")
+	if _, _, err := rf.store.Write(entity.Write{
+		At:   p.Ref.At(),
+		When: []entity.Require{{At: container, Pattern: only}},
+	}); err != nil {
+		return fmt.Errorf("collecting %s: %w", p.Ref, err)
+	}
+	return nil
+}
+
+// places is where an answer is authoritative for one entity: nothing when no cover matches it,
+// one path per matching cover otherwise, and the entity itself for a cover with no slot.
+//
+// A mix is refused rather than resolved. A source whose covers say both "complete for this
+// entity" and "complete for one slot of it" has contradicted itself, and either reading can
+// destroy something — taking the whole would spell nulls over the other owners, taking the slot
+// would leave what the source meant to tombstone standing forever. Neither is a choice to make
+// on a source's behalf in silence.
+func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) ([]entity.Path, error) {
+	var out []entity.Path
+	seen := map[string]bool{}
+	whole, slotted := false, false
+	for _, c := range covers {
+		if !c.MatchEntity(entity.Entity{Ref: ref, Payload: payload}) {
+			continue
+		}
+		if len(c.Slot) == 0 {
+			whole = true
+		} else {
+			slotted = true
+		}
+		at := entity.Path{Ref: ref, Field: c.Slot}
+		if key := at.String(); !seen[key] {
+			seen[key] = true
+			out = append(out, at)
+		}
+	}
+	if whole && slotted {
+		return nil, fmt.Errorf("reflection: %s is covered both whole and by a slot, and those "+
+			"cannot both be true — one says the answer is all of this entity, the other that it "+
+			"is one place in it", ref)
+	}
+	return out, nil
+}
+
+// valueAt reads the value at a path inside a payload, nil when nothing stands there.
+func valueAt(p entity.Payload, path []string) entity.Payload {
+	for _, seg := range path {
+		if p == nil {
+			return nil
+		}
+		p = entity.Get(p, seg)
+	}
+	return p
 }
 
 // current reads what stands in the store for the systems the reflection touches — one List,
@@ -294,25 +409,29 @@ func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 	return out
 }
 
-// covered returns the refs of the stored entities a reflection claims tombstone authority
-// over, in ref order so a pass deletes in the same order twice.
+// covered returns the PLACES in the stored entities a reflection claims tombstone authority
+// over, in path order so a pass deletes in the same order twice.
+//
+// A place rather than a ref, because a slot cover claims one path inside an entity and nothing
+// else there: a project ENG has stopped owning loses ENG's slot, and OPS's stands. For every
+// cover in the tree, which carries no slot, a place is its entity and this is what it always
+// was.
 //
 // It asks entity.Pattern the same question a charter does (MatchEntity), rather than Select:
 // Select skips an entity marked VANISHING, which is right for an actor that must not act on
 // something on its way out, and wrong for the slice's own single writer — an entity hidden
 // from converge would be neither refreshed nor tombstoned, and would sit there forever.
-func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) []entity.Ref {
-	var out []entity.Ref
+func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) ([]entity.Path, error) {
+	var out []entity.Path
 	for ref, payload := range current {
-		for _, p := range covers {
-			if p.MatchEntity(entity.Entity{Ref: ref, Payload: payload}) {
-				out = append(out, ref)
-				break
-			}
+		at, err := places(covers, ref, payload)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, at...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
-	return out
+	return out, nil
 }
 
 // asStored renders a payload the way a read of it will come back: an object's null fields are

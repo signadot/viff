@@ -154,9 +154,24 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 // that has gone away goes away only if somebody writes an explicit null at it. A caller whose
 // cur is stale leaves such a field standing — which is why this is for the writer that has just
 // read the slice it is writing, and not a general-purpose call.
-func ReplaceFrom(s Store, ref Ref, cur, next Payload) error {
-	if _, _, err := s.Write(Write{At: ref.At(), Value: AsData(withRemovals(next, cur))}); err != nil {
-		return fmt.Errorf("replace %s: %w", ref, err)
+func ReplaceFrom(s Store, ref Ref, cur, next Payload) error { return ReplaceAt(s, ref.At(), cur, next) }
+
+// ReplaceAt is ReplaceFrom at a place INSIDE an entity: cur and next are the values that stand
+// and should stand AT that path, and everything outside it is untouched — not merged, not
+// re-read, not mentioned.
+//
+// That last part is the whole of what it is for. A replace of a whole payload spells a null at
+// every field the new value does not carry, which is correct when the writer owns the entity
+// and destructive when it owns one slot of it: the nulls would land on the other owners. Scoped
+// here, the removals are computed within the slot and cannot reach a sibling.
+//
+// It carries no precondition, for ReplaceFrom's reason one level down: two writers at disjoint
+// paths of one entity are not two writers of anything, so there is no update to lose. What
+// makes that true is the install-time proof that their claims are disjoint (source/own.go), and
+// nothing here re-checks it.
+func ReplaceAt(s Store, at Path, cur, next Payload) error {
+	if _, _, err := s.Write(Write{At: at, Value: AsData(withRemovals(next, cur))}); err != nil {
+		return fmt.Errorf("replace %s: %w", at, err)
 	}
 	return nil
 }
