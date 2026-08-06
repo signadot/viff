@@ -276,17 +276,23 @@ read is left standing rather than deleted. The channels get no such treatment �
 them has nothing true left to say, and fails. That asymmetry is the whole of what `Covers` is
 for, doing a job that would otherwise have to be a flag.
 
-And one thing that did NOT survive contact: **Linear projects are not reflected**, because a
-project can belong to several teams at once and so has no positional owner. Ownership-as-an-
-address cannot spell it, and two sources over two teams would each tombstone what the other
-wrote. The source carries a project's name as a field on the issue and claims no entity for it.
+And one thing that did not survive contact, and then did: **a Linear project belongs to several
+teams at once**, so it has no positional owner. Ownership-as-an-address could not spell it, and
+two sources over two teams would each tombstone what the other wrote — so for a while the source
+reflected no project at all, and that absence was the first real evidence against the whole
+grammar.
 
-That is not a dead end, and the way out is the CAS finding this design parked: the store's only
-write is already a *conditional* one, at a path that may be inside a payload, with preconditions
-that may be about another path. A shared entity where each source writes its own slot and the
-last owner out deletes is expressible with that — what it costs is converge's replace-the-whole-
-payload rule, which is right for an owned slice and wrong for a shared one. The
-[residual](working/sources-residual.md) has the four things that would have to move.
+The way out was not a different vocabulary but a **deeper address**. A claim may name a path
+inside a payload, so a team is not a co-writer of `linear:project:<id>` — it is the single writer
+of that entity's `owners.<KEY>`. Two of those are proved apart at install by the comparison one
+segment further down, converge writes, compares and tombstones there and nowhere else, and the
+last owner out takes the entity with a conditional delete. **Sharing an entity is not an
+exception to single-writership; it is single-writership at a deeper address.**
+
+What it costs is a project with no top: every field Linear has about a project is global, and a
+global field has no owner among the teams, so each slot carries its own copy and a charter reads
+a project through an owner. That is the honest shape of an entity nobody owns the whole of.
+[shared-ownership.md](working/shared-ownership.md) has the design and what is left of it.
 
 ### The window, and why Slack is not git
 

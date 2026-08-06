@@ -150,8 +150,13 @@ last slot goes, so does the entity — a conditional delete, the only contended 
 design.
 
 Covering an entity both whole and by a slot is **refused**: one says the answer is all of it, the
-other that it is one place in it, and both readings destroy something. See
-[working/shared-ownership.md](../working/shared-ownership.md).
+other that it is one place in it, and both readings destroy something.
+
+**A slot is not a narrowing.** It says where an answer is authoritative, not which entities it is
+about, so a slot cover with no predicate claims its path in *every* entity of that kind. Give it
+the predicate that selects the entities carrying that slot — `{owners: {ENG: null}}`, a null in a
+match being a presence test — or the pass writes a tombstone into a place nobody asked about,
+once per entity per pass. See [working/shared-ownership.md](../working/shared-ownership.md).
 
 A cover is an `entity.Pattern` — the same selector a charter's `when` becomes — so the payload
 predicate is spelled `value`, as it is in a charter. On the wire each cover also carries an

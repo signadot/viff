@@ -167,6 +167,21 @@ type issue struct {
 	} `json:"parent"`
 }
 
+// project is a Linear project as one team sees it. Every field here is GLOBAL — a project is
+// one object shared by its teams, not a per-team view of one — which is exactly why it has no
+// positional owner and why what this source writes goes in a slot rather than at the top of the
+// entity. See Linear.Owns.
+type project struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	State       string  `json:"state"`
+	Progress    float64 `json:"progress"`
+	StartDate   string  `json:"startDate"`
+	TargetDate  string  `json:"targetDate"`
+	URL         string  `json:"url"`
+}
+
 type pageInfo struct {
 	HasNextPage bool   `json:"hasNextPage"`
 	EndCursor   string `json:"endCursor"`
@@ -203,6 +218,7 @@ const teamQuery = `query($key: String!, $after: String, $page: Int!) {
     nodes {
       id key name description private
       cycles(first: 50) { nodes { id number name startsAt endsAt completedAt } }
+      projects(first: 100) { nodes { id name description state progress startDate targetDate url } }
       issues(first: $page, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -225,6 +241,9 @@ type teamPage struct {
 	Cycles struct {
 		Nodes []cycle `json:"nodes"`
 	} `json:"cycles"`
+	Projects struct {
+		Nodes []project `json:"nodes"`
+	} `json:"projects"`
 	Issues struct {
 		PageInfo pageInfo `json:"pageInfo"`
 		Nodes    []issue  `json:"nodes"`

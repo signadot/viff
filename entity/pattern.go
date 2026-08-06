@@ -67,6 +67,13 @@ type Pattern struct {
 	// What it means for a source: this answer is complete for the value at this path in each
 	// entity it matches, and for nothing else there. Two sources may then be the single
 	// writers of two slots of one entity — see docs/working/shared-ownership.md.
+	//
+	// A SLOT IS NOT A NARROWING. It says where the answer is authoritative, not which entities
+	// it is about, so a slot cover with no predicate claims its path in EVERY entity of that
+	// kind — including ones this source has never heard of, where the pass then writes a
+	// tombstone into a place nobody asked about, once per entity per pass. The predicate a slot
+	// cover usually wants is the presence of its own slot (`{owners: {ENG: null}}`, a null in a
+	// match being a presence test): that is exactly the set a tombstone can be right about.
 	Slot []string `tony:"field=slot,omitzero"`
 }
 

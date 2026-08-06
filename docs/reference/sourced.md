@@ -127,23 +127,31 @@ Point Settings → API → Webhooks at `https://<host>/linear/webhook`.
 | `linear:team:<KEY>` | `team, id, name, private`, and `description` |
 | `linear:issue:<KEY>-<n>` | `team, id, identifier, title, state, stateType, priority, url, createdAt, updatedAt`, and `priorityLabel, completedAt, estimate, assignee, assigneeEmail, labels, project, cycle, parent` |
 | `linear:cycle:<KEY>/<n>` | `team, id, number`, and `name, startsAt, endsAt, completedAt` |
+| `linear:project:<uuid>` | `owners: {<KEY>: {team, id, name, url, …}}` — one slot per owning team, and nothing at the top |
 
 Match on **`stateType`**, not `state`: the type (`triage`, `backlog`, `unstarted`, `started`,
 `completed`, `canceled`) is Linear's own vocabulary, while the name beside it is whatever
 somebody called a column last Tuesday.
 
-Owns `linear:team:<KEY>`, `linear:issue:<KEY>-*` and `linear:cycle:<KEY>/*` per team. The
-hyphen in the issue claim is load-bearing — `ENG-*` does not claim `ENGINE-1`.
+Owns `linear:team:<KEY>`, `linear:issue:<KEY>-*`, `linear:cycle:<KEY>/*` and
+`linear:project:*` **at** `owners.<KEY>` per team. The hyphen in the issue claim is load-bearing
+— `ENG-*` does not claim `ENGINE-1`.
 
 **A team is read to exhaustion**, and `-max-issues` is an error rather than a truncation: the
 answer covers the whole team, and a partial list under a complete cover tombstones what it
 merely failed to read.
 
-**Projects are not reflected**, and their absence is an argument rather than an omission: a
-Linear project can belong to several teams, so no team can claim one as an address, and two
-sources over two teams would each tombstone what the other wrote. An issue carries its
-project's name as a field instead. See
-[working/sources-residual.md](../working/sources-residual.md).
+**A project is reflected by SLOT**, because it belongs to several teams at once and so has no
+positional owner: no team can claim it as an address, and two sources over two teams would each
+tombstone what the other wrote. Each team is instead the single writer of one place inside it —
+`owners.<KEY>` — proved apart at install and kept apart by converge, with the entity going when
+the last owner leaves.
+
+What that costs is **a project with no top**: every field Linear has about a project is global,
+so each owner's slot carries its own copy and there is no `name` at the root. A charter reads a
+project through an owner (`owners.ENG.state`). An issue still carries its project's name as a
+plain field, which is what a rule about an issue wants and costs no join. See
+[working/shared-ownership.md](../working/shared-ownership.md).
 
 ## Deploying them
 

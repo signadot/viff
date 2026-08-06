@@ -2,6 +2,7 @@ package linear_test
 
 import (
 	"context"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"strings"
 	"testing"
 
@@ -75,13 +76,11 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 		labels[0] != "api" || labels[1] != "sdlc" {
 		t.Fatalf("labels = %v, want them sorted so a re-read is not a change", labels)
 	}
-	// The project is a FIELD on the issue and not an entity of its own — a project can belong
-	// to several teams, so no team can claim one as an address.
+	// The project's NAME stays a field on the issue — it is what a rule about an issue reads,
+	// and it costs no join. The project itself is an entity too now, but by SLOT: see
+	// TestTwoTeamsShareAProjectWithoutTombstoningEachOther.
 	if one["project"] != "Sources" {
 		t.Fatalf("project = %v", one["project"])
-	}
-	if got["linear:project:Sources"] != nil {
-		t.Fatal("a project was reflected as an entity; see linear.Owns")
 	}
 	if c := got["linear:cycle:ENG/4"]; c == nil || c["endsAt"] != "2026-01-14T00:00:00Z" {
 		t.Fatalf("linear:cycle:ENG/4 = %+v", c)
@@ -90,11 +89,20 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 	kinds := map[string]bool{}
 	for _, c := range rn.Covers {
 		kinds[c.Kind] = true
+		if c.Kind == "project" {
+			// Scoped by its SLOT rather than by a predicate, and the two say the same thing: this
+			// pass is complete for this team's place in every project. A predicate would be the
+			// wrong tool — there is no field on a shared project that names one owner.
+			if len(c.Slot) != 2 || c.Slot[0] != "owners" || c.Slot[1] != "ENG" {
+				t.Fatalf("the project cover is not slotted to the team: %v", c.Slot)
+			}
+			continue
+		}
 		if entity.Str(c.Predicate, "team") != "ENG" {
 			t.Fatalf("a cover not scoped to the team: %+v", entity.ToObj(c.Predicate))
 		}
 	}
-	for _, want := range []string{"team", "issue", "cycle"} {
+	for _, want := range []string{"team", "issue", "cycle", "project"} {
 		if !kinds[want] {
 			t.Fatalf("no cover over %s", want)
 		}
@@ -199,9 +207,11 @@ func TestLinearTargetsTheTeamARefBelongsTo(t *testing.T) {
 	}
 }
 
-// Three claims per team, and the issue claim leans on the hyphen: `ENG-*` must not claim
-// `ENGINE-1`, or two perfectly disjoint teams would refuse to install alongside each other.
-func TestLinearOwnershipIsThreeClaimsPerTeam(t *testing.T) {
+// Four claims per team: three addresses, and one place inside an address. The issue claim
+// leans on the hyphen — `ENG-*` must not claim `ENGINE-1`, or two perfectly disjoint teams
+// would refuse to install alongside each other — and the project claim leans on the path, which
+// is what lets two teams share an entity neither of them owns the whole of.
+func TestLinearOwnershipIsFourClaimsPerTeam(t *testing.T) {
 	f := newFake()
 	f.team("ENG", "Engineering")
 	f.team("ENGINE", "Engine")
@@ -209,7 +219,10 @@ func TestLinearOwnershipIsThreeClaimsPerTeam(t *testing.T) {
 	other := newSource(t, f, linear.Config{Teams: []string{"ENGINE"}})
 
 	owns := source.Describe(src).Owns
-	want := []source.Own{{Ref: "linear:team:ENG"}, {Ref: "linear:issue:ENG-*"}, {Ref: "linear:cycle:ENG/*"}}
+	want := []source.Own{
+		{Ref: "linear:team:ENG"}, {Ref: "linear:issue:ENG-*"}, {Ref: "linear:cycle:ENG/*"},
+		{Ref: "linear:project:*", At: []string{"owners", "ENG"}},
+	}
 	if len(owns) != len(want) {
 		t.Fatalf("owns %v, want %v", owns, want)
 	}
@@ -293,4 +306,134 @@ func claims(t *testing.T, owns []source.Own, ref entity.Ref) bool {
 		t.Fatalf("parsing %v: %v", owns, err)
 	}
 	return len(source.Claimed(cs, ref)) > 0
+}
+
+// THE CASE THAT PRODUCED THE FINDING, end to end.
+//
+// A Linear project belongs to several teams at once, so it has no positional owner: this source
+// used to reflect none at all, because two sources over two teams would each tombstone what the
+// other wrote. Now each is the single writer of one PLACE inside the entity — `owners.ENG`,
+// `owners.OPS` — proved apart at install and kept apart by converge.
+//
+// Two sources, two teams, one shared project and one that is not shared. It is the whole of the
+// design in one test, which is why it is the one to break first when something moves.
+func TestTwoTeamsShareAProjectWithoutTombstoningEachOther(t *testing.T) {
+	f := newFake()
+	f.team("ENG", "Engineering")
+	f.team("OPS", "Operations")
+	f.project("ENG", "p-shared", "Migration") // the same project, under both teams
+	f.project("OPS", "p-shared", "Migration")
+	f.project("ENG", "p-eng", "Sources") // and one that is ENG's alone
+
+	store := entitytest.Store(t)
+	shared := entity.Ref{System: "linear", Kind: "project", ID: "p-shared"}
+	engOnly := entity.Ref{System: "linear", Kind: "project", ID: "p-eng"}
+
+	reflector := func(team string) *source.Reflector {
+		return source.NewReflector(newSource(t, f, linear.Config{Teams: []string{team}}), store, 0)
+	}
+	eng, ops := reflector("ENG"), reflector("OPS")
+	pass := func(rf *source.Reflector) int {
+		n := -1
+		rf.OnPass(func(p source.Pass) {
+			if p.Err != nil {
+				t.Fatalf("pass: %v", p.Err)
+			}
+			n = p.Wrote
+		})
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	owners := func(ref entity.Ref) map[string]*ir.Node {
+		e, ok, err := store.Get(ref)
+		if err != nil || !ok {
+			t.Fatalf("get %s: ok=%v err=%v", ref, ok, err)
+		}
+		return entity.Fields(entity.Get(e.Payload, "owners"))
+	}
+
+	pass(eng)
+	pass(ops)
+
+	// Both owners stand, and each holds the project as its own team saw it.
+	both := owners(shared)
+	if len(both) != 2 || both["ENG"] == nil || both["OPS"] == nil {
+		t.Fatalf("one team tombstoned the other's slot: %v", both)
+	}
+	if got := entity.Str(both["OPS"], "name"); got != "Migration" {
+		t.Fatalf("OPS's slot = %q", got)
+	}
+	// And the entity has no top: every field Linear has about a project is global, so it lives
+	// in each owner's slot and a reader picks an owner. This is asserted rather than merely
+	// documented, because it is the shape a charter has to be written against.
+	e, _, _ := store.Get(shared)
+	if entity.Get(e.Payload, "name") != nil {
+		t.Fatalf("a project grew a top-level field nobody owns: %v", entity.ToObj(e.Payload))
+	}
+
+	// ENG's own project is written by ENG and untouched by OPS's pass.
+	if len(owners(engOnly)) != 1 || owners(engOnly)["ENG"] == nil {
+		t.Fatalf("ENG's own project = %v", owners(engOnly))
+	}
+
+	// The pass that changes nothing writes nothing — four alternating passes, and neither
+	// source ever rewrites what the other wrote. This is the failure the whole design exists
+	// not to have, and it is unbounded rather than wrong-once.
+	for i := 0; i < 2; i++ {
+		if n := pass(eng); n != 0 {
+			t.Fatalf("ENG rewrote %d after OPS's pass", n)
+		}
+		if n := pass(ops); n != 0 {
+			t.Fatalf("OPS rewrote %d after ENG's pass", n)
+		}
+	}
+
+	// OPS stops owning the shared project. Its slot goes; ENG's stands, and so does the entity.
+	f.projects["OPS"] = nil
+	pass(ops)
+	left := owners(shared)
+	if _, still := left["OPS"]; still {
+		t.Fatalf("OPS left the project and kept its slot: %v", left)
+	}
+	if left["ENG"] == nil {
+		t.Fatalf("OPS leaving took ENG's slot with it: %v", left)
+	}
+
+	// And when the last owner goes, so does the entity — nobody is left to hold it up.
+	f.projects["ENG"] = nil
+	pass(eng)
+	if _, ok, _ := store.Get(shared); ok {
+		t.Fatal("the last owner left and the project stands")
+	}
+	if _, ok, _ := store.Get(engOnly); ok {
+		t.Fatal("ENG's own project outlived its only owner")
+	}
+}
+
+// One source, two teams, one project they share. The same entity is answered with two slots in
+// one payload and two covers, which is the case a per-source claim cannot express and a
+// per-place one can.
+func TestOneSourceOverTwoTeamsWritesBothSlots(t *testing.T) {
+	f := newFake()
+	f.team("ENG", "Engineering")
+	f.team("OPS", "Operations")
+	f.project("ENG", "p-shared", "Migration")
+	f.project("OPS", "p-shared", "Migration")
+
+	store := entitytest.Store(t)
+	src := newSource(t, f, linear.Config{Teams: []string{"ENG", "OPS"}})
+	rf := source.NewReflector(src, store, 0)
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	e, ok, _ := store.Get(entity.Ref{System: "linear", Kind: "project", ID: "p-shared"})
+	if !ok {
+		t.Fatal("the shared project was not written")
+	}
+	own := entity.Fields(entity.Get(e.Payload, "owners"))
+	if len(own) != 2 || own["ENG"] == nil || own["OPS"] == nil {
+		t.Fatalf("one source over two teams wrote %v", own)
+	}
 }

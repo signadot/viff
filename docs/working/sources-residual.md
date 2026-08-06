@@ -197,9 +197,12 @@ the same reason git needs two: the kinds spell their owner differently.
 **And one thing failed, which is the useful part.** A Linear **project can belong to several
 teams at once**, so it has no positional owner and no team can claim it as an address. Two
 sources over two teams sharing a project would each tombstone what the other reflected — the
-single-writer rule broken quietly, which is worse than an install refused loudly. So the source
+single-writer rule broken quietly, which is worse than an install refused loudly. ~~So the source
 does not reflect projects at all: an issue carries its project's *name* as a field, and there is
-no `linear:project:*` entity.
+no `linear:project:*` entity.~~ **It does now**, by slot: a claim may name a path inside a
+payload, so each team is the single writer of `owners.<KEY>` rather than a co-writer of the
+entity. Built in [shared-ownership.md](shared-ownership.md); the finding below stands as the
+evidence that produced it.
 
 That is the vocabulary's first real limit, and it is worth being precise about what it is
 evidence FOR. It is not that addresses are the wrong grammar — they held for everything

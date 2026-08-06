@@ -208,10 +208,15 @@ shared by both teams — both converge, neither tombstones the other, the projec
 slots, and it leaves when the second source is removed with `--forget`. That is the whole phase
 in one test, and it is the one to write first and watch fail.
 
-**And take phase 2's measurement while the fixture exists.** The root plan's next phase needs
-wakes-per-commit for a rule over a shared entity, and this is the only place where two sources
-and one entity stand up together. Counting there costs an afternoon; standing the fixture up
-again later costs the afternoon plus the fixture.
+**And phase 2's premise turned out to need restating, which the fixture answered for free.**
+The root plan asks for wakes-per-commit over a shared entity, on the design note's claim that N
+owners means N times the evaluations. In steady state it is **zero**: skip-unchanged at the slot
+means a quiet owner writes nothing, so a rule over a shared entity wakes only when an owner's
+slot really changes. The amplification is bounded by N but proportional to the rate of real
+change, not to the number of owners — which is a much milder thing than the note says, and it is
+`TestTwoTeamsShareAProjectWithoutTombstoningEachOther`'s four alternating no-op passes that show
+it. Whether the remaining N-per-real-change matters still wants a real deployment, which no
+fixture supplies.
 
 ## What this phase does not do
 

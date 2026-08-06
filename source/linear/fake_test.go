@@ -19,9 +19,10 @@ import (
 type fakeLinear struct {
 	mu sync.Mutex
 
-	teams  []map[string]any            // key → visible teams
-	issues map[string][]map[string]any // team key → its issues, in page order
-	cycles map[string][]map[string]any // team key → its cycles
+	teams    []map[string]any            // key → visible teams
+	issues   map[string][]map[string]any // team key → its issues, in page order
+	cycles   map[string][]map[string]any // team key → its cycles
+	projects map[string][]map[string]any // team key → its projects (one may be under several)
 
 	page    int    // issues per page (0 = all in one)
 	failure string // when set, every query answers with this GraphQL error
@@ -30,8 +31,9 @@ type fakeLinear struct {
 
 func newFake() *fakeLinear {
 	return &fakeLinear{
-		issues: map[string][]map[string]any{},
-		cycles: map[string][]map[string]any{},
+		issues:   map[string][]map[string]any{},
+		cycles:   map[string][]map[string]any{},
+		projects: map[string][]map[string]any{},
 	}
 }
 
@@ -51,6 +53,15 @@ func (f *fakeLinear) count() int {
 func (f *fakeLinear) team(key, name string) {
 	f.teams = append(f.teams, map[string]any{
 		"id": "team-" + key, "key": key, "name": name, "private": false,
+	})
+}
+
+// project adds one to a team. The SAME project may be added to several teams, which is the
+// whole point of it: a Linear project is one object shared by its teams, not a per-team view.
+func (f *fakeLinear) project(key, id, name string) {
+	f.projects[key] = append(f.projects[key], map[string]any{
+		"id": id, "name": name, "state": "started", "progress": 0.5,
+		"url": "https://linear.app/acme/project/" + id,
 	})
 }
 
@@ -127,6 +138,7 @@ func (f *fakeLinear) handle(w http.ResponseWriter, r *http.Request) {
 		node[k] = v
 	}
 	node["cycles"] = map[string]any{"nodes": f.cycles[key]}
+	node["projects"] = map[string]any{"nodes": f.projects[key]}
 	node["issues"] = map[string]any{
 		"pageInfo": map[string]any{
 			"hasNextPage": to < len(all),
