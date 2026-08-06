@@ -5,7 +5,7 @@
 //
 //	go run ./docs/reference/examples/source -addr :9801 -repo verse=/path/to/verse
 //	verse source add git:build-host http://localhost:9801
-//	verse sources
+//	verse source
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
 // block goes stale the first time a signature moves and nobody finds out. It also is not a

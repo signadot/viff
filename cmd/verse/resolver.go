@@ -11,25 +11,15 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-func resolverSubs() []*cli.Command {
-	return []*cli.Command{resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd()}
-}
-
-func resolversCmd() *cli.Command {
-	return collection("resolvers", "/resolvers",
-		"resolvers — list who answers questions (add or remove one with `verse resolver`)",
-		"resolver", resolverSubs()...)
-}
-
 func resolverCmd() *cli.Command {
-	return cli.NewCommand("resolver").
-		WithSynopsis("resolver — one binding: add|show|remove (list them with `verse resolvers`)").
-		WithSubs(resolverSubs()...)
+	return collection("resolver", "resolvers", "/resolvers",
+		"resolver — who answers questions; add|show|remove one binding",
+		resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd())
 }
 
 // resolverPath turns the ref an operator types into the route's two segments. A resolver is
 // addressed the way it is stored — `resolvers:security:security-review` — because an operator
-// reading `verse entities` and one typing `verse resolver show` should not have to know two
+// reading `verse entity` and one typing `verse resolver show` should not have to know two
 // spellings of one thing.
 func resolverPath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "resolvers:"), ":", 2)

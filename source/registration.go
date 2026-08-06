@@ -188,7 +188,7 @@ func CheckFields(node *ir.Node) error {
 }
 
 // Find reads one installed source by the ref a CLI argument names, accepting it with or without
-// the `sources:` prefix — an operator reading `verse entities` and one typing `verse source
+// the `sources:` prefix — an operator reading `verse entity` and one typing `verse source
 // show` should not have to know two spellings of one thing.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, System+":"), ":", 2)

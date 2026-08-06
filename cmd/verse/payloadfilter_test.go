@@ -14,7 +14,7 @@ import (
 )
 
 // --if/--if-at as the operator meets them: `watch` renders them into its query (tested here
-// against watchConfig, which is where the rendering happens), and `entities` sends the same
+// against watchConfig, which is where the rendering happens), and `entity` sends the same
 // pair to the listing route (tested end to end, against a real verse).
 
 // query renders the predicate as tony whatever dialect it was typed in, because a GET has no
@@ -109,11 +109,11 @@ func TestWatchRejectsAMalformedPredicate(t *testing.T) {
 	}
 }
 
-// runPlural drives `verse entities …` through the PLURAL's own Run, rather than walking to the
-// leaf as runCLI does. The walk is what makes runCLI usable for the leaves, and it is also
+// runEntity drives `verse entity …` through the COLLECTION's own Run, rather than walking to
+// the leaf as runCLI does. The walk is what makes runCLI usable for the leaves, and it is also
 // what makes it blind here: a flag on a group, and a group's decision about what to do with a
 // flag meant for its subcommand, both happen in the parent's Parse — which the walk skips.
-func runPlural(t *testing.T, args ...string) (string, error) {
+func runEntity(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	cc := &cli.Context{
@@ -122,9 +122,9 @@ func runPlural(t *testing.T, args ...string) (string, error) {
 	}
 	cmd := rootCmd()
 	g.Addr = testAddr // after rootCmd, which re-reads it from the config layers
-	sub := cmd.FindSub(cc, "entities")
+	sub := cmd.FindSub(cc, "entity")
 	if sub == nil {
-		t.Fatal("no `entities` command")
+		t.Fatal("no `entity` command")
 	}
 	// Run FIRST — see runCLI: `return out.String(), sub.Run(...)` would snapshot the buffer
 	// before the command wrote to it.
@@ -132,7 +132,7 @@ func runPlural(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// `verse entities --if` lists by what an entity SAYS. It is the same filter `verse watch --if`
+// `verse entity --if` lists by what an entity SAYS. It is the same filter `verse watch --if`
 // streams by, and the reason to have it on the listing too is that the two answer different
 // questions about one selector: what is true now, and what becomes true next.
 func TestEntitiesFiltersOnThePayload(t *testing.T) {
@@ -147,9 +147,9 @@ func TestEntitiesFiltersOnThePayload(t *testing.T) {
 		}
 	}
 
-	out, err := runPlural(t, "--if", "{stage: open}")
+	out, err := runEntity(t, "--if", "{stage: open}")
 	if err != nil {
-		t.Fatalf("entities --if: %v", err)
+		t.Fatalf("entity --if: %v", err)
 	}
 	if !strings.Contains(out, "demo:pr:1") || !strings.Contains(out, "demo:pr:3") {
 		t.Errorf("--if {stage: open} did not list the open PRs:\n%s", out)
@@ -159,9 +159,9 @@ func TestEntitiesFiltersOnThePayload(t *testing.T) {
 	}
 
 	// Rooted at a path, and the entity that has no such path is not listed.
-	out, err = runPlural(t, "--if", "{urgent: true}", "--if-at", "labels")
+	out, err = runEntity(t, "--if", "{urgent: true}", "--if-at", "labels")
 	if err != nil {
-		t.Fatalf("entities --if-at: %v", err)
+		t.Fatalf("entity --if-at: %v", err)
 	}
 	if !strings.Contains(out, "demo:pr:1") {
 		t.Errorf("--if-at labels did not list the urgent PR:\n%s", out)
@@ -171,9 +171,9 @@ func TestEntitiesFiltersOnThePayload(t *testing.T) {
 	}
 }
 
-// `verse entities` and `verse entity put` both take an --if, and they mean different things:
+// `verse entity` and `verse entity put` both take an --if, and they mean different things:
 // a filter on the listing, a precondition on the write. They do not collide, because a parent
-// stops parsing flags at its first positional — so `entities put …` hands the whole tail,
+// stops parsing flags at its first positional — so `entity put …` hands the whole tail,
 // flags included, to `put`.
 //
 // This is the pin for that, and it is worth pinning rather than trusting: if the parent ever
@@ -186,9 +186,9 @@ func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	// A precondition that does NOT hold. Through the plural, with the flag after the
+	// A precondition that does NOT hold. Through the collection, with the flag after the
 	// positionals, exactly as someone would type it.
-	if _, err := runPlural(t, "put", "demo:pr:1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
+	if _, err := runEntity(t, "put", "demo:pr:1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
 		t.Error("a put whose --if does not hold was reported as succeeding")
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "open" {
@@ -196,7 +196,7 @@ func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
 	}
 
 	// And one that does hold still writes, so the pin is not just "everything fails".
-	if _, err := runPlural(t, "put", "demo:pr:1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
+	if _, err := runEntity(t, "put", "demo:pr:1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
 		t.Fatalf("a put whose --if holds was refused: %v", err)
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "reviewed" {
@@ -207,7 +207,7 @@ func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
 // --if-at roots --if on the listing too, so alone it is the same usage error it is on watch.
 func TestEntitiesRejectAPathWithoutAPredicate(t *testing.T) {
 	serve(t)
-	if _, err := runPlural(t, "--if-at", "labels"); !errors.Is(err, cli.ErrUsage) {
+	if _, err := runEntity(t, "--if-at", "labels"); !errors.Is(err, cli.ErrUsage) {
 		t.Fatalf("--if-at alone gave %v, want a usage error", err)
 	}
 }

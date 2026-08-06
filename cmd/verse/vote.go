@@ -135,15 +135,19 @@ func choices(v any) []string {
 	return out
 }
 
-// providersCmd lists the provider registry — the attribute-rich doers a select gate draws
+// providerCmd lists the provider registry — the attribute-rich doers a select gate draws
 // from (provider:<capability>:<id>). Providers are registered as entities (e.g.
 // `verse entity put provider:review:claude '{"driver":"llm","tier":"premium"}'`).
-func providersCmd() *cli.Command {
-	return leaf("providers", "providers — list the provider registry (provider:<capability>:<id>)",
+//
+// Singular with a plural alias, like every other collection, even though it has no verbs to
+// act through: the rule an operator learns is "the command is the singular", and one listing
+// that answers only to the plural is one exception to remember.
+func providerCmd() *cli.Command {
+	return leaf("provider", "provider — the provider registry (provider:<capability>:<id>)",
 		func(cc *cli.Context, args []string) error {
 			resp, err := httpGet("/entities", url.Values{"system": {"provider"}})
 			if err != nil {
-				return fmt.Errorf("providers: %w", err)
+				return fmt.Errorf("provider: %w", err)
 			}
 			var ents []struct {
 				Ref     string         `tony:"field=ref"`
@@ -168,7 +172,7 @@ func providersCmd() *cli.Command {
 				fmt.Fprintln(cc.Out, line)
 			}
 			return nil
-		})
+		}).WithAliases("providers")
 }
 
 // docketCmd lists the docket — the open motions, what each needs, and how tallies stand. Each

@@ -59,103 +59,75 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 	}
 }
 
-// collections pairs each plural listing with the singular whose verbs it also answers to.
+// collections pairs each collection's name — the SINGULAR, which is the command — with the
+// plural that is merely an alias of it.
 var collections = map[string]string{
-	"gates": "gate", "entities": "entity", "tasks": "task",
-	"flows": "flow", "triggers": "trigger", "goals": "goal",
+	"gate": "gates", "entity": "entities", "task": "tasks",
+	"flow": "flows", "trigger": "triggers", "goal": "goals",
+	"resolver": "resolvers", "runner": "runners", "source": "sources",
+	"stratum": "strata",
 }
 
-// Every collection is addressed twice and the two spellings mean different things: the
-// plural lists it, the singular acts on one member. The plural must exist at the TOP level
-// (it replaced `<group> list`, which must be gone — two ways to list is what this removed),
-// and the singular group must still be there to act through.
-func TestCollectionsArePluralAtTheTop(t *testing.T) {
+// A collection is ONE command, named in the singular, and bare it lists. The plural is an
+// alias of that same command rather than a second one: two commands for one collection put
+// two names in the help and made every synopsis spend its tail pointing at the other.
+//
+// `<name> list` must be gone in both spellings — a listing that is also reachable as a verb
+// is the two-ways-to-list this removed.
+func TestCollectionsAreOneSingularCommand(t *testing.T) {
 	root := rootCmd()
-	for plural, singular := range collections {
-		p := root.FindSub(cli.DefaultContext(), plural)
-		if p == nil {
-			t.Errorf("verse %s: no such command", plural)
-			continue
-		}
-		// The bare plural must still LIST — it carries the singular's verbs now, and a
-		// group with no Run of its own answers `verse entities` with "no command provided".
-		if p.Hooks.Run == nil {
-			t.Errorf("verse %s: no listing — the bare plural is the listing", plural)
-		}
-		s := root.FindSub(cli.DefaultContext(), singular)
+	cc := cli.DefaultContext()
+	for singular, plural := range collections {
+		s := root.FindSub(cc, singular)
 		if s == nil {
 			t.Errorf("verse %s: no such command", singular)
 			continue
 		}
-		for _, c := range []*cli.Command{s, p} {
-			if c.FindSub(cli.DefaultContext(), "list") != nil {
-				t.Errorf("verse %s list still exists — the listing is `verse %s`", c.Name, plural)
-			}
+		if s.Name != singular {
+			t.Errorf("verse %s resolves to %q — the command is the singular", singular, s.Name)
+		}
+		// A group with no Run of its own answers `verse entity` with "no command provided".
+		if s.Hooks.Run == nil {
+			t.Errorf("verse %s: no listing — bare it must list", singular)
+		}
+		if got := root.FindSub(cc, plural); got != s {
+			t.Errorf("verse %s resolves to %v, want the same command as verse %s", plural, got, singular)
+		}
+		if s.FindSub(cc, "list") != nil {
+			t.Errorf("verse %s list still exists — bare `verse %s` is the listing", singular, singular)
 		}
 	}
-	// ps means "list the tasks" wherever else it is typed; as a GROUP alias it meant
-	// nothing runnable at all.
-	if root.FindSub(cli.DefaultContext(), "ps") != root.FindSub(cli.DefaultContext(), "tasks") {
-		t.Error("ps does not resolve to the tasks listing")
-	}
-}
-
-// The plural answers to the singular's verbs, so the second command is an EDIT of the line
-// in your history rather than a retype: `verse entities`, up-arrow, `verse entities get
-// demo:pr:1`. Every verb, not a chosen few — a group whose plural knows some of its verbs
-// is worse than one that knows none, because there is nothing to learn from a refusal.
-//
-// They must be distinct instances: a Command is parented by whoever it is added to, and it
-// holds the flag values of the invocation, so sharing one would put `verse entity put`
-// under `entities` and leave the two spellings writing into the same config.
-func TestPluralsTakeTheSingularsVerbs(t *testing.T) {
-	root := rootCmd()
-	cc := cli.DefaultContext()
-	for plural, singular := range collections {
-		p, s := root.FindSub(cc, plural), root.FindSub(cc, singular)
-		if p == nil || s == nil {
-			t.Fatalf("verse %s / verse %s: no such command", plural, singular)
-		}
-		if got, want := len(p.Children), len(s.Children); got != want {
-			t.Errorf("verse %s has %d verbs, verse %s has %d", plural, got, singular, want)
-		}
-		for _, verb := range s.Children {
-			for _, spelling := range append([]string{verb.Name}, verb.Aliases...) {
-				sub := p.FindSub(cc, spelling)
-				if sub == nil {
-					t.Errorf("verse %s %s: no such command (verse %s has it)", plural, spelling, singular)
-					continue
-				}
-				if sub == verb {
-					t.Errorf("verse %s %s and verse %s %s are the same instance", plural, spelling, singular, spelling)
-				}
-			}
+	// The two short spellings are aliases of the same commands, so they list too. `ps` could
+	// not be one while `task` was a verbs-only group: `verse ps` was "no command provided".
+	for alias, name := range map[string]string{"ps": "task", "e": "entity"} {
+		if root.FindSub(cc, alias) != root.FindSub(cc, name) {
+			t.Errorf("verse %s does not resolve to verse %s", alias, name)
 		}
 	}
 }
 
 // A listing that IGNORES positionals turns a wrong command into a plausible answer:
-// `verse goals add-it ship` would print the goals rather than say the verb is not one.
-// `<plural> list` is called out by name, because it is the mistake the plural rename
-// creates and it must not become a second way to list.
+// `verse goal add-it ship` would print the goals rather than say the verb is not one.
+// `list` is called out by name, because it is the mistake a bare-listing collection invites
+// and it must not become a second way to list.
 func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {
 	root := rootCmd()
 	cc := cli.DefaultContext()
-	for plural, singular := range collections {
-		cmd := root.FindSub(cc, plural)
+	for singular := range collections {
+		cmd := root.FindSub(cc, singular)
 		if cmd == nil {
-			t.Fatalf("verse %s: no such command", plural)
+			t.Fatalf("verse %s: no such command", singular)
 		}
 		// No server is running: a command that refuses the argument fails BEFORE dialing, so
 		// a usage error is proof the guard fired rather than the request.
 		for _, args := range [][]string{{"no-such-verb", "ship-it"}, {"list"}} {
 			err := cmd.Hooks.Run(cc, args)
 			if !errors.Is(err, cli.ErrUsage) {
-				t.Errorf("verse %s %s: error = %v, want a usage error", plural, strings.Join(args, " "), err)
+				t.Errorf("verse %s %s: error = %v, want a usage error", singular, strings.Join(args, " "), err)
 			}
 		}
-		if err := cmd.Hooks.Run(cc, []string{"list"}); err == nil || !strings.Contains(err.Error(), "verse "+plural) {
-			t.Errorf("verse %s list: error = %v, want it to name `verse %s`", singular, err, plural)
+		if err := cmd.Hooks.Run(cc, []string{"list"}); err == nil || !strings.Contains(err.Error(), "verse "+singular) {
+			t.Errorf("verse %s list: error = %v, want it to name `verse %s`", singular, err, singular)
 		}
 	}
 }

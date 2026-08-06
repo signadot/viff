@@ -53,8 +53,9 @@ than `escalatesAfter` because a provider selection and a motion already call a d
 `within` — and because a motion's deadline picks a winning *option* while this one picks a new
 *answerer*, so the outcome is a value rather than a fact about the field's name.
 
-`verse resolver add|show|remove` and `verse resolvers` manage it. A verb rather than a raw
-write, because a write has nowhere to put the checks that make a binding answerable at all.
+`verse resolver` manages it — bare it lists, and `add|show|remove` act on one. A verb rather
+than a raw write, because a write has nowhere to put the checks that make a binding
+answerable at all.
 
 ## Two doors, and one of them must be open
 

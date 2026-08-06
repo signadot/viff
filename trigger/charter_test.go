@@ -276,7 +276,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 // A goal is still being pursued after a restart: its record carries the definition it was
 // installed from, so the doing (its owned triggers) and the watching (its monitor) both come
 // back. A goal that survived as a status line but stopped being pursued would be the worst
-// of both — `verse goals` showing "active" with nothing acting on it.
+// of both — `verse goal` showing "active" with nothing acting on it.
 func TestGoalSurvivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)

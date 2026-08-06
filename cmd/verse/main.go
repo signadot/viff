@@ -173,33 +173,32 @@ func rootCmd() *cli.Command {
 		WithSynopsis("one CLI for the verse prototype").
 		WithDescription("`up` starts the daemon(s); every other subcommand is a client.").
 		WithOpts(gopts...).
-		// Each collection appears TWICE, and the two spellings are how you say the two
-		// things: the plural lists it (`verse gates`), the singular acts on one member of it
-		// (`verse gate approve <id>`). They are listed as pairs so the rule is visible in the
-		// help rather than something you have to be told. `docket` and `providers` were
-		// already bare plurals; the rest spent their lives as `<group> list`, which is the
-		// same idea in more words.
+		// Each collection is ONE command, named in the singular, and bare it lists:
+		// `verse gate` shows the pending decisions, `verse gate approve <id>` answers one.
+		// The plural is an ALIAS of it rather than a second command, so both spellings run
+		// the same thing and neither has to be learned as the one that works here.
 		//
-		// The plural also ANSWERS to the singular's verbs (see dispatch), so the second
-		// command is an edit of the first rather than a retype: `verse entities`, up-arrow,
-		// `verse entities get demo:pr:1`. Only the bare plural lists, so there is still one
-		// listing and one name for it.
+		// It spent a while as a genuine pair, the plural listing and the singular acting,
+		// which put two names in the help for one collection and made every synopsis spend
+		// its tail telling you about the other one. Bare-lists collapses that: one name, one
+		// place its verbs are written down, and the plural still typed by anyone who reaches
+		// for it.
 		WithSubs(
 			upCmd(),
 			watchCmd(),
-			gatesCmd(), gateCmd(),
-			entitiesCmd(), entityCmd(),
-			tasksCmd(), taskCmd(),
-			flowsCmd(), flowCmd(),
-			triggersCmd(), triggerCmd(),
-			resolversCmd(), resolverCmd(),
-			runnersCmd(), runnerCmd(),
-			sourcesCmd(), sourceCmd(),
-			strataCmd(), stratumCmd(),
-			goalsCmd(), goalCmd(),
+			gateCmd(),
+			entityCmd(),
+			taskCmd(),
+			flowCmd(),
+			triggerCmd(),
+			resolverCmd(),
+			runnerCmd(),
+			sourceCmd(),
+			stratumCmd(),
+			goalCmd(),
 			voteCmd(),
 			docketCmd(),
-			providersCmd(),
+			providerCmd(),
 			connectCmd(),
 			disconnectCmd(),
 			statusCmd(),
@@ -208,13 +207,13 @@ func rootCmd() *cli.Command {
 		)
 }
 
-// collection builds a plural command that lists one collection — `verse gates`,
-// `verse flows` — which is also how the HTTP surface addresses it (GET /gates, GET /flows).
-// It also carries the SINGULAR's subcommands (see dispatch), so bare it lists and with a
-// verb it acts on one member.
-func collection(name, route, synopsis, singular string, subs ...*cli.Command) *cli.Command {
+// collection builds the command for one collection: named in the SINGULAR, aliased to the
+// plural the HTTP surface uses (GET /gates, GET /flows), listing when bare and acting on one
+// member when given a verb (see dispatch).
+func collection(name, plural, route, synopsis string, subs ...*cli.Command) *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	return cli.NewCommandAt(&cfg.Command, name).
+		WithAliases(plural).
 		WithSynopsis(synopsis).
 		WithSubs(subs...).
 		WithRun(func(cc *cli.Context, args []string) error {
@@ -225,7 +224,7 @@ func collection(name, route, synopsis, singular string, subs ...*cli.Command) *c
 			if handled, err := dispatch(cfg.Command, cc, args); handled {
 				return err
 			}
-			if err := noArgs(cfg.Command, name, singular, args); err != nil {
+			if err := noArgs(cfg.Command, name, args); err != nil {
 				return err
 			}
 			resp, err := httpGet(route, nil)
@@ -240,11 +239,12 @@ func collection(name, route, synopsis, singular string, subs ...*cli.Command) *c
 // the SERVER as query parameters rather than being applied to the rows here, because the server
 // is where the record lives — a client-side filter would have to know which field a name is
 // stamped on, and would be a second place that has to agree about it.
-func filteredCollection(name, route, synopsis, singular string, opts []*cli.Opt,
+func filteredCollection(name, plural, route, synopsis string, opts []*cli.Opt,
 	query func() url.Values, subs ...*cli.Command,
 ) *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	return cli.NewCommandAt(&cfg.Command, name).
+		WithAliases(plural).
 		WithSynopsis(synopsis).
 		WithOpts(opts...).
 		WithSubs(subs...).
@@ -256,7 +256,7 @@ func filteredCollection(name, route, synopsis, singular string, opts []*cli.Opt,
 			if handled, err := dispatch(cfg.Command, cc, args); handled {
 				return err
 			}
-			if err := noArgs(cfg.Command, name, singular, args); err != nil {
+			if err := noArgs(cfg.Command, name, args); err != nil {
 				return err
 			}
 			resp, err := httpGet(route, query())
@@ -267,19 +267,10 @@ func filteredCollection(name, route, synopsis, singular string, opts []*cli.Opt,
 		})
 }
 
-// dispatch runs the singular's subcommand named by args[0], when the plural has one — so
-// `verse entities get demo:pr:1` is the same command as `verse entity get demo:pr:1`. It
-// reports whether it handled the args at all; nothing else here can, since a plural with
-// its own Run never reaches the library's own sub-dispatch.
-//
-// Why both spellings work: the plural is what you type to see what is there, and the
-// singular is what you type NEXT, about one of them. With the plural refusing verbs, that
-// second command was a retype rather than an edit of the line already in your shell
-// history — and the refusal was pure grammar, since there was exactly one command it could
-// have meant.
-//
-// The listing keeps its own bare name, so this does not put back the two-ways-to-list the
-// plural rename removed: `verse entities list` is still an error, and says so.
+// dispatch runs the subcommand named by args[0], when there is one. A collection LISTS when
+// bare, which means it carries its own Run — and a command with its own Run never reaches
+// the library's sub-dispatch, so the verbs have to be found here. It reports whether it
+// handled the args at all; when it did not, the listing runs.
 func dispatch(cmd *cli.Command, cc *cli.Context, args []string) (bool, error) {
 	if len(args) == 0 {
 		return false, nil
@@ -291,26 +282,27 @@ func dispatch(cmd *cli.Command, cc *cli.Context, args []string) (bool, error) {
 	return true, sub.Run(cc, args[1:])
 }
 
-// noArgs refuses a positional the plural cannot dispatch, and names what it could have been.
+// noArgs refuses a positional the collection cannot dispatch, and names what it could have
+// been.
 //
 // A listing that IGNORED its arguments would turn a typo into a plausible answer:
-// `verse goals add-it ship` printing your goals reads as success at the wrong thing.
-func noArgs(cmd *cli.Command, name, singular string, args []string) error {
+// `verse goal add-it ship` printing your goals reads as success at the wrong thing.
+func noArgs(cmd *cli.Command, name string, args []string) error {
 	if len(args) == 0 {
 		return nil
 	}
-	// `verse goals list` is THE mistake the plural rename creates, and forwarding it to
-	// `verse goal list` would name a second command that does not exist either.
+	// `list` is THE mistake a bare-listing collection invites, and it is worth its own line:
+	// the answer is to drop the word, not to look for the command it was moved to.
 	if args[0] == "list" {
-		return fmt.Errorf("%w: `verse %s list` was replaced by `verse %s` — the plural is the listing",
-			cli.ErrUsage, singular, name)
+		return fmt.Errorf("%w: there is no `verse %s list` — bare `verse %s` is the listing",
+			cli.ErrUsage, name, name)
 	}
 	verbs := make([]string, 0, len(cmd.Children))
 	for _, c := range cmd.Children {
 		verbs = append(verbs, c.Name)
 	}
-	return fmt.Errorf("%w: verse %s: no such command %q — bare it lists, and it takes `verse %s`'s verbs (%s)",
-		cli.ErrUsage, name, args[0], singular, strings.Join(verbs, ", "))
+	return fmt.Errorf("%w: verse %s: no such command %q — bare it lists, and its verbs are (%s)",
+		cli.ErrUsage, name, args[0], strings.Join(verbs, ", "))
 }
 
 // leaf builds a client subcommand that takes no positionals of its own but still

@@ -153,7 +153,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.RunnerName != "" {
 		st["runnerName"] = m.RunnerName
 	}
-	// When this task began, so `verse runners` can say when a runner was last used and a
+	// When this task began, so `verse runner` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and
 	// carried across a re-attach rather than re-stamped — a resumed task did not start
 	// again, and a clock that restarts on every restart measures the verse, not the work.

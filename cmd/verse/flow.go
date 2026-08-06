@@ -9,26 +9,15 @@ import (
 	"github.com/signadot/verse/api"
 )
 
-func flowSubs() []*cli.Command {
-	return []*cli.Command{
+func flowCmd() *cli.Command {
+	return collection("flow", "flows", "/flows",
+		"flow — the distinct subjects with in-flight tasks; steer one by the subject it is about",
 		flowShowCmd(),
 		flowPauseCmd(),
 		flowResumeCmd(),
 		flowCancelCmd(),
 		flowSayCmd(),
-	}
-}
-
-func flowsCmd() *cli.Command {
-	return collection("flows", "/flows",
-		"flows — list the distinct subjects with in-flight tasks (steer one with `verse flow`)", "flow",
-		flowSubs()...)
-}
-
-func flowCmd() *cli.Command {
-	return cli.NewCommand("flow").
-		WithSynopsis("flow — steer live tasks by the subject they are about (list them with `verse flows`)").
-		WithSubs(flowSubs()...)
+	)
 }
 
 type flowShowConfig struct{ *cli.Command }

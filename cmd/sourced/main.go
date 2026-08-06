@@ -9,7 +9,7 @@
 // Then install it, from anywhere that can reach verse:
 //
 //	verse source add git:build-host http://localhost:9801
-//	verse sources
+//	verse source
 //
 // WHY THIS IS A SECOND BINARY, and not three subcommands of `verse`: a source is a program
 // somebody deploys, and the whole argument for the seam is that verse does not have to be

@@ -75,7 +75,7 @@ ok "server ready (data in $tmp/data)"
 step "install $CHARTER"
 v trigger add --file "$CHARTER" || die "the charter did not install"
 printf '\n'
-v strata
+v stratum
 ok "the ordering installed, and every rule passed its level check"
 
 # The refusal, for contrast: the same charter with one write pointing DOWN.
@@ -115,7 +115,7 @@ field() { printf '%s' "$1" | grep -oE "\"?$2\"?[: ]+\"?[a-z-]+" | head -1 | grep
 printf '  \033[2m%-10s %-12s %s\033[0m\n' "gh:issue" "feature" "fired"
 for _ in $(seq 1 "$WATCH"); do
 	stage=$(field "$(v entity get gh:issue:1 2>/dev/null || true)" stage)
-	feat=$(v entities 2>/dev/null | grep -o 'signadot:feature:[^ "]*' | head -1 || true)
+	feat=$(v entity 2>/dev/null | grep -o 'signadot:feature:[^ "]*' | head -1 || true)
 	phase=""
 	[ -n "$feat" ] && phase=$(field "$(v entity get "$feat" 2>/dev/null || true)" phase)
 	fired=$(v status 2>/dev/null | grep -oE '"?fired"?[: ]+[0-9]+' | grep -oE '[0-9]+$' || true)
@@ -126,9 +126,9 @@ done
 # ── what the run leaves behind ───────────────────────────────────────────────
 step "what happened"
 printf '\n'
-v entities | grep -E 'gh:issue|signadot:feature' || true
+v entity | grep -E 'gh:issue|signadot:feature' || true
 printf '\n'
-feat=$(v entities | grep -o 'signadot:feature:[^ "]*' | head -1)
+feat=$(v entity | grep -o 'signadot:feature:[^ "]*' | head -1)
 [ -n "$feat" ] || die "the derive never landed"
 ok "the derived entity is $feat"
 note "its id is the engine's — f(rule, subject) — and it records what it is about:"

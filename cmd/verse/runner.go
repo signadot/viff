@@ -12,26 +12,20 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-func runnerSubs() []*cli.Command {
-	return []*cli.Command{
-		runnerAddCmd(), runnerShowCmd(), runnerCheckCmd(), runnerRemoveCmd(),
-	}
-}
-
 type runnersConfig struct {
 	Probe bool `cli:"name=probe desc='also ask each runner what it is, right now (not recorded)'"`
 }
 
 var runnersFlags = &runnersConfig{}
 
-func runnersCmd() *cli.Command {
+func runnerCmd() *cli.Command {
 	opts, err := cli.StructOpts(runnersFlags)
 	if err != nil {
 		panic(err)
 	}
-	return filteredCollection("runners", "/runners",
-		"runners — list where work can run (add or remove one with `verse runner`)",
-		"runner", opts, func() url.Values {
+	return filteredCollection("runner", "runners", "/runners",
+		"runner — where work can run [--probe]; add|show|check|remove one",
+		opts, func() url.Values {
 			// Bare, the columns are what verse has RECORDED. --probe adds what the runners say
 			// now, and nothing merges the two or keeps the second.
 			q := url.Values{}
@@ -39,18 +33,11 @@ func runnersCmd() *cli.Command {
 				q.Set("probe", "true")
 			}
 			return q
-		}, runnerSubs()...)
-}
-
-func runnerCmd() *cli.Command {
-	return cli.NewCommand("runner").
-		WithSynopsis("runner — one place work runs: add|show|check|remove " +
-			"(list them with `verse runners`)").
-		WithSubs(runnerSubs()...)
+		}, runnerAddCmd(), runnerShowCmd(), runnerCheckCmd(), runnerRemoveCmd())
 }
 
 // runnerPath turns the ref an operator types into the route's two segments, accepting it with
-// or without the `runners:` prefix — an operator reading `verse entities` and one typing
+// or without the `runners:` prefix — an operator reading `verse entity` and one typing
 // `verse runner show` should not have to know two spellings of one thing.
 func runnerPath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "runners:"), ":", 2)

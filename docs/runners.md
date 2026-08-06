@@ -22,7 +22,7 @@ runner *is*, the way a resolver's kind is what it is *for*.
 
 ```sh
 verse runner add pool:gpu http://runner-gpu.verse.svc:9797
-verse runners
+verse runner
 verse runner check runners:pool:gpu
 verse runner show runners:pool:gpu
 ```
@@ -109,13 +109,13 @@ entity per (doer, place) pair.
 ## Seeing where
 
 ```sh
-verse ps                              # each task names its runner; the default reads `local`
-verse ps --runner runners:pool:gpu    # only that runner's work
-verse runners                         # what is installed, and what each is carrying
-verse runners --probe                 # …and what each of them says right now
+verse ps                           # each task names its runner; the default reads `local`
+verse ps --runner runners:pool:gpu # only that runner's work
+verse runner                       # what is installed, and what each is carrying
+verse runner --probe               # …and what each of them says right now
 ```
 
-`verse runners` shows `running` (now), `total` (ever) and `lastSpawn`, so a runner nobody names
+`verse runner` shows `running` (now), `total` (ever) and `lastSpawn`, so a runner nobody names
 is visible as such. Those columns are **derived from the store**, and `--probe` is the only thing
 that asks anybody.
 
@@ -128,7 +128,7 @@ whether a runner is well, the next ask is that it act on one.
 
 `verse ps --runner` selects on the name **stamped at spawn**, not on what is installed now, so it
 keeps answering for a runner that has since been removed — which is when an operator most wants
-it, that being exactly the case `verse runners` does not show.
+it, that being exactly the case `verse runner` does not show.
 
 `verse ps` reads the `task:instance` mirror rather than asking each installed runner, so one
 runner being down costs live detail and not rows. A fan-out would let a single dead runner take
@@ -179,7 +179,7 @@ delivered. Those are orphans, and the orphan path covers them.
 
 The removal itself is never refused: `--leave` always succeeds, because there is no drain here
 and a refusal with no way to satisfy it would be a trap. Its visible cost, stated rather than
-discovered: `verse ps` shows tasks on a runner that `verse runners` does not list. That is
+discovered: `verse ps` shows tasks on a runner that `verse runner` does not list. That is
 the true state, and the alternatives are worse.
 
 Removing a resolver binding *hands on* what it held, because a question has a layer above to go

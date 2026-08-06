@@ -69,7 +69,7 @@ func build(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
 	//
 	// Auto so the sample runs to completion unattended. Change the default to task.Ask and
 	// every action raises a gate instead: `reg` is the registry taskd serves answers into,
-	// so those become questions an operator answers through verse (`verse gates`), and the
+	// so those become questions an operator answers through verse (`verse gate`), and the
 	// task waits. That is the one-word difference between a runner that acts and a runner
 	// that asks.
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)

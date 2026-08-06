@@ -111,7 +111,7 @@ failure mode to want over a silent half-delete.
 
 The cost is operator-facing, which is why this is a question and not a patch. `verse entity rm`
 stops meaning "it is gone" and starts meaning "it is marked, and it goes when the reaper says".
-`verse entities` still lists it, deliberately. Two coherent answers:
+`verse entity` still lists it, deliberately. Two coherent answers:
 
 1. **`rm` marks**, and a default reaper charter ships with a short grace. Uniform: every
    departure is observable, including an operator's. Costs an operator the surprise, once.

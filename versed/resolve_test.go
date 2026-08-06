@@ -131,7 +131,7 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 
 // `verse gate approve` must answer an EXECUTOR-raised gate, whose id carries no owner.
 //
-// The unified `verse gates` lists engine and task gates together and tells the reader to
+// The unified `verse gate` lists engine and task gates together and tells the reader to
 // "answer one with `verse gate`". For a gate raised by `task do gate` that was false: the
 // id is <name>-<hex>, deliberately free of GateSep (shortID keeps it clear of anything a
 // shell or URL reads as punctuation), so splitting on GateSep recovered no owner, no task
@@ -167,7 +167,7 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 	})
 	rep.Body.Close()
 
-	// Answer it the way an operator reading `verse gates` does — by id alone, with no
+	// Answer it the way an operator reading `verse gate` does — by id alone, with no
 	// task id to help, through the same route `verse gate approve` posts to.
 	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
 	defer resp.Body.Close()

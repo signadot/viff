@@ -47,26 +47,27 @@ verse
   watch  [--system --kind --since <rev>]     stream store changes (cursored)
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 
-  Each collection is addressed twice: the PLURAL lists it, the SINGULAR acts on one member.
-  The plural also answers to the singular's verbs — `verse entities get <ref>` is
-  `verse entity get <ref>` — so the second command is an edit of the first, not a retype.
-  Only the bare plural lists: `verse entities list` is an error naming `verse entities`.
+  Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
+  acts on one member: `verse gate` shows the pending decisions, `verse gate approve <id>`
+  answers one. The plural is an alias of that same command — `verse gates`, `verse entities`
+  — so both spellings do the same thing. `verse gate list` is an error: bare it lists.
 
-  entities [--system <s>] [--kind <k>]       the store
-           [--if <pat>] [--if-at <path>]     … only those whose payload matches (see below)
-  entity (e)  get <ref> · put <ref> <payload> · rm <ref>
+  entity (entities, e)                       the store
+          [--system <s>] [--kind <k>]        … only that system, or that kind within it
+          [--if <pat>] [--if-at <path>]      … only those whose payload matches (see below)
+          get <ref> · put <ref> <payload> · rm <ref>
           put/rm [--at <field.path>]         write or remove INSIDE the payload, not the whole entity
           put [--create|--update]            only if nothing is there yet · only if something is
           put [--if <pattern>]               only if what is there matches
                                              (a put MERGES: fields it does not name are left alone,
                                               and `rm --at` is how one goes away)
-  gates                                      pending decisions across the fleet
-  gate    approve <id> [--say <text>] · deny <id> [--say <text>]
+  gate (gates)                               pending decisions across the fleet
+          approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
-  triggers                                   the installed charter
-  trigger add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
-  tasks (ps) [--runner <ref>]            every task, whatever runs it
-  task run <prompt…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
+  trigger (triggers)                         the installed charter
+          add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
+  task (tasks, ps) [--runner <ref>]          every task, whatever runs it
+          run <prompt…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>
@@ -74,28 +75,32 @@ verse
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
           do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
           do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
-  runners                                    where work can run  [--probe]
-  runner  add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
+  runner (runners) [--probe]                 where work can run
+          add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
-  sources                                    what reflects an external system in  [--probe]
-  source  add <system>:<name> <url> [--no-probe] [--allow-overlap]
+  source (sources) [--probe]                 what reflects an external system in
+          add <system>:<name> <url> [--no-probe] [--allow-overlap]
           add --dir <d> <system>:<name>      a local git repo, reflected in task
           add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask it what it is and what it claims, right now
           remove <ref> [--forget | --keep]   what becomes of what it reflected
-  flows                                      the distinct subjects with live work
-  flow    show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
+  resolver (resolvers)                       who answers questions
+          add [--file <f>|-] [file] · show <ref> · remove <ref>
+  stratum (strata)                           the declared level ordering
+          add [--file <f>|-] [file] · show <name> · remove <name>
+  flow (flows)                               the distinct subjects with live work
+          show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
-  goals                                      status / waitingOn / outcome, per goal
-  goal    add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
+  goal (goals)                               status / waitingOn / outcome, per goal
+          add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
           add --file <f> (full record incl. owned triggers) · remove <name>
           pause|resume|cancel <name> · say <name> <text…>
 
   docket                                     list open motions (votes + provider selections)
   vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
-  providers                                  list the provider registry (provider:<capability>:<id>)
+  provider (providers)                       the provider registry (provider:<capability>:<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +
           [--interval <dur>]                  content controller + a validator per file
@@ -113,13 +118,13 @@ Flags may appear before or after positionals (`gate approve <id> --as you --say 
 
 `--system` and `--kind` narrow by where an entity lives. `--if` narrows by what it says: a
 tony match against the payload, which is the same predicate a charter carries in `value` — in
-its `subject`, its `on` or its `when`. So `verse entities --if X` lists exactly what
+its `subject`, its `on` or its `when`. So `verse entity --if X` lists exactly what
 `verse watch --if X` streams, and both name what a rule with that predicate would select.
 
 ```sh
-verse entities --if '{stage: !or [open, merged]}'   # an operator, not just equality
-verse entities --if '{urgent: true}' --if-at labels # rooted inside the payload
-verse watch --system demo --if '{stage: open}'      # the same selector, as it happens
+verse entity --if '{stage: !or [open, merged]}'   # an operator, not just equality
+verse entity --if '{urgent: true}' --if-at labels # rooted inside the payload
+verse watch --system demo --if '{stage: open}'    # the same selector, as it happens
 ```
 
 `--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a

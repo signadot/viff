@@ -14,7 +14,7 @@ with the tree.
 ```sh
 verse source add git:laptop http://build-host:9801
 verse source add slack:workspace http://slack-source:9801
-verse sources
+verse source
 ```
 
 ## The core law: a hint is a hint, reconcile is the truth
@@ -189,7 +189,7 @@ happening.
 
 That cursor cannot catch a source that has *wedged* — alive, answering, reflecting nothing new
 — because on a quiet repo a healthy source looks identical. So **when a pass last completed is
-reported and never stored**, read live from the reflector on `verse sources`. That is the
+reported and never stored**, read live from the reflector on `verse source`. That is the
 runner's rule about opinions of wellness: a reachability fact that is written down can be stale
 in the direction that costs.
 

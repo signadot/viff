@@ -264,7 +264,7 @@ func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 // An answer a broker took for a worker is recorded as ACCEPTED, not as delivered — and
 // becomes delivered when the worker acknowledges it.
 //
-// It was recorded as settled the moment it was queued, so `verse gates`, the snapshot and the
+// It was recorded as settled the moment it was queued, so `verse gate`, the snapshot and the
 // record all reported the question decided while the worker that must act on it had heard
 // nothing. If it never came back the answer evaporated with no trace it was undelivered.
 //

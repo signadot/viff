@@ -12,23 +12,12 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-func stratumSubs() []*cli.Command {
-	return []*cli.Command{stratumAddCmd(), stratumShowCmd(), stratumRemoveCmd()}
-}
-
-// strataCmd lists the ordering; stratumCmd operates on one of them. The same split as
-// triggers/trigger, and the plural is irregular rather than invented — a stratum is one level,
-// strata are the ordering.
-func strataCmd() *cli.Command {
-	return collection("strata", "/strata",
-		"strata — list the declared level ordering (add or remove one with `verse stratum`)", "stratum",
-		stratumSubs()...)
-}
-
+// The alias is irregular rather than invented — a stratum is one level, strata are the
+// ordering — so the plural anyone typing the Latin reaches for lands on this command too.
 func stratumCmd() *cli.Command {
-	return cli.NewCommand("stratum").
-		WithSynopsis("stratum — one level of the ordering: add|show|remove (list them with `verse strata`)").
-		WithSubs(stratumSubs()...)
+	return collection("stratum", "strata", "/strata",
+		"stratum — the declared level ordering; add|show|remove one level",
+		stratumAddCmd(), stratumShowCmd(), stratumRemoveCmd())
 }
 
 type stratumShowConfig struct{ *cli.Command }

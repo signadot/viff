@@ -127,7 +127,7 @@ func unwrapNode(n *ir.Node) *ir.Node {
 }
 
 // Find reads one installed runner by the ref a charter or a CLI argument names, accepting it
-// with or without the `runners:` prefix — an operator reading `verse entities` and one typing
+// with or without the `runners:` prefix — an operator reading `verse entity` and one typing
 // `verse runner show` should not have to know two spellings of one thing.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, System+":"), ":", 2)

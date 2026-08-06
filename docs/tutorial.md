@@ -54,11 +54,11 @@ by a `system:kind:id` triple and carrying a document. That is the whole data mod
 as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 
 ```sh
-verse entities                                        # everything
-verse entities --system demo --kind pr                # by where it lives
-verse entities --if '{stage: open}'                   # by what it says
-verse entities --if '{stage: !or [open, merged]}'     # …an operator, not just equality
-verse entities --if '{urgent: true}' --if-at labels   # …rooted inside the payload
+verse entity                                        # everything
+verse entity --system demo --kind pr                # by where it lives
+verse entity --if '{stage: open}'                   # by what it says
+verse entity --if '{stage: !or [open, merged]}'     # …an operator, not just equality
+verse entity --if '{urgent: true}' --if-at labels   # …rooted inside the payload
 verse entity get demo:pr:1
 ```
 
@@ -145,7 +145,7 @@ Run one directly:
 ```sh
 verse task run --driver scripted "echo summarizing; sleep 3"   # prints a run-… id
 verse task run --driver scripted --wait "echo done"            # …and block for the result
-verse tasks
+verse task
 verse task get <id>                # status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"        # re-prompt the agent mid-run
 verse task vector <id> ask --as human:scott        # slide its autonomy (auto|ask|park)
@@ -170,7 +170,7 @@ running a command, and delegating to a sub-agent block:
 
 ```sh
 verse task run 'Write a file hello.txt containing "hi".'
-verse gates
+verse gate
 # - gate: write
 #   id: run-f3e31ed0390f~d1
 #   mode: ASK
@@ -217,16 +217,16 @@ In-flight work is addressed by the subject it is about — a *flow* — and stee
 out-of-band from observation, so it never queues behind a backlog of changes:
 
 ```sh
-verse flows                             # the distinct subjects with live work
-verse flow pause  demo:latch:1          # freeze its tasks at their next boundary
+verse flow                        # the distinct subjects with live work
+verse flow pause  demo:latch:1    # freeze its tasks at their next boundary
 verse flow resume demo:latch:1
 verse flow say    demo:latch:1 "hurry"
-verse flow cancel demo:latch:1          # stop them (destructive)
-verse flow say 'demo:*:*' "hurry"       # the address is a selector: * per segment
+verse flow cancel demo:latch:1    # stop them (destructive)
+verse flow say 'demo:*:*' "hurry" # the address is a selector: * per segment
 ```
 
 A flow is not a stored thing — it is a query over the subjects of live tasks — so
-`verse flows` is empty until something is running, and each verb reports how many tasks
+`verse flow` is empty until something is running, and each verb reports how many tasks
 it actually reached. §4 gives you one to steer. See
 [deployment and steering](deployment-and-steering.md) for why control never rides the change
 stream.
@@ -348,7 +348,7 @@ running is not a second firing.
 
 ```sh
 ./scripts/charter-shapes.sh run ask
-verse gates
+verse gate
 # - gate: approval
 #   id: trigger:shape-ask:approval~093e7c94
 #   mode: ASK
@@ -508,7 +508,7 @@ write in a circle, it comes with the thing that bounds it: a **stratum**, a decl
 
 ```sh
 ./scripts/charter-shapes.sh run derive
-verse strata                                                  # the ordering
+verse stratum                                                  # the ordering
 verse entity get derived:feature:shape-derive@demo:derive:1
 ```
 
@@ -550,11 +550,11 @@ Rules install and read back in tony, so inspecting one is a round trip rather th
 format:
 
 ```sh
-verse trigger add -f charter.tony    # or: cat charter.tony | verse trigger add -f -
-verse triggers
+verse trigger add -f charter.tony # or: cat charter.tony | verse trigger add -f -
+verse trigger
 verse trigger show shape-latch
 verse trigger remove shape-latch
-verse strata                         # and `verse stratum show|remove` for one of them
+verse stratum                     # and `verse stratum show|remove` for one of them
 ```
 
 A charter is durable — each rule is an entity (`trigger:rule:<name>`), and each stratum is one

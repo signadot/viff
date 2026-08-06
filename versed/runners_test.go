@@ -620,7 +620,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 		t.Fatalf("ps --runner local = %+v, want just the one that named none", local)
 	}
 
-	// `verse runners` counts what it is carrying, from the store.
+	// `verse runner` counts what it is carrying, from the store.
 	one := runnersList(t, ts, false)[0]
 	if one["running"] != int64(1) || one["total"] != int64(1) {
 		t.Fatalf("counts = %+v, want one running and one total", one)

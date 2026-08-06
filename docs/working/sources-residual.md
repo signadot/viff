@@ -297,7 +297,7 @@ cursor the source deliberately does not keep.
 **`source.Throttle` has no visibility.** A source answering from its cache is indistinguishable
 from an external system where nothing is happening — the same shape as the wedged-source problem
 `lastPass` exists for, one level down. Nothing reports it; a `/source` descriptor field saying
-"my floor is 2m" would, and would also let `verse sources` explain why a hint took two minutes.
+"my floor is 2m" would, and would also let `verse source` explain why a hint took two minutes.
 
 **And it protects the external API, not the store**, which turns out to be the half that hurt
 first. A throttled pass still converges: `Reflector.converge` calls `current()`, which Lists the

@@ -35,7 +35,7 @@ own `by`.
 - *Deployment decides supervision, not the charter.* One runner per verse (`--runner` and
   `--broker` are mutually exclusive), and `resolver:` is unread — so two rules cannot run
   under different supervisors, and a charter cannot state which supervisor it expects.
-- *Attest, not intercept.* Out-of-task, verse gates *reported* effects and CAS-enforces
+- *Attest, not intercept.* Out-of-task, verse gate *reported* effects and CAS-enforces
   terminal-once / claim-holder-only / gate-before-effect. A supervising service's compliance
   is contractual. Fine for a service you deployed; not a claim a charter can make.
 - *No clock.* A supervisor that is down is indistinguishable from one that declined, and both

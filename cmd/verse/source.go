@@ -12,27 +12,21 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-func sourceSubs() []*cli.Command {
-	return []*cli.Command{
-		sourceAddCmd(), sourceShowCmd(), sourceCheckCmd(), sourceRemoveCmd(),
-	}
-}
-
 type sourcesConfig struct {
 	Probe bool `cli:"name=probe desc='also ask each source what it is, right now (not recorded)'"`
 }
 
 var sourcesFlags = &sourcesConfig{}
 
-func sourcesCmd() *cli.Command {
+func sourceCmd() *cli.Command {
 	opts, err := cli.StructOpts(sourcesFlags)
 	if err != nil {
 		panic(err)
 	}
-	return filteredCollection("sources", "/sources",
-		"sources — list what reflects an external system into the verse "+
-			"(add or remove one with `verse source`)",
-		"source", opts, func() url.Values {
+	return filteredCollection("source", "sources", "/sources",
+		"source — what reflects an external system into the verse [--probe]; "+
+			"add|show|check|remove one",
+		opts, func() url.Values {
 			// Bare, the columns are what verse has RECORDED. --probe adds what the sources say
 			// now, and nothing merges the two or keeps the second.
 			q := url.Values{}
@@ -40,18 +34,11 @@ func sourcesCmd() *cli.Command {
 				q.Set("probe", "true")
 			}
 			return q
-		}, sourceSubs()...)
-}
-
-func sourceCmd() *cli.Command {
-	return cli.NewCommand("source").
-		WithSynopsis("source — one external system reflected into the verse: " +
-			"add|show|check|remove (list them with `verse sources`)").
-		WithSubs(sourceSubs()...)
+		}, sourceAddCmd(), sourceShowCmd(), sourceCheckCmd(), sourceRemoveCmd())
 }
 
 // sourcePath turns the ref an operator types into the route's two segments, accepting it with
-// or without the `sources:` prefix — an operator reading `verse entities` and one typing
+// or without the `sources:` prefix — an operator reading `verse entity` and one typing
 // `verse source show` should not have to know two spellings of one thing.
 func sourcePath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "sources:"), ":", 2)

@@ -971,7 +971,7 @@ verse flow pause demo:pr:*      # …the whole kind
 ```
 
 Relating tasks is what a match *does*, so "relational flows" are not a second primitive
-to add later — they are broader subject-matches. `verse flows` is the distinct subjects with
+to add later — they are broader subject-matches. `verse flow` is the distinct subjects with
 live tasks; steering applies the match and acts on the matched tasks. A query, not a
 maintained index.
 
@@ -1062,7 +1062,7 @@ back as an ordinary live entity, stripped to whatever the rule wrote, with no ma
 React to a departure by writing somewhere else: an audit record, an archive. The thing that is
 going is not a subject.
 
-The raw listing (`verse entities`) still shows it — making the intent visible is the whole
+The raw listing (`verse entity`) still shows it — making the intent visible is the whole
 point; only the rule-facing selection hides it.
 
 **The removal itself is inert.** When the entity finally goes, a predicate over it falls from

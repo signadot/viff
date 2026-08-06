@@ -12,7 +12,7 @@ reconstruct why each was left. Nothing here is a design owed to anything else he
 
 A gate carrying a `formula` is resolved by a **motion** — `motion:channel:<id>`, listed by
 `verse docket`, answered by `verse vote <id> <choice> --as <who>`, settled by tally. A gate with
-`mode: ask` is posed as a **question** — `gate:question:<id>`, listed by `verse gates`, answered
+`mode: ask` is posed as a **question** — `gate:question:<id>`, listed by `verse gate`, answered
 by `verse gate approve`. Resolvers attached to the second only.
 
 The first framing of this residual said the two dockets were a modelling tension to be resolved.
@@ -36,7 +36,7 @@ which nobody could predict from the name.
 with no explicit mode to `"ask"`, so a thing literally called *ask* goes down the motion arm. And
 `openChannel` is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks nobody
 anything — opens a channel and lands on `verse docket` with no ballot anyone can cast. The
-result is a docket listing decisions nobody can make, and a `verse gates` omitting decisions
+result is a docket listing decisions nobody can make, and a `verse gate` omitting decisions
 people are being asked for.
 
 The fork is git-issue `sp27m3g1h12krdgve1n0`, and is marked in the code as an unfixed design

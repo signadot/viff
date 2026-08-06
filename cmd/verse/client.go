@@ -440,25 +440,10 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 
 // ── gate ─────────────────────────────────────────────────────────────────────
 
-// gateSubs is the group's verbs, built fresh per call: the singular and the plural each
-// hold their OWN instances (a Command is parented by whoever it is added to, and each
-// carries the flag values of the invocation), so the one thing shared is this list. That
-// is deliberate — a verb added here reaches both spellings, which is what
-// TestPluralsTakeTheSingularsVerbs pins. Same for the five below.
-func gateSubs() []*cli.Command {
-	return []*cli.Command{gateAnswerCmd(true), gateAnswerCmd(false)}
-}
-
-func gatesCmd() *cli.Command {
-	return collection("gates", "/gates",
-		"gates — list pending decisions across the fleet (answer one with `verse gate`)", "gate",
-		gateSubs()...)
-}
-
 func gateCmd() *cli.Command {
-	return cli.NewCommand("gate").
-		WithSynopsis("gate — answer one human-in-the-loop decision (list them with `verse gates`)").
-		WithSubs(gateSubs()...)
+	return collection("gate", "gates", "/gates",
+		"gate — pending human-in-the-loop decisions; answer one with approve|deny",
+		gateAnswerCmd(true), gateAnswerCmd(false))
 }
 
 // The answer to a gate is a VERB, so it is a command — `gate approve <id>` — rather than
@@ -537,16 +522,6 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 }
 
 // ── entity ───────────────────────────────────────────────────────────────────
-
-func entitySubs() []*cli.Command {
-	return []*cli.Command{entityGetCmd(), entityPutCmd(), entityRmCmd()}
-}
-
-func entityCmd() *cli.Command {
-	return cli.NewCommand("entity").WithAliases("e").
-		WithSynopsis("entity — one entity in the store: get|put|rm <ref> (list them with `verse entities`)").
-		WithSubs(entitySubs()...)
-}
 
 type entityGetConfig struct{ *cli.Command }
 
@@ -703,7 +678,7 @@ func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
 	return nil
 }
 
-// entities is the one collection with filters of its own, so it does not go through
+// entity is the one collection with filters of its own, so it does not go through
 // collection() — the shape is the same, the query is not.
 type entitiesConfig struct {
 	*cli.Command
@@ -713,23 +688,23 @@ type entitiesConfig struct {
 	// stream are one selector asked at two times.
 	//
 	// `entity put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
-	// flags at its first positional, so `entities put <ref> <payload> --if <pattern>` hands
+	// flags at its first positional, so `entity put <ref> <payload> --if <pattern>` hands
 	// the flag to `put`, where it is a precondition rather than a filter. Pinned by
 	// TestEntitiesPutKeepsItsOwnIf.
 	If   string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
 	IfAt string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
 }
 
-func entitiesCmd() *cli.Command {
+func entityCmd() *cli.Command {
 	cfg := &entitiesConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "entities").
-		WithSynopsis("entities — list the store [--system <s>] [--kind <k>] [--if <pattern>] (get or put one with `verse entity`)").
+	return cli.NewCommandAt(&cfg.Command, "entity").WithAliases("entities", "e").
+		WithSynopsis("entity — the store [--system <s>] [--kind <k>] [--if <pattern>]; get|put|rm one by <ref>").
 		WithOpts(opts...).
-		WithSubs(entitySubs()...).
+		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd()).
 		WithRun(cfg.run)
 }
 
@@ -741,7 +716,7 @@ func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
 	if handled, err := dispatch(cfg.Command, cc, args); handled {
 		return err
 	}
-	if err := noArgs(cfg.Command, "entities", "entity", args); err != nil {
+	if err := noArgs(cfg.Command, "entity", args); err != nil {
 		return err
 	}
 	q := url.Values{}
@@ -752,11 +727,11 @@ func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
 		q.Set("kind", cfg.Kind)
 	}
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
-		return fmt.Errorf("entities: %w", err)
+		return fmt.Errorf("entity: %w", err)
 	}
 	resp, err := httpGet("/entities", q)
 	if err != nil {
-		return fmt.Errorf("entities: %w", err)
+		return fmt.Errorf("entity: %w", err)
 	}
 	return printBody(cc, resp)
 }

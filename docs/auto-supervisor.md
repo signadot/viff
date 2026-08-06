@@ -90,7 +90,7 @@ verse trigger add -f - <<'TONY'
   action:
     patch: { stage: landed }
 
-- name: land-ask               # promoted: one human decision, in `verse gates`
+- name: land-ask               # promoted: one human decision, in `verse gate`
   condition:
     subject:
       system: change
@@ -119,7 +119,7 @@ Five rules, and the routing is the whole design:
 | `approve`, risk `low` | `green` | `land-auto` fires — no gate is posed at all | the supervisor |
 | `approve`, risk `medium`/`high` | any | `remit` rewrites the decision to `escalate`, then `land-ask` | the charter, over the supervisor |
 | `approve`, risk `low` | not `green` | same — `remit`, then `land-ask` | the charter, over the supervisor |
-| `escalate` | any | `land-ask` — one `sign-off` gate in `verse gates` | the supervisor, promoting |
+| `escalate` | any | `land-ask` — one `sign-off` gate in `verse gate` | the supervisor, promoting |
 | `reject` | any | `close` | the supervisor |
 | nothing (the run failed) | any | `onFailed` writes `escalate`, then `land-ask` | nobody — the default |
 
@@ -203,7 +203,7 @@ verse entity put change:pr:7 '{stage: assessed, tests: green, review: {decision:
 verse entity get change:pr:7
 # payload:
 #   review: { decision: approve, risk: low }
-#   stage: landed            ← land-auto fired; `verse gates` is empty
+#   stage: landed            ← land-auto fired; `verse gate` is empty
 ```
 
 Now the same approval, at a change CI does not support:
@@ -218,7 +218,7 @@ verse entity get change:pr:8
 #     risk: low
 #     why: "docs only"       ← the supervisor's reasoning survives the override
 #   stage: assessed          ← waiting on a person
-verse gates
+verse gate
 # - gate: sign-off
 #   id: trigger:land-ask:sign-off~090ea377
 #   mode: ASK
@@ -234,7 +234,7 @@ The id's suffix is derived from the firing's subjects rather than counted, so th
 decision re-reached is the same question rather than a second one.
 
 With credentials, `verse entity put change:pr:9 '{stage: proposed, tests: green}'` runs the
-real thing: `verse flows` shows the assessment in flight, `verse entity get
+real thing: `verse flow` shows the assessment in flight, `verse entity get
 task:instance:assess@change:pr:9` shows what the supervisor read and said, and the change
 ends `landed`, `closed`, or waiting at a gate.
 

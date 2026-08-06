@@ -25,7 +25,7 @@ action or naming a target. (`--deadline` is an ordinary flag, not tony, so `4h` 
 unquoted there.)
 
 ```sh
-verse goals
+verse goal
 # - deadline: "4h"
 #   name: ship
 #   status: blocked
@@ -41,7 +41,7 @@ true, however that happens: a trigger, a source, or a person.
 
 ```sh
 verse entity put ci:status:build '{state: green}'
-verse goals
+verse goal
 # - name: ship
 #   outcome: done
 #   status: done

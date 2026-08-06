@@ -446,7 +446,7 @@ func TestRemovingTheLastBindingSendsAQuestionToTheDocket(t *testing.T) {
 	if got["reownedFrom"] != "resolvers:security:alpha" {
 		t.Fatalf("the handover left no trace: %+v", got)
 	}
-	// `verse gates` still lists it: unowned is not unasked, and ⊤ is where it belongs.
+	// `verse gate` still lists it: unowned is not unasked, and ⊤ is where it belongs.
 	var listed bool
 	for _, g := range docket(t, srv) {
 		if g["id"] == qid {

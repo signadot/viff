@@ -239,9 +239,9 @@ pattern that would no longer exist, and nothing re-runs a check — they would g
 unstratified, having been told they were ordered. Remove the rules first, or move them.
 
 ```
-$ verse strata                 # the ordering, by level
+$ verse stratum             # the ordering, by level
 $ verse stratum show sdlc
-$ verse stratum remove sdlc    # refused while rules live there
+$ verse stratum remove sdlc # refused while rules live there
 ```
 
 ## Corners

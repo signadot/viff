@@ -968,7 +968,7 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 // parameter per segment, so a field name is never re-split here).
 //
 // It is one function because the streaming face and the listing face must name the SAME set —
-// `verse watch --if X` and `verse entities --if X` differ in when they answer, not in what
+// `verse watch --if X` and `verse entity --if X` differ in when they answer, not in what
 // they pick. And what they build is an entity.Pattern, which is what a charter's `when` also
 // becomes, so an operator can list or watch exactly what a rule would fire on.
 //
@@ -1284,7 +1284,7 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 
 // pendingQuestions selects the open questions: the docket, as a slice of the store.
 //
-// One selector, because `verse gates` and `verse status` must name the same set. They did not
+// One selector, because `verse gate` and `verse status` must name the same set. They did not
 // before — status counted the engine registry, which never held a task's questions and
 // holds nothing at all after a restart, so it could report no gates beside a docket listing
 // several.
@@ -1888,7 +1888,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
 	for _, ent := range s.scopedStore(r).List(func(ref entity.Ref) bool {
 		// Bindings only. An instance shares the system deliberately — one `--system
-		// resolvers` shows both — but `verse resolvers` is asking what is INSTALLED, and a
+		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
 		return ref.System == resolver.System && ref.Kind != resolver.InstanceKind
 	}) {
@@ -2228,7 +2228,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	// `verse ps --runner <name>`: the question a drive asks. It selects on the NAME stamped at
 	// spawn, not on what is installed now, so it keeps answering for a runner that has since
 	// been removed — which is when an operator most wants it, since that is exactly the case
-	// `verse runners` can no longer show. `--runner local` selects the ones that named none.
+	// `verse runner` can no longer show. `--runner local` selects the ones that named none.
 	if want := r.URL.Query().Get("runner"); want != "" {
 		kept := make([]task.Instance, 0, len(out))
 		for _, inst := range out {
@@ -2361,7 +2361,7 @@ func (s *Server) isTask(id string) bool {
 // EXECUTOR raises (`task do gate`) is <name>-<hex>, deliberately free of GateSep —
 // shortID avoids it so the id survives a shell and a URL intact — with the consequence that
 // splitting on GateSep recovers nothing and `verse gate approve` answered 404 on a gate
-// `verse gates` was listing one line above, `task:` and all. The routing information was
+// `verse gate` was listing one line above, `task:` and all. The routing information was
 // never missing; it was in the snapshot rather than in the id. This reads it from there.
 //
 // Unscoped, like isTask beside it: a resolve is addressed by a unique decision id, not
@@ -2747,7 +2747,7 @@ func (s *Server) removeStratum(w http.ResponseWriter, r *http.Request) {
 // ── goals: an owning aggregate (owned triggers + done/fail latches + status) ──────
 
 // listGoals returns the live goal roster read from the goal:instance entities — name,
-// subject, status, waitingOn, deadline, and (once terminal) outcome — the `verse goals` view.
+// subject, status, waitingOn, deadline, and (once terminal) outcome — the `verse goal` view.
 func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
 	ents := s.Store.List(func(ref entity.Ref) bool { return ref.System == "goal" && ref.Kind == "instance" })
 	out := make([]map[string]any, 0, len(ents))

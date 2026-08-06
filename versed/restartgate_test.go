@@ -15,7 +15,7 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// docket reads `verse gates` off a server.
+// docket reads `verse gate` off a server.
 func docket(t *testing.T, srv *Server) []map[string]any {
 	t.Helper()
 	ts := httptest.NewServer(srv.Handler())

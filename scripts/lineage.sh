@@ -101,7 +101,7 @@ if $clean; then
 	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
 	# the address the engine chose, not by one this script invented.
 	for sys in lineage lintag; do
-		for e in $(v entities --system "$sys" -o tony 2>/dev/null | sed -n 's|^[[:space:]]*ref:[[:space:]]*||p'); do
+		for e in $(v entity --system "$sys" -o tony 2>/dev/null | sed -n 's|^[[:space:]]*ref:[[:space:]]*||p'); do
 			v entity rm "$e" >/dev/null 2>&1 || true
 		done
 	done
@@ -190,7 +190,7 @@ ok "four PRs — a number is the id; :42 and :45 target main, :43 targets next, 
 step "the link verse writes, and the id it gives it"
 until_ok 100 "the trace never landed — is the engine running?" \
 	bash -c "$BIN ${scope[*]} entities --system lineage -o tony 2>/dev/null | grep -q 'lingh:pr:42'"
-tref=$(v entities --system lineage -o tony | sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | grep 'pr:42' | head -1)
+tref=$(v entity --system lineage -o tony | sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | grep 'pr:42' | head -1)
 ok "$tref"
 v entity get "$tref"
 printf '\n'
@@ -199,7 +199,7 @@ note "the id is f(rule, subject): re-merging pr:42 rewrites THIS address, never 
 
 # :44 is the control. It shares a commit with :42, so a rule keyed on the commit would have
 # correlated it; the selection is what says only merged PRs have lineage.
-v entities --system lineage -o tony | grep -q 'pr:44' &&
+v entity --system lineage -o tony | grep -q 'pr:44' &&
 	die "an open PR was correlated — the subject predicate is not selecting"
 ok "lingh:pr:44 is open, so nothing was derived about it (it shares a1b2c3 with :42)"
 
@@ -214,7 +214,7 @@ step "the release: three ids reassembled without a fourth"
 # the releases but the engine still holds the task each one started, and a subject whose
 # task it already has is the case above. Counting what actually blocks keeps this correct
 # however many times the script is run or cleaned.
-n=$(v entities --system task -o tony 2>/dev/null | grep -c 'ref: task:instance:lin-release-manifest@' || true)
+n=$(v entity --system task -o tony 2>/dev/null | grep -c 'ref: task:instance:lin-release-manifest@' || true)
 REL="lintag:release:v1.4.$n"
 v entity put "$REL" '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \
@@ -235,7 +235,7 @@ ok "lingh:pr:43 is traced but absent: it targets next, and this release asked fo
 step "the flow, which is keyed by exactly one of them"
 until_ok 150 "no flow appeared for $REL" \
 	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL'"
-v flows
+v flow
 ok "the flow's subject is $REL — one id, not a merged one"
 note "the task can reach the others because the manifest is on its subject: \`verse task get\`"
 

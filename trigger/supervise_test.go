@@ -167,7 +167,7 @@ func supervisorSpawner(store entity.Store, answer string) Spawner {
 }
 
 // recorder is a Resolver that records the questions put to it and approves them — a stand-in
-// for the person at `verse gates`. Which questions were asked is the assertion: an automatic
+// for the person at `verse gate`. Which questions were asked is the assertion: an automatic
 // supervisor is only worth having if the gate it does not raise is genuinely not raised.
 type recorder struct {
 	mu    sync.Mutex

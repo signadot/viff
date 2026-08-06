@@ -58,7 +58,7 @@ proved apart from nothing, so it is refused beside anything else in its system.
 ## Commands
 
 ```
-verse sources                                what is installed, with lastReflect/lastError
+verse source                                what is installed, with lastReflect/lastError
         [--probe]                            …and what each one says right now (not recorded)
 verse source add <system>:<name> <url>       install one, probing the url first
        add --dir <d> <system>:<name>         …or a local git repo, reflected in task

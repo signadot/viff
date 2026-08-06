@@ -615,7 +615,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	//
 	// One `gating.gates` list produces two surfaces. A formula gate becomes a MOTION
 	// (motion:channel, `verse docket`, `verse vote`, settled by tally); everything else
-	// becomes a QUESTION (gate:question, `verse gates`, `verse gate approve`, settled by an
+	// becomes a QUESTION (gate:question, `verse gate`, `verse gate approve`, settled by an
 	// answer). Different entity, different verb, different docket — and a resolver can own
 	// only the second, so whether a rule can be supervised depends on which of the two an
 	// author wrote under the same key.
@@ -624,7 +624,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// explicit mode to "ask", so a thing literally called ASK goes down the motion arm. And
 	// openChannel is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks
 	// nobody anything — opens a channel and lands on the docket with no ballot anyone can
-	// cast. The result is a docket listing decisions nobody can make, and a `verse gates`
+	// cast. The result is a docket listing decisions nobody can make, and a `verse gate`
 	// omitting decisions people are being asked for.
 	//
 	// The distinction the split needs is ASKS SOMEBODY versus WAITS FOR SOMETHING, and it is
@@ -1019,7 +1019,7 @@ func refIDs(refs []entity.Ref) []string {
 // So the dial has three settings but two surfaces, and which one a setting lands on is not
 // arbitrary: the docket carries a question that is NOT settled when it is posed, because it
 // needs several contributions or because a clock (`within`) can settle it instead. That is
-// why `ask` sits here rather than in `verse gates` alongside a whether-ask — it composes
+// why `ask` sits here rather than in `verse gate` alongside a whether-ask — it composes
 // with `within`, and naming a doer is a claim that must be attributable, which a ballot is
 // by construction and `gate approve` today is not.
 //

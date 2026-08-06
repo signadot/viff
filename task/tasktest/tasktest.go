@@ -1,6 +1,6 @@
 // Package tasktest is a conformance suite for producers of task.Instance.
 //
-// verse reports a task through one shape wherever it runs — `verse tasks`,
+// verse reports a task through one shape wherever it runs — `verse task`,
 // `task get` and the mirrored entity all read task.Instance — but that shape is
 // PRODUCED independently by each runner: taskd projects it from a hosted task, the
 // broker from a dial-in worker's reported state. Nothing made those two agree. Every field
@@ -152,7 +152,7 @@ func completionIsAResult(t *testing.T, p Producer) {
 //
 // The reason is the entire point of raising a gate rather than deciding: it is what the
 // resolver reads. It reached the read plane and was dropped from the snapshot, so
-// `verse gates` listed the escalation with a blank where the justification belonged.
+// `verse gate` listed the escalation with a blank where the justification belonged.
 func gateReasonSurvives(t *testing.T, p Producer) {
 	if !p.Caps().ExecutorGates {
 		t.Skip("producer cannot raise a gate from outside the driver")

@@ -130,7 +130,7 @@ type taskState struct {
 	ackedCursor int64
 	// pending holds the open gate decisions raised by the worker, keyed by decision id.
 	// It keeps the whole raised frame rather than just the gate name: `do gate --reason`
-	// rides in on Text, and a resolver reading `verse gates` needs it — that reason is the
+	// rides in on Text, and a resolver reading `verse gate` needs it — that reason is the
 	// entire point of an executor escalating instead of deciding. Narrowing this to
 	// id -> gate silently blanked it on every brokered gate.
 	pending map[string]task.Frame

@@ -186,7 +186,7 @@ local path. Three implementations sit behind it:
   inside-out — the same task behind two handles, one where it runs and one where it is
   observed.
 
-Because the seam is uniform, `verse tasks` and
+Because the seam is uniform, `verse task` and
 `verse task get/attach/cancel/say/approve` work whether a task is local, remote, or
 brokered, and a human executes a task via `verse task do` exactly as an agent would.
 See [task control](task-control.md).

@@ -5,7 +5,7 @@
 # a live gate waiting for you the moment it finishes.
 #
 # It is the missing first five minutes. `verse up` gives you an empty verse, and an empty
-# verse looks the same as a broken one: `verse entities`, `verse triggers` and `verse gates`
+# verse looks the same as a broken one: `verse entity`, `verse trigger` and `verse gate`
 # all answer with nothing. This seeds enough that they don't, and prints what to type next.
 #
 # Unlike smoke.sh — which builds its own binaries and runs its own isolated server — this
@@ -123,7 +123,7 @@ v entity put demo:task:hotfix-1 '{priority: high, title: "expiring cert"}' >/dev
 v entity put demo:task:cleanup-1 '{priority: low, title: "tidy the fixtures"}' >/dev/null
 ok "demo:task:hotfix-1 (high — demo-escalate fires), demo:task:cleanup-1 (low — it does not)"
 
-# Providers are ordinary entities, which is the point: `verse providers` is a view of the
+# Providers are ordinary entities, which is the point: `verse provider` is a view of the
 # store, and a spawn that SELECTS its doer picks from these by capability and attributes.
 v entity put provider:review:claude '{driver: llm, tier: premium}' >/dev/null
 v entity put provider:review:cheapo '{driver: scripted, tier: basic}' >/dev/null
@@ -146,12 +146,12 @@ done
 
 GID=
 for _ in $(seq 1 50); do
-	GID=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	GID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
 	[ -n "$GID" ] && break
 	sleep 0.2
 done
 [ -n "$GID" ] && ok "demo-review is holding demo:pr:1 at a gate: $GID" ||
-	printf '  \033[33m~\033[0m no gate yet — `verse gates` in a moment\n'
+	printf '  \033[33m~\033[0m no gate yet — `verse gate` in a moment\n'
 
 scope_note=""
 [ ${#scope[@]} -gt 0 ] && scope_note=" ${scope[*]}"

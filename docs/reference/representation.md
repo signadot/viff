@@ -12,9 +12,9 @@ verse reads tony, JSON and YAML, and writes tony and YAML. The asymmetry is deli
 it is worth thirty seconds up front:
 
 ```sh
-verse triggers             # tony (the default)
-verse triggers -o yaml     # yaml
-verse triggers -o json     # refused — see below
+verse trigger             # tony (the default)
+verse trigger -o yaml     # yaml
+verse trigger -o json     # refused — see below
 curl -s localhost:9797/status                              # tony
 curl -s -H 'Accept: application/yaml' localhost:9797/status # yaml
 ```
@@ -43,7 +43,7 @@ is only unambiguous where the keyspace is closed, so it is *not* applied inside 
 predicate, where a key may itself be named `or`. Plain equality predicates work in JSON;
 an operator over a payload needs tony (see [the trigger model](../trigger-model.md)).
 
-Output is colorized on a terminal and plain when piped, so `verse triggers | o v` keeps
+Output is colorized on a terminal and plain when piped, so `verse trigger | o v` keeps
 working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
 off.
 

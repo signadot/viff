@@ -25,7 +25,7 @@ verse entity put provider:treat:fixer '{
   grant: no-delegate,
   frame: "You apply a confirmed one-line fix, then build and run the named test."
 }'
-verse providers
+verse provider
 # treat      fixer          driver=llm risk=low grant=no-delegate tools=[read_file …]
 ```
 
@@ -208,7 +208,7 @@ they may *do*, a voter picking between two names is picking between two authorit
 listing that showed only names would have the group authorise a capability nobody put in front
 of them.
 
-**`verse providers`** lists the registry with every attribute beside the driver, which is where
+**`verse provider`** lists the registry with every attribute beside the driver, which is where
 an operator answers "what would this doer be allowed to do" before voting.
 
 ## Corners

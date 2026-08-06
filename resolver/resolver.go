@@ -58,7 +58,7 @@ func InstanceRef(name, origin string) entity.Ref {
 type Resolver struct {
 	// Name and Kind together are its address. Kind is the operator's own category — what this
 	// resolver is FOR — the way a provider's capability is (`provider:treat:fixer`), so
-	// `verse entities --system resolvers --kind security` is a question worth asking.
+	// `verse entity --system resolvers --kind security` is a question worth asking.
 	Name string `tony:"field=name"`
 	Kind string `tony:"field=kind"`
 	// Condition makes it STANDING: nobody names it, and it supervises the work about the

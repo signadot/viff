@@ -255,7 +255,7 @@ func (e *Engine) RemoveGoal(name string) bool {
 	return true
 }
 
-// Goals returns the installed goal defs (the goal roster) for `verse goals`.
+// Goals returns the installed goal defs (the goal roster) for `verse goal`.
 func (e *Engine) Goals() []GoalDef {
 	e.goalsMu.Lock()
 	defer e.goalsMu.Unlock()

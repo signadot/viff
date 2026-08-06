@@ -137,7 +137,7 @@ standing, so it stays a verb somebody runs.
 kubectl -n verse exec deploy/versed -- verse source add git:cluster    http://git-source:9801
 kubectl -n verse exec deploy/versed -- verse source add slack:workspace http://slack-source:9801
 kubectl -n verse exec deploy/versed -- verse source add linear:teams   http://linear-source:9801
-kubectl -n verse exec deploy/versed -- verse sources
+kubectl -n verse exec deploy/versed -- verse source
 ```
 
 ⚠️ **The name has to match `<x>SourceName`.** The hint url is baked into the pod

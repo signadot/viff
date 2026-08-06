@@ -125,7 +125,7 @@ func TestNoVersionHeaderIsSilent(t *testing.T) {
 	}
 }
 
-// The warning goes to STDERR. A `verse entities | jq` whose input grew a line about versions
+// The warning goes to STDERR. A `verse entity | jq` whose input grew a line about versions
 // is a worse bug than the skew it is reporting.
 func TestTheWarningIsNotOnStdout(t *testing.T) {
 	ts, _ := stub(t, "v1.9.0")

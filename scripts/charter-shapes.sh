@@ -35,7 +35,7 @@ describe() {
 	case "$1" in
 	patch) echo "condition + patch. No task at all: a rule can be pure state." ;;
 	latch) echo "spawn + onDone. The shape that settles — the action advances the subject out of its own selection." ;;
-	ask) echo "one ask gate. The firing waits for a person (verse gates)." ;;
+	ask) echo "one ask gate. The firing waits for a person (verse gate)." ;;
 	seq) echo "seq of two steps, with an onFailed off-ramp. The depth axis." ;;
 	when) echo "a condition on ANOTHER entity: act on these, while that holds." ;;
 	on) echo "a cause: fire on the rising edge, not while it stays true (and no backlog)." ;;

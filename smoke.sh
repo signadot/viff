@@ -91,11 +91,11 @@ step "entity put/get"
 v entity put demo:pr:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
 haskv "$(v entity get demo:pr:1)" stage open || die "entity get did not roundtrip"
 ok "demo:pr:1 = {stage:open}"
-# The plural answers to the singular's verbs too, so `verse entities` then `verse entities
-# get demo:pr:1` is an edit of the line already in your history rather than a retype. The
-# unit tests assert the command is REACHABLE; this asserts it still reaches the server.
-haskv "$(v entities get demo:pr:1)" stage open || die "the plural did not dispatch entity get"
-ok "verse entities get == verse entity get (the plural takes the singular's verbs)"
+# The plural is an ALIAS of the same command, verbs and all, so anyone who reaches for it
+# gets the thing rather than a lecture. The unit tests assert the alias RESOLVES; this
+# asserts what it resolves to still reaches the server.
+haskv "$(v entities get demo:pr:1)" stage open || die "the plural alias did not reach entity get"
+ok "verse entities get == verse entity get (the plural is an alias)"
 
 # ── the representation: verse READS three dialects and WRITES two ────────────
 # The asymmetry is the design (see package codec): JSON input is parsed as tony, because
@@ -192,7 +192,7 @@ TONY
 # --file here and `-f` on the stdin case above: both spellings are exercised on purpose,
 # since smoke is the only thing that would catch the alias disappearing.
 v trigger add --file "$tmp/charter.tony" >/dev/null || die "tony charter add failed"
-has "$(v triggers)" 'smoke-advance-tony' || die "the tony charter did not install"
+has "$(v trigger)" 'smoke-advance-tony' || die "the tony charter did not install"
 ok "installed a .tony charter (block list, suffix-dispatched)"
 
 v entity put demo:pr:3 '{"stage":"queued"}' >/dev/null || die "entity put failed"
@@ -278,7 +278,7 @@ ok "the rising edge fired: demo:build:1 reviewed → shipped"
 # ── the human loop: an ask gate HOLDS, and answering it releases the action ───
 # The charters above prove the engine reacts on its own. This is the other half — the dial
 # turned down to `ask` — and it is the one surface with no unit-level end-to-end: the gate
-# has to reach `verse gates`, and the answer has to travel back and unblock the action.
+# has to reach `verse gate`, and the answer has to travel back and unblock the action.
 #
 # Answering is a VERB (`gate approve <id>`), not a flag on a `resolve` command, so the two
 # states that are not a decision cannot be typed. The short forms are exercised here rather
@@ -294,12 +294,12 @@ v entity put demo:release:1 '{"stage":"open"}' >/dev/null || die "entity put fai
 # A gate id carries colons (trigger:smoke-gated:ship~1), so it is cut by prefix, not by field.
 GID=
 for _ in $(seq 1 100); do
-	GID=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	GID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
 	[ -n "$GID" ] && break
 	sleep 0.2
 done
-[ -n "$GID" ] || die "the ask gate never appeared in verse gates"
-ok "the action is held; verse gates shows $GID"
+[ -n "$GID" ] || die "the ask gate never appeared in verse gate"
+ok "the action is held; verse gate shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v entity get demo:release:1)" stage open || die "the ask gate did not hold the action"
 ok "demo:release:1 still open while the gate is pending"
@@ -314,7 +314,7 @@ for _ in $(seq 1 100); do
 done
 [ -n "$shipped" ] || die "the approved gate did not release the action"
 ok "gate y + -s released it: demo:release:1 open → shipped"
-has "$(v gates)" "$GID" && die "an answered gate is still pending"
+has "$(v gate)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
@@ -322,7 +322,7 @@ ok "the answered gate left the docket"
 # live task to exercise the control surfaces against (and observe the slide on).
 step "task run + control surfaces"
 v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
-ID=$(v tasks -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
+ID=$(v task -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v task get "$ID")" "$ID" || die "task get missing the id"
@@ -447,13 +447,13 @@ cat >"$tmp/strata.tony" <<'TONY'
       stage: awaiting-approval
 TONY
 v trigger add --file "$tmp/strata.tony" >/dev/null || die "mixed strata+rules charter did not install"
-has "$(v strata)" 'smoke-sdlc' || die "the ordering did not install"
+has "$(v stratum)" 'smoke-sdlc' || die "the ordering did not install"
 ok "one file installs strata and rules, strata first"
 
 v entity put smokegh:issue:1 '{"label":"urgent"}' >/dev/null || die "entity put failed"
 derived=
 for _ in $(seq 1 100); do
-	out=$(v entities 2>/dev/null || true)
+	out=$(v entity 2>/dev/null || true)
 	if has "$out" 'smokesd:feature:'; then
 		derived=1
 		break
@@ -464,7 +464,7 @@ done
 ok "a rule at level 0 wrote an entity at level 10"
 
 # The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
-dref=$(v entities | grep -o 'smokesd:feature:[^ "]*' | head -1)
+dref=$(v entity | grep -o 'smokesd:feature:[^ "]*' | head -1)
 haskv "$(v entity get "$dref")" priority urgent || die "the derived entity lost its literal content"
 has "$(v entity get "$dref")" 'smokegh:issue:1' || die "the derived entity does not record its subject"
 ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
@@ -516,9 +516,9 @@ for _ in $(seq 1 300); do
 	sleep 0.5
 done
 [ -n "$ready" ] || { tail -20 "$tmp/server2.log" >&2; die "server never became ready after restart" ; }
-has "$(v triggers)" 'smoke-advance' || die "the charter did not survive the restart"
-has "$(v strata)" 'smoke-sdlc' || die "the ordering did not survive the restart"
-has "$(v triggers)" 'smoke-derive' || die "a stratified rule did not survive the restart"
+has "$(v trigger)" 'smoke-advance' || die "the charter did not survive the restart"
+has "$(v stratum)" 'smoke-sdlc' || die "the ordering did not survive the restart"
+has "$(v trigger)" 'smoke-derive' || die "a stratified rule did not survive the restart"
 ok "the installed charter is listed again after a restart"
 # And it is live, not merely listed: a PR that opens only now still advances.
 v entity put demo:pr:restart '{"stage":"open"}' >/dev/null || die "post-restart put failed"

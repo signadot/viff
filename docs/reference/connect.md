@@ -44,10 +44,10 @@ verse connect . --driver llm \
 In a third (using the scope `connect` printed):
 
 ```sh
-verse tasks                                        # a validator per file
-verse task get <id>                                 # the agent's read-and-validated report
-verse entities --system local --scope <scope>          # your files, as dir-status entities
-verse entity get local:dir-content-<scope>:README.md   # a file's bytes, served on demand
+verse task                                           # a validator per file
+verse task get <id>                                  # the agent's read-and-validated report
+verse entity --system local --scope <scope>          # your files, as dir-status entities
+verse entity get local:dir-content-<scope>:README.md # a file's bytes, served on demand
 ```
 
 Touch or add a file and its validator fires, reading the file through the verse. Ctrl-c

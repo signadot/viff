@@ -19,9 +19,9 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// ps moved off this group and onto `tasks`: as a group alias `verse ps` was an error
-// ("no command provided"), which is not what anyone typing it expects. On the listing it
-// means what it means everywhere else.
+// taskSubs is the group's verbs. It is a function rather than a slice so each rootCmd() gets
+// its OWN instances: a Command is parented by whoever it is added to, and it carries the flag
+// values of the invocation, so a package-level slice would be shared across command trees.
 func taskSubs() []*cli.Command {
 	return []*cli.Command{
 		taskRunCmd(),
@@ -35,12 +35,6 @@ func taskSubs() []*cli.Command {
 		taskAnswerCmd(false),
 		taskDoCmd(),
 	}
-}
-
-func taskCmd() *cli.Command {
-	return cli.NewCommand("task").
-		WithSynopsis("task — one task in the runtime (list them with `verse tasks`)").
-		WithSubs(taskSubs()...)
 }
 
 // ── inbox (operator peek at a brokered task's queued worker control) ──────
@@ -446,13 +440,16 @@ type tasksConfig struct {
 
 var psFlags = &tasksConfig{}
 
-func tasksCmd() *cli.Command {
+// `ps` is an alias like `tasks` is: bare it lists, which is what anyone typing it expects.
+// It could not be one while `task` was a group with no listing of its own — `verse ps` was
+// an error ("no command provided") — so it lived on the plural instead.
+func taskCmd() *cli.Command {
 	opts, err := cli.StructOpts(psFlags)
 	if err != nil {
 		panic(err)
 	}
-	return filteredCollection("tasks", "/tasks",
-		"tasks — list tasks (also: ps; act on one with `verse task`)", "task",
+	return filteredCollection("task", "tasks", "/tasks",
+		"task — the tasks in the runtime (also: ps) [--runner <ref>]; act on one by id",
 		opts, func() url.Values {
 			// The name a spawn WROTE, which is what an operator remembers and what keeps
 			// answering after the runner entity is gone.

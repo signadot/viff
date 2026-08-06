@@ -12,7 +12,7 @@ import (
 // A removed trigger stops firing. In subtree mode a trigger's observation is its own
 // goroutines — not a shared dispatch loop reading the charter — so removing it from the
 // charter is only half the removal: the watch has to be cancelled too, or the trigger keeps
-// acting on the verse with nothing listing it any more (`verse triggers` shows it gone while
+// acting on the verse with nothing listing it any more (`verse trigger` shows it gone while
 // its effects continue).
 func TestRemovedTriggerStopsFiring(t *testing.T) {
 	store := entitytest.Store(t)

@@ -49,7 +49,7 @@ first binding *by name* owns the questions they both cover.
 | `resolvers:<kind>:<name>` | the binding — what is installed |
 | `resolvers:instance:<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
-One `verse entities --system resolvers` shows both, which is why the instance is a reserved
+One `verse entity --system resolvers` shows both, which is why the instance is a reserved
 *kind* inside the system rather than a second system with a singular/plural pair to mistype.
 
 The origin is the **run** for a run's gates (`payments-review@review-8f30…`) and the **subject**
@@ -131,18 +131,18 @@ moment.
 ## The verbs
 
 ```sh
-verse resolvers                                   # list the bindings
-verse resolver add <file>                         # install one (- = stdin)
-verse resolver show   resolvers:security:review    # or security:review
+verse resolver                                  # list the bindings
+verse resolver add <file>                       # install one (- = stdin)
+verse resolver show   resolvers:security:review # or security:review
 verse resolver remove resolvers:security:review
 
-verse entities --system resolvers --kind instance # who is watching what
-verse gates                                       # the docket, resolver-owned questions included
-verse gate approve <id> --as <who> [--override]   # answer, or answer over an exclusive owner
+verse entity --system resolvers --kind instance # who is watching what
+verse gate                                      # the docket, resolver-owned questions included
+verse gate approve <id> --as <who> [--override] # answer, or answer over an exclusive owner
 ```
 
 A resolver ref is typed the way it is stored — `resolvers:security:review` — because an operator
-reading `verse entities` and one typing `verse resolver show` should not have to know two
+reading `verse entity` and one typing `verse resolver show` should not have to know two
 spellings of one thing. The leading `resolvers:` may be dropped.
 
 ## Binding one to work

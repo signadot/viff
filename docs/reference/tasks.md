@@ -11,7 +11,7 @@ verse task run "echo summarizing; sleep 2"       # prints a run-… id
 verse task run --wait "echo done"                # …and block for the final output
 verse task run --attach 'Write a file hello.txt containing "hi".'   # …and stream it
 verse task run --driver scripted "go test ./..."
-verse tasks
+verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"
 verse task vector <id> ask --as human:scott
@@ -44,7 +44,7 @@ file, running a shell command, and delegating to a sub-agent block until approve
 a command the agent thought up is a real decision.
 
 ```sh
-verse gates                                  # engine + task gates, unified
+verse gate                                  # engine + task gates, unified
 # - gate: write
 #   id: run-f3e31ed0390f~d1
 #   mode: ASK
@@ -59,7 +59,7 @@ The `~` that separates the gate from its task needs no quoting and no escaping, 
 or in a URL. On a terminal, `run --attach` prompts inline instead
 (`⏸ gate "write" (write_file) — approve? [y/N]`); answer `y` to allow, anything else to deny,
 and a denied gate comes back to the agent as an error it re-plans around. Piped (non-tty),
-`attach` just streams. The gate is the same question either way — it stays in `verse gates`
+`attach` just streams. The gate is the same question either way — it stays in `verse gate`
 and stays resolvable by id from anywhere.
 
 <a id="who-you-addressed"></a>
@@ -133,7 +133,7 @@ payload:
 select the questions it cares about without reading prose:
 
 ```sh
-verse entities --system gate --if '{status: pending, effects: {verbs: [write]}}'
+verse entity --system gate --if '{status: pending, effects: {verbs: [write]}}'
 ```
 
 It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
@@ -154,7 +154,7 @@ The gate is closed to further answers the moment one is accepted; what is still 
 whether the party who must act on it knows. It clears on the worker's acknowledgement.
 
 ```sh
-verse entities --system gate --if '{delivered: false}'   # answers still in flight
+verse entity --system gate --if '{delivered: false}'   # answers still in flight
 ```
 
 Every answer names its answerer — `verse gate approve <id> --as human:you` — and two people
@@ -187,13 +187,13 @@ why steering takes an address rather than a ref, and why steering a whole set ne
 machinery — it is the same selector at a wider setting.
 
 ```sh
-verse flows                             # the distinct subjects with live work
-verse flow show demo:pr:2               # the tree: what ran, what is running, what comes next
-verse flow pause  demo:pr:2             # freeze its tasks at their next boundary
+verse flow                   # the distinct subjects with live work
+verse flow show demo:pr:2    # the tree: what ran, what is running, what comes next
+verse flow pause  demo:pr:2  # freeze its tasks at their next boundary
 verse flow resume demo:pr:2
 verse flow say    demo:pr:2 "hurry"
-verse flow cancel demo:pr:2             # stop them (destructive)
-verse flow pause 'demo:pr:*'            # a selector, per segment
+verse flow cancel demo:pr:2  # stop them (destructive)
+verse flow pause 'demo:pr:*' # a selector, per segment
 ```
 
 Each command reports how many tasks it reached, echoes the address it reached them by so
@@ -221,7 +221,7 @@ per action. Why out-of-band matters, and the engine's priority servicing, are in
 
 ## Where a task runs is a seam
 
-Three backends, one handle. `verse tasks` and
+Three backends, one handle. `verse task` and
 `task get`/`attach`/`cancel`/`say`/`vector`/`approve`/`deny` work across all of them.
 
 | | |
@@ -243,13 +243,13 @@ pod behind a firewall works without verse reaching in. The contract and the prot
 ### Executing one by hand
 
 With a broker runner, a spawned task lands on the broker awaiting an executor instead of
-running itself, and `verse tasks` shows its runner and where to dial in. You never type
+running itself, and `verse task` shows its runner and where to dial in. You never type
 that URL; verse resolves it from the task for you.
 
 ```sh
 verse up --broker --broker-addr :9090
 ID=$(verse task run "review the auth change")
-verse tasks
+verse task
 # - dialURL: http://localhost:9090/broker/<nonce>
 #   id: run-…
 #   runner: broker

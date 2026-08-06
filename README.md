@@ -43,7 +43,7 @@ else installed into `~/.verse/bin`; see [the reference](docs/reference/up.md#the
 
 `scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
 reaction that has already happened and one gate waiting for you — then prints what to type
-next. Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse gates`,
+next. Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse gate`,
 `verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
 `scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
 shapes a rule comes in, one command each). The tutorial walks the lot in five sections —
@@ -78,9 +78,9 @@ entities, tasks, and the charters that relate them.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
   `trigger`, `stratum`, `goal`, `task` (including the `do` executor verbs), `flow`,
   `resolver`, `runner`, `source`. What it answers with: `gate`, `docket`, `vote`. What it
-  reads: `status`, `watch`, `providers`, `schema`. What it runs: `up`, `down`, `connect`,
-  `disconnect`. Most come as a pair — the plural lists, the singular acts on one — which is
-  also how the HTTP surface addresses them.
+  reads: `status`, `watch`, `provider`, `schema`. Each is one command, named in the singular:
+  bare it lists, with a verb it acts on one member, and the plural the HTTP surface uses is
+  an alias of it. What it runs: `up`, `down`, `connect`, `disconnect`.
 - `deploy/` and `Makefile` — a checked-in `o build` and a local-build image pipeline to run
   verse on Kubernetes.
 

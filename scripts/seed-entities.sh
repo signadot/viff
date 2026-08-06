@@ -93,7 +93,7 @@ fi
 # A world is only inert if nothing is watching it. `seed-demo.sh` installs rules over
 # demo:pr and demo:task — exactly what this seeds — so say so rather than let the reader
 # wonder why an entity they just wrote is already at a different stage.
-if [ -n "$(v triggers -o tony 2>/dev/null | grep -v '^\[\]$')" ]; then
+if [ -n "$(v trigger -o tony 2>/dev/null | grep -v '^\[\]$')" ]; then
 	printf '\n  \033[33m~\033[0m a charter is installed, so some of this will be reacted to at once.\n'
 	printf '    For a world nothing is watching: %s trigger remove <name> (or ./scripts/seed-demo.sh --clean)\n' "$BIN"
 fi

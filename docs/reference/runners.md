@@ -18,7 +18,7 @@ segments of the address and of the route that serves it.
 ## Commands
 
 ```
-verse runners                              what is installed, with running/total/lastSpawn
+verse runner                              what is installed, with running/total/lastSpawn
         [--probe]                          …and what each one says right now (not recorded)
 verse runner add <kind>:<name> <url>       install one, probing the url first
        add [--file <f>] | [file] | stdin   …or as a document (.tony/.json/.yaml)
@@ -31,7 +31,7 @@ verse runner add <kind>:<name> <url>       install one, probing the url first
 ```
 
 A `<ref>` is `runners:pool:gpu` or `pool:gpu` — the prefix is optional everywhere, so an
-operator reading `verse entities` and one typing `verse runner show` need not know two spellings.
+operator reading `verse entity` and one typing `verse runner show` need not know two spellings.
 
 On the task side:
 

@@ -61,7 +61,7 @@ func TestOptionLabelsEmpty(t *testing.T) {
 	}
 }
 
-// `verse providers` needs no envelope-specific code — it prints every payload key beside the
+// `verse provider` needs no envelope-specific code — it prints every payload key beside the
 // driver — but that is a property worth pinning rather than assuming, since it is the surface
 // an operator uses to answer "what would this doer be allowed to do" before voting.
 func TestProvidersListsTheEnvelope(t *testing.T) {

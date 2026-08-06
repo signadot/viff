@@ -35,9 +35,9 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	cmd := rootCmd()
 	g.Addr = testAddr // after rootCmd, which re-reads it from the config layers
 	for len(cmd.Children) > 0 && len(args) > 0 {
-		// A flag is not a subcommand. `verse runners --probe` descends to `runners`, which
-		// HAS children (the singular's verbs, see dispatch) — so without this the walk would
-		// look up "--probe" as one and fail a command that works perfectly in a shell.
+		// A flag is not a subcommand. `verse runner --probe` descends to `runner`, which HAS
+		// children (its verbs, see dispatch) — so without this the walk would look up
+		// "--probe" as one and fail a command that works perfectly in a shell.
 		if strings.HasPrefix(args[0], "-") {
 			break
 		}

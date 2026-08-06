@@ -29,10 +29,10 @@ rules about them.
 
 ```sh
 verse entity get demo:pr:1
-verse entities                                        # everything
-verse entities --system demo --kind pr                # by where it lives
-verse entities --if '{stage: open}'                   # by what it says
-verse entities --if '{urgent: true}' --if-at labels   # …rooted inside the payload
+verse entity                                        # everything
+verse entity --system demo --kind pr                # by where it lives
+verse entity --if '{stage: open}'                   # by what it says
+verse entity --if '{urgent: true}' --if-at labels   # …rooted inside the payload
 ```
 
 `--if` is a [tony match](https://signadot.github.io/tony-format/) against the payload — the

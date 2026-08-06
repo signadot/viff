@@ -256,7 +256,7 @@ func TestGateLoop(t *testing.T) {
 		t.Fatalf("snapshot pending = %+v, want the raised gate", snap.Pending)
 	}
 	// The reason is what a resolver reads to decide, so it has to survive the projection
-	// from the worker's report to the snapshot `verse gates` renders — it used to be
+	// from the worker's report to the snapshot `verse gate` renders — it used to be
 	// dropped by a pending map that kept only id -> gate.
 	if got := snap.Pending[0]; got.Reason != "prod, off-hours" || got.Tool != "deploy_prod" ||
 		got.Gate != "deploy" {

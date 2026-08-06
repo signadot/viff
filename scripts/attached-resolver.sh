@@ -125,7 +125,7 @@ setup() {
 		;;
 	exclusive) binding_exclusive | v resolver add - >/dev/null ;;
 	esac
-	ok "installed: $(v resolvers -o tony | sed -n 's/^[[:space:]]*ref:[[:space:]]*//p' | tr '\n' ' ')"
+	ok "installed: $(v resolver -o tony | sed -n 's/^[[:space:]]*ref:[[:space:]]*//p' | tr '\n' ' ')"
 
 	retire_previous
 
@@ -160,7 +160,7 @@ setup() {
 # Not "the last one listed": store order is not spawn order, so that picked an arbitrary run
 # about the subject — sometimes one already finished, whose question never came and never would.
 run_id() {
-	v entities --system task --kind instance \
+	v entity --system task --kind instance \
 		--if "{flow: \"$SUBJECT\", pending: null}" -o tony |
 		sed -n 's|^[[:space:]]*ref:[[:space:]]*task:instance:||p' | head -1
 }
@@ -188,7 +188,7 @@ question_id() {
 		# walking to the gate.
 		run=$(run_id)
 		if [ -n "$run" ]; then
-			q=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep "^$run~" | head -1)
+			q=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep "^$run~" | head -1)
 			if [ -n "$q" ]; then
 				echo "$q"
 				return 0
@@ -203,9 +203,9 @@ field() { v entity get "gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[
 
 state() {
 	step "the bindings — who may answer, and for what"
-	v resolvers
+	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
-	v entities --system resolvers --kind instance
+	v entity --system resolvers --kind instance
 	printf '\n  the address is `<name>@<origin>`, so one `--system resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
@@ -233,7 +233,7 @@ instance_of() {
 	local run owner q
 	run=$(run_id)
 	[ -n "$run" ] || return 0
-	q=$(v gates -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep "^$run~" | head -1)
+	q=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep "^$run~" | head -1)
 	[ -n "$q" ] || return 0
 	owner=$(field "$q" resolver)
 	if [ -z "$owner" ]; then
@@ -391,7 +391,7 @@ v() { "$BIN" "${scope[@]}" "$@"; }
 addr() { echo "http://${VERSE_ADDR:-localhost:9797}"; }
 
 command -v curl >/dev/null || die "this one needs curl: a resolver dials in over HTTP"
-v entities >/dev/null 2>&1 || die "no verse at ${VERSE_ADDR:-localhost:9797} — start one with \`./verse up\`"
+v entity >/dev/null 2>&1 || die "no verse at ${VERSE_ADDR:-localhost:9797} — start one with \`./verse up\`"
 
 case "${1:-}" in
 "" | list)
