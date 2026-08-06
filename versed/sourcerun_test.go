@@ -482,7 +482,8 @@ func TestRemovingASourceThatReflectedNothingNeedsNoFlag(t *testing.T) {
 func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	srv := testServer(t)
 	ref := source.Ref("git", "a")
-	e := source.Entity{Name: "a", System: "git", URL: "http://x:1", Owns: []string{"git:*:A/*"}}
+	e := source.Entity{Name: "a", System: "git", URL: "http://x:1",
+		Owns: []source.Own{{Ref: "git:*:A/*"}}}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "a", "system": "git", "url": e.URL, "owns": e.Owns,
 	}.Payload())
@@ -492,8 +493,57 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	entitytest.Set(t, srv.Store, mine, entity.Obj{"repo": "A"}.Payload())
 	entitytest.Set(t, srv.Store, theirs, entity.Obj{"repo": "B"}.Payload())
 
-	if got := reflectedBy(srv.Store, e); len(got) != 1 || got[0] != mine {
-		t.Fatalf("reflectedBy = %v, want just %v", got, mine)
+	got, err := reflectedBy(srv.Store, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Ref != mine || !got[0].IsEntity() {
+		t.Fatalf("reflectedBy = %v, want just the whole of %v", got, mine)
+	}
+}
+
+// A source that claims a SLOT is removed from its slot, and the entity — which other owners are
+// still writing — stays. This is the disjointness check honoured at the last moment rather than
+// undone by it: what a --forget deletes is what the install proved this source was the single
+// writer of, and that is now a place inside an entity rather than the entity.
+func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
+	srv := testServer(t)
+	e := source.Entity{Name: "eng", System: "linear", URL: "http://x:1",
+		Owns: []source.Own{{Ref: "linear:project:*", At: []string{"owners", "ENG"}}}}
+	entitytest.Set(t, srv.Store, source.Ref("linear", "eng"), entity.Obj{
+		"name": "eng", "system": "linear", "url": e.URL, "owns": e.Owns,
+	}.Payload())
+
+	shared := entity.Ref{System: "linear", Kind: "project", ID: "p1"}
+	entitytest.Set(t, srv.Store, shared, entity.Obj{"owners": map[string]any{
+		"ENG": map[string]any{"name": "Migration"},
+		"OPS": map[string]any{"name": "Migration"},
+	}}.Payload())
+
+	got, err := reflectedBy(srv.Store, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Ref != shared || got[0].IsEntity() {
+		t.Fatalf("reflectedBy = %v, want the ENG slot of %v and not the entity", got, shared)
+	}
+	if want := "linear:project:p1.owners.ENG"; got[0].String() != want {
+		t.Fatalf("the place is %s, want %s", got[0], want)
+	}
+	// And the removal writes there: the slot goes, the entity and the other owner stand.
+	if _, _, err := srv.Store.Write(entity.Write{At: got[0]}); err != nil {
+		t.Fatal(err)
+	}
+	p, ok, err := srv.Store.Get(shared)
+	if err != nil || !ok {
+		t.Fatalf("the shared entity went with the slot: ok=%v err=%v", ok, err)
+	}
+	owners := entity.Fields(entity.Get(p.Payload, "owners"))
+	if _, still := owners["ENG"]; still {
+		t.Fatalf("the ENG slot survived a --forget: %v", owners)
+	}
+	if _, other := owners["OPS"]; !other {
+		t.Fatalf("a --forget on ENG took the OPS slot with it: %v", owners)
 	}
 }
 

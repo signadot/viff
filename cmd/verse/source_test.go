@@ -163,7 +163,7 @@ func TestSourceAddFromAFile(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "source.tony")
 	doc := "name: laptop\nsystem: git\nurl: \"" + face.URL + "\"\n" +
-		"owns:\n- \"git:*:verse/*\"\n- \"git:head:verse\"\n"
+		"owns:\n- {ref: \"git:*:verse/*\"}\n- {ref: \"git:head:verse\"}\n"
 	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}

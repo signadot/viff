@@ -96,7 +96,8 @@ func TestSourceAddListShow(t *testing.T) {
 	var one map[string]any
 	decodeResp(t, sr, &one)
 	owns, _ := one["owns"].([]any)
-	if len(owns) != 2 || owns[0] != "git:*:verse/*" {
+	first, _ := owns[0].(map[string]any)
+	if len(owns) != 2 || first["ref"] != "git:*:verse/*" {
 		t.Fatalf("show = %+v, want the ownership the probe read", one)
 	}
 

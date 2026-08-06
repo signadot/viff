@@ -138,7 +138,9 @@ func (s *Slack) System() string { return System }
 // exceptions — the workspace has no bare-id entity of its own the way a repo has its head. A
 // bot token is issued for one workspace, so a source is one workspace's, and two sources are
 // two workspaces: provably disjoint as long as no two workspaces are given the same name.
-func (s *Slack) Owns() []string { return []string{System + ":*:" + s.workspace + "/*"} }
+func (s *Slack) Owns() []source.Own {
+	return []source.Own{{Ref: System + ":*:" + s.workspace + "/*"}}
+}
 
 // ChannelRef is the ref that targets one channel — what a hint names, and what a targeted
 // reconcile narrows to.

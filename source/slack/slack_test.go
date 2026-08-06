@@ -260,14 +260,14 @@ func TestSlackOwnershipIsOneClaimPerWorkspace(t *testing.T) {
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
 	owns := source.Describe(src).Owns
-	if len(owns) != 1 || owns[0] != "slack:*:Acme/*" {
+	if len(owns) != 1 || owns[0].Ref != "slack:*:Acme/*" {
 		t.Fatalf("owns %v", owns)
 	}
-	ok, err := source.Disjoint(owns, []string{"slack:*:Other/*"})
+	ok, err := source.Disjoint(owns, []source.Own{{Ref: "slack:*:Other/*"}})
 	if err != nil || !ok {
 		t.Fatalf("two workspaces were not provably disjoint (%v, %v)", ok, err)
 	}
-	if ok, _ := source.Disjoint(owns, []string{"slack:*:Acme/*"}); ok {
+	if ok, _ := source.Disjoint(owns, []source.Own{{Ref: "slack:*:Acme/*"}}); ok {
 		t.Fatal("a workspace was proved disjoint from itself")
 	}
 	// Every ref this source writes is inside what it claims — which is the bound on what a
@@ -277,7 +277,7 @@ func TestSlackOwnershipIsOneClaimPerWorkspace(t *testing.T) {
 		{System: "slack", Kind: "message", ID: "Acme/C1/1700000001.000100"},
 		{System: "slack", Kind: "user", ID: "Acme/U1"},
 	} {
-		if !source.Claims(owns, ref) {
+		if !claims(t, owns, ref) {
 			t.Fatalf("%s is written but not claimed", ref)
 		}
 	}
@@ -313,4 +313,15 @@ func TestSlackNarrowingToChannels(t *testing.T) {
 	if len(rn.Entities) != 0 || len(rn.Covers) == 0 {
 		t.Fatalf("a narrowed-out channel answered %+v", rn)
 	}
+}
+
+// claims reports whether an ownership list owns anything at ref. Parsed once and asserted on,
+// because the parse is where a malformed claim is supposed to stop — see source.ParseOwns.
+func claims(t *testing.T, owns []source.Own, ref entity.Ref) bool {
+	t.Helper()
+	cs, err := source.ParseOwns(owns)
+	if err != nil {
+		t.Fatalf("parsing %v: %v", owns, err)
+	}
+	return len(source.Claimed(cs, ref)) > 0
 }

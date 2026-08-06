@@ -156,11 +156,16 @@ in-process one had by construction:
 **An ownership claim is an address, not a payload predicate**, and the reason is where the
 question is asked. Converge evaluates `Covers` against stored entities whose payloads it can
 read; an install compares two *declarations* with nothing in hand. Addresses compare
-statically; predicates do not. So `owns` is a ref with `*` allowed — `git:*:verse/*` — with id
-globs restricted to a literal prefix and a trailing `*`, which makes disjointness a string
-comparison where general glob disjointness would be automata intersection. Two claims are
+statically; predicates do not. So `owns` is a ref with `*` allowed — `{ref: "git:*:verse/*"}` —
+with id globs restricted to a literal prefix and a trailing `*`, which makes disjointness a
+string comparison where general glob disjointness would be automata intersection. Two claims are
 disjoint when any segment is; a `*` segment is disjoint from nothing, so `git:*:*` claims the
 lot and can be proved apart from nothing in its own system.
+
+A claim may also name a place **inside** an entity (`at: [owners, ENG]`), which is the one way
+two sources may write one entity: each is the single writer of its own slot, proved apart by the
+same comparison a segment further down. Nothing built declares one yet — the design and what
+converge still owes it are in [what is left](working/shared-ownership.md).
 
 ## Removing one, and the fork
 

@@ -42,6 +42,67 @@ import (
 // place — an owner in the payload and a uuid in the ref. That wants a predicate, and predicates
 // do not compare statically; the shape one would have to take is in shared-ownership.md.
 
+// Own is one ownership claim as a source DECLARES it, and as a registration stores and serves
+// it: an address, and — when the claim is to a place inside an entity rather than to the whole
+// of it — the path to that place.
+//
+// It is a document and not a string, which is a decision the ids forced (see above): there is
+// no terse spelling of a path-carrying claim, and a grammar with two forms would have to be
+// read twice everywhere. The terse spelling survives where it belongs, as the value of `ref` —
+// an address has a spelling, and a path is a list.
+//
+//	{ref: "git:*:verse/*"}
+//	{ref: "linear:project:*", at: [owners, ENG]}
+//
+// It is DECLARED but not PARSED: nothing compares two of these. ParseOwns turns them into
+// Claims, once, and everything that reasons about ownership takes those — so there is no path
+// through this package on which an unparseable claim is silently skipped.
+type Own struct {
+	// Ref is the address, as a ref glob: `<system>:<kind>:<id>`, any segment `*`, an id
+	// ending in one. ParseClaim is what reads it.
+	Ref string `tony:"field=ref"`
+	// At is the path inside the payload, empty for the whole entity.
+	At []string `tony:"field=at,omitzero"`
+}
+
+// String renders a declaration for a message, via the claim it means.
+func (o Own) String() string {
+	c, err := o.Claim()
+	if err != nil {
+		return o.Ref // unparseable: quote what was written, which is what the error is about
+	}
+	return c.String()
+}
+
+// Claim parses one declaration.
+func (o Own) Claim() (Claim, error) {
+	c, err := ParseClaim(o.Ref)
+	if err != nil {
+		return Claim{}, err
+	}
+	c.Field = o.At
+	return c, nil
+}
+
+// ParseOwns parses a whole ownership list, once, for a caller that is about to reason with it.
+//
+// It is the only way into the comparison functions below, and that is the point: `owns` used to
+// be stored as text and re-parsed at every call site, two of which skipped a claim that failed
+// to parse — including the one that decides what a removal may delete. A skip there is an
+// entity deleted because a claim could not be read. Here a bad claim is an error, once, and the
+// caller that deletes has to say what it does about it.
+func ParseOwns(owns []Own) ([]Claim, error) {
+	out := make([]Claim, 0, len(owns))
+	for _, o := range owns {
+		c, err := o.Claim()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
 // Claim is one parsed ownership claim.
 type Claim struct {
 	// System and Kind are a literal or "" for `*` (which matches any).
@@ -206,12 +267,12 @@ func idsDisjoint(a, b Claim) bool {
 // everything, which is the honest reading of an empty list — see the note in
 // docs/sources.md on why a source that declines to say gets no ownership guessed
 // for it.
-func Disjoint(a, b []string) (bool, error) {
-	as, err := parseClaims(a)
+func Disjoint(a, b []Own) (bool, error) {
+	as, err := ParseOwns(a)
 	if err != nil {
 		return false, err
 	}
-	bs, err := parseClaims(b)
+	bs, err := ParseOwns(b)
 	if err != nil {
 		return false, err
 	}
@@ -225,47 +286,62 @@ func Disjoint(a, b []string) (bool, error) {
 	return true, nil
 }
 
-func parseClaims(ss []string) ([]Claim, error) {
-	out := make([]Claim, 0, len(ss))
-	for _, s := range ss {
-		c, err := ParseClaim(s)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, nil
-}
-
-// Claims reports whether an ownership list claims a concrete ref.
+// Claimed returns the PLACES at ref that these claims own — an entity.Path each, whose Field is
+// empty when the claim is to the whole entity. Empty when they own nothing there.
 //
-// It is Disjoint asked about a POINT: a ref is a claim with no wildcards, and a claim covers it
+// It is Disjoint asked about a point: a ref is a claim with no wildcards, and a claim covers it
 // exactly when the two are not disjoint. Naming it rather than open-coding that identity twice,
 // because the two callers are far apart — an install proving two registrations are separable,
 // and a removal deciding what a `--forget` may tombstone — and they must not drift, or verse
 // would delete on removal something it never proved this source owned.
 //
-// A claim that does not parse is skipped rather than treated as matching everything. Install
-// refuses one, so this is the belt to that suspenders, and erring toward claiming LESS is the
-// safe direction for the caller that deletes.
+// PLACES RATHER THAN A YES/NO, and that is what a slot claim forces. "Does this source own
+// something at this ref" is the wrong question for the caller that deletes: a source owning
+// `owners.ENG` of a shared project owns nothing else in it, and a removal that took the entity
+// would take the other owners' slots with it. So the answer says WHERE, and a `--forget` writes
+// a tombstone at each place it is given — which for every claim in the tree today is the entity
+// itself, exactly as it was.
 //
-// IT ASKS ABOUT A REF, and a claim that owns only a place INSIDE an entity answers yes — which
-// is the right answer to "does this source claim something here" and the wrong one for the
-// caller that deletes, since a `--forget` acting on it would take another owner's slot with it.
-// Nothing can reach that today: ParseClaim produces no path, and `owns` is a list of strings, so
-// every claim this sees has an empty Field. It is the first thing the step that gives `owns` a
-// document form has to fix, and it is written down here rather than there because this is where
-// the deletion is decided (docs/working/gh-source/1-path-claim-plan.md, step 2).
-func Claims(owns []string, ref entity.Ref) bool {
+// A place CONTAINED by another is dropped, so a source that claims both an entity and a slot
+// inside it is asked to delete the entity once rather than twice. Deleting the deeper one after
+// the shallower would write into an entity that is already gone.
+func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 	point := Claim{System: ref.System, Kind: ref.Kind, ID: ref.ID}
-	for _, own := range owns {
-		c, err := ParseClaim(own)
-		if err != nil {
+	var out []entity.Path
+	for _, c := range claims {
+		if c.Disjoint(point) {
 			continue
 		}
-		if !c.Disjoint(point) {
-			return true
-		}
+		out = append(out, entity.Path{Ref: ref, Field: c.Field})
 	}
-	return false
+	return shallowest(out)
 }
+
+// shallowest drops any place another place already contains, duplicates included.
+func shallowest(places []entity.Path) []entity.Path {
+	var out []entity.Path
+	for _, p := range places {
+		held := false
+		for _, q := range out {
+			if holds(q.Field, p.Field) {
+				held = true
+				break
+			}
+		}
+		if held {
+			continue
+		}
+		kept := out[:0:0]
+		for _, q := range out {
+			if !holds(p.Field, q.Field) {
+				kept = append(kept, q)
+			}
+		}
+		out = append(kept, p)
+	}
+	return out
+}
+
+// holds reports whether the place at path a contains the one at b — a is a prefix of b, so
+// deleting a takes b with it.
+func holds(a, b []string) bool { return len(a) <= len(b) && !pathsDisjoint(a, b) }

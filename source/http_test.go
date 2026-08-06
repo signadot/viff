@@ -181,7 +181,10 @@ func TestProbe(t *testing.T) {
 	}
 	// The ownership claim an install proves disjointness with: two ref globs per repo, since
 	// refs and commits are <repo>/<name> while a head is the bare <repo>.
-	if want := []string{"git:*:A/*", "git:head:A"}; !slices.Equal(d.Owns, want) {
+	want := []source.Own{{Ref: "git:*:A/*"}, {Ref: "git:head:A"}}
+	// EqualFunc rather than Equal: a claim carries a path, so it holds a slice and is not
+	// comparable. Its rendering is the whole of it.
+	if !slices.EqualFunc(d.Owns, want, func(a, b source.Own) bool { return a.String() == b.String() }) {
 		t.Fatalf("descriptor owns = %v, want %v", d.Owns, want)
 	}
 

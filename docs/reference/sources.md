@@ -13,7 +13,7 @@ A source is an entity at `sources:<system>:<name>`:
 | `url` | verse dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task — no network |
 | `dial-in` | the source dials verse. Designed, refused at install until it is built |
-| `owns` | ref globs this source claims to be the single writer of (see below) |
+| `owns` | the places this source claims to be the single writer of (see below) |
 | `scope` | the copy-on-write scope it reflects into; empty is baseline |
 | `lastReflect` | when verse last WROTE from this source. Written by verse |
 | `lastError` | the last failure, cleared by the next success. Written by verse |
@@ -28,29 +28,44 @@ both are segments of the address and of the route that serves them.
 
 ## Ownership
 
-`owns` is a list of ref globs, and it is what an install proves disjointness against and what a
+`owns` is a list of claims, and it is what an install proves disjointness against and what a
 `--forget` removal may tombstone. An ownership claim is an **address**, not a payload predicate,
 because an install compares declarations with no entities in hand.
 
-```
-<system>:<kind>:<id>      any segment may be `*`
-<system>:<kind>:<prefix>* an id may end in one — a literal prefix, and nothing richer
+```tony
+{ref: "<system>:<kind>:<id>"}          any segment may be `*`
+{ref: "<system>:<kind>:<prefix>*"}     an id may end in one — a literal prefix, nothing richer
+{ref: "<system>:<kind>:<id>", at: [a, b]}   …at a place INSIDE the payload
 ```
 
+`at` is the path inside the payload the claim is about, the same address a write takes
+(`entity.Path`). It is what lets two sources share an entity without either being a second
+writer of anything: one is the single writer of `owners.ENG`, the other of `owners.OPS`.
+Sharing is not an exception to single-writership; it is single-writership at a deeper address.
+Absent — which is every claim the three connectors make — the claim is to the whole entity.
+
 Two claims are **disjoint** when any segment is: two literal systems that differ, two literal
-kinds that differ, or two id prefixes neither of which prefixes the other. A `*` segment is
-disjoint from nothing, so `git:*:*` claims its whole system and can be proved apart from
-nothing in it. A `*` anywhere but the end of an id is a parse error, not an approximation.
+kinds that differ, two id prefixes neither of which prefixes the other, or two paths neither of
+which contains the other. A `*` segment is disjoint from nothing, so `git:*:*` claims its whole
+system and can be proved apart from nothing in it. A `*` anywhere but the end of an id is a
+parse error, not an approximation. Paths compare **segment-wise**, so `owners.ENG` and
+`owners.ENGINE` are disjoint, while `owners` contains `owners.ENG` and an absent path contains
+every path there is.
 
 Git claims **two entries per repo**, because refs and commits are `<repo>/<name>` while a head
 is the bare `<repo>`:
 
 ```tony
-owns: ["git:*:verse/*", "git:head:verse"]
+owns: [{ref: "git:*:verse/*"}, {ref: "git:head:verse"}]
 ```
 
 The single glob `verse*` would cover both and also claim `verse-extras/main` — a real
 overclaim, and one that would make two disjoint repos refuse to install alongside each other.
+
+**A claim is a document rather than a string**, and the ids are what forced it: `@` — the
+separator a terse `git:*:verse/*@owners.ENG` would need — already appears inside ids
+(`lineage:trace:<rule>@<subject>`), so nothing could parse one back. A grammar with two forms
+would have to be read twice everywhere, so there is one.
 
 An install with no `owns` takes what the probe reported. A registration carrying none can be
 proved apart from nothing, so it is refused beside anything else in its system.

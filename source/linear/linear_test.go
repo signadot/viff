@@ -209,13 +209,13 @@ func TestLinearOwnershipIsThreeClaimsPerTeam(t *testing.T) {
 	other := newSource(t, f, linear.Config{Teams: []string{"ENGINE"}})
 
 	owns := source.Describe(src).Owns
-	want := []string{"linear:team:ENG", "linear:issue:ENG-*", "linear:cycle:ENG/*"}
+	want := []source.Own{{Ref: "linear:team:ENG"}, {Ref: "linear:issue:ENG-*"}, {Ref: "linear:cycle:ENG/*"}}
 	if len(owns) != len(want) {
 		t.Fatalf("owns %v, want %v", owns, want)
 	}
 	for i, w := range want {
-		if owns[i] != w {
-			t.Fatalf("owns[%d] = %q, want %q", i, owns[i], w)
+		if owns[i].String() != w.String() {
+			t.Fatalf("owns[%d] = %v, want %v", i, owns[i], w)
 		}
 	}
 	ok, err := source.Disjoint(owns, source.Describe(other).Owns)
@@ -228,11 +228,11 @@ func TestLinearOwnershipIsThreeClaimsPerTeam(t *testing.T) {
 		{System: "linear", Kind: "issue", ID: "ENG-1"},
 		{System: "linear", Kind: "cycle", ID: "ENG/4"},
 	} {
-		if !source.Claims(owns, ref) {
+		if !claims(t, owns, ref) {
 			t.Fatalf("%s is written but not claimed", ref)
 		}
 	}
-	if source.Claims(owns, entity.Ref{System: "linear", Kind: "issue", ID: "ENGINE-1"}) {
+	if claims(t, owns, entity.Ref{System: "linear", Kind: "issue", ID: "ENGINE-1"}) {
 		t.Fatal("ENG claims ENGINE-1")
 	}
 }
@@ -282,4 +282,15 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 	if _, ok := get("ENG-2"); ok {
 		t.Fatal("ENG-2 is gone from Linear and still standing in the verse")
 	}
+}
+
+// claims reports whether an ownership list owns anything at ref. Parsed once and asserted on,
+// because the parse is where a malformed claim is supposed to stop — see source.ParseOwns.
+func claims(t *testing.T, owns []source.Own, ref entity.Ref) bool {
+	t.Helper()
+	cs, err := source.ParseOwns(owns)
+	if err != nil {
+		t.Fatalf("parsing %v: %v", owns, err)
+	}
+	return len(source.Claimed(cs, ref)) > 0
 }

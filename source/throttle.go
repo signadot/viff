@@ -58,7 +58,7 @@ func (t *throttled) System() string { return t.src.System() }
 // which is what Describe would have read from the source itself. A wrapper that swallowed the
 // claim would install a source that owns nothing, and every later install in its system would
 // then need --allow-overlap for a reason belonging to this file.
-func (t *throttled) Owns() []string {
+func (t *throttled) Owns() []Own {
 	if o, ok := t.src.(Owner); ok {
 		return o.Owns()
 	}

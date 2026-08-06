@@ -167,13 +167,13 @@ func (l *Linear) Teams() []string { return append([]string(nil), l.teams...) }
 // whose owners each write their own slot — and whose last owner out deletes under a
 // precondition — is expressible. What it costs is converge's replace-the-whole-payload rule,
 // which is verse's contract rather than Linear's problem.
-func (l *Linear) Owns() []string {
-	out := make([]string, 0, 3*len(l.teams))
+func (l *Linear) Owns() []source.Own {
+	out := make([]source.Own, 0, 3*len(l.teams))
 	for _, key := range l.teams {
 		out = append(out,
-			System+":team:"+key,
-			System+":issue:"+key+"-*",
-			System+":cycle:"+key+"/*")
+			source.Own{Ref: System + ":team:" + key},
+			source.Own{Ref: System + ":issue:" + key + "-*"},
+			source.Own{Ref: System + ":cycle:" + key + "/*"})
 	}
 	return out
 }

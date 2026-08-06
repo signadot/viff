@@ -49,11 +49,12 @@ type Entity struct {
 	DialIn string `tony:"field=dial-in,omitzero"`
 	Dir    string `tony:"field=dir,omitzero"`
 
-	// Owns is what this registration claims to be the single writer of, as ref globs
-	// (`git:*:verse/*` — see own.go). It is what an install proves disjointness against, and
-	// what a `--forget` removal tombstones. Absent means the source declined to say, which is
-	// refused an install alongside anything it cannot be proved apart from.
-	Owns []string `tony:"field=owns,omitzero"`
+	// Owns is what this registration claims to be the single writer of — an address each, and
+	// optionally a path inside it (`{ref: "git:*:verse/*"}`; see own.go). It is what an install
+	// proves disjointness against, and what a `--forget` removal tombstones. Absent means the
+	// source declined to say, which is refused an install alongside anything it cannot be
+	// proved apart from.
+	Owns []Own `tony:"field=owns,omitzero"`
 
 	// Scope is the copy-on-write scope this source reflects into; empty is baseline. A scoped
 	// source's reflections fire that scope's triggers and nobody else's, and the registration
@@ -102,10 +103,8 @@ func (e Entity) Check() error {
 	// install would leave a registration whose ownership verse cannot read — so it could be
 	// proved disjoint from nothing, and every later install in its system would be refused for
 	// a reason belonging to this one.
-	for _, own := range e.Owns {
-		if _, err := ParseClaim(own); err != nil {
-			return fmt.Errorf("source %q: %w", e.Name, err)
-		}
+	if _, err := ParseOwns(e.Owns); err != nil {
+		return fmt.Errorf("source %q: %w", e.Name, err)
 	}
 	return nil
 }
@@ -183,6 +182,35 @@ func CheckFields(node *ir.Node) error {
 		return fmt.Errorf("source has no field %q (want any of %s) — an unknown field decodes "+
 			"silently, so this would install as a source that never carried it",
 			field.String, strings.Join(known, ", "))
+	}
+	return ownsAreDocuments(node)
+}
+
+// ownsAreDocuments explains the one shape that used to work and no longer does.
+//
+// `owns` was a list of ref globs and is now a list of claims, because a claim may name a path
+// inside a payload and there is no terse spelling for one (own.go). The decoder's own complaint
+// is "expected object, got String", which is true and says nothing about what to write instead
+// — and the person reading it is upgrading, which is the moment to spend a sentence.
+func ownsAreDocuments(node *ir.Node) error {
+	for i, field := range node.Fields {
+		if field.String != "owns" {
+			continue
+		}
+		list := codec.Unwrap(node.Values[i])
+		if list == nil || list.Type != ir.ArrayType {
+			return nil // the decoder's complaint to make
+		}
+		for _, el := range list.Values {
+			if codec.Unwrap(el).Type != ir.StringType {
+				continue
+			}
+			return fmt.Errorf("owns carries %q, and a claim is now a document: write "+
+				"{ref: %q} instead. A claim may name a path inside a payload — "+
+				"{ref: \"linear:project:*\", at: [owners, ENG]} — and there is no way to spell "+
+				"that as one string, so there is one shape rather than two",
+				el.String, el.String)
+		}
 	}
 	return nil
 }

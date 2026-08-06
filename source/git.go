@@ -122,7 +122,7 @@ func (g *Git) System() string { return GitSystem }
 // `git:*:<id>/*` AND `git:head:<id>`. The single glob `<id>*` covers both, and also claims
 // `<id>-extras/main`: not a false alarm but a real overclaim, and one that would make two
 // perfectly disjoint repos refuse to install alongside each other.
-func (g *Git) Owns() []string {
+func (g *Git) Owns() []Own {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	ids := make([]string, 0, len(g.repos))
@@ -130,9 +130,9 @@ func (g *Git) Owns() []string {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	out := make([]string, 0, 2*len(ids))
+	out := make([]Own, 0, 2*len(ids))
 	for _, id := range ids {
-		out = append(out, GitSystem+":*:"+id+"/*", GitSystem+":head:"+id)
+		out = append(out, Own{Ref: GitSystem + ":*:" + id + "/*"}, Own{Ref: GitSystem + ":head:" + id})
 	}
 	return out
 }

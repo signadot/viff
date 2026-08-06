@@ -234,11 +234,15 @@ func refusal(e, other source.Entity) string {
 
 // claims renders an ownership list for a message, saying so when there is none — a source that
 // claimed nothing is the commonest reason this refusal fires, and "owns: []" would not say why.
-func claims(owns []string) string {
+func claims(owns []source.Own) string {
 	if len(owns) == 0 {
 		return "nothing (it claimed no ownership, so it can be proved apart from nothing)"
 	}
-	return strings.Join(owns, ", ")
+	out := make([]string, 0, len(owns))
+	for _, o := range owns {
+		out = append(out, o.String())
+	}
+	return strings.Join(out, ", ")
 }
 
 func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +363,12 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	forget, keep := q.Get("forget") == "true", q.Get("keep") == "true"
-	reflected := reflectedBy(store, e)
+	reflected, err := reflectedBy(store, e)
+	if err != nil {
+		// Refused rather than approximated: this decides what a --forget deletes.
+		http.Error(w, fmt.Sprintf("%s: %v", ref, err), http.StatusInternalServerError)
+		return
+	}
 
 	if len(reflected) > 0 && !forget && !keep {
 		http.Error(w, fmt.Sprintf(
@@ -377,9 +386,11 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"removed": ref.String()}
 	if forget {
 		var gone int
-		for _, r := range reflected {
-			if _, _, err := store.Write(entity.Write{At: r.At()}); err != nil {
-				http.Error(w, fmt.Sprintf("tombstoning %s: %v", r, err), http.StatusInternalServerError)
+		for _, p := range reflected {
+			// At the PLACE claimed: an entity for every claim that carries no path, and a slot
+			// for one that does — a nil value removes whatever stands there, at either depth.
+			if _, _, err := store.Write(entity.Write{At: p}); err != nil {
+				http.Error(w, fmt.Sprintf("tombstoning %s: %v", p, err), http.StatusInternalServerError)
 				return
 			}
 			gone++
@@ -395,34 +406,44 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// reflectedBy returns the refs standing in the store that this registration's ownership claims,
-// in ref order so a --forget deletes in the same order twice.
+// reflectedBy returns the PLACES standing in the store that this registration's ownership
+// claims, in path order so a --forget deletes in the same order twice.
 //
 // Bounded by `owns` and by nothing else, which is what makes a --forget safe: it can only
 // tombstone what the install PROVED this source was the single writer of. A registration that
 // claimed nothing reflected nothing, as far as a removal is concerned — under-claiming there
 // leaves entities standing, which is the direction to be wrong in.
-func reflectedBy(r entity.Reader, e source.Entity) []entity.Ref {
+//
+// A PLACE rather than a ref, because a claim may be to a slot inside a shared entity. Deleting
+// the entity there would take the other owners' slots with it, so what is removed is what was
+// claimed — and for every claim that carries no path, which is all of them until a source
+// declares one, a place IS its entity and this is what it always did.
+//
+// The claims are parsed ONCE, and a claim that does not parse fails the whole answer rather
+// than being skipped. This is the caller that deletes: a skipped claim there is either an
+// entity deleted because verse could not read the claim that protected it, or one left standing
+// because it could not read the claim that owned it, and neither is a thing to decide in
+// silence. An install refuses an unparseable claim, so reaching this needs a store somebody
+// wrote by hand — which is exactly when the loud answer is the one that helps.
+func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
+	claims, err := source.ParseOwns(e.Owns)
+	if err != nil {
+		return nil, err
+	}
 	systems := map[string]bool{}
 	wildcard := false
-	for _, own := range e.Owns {
-		c, err := source.ParseClaim(own)
-		if err != nil {
-			continue
-		}
+	for _, c := range claims {
 		if c.System == "" {
 			wildcard = true
 		}
 		systems[c.System] = true
 	}
-	var out []entity.Ref
+	var out []entity.Path
 	for _, ent := range r.List(func(ref entity.Ref) bool { return wildcard || systems[ref.System] }) {
-		if source.Claims(e.Owns, ent.Ref) {
-			out = append(out, ent.Ref)
-		}
+		out = append(out, source.Claimed(claims, ent.Ref)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
-	return out
+	return out, nil
 }
 
 // ── the reflector under a registration ───────────────────────────────────────

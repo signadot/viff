@@ -83,7 +83,7 @@ func (d *demo) System() string { return d.git.System() }
 // disjointness against. Coarser than a Covers below — it says what nobody else may write — and
 // spelled as ref globs (`git:*:verse/*`) rather than as a payload predicate, because an install
 // compares two declarations with no entities in hand and only addresses compare statically.
-func (d *demo) Owns() []string { return d.git.Owns() }
+func (d *demo) Owns() []source.Own { return d.git.Owns() }
 
 // reflect reads external truth for the slice `ref` names and returns it. CHANGE THIS.
 //

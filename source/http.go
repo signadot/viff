@@ -26,22 +26,22 @@ const (
 
 // Descriptor is what a source says it is when asked, and it is what an install probes for.
 //
-// Owns is the ownership claim the registration is checked against, as ref globs
-// (`git:*:verse/*`) — coarser than a Reflection's Covers, which is per-pass, and an ADDRESS
-// rather than a Pattern because an install compares two declarations with no entities in hand.
+// Owns is the ownership claim the registration is checked against (`{ref: "git:*:verse/*"}`)
+// — coarser than a Reflection's Covers, which is per-pass, and an ADDRESS rather than a
+// Pattern because an install compares two declarations with no entities in hand.
 // See own.go. It is optional: a source that declines to say cannot have its disjointness from
 // the other installed sources PROVED, which is a fact about the install rather than an error
 // here.
 type Descriptor struct {
-	System string   `tony:"field=system"`
-	Owns   []string `tony:"field=owns,omitzero"`
+	System string `tony:"field=system"`
+	Owns   []Own  `tony:"field=owns,omitzero"`
 }
 
 // Owner is the optional face a source uses to declare what it claims to be the single writer
-// of, as ref globs. It is separate from Source because a source deployed alone, into a verse
-// with no other source of its system, needs nothing from it.
+// of. It is separate from Source because a source deployed alone, into a verse with no other
+// source of its system, needs nothing from it.
 type Owner interface {
-	Owns() []string
+	Owns() []Own
 }
 
 // Describe builds the descriptor for a source, asking it what it owns if it will say.
