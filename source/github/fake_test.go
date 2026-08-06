@@ -37,6 +37,22 @@ type fakeRepo struct {
 	cloneURL      string
 	items         []*fakeItem
 	runs          []*fakeRun
+
+	discussions []*fakeDiscussion
+	// discussionsOff is the feature turned off, which answers with an empty list exactly as a
+	// repository with no discussions does — the confusion hasDiscussionsEnabled exists to
+	// resolve. graphqlError is the endpoint refusing, which is HTTP 200 with an errors array.
+	discussionsOff bool
+	graphqlError   string
+}
+
+type fakeDiscussion struct {
+	number   int
+	title    string
+	closed   bool
+	answered bool
+	category string
+	updated  string
 }
 
 // fakeRun is one workflow run. GitHub returns them newest-created first and offers no ordering
@@ -102,6 +118,12 @@ func (r *fakeRepo) run(id int64, name, status, conclusion, headSHA string) *fake
 	return x
 }
 
+func (r *fakeRepo) discussion(number int, title string, closed bool, updated string) *fakeDiscussion {
+	d := &fakeDiscussion{number: number, title: title, closed: closed, updated: updated, category: "General"}
+	r.discussions = append(r.discussions, d)
+	return d
+}
+
 func (r *fakeRepo) find(number int) *fakeItem {
 	for _, i := range r.items {
 		if i.number == number {
@@ -134,6 +156,10 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("Authorization") != "Bearer test-token" {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
+		return
+	}
+	if r.URL.Path == "/graphql" {
+		f.graphql(w, r)
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -185,6 +211,86 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// graphql answers the discussions query, including the two ways it can decline to.
+func (f *fakeGitHub) graphql(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Variables struct {
+			Owner  string   `json:"owner"`
+			Name   string   `json:"name"`
+			First  int      `json:"first"`
+			After  string   `json:"after"`
+			States []string `json:"states"`
+		} `json:"variables"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	name := req.Variables.Owner + "/" + req.Variables.Name
+	f.mu.Lock()
+	repo, ok := f.repos[name]
+	f.mu.Unlock()
+	if !ok {
+		writeJSON(w, map[string]any{"data": nil, "errors": []map[string]any{
+			{"message": "Could not resolve to a Repository with the name '" + name + "'."}}})
+		return
+	}
+	if repo.graphqlError != "" {
+		// HTTP 200 with an errors array, which is GraphQL's own shape for a refusal and the
+		// one a client must not read as an answer.
+		writeJSON(w, map[string]any{"data": nil, "errors": []map[string]any{
+			{"message": repo.graphqlError}}})
+		return
+	}
+
+	want := "OPEN"
+	if len(req.Variables.States) > 0 {
+		want = req.Variables.States[0]
+	}
+	// The state filter, the UPDATED_AT-descending order and `first` are what the source
+	// depends on, so the fake implements them rather than answering with everything: a fake
+	// that ignored `first` would make a window look like it worked when it did not.
+	var picked []*fakeDiscussion
+	if !repo.discussionsOff {
+		for _, d := range repo.discussions {
+			if (want == "CLOSED") != d.closed {
+				continue
+			}
+			picked = append(picked, d)
+		}
+	}
+	sort.SliceStable(picked, func(a, b int) bool { return picked[a].updated > picked[b].updated })
+	if n := req.Variables.First; n > 0 && n < len(picked) {
+		picked = picked[:n]
+	}
+	nodes := []map[string]any{}
+	for _, d := range picked {
+		nodes = append(nodes, map[string]any{
+			"number": d.number, "title": d.title, "body": "",
+			"url":       "https://github.com/" + name + "/discussions/" + strconv.Itoa(d.number),
+			"createdAt": "2026-01-01T00:00:00Z", "updatedAt": d.updated,
+			"closed": d.closed, "isAnswered": d.answered,
+			"category": map[string]any{"name": d.category},
+			"author":   map[string]any{"login": "ana"},
+			"comments": map[string]any{"totalCount": 0},
+		})
+	}
+	writeJSON(w, map[string]any{"data": map[string]any{
+		"repository": map[string]any{
+			"hasDiscussionsEnabled": !repo.discussionsOff,
+			"discussions": map[string]any{
+				"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+				"nodes":    nodes,
+			},
+		},
+	}})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // listRuns answers newest-created first, which for this fake is id-descending, and pages.

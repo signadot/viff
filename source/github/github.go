@@ -179,7 +179,7 @@ func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
 // writes and no more — claiming a kind this build does not reflect refuses a neighbour over
 // entities nobody is writing. Discussions and Actions runs add theirs when they arrive.
 func (g *GitHub) Owns() []source.Own {
-	out := make([]source.Own, 0, 4*len(g.repos))
+	out := make([]source.Own, 0, 5*len(g.repos))
 	for _, r := range g.repos {
 		out = append(out,
 			source.Own{Ref: g.system + ":repo:" + r},
@@ -187,7 +187,8 @@ func (g *GitHub) Owns() []source.Own {
 			source.Own{Ref: g.system + ":pr:" + r + "#*"},
 			// A run's id is GitHub's own number under the repository, so it is scoped the way
 			// git scopes a ref rather than with the `#` the numbered kinds share.
-			source.Own{Ref: g.system + ":run:" + r + "/*"})
+			source.Own{Ref: g.system + ":run:" + r + "/*"},
+			source.Own{Ref: g.system + ":discussion:" + r + "#*"})
 	}
 	return out
 }
@@ -402,6 +403,29 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 	if err != nil {
 		return source.Reflection{}, err
 	}
+	// DISCUSSIONS ARE A SEPARABLE CLAIM, and the asymmetry is the whole of what Covers is for.
+	//
+	// A repository with the feature turned off, or a token that cannot see it, or a GraphQL
+	// endpoint having a bad minute, all mean the same thing: this pass has nothing true to say
+	// about discussions. So it says nothing — the covers are dropped AND the entities with
+	// them, which leaves whatever is standing exactly where it is rather than deleting a set
+	// nobody looked at.
+	//
+	// The issues and pull requests get no such treatment, and the difference is not squeamish-
+	// ness: a pass that lost them has nothing true left to say at all, so it fails. This is
+	// Slack's people beside its channels, one connector later, and it is a job that would
+	// otherwise have to be a flag.
+	if ds, err := g.readDiscussions(ctx, repo); err != nil {
+		g.log("github: %s: reflecting no discussions this pass: %v", repo, err)
+	} else {
+		rn.Covers = append(rn.Covers,
+			entity.Pattern{System: g.system, Kind: "discussion", Predicate: open},
+			entity.Pattern{System: g.system, Kind: "discussion", Predicate: closed})
+		for _, d := range ds {
+			rn.Add(g.ItemRef("discussion", repo, d.Number), discussionPayload(repo, d))
+		}
+	}
+
 	runs, err := g.api.listRuns(ctx, repo, g.runs)
 	if err != nil {
 		return source.Reflection{}, err
@@ -431,6 +455,23 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 		rn.Add(g.ItemRef("pr", repo, p.Number), payload)
 	}
 	return rn, nil
+}
+
+// readDiscussions reads both halves, live and settled, or reports why it could not.
+//
+// Both reads or neither: a live half that succeeded beside a settled half that failed would
+// cover the closed set as a window while carrying nothing of it, which tombstones every closed
+// discussion the repository has. The covers are declared by the caller only when this returns.
+func (g *GitHub) readDiscussions(ctx context.Context, repo string) ([]discussion, error) {
+	live, err := g.api.listDiscussions(ctx, repo, "OPEN", g.maxOpen, 0)
+	if err != nil {
+		return nil, err
+	}
+	settled, err := g.api.listDiscussions(ctx, repo, "CLOSED", 0, g.settled)
+	if err != nil {
+		return nil, err
+	}
+	return append(live, settled...), nil
 }
 
 // checksByHeadSHA reduces the runs to one answer per head sha: what CI most recently said about
@@ -593,6 +634,42 @@ func runPayload(repo string, r workflowRun) entity.Obj {
 		// field: a `git:commit:<repo>/<sha>` is addressed by this sha, and so is a PR's head.
 		"headSha": r.HeadSHA, "url": r.HTMLURL,
 		"startedAt": r.CreatedAt, "updatedAt": r.UpdatedAt,
+	} {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	return p
+}
+
+// discussionPayload is what a charter reads a discussion as.
+//
+// `state` is spelled open/closed like an issue's rather than carrying GitHub's `closed` boolean
+// straight through, because it is what the covers are spelled with and what a rule about "an
+// open thing" matches — one vocabulary across the three set-shaped kinds rather than two.
+//
+// A discussion's number space is its OWN: `github:issue:org/repo#1` and
+// `github:discussion:org/repo#1` are different things with the same number, which is fine
+// because a ref is (system, kind, id) — and worth saying because `#1` alone reads like an
+// identifier and is not one.
+func discussionPayload(repo string, d discussion) entity.Obj {
+	state := "open"
+	if d.Closed {
+		state = "closed"
+	}
+	p := entity.Obj{
+		"repo": repo, "number": d.Number, "title": d.Title, "state": state,
+		"answered": d.IsAnswered, "comments": d.Comments.TotalCount,
+	}
+	if d.Author != nil {
+		p["author"] = d.Author.Login
+	}
+	if d.Category != nil && d.Category.Name != "" {
+		p["category"] = d.Category.Name
+	}
+	for k, v := range map[string]string{
+		"url": d.URL, "createdAt": d.CreatedAt, "updatedAt": d.UpdatedAt,
+		"closedAt": d.ClosedAt, "body": d.Body,
 	} {
 		if v != "" {
 			p[k] = v

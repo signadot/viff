@@ -2,6 +2,7 @@ package github_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -118,6 +119,8 @@ func TestASecondPassOverUnchangedDataWritesNothing(t *testing.T) {
 	p := r.pr(2, "a change", "open", "2026-01-02T00:00:00Z", "cafe1234")
 	p.labels = []string{"review", "api"}
 	r.issue(3, "done", "closed", "2026-01-03T00:00:00Z")
+	r.run(4, "ci", "completed", "success", "cafe1234")
+	r.discussion(5, "a question", false, "2026-01-04T00:00:00Z")
 
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
@@ -348,7 +351,7 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 	for _, ref := range []entity.Ref{
 		{System: "github", Kind: "issue", ID: "acme/other#1"},
 		{System: "github", Kind: "repo", ID: "acme/other"},
-		{System: "github", Kind: "discussion", ID: "acme/app#1"},
+		{System: "github", Kind: "issue", ID: "other/app#1"},
 	} {
 		if places := source.Claimed(claims, ref); len(places) != 0 {
 			t.Fatalf("%s is claimed but not written: %v", ref, places)
@@ -589,5 +592,139 @@ func TestAPullRequestWithNoRunCarriesNoCheckState(t *testing.T) {
 	}
 	if c, ok := payloads(rn)["github:pr:acme/app#1"]["checks"]; ok {
 		t.Fatalf("a PR with no run of its own carries checks = %v", c)
+	}
+}
+
+// Discussions have their own number space, so `github:issue:org/repo#1` and
+// `github:discussion:org/repo#1` are different things carrying the same number. That is fine —
+// a ref is (system, kind, id) — and worth pinning because `#1` alone reads like an identifier
+// and is not one.
+func TestADiscussionDoesNotCollideWithAnIssue(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.discussion(1, "a discussion", false, "2026-01-02T00:00:00Z")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	rn, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := payloads(rn)
+	if got["github:issue:acme/app#1"]["title"] != "an issue" {
+		t.Fatalf("the issue is wrong: %v", got["github:issue:acme/app#1"])
+	}
+	if got["github:discussion:acme/app#1"]["title"] != "a discussion" {
+		t.Fatalf("the discussion is wrong: %v", got["github:discussion:acme/app#1"])
+	}
+}
+
+// THE ASYMMETRY THIS STEP EXISTS FOR. A repository with Discussions turned off answers with an
+// empty connection, exactly as one with no discussions does — so a source that took the list at
+// face value would tombstone every discussion the repository had, the day somebody switched the
+// feature off. It says nothing instead: the covers are dropped AND the entities with them, so
+// whatever is standing stays.
+//
+// The issues get no such treatment, and that difference is the whole of what Covers is for.
+func TestDiscussionsTurnedOffLeaveWhatIsStandingAlone(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.discussion(9, "a discussion", false, "2026-01-02T00:00:00Z")
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	rf := source.NewReflector(src, store, 0)
+	pass := func() {
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatalf("a repository without discussions should still reflect: %v", err)
+		}
+	}
+	pass()
+	disc := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#9"}
+	if _, ok, _ := store.Get(disc); !ok {
+		t.Fatal("the discussion was not reflected in the first place")
+	}
+
+	// Somebody turns the feature off.
+	r.discussionsOff = true
+	pass()
+	if _, ok, _ := store.Get(disc); !ok {
+		t.Fatal("discussions turned off deleted what was already reflected")
+	}
+	// And the rest of the repository still reflects, which is the other half: a pass that can
+	// say nothing about discussions still has everything else to say.
+	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "issue", ID: "acme/app#1"}); !ok {
+		t.Fatal("a repository with discussions off stopped reflecting its issues")
+	}
+}
+
+// The same asymmetry for the other way a discussions read can decline: GraphQL answers HTTP 200
+// with an errors array, which a client that checked only the status would read as a repository
+// with no discussions in it — and an empty answer under a cover is an instruction to tombstone
+// everything beneath it. source/linear/api.go names this trap first; this is the second
+// connector to meet it.
+func TestAGraphQLRefusalIsNotAnEmptyAnswer(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.discussion(9, "a discussion", false, "2026-01-02T00:00:00Z")
+	store := entitytest.Store(t)
+	var logged []string
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"},
+		Log: func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }})
+	rf := source.NewReflector(src, store, 0)
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	disc := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#9"}
+	if _, ok, _ := store.Get(disc); !ok {
+		t.Fatal("the discussion was not reflected in the first place")
+	}
+
+	r.graphqlError = "Resource not accessible by integration"
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatalf("a refused discussions read should not fail the pass: %v", err)
+	}
+	if _, ok, _ := store.Get(disc); !ok {
+		t.Fatal("a GraphQL refusal was read as an empty answer and deleted the discussion")
+	}
+	// AND IT SAYS WHY, which is the half the entity surviving does not prove. With `errors`
+	// unchecked the request still fails safe — `data` is null, so hasDiscussionsEnabled reads
+	// false and the covers drop — but the operator is told the feature is switched off when
+	// their token is the problem. Found by removing the check and watching this test pass
+	// anyway, which is what the message assertion is for.
+	if !strings.Contains(strings.Join(logged, "\n"), "Resource not accessible") {
+		t.Fatalf("the refusal was not reported as one: %v", logged)
+	}
+}
+
+// A discussion that closes appears in the settled half carrying its new state, and leaves when
+// enough newer ones have closed — the same two-cover shape as an issue, since it is the same
+// shape of thing.
+func TestAClosedDiscussionIsWindowed(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.discussion(1, "still open", false, "2026-01-01T00:00:00Z")
+	r.discussion(2, "answered", true, "2026-01-02T00:00:00Z")
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Settled: 1})
+	rf := source.NewReflector(src, store, 0)
+	pass := func() {
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pass()
+	closed := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#2"}
+	if entity.Str(mustGet(t, store, closed), "state") != "closed" {
+		t.Fatal("a closed discussion is not in the settled half")
+	}
+	r.discussion(3, "closed later", true, "2026-01-03T00:00:00Z")
+	pass()
+	if _, ok, _ := store.Get(closed); ok {
+		t.Fatal("a discussion that fell out of the settled window was not tombstoned")
+	}
+	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#1"}); !ok {
+		t.Fatal("the settled window reached an open discussion")
 	}
 }

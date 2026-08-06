@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -415,4 +416,176 @@ func (a *api) listRuns(ctx context.Context, repo string, window int) ([]workflow
 			return out, err
 		}
 	}
+}
+
+// ── discussions, which are GraphQL only ──────────────────────────────────────
+//
+// Repository Discussions has no REST API, so this is a second protocol in one connector. That
+// is the cost, and it is why discussions are their own step: everything above is a conditional
+// GET with an ETag, and none of it applies here. A GraphQL POST is not cacheable, so discussions
+// are the one surface that spends a request on every pass whether anything changed or not.
+
+// discussion is one node of the discussions connection.
+type discussion struct {
+	Number     int    `json:"number"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	URL        string `json:"url"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
+	ClosedAt   string `json:"closedAt"`
+	Closed     bool   `json:"closed"`
+	IsAnswered bool   `json:"isAnswered"`
+	Category   *struct {
+		Name string `json:"name"`
+	} `json:"category"`
+	Author *struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	Comments struct {
+		TotalCount int `json:"totalCount"`
+	} `json:"comments"`
+}
+
+const discussionsQuery = `query($owner: String!, $name: String!, $first: Int!, $after: String, $states: [DiscussionState!]) {
+  repository(owner: $owner, name: $name) {
+    hasDiscussionsEnabled
+    discussions(first: $first, after: $after, states: $states,
+                orderBy: {field: UPDATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title body url createdAt updatedAt closedAt closed isAnswered
+        category { name }
+        author { login }
+        comments { totalCount }
+      }
+    }
+  }
+}`
+
+// errDiscussionsOff is a repository with the Discussions feature turned off.
+//
+// A FACT ABOUT THE REPOSITORY, not a failure to read it, and the two must not be confused: the
+// connection answers with an empty list either way, so a source that took the list at face value
+// would tombstone every discussion a repository had the day somebody switched the feature off —
+// or, worse, on a repository that never had it, would leave the cover claiming completeness for
+// a set it never looked at. hasDiscussionsEnabled is what tells them apart.
+var errDiscussionsOff = fmt.Errorf("github: discussions are not enabled on this repository")
+
+// listDiscussions reads one state's discussions. refuseOver and window mean what they do for the
+// REST listings: the live set must be exhaustive or fail, the settled set is a window.
+func (a *api) listDiscussions(ctx context.Context, repo, state string, refuseOver, window int) ([]discussion, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	var out []discussion
+	after := ""
+	for {
+		first := pageSize
+		if window > 0 && window-len(out) < first {
+			first = window - len(out)
+		}
+		if first < 1 {
+			first = 1
+		}
+		vars := map[string]any{
+			"owner": owner, "name": name, "first": first,
+			"states": []string{state},
+		}
+		if after != "" {
+			vars["after"] = after
+		}
+		var resp struct {
+			Repository struct {
+				HasDiscussionsEnabled bool `json:"hasDiscussionsEnabled"`
+				Discussions           struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []discussion `json:"nodes"`
+				} `json:"discussions"`
+			} `json:"repository"`
+		}
+		if err := a.graphql(ctx, discussionsQuery, vars, &resp); err != nil {
+			return nil, err
+		}
+		if !resp.Repository.HasDiscussionsEnabled {
+			return nil, errDiscussionsOff
+		}
+		out = append(out, resp.Repository.Discussions.Nodes...)
+		if refuseOver > 0 && len(out) > refuseOver {
+			return nil, fmt.Errorf("github: %s has more than %d open discussions, and this pass "+
+				"covers them as complete — a partial list under a complete cover tombstones what "+
+				"it did not read. Raise -max-open, or narrow what this source reflects",
+				repo, refuseOver)
+		}
+		if window > 0 && len(out) >= window {
+			return out, nil
+		}
+		if !resp.Repository.Discussions.PageInfo.HasNextPage {
+			return out, nil
+		}
+		after = resp.Repository.Discussions.PageInfo.EndCursor
+	}
+}
+
+// graphql runs one query and decodes `data` into out.
+//
+// THE TRAP THIS EXISTS TO AVOID is GraphQL's own, and source/linear/api.go names it first: a
+// request that failed answers HTTP 200 with `{"data": null, "errors": [...]}`. A client that
+// checked the status and decoded the rest would read a revoked token as a repository with no
+// discussions in it — and an empty answer under a cover is a legitimate instruction to tombstone
+// everything beneath it. So `errors` is checked here, in one place, and nothing else can forget.
+func (a *api) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
+	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
+	if err != nil {
+		return fmt.Errorf("github: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.graphqlURL(), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("github: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if a.token != "" {
+		req.Header.Set("Authorization", "Bearer "+a.token)
+	}
+	resp, err := a.cl.Do(req)
+	if err != nil {
+		return fmt.Errorf("github: graphql: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return fmt.Errorf("github: graphql: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return &httpError{status: resp.StatusCode, path: "/graphql", body: string(trimBody(raw))}
+	}
+	var envelope struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return fmt.Errorf("github: graphql: %w", err)
+	}
+	if len(envelope.Errors) > 0 {
+		msgs := make([]string, 0, len(envelope.Errors))
+		for _, e := range envelope.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return fmt.Errorf("github: graphql: %s", strings.Join(msgs, "; "))
+	}
+	return json.Unmarshal(envelope.Data, out)
+}
+
+// graphqlURL derives the GraphQL endpoint from the REST base, which is where the two differ on
+// GitHub Enterprise Server: `/api/v3` for REST and `/api/graphql` beside it, against a single
+// `/graphql` on github.com.
+func (a *api) graphqlURL() string {
+	if strings.HasSuffix(a.base, "/api/v3") {
+		return strings.TrimSuffix(a.base, "/v3") + "/graphql"
+	}
+	return a.base + "/graphql"
 }
