@@ -57,12 +57,22 @@ type Pattern struct {
 	// meaningless in the others, which is the shape Op already has from the other side (Op
 	// filters a change, and a cover, which selects stored entities, refuses one).
 	//
-	// It is HERE rather than on a Cover type wrapping this one for two reasons. Covers is the
-	// only wire struct in the tree that carries a Pattern — a charter spells a trigger.Match,
-	// which becomes one — so a `slot` cannot appear in a document where it would be ignored.
-	// And the alternatives are both worse: embedding a Pattern in a Cover silently drops
-	// fields (go-tony f69agjyeh12ksa25cnn0), and a named one nests every cover ever written
-	// inside a `pattern:` key to buy a field almost none of them use.
+	// It is HERE rather than on a Cover type wrapping this one, and the first reason is the
+	// standing one: Covers is the only wire struct in the tree that carries a Pattern — a
+	// charter spells a trigger.Match, which becomes one — so a `slot` cannot appear in a
+	// document where it would be ignored. A named (non-embedded) Pattern field is worse
+	// still, nesting every cover ever written inside a `pattern:` key to buy a field almost
+	// none of them use.
+	//
+	// It was ALSO a workaround, and no longer is: until go-tony v0.0.117, embedding a type
+	// with a generated codec silently dropped the outer struct's own fields, so
+	// `Cover{Pattern; Slot}` encoded as a bare Pattern (item 20 of
+	// tony-format#f69agjyeh12ksa25cnn0). Fixed, and the embedded form flattens to the same
+	// wire this produces — but it stays here anyway, on a reason the fix does not touch:
+	// embedding would make the encoding depend on the go-tony version, and the failure at an
+	// older one is silent and destructive. A cover that lost its slot is a cover over the
+	// whole entity, so converge would tombstone entities where it meant to tombstone a slot.
+	// That is not a shape to hold correct by a `require` line.
 	//
 	// What it means for a source: this answer is complete for the value at this path in each
 	// entity it matches, and for nothing else there. Two sources may then be the single
