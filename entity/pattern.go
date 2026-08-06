@@ -47,6 +47,27 @@ type Pattern struct {
 	// NON-MATCH, for the reason an absent payload is: a predicate that cannot be evaluated
 	// has not been satisfied.
 	At []string `tony:"field=at,omitzero"`
+	// Slot is how MUCH of a matched entity the pattern is about, where At is where to evaluate
+	// its predicate. Empty — the usual case — is the whole entity.
+	//
+	// It selects NOTHING. Every Match* method ignores it, because it is not a dimension of
+	// "which entities": an entity either satisfies the pattern or does not, and the slot says
+	// what the satisfying answer then covers. That makes it meaningful in exactly one use — a
+	// source's Reflection.Covers, where completeness is the question being asked — and
+	// meaningless in the others, which is the shape Op already has from the other side (Op
+	// filters a change, and a cover, which selects stored entities, refuses one).
+	//
+	// It is HERE rather than on a Cover type wrapping this one for two reasons. Covers is the
+	// only wire struct in the tree that carries a Pattern — a charter spells a trigger.Match,
+	// which becomes one — so a `slot` cannot appear in a document where it would be ignored.
+	// And the alternatives are both worse: embedding a Pattern in a Cover silently drops
+	// fields (go-tony f69agjyeh12ksa25cnn0), and a named one nests every cover ever written
+	// inside a `pattern:` key to buy a field almost none of them use.
+	//
+	// What it means for a source: this answer is complete for the value at this path in each
+	// entity it matches, and for nothing else there. Two sources may then be the single
+	// writers of two slots of one entity — see docs/working/shared-ownership.md.
+	Slot []string `tony:"field=slot,omitzero"`
 }
 
 // MatchEvent reports whether an observed CHANGE satisfies every non-empty dimension:

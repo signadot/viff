@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
@@ -260,6 +263,11 @@ func TestReflectionCheckRefusals(t *testing.T) {
 		{"entity with no id", source.Reflection{
 			Entities: []entity.Entity{{Ref: ref("x", "a", "")}},
 		}},
+		// Designed and not honoured yet, refused rather than ignored — converge still replaces
+		// whole payloads, so a slot cover would delete every other owner of what it matched.
+		{"cover narrowed to a slot", source.Reflection{
+			Covers: []entity.Pattern{{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}},
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.rn.Check("x"); err == nil {
@@ -271,6 +279,50 @@ func TestReflectionCheckRefusals(t *testing.T) {
 	ok.Add(ref("x", "a", "1"), entity.Obj{"n": 1})
 	if err := ok.Check("x"); err != nil {
 		t.Fatalf("a well-formed reflection should pass: %v", err)
+	}
+	// The refusal has to say what is missing rather than that the field is wrong: the vocabulary
+	// is right, converge has not caught up with it, and whoever wrote the cover is reading this
+	// message to find out which.
+	err := source.Reflection{Covers: []entity.Pattern{
+		{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}}}.Check("x")
+	for _, want := range []string{"owners.ENG", "does not honour that yet", "whole payloads"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("the slot refusal does not say %q: %v", want, err)
+		}
+	}
+}
+
+// A slot survives the wire, which is what makes the refusal above a fact about converge rather
+// than about the codec. It is one optional field on a cover — no cover written before it
+// changes shape, and none of the three connectors sends one.
+func TestASlotRidesTheCoverWire(t *testing.T) {
+	in := entity.Pattern{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}
+	n, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{in}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := codec.NodeBytes(n, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "slot") {
+		t.Fatalf("a slot did not reach the wire: %s", b)
+	}
+	var back source.Reflection
+	if err := codec.FromNode(n, &back); err != nil {
+		t.Fatal(err)
+	}
+	if len(back.Covers) != 1 || !slices.Equal(back.Covers[0].Slot, in.Slot) {
+		t.Fatalf("the slot did not come back: %+v", back.Covers)
+	}
+	// And a cover without one is unchanged, which is the whole claim to being additive.
+	plain, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{cover("x", "a")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, _ := codec.NodeBytes(plain, codec.Tony)
+	if strings.Contains(string(pb), "slot") {
+		t.Fatalf("a slot-less cover grew a slot: %s", pb)
 	}
 }
 

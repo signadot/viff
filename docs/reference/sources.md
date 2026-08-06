@@ -142,6 +142,14 @@ entities:
 from `entities` is tombstoned. An entity under no cover is written and never tombstoned — which
 is how git keeps history, since it covers `ref` and `head` and not `commit`.
 
+A cover may also carry a **`slot`** — a path inside the payload — saying the answer is complete
+for the value at that path in each entity it matches and for nothing else there. That is what
+would let two sources be the single writers of two slots of one entity. **It is refused today**:
+converge still replaces whole payloads, so a slot cover would delete the other owners of
+everything it matched, and a claim the install *proved* doing `--allow-overlap`'s damage is
+worse than not having slots at all. Refused rather than ignored, for the reason `dial-in` is.
+See [working/shared-ownership.md](../working/shared-ownership.md).
+
 A cover is an `entity.Pattern` — the same selector a charter's `when` becomes — so the payload
 predicate is spelled `value`, as it is in a charter. On the wire each cover also carries an
 empty `op: ""`, which means nothing here and is upstream's doing: codegen honours `omitzero` on

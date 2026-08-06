@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -83,6 +84,22 @@ func (r Reflection) Check(system string) error {
 		if p.Op != "" {
 			return fmt.Errorf("reflection: cover over system %q carries op %q — a cover selects "+
 				"stored entities, which have no op", p.System, p.Op)
+		}
+		// A SLOT COVER IS DESIGNED AND NOT HONOURED YET, and it is refused rather than ignored
+		// for the reason a `dial-in` registration is: the failure of accepting it is silent and
+		// destructive. converge still writes a whole payload — a replace, spelling a null at
+		// every field the answer does not carry — so a source narrowing its cover to a slot
+		// would install clean, be proved disjoint from the entity's other owners, and then
+		// delete their slots on its first pass. That is `--allow-overlap`'s damage arriving
+		// through a claim the install PROVED, which is worse than not having slots at all.
+		//
+		// What is missing is converge writing, comparing and tombstoning at the slot
+		// (docs/working/gh-source/1-path-claim-plan.md, step 4). This refusal goes away with it.
+		if len(p.Slot) > 0 {
+			return fmt.Errorf("reflection: cover over %s:%s claims only the slot %s, and converge "+
+				"does not honour that yet — it still replaces whole payloads, so this cover would "+
+				"delete the other owners of every entity it matched",
+				p.System, p.Kind, strings.Join(p.Slot, "."))
 		}
 	}
 	for _, e := range r.Entities {

@@ -27,6 +27,7 @@ define:
   at: .[array(string)]
   kind: .[string]
   op: .[string]
+  slot: .[array(string)]
   system: .[string]
   value: .[tony-base:ir]
 signature:
