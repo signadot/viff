@@ -74,6 +74,76 @@ func TestClaimDisjoint(t *testing.T) {
 	}
 }
 
+// A claim addresses a PLACE, so two sources may share an entity by owning two slots of it —
+// which is two single writers rather than two writers. The table is the one in
+// docs/working/shared-ownership.md.
+func TestASlotIsAClaimAtADeeperAddress(t *testing.T) {
+	// `linear:project:*` — every project — at the given path. Prefix with an empty ID is `*`.
+	project := func(field ...string) source.Claim {
+		return source.Claim{System: "linear", Kind: "project", Prefix: true, Field: field}
+	}
+	for _, tc := range []struct {
+		name string
+		a, b source.Claim
+		want bool
+	}{
+		{"two teams' slots", project("owners", "ENG"), project("owners", "OPS"), true},
+		// Segment-wise, not string-wise. A string prefix test would say the first contains the
+		// second and refuse two sources that share nothing.
+		{"a slot whose name prefixes another's", project("owners", "ENG"), project("owners", "ENGINE"), true},
+		{"the container holds the slot", project("owners"), project("owners", "ENG"), false},
+		{"the whole entity holds every slot", project(), project("owners", "ENG"), false},
+		{"the same slot twice", project("owners", "ENG"), project("owners", "ENG"), false},
+		{"a slot under a deeper one", project("owners", "ENG"), project("owners", "ENG", "seen"), false},
+		// The path is the LAST thing asked, so a difference higher up still decides it: two
+		// kinds that differ are disjoint whatever their paths would have said.
+		{"a different kind, same path", project("owners", "ENG"),
+			source.Claim{System: "linear", Kind: "cycle", Prefix: true, Field: []string{"owners", "ENG"}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.a.Disjoint(tc.b); got != tc.want {
+				t.Fatalf("%s disjoint %s = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+			// Symmetric, for the reason the ref-level table is: an install checks one way and
+			// means both, so an asymmetric answer makes a refusal depend on installation order.
+			if got := tc.b.Disjoint(tc.a); got != tc.want {
+				t.Fatalf("%s disjoint %s = %v, want %v (asymmetric)", tc.b, tc.a, got, tc.want)
+			}
+		})
+	}
+}
+
+// The negative that matters most: nothing in the tree has a path, so nothing in the tree
+// compares differently than it did. Every claim the three connectors emit parses to an empty
+// Field, and an empty Field is what the whole existing table above is about.
+func TestTheTerseSpellingIsPathLess(t *testing.T) {
+	owns := source.NewGit()
+	owns.AddRepo("verse", t.TempDir())
+	claims := owns.Owns() // git's own, built by the code that ships
+	claims = append(claims,
+		"slack:*:acme/*",                                              // slack.Owns
+		"linear:team:ENG", "linear:issue:ENG-*", "linear:cycle:ENG/*", // linear.Owns
+	)
+	for _, s := range claims {
+		c, err := source.ParseClaim(s)
+		if err != nil {
+			t.Fatalf("parse %q: %v", s, err)
+		}
+		if len(c.Field) != 0 {
+			t.Fatalf("%q parsed to a claim with a path %v — the terse spelling has none", s, c.Field)
+		}
+		if c.String() != s {
+			t.Fatalf("%q round-tripped to %q", s, c.String())
+		}
+	}
+	// A claim WITH a path has no terse spelling and does not pretend to: it renders for a
+	// person reading a refusal, and nothing parses it back.
+	slot := source.Claim{System: "linear", Kind: "project", Prefix: true, Field: []string{"owners", "ENG"}}
+	if got, want := slot.String(), "linear:project:* at owners.ENG"; got != want {
+		t.Fatalf("a slot claim renders as %q, want %q", got, want)
+	}
+}
+
 // Ownership is a union, so one overlapping pair is an overlap however disjoint the rest are.
 func TestDisjointIsEveryPair(t *testing.T) {
 	a := []string{"git:*:verse/*", "git:head:verse"}

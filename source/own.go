@@ -22,11 +22,25 @@ import (
 // constants — proves `{repo: null}` disjoint from `{repo: verse}` when the second entails the
 // first: a wrong REFUSAL, from a check whose whole job is to be conservative.
 //
+// A claim addresses a PLACE, not only an entity. Field continues the address into the payload,
+// the way entity.Path does for a write — so two sources can share an entity without either
+// being a second writer of anything: one is the single writer of `owners.ENG`, the other of
+// `owners.OPS`, and they are proved apart by the same string comparison one segment further
+// down. Sharing is not an exception to single-writership; it is single-writership at a deeper
+// address (docs/working/shared-ownership.md).
+//
+// THE PATH IS NOT PART OF THE PARSEABLE SPELLING, and that is a fact about ids rather than a
+// first version. `@` — the obvious separator — is trigger.ChainSep and already appears inside
+// ids: `scripts/lineage.sh` writes `lineage:trace:<rule>@<subject>`, which carries both a `@`
+// and two colons, so no split rule recovers a path from one end or the other. A claim that
+// carries a path is therefore spelled as a document; ParseClaim reads the terse form, which is
+// every claim in the tree today and every claim a person types.
+//
 // The cost is stated in docs/working/sources-residual.md and worth knowing: this works when a
 // source's ids encode ownership positionally, which git's do because git.go prefixes every id
-// with the repo. A source whose ownership is a field rather than an address cannot spell it
-// here — and one whose entities have SEVERAL owners (a Linear project, which belongs to more
-// than one team) cannot be spelled by any ownership grammar at all.
+// with the repo. What is still not spellable here is ownership that is a VALUE rather than a
+// place — an owner in the payload and a uuid in the ref. That wants a predicate, and predicates
+// do not compare statically; the shape one would have to take is in shared-ownership.md.
 
 // Claim is one parsed ownership claim.
 type Claim struct {
@@ -37,6 +51,14 @@ type Claim struct {
 	ID string
 	// Prefix reports that ID is a prefix rather than the whole thing — the trailing `*`.
 	Prefix bool
+	// Field is the path inside the payload this claim is about — {"owners","ENG"} is the `ENG`
+	// key of the `owners` object, and it is the same address entity.Path.Field names for a
+	// write. Empty is the whole entity, which is every claim ParseClaim can produce.
+	//
+	// A claim with no path CONTAINS every claim under it, which is why an empty Field is a
+	// prefix of everything rather than a wildcard: a source claiming a whole entity and one
+	// claiming a slot inside it are two writers of that slot.
+	Field []string
 }
 
 // ParseClaim reads a claim from its ref-glob spelling.
@@ -87,6 +109,11 @@ func ParseClaim(s string) (Claim, error) {
 }
 
 // String spells the claim back, so a refusal can quote what it was given.
+//
+// A path-less claim round-trips through ParseClaim, which is what makes a refusal quote the
+// operator's own words. A claim WITH a path does not and cannot — there is no terse spelling of
+// one (see above) — so it renders for a person to read rather than for a parser: the ref, then
+// `at`, then the path. Nothing consumes this form.
 func (c Claim) String() string {
 	seg := func(s string) string {
 		if s == "" {
@@ -98,15 +125,24 @@ func (c Claim) String() string {
 	if c.Prefix {
 		id += "*"
 	}
-	return seg(c.System) + ":" + seg(c.Kind) + ":" + seg(id)
+	out := seg(c.System) + ":" + seg(c.Kind) + ":" + seg(id)
+	if len(c.Field) > 0 {
+		out += " at " + strings.Join(c.Field, ".")
+	}
+	return out
 }
 
-// Disjoint reports whether no entity can satisfy both claims.
+// Disjoint reports whether no PLACE can satisfy both claims.
 //
 // It PROVES, and answers false whenever it cannot. Two claims are disjoint when ANY segment is,
-// since a ref must satisfy all three: two literal systems that differ, two literal kinds that
-// differ, or two ids that cannot be the same string. A `*` segment is disjoint from nothing,
-// which is why a claim of `git:*:*` is disjoint from nothing else in git — it claims the lot.
+// since a place must satisfy all four: two literal systems that differ, two literal kinds that
+// differ, two ids that cannot be the same string, or two paths neither of which contains the
+// other. A `*` segment is disjoint from nothing, which is why a claim of `git:*:*` is disjoint
+// from nothing else in git — it claims the lot.
+//
+// The path is one more segment and not a new kind of reasoning, which is the whole reason it is
+// spelled as an address: adding a fourth string comparison to three is a change to this
+// function's length and not to what it is able to prove.
 func (c Claim) Disjoint(o Claim) bool {
 	if c.System != "" && o.System != "" && c.System != o.System {
 		return true
@@ -114,7 +150,34 @@ func (c Claim) Disjoint(o Claim) bool {
 	if c.Kind != "" && o.Kind != "" && c.Kind != o.Kind {
 		return true
 	}
-	return idsDisjoint(c, o)
+	if idsDisjoint(c, o) {
+		return true
+	}
+	return pathsDisjoint(c.Field, o.Field)
+}
+
+// pathsDisjoint reports whether two payload paths can share no place. They cannot when neither
+// contains the other, and one contains the other when it is a prefix of it: a claim on `owners`
+// takes `owners.ENG` with it, and a claim on nothing at all takes the whole entity.
+//
+// SEGMENT-WISE, and never as a string. `owners.ENG` and `owners.ENGINE` are two different
+// fields, and a string-prefix test would say the first contains the second and refuse two
+// perfectly disjoint sources — the same false alarm `git:*:verse*` makes against
+// `verse-extras/main`, which is the mistake the id grammar is shaped to avoid. Here it costs
+// nothing to avoid, because a path is a list of segments before it is ever a string.
+func pathsDisjoint(a, b []string) bool {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return true // they part company here, so no place is under both
+		}
+	}
+	// One is a prefix of the other — including the case where one is empty, which is the whole
+	// entity and so contains every path in it.
+	return false
 }
 
 // idsDisjoint is the whole of the id comparison, and it is three string cases.
@@ -185,6 +248,14 @@ func parseClaims(ss []string) ([]Claim, error) {
 // A claim that does not parse is skipped rather than treated as matching everything. Install
 // refuses one, so this is the belt to that suspenders, and erring toward claiming LESS is the
 // safe direction for the caller that deletes.
+//
+// IT ASKS ABOUT A REF, and a claim that owns only a place INSIDE an entity answers yes — which
+// is the right answer to "does this source claim something here" and the wrong one for the
+// caller that deletes, since a `--forget` acting on it would take another owner's slot with it.
+// Nothing can reach that today: ParseClaim produces no path, and `owns` is a list of strings, so
+// every claim this sees has an empty Field. It is the first thing the step that gives `owns` a
+// document form has to fix, and it is written down here rather than there because this is where
+// the deletion is decided (docs/working/gh-source/1-path-claim-plan.md, step 2).
 func Claims(owns []string, ref entity.Ref) bool {
 	point := Claim{System: ref.System, Kind: ref.Kind, ID: ref.ID}
 	for _, own := range owns {
