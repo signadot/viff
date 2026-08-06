@@ -37,6 +37,7 @@ const DefaultSystem = "github"
 const (
 	DefaultSettled = 50
 	DefaultMaxOpen = 2000
+	DefaultRuns    = 50
 )
 
 // Config is what a GitHub source is built from.
@@ -60,6 +61,8 @@ type Config struct {
 	// (0 → DefaultSettled). MaxOpen refuses a repository with more open items than this
 	// (0 → DefaultMaxOpen) rather than answering partially for a slice it covers completely.
 	Settled, MaxOpen int
+	// Runs is how many of a repository's most recent workflow runs it keeps (0 → DefaultRuns).
+	Runs int
 
 	// Base overrides the API root (GitHub Enterprise Server, or a test server). HTTPClient
 	// overrides the transport.
@@ -76,6 +79,7 @@ type GitHub struct {
 	repos   []string // `<org>/<name>`, sorted, so two passes answer in one order
 	settled int
 	maxOpen int
+	runs    int
 	log     func(string, ...any)
 }
 
@@ -100,6 +104,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		system:  cfg.System,
 		settled: cfg.Settled,
 		maxOpen: cfg.MaxOpen,
+		runs:    cfg.Runs,
 		log:     cfg.Log,
 	}
 	if g.system == "" {
@@ -117,6 +122,9 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 	}
 	if g.maxOpen <= 0 {
 		g.maxOpen = DefaultMaxOpen
+	}
+	if g.runs <= 0 {
+		g.runs = DefaultRuns
 	}
 	if g.log == nil {
 		g.log = func(string, ...any) {}
@@ -171,12 +179,15 @@ func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
 // writes and no more — claiming a kind this build does not reflect refuses a neighbour over
 // entities nobody is writing. Discussions and Actions runs add theirs when they arrive.
 func (g *GitHub) Owns() []source.Own {
-	out := make([]source.Own, 0, 3*len(g.repos))
+	out := make([]source.Own, 0, 4*len(g.repos))
 	for _, r := range g.repos {
 		out = append(out,
 			source.Own{Ref: g.system + ":repo:" + r},
 			source.Own{Ref: g.system + ":issue:" + r + "#*"},
-			source.Own{Ref: g.system + ":pr:" + r + "#*"})
+			source.Own{Ref: g.system + ":pr:" + r + "#*"},
+			// A run's id is GitHub's own number under the repository, so it is scoped the way
+			// git scopes a ref rather than with the `#` the numbered kinds share.
+			source.Own{Ref: g.system + ":run:" + r + "/*"})
 	}
 	return out
 }
@@ -185,6 +196,11 @@ func (g *GitHub) Owns() []source.Own {
 // whole, which is what a hint about a push or a repository event names.
 func (g *GitHub) RepoRef(repo string) entity.Ref {
 	return entity.Ref{System: g.system, Kind: "repo", ID: repo}
+}
+
+// RunRef is the ref of one workflow run.
+func (g *GitHub) RunRef(repo string, id int64) entity.Ref {
+	return entity.Ref{System: g.system, Kind: "run", ID: repo + "/" + strconv.FormatInt(id, 10)}
 }
 
 // ItemRef is the ref of one issue or pull request.
@@ -334,6 +350,21 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 		{System: g.system, Kind: "issue", Predicate: closed},
 		{System: g.system, Kind: "pr", Predicate: open},
 		{System: g.system, Kind: "pr", Predicate: closed},
+		// Runs are a WINDOW and nothing else — Slack's messages rather than issues' two
+		// halves. A completed run is never interesting again and an unbounded stream of them
+		// is the warehouse a source is not supposed to be, so the last `-runs` created are
+		// kept and what falls out is tombstoned.
+		//
+		// Covered WHOLE rather than split by status, and that costs something worth naming.
+		// GitHub's runs listing offers no ordering of its own and its `status` filter takes a
+		// single value, so there is no read that returns "everything not finished" — an
+		// enumeration of statuses would leave whatever GitHub adds next uncovered, standing
+		// forever. So the window covers every status, and a run still in flight when more than
+		// `-runs` newer ones have been created falls out of it and is tombstoned: a charter
+		// waiting on that run never sees its conclusion. That is this connector's version of
+		// Slack's aged-out thread parent, and the lever is the same — `-runs` wants to be
+		// comfortably more than a repository creates while its longest job runs.
+		{System: g.system, Kind: "run", Predicate: mine},
 	}}
 
 	r, sha, err := g.api.readRepo(ctx, repo)
@@ -371,10 +402,67 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 	if err != nil {
 		return source.Reflection{}, err
 	}
+	runs, err := g.api.listRuns(ctx, repo, g.runs)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	sort.Slice(runs, func(i, j int) bool { return runs[i].ID < runs[j].ID })
+	for _, r := range runs {
+		rn.Add(g.RunRef(repo, r.ID), runPayload(repo, r))
+	}
+
+	// CI state lands on the pull request as a field, not as entities of its own. "Is this PR
+	// green" is a property of the proposal rather than of the seventeen check runs that
+	// produced it, and a kind per check would multiply the busiest slice in the verse to answer
+	// a question nobody asks in that form. A charter that wants the failing job follows `url`.
+	//
+	// Derived from the runs already read, by head sha, so it costs no request at all — where
+	// asking GitHub per pull request would cost one each and put the budget somewhere it does
+	// not belong. A pull request whose head has no run in the window carries no `checks` field,
+	// which is absent rather than wrong.
+	checks := checksByHeadSHA(runs)
 	for _, p := range append(openPulls, closedPulls...) {
-		rn.Add(g.ItemRef("pr", repo, p.Number), pullPayload(repo, p))
+		payload := pullPayload(repo, p)
+		if p.Head != nil {
+			if c, ok := checks[p.Head.SHA]; ok {
+				payload["checks"] = c
+			}
+		}
+		rn.Add(g.ItemRef("pr", repo, p.Number), payload)
 	}
 	return rn, nil
+}
+
+// checksByHeadSHA reduces the runs to one answer per head sha: what CI most recently said about
+// that commit.
+//
+// The NEWEST run wins, by id, because a re-run is a new run over the same sha and its answer is
+// the current one. Deterministic for the same reason every list in this file is sorted — a
+// payload that depended on map order would differ between two reads of unchanged data, and
+// every entity would be rewritten on every pass.
+func checksByHeadSHA(runs []workflowRun) map[string]string {
+	newest := map[string]workflowRun{}
+	for _, r := range runs {
+		if r.HeadSHA == "" {
+			continue
+		}
+		if prev, ok := newest[r.HeadSHA]; !ok || r.ID > prev.ID {
+			newest[r.HeadSHA] = r
+		}
+	}
+	out := make(map[string]string, len(newest))
+	for sha, r := range newest {
+		out[sha] = runState(r)
+	}
+	return out
+}
+
+// runState is the one word a charter reads: what a run concluded, or what it is still doing.
+func runState(r workflowRun) string {
+	if r.Conclusion != "" {
+		return r.Conclusion
+	}
+	return r.Status
 }
 
 // ── payloads ─────────────────────────────────────────────────────────────────
@@ -479,6 +567,38 @@ func pullPayload(repo string, p pull) entity.Obj {
 		out["assignees"] = logins
 	}
 	return out
+}
+
+// runPayload is what a charter reads a workflow run as.
+//
+// MATCH `conclusion`, NOT A TRANSITION, and this is the connector where somebody will expect
+// otherwise. A run goes queued → in_progress → completed inside a minute, so a pass will
+// frequently collapse all three into one write and a rule matching `status: in_progress` may
+// never fire for a run that fired every trigger it was supposed to. That is not a defect to
+// fix: verse promises the last observed state rather than every state, and the trigger model
+// says the corresponding thing about creates and updates — express "only the first time" as a
+// state latch, not an edge.
+func runPayload(repo string, r workflowRun) entity.Obj {
+	p := entity.Obj{
+		"repo": repo, "id": r.ID, "status": r.Status,
+		"runNumber": r.RunNumber, "attempt": r.RunAttempt,
+	}
+	if r.Actor != nil {
+		p["actor"] = r.Actor.Login
+	}
+	for k, v := range map[string]string{
+		"workflow": r.Name, "event": r.Event, "conclusion": r.Conclusion,
+		"branch": r.HeadBranch,
+		// The join to a git source and to the pull request this ran for, both by the same
+		// field: a `git:commit:<repo>/<sha>` is addressed by this sha, and so is a PR's head.
+		"headSha": r.HeadSHA, "url": r.HTMLURL,
+		"startedAt": r.CreatedAt, "updatedAt": r.UpdatedAt,
+	} {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	return p
 }
 
 func labelNames(ls []label) []string {

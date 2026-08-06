@@ -326,6 +326,7 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 	r := f.repo("acme/app")
 	r.issue(1, "first", "open", "2026-01-01T00:00:00Z")
 	r.pr(2, "a change", "open", "2026-01-02T00:00:00Z", "cafe1234")
+	r.run(7, "ci", "completed", "success", "cafe1234")
 	f.repo("acme/other")
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
 
@@ -348,7 +349,6 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 		{System: "github", Kind: "issue", ID: "acme/other#1"},
 		{System: "github", Kind: "repo", ID: "acme/other"},
 		{System: "github", Kind: "discussion", ID: "acme/app#1"},
-		{System: "github", Kind: "run", ID: "acme/app/1"},
 	} {
 		if places := source.Claimed(claims, ref); len(places) != 0 {
 			t.Fatalf("%s is claimed but not written: %v", ref, places)
@@ -457,4 +457,137 @@ func mustGet(t *testing.T, s entity.Store, r entity.Ref) entity.Payload {
 		t.Fatalf("get %s: ok=%v err=%v", r, ok, err)
 	}
 	return e.Payload
+}
+
+// Runs are a WINDOW and nothing else: the last `-runs` created are kept and what falls out is
+// tombstoned. Slack's messages rather than issues' two halves — a completed run is never
+// interesting again, and an unbounded stream of them is the warehouse a source is not meant to
+// be.
+func TestTheRunWindowSlidesAndTombstones(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.run(1, "ci", "completed", "success", "aaaa")
+	r.run(2, "ci", "completed", "failure", "bbbb")
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Runs: 2})
+	rf := source.NewReflector(src, store, 0)
+	pass := func() {
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pass()
+	if got := entity.Str(mustGet(t, store, src.RunRef("acme/app", 2)), "conclusion"); got != "failure" {
+		t.Fatalf("run 2 conclusion = %q", got)
+	}
+
+	r.run(3, "ci", "completed", "success", "cccc")
+	pass()
+	if _, ok, _ := store.Get(src.RunRef("acme/app", 1)); ok {
+		t.Fatal("a run that fell out of the window was not tombstoned")
+	}
+	for _, id := range []int64{2, 3} {
+		if _, ok, _ := store.Get(src.RunRef("acme/app", id)); !ok {
+			t.Fatalf("run %d is missing from the window", id)
+		}
+	}
+}
+
+// The raggedness the window costs, asserted rather than left to be discovered: a run still in
+// flight when more than `-runs` newer ones have been created falls out and is tombstoned, so a
+// charter waiting on its conclusion never sees one.
+//
+// It is here because it cannot be designed away with the API GitHub offers — the runs listing
+// has no ordering of its own and its `status` filter takes a single value, so there is no read
+// that returns "everything not finished", and an enumeration of statuses would leave whatever
+// GitHub adds next uncovered and standing forever. This is Slack's aged-out thread parent, and
+// the lever is the same: `-runs` wants to be comfortably more than a repository creates while
+// its longest job runs.
+func TestALongRunningRunFallsOutOfASmallWindow(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.run(1, "nightly", "in_progress", "", "aaaa") // still going
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Runs: 1})
+	rf := source.NewReflector(src, store, 0)
+	pass := func() {
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pass()
+	if got := entity.Str(mustGet(t, store, src.RunRef("acme/app", 1)), "status"); got != "in_progress" {
+		t.Fatalf("the in-flight run = %q", got)
+	}
+	r.run(2, "ci", "completed", "success", "bbbb")
+	pass()
+	if _, ok, _ := store.Get(src.RunRef("acme/app", 1)); ok {
+		t.Skip("the window now keeps in-flight runs; this raggedness is fixed and the note wants updating")
+	}
+	// Documented, not desired. A larger window is the whole of the mitigation.
+	src2 := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Runs: 10})
+	rn, err := src2.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payloads(rn)["github:run:acme/app/1"] == nil {
+		t.Fatal("a larger window does not keep the in-flight run, so the lever does not work")
+	}
+}
+
+// CI state lands on the pull request as a field, and costs no request: it is derived from the
+// runs already read, by head sha. Asking GitHub per pull request would cost one call each and
+// put the budget somewhere it does not belong.
+func TestTheCheckStateLandsOnThePullRequest(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.pr(1, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	r.run(10, "ci", "completed", "failure", "cafe1234")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	got := func() entity.Obj {
+		rn, err := src.Reflect(context.Background(), entity.Ref{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return payloads(rn)["github:pr:acme/app#1"]
+	}
+	if c := got()["checks"]; c != "failure" {
+		t.Fatalf("the PR's checks = %v, want the run's conclusion", c)
+	}
+	// A re-run over the same sha is a newer run, and its answer is the current one.
+	r.run(11, "ci", "completed", "success", "cafe1234")
+	if c := got()["checks"]; c != "success" {
+		t.Fatalf("after a re-run the PR's checks = %v, want the newest run's answer", c)
+	}
+	// A run still going says so rather than saying nothing.
+	r.run(12, "ci", "in_progress", "", "cafe1234")
+	if c := got()["checks"]; c != "in_progress" {
+		t.Fatalf("while CI runs the PR's checks = %v", c)
+	}
+	// And no check entities were invented to carry any of it.
+	rn, _ := src.Reflect(context.Background(), entity.Ref{})
+	for _, e := range rn.Entities {
+		if e.Ref.Kind == "check" || e.Ref.Kind == "checkRun" {
+			t.Fatalf("a check kind appeared: %s", e.Ref)
+		}
+	}
+}
+
+// A pull request whose head has no run in the window carries no `checks` field — absent rather
+// than wrong, which is the difference between "CI has not spoken about this" and "CI passed".
+func TestAPullRequestWithNoRunCarriesNoCheckState(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.pr(1, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	r.run(10, "ci", "completed", "success", "0000other")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	rn, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, ok := payloads(rn)["github:pr:acme/app#1"]["checks"]; ok {
+		t.Fatalf("a PR with no run of its own carries checks = %v", c)
+	}
 }

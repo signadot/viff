@@ -263,6 +263,23 @@ type label struct {
 	Name string `json:"name"`
 }
 
+// workflowRun is one item from `GET /repos/{o}/{r}/actions/runs`.
+type workflowRun struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Event      string `json:"event"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	HeadBranch string `json:"head_branch"`
+	HeadSHA    string `json:"head_sha"`
+	RunNumber  int    `json:"run_number"`
+	RunAttempt int    `json:"run_attempt"`
+	HTMLURL    string `json:"html_url"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+	Actor      *user  `json:"actor"`
+}
+
 // ── the reads ────────────────────────────────────────────────────────────────
 
 // readRepo reads the repository and the head of its default branch.
@@ -352,9 +369,11 @@ func listQuery(state, sort string, page, window, have int) string {
 		per = 1
 	}
 	v := url.Values{
-		"state":    {state},
 		"per_page": {fmt.Sprint(per)},
 		"page":     {fmt.Sprint(page)},
+	}
+	if state != "" {
+		v.Set("state", state)
 	}
 	if sort != "" {
 		v.Set("sort", sort)
@@ -375,4 +394,25 @@ func listDone(batch, total, refuseOver, window int, repo, what string) (bool, er
 		return true, nil // the window is full, which is what a window means
 	}
 	return batch < pageSize, nil
+}
+
+// listRuns reads the newest workflow runs, which is the whole of what this source keeps of
+// Actions. GitHub returns them newest-created first and offers no ordering of its own, so the
+// window is "the last n created" and nothing else.
+func (a *api) listRuns(ctx context.Context, repo string, window int) ([]workflowRun, error) {
+	var out []workflowRun
+	for page := 1; ; page++ {
+		var batch struct {
+			Runs []workflowRun `json:"workflow_runs"`
+		}
+		q := listQuery("", "", page, window, len(out))
+		if err := a.get(ctx, "/repos/"+repo+"/actions/runs?"+q, &batch); err != nil {
+			return nil, err
+		}
+		out = append(out, batch.Runs...)
+		done, err := listDone(len(batch.Runs), len(out), 0, window, repo, "workflow runs")
+		if done || err != nil {
+			return out, err
+		}
+	}
 }

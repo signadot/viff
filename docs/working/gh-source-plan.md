@@ -108,13 +108,23 @@ The window-only kind, alone now that the repo entity has moved to step 1.
 
 - `github:run:<org>/<name>/<id>` — the last `-runs`, covered by `{repo}`, tombstoned as they
   slide. No live/settled split: a queued run becomes a completed run in minutes and a completed
-  one is never interesting again, and since runs are ordered by creation a run in flight is
-  always inside the window.
+  one is never interesting again.
+
+  ~~and since runs are ordered by creation a run in flight is always inside the window.~~
+  **Wrong, and it is a raggedness rather than a bug to fix.** More runs than `-runs` can be
+  created while one long job is going, and that one then falls out and is tombstoned, so a
+  charter waiting on its conclusion never sees one. It cannot be designed away with the API on
+  offer: the runs listing has no ordering of its own, and its `status` filter takes a single
+  value, so there is no read that returns "everything not finished" — and an enumeration of
+  statuses would leave whatever GitHub adds next uncovered and standing forever. This is Slack's
+  aged-out thread parent, and the lever is the same: `-runs` wants to be comfortably more than a
+  repository creates while its longest job runs.
 - **Check state lands on the PR as a field**, not as `github:check:*` entities.
 
-**Proves:** the window slides and tombstones; a run still in flight is never tombstoned however
-many have been created since; the PR's check field moves with the run and costs no new kind; and
-the step-1 no-op-pass test gets a run case.
+**Proves:** the window slides and tombstones; the raggedness above is pinned rather than
+believed, along with the larger window that mitigates it; the PR's check field moves with the run
+and costs no new kind, and costs no request either — it is derived from the runs already read, by
+head sha, where asking GitHub per pull request would be one call each.
 
 **And the level-triggering limit gets written down where a charter author meets it**, not only in
 the note: a run goes `queued → in_progress → completed` inside a minute, so a pass will

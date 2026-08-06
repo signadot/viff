@@ -36,6 +36,18 @@ type fakeRepo struct {
 	private       bool
 	cloneURL      string
 	items         []*fakeItem
+	runs          []*fakeRun
+}
+
+// fakeRun is one workflow run. GitHub returns them newest-created first and offers no ordering
+// of its own, which is what makes the source's window "the last n created" — so this fake
+// answers in id-descending order and nothing in the source may depend on more.
+type fakeRun struct {
+	id         int64
+	name       string
+	status     string // queued | in_progress | completed
+	conclusion string // "" while it is still going
+	headSHA    string
 }
 
 // fakeItem is an issue or a pull request. One type, because on GitHub they share a number space
@@ -82,6 +94,12 @@ func (r *fakeRepo) pr(number int, title, state, updatedAt, headSHA string) *fake
 		pull: true, head: "feature-" + strconv.Itoa(number), headSHA: headSHA}
 	r.items = append(r.items, i)
 	return i
+}
+
+func (r *fakeRepo) run(id int64, name, status, conclusion, headSHA string) *fakeRun {
+	x := &fakeRun{id: id, name: name, status: status, conclusion: conclusion, headSHA: headSHA}
+	r.runs = append(r.runs, x)
+	return x
 }
 
 func (r *fakeRepo) find(number int) *fakeItem {
@@ -149,6 +167,11 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.reply(w, r, map[string]any{"object": map[string]any{"sha": repo.sha}})
+	case len(rest) == 2 && rest[0] == "actions" && rest[1] == "runs":
+		f.reply(w, r, map[string]any{
+			"total_count":   len(repo.runs),
+			"workflow_runs": f.listRuns(repo, r),
+		})
 	case len(rest) == 1 && (rest[0] == "issues" || rest[0] == "pulls"):
 		f.reply(w, r, f.list(repo, rest[0], r))
 	case len(rest) == 2 && (rest[0] == "issues" || rest[0] == "pulls"):
@@ -162,6 +185,51 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// listRuns answers newest-created first, which for this fake is id-descending, and pages.
+func (f *fakeGitHub) listRuns(repo *fakeRepo, r *http.Request) []map[string]any {
+	runs := append([]*fakeRun(nil), repo.runs...)
+	sort.SliceStable(runs, func(a, b int) bool { return runs[a].id > runs[b].id })
+	from, to := pageBounds(r, len(runs))
+	out := make([]map[string]any, 0, to-from)
+	for _, x := range runs[from:to] {
+		m := map[string]any{
+			"id": x.id, "name": x.name, "event": "push", "status": x.status,
+			"head_branch": "main", "head_sha": x.headSHA,
+			"run_number": int(x.id), "run_attempt": 1,
+			"html_url":   "https://github.com/x/y/actions/runs/" + strconv.FormatInt(x.id, 10),
+			"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:01:00Z",
+			"actor": map[string]any{"login": "ana"},
+		}
+		if x.conclusion != "" {
+			m["conclusion"] = x.conclusion
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// pageBounds reads per_page and page the way the API does.
+func pageBounds(r *http.Request, n int) (int, int) {
+	q := r.URL.Query()
+	per, _ := strconv.Atoi(q.Get("per_page"))
+	if per <= 0 {
+		per = 30
+	}
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page <= 0 {
+		page = 1
+	}
+	from := (page - 1) * per
+	if from > n {
+		from = n
+	}
+	to := from + per
+	if to > n {
+		to = n
+	}
+	return from, to
 }
 
 // list applies the state filter, the sort, and the paging — the three the source depends on.
@@ -191,22 +259,7 @@ func (f *fakeGitHub) list(repo *fakeRepo, what string, r *http.Request) []map[st
 		})
 	}
 
-	per, _ := strconv.Atoi(q.Get("per_page"))
-	if per <= 0 {
-		per = 30
-	}
-	page, _ := strconv.Atoi(q.Get("page"))
-	if page <= 0 {
-		page = 1
-	}
-	from := (page - 1) * per
-	if from > len(picked) {
-		from = len(picked)
-	}
-	to := from + per
-	if to > len(picked) {
-		to = len(picked)
-	}
+	from, to := pageBounds(r, len(picked))
 	out := make([]map[string]any, 0, to-from)
 	for _, i := range picked[from:to] {
 		out = append(out, i.render(what == "pulls"))
