@@ -1,6 +1,7 @@
 # A GitHub source: issues, discussions, pull requests, Actions
 
-Status: proposal, nothing here runs. It argues from code that does — [sources.md](../sources.md)
+Status: proposal, nothing here runs. The order of work is
+[gh-source-plan.md](gh-source-plan.md). It argues from code that does — [sources.md](../sources.md)
 is the design it obeys, and `source/git.go`, `source/slack` and `source/linear` are the three
 precedents it is measured against.
 
@@ -82,11 +83,11 @@ milestone names are what somebody renamed on a Tuesday.
 
 ```tony
 owns:
-- github:repo:signadot/verse
-- github:issue:signadot/verse#*
-- github:pr:signadot/verse#*
-- github:discussion:signadot/verse#*
-- github:run:signadot/verse/*
+- {ref: "github:repo:signadot/verse"}
+- {ref: "github:issue:signadot/verse#*"}
+- {ref: "github:pr:signadot/verse#*"}
+- {ref: "github:discussion:signadot/verse#*"}
+- {ref: "github:run:signadot/verse/*"}
 ```
 
 The `#` is load-bearing in exactly the way Linear's hyphen is. A single glob

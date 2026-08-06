@@ -100,7 +100,7 @@ the verse that owns it, through a docd controller.
 | | [reference/sourced.md](reference/sourced.md) — the three verse ships: git (and mirrors), Slack, Linear — flags, credentials, and what each reflects |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | ahead | [Sources: what is left](working/sources-residual.md) — dial-in for the source verse cannot reach, and what a many-to-many relation does to an ownership claim |
-| | [A GitHub source](working/gh-source.md) — issues, discussions, PRs and Actions: covering a live set and windowing a settled one, and a second entity no address can spell |
+| | [A GitHub source](working/gh-source.md) · [plan](working/gh-source-plan.md) — issues, discussions, PRs and Actions: covering a live set and windowing a settled one, and a second entity no address can spell |
 | | [Shared ownership](working/shared-ownership.md) — an entity with more than one writer: a claim that is a path, and sharing as single-writership one level down |
 | | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
