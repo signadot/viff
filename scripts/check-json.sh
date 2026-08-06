@@ -17,11 +17,12 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #   codec/codec.go           — json.Number, in AsInt64. codec is where formats live.
 #   source/slack/*.go        — Slack's Web API and its signed event envelopes.
 #   source/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
+#   source/github/*.go       — GitHub's REST responses.
 #
-# The two source connectors are the shape to copy if a third arrives: JSON stops at the
+# The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='task/harness/llm.go|codec/codec.go|source/slack/[a-z]+\.go|source/linear/[a-z]+\.go'
+allow='task/harness/llm.go|codec/codec.go|source/slack/[a-z]+\.go|source/linear/[a-z]+\.go|source/github/[a-z]+\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

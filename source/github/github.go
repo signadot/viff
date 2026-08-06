@@ -1,0 +1,512 @@
+// Package github reflects the collaboration around a repository — its issues and its pull
+// requests — into the `github:*` slice of the entity-verse.
+//
+// It is a deployed source: a program holding a token, serving the two routes source/sourced
+// serves, with verse dialling it and converging its answers.
+//
+// WHAT IT IS NOT is a second view of the code. A git source reflects what a repository
+// CONTAINS — refs, commits, content-addressed and cursorless, from a fetch that costs no API
+// budget — and this reflects what GitHub KNOWS about it. The default branch and where it points
+// is the one fact that is genuinely both, and it is here because taking it from GitHub costs
+// one un-paginated call where taking it from git costs a deployed mirror. Refs and commits stay
+// on the far side of that line for the same reason in reverse: through the API they are the
+// highest-cardinality paginated reads in the repository, and paying a rate limit for what git
+// gives away free is the wrong trade at one repo and impossible at many.
+//
+// See docs/working/gh-source.md for the design and docs/working/gh-source-plan.md for what is
+// built so far — this is step 1, which is the repository, its issues and its pull requests.
+// Discussions, Actions runs, the webhook and the throttle are still ahead.
+package github
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/source"
+)
+
+// DefaultSystem is the slice a GitHub source owns unless the operator says otherwise.
+const DefaultSystem = "github"
+
+// Defaults for one repository's read.
+const (
+	DefaultSettled = 50
+	DefaultMaxOpen = 2000
+)
+
+// Config is what a GitHub source is built from.
+type Config struct {
+	// Token is the credential, sent as a bearer. A fine-grained PAT with read access to the
+	// repositories' contents, issues and pull requests is what a dogfood deployment wants.
+	Token string
+	// Repos are the repositories to reflect, as `<org>/<name>`.
+	Repos []string
+	// System is the slice this source writes, empty meaning DefaultSystem.
+	//
+	// THE OPERATOR'S TO CHOOSE, because more than one of these gets deployed — different
+	// credentials, different budgets, different networks — and the partition between them is
+	// drawn by whoever runs them rather than by how GitHub organises itself. Two deployments
+	// sharing `github` is the ordinary case and needs only disjoint claims; one that wants no
+	// coordination at all takes a system of its own, and two systems are disjoint on the first
+	// segment. It is also the answer to a second GitHub instance, where `org/repo#42` is unique
+	// within a host and not across two. See docs/working/gh-source.md.
+	System string
+	// Settled is how many recently-closed issues and pull requests each repository keeps
+	// (0 → DefaultSettled). MaxOpen refuses a repository with more open items than this
+	// (0 → DefaultMaxOpen) rather than answering partially for a slice it covers completely.
+	Settled, MaxOpen int
+
+	// Base overrides the API root (GitHub Enterprise Server, or a test server). HTTPClient
+	// overrides the transport.
+	Base       string
+	HTTPClient *http.Client
+	// Log receives what a pass decided to carry on without. nil is silent.
+	Log func(format string, args ...any)
+}
+
+// GitHub is the Source.
+type GitHub struct {
+	api     *api
+	system  string
+	repos   []string // `<org>/<name>`, sorted, so two passes answer in one order
+	settled int
+	maxOpen int
+	log     func(string, ...any)
+}
+
+var _ source.Source = (*GitHub)(nil)
+
+// New builds a GitHub source and asks the token whether it can see what it was pointed at.
+//
+// That question is the startup check, as Slack's auth.test and Linear's team read are: a
+// revoked token or a misspelled repository is a task that does not start, in front of whoever
+// just deployed it, rather than a source that installs clean and writes a failure into
+// lastError once a minute forever.
+func New(ctx context.Context, cfg Config) (*GitHub, error) {
+	if cfg.Token == "" {
+		return nil, fmt.Errorf("github: a token is required")
+	}
+	if len(cfg.Repos) == 0 {
+		return nil, fmt.Errorf("github: at least one repository is required — a source that " +
+			"reflects nothing would install, claim nothing, and never write")
+	}
+	g := &GitHub{
+		api:     newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
+		system:  cfg.System,
+		settled: cfg.Settled,
+		maxOpen: cfg.MaxOpen,
+		log:     cfg.Log,
+	}
+	if g.system == "" {
+		g.system = DefaultSystem
+	}
+	// The system is a segment of the address and of the route that serves the registration, so
+	// neither punctuation survives — the same check source.Entity.Check makes, made here so a
+	// bad `-system` fails the program rather than the install.
+	if strings.ContainsAny(g.system, ":/") {
+		return nil, fmt.Errorf("github: system %q may not contain : or / — it is a segment of "+
+			"the address (sources:<system>:<name>) and of the route that serves it", g.system)
+	}
+	if g.settled <= 0 {
+		g.settled = DefaultSettled
+	}
+	if g.maxOpen <= 0 {
+		g.maxOpen = DefaultMaxOpen
+	}
+	if g.log == nil {
+		g.log = func(string, ...any) {}
+	}
+	for _, r := range cfg.Repos {
+		r = strings.TrimSpace(r)
+		org, name, ok := strings.Cut(r, "/")
+		if !ok || org == "" || name == "" || strings.Contains(name, "/") {
+			return nil, fmt.Errorf("github: %q is not a repository — want <org>/<name>", r)
+		}
+		// `#` separates a repository from an item number in every id this source writes, and
+		// the ownership claim `<org>/<name>#*` is a prefix comparison over exactly that. A
+		// repository carrying one would address something it does not name.
+		if strings.ContainsAny(r, "#:") {
+			return nil, fmt.Errorf("github: repository %q contains # or :, which are what its "+
+				"entity ids and its ownership claim are built out of", r)
+		}
+		g.repos = append(g.repos, r)
+	}
+	sort.Strings(g.repos)
+	// Ask the credential about each one, which is the check and also the first cache fill.
+	for _, r := range g.repos {
+		if _, _, err := g.api.readRepo(ctx, r); err != nil {
+			return nil, fmt.Errorf("github: cannot read %s: %w", r, err)
+		}
+	}
+	return g, nil
+}
+
+// System is the owned slice.
+func (g *GitHub) System() string { return g.system }
+
+// Repos is the set of repositories this source reflects.
+func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
+
+// Owns is the ownership claim an install proves disjointness with: one per kind per repository,
+// and the kinds are NAMED rather than globbed.
+//
+// A `github:*:<org>/<name>#*` claim would be shorter and would work today. It would also refuse
+// one particular future install, and it is the one this design is most likely to want: a source
+// reflecting PEOPLE, claiming `github:user:*` and nothing else, since a GitHub user belongs to
+// GitHub rather than to any repository. Against a kind-globbed claim that is refused — a `*`
+// kind is disjoint from nothing, and the user claim's id is a bare `*`, disjoint from nothing
+// either — while against these it is disjoint on the kind segment and installs clean.
+//
+// The `#` is load-bearing in the way Linear's hyphen is: `signadot/verse#*` does not claim
+// `signadot/verse2#1`, because that id does not start with `signadot/verse#`. A single glob
+// `signadot/verse*` would, which is not a false alarm but a real overclaim, and one that would
+// make two perfectly disjoint repositories refuse to install alongside each other.
+//
+// THE LIST GROWS WITH THE CONNECTOR, and must not run ahead of it. A source claims what it
+// writes and no more — claiming a kind this build does not reflect refuses a neighbour over
+// entities nobody is writing. Discussions and Actions runs add theirs when they arrive.
+func (g *GitHub) Owns() []source.Own {
+	out := make([]source.Own, 0, 3*len(g.repos))
+	for _, r := range g.repos {
+		out = append(out,
+			source.Own{Ref: g.system + ":repo:" + r},
+			source.Own{Ref: g.system + ":issue:" + r + "#*"},
+			source.Own{Ref: g.system + ":pr:" + r + "#*"})
+	}
+	return out
+}
+
+// RepoRef is the ref that targets one repository: a reconcile of it reconciles that repository
+// whole, which is what a hint about a push or a repository event names.
+func (g *GitHub) RepoRef(repo string) entity.Ref {
+	return entity.Ref{System: g.system, Kind: "repo", ID: repo}
+}
+
+// ItemRef is the ref of one issue or pull request.
+func (g *GitHub) ItemRef(kind, repo string, number int) entity.Ref {
+	return entity.Ref{System: g.system, Kind: kind, ID: repo + "#" + strconv.Itoa(number)}
+}
+
+// Reflect reads what `<system>:*` should hold. A zero ref reads every repository; a repo ref
+// reads that repository whole; an issue or pull-request ref reads just that item.
+func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection, error) {
+	if ref.System != "" && ref.System != g.system {
+		// Another source's slice. No targets means an empty reflection with NO covers, which
+		// claims nothing and so tombstones nothing.
+		return source.Reflection{}, nil
+	}
+	if item, ok := g.targetItem(ref); ok {
+		return g.reflectItem(ctx, item)
+	}
+	var out source.Reflection
+	for _, repo := range g.targetRepos(ref) {
+		rn, err := g.reflectRepo(ctx, repo)
+		if err != nil {
+			return source.Reflection{}, fmt.Errorf("github reflect %s: %w", repo, err)
+		}
+		out.Covers = append(out.Covers, rn.Covers...)
+		out.Entities = append(out.Entities, rn.Entities...)
+	}
+	return out, nil
+}
+
+// targetRepos reads a ref as "which repositories": all of them for a zero ref, else the one it
+// names, and none at all for a repository this source does not reflect.
+func (g *GitHub) targetRepos(ref entity.Ref) []string {
+	if ref.ID == "" {
+		return g.repos
+	}
+	repo := ref.ID
+	if i := strings.Index(repo, "#"); i >= 0 {
+		repo = repo[:i]
+	}
+	for _, r := range g.repos {
+		if r == repo {
+			return []string{r}
+		}
+	}
+	return nil
+}
+
+// targetItem reads a ref as one issue or pull request, which is the finest a pass gets.
+//
+// It is worth having, and it is the first source where it is: git's targeted pass is a whole
+// repository because git is content-addressed and a finer target costs the same, and Linear's
+// is a whole team because that is what one query reads. GitHub answers a single issue in one
+// request, so a targeted pass over a busy repository is one call rather than six.
+type targetedItem struct {
+	kind   string
+	repo   string
+	number int
+}
+
+func (g *GitHub) targetItem(ref entity.Ref) (targetedItem, bool) {
+	if ref.Kind != "issue" && ref.Kind != "pr" {
+		return targetedItem{}, false
+	}
+	repo, num, ok := strings.Cut(ref.ID, "#")
+	if !ok {
+		return targetedItem{}, false
+	}
+	n, err := strconv.Atoi(num)
+	if err != nil || n <= 0 {
+		return targetedItem{}, false
+	}
+	for _, r := range g.repos {
+		if r == repo {
+			return targetedItem{kind: ref.Kind, repo: repo, number: n}, true
+		}
+	}
+	return targetedItem{}, false
+}
+
+// reflectItem answers for ONE item, and covers exactly it.
+//
+// THE COVER IS THE WHOLE OF WHY THIS IS SEPARATE. A targeted pass that answered with the live
+// cover — `{repo: X, state: open}` — while carrying one entity would tombstone every other open
+// issue in the repository, which is the one mistake in this connector that destroys a slice. So
+// the cover names the item by the fields the payload carries, and a pass about #42 can say
+// nothing at all about #43.
+//
+// An item GitHub no longer has is covered and absent, which tombstones it — a deleted or
+// transferred issue, which is exactly what a targeted pass should conclude.
+func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (source.Reflection, error) {
+	mine := entity.Obj{"repo": t.repo, "number": t.number}.Payload()
+	rn := source.Reflection{Covers: []entity.Pattern{
+		{System: g.system, Kind: t.kind, Predicate: mine},
+	}}
+	if t.kind == "pr" {
+		var p pull
+		if err := g.api.get(ctx, "/repos/"+t.repo+"/pulls/"+strconv.Itoa(t.number), &p); err != nil {
+			if NotFound(err) {
+				return rn, nil // gone: covered and absent, which tombstones it
+			}
+			return source.Reflection{}, err
+		}
+		rn.Add(g.ItemRef("pr", t.repo, p.Number), pullPayload(t.repo, p))
+		return rn, nil
+	}
+	var i issue
+	if err := g.api.get(ctx, "/repos/"+t.repo+"/issues/"+strconv.Itoa(t.number), &i); err != nil {
+		if NotFound(err) {
+			return rn, nil
+		}
+		return source.Reflection{}, err
+	}
+	if i.isPullRequest() {
+		// The issues endpoint answers for a pull request under the same number. Writing it as
+		// an issue would put one thing in two kinds; the pr half of the hint is what covers it.
+		return rn, nil
+	}
+	rn.Add(g.ItemRef("issue", t.repo, i.Number), issuePayload(t.repo, i))
+	return rn, nil
+}
+
+// reflectRepo reads one repository whole. Everything it returns is scoped by the `repo` field —
+// including the covers — so one repository's pass never tombstones another's.
+//
+// TWO COVERS PER SET-SHAPED KIND, which is the decision this connector exists to make. Neither
+// precedent fits: git keeps history (commits covered by nothing, so they stand forever) and
+// Slack keeps a window (messages covered, so what falls out is tombstoned). Issues and pull
+// requests are a third shape — an unbounded set whose LIVE part is bounded — so the live set is
+// covered complete and the settled set is covered as a window. An item that closes appears in
+// the settled half carrying its new state, ages, and leaves.
+//
+// Both halves must be covered or neither works. Covering only `{repo}` and answering with the
+// live set plus a recent tail would tombstone the whole back catalogue on the first pass;
+// covering only the live half would leave a husk per item ever closed while this source watched,
+// which is the warehouse arriving slowly rather than at once.
+func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflection, error) {
+	mine := entity.Obj{"repo": repo}.Payload()
+	open := entity.Obj{"repo": repo, "state": "open"}.Payload()
+	closed := entity.Obj{"repo": repo, "state": "closed"}.Payload()
+	// Declared BEFORE the read and unconditionally, as git's and Linear's are: a repository
+	// whose every issue was closed must still cover `{repo, state: open}`, or the ones it no
+	// longer has open would stand forever.
+	rn := source.Reflection{Covers: []entity.Pattern{
+		{System: g.system, Kind: "repo", Predicate: mine},
+		{System: g.system, Kind: "issue", Predicate: open},
+		{System: g.system, Kind: "issue", Predicate: closed},
+		{System: g.system, Kind: "pr", Predicate: open},
+		{System: g.system, Kind: "pr", Predicate: closed},
+	}}
+
+	r, sha, err := g.api.readRepo(ctx, repo)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	rn.Add(g.RepoRef(repo), repoPayload(repo, r, sha))
+
+	// The live set, to exhaustion. Bounded by maxOpen, which errors rather than truncating.
+	openIssues, err := g.api.listIssues(ctx, repo, "open", "", g.maxOpen, 0)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	// The settled window: the most recently updated closed items, which is a window and a
+	// catch-up at once — see the note in api.go.
+	closedIssues, err := g.api.listIssues(ctx, repo, "closed", "updated", 0, g.settled)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	for _, i := range append(openIssues, closedIssues...) {
+		if i.isPullRequest() {
+			// GitHub returns pull requests from the issues endpoint. Reflecting them here would
+			// put one thing under two kinds sharing a number, and would make "every open issue"
+			// a question that quietly includes review traffic.
+			continue
+		}
+		rn.Add(g.ItemRef("issue", repo, i.Number), issuePayload(repo, i))
+	}
+
+	openPulls, err := g.api.listPulls(ctx, repo, "open", "", g.maxOpen, 0)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	closedPulls, err := g.api.listPulls(ctx, repo, "closed", "updated", 0, g.settled)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	for _, p := range append(openPulls, closedPulls...) {
+		rn.Add(g.ItemRef("pr", repo, p.Number), pullPayload(repo, p))
+	}
+	return rn, nil
+}
+
+// ── payloads ─────────────────────────────────────────────────────────────────
+//
+// NOTHING HERE MAY DIFFER BETWEEN TWO READS OF UNCHANGED DATA. converge compares the answer
+// against the store, so a list in whatever order the API returned it, or anything derived from
+// the time of the read, makes every entity differ on every pass: the whole slice is rewritten
+// every minute, every trigger over it fires, and lastReflect is stamped forever. Every list
+// below is sorted and nothing is clock-derived. Linear sorts an issue's labels for exactly this
+// reason; GitHub carries more lists than Linear does.
+
+func repoPayload(repo string, r repository, defaultBranchSha string) entity.Obj {
+	org, name, _ := strings.Cut(repo, "/")
+	p := entity.Obj{
+		"repo": repo, "org": org, "name": name,
+		"private": r.Private, "archived": r.Archived, "fork": r.Fork,
+	}
+	for k, v := range map[string]string{
+		"defaultBranch": r.DefaultBranch, "defaultBranchSha": defaultBranchSha,
+		// The remote a git mirror is cloned FROM, which is the one field that identifies this
+		// repository across the `git:*` slice as well: a git source's repo id is the operator's,
+		// so nothing else lines the two up, and a source inventing a cross-system key is what
+		// this design forbids. A charter that wants them paired joins on this and writes a
+		// derived entity, as scripts/lineage.sh does.
+		"cloneUrl": r.CloneURL, "sshUrl": r.SSHURL,
+		"description": r.Description, "homepage": r.Homepage, "url": r.HTMLURL,
+	} {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	if len(r.Topics) > 0 {
+		p["topics"] = sorted(r.Topics)
+	}
+	return p
+}
+
+// issuePayload is what a charter reads an issue as.
+//
+// `state` is `open`/`closed` — GitHub's own vocabulary, and what the covers are spelled with, so
+// it is never absent. A rule matching a label or a milestone title is a rule that breaks when
+// somebody tidies a board; a rule matching `state` is not.
+func issuePayload(repo string, i issue) entity.Obj {
+	p := entity.Obj{
+		"repo": repo, "number": i.Number, "title": i.Title, "state": i.State,
+		"comments": i.Comments,
+	}
+	if i.User != nil {
+		p["author"] = i.User.Login
+	}
+	for k, v := range map[string]string{
+		"url": i.HTMLURL, "createdAt": i.CreatedAt, "updatedAt": i.UpdatedAt,
+		"closedAt": i.ClosedAt, "stateReason": i.StateReason, "body": i.Body,
+	} {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	if i.Milestone != nil && i.Milestone.Title != "" {
+		p["milestone"] = i.Milestone.Title
+	}
+	if names := labelNames(i.Labels); len(names) > 0 {
+		p["labels"] = names
+	}
+	if logins := userLogins(i.Assignees); len(logins) > 0 {
+		p["assignees"] = logins
+	}
+	return p
+}
+
+// pullPayload is what a charter reads a pull request as.
+//
+// `headSha` is the join to a git source: a `git:commit:<repo>/<sha>` is addressed by the same
+// sha, so "the commit this proposes" is a field read rather than a key anybody minted.
+func pullPayload(repo string, p pull) entity.Obj {
+	out := entity.Obj{
+		"repo": repo, "number": p.Number, "title": p.Title, "state": p.State,
+		"draft": p.Draft, "merged": p.Merged,
+	}
+	if p.User != nil {
+		out["author"] = p.User.Login
+	}
+	if p.Base != nil {
+		out["base"] = p.Base.Ref
+	}
+	if p.Head != nil {
+		out["head"] = p.Head.Ref
+		out["headSha"] = p.Head.SHA
+	}
+	for k, v := range map[string]string{
+		"url": p.HTMLURL, "createdAt": p.CreatedAt, "updatedAt": p.UpdatedAt,
+		"closedAt": p.ClosedAt, "mergedAt": p.MergedAt, "body": p.Body,
+	} {
+		if v != "" {
+			out[k] = v
+		}
+	}
+	if names := labelNames(p.Labels); len(names) > 0 {
+		out["labels"] = names
+	}
+	if logins := userLogins(p.Assignees); len(logins) > 0 {
+		out["assignees"] = logins
+	}
+	return out
+}
+
+func labelNames(ls []label) []string {
+	out := make([]string, 0, len(ls))
+	for _, l := range ls {
+		if l.Name != "" {
+			out = append(out, l.Name)
+		}
+	}
+	return sorted(out)
+}
+
+func userLogins(us []user) []string {
+	out := make([]string, 0, len(us))
+	for _, u := range us {
+		if u.Login != "" {
+			out = append(out, u.Login)
+		}
+	}
+	return sorted(out)
+}
+
+// sorted returns the list in one order, so a re-read of the same item is not a change.
+func sorted(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
+}
