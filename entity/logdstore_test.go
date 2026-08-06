@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
 	"github.com/signadot/tony-format/go-tony/system/logd/storage"
 )
@@ -214,6 +215,59 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 	// A scoped store may not delete scopes.
 	if err := scoped.DeleteScope("me"); err == nil {
 		t.Fatal("DeleteScope from a scoped store should error")
+	}
+}
+
+// The same rule one level down: a scope can hide a SLOT it does not own.
+//
+// This was the open question a shared entity raised. A slot-claiming source converges inside a
+// scope exactly as a whole-entity one does — it writes what external truth has at its own path
+// and tombstones what it does not — and inside a scope most of what it finds standing is
+// inherited. If a scoped delete could only reach a scope-local slot, a scoped source could not
+// say "in this sandbox that team does not own this project", and the answer would be stuck with
+// baseline's owner set as a floor. It can, and neither direction leaks: the scoped write does
+// not reach baseline's value, and the scoped hide does not remove baseline's key.
+func TestLogdStore_ScopeHidesAnInheritedSlot(t *testing.T) {
+	base := openStore(t)
+	ref := Ref{System: "demo", Kind: "project", ID: "shared"}
+	set(t, base, ref, Obj{"owners": map[string]any{
+		"ENG": map[string]any{"name": "baseline-eng"},
+		"OPS": map[string]any{"name": "baseline-ops"},
+	}}.Payload())
+	scoped := base.Scope("me")
+
+	owners := func(s Store) map[string]*ir.Node {
+		e, ok, err := s.Get(ref)
+		if err != nil || !ok {
+			t.Fatalf("get %s: ok=%v err=%v", ref, ok, err)
+		}
+		return Fields(Get(e.Payload, "owners"))
+	}
+	if len(owners(scoped)) != 2 {
+		t.Fatal("precondition: the scope should read both inherited slots through")
+	}
+
+	// The scope writes its own value at one slot. Baseline keeps its own.
+	if _, _, err := scoped.Write(Write{At: ref.At("owners", "ENG"),
+		Value: Obj{"name": "scoped-eng"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := Str(owners(scoped)["ENG"], "name"); got != "scoped-eng" {
+		t.Fatalf("the scoped slot write did not land: %q", got)
+	}
+	if got := Str(owners(base)["ENG"], "name"); got != "baseline-eng" {
+		t.Fatalf("a scoped slot write reached baseline: %q", got)
+	}
+
+	// And it hides a slot it never wrote, leaving baseline holding it.
+	if _, _, err := scoped.Write(Write{At: ref.At("owners", "OPS")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, still := owners(scoped)["OPS"]; still {
+		t.Fatal("scoped delete of an inherited slot did not hide it")
+	}
+	if _, gone := owners(base)["OPS"]; !gone {
+		t.Fatal("a scoped slot hide reached baseline")
 	}
 }
 

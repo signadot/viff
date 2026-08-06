@@ -79,7 +79,7 @@ verse source add <system>:<name> <url>       install one, probing the url first
        add --dir <d> <system>:<name>         …or a local git repo, reflected in task
        add [--file <f>] | [file] | stdin     …or as a document (.tony/.json/.yaml)
            [--no-probe]                      install without asking it what it is
-           [--allow-overlap]                 install though another source may write the same slice
+           [--allow-overlap]                 install though another source may write the same place
        show <ref>                            the entity
        check <ref>                           ask it what it is and what it claims, right now
        remove <ref>                          take it away; refused if it reflected anything

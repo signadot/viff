@@ -223,11 +223,18 @@ func overlaps(r entity.Reader, e source.Entity) string {
 
 // refusal is the one message this check has, and it carries BOTH claims: verse could not prove
 // them apart, so the operator is the one who can tell whether they really are.
+// It also names the way out that is not a flag, and that is new: two sources that write
+// different PLACES in the same entities are provably disjoint if they say so — `at:` on a claim
+// — and converge then keeps them apart for real. `--allow-overlap` is what is left for two
+// sources that genuinely write the same place, where the safety comes from nothing at all.
 func refusal(e, other source.Entity) string {
 	return fmt.Sprintf("refused: %s and the installed %s cannot be proved to write different "+
 		"slices, and two sources on one slice each tombstone what the other reflected.\n"+
 		"    this one owns: %s\n    %s owns: %s\n"+
-		"--allow-overlap installs it anyway, with that cost",
+		"if they write different PLACES in the same entities, say so — a claim may name a path "+
+		"inside the payload ({ref: \"...\", at: [owners, ENG]}), and two of those are proved "+
+		"apart\n"+
+		"--allow-overlap installs it anyway, with the cost above",
 		source.Ref(e.System, e.Name), source.Ref(other.System, other.Name),
 		claims(e.Owns), source.Ref(other.System, other.Name), claims(other.Owns))
 }

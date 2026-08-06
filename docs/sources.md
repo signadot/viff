@@ -149,7 +149,9 @@ in-process one had by construction:
   wrong slice by a source that thinks it is right.
 - **Ownership must be provably disjoint from every standing registration in the same scope**,
   or the install is refused, with both claims in the message — verse could not prove them
-  apart, so the operator is the one who can say. `--allow-overlap` is the way past, with the
+  apart, so the operator is the one who can say. Two sources that write different *places* in
+  the same entities say so with a path on the claim, and are then proved apart like anything
+  else; `--allow-overlap` is what is left for two that genuinely write the same place, with the
   cost stated rather than discovered: two writers on one slice, each tombstoning what the other
   reflected.
 
@@ -225,6 +227,11 @@ is inherited from baseline — so if a scoped delete could only remove scope-loc
 scoped source could not say "that branch does not exist in this sandbox", and every scope would
 be stuck with baseline's set as a floor. It can: the tombstone hides the inherited entity from
 the scope's reads and its watches, leaves baseline holding it, and is dropped with the overlay.
+
+**And it holds one level down**, which is what a shared entity raised and nothing had answered.
+A scope hides an inherited SLOT the same way — a sandbox can say "that team does not own this
+project in here" — with neither direction leaking: the scoped write does not reach baseline's
+value, and the scoped hide does not remove baseline's key.
 
 Baseline stays the default: one shared reflection everything reads is what most of a deployment
 wants, and an empty `scope` is what it gets.
