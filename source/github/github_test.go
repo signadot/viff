@@ -122,6 +122,8 @@ func TestASecondPassOverUnchangedDataWritesNothing(t *testing.T) {
 	r.issue(3, "done", "closed", "2026-01-03T00:00:00Z")
 	r.run(4, "ci", "completed", "success", "cafe1234")
 	r.discussion(5, "a question", false, "2026-01-04T00:00:00Z")
+	r.comment(6, 1, "a comment", false, "2026-01-05T00:00:00Z")
+	r.comment(7, 2, "a review comment", true, "2026-01-06T00:00:00Z")
 
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
@@ -991,8 +993,150 @@ func TestAFullPassAndATargetedPassAgree(t *testing.T) {
 				tc.ref, want, got)
 		}
 	}
-	// And the count is actually carried, rather than the two agreeing on nothing.
-	if got := fmt.Sprint(whole["github:pr:acme/app#7"]["comments"]); got != "4" {
-		t.Fatalf("a pull request carries comments = %s, want 4 from the issues listing", got)
+	// And a pull request carries no comment COUNT, which is what the two listings being
+	// windowed separately made unsafe: a closed PR can sit inside the pulls window and past the
+	// end of the issues one, and the count would read 0 there and flip as items updated. The
+	// comments are entities instead, which is the better answer to what that field was for.
+	if c, ok := whole["github:pr:acme/app#7"]["comments"]; ok {
+		t.Fatalf("a pull request still carries a comment count: %v", c)
+	}
+}
+
+// COMMENTS ARE ENTITIES, and Slack's messages are the precedent: a conversation is an unbounded
+// stream, so the most recently updated `-comments` are kept and what falls out is tombstoned.
+//
+// Both listings are read — GitHub keeps conversation comments (which an issue has, and which a
+// pull request's discussion is) at one repository-wide endpoint and review comments on a diff at
+// another — which is what makes this two requests a pass rather than one per item.
+func TestCommentsAreReflectedAndWindowed(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.pr(2, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	r.comment(100, 1, "on the issue", false, "2026-01-02T00:00:00Z")
+	r.comment(101, 2, "on the PR conversation", false, "2026-01-03T00:00:00Z")
+	r.comment(102, 2, "on a line of the diff", true, "2026-01-04T00:00:00Z")
+
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Comments: 2})
+	rf := source.NewReflector(src, store, 0)
+	pass := func() {
+		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pass()
+
+	// The comment hangs off the item it is on, so "the comments on #2" is a prefix of one
+	// address rather than a predicate over the repository.
+	onIssue := src.CommentRef("acme/app", 1, 100)
+	onPR := src.CommentRef("acme/app", 2, 101)
+	review := src.CommentRef("acme/app", 2, 102)
+	if got := onPR.String(); got != "github:comment:acme/app#2/101" {
+		t.Fatalf("comment ref = %s", got)
+	}
+	for _, ref := range []entity.Ref{onIssue, onPR, review} {
+		if _, ok, _ := store.Get(ref); !ok {
+			t.Fatalf("%s was not reflected", ref)
+		}
+	}
+	// The body is there — the count was never the point — and `kind` says which listing it came
+	// from, while `on` is the number that joins it to its issue or pull request.
+	p := mustGet(t, store, review)
+	if entity.Str(p, "body") != "on a line of the diff" || entity.Str(p, "kind") != "review" {
+		t.Fatalf("review comment = %v", entity.ToObj(p))
+	}
+	if entity.Str(mustGet(t, store, onPR), "kind") != "conversation" {
+		t.Fatal("a PR conversation comment is not a review comment")
+	}
+
+	// The window slides: two newer conversation comments push the oldest out.
+	r.comment(103, 1, "newer", false, "2026-01-05T00:00:00Z")
+	r.comment(104, 1, "newest", false, "2026-01-06T00:00:00Z")
+	pass()
+	if _, ok, _ := store.Get(onIssue); ok {
+		t.Fatal("a comment that fell out of the window was not tombstoned")
+	}
+	if _, ok, _ := store.Get(review); !ok {
+		t.Fatal("the conversation window reached a review comment — they are windowed apart")
+	}
+}
+
+// A comment joins to the thing it is on by REF rather than by a field saying which kind it was:
+// `github:issue:<repo>#<n>` and `github:pr:<repo>#<n>` are two addresses and exactly one exists.
+func TestACommentJoinsToItsItemByRef(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.pr(2, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	r.comment(100, 2, "on the PR", false, "2026-01-02T00:00:00Z")
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	if err := source.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	on := entity.Get(mustGet(t, store, src.CommentRef("acme/app", 2, 100)), "on")
+	if fmt.Sprint(entity.ToObj(mustGet(t, store, src.CommentRef("acme/app", 2, 100)))["on"]) != "2" {
+		t.Fatalf("the comment says it is on %v", on)
+	}
+	// The pull request is there under that number and the issue is not, which is the join.
+	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "pr", ID: "acme/app#2"}); !ok {
+		t.Fatal("the pull request the comment is on is missing")
+	}
+	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "issue", ID: "acme/app#2"}); ok {
+		t.Fatal("an issue exists under a pull request's number")
+	}
+}
+
+// A targeted comment pass covers exactly that comment, and agrees with the full pass about it —
+// the two-endpoints-one-entity trap that bit the pull request, checked for the kind that is now
+// read from four different urls.
+func TestATargetedCommentPassAgreesAndCoversOnlyItself(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.pr(7, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	r.comment(900, 7, "a conversation comment", false, "2026-01-02T00:00:00Z")
+	r.comment(901, 7, "a review comment", true, "2026-01-03T00:00:00Z")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	full, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	whole := payloads(full)
+	for _, id := range []int64{900, 901} {
+		ref := src.CommentRef("acme/app", 7, id)
+		one, err := src.Reflect(context.Background(), ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, want := payloads(one)[ref.String()], whole[ref.String()]
+		if want == nil || got == nil {
+			t.Fatalf("%s: full=%v targeted=%v", ref, want, got)
+		}
+		if !entity.Equal(got.Payload(), want.Payload()) {
+			t.Fatalf("%s differs between a full pass and a targeted one:\n  full     %v\n  targeted %v",
+				ref, want, got)
+		}
+		// And it says nothing about the other comment, which is the mass-deletion trap.
+		other := entity.Entity{
+			Ref:     src.CommentRef("acme/app", 7, 901-id+900),
+			Payload: entity.Obj{"repo": "acme/app", "id": 901 - id + 900}.Payload(),
+		}
+		for _, c := range one.Covers {
+			if c.MatchEntity(other) {
+				t.Fatalf("a pass about comment %d covers another: %v", id, entity.ToObj(c.Predicate))
+			}
+		}
+	}
+	// A comment that is gone from both listings is covered and absent, which tombstones it.
+	r.comments = nil
+	gone, err := src.Reflect(context.Background(), src.CommentRef("acme/app", 7, 900))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gone.Entities) != 0 || len(gone.Covers) != 1 {
+		t.Fatalf("a deleted comment answered %d entities under %d covers",
+			len(gone.Entities), len(gone.Covers))
 	}
 }

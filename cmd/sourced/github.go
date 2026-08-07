@@ -28,6 +28,9 @@ func githubMain(args []string) error {
 	settled := fs.Int("settled", github.DefaultSettled,
 		"closed issues, pull requests and discussions kept per repository")
 	runs := fs.Int("runs", github.DefaultRuns, "workflow runs kept per repository")
+	comments := fs.Int("comments", github.DefaultComments,
+		"comments kept per repository, most recently updated first, across issues and pull "+
+			"requests together")
 	maxOpen := fs.Int("max-open", github.DefaultMaxOpen,
 		"refuse a repository with more open items than this, rather than answer partially "+
 			"for a slice the answer claims to cover completely")
@@ -48,6 +51,7 @@ func githubMain(args []string) error {
 		System:          c.system,
 		Settled:         *settled,
 		Runs:            *runs,
+		Comments:        *comments,
 		MaxOpen:         *maxOpen,
 		SkipDiscussions: !*discussions,
 		Base:            envOr("GITHUB_API_BASE", ""),

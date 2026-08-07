@@ -41,12 +41,24 @@ type fakeRepo struct {
 	items         []*fakeItem
 	runs          []*fakeRun
 
+	comments    []*fakeComment
 	discussions []*fakeDiscussion
 	// discussionsOff is the feature turned off, which answers with an empty list exactly as a
 	// repository with no discussions does — the confusion hasDiscussionsEnabled exists to
 	// resolve. graphqlError is the endpoint refusing, which is HTTP 200 with an errors array.
 	discussionsOff bool
 	graphqlError   string
+}
+
+// fakeComment is one comment. `review` says which listing it comes from — GitHub keeps the
+// conversation comments (which an issue has, and which a pull request's discussion is) at one
+// repository-wide endpoint and the review comments on a diff at another.
+type fakeComment struct {
+	id      int64
+	on      int
+	body    string
+	review  bool
+	updated string
 }
 
 type fakeDiscussion struct {
@@ -114,6 +126,12 @@ func (r *fakeRepo) pr(number int, title, state, updatedAt, headSHA string) *fake
 		pull: true, head: "feature-" + strconv.Itoa(number), headSHA: headSHA}
 	r.items = append(r.items, i)
 	return i
+}
+
+func (r *fakeRepo) comment(id int64, on int, body string, review bool, updated string) *fakeComment {
+	c := &fakeComment{id: id, on: on, body: body, review: review, updated: updated}
+	r.comments = append(r.comments, c)
+	return c
 }
 
 func (r *fakeRepo) run(id int64, name, status, conclusion, headSHA string) *fakeRun {
@@ -205,6 +223,17 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.reply(w, r, map[string]any{"object": map[string]any{"sha": repo.sha}})
+	case len(rest) == 3 && rest[1] == "comments" && (rest[0] == "issues" || rest[0] == "pulls"):
+		id, _ := strconv.ParseInt(rest[2], 10, 64)
+		for _, c := range repo.comments {
+			if c.id == id && c.review == (rest[0] == "pulls") {
+				f.reply(w, r, f.renderComment(c))
+				return
+			}
+		}
+		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+	case len(rest) == 2 && rest[1] == "comments" && (rest[0] == "issues" || rest[0] == "pulls"):
+		f.reply(w, r, f.listComments(repo, rest[0] == "pulls", r))
 	case len(rest) == 3 && rest[0] == "actions" && rest[1] == "runs":
 		id, _ := strconv.ParseInt(rest[2], 10, 64)
 		var found *fakeRun
@@ -338,6 +367,41 @@ func (f *fakeGitHub) listRuns(repo *fakeRepo, r *http.Request) []map[string]any 
 		out = append(out, f.renderRun(x))
 	}
 	return out
+}
+
+// listComments answers one of the two repository-wide comment listings, newest-updated first.
+func (f *fakeGitHub) listComments(repo *fakeRepo, review bool, r *http.Request) []map[string]any {
+	var picked []*fakeComment
+	for _, c := range repo.comments {
+		if c.review == review {
+			picked = append(picked, c)
+		}
+	}
+	sort.SliceStable(picked, func(a, b int) bool { return picked[a].updated > picked[b].updated })
+	from, to := pageBounds(r, len(picked))
+	out := make([]map[string]any, 0, to-from)
+	for _, c := range picked[from:to] {
+		out = append(out, f.renderComment(c))
+	}
+	return out
+}
+
+// renderComment is shared by the listing and the single-comment read, so a targeted pass and a
+// full one cannot disagree about a comment's shape — the asymmetry that bit the pull request.
+func (f *fakeGitHub) renderComment(c *fakeComment) map[string]any {
+	m := map[string]any{
+		"id": c.id, "body": c.body, "user": map[string]any{"login": "ana"},
+		"created_at": "2026-01-01T00:00:00Z", "updated_at": c.updated,
+		"html_url": "https://github.com/x/y/comment/" + strconv.FormatInt(c.id, 10),
+	}
+	// The number is only in the url the listing carries, which is the whole reason the source
+	// reads it out of one rather than expecting a field.
+	if c.review {
+		m["pull_request_url"] = "https://api.github.com/repos/x/y/pulls/" + strconv.Itoa(c.on)
+	} else {
+		m["issue_url"] = "https://api.github.com/repos/x/y/issues/" + strconv.Itoa(c.on)
+	}
+	return m
 }
 
 // renderRun is shared by the listing and the single-run read, so the two cannot disagree about

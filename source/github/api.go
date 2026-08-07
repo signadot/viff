@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -609,4 +610,61 @@ func (a *api) pullsForSHA(ctx context.Context, repo, sha string) ([]pull, error)
 		return nil, err
 	}
 	return out, nil
+}
+
+// ── comments ─────────────────────────────────────────────────────────────────
+//
+// REPOSITORY-WIDE, which is what makes them affordable. GitHub lists every issue comment in a
+// repository at one endpoint and every review comment at another, both sorted and paginated, so
+// a window over the recent ones costs two conditional requests a pass rather than one per item.
+// Asking per issue would be a request each, which is the budget this connector does not have.
+
+// comment is one comment, from either listing. The two carry the same fields for what a charter
+// reads; where they differ is what they hang off, which is the `kind` the payload records.
+type comment struct {
+	ID        int64  `json:"id"`
+	Body      string `json:"body"`
+	HTMLURL   string `json:"html_url"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	User      *user  `json:"user"`
+	// IssueURL is `.../issues/{n}` on an issue comment; PullRequestURL is `.../pulls/{n}` on a
+	// review comment. One of the two is set, and it is where the item number comes from — the
+	// listings carry no number of their own.
+	IssueURL       string `json:"issue_url"`
+	PullRequestURL string `json:"pull_request_url"`
+}
+
+// number reads the item this comment is on out of whichever url the listing carried.
+func (c comment) number() int {
+	for _, u := range []string{c.IssueURL, c.PullRequestURL} {
+		if u == "" {
+			continue
+		}
+		if i := strings.LastIndex(u, "/"); i >= 0 {
+			if n, err := strconv.Atoi(u[i+1:]); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+// listComments reads a window of a repository's comments, newest-updated first. `what` is
+// "issues" for conversation comments — which are the ones on issues AND on pull requests, since
+// a PR's conversation is an issue's — or "pulls" for review comments on a diff.
+func (a *api) listComments(ctx context.Context, repo, what string, window int) ([]comment, error) {
+	var out []comment
+	for page := 1; ; page++ {
+		var batch []comment
+		q := listQuery("", "updated", page, window, len(out))
+		if err := a.get(ctx, "/repos/"+repo+"/"+what+"/comments?"+q, &batch); err != nil {
+			return nil, err
+		}
+		out = append(out, batch...)
+		done, err := listDone(len(batch), len(out), 0, window, repo, "comments")
+		if done || err != nil {
+			return out, err
+		}
+	}
 }

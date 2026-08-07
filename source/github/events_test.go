@@ -125,16 +125,23 @@ func TestADeliveryHintsTheThingItIsAbout(t *testing.T) {
 			"repository": repo, "workflow_run": map[string]any{"id": 991},
 		}, "github:run:acme/app/991"},
 		{"a push", "push", map[string]any{"repository": repo}, "github:repo:acme/app"},
-		// A comment on a PULL REQUEST arrives as an issue_comment carrying `pull_request` on
-		// the issue. Hinting the issue kind would refresh nothing and read a PR back under a
-		// kind it does not live in.
+		// A comment delivery names the COMMENT, which is the new thing — one request against
+		// the nine a repository pass costs, and against an item pass that would refresh a title
+		// nobody changed. It arrives as an issue_comment for a pull request's conversation too,
+		// since on GitHub a PR IS an issue for commenting, and the number is read from
+		// whichever of the two the payload carried.
 		{"a comment on a pull request", "issue_comment", map[string]any{
-			"repository": repo,
-			"issue":      map[string]any{"number": 7, "pull_request": map[string]any{"url": "x"}},
-		}, "github:pr:acme/app#7"},
+			"repository": repo, "comment": map[string]any{"id": 900},
+			"issue": map[string]any{"number": 7, "pull_request": map[string]any{"url": "x"}},
+		}, "github:comment:acme/app#7/900"},
 		{"a comment on an issue", "issue_comment", map[string]any{
-			"repository": repo, "issue": map[string]any{"number": 42},
-		}, "github:issue:acme/app#42"},
+			"repository": repo, "comment": map[string]any{"id": 901},
+			"issue": map[string]any{"number": 42},
+		}, "github:comment:acme/app#42/901"},
+		{"a review comment on a diff", "pull_request_review_comment", map[string]any{
+			"repository": repo, "comment": map[string]any{"id": 902},
+			"pull_request": map[string]any{"number": 7},
+		}, "github:comment:acme/app#7/902"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &hinted{}

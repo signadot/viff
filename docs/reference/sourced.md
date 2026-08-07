@@ -175,6 +175,7 @@ plain field, which is what a rule about an issue wants and costs no join. See
 sourced github -repo <org>/<name>   a repository to reflect (repeatable, comma-separated)
                -settled <n>         closed issues, PRs and discussions kept per repo (default 50)
                -runs <n>            workflow runs kept per repo (default 50)
+               -comments <n>        comments kept per repo (default 200)
                -max-open <n>        refuse a repo with more open items than this (default 2000)
                -discussions         reflect discussions (default false)
 ```
@@ -195,6 +196,7 @@ Point the repository's Settings → Webhooks at `https://<host>/github/webhook`,
 | `github:pr:<org>/<name>#<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
 | `github:discussion:<org>/<name>#<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
 | `github:run:<org>/<name>/<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
+| `github:comment:<org>/<name>#<n>/<id>` | `repo, on, id, kind`, and `author, body, url, createdAt, updatedAt` |
 
 Owns `github:repo:<org>/<name>` and `github:{issue,pr,discussion}:<org>/<name>#*` and
 `github:run:<org>/<name>/*` per repository. The `#` is load-bearing — `acme/app#*` does not claim
@@ -212,6 +214,24 @@ rather than a truncation: a partial list under a complete cover tombstones what 
 conclusion never sees one — the lever is a larger `-runs`. Match `conclusion`, not a transition:
 a run goes `queued → in_progress → completed` inside a minute and a pass will often collapse all
 three into one write.
+
+**Comments are entities, and a window**, like Slack's messages: the most recently updated
+`-comments` are kept and what falls out is tombstoned, because a conversation is an unbounded
+stream and an entity-verse holding all of one is a warehouse. Two repository-wide listings are
+read — conversation comments (which an issue has, and which a pull request's discussion *is*) and
+review comments on a diff — so it costs two conditional requests a pass rather than one per item,
+and `kind` says which a comment was.
+
+A comment hangs off the item it is on (`…#7/900`), so "the comments on #7" is a prefix of one
+address rather than a predicate over the repository. `on` carries that number, and the join is by
+ref rather than by a field naming a kind: `github:issue:<repo>#<n>` and `github:pr:<repo>#<n>`
+are two addresses and exactly one of them exists.
+
+**An issue carries a comment count and a pull request does not**, which looks inconsistent and is
+not: the count comes from the issues listing, and a pull request read from the pulls listing has
+none — the two are windowed separately, so a closed PR can sit inside one and past the end of the
+other, and the count would read 0 there and flip as items updated. The comments themselves answer
+what that field was for.
 
 **CI state is a field on the pull request**, derived from the runs already read by head sha, so
 it costs no request. A PR whose head has no run in the window carries no `checks` field.

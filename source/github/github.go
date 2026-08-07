@@ -35,9 +35,10 @@ const DefaultSystem = "github"
 
 // Defaults for one repository's read.
 const (
-	DefaultSettled = 50
-	DefaultMaxOpen = 2000
-	DefaultRuns    = 50
+	DefaultSettled  = 50
+	DefaultMaxOpen  = 2000
+	DefaultRuns     = 50
+	DefaultComments = 200
 )
 
 // Config is what a GitHub source is built from.
@@ -63,6 +64,9 @@ type Config struct {
 	Settled, MaxOpen int
 	// Runs is how many of a repository's most recent workflow runs it keeps (0 → DefaultRuns).
 	Runs int
+	// Comments is how many of a repository's most recently updated comments it keeps
+	// (0 → DefaultComments), across issues and pull requests together.
+	Comments int
 	// SkipDiscussions stops this source reading discussions at all, and is the one lever the
 	// budget measurement turned up.
 	//
@@ -94,6 +98,7 @@ type GitHub struct {
 	settled  int
 	maxOpen  int
 	runs     int
+	comments int
 	noDiscus bool
 	log      func(string, ...any)
 }
@@ -120,6 +125,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		settled:  cfg.Settled,
 		maxOpen:  cfg.MaxOpen,
 		runs:     cfg.Runs,
+		comments: cfg.Comments,
 		noDiscus: cfg.SkipDiscussions,
 		log:      cfg.Log,
 	}
@@ -141,6 +147,9 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 	}
 	if g.runs <= 0 {
 		g.runs = DefaultRuns
+	}
+	if g.comments <= 0 {
+		g.comments = DefaultComments
 	}
 	if g.log == nil {
 		g.log = func(string, ...any) {}
@@ -195,7 +204,7 @@ func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
 // writes and no more — claiming a kind this build does not reflect refuses a neighbour over
 // entities nobody is writing. Discussions and Actions runs add theirs when they arrive.
 func (g *GitHub) Owns() []source.Own {
-	out := make([]source.Own, 0, 5*len(g.repos))
+	out := make([]source.Own, 0, 6*len(g.repos))
 	for _, r := range g.repos {
 		out = append(out,
 			source.Own{Ref: g.system + ":repo:" + r},
@@ -204,7 +213,8 @@ func (g *GitHub) Owns() []source.Own {
 			// A run's id is GitHub's own number under the repository, so it is scoped the way
 			// git scopes a ref rather than with the `#` the numbered kinds share.
 			source.Own{Ref: g.system + ":run:" + r + "/*"},
-			source.Own{Ref: g.system + ":discussion:" + r + "#*"})
+			source.Own{Ref: g.system + ":discussion:" + r + "#*"},
+			source.Own{Ref: g.system + ":comment:" + r + "#*"})
 	}
 	return out
 }
@@ -218,6 +228,16 @@ func (g *GitHub) RepoRef(repo string) entity.Ref {
 // RunRef is the ref of one workflow run.
 func (g *GitHub) RunRef(repo string, id int64) entity.Ref {
 	return entity.Ref{System: g.system, Kind: "run", ID: repo + "/" + strconv.FormatInt(id, 10)}
+}
+
+// CommentRef is the ref of one comment: the item it is on, then GitHub's own id.
+//
+// Under the item rather than beside it, so a charter reading "the comments on #42" is a prefix
+// of one address rather than a payload predicate over the whole repository — and so the
+// ownership claim is the same `<org>/<name>#*` the numbered kinds already share.
+func (g *GitHub) CommentRef(repo string, number int, id int64) entity.Ref {
+	return entity.Ref{System: g.system, Kind: "comment",
+		ID: repo + "#" + strconv.Itoa(number) + "/" + strconv.FormatInt(id, 10)}
 }
 
 // ItemRef is the ref of one issue or pull request.
@@ -238,6 +258,9 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 	}
 	if repo, id, ok := g.targetRun(ref); ok {
 		return g.reflectRun(ctx, repo, id)
+	}
+	if repo, number, id, ok := g.targetComment(ref); ok {
+		return g.reflectComment(ctx, repo, number, id)
 	}
 	var out source.Reflection
 	for _, repo := range g.targetRepos(ref) {
@@ -324,7 +347,7 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (source.Reflec
 			}
 			return source.Reflection{}, err
 		}
-		rn.Add(g.ItemRef("pr", t.repo, p.Number), pullPayload(t.repo, p, p.Comments))
+		rn.Add(g.ItemRef("pr", t.repo, p.Number), pullPayload(t.repo, p))
 		return rn, nil
 	}
 	var i issue
@@ -385,6 +408,12 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 		// Slack's aged-out thread parent, and the lever is the same — `-runs` wants to be
 		// comfortably more than a repository creates while its longest job runs.
 		{System: g.system, Kind: "run", Predicate: mine},
+		// Comments are a WINDOW, and Slack's messages are the precedent rather than issues' two
+		// halves: a conversation is an unbounded stream, and an entity-verse holding all of one
+		// is the warehouse a source is not supposed to be. The most recently updated `-comments`
+		// are kept and what falls out is tombstoned — which also makes a comment DELETED inside
+		// the window go, where an uncovered one would stand forever.
+		{System: g.system, Kind: "comment", Predicate: mine},
 	}}
 
 	r, sha, err := g.api.readRepo(ctx, repo)
@@ -404,16 +433,17 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 	if err != nil {
 		return source.Reflection{}, err
 	}
-	// The pull requests in the issues listing are not reflected as issues — one thing under two
-	// kinds sharing a number, and "every open issue" quietly including review traffic — but
-	// they are not thrown away either. The listing carries a comment count that the PULLS
-	// listing does not, so harvesting it here is what lets a pull request carry `comments`
-	// without a request per pull request, and without the field appearing on a targeted pass
-	// and vanishing on a full one.
-	comments := map[int]int{}
 	for _, i := range append(openIssues, closedIssues...) {
 		if i.isPullRequest() {
-			comments[i.Number] = i.Comments
+			// GitHub returns pull requests from the issues endpoint. Reflecting them here would
+			// put one thing under two kinds sharing a number, and would make "every open issue"
+			// a question that quietly includes review traffic.
+			//
+			// Its comment COUNT is not harvested either, though this row carries one and the
+			// pulls listing does not. The two listings are windowed separately, so a closed pull
+			// request can sit inside the pulls window and past the end of the issues one, and
+			// the count would then read 0 and flip as items updated. The comments themselves are
+			// entities now, which is the better answer to the question that field was for.
 			continue
 		}
 		rn.Add(g.ItemRef("issue", repo, i.Number), issuePayload(repo, i))
@@ -450,6 +480,24 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 		}
 	}
 
+	// Both listings, and both or neither: an issue-comment read that succeeded beside a review-
+	// comment read that failed would cover the whole window while carrying half of it, which
+	// tombstones every review comment in the repository.
+	conversation, err := g.api.listComments(ctx, repo, "issues", g.comments)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	review, err := g.api.listComments(ctx, repo, "pulls", g.comments)
+	if err != nil {
+		return source.Reflection{}, err
+	}
+	for _, c := range conversation {
+		rn.Add(g.CommentRef(repo, c.number(), c.ID), commentPayload(repo, c, "conversation"))
+	}
+	for _, c := range review {
+		rn.Add(g.CommentRef(repo, c.number(), c.ID), commentPayload(repo, c, "review"))
+	}
+
 	runs, err := g.api.listRuns(ctx, repo, g.runs)
 	if err != nil {
 		return source.Reflection{}, err
@@ -470,7 +518,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 	// which is absent rather than wrong.
 	checks := checksByHeadSHA(runs)
 	for _, p := range append(openPulls, closedPulls...) {
-		payload := pullPayload(repo, p, comments[p.Number])
+		payload := pullPayload(repo, p)
 		if p.Head != nil {
 			if c, ok := checks[p.Head.SHA]; ok {
 				payload["checks"] = c
@@ -610,13 +658,10 @@ func issuePayload(repo string, i issue) entity.Obj {
 //
 // `headSha` is the join to a git source: a `git:commit:<repo>/<sha>` is addressed by the same
 // sha, so "the commit this proposes" is a field read rather than a key anybody minted.
-func pullPayload(repo string, p pull, comments int) entity.Obj {
+func pullPayload(repo string, p pull) entity.Obj {
 	out := entity.Obj{
 		"repo": repo, "number": p.Number, "title": p.Title, "state": p.State,
 		"draft": p.Draft, "merged": p.Merged,
-		// Passed in rather than read off p, because the listing this usually comes from does
-		// not carry it and the single-pull read does. See the field's comment in api.go.
-		"comments": comments,
 	}
 	if p.User != nil {
 		out["author"] = p.User.Login
@@ -705,6 +750,32 @@ func discussionPayload(repo string, d discussion) entity.Obj {
 	for k, v := range map[string]string{
 		"url": d.URL, "createdAt": d.CreatedAt, "updatedAt": d.UpdatedAt,
 		"closedAt": d.ClosedAt, "body": d.Body,
+	} {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	return p
+}
+
+// commentPayload is what a charter reads a comment as.
+//
+// `on` is the number of the issue or pull request it hangs off, and the join is the ref rather
+// than a guess: `github:issue:<repo>#<n>` and `github:pr:<repo>#<n>` are two addresses and
+// exactly one of them exists, so a rule that has a comment can read the thing it is about
+// without this payload having to say which kind it was.
+//
+// `kind` is the comment's own nature: a conversation comment — which is what an issue has and
+// what a pull request's discussion is, since a PR's conversation IS an issue's — or a review
+// comment, which hangs off a line of a diff.
+func commentPayload(repo string, c comment, kind string) entity.Obj {
+	p := entity.Obj{"repo": repo, "on": c.number(), "id": c.ID, "kind": kind}
+	if c.User != nil {
+		p["author"] = c.User.Login
+	}
+	for k, v := range map[string]string{
+		"body": c.Body, "url": c.HTMLURL,
+		"createdAt": c.CreatedAt, "updatedAt": c.UpdatedAt,
 	} {
 		if v != "" {
 			p[k] = v

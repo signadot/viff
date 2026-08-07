@@ -93,11 +93,25 @@ func (g *GitHub) hintFor(r *http.Request, event string, d delivery, hint source.
 		return
 	}
 	switch event {
-	case "issues", "issue_comment":
-		// An `issue_comment` fires for a pull request's conversation too — on GitHub a PR IS an
-		// issue for commenting — and the payload says which by carrying `pull_request` on the
-		// issue. Hinting the issue kind for one would refresh nothing and read a PR back under
-		// a kind it does not live in, so the same care step 1's filter takes is taken here.
+	case "issue_comment", "pull_request_review_comment":
+		// The comment is the new thing, so it is what the hint names — one request against the
+		// nine a repository pass costs, and against the item pass that would refresh a title
+		// nobody changed. The item it is on is unaffected by a comment arriving: its own
+		// payload carries no count, deliberately.
+		if id := d.Comment.ID; id > 0 {
+			if n := d.Issue.Number; n > 0 {
+				hint(r.Context(), g.CommentRef(repo, n, id))
+				return
+			}
+			if n := d.PullRequest.Number; n > 0 {
+				hint(r.Context(), g.CommentRef(repo, n, id))
+				return
+			}
+		}
+	case "issues":
+		// An `issues` delivery is about the item itself. (An `issue_comment` fires for a pull
+		// request's conversation too — on GitHub a PR IS an issue for commenting — which is why
+		// the comment arm above reads the number from whichever of the two the payload carried.)
 		if n := d.Issue.Number; n > 0 {
 			kind := "issue"
 			if d.Issue.PullRequest != nil {
@@ -106,7 +120,7 @@ func (g *GitHub) hintFor(r *http.Request, event string, d delivery, hint source.
 			hint(r.Context(), g.ItemRef(kind, repo, n))
 			return
 		}
-	case "pull_request", "pull_request_review", "pull_request_review_comment":
+	case "pull_request", "pull_request_review":
 		if n := d.PullRequest.Number; n > 0 {
 			hint(r.Context(), g.ItemRef("pr", repo, n))
 			return
@@ -160,6 +174,9 @@ type delivery struct {
 		// PR arrives. The same distinction step 1's listing filter makes.
 		PullRequest *struct{} `json:"pull_request"`
 	} `json:"issue"`
+	Comment struct {
+		ID int64 `json:"id"`
+	} `json:"comment"`
 	PullRequest struct {
 		Number int `json:"number"`
 	} `json:"pull_request"`
@@ -192,6 +209,56 @@ func Sign(secret string, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// targetComment reads a ref as one comment: `<org>/<name>#<n>/<id>`.
+func (g *GitHub) targetComment(ref entity.Ref) (repo string, number int, id int64, ok bool) {
+	if ref.Kind != "comment" {
+		return "", 0, 0, false
+	}
+	rest, num, found := strings.Cut(ref.ID, "#")
+	if !found {
+		return "", 0, 0, false
+	}
+	numStr, idStr, found := strings.Cut(num, "/")
+	if !found {
+		return "", 0, 0, false
+	}
+	n, err1 := strconv.Atoi(numStr)
+	i, err2 := strconv.ParseInt(idStr, 10, 64)
+	if err1 != nil || err2 != nil || n <= 0 || i <= 0 || !g.reflects(rest) {
+		return "", 0, 0, false
+	}
+	return rest, n, i, true
+}
+
+// reflectComment answers for ONE comment, and covers exactly it.
+//
+// It asks both endpoints, because a delivery says which kind of comment it was and this ref does
+// not — and inventing a `kind` segment in the address to carry that would put GitHub's plumbing
+// in an id a charter reads. Two requests, of which the second only happens when the first says
+// no; a comment that is neither is covered and absent, which tombstones one that was deleted.
+func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id int64) (source.Reflection, error) {
+	rn := source.Reflection{Covers: []entity.Pattern{
+		{System: g.system, Kind: "comment",
+			Predicate: entity.Obj{"repo": repo, "id": id}.Payload()},
+	}}
+	for _, where := range []struct{ path, kind string }{
+		{"issues", "conversation"}, {"pulls", "review"},
+	} {
+		var c comment
+		err := g.api.get(ctx, "/repos/"+repo+"/"+where.path+"/comments/"+strconv.FormatInt(id, 10), &c)
+		switch {
+		case err == nil:
+			rn.Add(g.CommentRef(repo, number, c.ID), commentPayload(repo, c, where.kind))
+			return rn, nil
+		case NotFound(err):
+			continue
+		default:
+			return source.Reflection{}, err
+		}
+	}
+	return rn, nil // gone from both: covered and absent, which tombstones it
 }
 
 // ── the targeted run pass a workflow_run delivery asks for ───────────────────
@@ -251,7 +318,7 @@ func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (source.
 	}
 	state := runState(r)
 	for _, p := range prs {
-		payload := pullPayload(repo, p, p.Comments)
+		payload := pullPayload(repo, p)
 		payload["checks"] = state
 		rn.Covers = append(rn.Covers, entity.Pattern{
 			System: g.system, Kind: "pr",
