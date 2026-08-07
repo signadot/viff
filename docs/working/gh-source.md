@@ -44,8 +44,15 @@ derived entity whose identity is (rule, subject). Nothing in this source is allo
 a cross-system key.
 
 That script is also this connector's first real consumer, and was its readiest acceptance test.
-**It has now been run that way** — its `lingh`/`lingit` seeding deleted, its subject pointed at
-`github:pr:*` and its commit read at `git:commit:*` — against this repository. It passes.
+**It has now been run that way** — pointed at `github:pr:*` and `git:commit:*` against this
+repository, with two live connectors and a real pull request. It passes.
+
+It did not *stay* that way, and the reason is worth keeping: a demonstration that needs a
+token, two deployed connectors and a repository that happens to contain a merged pull request
+is not a demonstration, it is an integration test with a narrative. The script now seeds its
+own fixtures again — but under the shipped ids and the shipped field names, `git:commit:<repo>/<sha>`
+and `github:pr:<org>/<repo>#<n>` with `merged`/`headSha`/`base`. That keeps what the real run
+was actually for, which was never the data.
 
 The prediction in this paragraph was that the exercise would argue about **vocabulary rather
 than mechanism**. That was wrong in both halves, and the correction is the useful part. The
