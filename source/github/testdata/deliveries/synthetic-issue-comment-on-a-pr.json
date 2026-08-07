@@ -1,0 +1,27 @@
+{
+  "id": 0,
+  "guid": "synthetic-not-captured",
+  "delivered_at": "2026-01-01T00:00:00Z",
+  "status": "OK",
+  "status_code": 200,
+  "event": "issue_comment",
+  "action": "created",
+  "verseWant": "github:pr:acme/app#7",
+  "request": {
+    "headers": {"X-GitHub-Event": "issue_comment"},
+    "payload": {
+      "action": "created",
+      "repository": {"full_name": "acme/app", "name": "app", "owner": {"login": "acme"}},
+      "issue": {
+        "number": 7,
+        "title": "a change",
+        "state": "open",
+        "pull_request": {
+          "url": "https://api.github.com/repos/acme/app/pulls/7",
+          "html_url": "https://github.com/acme/app/pull/7"
+        }
+      },
+      "comment": {"id": 1, "body": "looks good"}
+    }
+  }
+}

@@ -33,6 +33,14 @@ func post(t *testing.T, h http.Handler, event string, body map[string]any, sig .
 	return w.Result()
 }
 
+// newPost and newRecorder are the two halves of a request a test sends by hand, shared with the
+// captured-delivery replay so both send the same shape.
+func newPost(path string, body []byte) *http.Request {
+	return httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+}
+
+func newRecorder() *httptest.ResponseRecorder { return httptest.NewRecorder() }
+
 // hinted collects what a delivery asked to be reconciled. A call with no refs is a full resync,
 // which is a different answer from no call at all.
 type hinted struct {

@@ -2,6 +2,7 @@
 .worktrees/
 /verse
 /o
+/sourced
 dist/
 # mkdocs build output (`mkdocs build` defaults here; `mkdocs serve` needs nothing)
 site/
