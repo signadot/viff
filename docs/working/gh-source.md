@@ -43,12 +43,33 @@ demonstrates for a commit, a PR and a release: **no fourth id is minted**, a cor
 derived entity whose identity is (rule, subject). Nothing in this source is allowed to invent
 a cross-system key.
 
-That script is also this connector's first real consumer, and its readiest acceptance test.
-It seeds `lingh:pr:42 {stage: merged, head: a1b2c3, target: main}` by hand — deliberately fake
-systems, because nothing writes the real ones — and correlates on exactly the three fields the
-table below carries under different names (`merged`, `headSha`, `base`). So the source is
-finished when `lineage.sh` runs against a real repository with its `lingh` seeding deleted, and
-the first thing that exercise will argue about is vocabulary rather than mechanism.
+That script is also this connector's first real consumer, and was its readiest acceptance test.
+**It has now been run that way** — its `lingh`/`lingit` seeding deleted, its subject pointed at
+`github:pr:*` and its commit read at `git:commit:*` — against this repository. It passes.
+
+The prediction in this paragraph was that the exercise would argue about **vocabulary rather
+than mechanism**. That was wrong in both halves, and the correction is the useful part. The
+vocabulary cost nothing: the script moved to `merged`/`headSha`/`base` because those are what
+GitHub says, and the fake spellings had no constituency. What the real ids did surface was
+three things about mechanism that inventing both sides had hidden:
+
+- **The commit join is a list read, not an identity one.** A git source ids a commit
+  `<repo>/<sha>` — a sha is not a sound cross-repo key — while a pull request carries a bare
+  `headSha`. There is no id to name, and `!get-path` refuses a predicate, so the join is
+  `!list-paths` over `{sha: …}` returning a one-element list. The fake systems hid this by
+  agreeing on a spelling no two real systems would.
+- **A rule does not backfill.** The pull requests were reflected before the charter existed,
+  and a trigger is level-triggered on writes, so nothing fired. There is no replay verb, by
+  position rather than omission. What worked is the source's own idempotence: drop what it
+  wrote and re-add it, and the rewrite is a real write the rule sees. Seeding hid this
+  completely, because seeding always happens after the rules are installed.
+- **A derived address is not the subject's id concatenated.** `#` and `/` are sanitised to `_`
+  and a short hash is appended so the sanitising cannot collide two subjects, so nothing can
+  find a trace by string-matching its subject into the address. It asks `verse.meta.derivedFrom`
+  instead. The fake ids were punctuation-free and never showed it.
+
+None of the three is a defect, and all three are things a charter author would otherwise meet
+for the first time in their own charter.
 
 Two things make this connector worth building rather than merely possible:
 

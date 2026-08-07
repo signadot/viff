@@ -237,6 +237,11 @@ deleted and its rule pointed at `github:pr:*`. That is a correlation over a real
 commit and a real release, which is what the script was written to demonstrate and has never
 had real data for.
 
+**Done.** The script now runs that way and passes. It did not argue about vocabulary; it turned
+up three mechanism facts the invented systems had hidden — the join is a list read, a rule does
+not backfill, and a derived address is sanitised and hashed. [gh-source.md](gh-source.md)
+records all three where the prediction was made.
+
 Expect the argument that step to start to be about **vocabulary, not mechanism**: the script
 correlates on `stage: merged`, `head` and `target`, and this source writes `merged`, `headSha`
 and `base`. One of the two spellings has to move, and the interesting question is which — the
