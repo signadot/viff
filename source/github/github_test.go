@@ -925,3 +925,24 @@ func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
 		t.Fatalf("a warm pass with discussions off still costs %d chargeable requests", chargeable)
 	}
 }
+
+// A source pointed at a system of its own writes, covers, claims AND HINTS there. The last is
+// the one that is easy to miss: a delivery endpoint hinting `github:issue:x` reaches nothing
+// when the source writes `github-internal:issue:x`, and the failure is silent — the hint 404s
+// or lands on somebody else's registration, and only the resync converges.
+func TestEverythingFollowsTheChosenSystemIncludingHints(t *testing.T) {
+	f := newFake()
+	f.repo("acme/app")
+	h := &hinted{}
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, System: "gh-internal"})
+	wh := src.Webhook(hookSecret, h.hint)
+
+	post(t, wh, "issues", map[string]any{
+		"repository": map[string]any{"full_name": "acme/app"},
+		"issue":      map[string]any{"number": 42},
+	})
+	refs := h.only(t)
+	if len(refs) != 1 || refs[0].String() != "gh-internal:issue:acme/app#42" {
+		t.Fatalf("a delivery hinted %v, want the source's own system", refs)
+	}
+}

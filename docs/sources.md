@@ -155,6 +155,18 @@ in-process one had by construction:
   cost stated rather than discovered: two writers on one slice, each tombstoning what the other
   reflected.
 
+**And the system itself is the operator's**, which is a coarser separation than a claim and
+exists for a different reason. A source is deployed, and more than one will be: the partition
+between them is drawn by whoever runs them — by credential, by budget, by which slices are busy —
+and that has no reason to line up with how the external system is organised. Two deployments
+sharing `github:*` need only disjoint claims, which are computed from each source's own
+configuration rather than written by hand; one that wants no coordination at all takes
+`-system` and owes nobody a proof, since two systems are disjoint on the first segment. It is
+also how a second *instance* of a product gets a slice that is not confused with the first.
+
+What it costs is paid by whoever chose it: a charter cannot glob a system, so every rule about a
+separated slice names it. That is why it is a flag rather than the shape.
+
 **An ownership claim is an address, not a payload predicate**, and the reason is where the
 question is asked. Converge evaluates `Covers` against stored entities whose payloads it can
 read; an install compares two *declarations* with nothing in hand. Addresses compare
@@ -239,7 +251,7 @@ wants, and an empty `scope` is what it gets.
 ## Three of them, and what the second and third cost
 
 verse ships `sourced`, a second binary with a subcommand per system it connects
-([reference/sourced.md](reference/sourced.md)) — git, Slack, Linear. It rides in the same image
+([reference/sourced.md](reference/sourced.md)) — git, Slack, Linear, GitHub. It rides in the same image
 as `verse` and is deliberately not in the same process: folding a connector into the engine
 would put every API's wire format and every credential's failure mode in the binary that runs
 everybody's triggers. There is nothing privileged about the three; they are ordinary external

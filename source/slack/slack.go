@@ -53,6 +53,11 @@ type Config struct {
 	Users bool
 	// Channels narrows to these channel names or ids; empty is every channel the bot is in.
 	Channels []string
+	// System is the slice this source writes, empty meaning System. The operator's to choose,
+	// because more than one source gets deployed and the partition between them is drawn by
+	// whoever runs them; two systems are disjoint on the first segment, so a deployment that
+	// wants no coordination owes nobody a disjointness proof.
+	System string
 
 	// Base overrides the Web API root (a test server). HTTPClient overrides the transport.
 	Base       string
@@ -64,6 +69,7 @@ type Config struct {
 // Slack is the Source.
 type Slack struct {
 	api       *api
+	system    string
 	workspace string
 	url       string // the workspace's Slack url, for message permalinks
 	depth     int
@@ -90,12 +96,20 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 	}
 	s := &Slack{
 		api:       newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
+		system:    cfg.System,
 		workspace: cfg.Workspace,
 		depth:     cfg.Depth,
 		threads:   cfg.Threads,
 		threadCap: cfg.ThreadDepth,
 		users:     cfg.Users,
 		log:       cfg.Log,
+	}
+	if s.system == "" {
+		s.system = System
+	}
+	if strings.ContainsAny(s.system, ":/") {
+		return nil, fmt.Errorf("slack: system %q may not contain : or / — it is a segment of "+
+			"the address (sources:<system>:<name>) and of the route that serves it", s.system)
 	}
 	if s.depth <= 0 {
 		s.depth = DefaultDepth
@@ -130,7 +144,7 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 }
 
 // System is the owned slice.
-func (s *Slack) System() string { return System }
+func (s *Slack) System() string { return s.system }
 
 // Owns is the ownership claim an install proves disjointness with.
 //
@@ -139,13 +153,19 @@ func (s *Slack) System() string { return System }
 // bot token is issued for one workspace, so a source is one workspace's, and two sources are
 // two workspaces: provably disjoint as long as no two workspaces are given the same name.
 func (s *Slack) Owns() []source.Own {
-	return []source.Own{{Ref: System + ":*:" + s.workspace + "/*"}}
+	return []source.Own{{Ref: s.system + ":*:" + s.workspace + "/*"}}
 }
 
 // ChannelRef is the ref that targets one channel — what a hint names, and what a targeted
 // reconcile narrows to.
 func ChannelRef(workspace, channel string) entity.Ref {
 	return entity.Ref{System: System, Kind: "channel", ID: workspace + "/" + channel}
+}
+
+// ChannelRef is the same ref in THIS source's system, which is what a delivery endpoint must
+// hint: a hint at `slack:channel:x` reaches nothing when the source writes `chat:channel:x`.
+func (s *Slack) ChannelRef(channel string) entity.Ref {
+	return entity.Ref{System: s.system, Kind: "channel", ID: s.workspace + "/" + channel}
 }
 
 // Workspace is the id prefix this source writes under.
@@ -172,7 +192,7 @@ func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection,
 // A message ref narrows to its channel rather than to itself, which is the same subsumption
 // git makes: the window is read per channel, so a finer target would cost the same call.
 func (s *Slack) target(ref entity.Ref) (channel string, full bool) {
-	if ref.System != System || ref.ID == "" {
+	if ref.System != s.system || ref.ID == "" {
 		return "", true
 	}
 	ws, rest, ok := strings.Cut(ref.ID, "/")
@@ -204,8 +224,8 @@ func (s *Slack) reflectAll(ctx context.Context) (source.Reflection, error) {
 	// `slack:channel:{workspace}`, or the channels it can no longer see would stand forever.
 	mine := entity.Obj{"workspace": s.workspace}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: System, Kind: "channel", Predicate: mine},
-		{System: System, Kind: "message", Predicate: mine},
+		{System: s.system, Kind: "channel", Predicate: mine},
+		{System: s.system, Kind: "message", Predicate: mine},
 	}}
 	for _, c := range channels {
 		if !s.watched(c) {
@@ -229,7 +249,7 @@ func (s *Slack) reflectAll(ctx context.Context) (source.Reflection, error) {
 				"this needs; channels are unaffected", err)
 		} else {
 			rn.Covers = append(rn.Covers,
-				entity.Pattern{System: System, Kind: "user", Predicate: mine})
+				entity.Pattern{System: s.system, Kind: "user", Predicate: mine})
 			for _, u := range users {
 				s.addUser(&rn, u)
 			}
@@ -247,8 +267,8 @@ func (s *Slack) reflectChannel(ctx context.Context, id string) (source.Reflectio
 	}
 	mine := entity.Obj{"workspace": s.workspace, "channel": id}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: System, Kind: "channel", Predicate: mine},
-		{System: System, Kind: "message", Predicate: mine},
+		{System: s.system, Kind: "channel", Predicate: mine},
+		{System: s.system, Kind: "message", Predicate: mine},
 	}}
 	if !s.watched(c) {
 		// Narrowed out of what this source reflects: the covers stand, the entities do not, so
@@ -366,7 +386,7 @@ func (s *Slack) addMessage(rn *source.Reflection, channel string, m message) {
 		p["url"] = strings.TrimRight(s.url, "/") + "/archives/" + channel + "/p" +
 			strings.Replace(m.TS, ".", "", 1)
 	}
-	rn.Add(entity.Ref{System: System, Kind: "message", ID: s.workspace + "/" + channel + "/" + m.TS}, p)
+	rn.Add(entity.Ref{System: s.system, Kind: "message", ID: s.workspace + "/" + channel + "/" + m.TS}, p)
 }
 
 func (s *Slack) addUser(rn *source.Reflection, u user) {
@@ -392,5 +412,5 @@ func (s *Slack) addUser(rn *source.Reflection, u user) {
 	if u.TZ != "" {
 		p["tz"] = u.TZ
 	}
-	rn.Add(entity.Ref{System: System, Kind: "user", ID: s.workspace + "/" + u.ID}, p)
+	rn.Add(entity.Ref{System: s.system, Kind: "user", ID: s.workspace + "/" + u.ID}, p)
 }

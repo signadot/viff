@@ -44,6 +44,11 @@ type Config struct {
 	// guard, and exceeding it is an ERROR rather than a truncation — see api.readTeam.
 	PageSize, MaxIssues int
 
+	// System is the slice this source writes, empty meaning System. The operator's to choose,
+	// for the reason the GitHub source's is: more than one gets deployed, and the partition
+	// between them is drawn by whoever runs them rather than by how Linear is organised.
+	System string
+
 	// Base overrides the GraphQL endpoint (a test server). HTTPClient overrides the transport.
 	Base       string
 	HTTPClient *http.Client
@@ -54,6 +59,7 @@ type Config struct {
 // Linear is the Source.
 type Linear struct {
 	api      *api
+	system   string
 	teams    []string // team keys, sorted, so two passes answer in one order
 	pageSize int
 	max      int
@@ -75,9 +81,17 @@ func New(ctx context.Context, cfg Config) (*Linear, error) {
 	}
 	l := &Linear{
 		api:      newAPI(cfg.Auth, cfg.Base, cfg.HTTPClient),
+		system:   cfg.System,
 		pageSize: cfg.PageSize,
 		max:      cfg.MaxIssues,
 		log:      cfg.Log,
+	}
+	if l.system == "" {
+		l.system = System
+	}
+	if strings.ContainsAny(l.system, ":/") {
+		return nil, fmt.Errorf("linear: system %q may not contain : or / — it is a segment of "+
+			"the address (sources:<system>:<name>) and of the route that serves it", l.system)
 	}
 	if l.pageSize <= 0 {
 		l.pageSize = DefaultPageSize
@@ -137,7 +151,7 @@ func keysOf(ts []team) []string {
 }
 
 // System is the owned slice.
-func (l *Linear) System() string { return System }
+func (l *Linear) System() string { return l.system }
 
 // Teams is the set of team keys this source reflects.
 func (l *Linear) Teams() []string { return append([]string(nil), l.teams...) }
@@ -178,10 +192,10 @@ func (l *Linear) Owns() []source.Own {
 	out := make([]source.Own, 0, 4*len(l.teams))
 	for _, key := range l.teams {
 		out = append(out,
-			source.Own{Ref: System + ":team:" + key},
-			source.Own{Ref: System + ":issue:" + key + "-*"},
-			source.Own{Ref: System + ":cycle:" + key + "/*"},
-			source.Own{Ref: System + ":project:*", At: slotOf(key)})
+			source.Own{Ref: l.system + ":team:" + key},
+			source.Own{Ref: l.system + ":issue:" + key + "-*"},
+			source.Own{Ref: l.system + ":cycle:" + key + "/*"},
+			source.Own{Ref: l.system + ":project:*", At: slotOf(key)})
 	}
 	return out
 }
@@ -195,6 +209,12 @@ func slotOf(key string) []string { return []string{"owners", key} }
 // and cycles, which is what a hint names.
 func TeamRef(key string) entity.Ref {
 	return entity.Ref{System: System, Kind: "team", ID: key}
+}
+
+// TeamRef is the same ref in THIS source's system, which is what the webhook must hint: a hint
+// at `linear:team:ENG` reaches nothing when the source writes `issues:team:ENG`.
+func (l *Linear) TeamRef(key string) entity.Ref {
+	return entity.Ref{System: l.system, Kind: "team", ID: key}
 }
 
 // Reflect reads the configured teams and returns what `linear:*` should hold. A zero ref reads
@@ -219,7 +239,7 @@ func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 // makes for a repo: the team is what one query reads, so a finer target would cost the same
 // request.
 func (l *Linear) targets(ref entity.Ref) []string {
-	if ref.System != System || ref.ID == "" {
+	if ref.System != l.system || ref.ID == "" {
 		return l.teams
 	}
 	var key string
@@ -251,9 +271,9 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	// or the issues it no longer has would stand forever.
 	mine := entity.Obj{"team": key}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: System, Kind: "team", Predicate: mine},
-		{System: System, Kind: "issue", Predicate: mine},
-		{System: System, Kind: "cycle", Predicate: mine},
+		{System: l.system, Kind: "team", Predicate: mine},
+		{System: l.system, Kind: "issue", Predicate: mine},
+		{System: l.system, Kind: "cycle", Predicate: mine},
 		// The project cover is narrowed to the projects that CARRY THIS TEAM'S SLOT, which is
 		// what the null in the predicate says (a null in a match is a presence test). The slot
 		// alone is not enough narrowing and the difference is not subtle: an unpredicated slot
@@ -266,7 +286,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 		// team is recorded on and no longer owns. One it never owned is not covered, and one it
 		// has just joined is written because the ANSWER carries the slot, which is what the
 		// write side matches against.
-		{System: System, Kind: "project", Slot: slotOf(key),
+		{System: l.system, Kind: "project", Slot: slotOf(key),
 			Predicate: entity.Obj{"owners": map[string]any{key: nil}}.Payload()},
 	}}
 	page, err := l.api.readTeam(ctx, key, l.pageSize, l.max)
@@ -282,7 +302,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	if page.Description != "" {
 		t["description"] = page.Description
 	}
-	rn.Add(TeamRef(key), t)
+	rn.Add(entity.Ref{System: l.system, Kind: "team", ID: key}, t)
 
 	for _, c := range page.Cycles.Nodes {
 		p := entity.Obj{"team": key, "id": c.ID, "number": c.Number}
@@ -294,12 +314,12 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 				p[k] = v
 			}
 		}
-		rn.Add(entity.Ref{System: System, Kind: "cycle",
+		rn.Add(entity.Ref{System: l.system, Kind: "cycle",
 			ID: fmt.Sprintf("%s/%d", key, c.Number)}, p)
 	}
 
 	for _, i := range page.Issues.Nodes {
-		rn.Add(entity.Ref{System: System, Kind: "issue", ID: i.Identifier}, issuePayload(key, i))
+		rn.Add(entity.Ref{System: l.system, Kind: "issue", ID: i.Identifier}, issuePayload(key, i))
 	}
 
 	// A project is written INTO THIS TEAM'S SLOT, which is what the answer's shape says: the
@@ -307,7 +327,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	// authoritative. A second team's source answers the same entity with its own slot, and
 	// neither can reach the other's.
 	for _, p := range page.Projects.Nodes {
-		rn.Add(entity.Ref{System: System, Kind: "project", ID: p.ID},
+		rn.Add(entity.Ref{System: l.system, Kind: "project", ID: p.ID},
 			entity.Obj{"owners": map[string]any{key: projectPayload(key, p)}})
 	}
 	return rn, nil

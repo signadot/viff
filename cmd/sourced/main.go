@@ -1,10 +1,12 @@
 // Command sourced serves verse's reflection contract for the systems verse ships a connector
-// for: a git repository (or a mirror of a remote one), a Slack workspace, a Linear team.
+// for: a git repository (or a mirror of a remote one), a Slack workspace, a Linear team, a set
+// of GitHub repositories.
 //
 //	sourced git    -addr :9801 -repo verse=/src/verse
 //	sourced git    -addr :9801 -mirror https://github.com/signadot/verse.git -state /repos
 //	sourced slack  -addr :9801            # SLACK_BOT_TOKEN in the environment
 //	sourced linear -addr :9801 -team ENG  # LINEAR_API_KEY in the environment
+//	sourced github -addr :9801 -repo signadot/verse   # GITHUB_TOKEN in the environment
 //
 // Then install it, from anywhere that can reach verse:
 //
@@ -54,6 +56,8 @@ func main() {
 		err = slackMain(args)
 	case "linear":
 		err = linearMain(args)
+	case "github":
+		err = githubMain(args)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -71,6 +75,7 @@ func usage() {
   sourced git    [flags]   a git repository, or a mirror of a remote one
   sourced slack  [flags]   a Slack workspace (SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET)
   sourced linear [flags]   Linear teams (LINEAR_API_KEY, LINEAR_WEBHOOK_SECRET)
+  sourced github [flags]   GitHub repositories (GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET)
 
 `)
 	os.Exit(2)
@@ -82,6 +87,7 @@ type common struct {
 	addr        string
 	minInterval time.Duration
 	hintURL     string
+	system      string
 }
 
 func (c *common) bind(fs *flag.FlagSet) {
@@ -90,6 +96,13 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.DurationVar(&c.minInterval, "min-interval", 0,
 		"answer from the last reflection when asked again inside this window — the source's "+
 			"own rate limit, since verse's resync interval is a constant and an API budget is not")
+	fs.StringVar(&c.system, "system", "",
+		"the slice this source writes, defaulting to the connector's own name. More than one "+
+			"source gets deployed and the partition between them is drawn by whoever runs them; "+
+			"two deployments sharing a system need only disjoint claims, and one that wants no "+
+			"coordination at all takes a system of its own — two systems are disjoint on the "+
+			"first segment. It is also how a second instance of the same product gets a slice "+
+			"that is not confused with the first")
 	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VERSE_HINT_URL"),
 		"verse's hint route for THIS registration (http://verse:9797/sources/<system>/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")

@@ -68,7 +68,7 @@ func (l *Linear) Webhook(secret string, hint source.Hinter) http.Handler {
 		}
 		if hint != nil {
 			if key := l.team(d.teamKey()); key != "" {
-				hint(r.Context(), TeamRef(key))
+				hint(r.Context(), l.TeamRef(key))
 			} else {
 				hint(r.Context()) // not placeable in a team this source reflects — a full pass
 			}

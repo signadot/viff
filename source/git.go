@@ -35,6 +35,10 @@ type Git struct {
 	mu          sync.Mutex
 	repos       map[string]repo
 	commitDepth int // how many tip commits to reflect as git:commit:<sha>
+	// system is the slice this source writes, GitSystem unless an operator said otherwise.
+	// Set once before serving and read without the lock thereafter, as a Config field would be
+	// on the connectors that have one — see SetSystem.
+	system string
 }
 
 // repo is one registered repository: where it is, and — for a mirror — what it is a mirror OF.
@@ -49,7 +53,32 @@ type repo struct {
 }
 
 // NewGit returns an empty git Source; register repositories with AddRepo or AddMirror.
-func NewGit() *Git { return &Git{repos: map[string]repo{}, commitDepth: 50} }
+func NewGit() *Git { return &Git{repos: map[string]repo{}, commitDepth: 50, system: GitSystem} }
+
+// SetSystem points this source at a slice other than `git:*`. Call it before serving; it is read
+// on every pass and never written again.
+//
+// A source is deployed, and more than one of them will be — different hosts, different
+// credentials, a partition drawn by whoever runs them. Two deployments sharing `git:*` is the
+// ordinary case and needs only disjoint claims; one that wants no coordination at all takes a
+// system of its own, and two systems are disjoint on the first segment. See
+// docs/working/gh-source.md, where the argument is made at length for the connector that raised
+// it.
+//
+// The system is a segment of the address and of the route that serves the registration, so
+// neither punctuation survives — the same check source.Entity.Check makes, made here so a bad
+// flag fails the program rather than the install.
+func (g *Git) SetSystem(system string) error {
+	if system == "" {
+		return nil
+	}
+	if strings.ContainsAny(system, ":/") {
+		return fmt.Errorf("git: system %q may not contain : or / — it is a segment of the "+
+			"address (sources:<system>:<name>) and of the route that serves it", system)
+	}
+	g.system = system
+	return nil
+}
 
 // AddRepo registers a repository under id (defaults to the dir's base name) and returns the
 // id used. Re-adding an id repoints it.
@@ -106,7 +135,7 @@ func (g *Git) AddMirror(ctx context.Context, id, remote, dir string) (string, er
 }
 
 // System is the owned slice.
-func (g *Git) System() string { return GitSystem }
+func (g *Git) System() string { return g.system }
 
 // Owns is the ownership claim an install checks against the other installed sources, as ref
 // globs (see own.go).
@@ -132,7 +161,7 @@ func (g *Git) Owns() []Own {
 	sort.Strings(ids)
 	out := make([]Own, 0, 2*len(ids))
 	for _, id := range ids {
-		out = append(out, Own{Ref: GitSystem + ":*:" + id + "/*"}, Own{Ref: GitSystem + ":head:" + id})
+		out = append(out, Own{Ref: g.system + ":*:" + id + "/*"}, Own{Ref: g.system + ":head:" + id})
 	}
 	return out
 }
@@ -141,6 +170,12 @@ func (g *Git) Owns() []Own {
 // per-repo pass is content-addressed and subsumes finer targeting. It is what a hint names.
 func HeadRef(id string) entity.Ref {
 	return entity.Ref{System: GitSystem, Kind: "head", ID: id}
+}
+
+// HeadRef is the same ref in THIS source's system, which is what a hook this source installs
+// has to name: a hint at `git:head:x` reaches nothing when the source writes `mirror:head:x`.
+func (g *Git) HeadRef(id string) entity.Ref {
+	return entity.Ref{System: g.system, Kind: "head", ID: id}
 }
 
 // hookMarker identifies the hook verse installs, so we only ever overwrite/remove our own.
@@ -176,7 +211,7 @@ func (g *Git) InstallHook(id, hintURL string) error {
 	script := "#!/bin/sh\n" + hookMarker + "\n" +
 		`[ "$1" = committed ] || exit 0` + "\n" +
 		fmt.Sprintf(`curl -fsS -X POST "%s?ref=%s" >/dev/null 2>&1 || true`+"\n",
-			hintURL, url.QueryEscape(HeadRef(id).String()))
+			hintURL, url.QueryEscape(g.HeadRef(id).String()))
 	return os.WriteFile(path, []byte(script), 0o755)
 }
 
@@ -251,7 +286,7 @@ func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 func (g *Git) targets(ref entity.Ref) map[string]repo {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if ref.System != GitSystem || ref.ID == "" {
+	if ref.System != g.system || ref.ID == "" {
 		out := make(map[string]repo, len(g.repos))
 		for id, r := range g.repos {
 			out[id] = r
@@ -292,8 +327,8 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	// tip window is simply not mentioned — and an unmentioned, uncovered entity stays.
 	mine := entity.Obj{"repo": id}.Payload()
 	rn := Reflection{Covers: []entity.Pattern{
-		{System: GitSystem, Kind: "ref", Predicate: mine},
-		{System: GitSystem, Kind: "head", Predicate: mine},
+		{System: g.system, Kind: "ref", Predicate: mine},
+		{System: g.system, Kind: "head", Predicate: mine},
 	}}
 
 	// Refs: refs/heads, refs/tags, refs/remotes — git:ref:<repo>/<short> {repo, name, sha, type}.
@@ -308,14 +343,14 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	sort.Strings(names)
 	for _, name := range names {
 		r := refs[name]
-		rn.Add(entity.Ref{System: GitSystem, Kind: "ref", ID: id + "/" + name},
+		rn.Add(entity.Ref{System: g.system, Kind: "ref", ID: id + "/" + name},
 			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ})
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
 	if head := gitHead(ctx, dir); head != nil {
 		head["repo"] = id
-		rn.Add(entity.Ref{System: GitSystem, Kind: "head", ID: id}, head)
+		rn.Add(entity.Ref{System: g.system, Kind: "head", ID: id}, head)
 	}
 
 	// Recent commits: a bounded tip window. Scoped per-repo (git:commit:<repo>/<sha>) — a
@@ -323,7 +358,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	// diverges under rebase/amend, and the object format (sha1→sha256) changes hashes. So a
 	// commit belongs to its repo; two repos never share one entity.
 	for _, c := range gitRecentCommits(ctx, dir, g.commitDepth) {
-		rn.Add(entity.Ref{System: GitSystem, Kind: "commit", ID: id + "/" + c.sha},
+		rn.Add(entity.Ref{System: g.system, Kind: "commit", ID: id + "/" + c.sha},
 			entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents})
 	}
 	return rn, nil

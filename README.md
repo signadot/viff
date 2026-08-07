@@ -73,8 +73,8 @@ entities, tasks, and the charters that relate them.
   above, and the second hop is always the docket a person reads.
 - `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you
   deploy and install (`verse source add`), reflecting an owned slice like `git:*` that triggers
-  react to. Three ship (`sourced git|slack|linear`); anything else is the sample program plus
-  one function. `verse connect` federates your working tree the same way, into a scope.
+  react to. Four ship (`sourced git|slack|linear|github`); anything else is the sample program
+  plus one function. `verse connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
   `trigger`, `stratum`, `goal`, `task` (including the `do` executor verbs), `flow`,
   `resolver`, `runner`, `source`. What it answers with: `gate`, `docket`, `vote`. What it

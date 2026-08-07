@@ -79,7 +79,7 @@ func (s *Slack) Events(signingSecret string, hint source.Hinter) http.Handler {
 		}
 		if hint != nil {
 			if id := d.channel(); id != "" {
-				hint(r.Context(), ChannelRef(s.workspace, id))
+				hint(r.Context(), s.ChannelRef(id))
 			} else {
 				hint(r.Context()) // no channel in it — a full resync
 			}

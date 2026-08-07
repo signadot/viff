@@ -1,6 +1,7 @@
 package source_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -236,4 +237,43 @@ func mustRef(t *testing.T, s string) entity.Ref {
 		t.Fatalf("ParseRef(%q): %v", s, err)
 	}
 	return ref
+}
+
+// Every connector's system is the operator's to choose, and everything it writes, covers, claims
+// and hints follows — which is what makes two deployments that want no coordination able to have
+// it: two systems are disjoint on the first segment, so neither owes the other a proof.
+//
+// Checked here, across the connectors, because the property is one sentence per source and the
+// way it breaks is one of them forgetting.
+func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
+	g := source.NewGit()
+	if err := g.SetSystem("mirror"); err != nil {
+		t.Fatal(err)
+	}
+	g.AddRepo("verse", t.TempDir())
+	if g.System() != "mirror" {
+		t.Fatalf("git System() = %q", g.System())
+	}
+	for _, o := range g.Owns() {
+		if !strings.HasPrefix(o.Ref, "mirror:") {
+			t.Fatalf("a git claim outside the chosen system: %s", o.Ref)
+		}
+	}
+	// The hook a git source installs hints in its own system, or the hint reaches nothing.
+	if got := g.HeadRef("verse").String(); got != "mirror:head:verse" {
+		t.Fatalf("git HeadRef = %q", got)
+	}
+	// And two systems are provably disjoint with nothing else said.
+	plain := source.NewGit()
+	plain.AddRepo("verse", t.TempDir())
+	ok, err := source.Disjoint(g.Owns(), plain.Owns())
+	if err != nil || !ok {
+		t.Fatalf("two systems over the same repo were not disjoint: ok=%v err=%v", ok, err)
+	}
+	// The punctuation the address is built from is refused, as it is at install.
+	for _, bad := range []string{"a:b", "a/b"} {
+		if err := source.NewGit().SetSystem(bad); err == nil {
+			t.Fatalf("system %q should be refused", bad)
+		}
+	}
 }

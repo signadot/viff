@@ -5,13 +5,14 @@ for the registration, the ownership globs and the routes verse serves, see
 [sources.md](sources.md); to reflect something that is not here, copy
 [examples/source](examples/source/main.go).
 
-`sourced` is a **second binary**, in the same image as `verse` and `o`. Three subcommands, one
+`sourced` is a **second binary**, in the same image as `verse` and `o`. Four subcommands, one
 external system each:
 
 ```
 sourced git    [flags]   a git repository, or a mirror of a remote one
 sourced slack  [flags]   a Slack workspace
 sourced linear [flags]   Linear teams
+sourced github [flags]   GitHub repositories
 ```
 
 Each serves the same two routes verse dials (`GET /source`, `GET /reflect`), plus — for the two
@@ -30,6 +31,21 @@ verse source
 | `-addr` | what to listen on (`SOURCED_ADDR`, default `:9801`) |
 | `-min-interval` | answer from the last reflection when asked again inside this window. The source's own rate limit — verse's resync interval is a constant and an API budget is not. Default off |
 | `-hint-url` | verse's hint route for **this registration** (`VERSE_HINT_URL`): `http://verse:9797/sources/<system>/<name>/hint`. Without it, deliveries are verified and dropped, and only the resync converges |
+| `-system` | the slice this source writes, defaulting to the connector's own name |
+
+**`-system` is the operator's, and it is a coarser separation than `owns`.** More than one source
+gets deployed and the partition between them is drawn by whoever runs them — by credential, by
+budget, by which repositories are busy — which has no reason to line up with how the external
+system is organised. Two deployments sharing a system is the ordinary case and needs only
+disjoint claims, which are computed from each source's own configuration rather than written by
+hand. One that wants no coordination at all takes a system of its own: two systems are disjoint
+on the first segment, so neither owes the other a proof. It is also how a second *instance* of a
+product — a GitHub Enterprise Server beside github.com — gets a slice that is not confused with
+the first, since `org/repo#42` is unique within a host and not across two.
+
+What it costs is paid by whoever chose it: **a charter cannot glob a system** — it names the
+subtree to watch, so it must be a literal — so every rule about a separated slice names it. That
+is why this is a flag rather than the shape.
 
 A credential is **never a flag**. It comes from the environment, because that is what a k8s
 Secret fills in and what keeps it out of the pod spec, `ps` and shell history.
@@ -153,10 +169,66 @@ project through an owner (`owners.ENG.state`). An issue still carries its projec
 plain field, which is what a rule about an issue wants and costs no join. See
 [working/shared-ownership.md](../working/shared-ownership.md).
 
+## github
+
+```
+sourced github -repo <org>/<name>   a repository to reflect (repeatable, comma-separated)
+               -settled <n>         closed issues, PRs and discussions kept per repo (default 50)
+               -runs <n>            workflow runs kept per repo (default 50)
+               -max-open <n>        refuse a repo with more open items than this (default 2000)
+               -discussions         reflect discussions (default true)
+```
+
+| environment | |
+|---|---|
+| `GITHUB_TOKEN` | a fine-grained PAT with read access to the repositories' metadata, issues, pull requests and Actions. Required |
+| `GITHUB_WEBHOOK_SECRET` | the webhook signing secret. Without it `POST /github/webhook` refuses every delivery |
+| `GITHUB_API_BASE` | the API root, for GitHub Enterprise Server |
+
+Point the repository's Settings → Webhooks at `https://<host>/github/webhook`, content type
+`application/json`.
+
+| entity | payload |
+|---|---|
+| `github:repo:<org>/<name>` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
+| `github:issue:<org>/<name>#<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
+| `github:pr:<org>/<name>#<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
+| `github:discussion:<org>/<name>#<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
+| `github:run:<org>/<name>/<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
+
+Owns `github:repo:<org>/<name>` and `github:{issue,pr,discussion}:<org>/<name>#*` and
+`github:run:<org>/<name>/*` per repository. The `#` is load-bearing — `acme/app#*` does not claim
+`acme/app2#1` — and the kinds are **named rather than globbed**, which is what leaves room for a
+later source claiming `github:user:*` alone.
+
+**The set-shaped kinds are covered twice**: the open set complete, the closed set as a window of
+the most recent `-settled`. Neither precedent fits — git keeps history, Slack keeps a window —
+because an issue set is unbounded while its *live* part is bounded. An item that closes appears
+in the settled half carrying its new state, ages, and leaves. Exceeding `-max-open` is an error
+rather than a truncation: a partial list under a complete cover tombstones what it failed to read.
+
+**Runs are a window and nothing else**, covered whole. A run still in flight when more than
+`-runs` newer ones have been created falls out and is tombstoned, so a charter waiting on its
+conclusion never sees one — the lever is a larger `-runs`. Match `conclusion`, not a transition:
+a run goes `queued → in_progress → completed` inside a minute and a pass will often collapse all
+three into one write.
+
+**CI state is a field on the pull request**, derived from the runs already read by head sha, so
+it costs no request. A PR whose head has no run in the window carries no `checks` field.
+
+**Discussions are separable and are the whole of the budget.** Every REST read here is
+conditional and a 304 does not count against the rate limit, so a repository where nothing
+happened costs nothing — except discussions, which are GraphQL and carry no ETag: two chargeable
+requests per repository per pass, which is what caps one token at about forty repositories.
+`-discussions=false` takes a warm pass to zero. Switching them off, or a repository with the
+feature disabled, or a refused read, all drop the discussion covers *with* the entities, leaving
+what is standing alone — rather than reading an empty answer as "there are none".
+
 ## Deploying them
 
-`deploy/git-source`, `deploy/slack-source` and `deploy/linear-source` are the manifests, each
-off by default and turned on by its own knob (`-e slackSource=true`). See
+`deploy/git-source`, `deploy/slack-source`, `deploy/linear-source` and `deploy/github-source`
+are the manifests, each off by default and turned on by its own knob (`-e slackSource=true`,
+`-e githubSource=true -e githubRepos=org/name`). See
 [deploy/README.md](../../deploy/README.md) for the credentials, the ingress and the registration
 step — which stays a verb somebody runs, because an install carries an ownership claim verse
 checks against what is already standing.

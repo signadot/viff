@@ -71,6 +71,17 @@ build:
     linearTeams: ""
     linearWebhookHost: ""
 
+    githubSource: false
+    githubSourceName: "repos"
+    # Comma-separated repositories (org/name,org/other). Required: a GitHub source with none
+    # reflects nothing, claims nothing and never writes, so it refuses to start.
+    githubRepos: ""
+    # Discussions are GraphQL and carry no ETag, so they are the whole of what a quiet
+    # repository costs against the rate limit. false takes a warm pass to zero chargeable
+    # requests — see docs/working/gh-source-plan.md.
+    githubDiscussions: true
+    githubWebhookHost: ""
+
     # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
     ingressClassName: ""
 
@@ -89,6 +100,8 @@ build:
     dir: slack-source
   - if: '.[linearSource]'
     dir: linear-source
+  - if: '.[githubSource]'
+    dir: github-source
 
   patches:
   # The Namespace object's own name.
@@ -334,6 +347,51 @@ build:
               env: !key(name)
               - name: VERSE_HINT_URL
                 value: "http://verse:9797/sources/linear/$[linearSourceName]/hint"
+
+  - if: '.[githubSource]'
+    match:
+      kind: Deployment
+      metadata:
+        name: github-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: github-source
+              image: $[image]
+              env: !key(name)
+              - name: VERSE_HINT_URL
+                value: "http://verse:9797/sources/github/$[githubSourceName]/hint"
+
+  # The command is restated whole rather than appended to, as the Linear and Slack ones are: a
+  # patch that inserted would have to know what it was inserting into, and two of them would
+  # each clobber the other's.
+  #
+  # `-discussions` is spelled `=value` so one patch carries both knobs. A source with no
+  # repositories refuses to start, which is why this is conditional on there being some rather
+  # than defaulting to a list nobody meant.
+  - if: '.[ githubSource && githubRepos != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: github-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: github-source
+              command:
+              - sourced
+              - github
+              - -addr
+              - ":9801"
+              - -min-interval
+              - "1m"
+              - -repo
+              - $[githubRepos]
+              - -discussions=$[githubDiscussions]
 
   - if: '.[ linearSource && linearTeams != "" ]'
     match:
