@@ -178,7 +178,22 @@ func (c *Client) get(ctx context.Context, path string, v any) error {
 	if !ok {
 		f = codec.Tony
 	}
-	if err := codec.Unmarshal(body, v, f); err != nil {
+	// Parsed to a NODE and stripped of its layout hints before it becomes a value, which is
+	// the same thing codec.Read does for a request body and for the same reason: this is the
+	// boundary where somebody else's document becomes something verse holds and compares.
+	//
+	// The hint that matters is `!bracket`. It says the object was written inline — `{a: 1}`
+	// rather than a block — and the WIRE form writes everything inline, so every object in
+	// every reflection now arrives carrying it. A predicate that crossed this boundary was
+	// then EQUAL to the same predicate built in task under every rendering and unequal under
+	// ir.DeepEqual, which is what entity.Equal is and what converge decides with. Stripping
+	// here rather than in codec.Unmarshal keeps it to the transport: an authored charter read
+	// from a file is meant to round-trip as authored, brackets and all.
+	node, err := codec.ParseNode(body, f)
+	if err != nil {
+		return fmt.Errorf("%w: %s answered %s undecodably: %w", ErrNotSource, c.base, path, err)
+	}
+	if err := codec.FromNode(codec.StripBrackets(node), v); err != nil {
 		return fmt.Errorf("%w: %s answered %s undecodably: %w", ErrNotSource, c.base, path, err)
 	}
 	return nil
