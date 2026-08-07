@@ -609,7 +609,7 @@ func repoPayload(repo string, r repository, defaultBranchSha string) entity.Obj 
 		// this design forbids. A charter that wants them paired joins on this and writes a
 		// derived entity, as scripts/lineage.sh does.
 		"cloneUrl": r.CloneURL, "sshUrl": r.SSHURL,
-		"description": r.Description, "homepage": r.Homepage, "url": r.HTMLURL,
+		"description": text(r.Description), "homepage": r.Homepage, "url": r.HTMLURL,
 	} {
 		if v != "" {
 			p[k] = v
@@ -636,7 +636,7 @@ func issuePayload(repo string, i issue) entity.Obj {
 	}
 	for k, v := range map[string]string{
 		"url": i.HTMLURL, "createdAt": i.CreatedAt, "updatedAt": i.UpdatedAt,
-		"closedAt": i.ClosedAt, "stateReason": i.StateReason, "body": i.Body,
+		"closedAt": i.ClosedAt, "stateReason": i.StateReason, "body": text(i.Body),
 	} {
 		if v != "" {
 			p[k] = v
@@ -675,7 +675,7 @@ func pullPayload(repo string, p pull) entity.Obj {
 	}
 	for k, v := range map[string]string{
 		"url": p.HTMLURL, "createdAt": p.CreatedAt, "updatedAt": p.UpdatedAt,
-		"closedAt": p.ClosedAt, "mergedAt": p.MergedAt, "body": p.Body,
+		"closedAt": p.ClosedAt, "mergedAt": p.MergedAt, "body": text(p.Body),
 	} {
 		if v != "" {
 			out[k] = v
@@ -749,7 +749,7 @@ func discussionPayload(repo string, d discussion) entity.Obj {
 	}
 	for k, v := range map[string]string{
 		"url": d.URL, "createdAt": d.CreatedAt, "updatedAt": d.UpdatedAt,
-		"closedAt": d.ClosedAt, "body": d.Body,
+		"closedAt": d.ClosedAt, "body": text(d.Body),
 	} {
 		if v != "" {
 			p[k] = v
@@ -774,7 +774,7 @@ func commentPayload(repo string, c comment, kind string) entity.Obj {
 		p["author"] = c.User.Login
 	}
 	for k, v := range map[string]string{
-		"body": c.Body, "url": c.HTMLURL,
+		"body": text(c.Body), "url": c.HTMLURL,
 		"createdAt": c.CreatedAt, "updatedAt": c.UpdatedAt,
 	} {
 		if v != "" {
@@ -802,6 +802,25 @@ func userLogins(us []user) []string {
 		}
 	}
 	return sorted(out)
+}
+
+// text normalises a free-text field from GitHub — a body, a comment — to LF line endings.
+//
+// NOT COSMETIC. GitHub's web UI submits CRLF, so nearly every comment body carries `\r\n`, and a
+// string containing one renders as a tony block scalar whose NEXT SIBLING KEY comes back at
+// column zero: the document is then imbalanced and verse refuses the whole reflection as
+// undecodable. Every pass fails, the slice freezes at whatever it last held, and the source
+// looks alive while reflecting nothing — which is exactly how this was found, against a real
+// repository, one comment after it started working.
+//
+// Filed upstream as item 21 of tony-format#f69agjyeh12ksa25cnn0. The normalisation is worth
+// having regardless of the fix: a line ending is a convention of whatever typed the text, not a
+// fact about it, and a charter matching a body should not have to know which.
+func text(s string) string {
+	if !strings.ContainsRune(s, '\r') {
+		return s
+	}
+	return strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s)
 }
 
 // sorted returns the list in one order, so a re-read of the same item is not a change.

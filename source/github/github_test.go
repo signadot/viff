@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
@@ -1138,5 +1139,57 @@ func TestATargetedCommentPassAgreesAndCoversOnlyItself(t *testing.T) {
 	if len(gone.Entities) != 0 || len(gone.Covers) != 1 {
 		t.Fatalf("a deleted comment answered %d entities under %d covers",
 			len(gone.Entities), len(gone.Covers))
+	}
+}
+
+// A REFLECTION CARRYING A REAL COMMENT BODY HAS TO SURVIVE THE WIRE, which is not the same
+// question as whether the payload is right — and it is the one that was wrong.
+//
+// GitHub's web UI submits CRLF, so nearly every comment body carries `\r\n`. A string holding
+// one renders as a tony block scalar whose next sibling key comes back at column zero, the
+// document is imbalanced, and verse refuses the whole reflection as undecodable: every pass
+// fails, the slice freezes at whatever it last held, and `verse source` shows a source that is
+// alive and reflecting nothing. Found against a real repository, one comment after it started
+// working. Upstream: item 21 of tony-format#f69agjyeh12ksa25cnn0.
+//
+// Asserted through the ENCODE AND PARSE that the HTTP contract does, rather than on the payload,
+// because a payload that is right and unserialisable is exactly what this was.
+func TestARealCommentBodySurvivesTheWire(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.pr(1, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	// What GitHub actually sends: CRLF, and a trailing one.
+	r.comment(900, 1, "test 2\r\n", false, "2026-01-02T00:00:00Z")
+	r.comment(901, 1, "a\r\nb\r\n", true, "2026-01-03T00:00:00Z")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	rn, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := codec.ToNode(rn)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	wire, err := codec.NodeBytes(node, codec.Tony)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	parsed, err := codec.ParseNode(wire, codec.Tony)
+	if err != nil {
+		t.Fatalf("a reflection carrying a real comment body did not survive the wire: %v\n%s",
+			err, wire)
+	}
+	var back source.Reflection
+	if err := codec.FromNode(parsed, &back); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(back.Entities) != len(rn.Entities) {
+		t.Fatalf("the wire lost entities: %d of %d", len(back.Entities), len(rn.Entities))
+	}
+	// And the body is the text, with the line endings normalised rather than mangled.
+	got := payloads(back)["github:comment:acme/app#1/901"]
+	if got == nil || got["body"] != "a\nb\n" {
+		t.Fatalf("comment body = %q", got["body"])
 	}
 }
