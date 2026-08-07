@@ -28,6 +28,9 @@ type fakeGitHub struct {
 
 	requests    int // every request that reached a handler
 	notModified int // those answered 304
+	// failWith makes every request answer with this status, which is how a test asks what a
+	// source does when GitHub is refusing rather than when it is empty.
+	failWith int
 }
 
 type fakeRepo struct {
@@ -154,6 +157,13 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	f.requests++
 	f.mu.Unlock()
 
+	f.mu.Lock()
+	fail := f.failWith
+	f.mu.Unlock()
+	if fail != 0 {
+		http.Error(w, `{"message":"API rate limit exceeded"}`, fail)
+		return
+	}
 	if r.Header.Get("Authorization") != "Bearer test-token" {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
 		return

@@ -63,6 +63,20 @@ type Config struct {
 	Settled, MaxOpen int
 	// Runs is how many of a repository's most recent workflow runs it keeps (0 → DefaultRuns).
 	Runs int
+	// SkipDiscussions stops this source reading discussions at all, and is the one lever the
+	// budget measurement turned up.
+	//
+	// Every REST read here is conditional and a 304 does not count against the rate limit, so a
+	// repository where nothing happened costs nothing — except for discussions, which are
+	// GraphQL, and a POST carries no ETag. Measured, that is the whole of a warm pass: two
+	// chargeable requests out of nine issued, both of them discussions. So a deployment that
+	// does not care about them reflects an effectively unbounded number of repositories on one
+	// token, and one that does is capped near forty. Nothing else moves that number.
+	//
+	// Skipping drops the discussion covers with the entities, exactly as an unavailable read
+	// does: a source that says nothing about discussions must not be read as saying there are
+	// none, or turning this on would tombstone every discussion it had reflected.
+	SkipDiscussions bool
 
 	// Base overrides the API root (GitHub Enterprise Server, or a test server). HTTPClient
 	// overrides the transport.
@@ -74,13 +88,14 @@ type Config struct {
 
 // GitHub is the Source.
 type GitHub struct {
-	api     *api
-	system  string
-	repos   []string // `<org>/<name>`, sorted, so two passes answer in one order
-	settled int
-	maxOpen int
-	runs    int
-	log     func(string, ...any)
+	api      *api
+	system   string
+	repos    []string // `<org>/<name>`, sorted, so two passes answer in one order
+	settled  int
+	maxOpen  int
+	runs     int
+	noDiscus bool
+	log      func(string, ...any)
 }
 
 var _ source.Source = (*GitHub)(nil)
@@ -100,12 +115,13 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 			"reflects nothing would install, claim nothing, and never write")
 	}
 	g := &GitHub{
-		api:     newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
-		system:  cfg.System,
-		settled: cfg.Settled,
-		maxOpen: cfg.MaxOpen,
-		runs:    cfg.Runs,
-		log:     cfg.Log,
+		api:      newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
+		system:   cfg.System,
+		settled:  cfg.Settled,
+		maxOpen:  cfg.MaxOpen,
+		runs:     cfg.Runs,
+		noDiscus: cfg.SkipDiscussions,
+		log:      cfg.Log,
 	}
 	if g.system == "" {
 		g.system = DefaultSystem
@@ -466,6 +482,9 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 // cover the closed set as a window while carrying nothing of it, which tombstones every closed
 // discussion the repository has. The covers are declared by the caller only when this returns.
 func (g *GitHub) readDiscussions(ctx context.Context, repo string) ([]discussion, error) {
+	if g.noDiscus {
+		return nil, errDiscussionsSkipped
+	}
 	live, err := g.api.listDiscussions(ctx, repo, "OPEN", g.maxOpen, 0)
 	if err != nil {
 		return nil, err
@@ -476,6 +495,11 @@ func (g *GitHub) readDiscussions(ctx context.Context, repo string) ([]discussion
 	}
 	return append(live, settled...), nil
 }
+
+// errDiscussionsSkipped is the operator having turned discussions off, which reaches converge by
+// the same route an unavailable read does: covers dropped, entities dropped, whatever is
+// standing left alone.
+var errDiscussionsSkipped = fmt.Errorf("github: discussions are switched off for this source")
 
 // checksByHeadSHA reduces the runs to one answer per head sha: what CI most recently said about
 // that commit.

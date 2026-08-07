@@ -186,14 +186,35 @@ so what is left here is proving it behaves and finding out what it bought.
 - **Losing the cache costs one full read**, never correctness.
 - `source.Throttle` stays as the backstop for the burst case.
 
-**Proves:** a 304 produces the same reflection as the 200 before it and issues no further
-requests; an error passes through and leaves the cache alone; a cold cache reflects identically
-to a warm one. And the arithmetic in the note gets a measurement: requests per pass per repo,
-against the 5,000/hour a PAT has.
+**Proves:** a 304 produces the same reflection as the 200 before it; an error passes through and
+leaves the cache alone; a cold source answers what a warm one does, which is what makes losing
+the cache cost work rather than correctness.
 
-**Name the number before reading it**: what requests-per-hour-per-repo would make a PAT
-insufficient for the deployment we actually want, and therefore make GitHub App auth the next
-piece of work rather than a deferred one.
+### Measured, against thresholds named first
+
+The thresholds were written down before the numbers were read: a warm pass at most **3**
+chargeable requests per repository, a cold one at most **12**. Chargeable is issued less those
+answered 304, because that is what the rate limit counts.
+
+| per repository per pass | chargeable | issued |
+|---|---|---|
+| cold (first pass, or after a restart) | 9 | 11 |
+| warm (nothing changed) | **2** | 9 |
+| warm, `-discussions=false` | **0** | 7 |
+
+**The entire steady-state budget is discussions**, and nothing else moves it. Every REST read
+here is conditional and a 304 does not count against the limit, so seven of the nine requests a
+warm pass issues are free; the two that are not are the discussions queries, which are GraphQL,
+and a POST carries no ETag. At a one-minute resync that is 120 chargeable an hour per repository,
+so a personal token covers about **40 repositories** — against the note's estimate of twenty,
+which assumed no caching at all.
+
+So the decision the numbers inform is not GitHub App auth. It is a flag: `SkipDiscussions` takes
+a quiet repository to nothing chargeable, which makes the number of repositories one token
+reflects effectively unbounded for a deployment that does not want them. App auth moves from
+deferred to next only for a deployment that wants discussions on more than about forty
+repositories — which is a sharper trigger than the one the note left, and a smaller piece of work
+than the one it was going to justify.
 
 ### 6. `sourced github`, and the drive
 

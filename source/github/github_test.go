@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -726,5 +727,201 @@ func TestAClosedDiscussionIsWindowed(t *testing.T) {
 	}
 	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#1"}); !ok {
 		t.Fatal("the settled window reached an open discussion")
+	}
+}
+
+// ── the budget ───────────────────────────────────────────────────────────────
+
+// THE THRESHOLDS, NAMED BEFORE THE NUMBERS ARE READ, because one chosen after seeing the data is
+// not a threshold. A personal token has 5,000 requests an hour and verse resyncs every minute,
+// so 60 passes an hour share that: about 83 chargeable requests per pass across every repository
+// a deployment reflects.
+//
+//   - A WARM pass — nothing changed since the last one — must cost at most 3 chargeable
+//     requests per repository. GitHub does not count a 304 against the primary limit, and the
+//     whole reason conditional requests were built in at step 1 rather than bolted on at this
+//     one is that a quiet repository should cost nearly nothing. Anything above this means an
+//     endpoint is not caching and the arithmetic in the note collapses.
+//   - A COLD pass — the first one, or after a restart — must cost at most 12. It happens once,
+//     and it is what a cache costs to fill.
+//
+// Below those, the note's ~20 repositories per token stands; above them it does not, and GitHub
+// App auth stops being deferred and becomes the next piece of work.
+const (
+	warmBudgetPerRepo = 3
+	coldBudgetPerRepo = 12
+)
+
+// TestTheBudgetAPassCosts measures what a pass spends, warm and cold, and holds it to the
+// thresholds above.
+//
+// It counts CHARGEABLE requests — issued less those answered 304 — because that is what the rate
+// limit counts and what decides how many repositories a token covers. Requests issued is the
+// wrong number to optimise: a pass that asks ten times and is answered 304 ten times has spent
+// nothing.
+func TestTheBudgetAPassCosts(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.pr(2, "a change", "open", "2026-01-02T00:00:00Z", "cafe1234")
+	r.run(3, "ci", "completed", "success", "cafe1234")
+	r.discussion(4, "a question", false, "2026-01-03T00:00:00Z")
+
+	// The credential check at startup fills part of the cache, so the cold pass is measured
+	// from a source that has just been built — which is what a restart looks like.
+	before, beforeNM := f.counts()
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	if _, err := src.Reflect(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	after, afterNM := f.counts()
+	cold := (after - before) - (afterNM - beforeNM)
+
+	before, beforeNM = after, afterNM
+	if _, err := src.Reflect(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	after, afterNM = f.counts()
+	warm := (after - before) - (afterNM - beforeNM)
+	issued := after - before
+
+	t.Logf("per repository per pass: cold %d chargeable; warm %d chargeable of %d issued",
+		cold, warm, issued)
+	t.Logf("at a one-minute resync that is %d chargeable an hour warm, so a 5,000/hour token "+
+		"covers about %d repositories", warm*60, 5000/max(warm*60, 1))
+
+	if cold > coldBudgetPerRepo {
+		t.Fatalf("a cold pass costs %d chargeable requests, over the %d named above",
+			cold, coldBudgetPerRepo)
+	}
+	if warm > warmBudgetPerRepo {
+		t.Fatalf("a warm pass costs %d chargeable requests, over the %d named above — an "+
+			"endpoint is not caching, and the note's arithmetic does not hold", warm, warmBudgetPerRepo)
+	}
+	if warm >= issued {
+		t.Fatal("no request was answered 304, so nothing is being cached at all")
+	}
+}
+
+// A warm pass answers what the cold one did. A cache that drifted from the truth would be worse
+// than no cache: converge compares the answer against the store, so a stale 304 body is an
+// entity quietly frozen at whatever it was.
+func TestAWarmPassAnswersWhatTheColdOneDid(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.pr(2, "a change", "open", "2026-01-02T00:00:00Z", "cafe1234")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	first, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := payloads(first), payloads(second)
+	if len(a) != len(b) {
+		t.Fatalf("cold answered %d entities, warm answered %d", len(a), len(b))
+	}
+	for ref, want := range a {
+		if !entity.Equal(want.Payload(), b[ref].Payload()) {
+			t.Fatalf("%s differs between a cold and a warm pass:\n cold %v\n warm %v", ref, want, b[ref])
+		}
+	}
+
+	// And a cold source reflecting the same fixture answers the same thing, which is what makes
+	// losing the cache cost work rather than correctness.
+	cold := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	third, err := cold.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := payloads(third)
+	for ref, want := range a {
+		if !entity.Equal(want.Payload(), c[ref].Payload()) {
+			t.Fatalf("%s differs on a source with no cache:\n warm %v\n cold %v", ref, want, c[ref])
+		}
+	}
+}
+
+// A FAILURE IS NEVER CACHED, and never answered from the cache either. This is the law the whole
+// seam turns on: an empty answer carrying covers is an instruction to tombstone everything under
+// them, so a source that turned a bad minute into "the repository has no issues" would delete a
+// slice — and one that cached that would keep deleting it.
+func TestAFailureIsNotCachedAndDoesNotAnswerFromTheCache(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	if _, err := src.Reflect(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// GitHub starts refusing. The pass fails rather than answering from what it holds.
+	f.failWith = http.StatusForbidden
+	if _, err := src.Reflect(context.Background(), entity.Ref{}); err == nil {
+		t.Fatal("a refused pass answered anyway, from the cache")
+	}
+
+	// And the refusal left the cache alone: when GitHub recovers, the entity is still there.
+	f.failWith = 0
+	rn, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payloads(rn)["github:issue:acme/app#1"] == nil {
+		t.Fatalf("a failure poisoned the cache: %v", payloads(rn))
+	}
+}
+
+// The lever the budget measurement turned up: discussions are the whole of a warm pass's cost,
+// because they are GraphQL and a POST carries no ETag. Switching them off takes a quiet
+// repository to nothing at all.
+//
+// And it must not read as "there are no discussions": a source saying nothing about them drops
+// the covers with the entities, or turning this on would tombstone every discussion it had
+// already reflected.
+func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	r.issue(1, "an issue", "open", "2026-01-01T00:00:00Z")
+	r.discussion(9, "a question", false, "2026-01-02T00:00:00Z")
+	store := entitytest.Store(t)
+
+	with := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	rf := source.NewReflector(with, store, 0)
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	disc := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#9"}
+	if _, ok, _ := store.Get(disc); !ok {
+		t.Fatal("the discussion was not reflected in the first place")
+	}
+
+	// The operator switches them off, and what was reflected stays.
+	without := newSource(t, f, github.Config{Repos: []string{"acme/app"}, SkipDiscussions: true})
+	rf2 := source.NewReflector(without, store, 0)
+	if err := rf2.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := store.Get(disc); !ok {
+		t.Fatal("switching discussions off deleted what was already reflected")
+	}
+
+	// And a warm pass now costs nothing chargeable at all.
+	if _, err := without.Reflect(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	before, beforeNM := f.counts()
+	if _, err := without.Reflect(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	after, afterNM := f.counts()
+	chargeable := (after - before) - (afterNM - beforeNM)
+	t.Logf("warm pass with discussions off: %d chargeable of %d issued", chargeable, after-before)
+	if chargeable != 0 {
+		t.Fatalf("a warm pass with discussions off still costs %d chargeable requests", chargeable)
 	}
 }
