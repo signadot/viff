@@ -146,7 +146,7 @@ check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is ab
 check: check-generate check-json check-mermaid ## every static check (what CI should run before the tests)
 
 .PHONY: smoke
-smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on a free port)
+smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an ephemeral port)
 	@./smoke.sh
 
 # Note the difference from smoke: smoke builds its own binaries and its own server and

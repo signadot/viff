@@ -5,14 +5,14 @@
 #
 # It builds throwaway `verse` + `o` binaries (o is the pinned go-tony daemon runner, built
 # from this module — so bringing up logd+docd needs no external dependency) and runs its own
-# `verse up` on a free port with a private data dir. Hermetic: it forces the scripted driver,
-# so no LLM creds and no network. It never touches a dev server on :9797, and a trap reaps the
-# server (and its daemon tree) plus the temp dir on exit.
+# `verse up` on an ephemeral port with a private data dir. Hermetic: it forces the scripted
+# driver, so no LLM creds and no network. It never touches a dev server on :9797, and a trap
+# reaps the server (and its daemon tree) plus the temp dir on exit.
 #
 # Every check is fatal except the two noted as best-effort. Exits non-zero on the first failure.
 #
 #   ./smoke.sh              # or: make smoke
-#   PORT=20000 ./smoke.sh   # pin the base port (default: search up from 19797)
+#   PORT=20000 ./smoke.sh   # pin the port (default: whichever one the kernel hands out)
 #
 set -euo pipefail
 
@@ -34,22 +34,6 @@ has()  { printf '%s' "$1" | grep -qF -- "$2"; }
 # would be asserting that JSON payloads fail — which is not a property worth protecting.
 haskv() { printf '%s' "$1" | grep -qE "\"?$2\"?[[:space:]]*:[[:space:]]*\"?$3\"?"; }
 
-# ── a free TCP port (avoids clobbering a dev server) ─────────────────────────
-free_port() {
-	local p=${PORT:-19797} i
-	for i in $(seq 0 50); do
-		# a successful connect means something is listening → busy; try the next.
-		if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then
-			printf '%s' "$p"
-			return 0
-		fi
-		exec 3>&- 2>/dev/null || true
-		p=$((p + 1))
-	done
-	die "no free port found near ${PORT:-19797}"
-}
-ADDR="127.0.0.1:$(free_port)"
-
 # ── build throwaway binaries (verse + the pinned daemon runner) ──────────────
 step "build (verse + pinned o)"
 tmp=$(mktemp -d)
@@ -66,6 +50,40 @@ trap cleanup EXIT INT TERM
 go build -o "$BIN" ./cmd/verse || die "go build ./cmd/verse failed"
 go build -o "$tmp/o" github.com/signadot/tony-format/go-tony/cmd/o || die "go build o failed"
 ok "built verse + o"
+
+# ── the listen address: an ephemeral port, from the kernel ───────────────────
+# Reserve-and-release, the same trick cmd/verse/docd.go plays for the daemons: bind :0, read
+# back whichever port the kernel picked, drop it, and hand it to `verse up` a moment later.
+# It replaces a scan upward from a fixed 19797, which two smokes started side by side (two
+# worktrees, say) would both walk to the same answer before either of them bound it. Go is
+# already a hard dependency here, so this costs nothing a shell probe would not.
+free_port() {
+	cat >"$tmp/freeport.go" <<'GO'
+package main
+
+import (
+	"fmt"
+	"net"
+)
+
+func main() {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	_, port, _ := net.SplitHostPort(l.Addr().String())
+	fmt.Print(port)
+}
+GO
+	go run "$tmp/freeport.go"
+}
+# PORT pins it outright — an escape hatch for a run you want to watch from another terminal.
+if [ -n "${PORT:-}" ]; then
+	ADDR="127.0.0.1:$PORT"
+else
+	ADDR="127.0.0.1:$(free_port)" || die "could not reserve an ephemeral port"
+fi
 v() { "$BIN" --addr "$ADDR" "$@"; }
 
 # ── start the monolith on its own logd+docd ──────────────────────────────────
