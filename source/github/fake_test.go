@@ -194,8 +194,9 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 			"full_name": name, "name": parts[2], "owner": map[string]any{"login": parts[1]},
 			"private": repo.private, "archived": false, "fork": false,
 			"default_branch": repo.defaultBranch, "clone_url": repo.cloneURL,
-			"ssh_url":  "git@github.com:" + name + ".git",
-			"html_url": "https://github.com/" + name,
+			"has_discussions": !repo.discussionsOff && len(repo.discussions) > 0,
+			"ssh_url":         "git@github.com:" + name + ".git",
+			"html_url":        "https://github.com/" + name,
 		})
 	case len(rest) >= 3 && rest[0] == "git" && rest[1] == "ref":
 		if repo.sha == "" {

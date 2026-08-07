@@ -176,7 +176,7 @@ sourced github -repo <org>/<name>   a repository to reflect (repeatable, comma-s
                -settled <n>         closed issues, PRs and discussions kept per repo (default 50)
                -runs <n>            workflow runs kept per repo (default 50)
                -max-open <n>        refuse a repo with more open items than this (default 2000)
-               -discussions         reflect discussions (default true)
+               -discussions         reflect discussions (default false)
 ```
 
 | environment | |
@@ -220,9 +220,16 @@ it costs no request. A PR whose head has no run in the window carries no `checks
 conditional and a 304 does not count against the rate limit, so a repository where nothing
 happened costs nothing — except discussions, which are GraphQL and carry no ETag: two chargeable
 requests per repository per pass, which is what caps one token at about forty repositories.
-`-discussions=false` takes a warm pass to zero. Switching them off, or a repository with the
-feature disabled, or a refused read, all drop the discussion covers *with* the entities, leaving
-what is standing alone — rather than reading an empty answer as "there are none".
+So they are **off by default**: they are opt-in per repository on GitHub's side, so most
+repositories have none, and a source that asked anyway would spend the whole of a quiet
+repository's budget being told so. With them on, a repository that does not have them still
+costs nothing — the `has_discussions` field rides the repository read, which is conditional and
+free on a warm pass, so the GraphQL query is skipped without asking.
+
+Switching them off, or a repository with the feature disabled, or a refused read, all drop the
+discussion covers *with* the entities, leaving what is standing alone — rather than reading an
+empty answer as "there are none". Which is also why flipping them off after they have been
+reflected leaves what was written standing, frozen: nothing covers it, so nothing tombstones it.
 
 ## Deploying them
 

@@ -31,10 +31,12 @@ func githubMain(args []string) error {
 	maxOpen := fs.Int("max-open", github.DefaultMaxOpen,
 		"refuse a repository with more open items than this, rather than answer partially "+
 			"for a slice the answer claims to cover completely")
-	discussions := fs.Bool("discussions", true,
-		"reflect discussions. They are GraphQL, so they carry no ETag and are the whole of what "+
-			"a quiet repository costs against the rate limit — off, a pass that changes nothing "+
-			"is free")
+	discussions := fs.Bool("discussions", false,
+		"reflect discussions. Off by default: they are GraphQL, so they carry no ETag and are "+
+			"the whole of what a quiet repository costs against the rate limit, and they are "+
+			"opt-in per repository on GitHub's side so most repositories have none. On, a "+
+			"repository that does have them costs two requests a pass and one that does not "+
+			"still costs nothing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

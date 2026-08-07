@@ -188,12 +188,16 @@ type repository struct {
 	Archived      bool                   `json:"archived"`
 	Fork          bool                   `json:"fork"`
 	DefaultBranch string                 `json:"default_branch"`
-	Description   string                 `json:"description"`
-	Homepage      string                 `json:"homepage"`
-	Topics        []string               `json:"topics"`
-	CloneURL      string                 `json:"clone_url"`
-	SSHURL        string                 `json:"ssh_url"`
-	HTMLURL       string                 `json:"html_url"`
+	// HasDiscussions is what stops this connector paying for discussions on a repository that
+	// does not have them. It rides the repository read, which is conditional and free on a warm
+	// pass, where the GraphQL query answering the same question is neither.
+	HasDiscussions bool     `json:"has_discussions"`
+	Description    string   `json:"description"`
+	Homepage       string   `json:"homepage"`
+	Topics         []string `json:"topics"`
+	CloneURL       string   `json:"clone_url"`
+	SSHURL         string   `json:"ssh_url"`
+	HTMLURL        string   `json:"html_url"`
 }
 
 // gitRef is `GET /repos/{o}/{r}/git/ref/heads/{branch}` — the one git-shaped fact this source

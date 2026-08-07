@@ -77,9 +77,9 @@ build:
     # reflects nothing, claims nothing and never writes, so it refuses to start.
     githubRepos: ""
     # Discussions are GraphQL and carry no ETag, so they are the whole of what a quiet
-    # repository costs against the rate limit. false takes a warm pass to zero chargeable
-    # requests — see docs/working/gh-source-plan.md.
-    githubDiscussions: true
+    # repository costs against the rate limit — and they are opt-in per repository on GitHub's
+    # side, so most repositories have none. Off by default; see docs/working/gh-source-plan.md.
+    githubDiscussions: false
     githubWebhookHost: ""
 
     # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
