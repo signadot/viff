@@ -10,6 +10,13 @@
 // It is the same trick taskd plays for runners, for the same reason: verse's own
 // in-process source is the same value behind the same handler, so there is no privileged
 // local path for a deployed one to differ from.
+//
+// BOTH ROUTES ANSWER IN THE WIRE FORM, because this is a payload one program sends another and
+// that is what the wire form is for — logd, docd and `o` already speak it. The pretty rendering
+// is a presentation, and presentation carries hazards a machine has no use for: it is
+// indentation-sensitive, and a comment body ending a line in whitespace once produced a
+// reflection verse could not read back, from a source that believed it had answered. Nothing
+// about a reflection wants to be laid out; `verse source check` is where a person reads one.
 package sourced
 
 import (
@@ -41,7 +48,7 @@ func (d *Daemon) Handler() http.Handler {
 // describe answers what this program is. It has no effect on the source, which is what makes
 // it usable as the install probe.
 func (d *Daemon) describe(w http.ResponseWriter, r *http.Request) {
-	codec.Write(w, r, http.StatusOK, source.Describe(d.src))
+	codec.WriteWire(w, r, http.StatusOK, source.Describe(d.src))
 }
 
 // reflect answers what the source sees for the slice ?ref names — absent is the zero ref,
@@ -69,5 +76,5 @@ func (d *Daemon) reflect(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusInternalServerError, "reflect: "+err.Error())
 		return
 	}
-	codec.Write(w, r, http.StatusOK, rn)
+	codec.WriteWire(w, r, http.StatusOK, rn)
 }

@@ -89,6 +89,40 @@ func Write(w http.ResponseWriter, r *http.Request, code int, v any) {
 	WriteNode(w, r, code, node)
 }
 
+// WriteWire writes v as a WIRE document: the same format the client negotiated, rendered
+// compact and on a single line.
+//
+// For a payload one program sends another, which is what the wire form is for and where logd,
+// docd and `o` already use it. The pretty rendering is a presentation of a document, and
+// presentation has hazards a machine has no use for: it is indentation-sensitive, it chooses
+// block scalars for multi-line strings, and a string ending a line in whitespace once made the
+// next sibling key land at column zero — a document verse could not read back, sent by a source
+// that thought it had answered (source/github, and item 21 of
+// tony-format#f69agjyeh12ksa25cnn0). Wire has no indentation to get wrong.
+//
+// The FORMAT is still negotiated, because wire-ness is orthogonal to it: a client asking for
+// YAML gets compact YAML, and one asking for something verse does not render still gets 406.
+func WriteWire(w http.ResponseWriter, r *http.Request, code int, v any) {
+	node, err := ToNode(v)
+	if err != nil {
+		HTTPError(w, r, http.StatusInternalServerError, "encoding the response: "+err.Error())
+		return
+	}
+	f, err := ResponseFormat(r)
+	if err != nil {
+		HTTPError(w, r, http.StatusNotAcceptable, err.Error())
+		return
+	}
+	body, err := NodeBytesWire(node, f)
+	if err != nil {
+		HTTPError(w, r, http.StatusInternalServerError, "encoding the response: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", MediaType(f))
+	w.WriteHeader(code)
+	_, _ = w.Write(body)
+}
+
 // WriteNode writes an already-built document.
 //
 // A client that demanded a rendering verse does not produce gets 406 rather than the
