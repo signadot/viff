@@ -108,6 +108,10 @@ A=a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
 B=d4e5f60718293a4b5c6d7e8f901234567890abcd
 C=90abcdef1234567890abcdef1234567890abcdef
 
+# The subject this run is about, spelled once. It is a merged pull request in the seed below,
+# and everything that asks about the correlation asks about this.
+PR="github:pr:acme/widget#42"
+
 TRIGGERS=(lin-pr-lineage lin-release-manifest)
 STRATA=(lin-source lin-change lin-trace)
 ENTITIES=(
@@ -131,7 +135,7 @@ if $clean; then
 	ok "removed the entities — derived ones, and every release a run cut"
 	for s in "${STRATA[@]}"; do v stratum remove "$s" >/dev/null 2>&1 || true; done
 	ok "removed the ordering"
-	printf '\nwhat this script wrote is gone. The tasks it started are left where they are —\nthey are the record that they ran, and the next run counts them to pick its release.\n'
+	printf '\nwhat this script wrote is gone. The tasks it started are left where they are —\nthey are the record that they ran, and removing one would not make the engine forget\nit anyway. The next run keys its release on the store revision, so it does not care.\n'
 	exit 0
 fi
 
@@ -259,7 +263,7 @@ v entity put "git:commit:widget/$B" "{sha: $B, msg: \"fix the docket label\", au
 v entity put "git:commit:widget/$C" "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
 ok "three commits — git ids them <repo>/<sha>, because a sha alone is not a cross-repo key"
 
-v entity put "github:pr:acme/widget#42" "{merged: true,  headSha: $A, base: main, title: \"token TTL\",       number: 42, repo: acme/widget, state: closed}" >/dev/null
+v entity put "$PR" "{merged: true,  headSha: $A, base: main, title: \"token TTL\",       number: 42, repo: acme/widget, state: closed}" >/dev/null
 v entity put "github:pr:acme/widget#45" "{merged: true,  headSha: $C, base: main, title: \"gate vector\",     number: 45, repo: acme/widget, state: closed}" >/dev/null
 v entity put "github:pr:acme/widget#43" "{merged: true,  headSha: $B, base: next, title: \"docket label\",    number: 43, repo: acme/widget, state: closed}" >/dev/null
 v entity put "github:pr:acme/widget#44" "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
@@ -268,20 +272,28 @@ note "a pull request carries a BARE headSha, and the commit's id has a repo in f
 
 # ── the correlation, which is a derived entity ───────────────────────────────
 step "the link verse writes, and the id it gives it"
-until_ok 100 "the trace never landed — is the engine running?" \
-	bash -c "$BIN ${scope[*]} entities --system lineage -o tony 2>/dev/null | grep -qF 'github:pr:acme/widget#42'"
-# Found by asking each trace what it is ABOUT, not by finding the subject's id inside the
-# address — because it is not in there to find. `#` and `/` are sanitised to `_` and a short
-# hash is appended, so the address is not constructible by string surgery on the subject.
-# Anything that wants the trace for a subject asks for it; it does not spell it.
+# ASKED AS ONE QUESTION, retried — not "wait for the id to appear somewhere" and then a
+# separate lookup, which is two questions with a gap in the middle and was flaky exactly
+# there: the wait passed on a trace from an earlier run while this run's rewrite was in
+# flight, and the lookup that followed found nothing.
+#
+# And it asks what a trace is ABOUT rather than looking for the subject inside the address,
+# because it is not in there to find: `#` and `/` are sanitised to `_` and a short hash is
+# appended so the sanitising cannot collapse two subjects. Nothing can spell a trace's
+# address from its subject; the engine writes the linkage at `verse.meta.derivedFrom`.
 tref=
-for t in $(v entity --system lineage -o tony | sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | tr -d '"'); do
-	if v entity get "$t" -o tony | grep -qF 'subject: "github:pr:acme/widget#42"'; then
-		tref=$t
-		break
-	fi
+for _ in $(seq 1 100); do
+	for t in $(v entity --system lineage -o tony 2>/dev/null |
+		sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | tr -d '"'); do
+		if v entity get "$t" -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
+			tref=$t
+			break 2
+		fi
+	done
+	sleep 0.2
 done
-[ -n "$tref" ] || die "a trace landed but none is about github:pr:acme/widget#42"
+[ -n "$tref" ] ||
+	die "no trace about $PR — is the engine running, and did lin-pr-lineage install?"
 ok "$tref"
 v entity get "$tref"
 printf '\n'
@@ -303,12 +315,26 @@ step "the release: three ids reassembled without a fourth"
 # release addresses the task that already ran and the engine returns it instead of starting a
 # second (docs/working/spawn-repeat-policy.md). A new release is a new subject, so it is a new
 # task and a new flow — which is also what releases do in life.
-# Counted from the TASKS that have run, not the releases in the store: a --clean removes
-# the releases but the engine still holds the task each one started, and a subject whose
-# task it already has is the case above. Counting what actually blocks keeps this correct
-# however many times the script is run or cleaned.
-n=$(v entity --system task -o tony 2>/dev/null | grep -c 'ref: task:instance:lin-release-manifest@' || true)
-REL="lintag:release:v1.4.$n"
+# THE VERSION IS THE STORE REVISION, and that is the whole fix for a race this script had.
+#
+# A release must be a subject THE ENGINE HAS NEVER HAD A TASK FOR. Re-cutting one it has
+# addresses the task that already ran, and the engine returns that task rather than starting a
+# second (docs/working/spawn-repeat-policy.md) — so if it has since finished there is no
+# in-flight work, and the flow this script waits for at the end never appears. Everything
+# before that step is correct, which is what makes it a confusing failure rather than an
+# obvious one.
+#
+# Counting the task entities was the first attempt and is a PROXY, wrong in three ways. A
+# --scope run's task lands in baseline while its release does not. A task entity appears some
+# time after the task starts, so two runs close together count the same number. And deleting a
+# task entity does not make the engine forget the task — the count can be smaller than what
+# the engine holds, which is exactly the case that collides.
+#
+# The store revision has none of those problems: it is verse's own monotonic counter, it moved
+# when this run wrote its seven fixtures a moment ago, and it needs nothing to have caught up.
+rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -d '"')
+[ -n "$rev" ] || die "could not read storeRev — is this verse answering \`$BIN status\`?"
+REL="lintag:release:v1.4.$rev"
 v entity put "$REL" '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \
 	bash -c "$BIN ${scope[*]} entity get '$REL' 2>/dev/null | grep -q shipped"
@@ -333,7 +359,9 @@ ok "#43 is traced but absent: it went onto next, and this release asked for its 
 # The literal question was how these ids live in a FLOW, and the answer is that a flow is
 # keyed by ONE of them. Correlation is what lets that one reach the rest.
 step "the flow, which is keyed by exactly one of them"
-until_ok 150 "no flow appeared for $REL" \
+# If this is what fails, the release is a subject the engine already had a task for — see the
+# loop above, which exists to make that impossible.
+until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse entity get task:instance:lin-release-manifest@$REL)" \
 	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL'"
 v flow
 ok "the flow's subject is $REL — one id, not a merged one"
