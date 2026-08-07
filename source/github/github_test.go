@@ -946,3 +946,53 @@ func TestEverythingFollowsTheChosenSystemIncludingHints(t *testing.T) {
 		t.Fatalf("a delivery hinted %v, want the source's own system", refs)
 	}
 }
+
+// A FULL PASS AND A TARGETED PASS MUST AGREE ABOUT AN ENTITY, and this is the class of bug that
+// makes them not: GitHub answers the same pull request from two endpoints with different field
+// sets. The listing has no comment count; the single-pull read does. Carry it naively and a full
+// pass writes the entity without it, a targeted pass writes it back with it, and every
+// alternation is a write and a trigger firing — a rewrite storm with no upstream change at all.
+//
+// The no-op-pass test cannot catch this, because it only ever runs full passes. So the two are
+// compared directly, and any field either path invents on its own fails here.
+func TestAFullPassAndATargetedPassAgree(t *testing.T) {
+	f := newFake()
+	r := f.repo("acme/app")
+	p := r.pr(7, "a change", "closed", "2026-01-01T00:00:00Z", "cafe1234")
+	p.comments = 4
+	i := r.issue(8, "an issue", "open", "2026-01-02T00:00:00Z")
+	i.comments = 2
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+
+	full, err := src.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	whole := payloads(full)
+
+	for _, tc := range []struct{ kind, ref string }{
+		{"pr", "github:pr:acme/app#7"},
+		{"issue", "github:issue:acme/app#8"},
+	} {
+		num := 7
+		if tc.kind == "issue" {
+			num = 8
+		}
+		one, err := src.Reflect(context.Background(), src.ItemRef(tc.kind, "acme/app", num))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, want := payloads(one)[tc.ref], whole[tc.ref]
+		if want == nil || got == nil {
+			t.Fatalf("%s missing: full=%v targeted=%v", tc.ref, want, got)
+		}
+		if !entity.Equal(got.Payload(), want.Payload()) {
+			t.Fatalf("%s differs between a full pass and a targeted one:\n  full     %v\n  targeted %v",
+				tc.ref, want, got)
+		}
+	}
+	// And the count is actually carried, rather than the two agreeing on nothing.
+	if got := fmt.Sprint(whole["github:pr:acme/app#7"]["comments"]); got != "4" {
+		t.Fatalf("a pull request carries comments = %s, want 4 from the issues listing", got)
+	}
+}

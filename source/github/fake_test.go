@@ -77,6 +77,7 @@ type fakeItem struct {
 	state     string // open | closed
 	updatedAt string // RFC3339, and what `sort=updated` orders by
 	pull      bool
+	comments  int
 	head      string // pulls only
 	headSHA   string
 	labels    []string
@@ -241,7 +242,7 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 			return
 		}
-		f.reply(w, r, item.render(rest[0] == "pulls"))
+		f.reply(w, r, item.renderAs(rest[0] == "pulls", true))
 	default:
 		http.NotFound(w, r)
 	}
@@ -413,19 +414,28 @@ func (f *fakeGitHub) list(repo *fakeRepo, what string, r *http.Request) []map[st
 	return out
 }
 
-func (i *fakeItem) render(asPull bool) map[string]any {
+func (i *fakeItem) render(asPull bool) map[string]any { return i.renderAs(asPull, false) }
+
+func (i *fakeItem) renderAs(asPull, detail bool) map[string]any {
 	labels := make([]map[string]any, 0, len(i.labels))
 	for _, l := range i.labels {
 		labels = append(labels, map[string]any{"name": l})
 	}
 	m := map[string]any{
 		"number": i.number, "title": i.title, "state": i.state,
+		"comments":   i.comments,
 		"updated_at": i.updatedAt, "created_at": "2026-01-01T00:00:00Z",
 		"html_url": "https://github.com/x/y/" + strconv.Itoa(i.number),
 		"user":     map[string]any{"login": "ana"},
 		"labels":   labels,
 	}
 	if asPull {
+		if !detail {
+			// GitHub's pulls LISTING does not carry a comment count; only the single-pull read
+			// does. Reproduced because a fake that answered the same either way would hide the
+			// disagreement this asymmetry causes.
+			delete(m, "comments")
+		}
 		m["draft"] = false
 		m["merged"] = i.state == "closed"
 		m["base"] = map[string]any{"ref": "main", "sha": "bbbb2222"}

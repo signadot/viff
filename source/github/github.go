@@ -324,7 +324,7 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (source.Reflec
 			}
 			return source.Reflection{}, err
 		}
-		rn.Add(g.ItemRef("pr", t.repo, p.Number), pullPayload(t.repo, p))
+		rn.Add(g.ItemRef("pr", t.repo, p.Number), pullPayload(t.repo, p, p.Comments))
 		return rn, nil
 	}
 	var i issue
@@ -404,11 +404,16 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 	if err != nil {
 		return source.Reflection{}, err
 	}
+	// The pull requests in the issues listing are not reflected as issues — one thing under two
+	// kinds sharing a number, and "every open issue" quietly including review traffic — but
+	// they are not thrown away either. The listing carries a comment count that the PULLS
+	// listing does not, so harvesting it here is what lets a pull request carry `comments`
+	// without a request per pull request, and without the field appearing on a targeted pass
+	// and vanishing on a full one.
+	comments := map[int]int{}
 	for _, i := range append(openIssues, closedIssues...) {
 		if i.isPullRequest() {
-			// GitHub returns pull requests from the issues endpoint. Reflecting them here would
-			// put one thing under two kinds sharing a number, and would make "every open issue"
-			// a question that quietly includes review traffic.
+			comments[i.Number] = i.Comments
 			continue
 		}
 		rn.Add(g.ItemRef("issue", repo, i.Number), issuePayload(repo, i))
@@ -465,7 +470,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 	// which is absent rather than wrong.
 	checks := checksByHeadSHA(runs)
 	for _, p := range append(openPulls, closedPulls...) {
-		payload := pullPayload(repo, p)
+		payload := pullPayload(repo, p, comments[p.Number])
 		if p.Head != nil {
 			if c, ok := checks[p.Head.SHA]; ok {
 				payload["checks"] = c
@@ -605,10 +610,13 @@ func issuePayload(repo string, i issue) entity.Obj {
 //
 // `headSha` is the join to a git source: a `git:commit:<repo>/<sha>` is addressed by the same
 // sha, so "the commit this proposes" is a field read rather than a key anybody minted.
-func pullPayload(repo string, p pull) entity.Obj {
+func pullPayload(repo string, p pull, comments int) entity.Obj {
 	out := entity.Obj{
 		"repo": repo, "number": p.Number, "title": p.Title, "state": p.State,
 		"draft": p.Draft, "merged": p.Merged,
+		// Passed in rather than read off p, because the listing this usually comes from does
+		// not carry it and the single-pull read does. See the field's comment in api.go.
+		"comments": comments,
 	}
 	if p.User != nil {
 		out["author"] = p.User.Login

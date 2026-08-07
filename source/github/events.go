@@ -251,7 +251,7 @@ func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (source.
 	}
 	state := runState(r)
 	for _, p := range prs {
-		payload := pullPayload(repo, p)
+		payload := pullPayload(repo, p, p.Comments)
 		payload["checks"] = state
 		rn.Covers = append(rn.Covers, entity.Pattern{
 			System: g.system, Kind: "pr",

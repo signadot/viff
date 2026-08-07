@@ -70,7 +70,7 @@ default and is **the operator's to choose** (`sourced github -system …`) — s
 |---|---|
 | `github:repo:<org>/<name>` | `repo, org, name, private, archived, fork, defaultBranch, defaultBranchSha, cloneUrl, sshUrl`, and `description, topics, homepage` |
 | `github:issue:<org>/<name>#<n>` | `repo, number, title, state, author, url, createdAt, updatedAt`, and `stateReason, assignees, labels, milestone, comments, closedAt, body` |
-| `github:pr:<org>/<name>#<n>` | `repo, number, title, state, draft, author, base, head, headSha, url, createdAt, updatedAt`, and `merged, mergedAt, mergeable, reviewDecision, checks, labels, assignees, comments, closedAt, body` |
+| `github:pr:<org>/<name>#<n>` | `repo, number, title, state, draft, merged, comments, author, base, head, headSha, url, createdAt, updatedAt`, and `mergedAt, checks, labels, assignees, closedAt, body` |
 | `github:discussion:<org>/<name>#<n>` | `repo, number, title, category, state, answered, author, url, createdAt, updatedAt`, and `comments, body` |
 | `github:run:<org>/<name>/<id>` | `repo, id, workflow, event, branch, headSha, status, conclusion, url, startedAt, updatedAt`, and `attempt, actor, runNumber` |
 
@@ -88,6 +88,18 @@ requests as well, distinguished only by a `pull_request` key on the item. Reflec
 same entity from two reads — and it would make "every open issue" a charter's question that
 quietly includes review traffic. So the issue read filters them out and the PR read is separate.
 The number space stays shared and the kinds keep them apart.
+
+**Two endpoints answer for one pull request, and they do not carry the same fields.** The pulls
+LISTING has no comment count; the single-pull read does. Carry such a field naively and a full
+pass writes the entity without it while a targeted pass writes it back with it — every
+alternation a write and a trigger firing, with nothing having changed upstream. `comments` is
+therefore harvested from the ISSUES listing, which returns pull requests too and does carry it,
+and which the pass already fetches: no request, and both paths agree.
+
+That is also why `mergeable` and `reviewDecision` are not here, though an earlier draft of this
+table promised them. `mergeable` is computed lazily and is null on a listing; `reviewDecision` is
+GraphQL-only. Both would arrive on a targeted pass and vanish on a full one, and neither is worth
+a request per pull request to fix.
 
 **Discussions have their own number space**, so `github:issue:org/repo#1` and
 `github:discussion:org/repo#1` are different things with the same number. That is fine — a ref

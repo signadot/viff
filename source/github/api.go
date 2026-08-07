@@ -237,12 +237,18 @@ func (i issue) isPullRequest() bool { return i.PullRequest != nil }
 // base and head of the proposal — which is why pull requests are read from their own endpoint
 // rather than filtered out of the issues one and kept.
 type pull struct {
-	Number    int     `json:"number"`
-	Title     string  `json:"title"`
-	State     string  `json:"state"`
-	Draft     bool    `json:"draft"`
-	Merged    bool    `json:"merged"`
-	MergedAt  string  `json:"merged_at"`
+	Number   int    `json:"number"`
+	Title    string `json:"title"`
+	State    string `json:"state"`
+	Draft    bool   `json:"draft"`
+	Merged   bool   `json:"merged"`
+	MergedAt string `json:"merged_at"`
+	// Comments is on the single-pull READ and not on the listing, which is the whole reason
+	// pullPayload takes it as an argument rather than reading it here: two endpoints answering
+	// with different field sets for one entity is how a payload comes to differ between a full
+	// pass and a targeted one, and an entity that differs between two passes is rewritten by
+	// whichever ran last, forever.
+	Comments  int     `json:"comments"`
 	Body      string  `json:"body"`
 	HTMLURL   string  `json:"html_url"`
 	CreatedAt string  `json:"created_at"`
