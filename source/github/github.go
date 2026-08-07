@@ -804,18 +804,22 @@ func userLogins(us []user) []string {
 	return sorted(out)
 }
 
-// text normalises a free-text field from GitHub — a body, a comment — to LF line endings.
+// text normalises a free-text field from GitHub — a body, a comment, a description — to LF line
+// endings, and nothing more.
 //
-// NOT COSMETIC. GitHub's web UI submits CRLF, so nearly every comment body carries `\r\n`, and a
-// string containing one renders as a tony block scalar whose NEXT SIBLING KEY comes back at
-// column zero: the document is then imbalanced and verse refuses the whole reflection as
-// undecodable. Every pass fails, the slice freezes at whatever it last held, and the source
-// looks alive while reflecting nothing — which is exactly how this was found, against a real
-// repository, one comment after it started working.
+// IT WAS ALSO A WORKAROUND, AND NO LONGER IS. Until go-tony v0.0.119 a multi-line string
+// rendered as a block scalar whose content had a line ending in whitespace — or a trailing blank
+// line — emitted its next sibling key at column zero, so the document verse was handed did not
+// parse and every pass failed. GitHub's web UI submits CRLF, which makes `test 2\r\n` a line
+// ending in whitespace, so a single comment on a real pull request was enough to freeze the
+// whole slice; markdown's hard line break is two trailing spaces, so the next one would have
+// done it again. Item 21 of tony-format#f69agjyeh12ksa25cnn0, fixed in v0.0.119, which is what
+// let the right-trimming and blank-collapsing this used to do come back out — they cost markdown
+// its line break, and they were only ever buying a document that parsed.
 //
-// Filed upstream as item 21 of tony-format#f69agjyeh12ksa25cnn0. The normalisation is worth
-// having regardless of the fix: a line ending is a convention of whatever typed the text, not a
-// fact about it, and a charter matching a body should not have to know which.
+// The LF normalisation stays on its own terms: a line ending is a convention of whatever typed
+// the text rather than a fact about it, and a charter matching a body should not have to know
+// which one the author's editor used.
 func text(s string) string {
 	if !strings.ContainsRune(s, '\r') {
 		return s
