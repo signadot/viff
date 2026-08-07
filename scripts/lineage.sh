@@ -15,7 +15,9 @@
 #   verse source add github:<name> http://localhost:9801  # github:pr:*
 #
 # It needs a MERGED pull request to correlate, and says so and stops if there is none: what a
-# real repository contains is not a script's to arrange.
+# real repository contains is not a script's to arrange. `--closed` relaxes the rule's subject
+# to any closed pull request, which is the wrong lineage semantics — a closed-unmerged PR
+# landed nothing — and is there so a repository with no merged PR can still be watched work.
 #
 # The release is still this script's own entity, and that is not laziness: nothing reflects
 # GitHub releases yet, and a release is the thing a person cuts — so it is the one input the
@@ -51,6 +53,7 @@
 #
 #   ./verse up                        # in another terminal
 #   ./scripts/lineage.sh
+#   ./scripts/lineage.sh --closed     # …correlate CLOSED PRs, for a repo with none merged
 #   ./scripts/lineage.sh --scope me   # …into a copy-on-write scope instead of baseline
 #   ./scripts/lineage.sh --clean      # remove what a previous run wrote
 #
@@ -61,10 +64,12 @@ set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 clean=false
+closed=false
 scope=()
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--clean) clean=true ;;
+	--closed) closed=true ;;
 	--scope)
 		scope=(--scope "$2")
 		shift
@@ -164,18 +169,22 @@ ok "$commits commits and $prs pull request(s), reflected by sources this script 
 
 # The subject this run is about: a merged pull request. Found rather than assumed, because
 # what a real repository contains is not this script's to arrange.
-PR=$(v entity --system github --kind pr --if '{merged: true}' -o tony 2>/dev/null |
+PR=$(v entity --system github --kind pr --if "$PICK" -o tony 2>/dev/null |
 	sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | tr -d '"' | head -1)
 if [ -z "$PR" ]; then
 	printf '\n'
-	note "no MERGED pull request in this verse, so there is nothing for the rule to correlate."
-	note "merge one and run this again — or, to watch the shape without merging anything,"
-	note "edit lin-pr-lineage's subject to { state: closed } and re-run."
+	note "no $WHAT pull request in this verse, so there is nothing for the rule to correlate."
+	if $closed; then
+		note "this repository has no closed pull request either; there is nothing to demonstrate on."
+	else
+		note "merge one and run this again — or run \`$0 --closed\` to correlate closed ones"
+		note "instead, which is the wrong lineage semantics and the right way to watch the shape."
+	fi
 	exit 0
 fi
 SHA=$(v entity get "$PR" -o tony | sed -n 's|^[[:space:]]*headSha:[[:space:]]*||p' | tr -d '"')
 BASE=$(v entity get "$PR" -o tony | sed -n 's|^[[:space:]]*base:[[:space:]]*||p' | tr -d '"')
-ok "$PR — merged into $BASE at $SHA"
+ok "$PR — $WHAT, onto $BASE at $SHA"
 
 # And the commit it proposed, under git's own id, which is `<repo>/<sha>` and not the sha the
 # pull request carries. That mismatch is the reason the rule joins by predicate.
@@ -199,10 +208,23 @@ fi
 # These now name REAL systems, which is a verse-wide statement rather than this script's own
 # business: a stratum over `github` orders every rule anybody writes about it. That is the
 # price of demonstrating on real ids instead of invented ones, and --clean takes it back.
+# One predicate, spelled once, in the rule and in the lookups that go with it. The rule is
+# installed from a QUOTED heredoc — `$subject` is the charter's own syntax and must not meet a
+# shell — so the substitution is a placeholder swapped on the way in, not an expansion.
+PRED='{ merged: true }'
+PICK='{merged: true}'
+ANTI='{merged: false}'
+WHAT=merged
+if $closed; then
+	PRED='{ state: closed }'
+	PICK='{state: closed}'
+	ANTI='{state: open}'
+	WHAT=closed
+fi
 step "the ordering, and the rules that cross it"
 for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; done
 for s in "${STRATA[@]}"; do v stratum remove "$s" >/dev/null 2>&1 || true; done
-v trigger add -f - >/dev/null <<'TONY' || die "the charter did not install"
+sed "s|@@PRED@@|$PRED|" <<'TONY' | v trigger add -f - >/dev/null || die "the charter did not install"
 - name: lin-source
   level: 0
   match: "git"
@@ -225,7 +247,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "the charter did not install"
     # GitHub's own vocabulary: a pull request is `merged`, and the branch it proposed against
     # is its `base`. Matching a display string instead is what breaks when somebody renames a
     # column; there is nothing to rename here.
-    subject: { system: github, kind: pr, value: { merged: true } }
+    subject: { system: github, kind: pr, value: @@PRED@@ }
   action:
     derive:
       lineage:
@@ -316,17 +338,17 @@ note "an empty message/author list is the join finding nothing: a git source ref
 note "tip, so a pull request older than that window has no commit here to join to"
 note "the id is f(rule, subject): re-merging that PR rewrites THIS address, never a second one"
 
-# The control: a pull request that is NOT merged. A rule keyed on the commit would have
+# The control: a pull request the subject predicate does NOT select. A rule keyed on the commit would have
 # correlated it — several PRs can share a head sha — and the subject predicate is what says
 # only merged ones have lineage. Skipped rather than faked when the repository has none.
-UNMERGED=$(v entity --system github --kind pr --if '{merged: false}' -o tony 2>/dev/null |
+UNMERGED=$(v entity --system github --kind pr --if "$ANTI" -o tony 2>/dev/null |
 	sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | tr -d '"' | head -1)
 if [ -n "$UNMERGED" ]; then
 	v entity --system lineage -o tony | grep -qF "$UNMERGED" &&
 		die "an unmerged PR was correlated — the subject predicate is not selecting"
-	ok "$UNMERGED is not merged, so nothing was derived about it"
+	ok "$UNMERGED is not $WHAT, so nothing was derived about it"
 else
-	note "no unmerged pull request to use as the control; the selection is untested this run"
+	note "no pull request to use as the control; the subject predicate is untested this run"
 fi
 
 # ── the release, which reassembles the chain by reading the set ──────────────
