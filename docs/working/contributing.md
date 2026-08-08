@@ -165,8 +165,11 @@ Filing off a rough edge will sometimes break things. That is allowed; silence is
 a dogfooder *wrote*); the entity model ([store.md](../reference/store.md),
 [change-events.md](../change-events.md)); the `verse` CLI and `scripts/`; the HTTP surface and
 wire types (`api/`, `versed/`) and anything dialled in against them; the config layers and
-what a `--data` directory holds; and every doc under `docs/`, because we promised that
-directory describes what is true.
+what a `--data` directory holds; and every doc under `docs/` **except those under
+[`docs/working/`](README.md) and [`docs/roadmap/`](../roadmap/README.md)**, because we promised
+that directory describes what is true and those two are where we promised the opposite. A
+working note is retired, contradicted or rewritten as the thinking moves — that is the genre,
+not a break — and the roadmap is resynthesized whole. Nobody's checkout depends on either.
 
 Carries the `!` marker, all four trailers, and a notice filed before the push.
 
