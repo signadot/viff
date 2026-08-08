@@ -27,15 +27,12 @@ for _, gate := range t.AllGates() {
     m, _ := gate.mode()        // → GateQuestion → PostQuestion → gate:question
 ```
 
-Both arms come out of one `gating.gates` list. Worse, `Gate.mode()` resolves a formula gate with
-no explicit mode to **`"ask"`** — so a thing literally called *ask* goes down the motion arm. A
-charter author gets supervision or does not depending on which they wrote under the same key,
-which nobody could predict from the name.
-
-`Formula != nil` is not the distinction the split needs. `Gate.mode()` resolves a formula gate
-with no explicit mode to `"ask"`, so a thing literally called *ask* goes down the motion arm. And
-`openChannel` is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks nobody
-anything — opens a channel and lands on `verse docket` with no ballot anyone can cast. The
+Both arms come out of one `gating.gates` list, and `Formula != nil` is not the distinction the
+split needs. `Gate.mode()` resolves a formula gate with no explicit mode to **`"ask"`** — so a
+thing literally called *ask* goes down the motion arm, and a charter author gets supervision or
+does not depending on which they wrote under the same key, which nobody could predict from the
+name. And `openChannel` is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks
+nobody anything — opens a channel and lands on `verse docket` with no ballot anyone can cast. The
 result is a docket listing decisions nobody can make, and a `verse gate` omitting decisions
 people are being asked for.
 
@@ -94,8 +91,10 @@ across a context refresh.
 And the measurable question under both, unanswered: **does a long conversation hold the
 protocol?** Does it stay silent on frames that do not concern it, keep `escalate` from drifting
 into approval as context fills, and not re-answer what it has already answered? That is
-measurable rather than arguable — `scratchpad/resolverio` runs both shapes over one stream — and
-it decides whether `llm` is a driver or a bad idea.
+measurable rather than arguable — one stream, both shapes driven over it, counting the frames
+each got wrong — and it decides whether `llm` is a driver or a bad idea. It has not been run in
+anything that was kept: the harness for it lived in a scratchpad and is gone, so whoever takes
+this builds it again, which is a morning rather than a blocker.
 
 ## 3. `by` is self-asserted, so `exclusive` is bypassable by spelling
 
@@ -116,8 +115,9 @@ the URL, so a service cannot claim to be another binding.
 
 This is not fixable here. Verifying that a caller *is* who it says is
 [authority](../roadmap/authority.md)'s whole subject, and anything local would be a lock with the
-key taped to it. It is recorded as a live probe: `scratchpad/resolver-pressure`, `C1`, which is
-the one test in that battery deliberately left red.
+key taped to it. It was confirmed by hand — the command above, run against a live verse, is the
+whole of the reproduction — and there is no test for it in the tree, deliberately: a test would
+assert the hole stays open.
 
 The adjacent half of the same gap: **who may install a binding.** A standing binding is exactly
 as strong as the ability to add and remove it, and the store has no per-slice write authority.

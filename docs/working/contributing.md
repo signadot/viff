@@ -124,8 +124,9 @@ the landing commit:
   now wrong (`319843c`);
 - **the residual** — what the plan named and the landing skipped goes back into `working/` as
   `$X-residual.md` ([firing-residual.md](firing-residual.md),
-  [provider-selection-improvements.md](provider-selection-improvements.md)). Dropping a plan
-  without its residual turns a known gap into an unknown one.
+  [provider-selection-improvements.md](provider-selection-improvements.md); the genre and the
+  whole list are in [README.md](README.md#residuals)). Dropping a plan without its residual turns
+  a known gap into an unknown one.
 
 Design proposals go straight to `main` in `docs/working/`: a working note owes coherence to
 nothing, so a branch protects nothing. `lifting-flows-design-proposal` on `origin` predates

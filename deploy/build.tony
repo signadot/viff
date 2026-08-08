@@ -78,7 +78,7 @@ build:
     githubRepos: ""
     # Discussions are GraphQL and carry no ETag, so they are the whole of what a quiet
     # repository costs against the rate limit — and they are opt-in per repository on GitHub's
-    # side, so most repositories have none. Off by default; see docs/working/gh-source-plan.md.
+    # side, so most repositories have none. Off by default; see docs/reference/sourced.md.
     githubDiscussions: false
     githubWebhookHost: ""
 

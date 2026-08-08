@@ -6,8 +6,8 @@ and agents *read* the reflected entities and react. A source only reflects: acti
 external system is the outbound path, not this one.
 
 For the surface — the entity, the verbs, the routes, the contract a source serves — see
-[reference/sources.md](reference/sources.md). For the three verse ships — git, Slack, Linear —
-see [reference/sourced.md](reference/sourced.md). To build one of your own, copy
+[reference/sources.md](reference/sources.md). For the four verse ships — git, Slack, Linear,
+GitHub — see [reference/sourced.md](reference/sourced.md). To build one of your own, copy
 [examples/source](reference/examples/source/main.go), which is a real program that compiles
 with the tree.
 
@@ -127,6 +127,14 @@ entity was ambiguous. Here the field present says which it is.
 every source, which is the duplication above one level up and across a network. Pulled, a
 source is a pure function of external truth: no ticker, no backoff, no retry policy, no diff,
 no cursor, no CAS — which is what keeps the sample program short enough to copy.
+
+**Where a source may remember something anyway**, since two of them do: **a source may keep
+state whose loss costs work, never state whose loss costs correctness.** The GitHub source keeps
+a high-water mark so it can ask for what changed, and an ETag per endpoint so an unchanged
+listing is free — and losing either degrades to the exhaustive read, which is the correct
+answer, slowly. That is categorically different from a cursor over *events*, whose loss is a
+window of missed ones, and it is the test to apply to anything else a connector wants to
+remember.
 
 One rule the transport must not break: **a failed reflect is an error, never an empty
 Reflection.** An empty answer carrying covers is a legitimate instruction to tombstone
@@ -248,29 +256,38 @@ value, and the scoped hide does not remove baseline's key.
 Baseline stays the default: one shared reflection everything reads is what most of a deployment
 wants, and an empty `scope` is what it gets.
 
-## Three of them, and what the second and third cost
+## Four of them, and what the ones after git cost
 
 verse ships `sourced`, a second binary with a subcommand per system it connects
 ([reference/sourced.md](reference/sourced.md)) — git, Slack, Linear, GitHub. It rides in the same image
 as `verse` and is deliberately not in the same process: folding a connector into the engine
 would put every API's wire format and every credential's failure mode in the binary that runs
-everybody's triggers. There is nothing privileged about the three; they are ordinary external
+everybody's triggers. There is nothing privileged about the four; they are ordinary external
 sources that happen to be maintained here, and the sample program is still the thing to copy
-for a fourth.
+for a fifth. **Nothing in `source/`, `versed/` or the CLI changed for the third or the fourth**,
+which is the seam's claim, tested twice.
 
 **Only one thing actually differs between them, and it is the credential.** git needs none, so
 it can also run in task (`--dir`) and its "webhook" is a four-line shell script. The other
-two hold a token, which is what puts them on the far side of the seam for good — and what
+three hold a token, which is what puts them on the far side of the seam for good — and what
 "nothing new about credentials" below turns out to mean in practice.
 
-Three things came out of building the two that need one.
+Four things came out of building the three that need one.
 
-**A delivery endpoint is the git hook in another costume.** The Slack Events API endpoint and
-the Linear webhook live in the *source*, verify their own signature, and post the same thing
-the shell one-liner posts: which ref went stale, as a query parameter, and nothing else. That is
-the law holding across three senders that share no code — and the reason a forged delivery is
-uninteresting is unchanged, so the signature check is there because Slack's and Linear's
-contracts ask for it, not because correctness rests on it.
+**A delivery endpoint is the git hook in another costume.** The Slack Events API endpoint, the
+Linear webhook and the GitHub one live in the *source*, verify their own signature, and post the
+same thing the shell one-liner posts: which ref went stale, as a query parameter, and nothing
+else. That is the law holding across four senders that share no code — and the reason a forged
+delivery is uninteresting is unchanged, so the signature check is there because their contracts
+ask for it, not because correctness rests on it.
+
+GitHub is where **a hint names the thing rather than its container**, which the first three had
+no reason to. git's targeted pass is a whole-repo `for-each-ref` because git is
+content-addressed and a finer target costs the same; Linear's is a whole team because that is
+what one query reads. GitHub answers a single issue in one request, so a hint about `#42`
+converges that issue alone — and the cover it answers with has to say so, `{repo, number}`
+rather than the live set, or one delivery would tombstone every other open issue in the
+repository. The arity of the hint and the arity of the cover are the same question.
 
 **A source is where an API budget is known.** verse's resync interval is a constant (one
 minute); Linear's complexity budget is hourly and Slack's is per-method-per-minute. Making the
@@ -280,6 +297,13 @@ the answer is `source.Throttle`: a window inside which a source answers with its
 the right direction — a source that has been rate-limited reflects nothing at all until the
 limit lifts. A failure is never cached, for the reason everything here turns on: a cached
 failure is `every` minutes of a source claiming an external system is empty.
+
+GitHub adds the better answer where a system offers one: **a conditional request beats a clock**.
+An ETag per endpoint and `If-None-Match` turns "guess that nothing changed" into "be told", and
+GitHub does not charge for a 304 — so a quiet repository costs nothing where the throttle could
+only ever have costed less. It is git's content-addressing arriving by another route, with the
+external system doing the comparison, and the throttle stays underneath it as the backstop for
+the burst.
 
 **A cover is how a source says what it could not read.** Slack's people need a scope its
 channels do not, so a `users.list` that fails drops the user cover *and* the user entities: the
@@ -306,6 +330,15 @@ global field has no owner among the teams, so each slot carries its own copy and
 a project through an owner. That is the honest shape of an entity nobody owns the whole of.
 [shared-ownership.md](working/shared-ownership.md) has the design and what is left of it.
 
+**And the shape arrived again, in a system sharing no code with Linear.** A GitHub project is
+org- or user-owned and spans repositories, so no per-repo source can claim it as an address
+either — which is what makes this a limit of the address grammar rather than a quirk of one data
+model. A GitHub *user* is a third variant and not the same one: it has exactly one owner and that
+owner is the system, so the way out is not a slot but a source of its own, claiming
+`github:user:*` and nothing else. Neither kind is reflected today
+([working/gh-source-residual.md](working/gh-source-residual.md)); both are why the GitHub source
+names its kinds in `owns` rather than globbing them, which is what leaves room for that install.
+
 ### The window, and why Slack is not git
 
 A git source carries commits under **no** cover, so history stays. The Slack source covers its
@@ -315,6 +348,30 @@ and a task that wants more follows a ref into the real repo — while a channel 
 event stream, and an entity-verse that keeps all of it is exactly the warehouse a source is not
 supposed to be. Covering it also makes the source *more* truthful, not less: a message deleted
 inside the window goes, where an uncovered one would stand forever.
+
+**GitHub is a third position, and it is not a compromise between those two.** An issue set is
+unbounded like a channel, but the part of it anybody reacts to — the *open* part — is bounded and
+knowable. So the same kind is covered **twice**:
+
+```tony
+covers:
+- {system: github, kind: issue, value: {repo: signadot/verse, state: open}}
+- {system: github, kind: issue, value: {repo: signadot/verse, state: closed}}
+```
+
+The first says the answer holds *every* open issue, so one that has gone absent is gone. The
+second says it holds the closed ones it read — the most recent `-settled` — so an aged-out one is
+tombstoned as a Slack message is. An issue that closes appears in the settled half carrying its
+new state, ages, and leaves. **Both halves must be covered or neither works**: covering only the
+repository and answering with the live set plus a tail would tombstone the entire back catalogue
+on the first pass, while covering only `state: open` leaves a husk per issue ever closed, which is
+the warehouse arriving slowly rather than at once.
+
+The obvious alternative — cover what was *read*, which is "everything updated since T" — is not
+expressible, and it is worth knowing why before reaching for it. A cover is an `entity.Pattern`,
+whose predicate is a tony match, and **there is no ordering operator**: `{state: open}` is
+sayable and `{updatedAt: after T}` is not. So the split has to be on a state the payload carries,
+which is what makes this a shape a source can only take when the external system has one.
 
 ## Git: the exemplar
 

@@ -1,9 +1,17 @@
 # Phase 1: the path claim, and converge — implementation plan
 
-Status: plan, nothing built. The design is [shared-ownership.md](../shared-ownership.md); the
-phase order is [shared-ownership-plan.md](../shared-ownership-plan.md), and this is its phase 1
-dived. Read the design first — this file carries only the order of work and what each step must
-prove.
+Status: **landed, and kept for its reasoning.** Every step below is built: a claim is a document
+carrying a path, a cover carries a slot, converge writes, compares and tombstones there, and
+Linear reflects a shared project by team. What runs is described in
+[sources.md](../../sources.md#four-of-them-and-what-the-ones-after-git-cost) and
+[reference/sourced.md §linear](../../reference/sourced.md#linear); what phases 2–5 still owe is in
+[shared-ownership-plan.md](../shared-ownership-plan.md). This file stays because two of its
+findings are arguments rather than code — why a claim cannot be a terse string, and why the
+replace is the dangerous half — and both would otherwise have to be reconstructed from the
+commits.
+
+The design is [shared-ownership.md](../shared-ownership.md); the phase order is
+[shared-ownership-plan.md](../shared-ownership-plan.md), and this is its phase 1 dived.
 
 The shape: an ownership claim that names a path inside a payload, a cover that says which part
 of an entity an answer is complete for, and a converge that writes, compares and tombstones at
@@ -225,7 +233,9 @@ fixture supplies.
 - **No engine or charter change.** A rule over a shared entity is evaluated on every owner's
   write and cannot say which owner it cares about. That is phases 3–4, gated on phase 2.
 - **No GitHub source.** `github:project:*` and `github:user:*` are the same mechanism and belong
-  to [gh-source.md](../gh-source.md); Linear is here because it is the case that already exists.
+  to that connector; Linear is here because it is the case that already exists. The GitHub source
+  has since landed without either kind, and what it would take is recorded in
+  [gh-source-residual.md](../gh-source-residual.md#not-built-each-with-the-trigger-that-would-revive-it).
 
 ## What would stop this
 

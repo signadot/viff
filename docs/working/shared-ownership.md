@@ -1,8 +1,17 @@
 # Shared ownership: an entity with more than one writer
 
-Status: proposal, nothing here runs. The order of work is
-[shared-ownership-plan.md](shared-ownership-plan.md). It supersedes the count-based sketch in
-[sources-residual.md](sources-residual.md#the-way-through-is-the-conditional-write), which is
+Status: **the first phase runs; the rest is proposal.** A claim may name a path inside a payload,
+a cover carries a slot, converge writes and tombstones there, and Linear reflects a shared project
+by team — that is everything up to and including "the move" below, and it is described where it
+runs, in [sources.md](../sources.md#four-of-them-and-what-the-ones-after-git-cost) and
+[reference/sourced.md §linear](../reference/sourced.md#linear). What is still proposal is the
+engine half: a rule over a shared entity is evaluated on every owner's write and cannot say which
+owner it cares about. The order of work is
+[shared-ownership-plan.md](shared-ownership-plan.md), whose phase 1 is landed and dived in
+[shared-ownership/1-path-claim-plan.md](shared-ownership/1-path-claim-plan.md).
+
+It supersedes the count-based sketch in
+[sources-residual.md](sources-residual.md#the-way-through-was-a-deeper-address-and-it-is-built), which is
 wrong about one thing — see [what is already true](#what-is-already-true-and-what-was-not).
 Everything in that section was run against the tree at `go-tony v0.0.116`; the transcript is
 [at the end](#the-probe).
@@ -14,10 +23,11 @@ declarations are all the check has in hand. It works whenever a system's ids enc
 positionally, which is most of the time and is not a law.
 
 - A **Linear project** belongs to several teams at once, so no team can claim it as an
-  address, and two sources over two teams would each tombstone what the other reflected. The
-  source reflects no project entity at all.
+  address, and two sources over two teams would each tombstone what the other reflected. For as
+  long as a claim was a ref, the source reflected no project entity at all — which is the absence
+  that argued for all of this, and which the landed phase 1 ended.
 - A **GitHub project** is org- or user-owned and spans repositories: the same shape, in a
-  system that shares no code or data model with Linear ([gh-source.md](gh-source.md)).
+  system that shares no code or data model with Linear ([gh-source-residual.md](gh-source-residual.md)).
 - A **GitHub user** is neither. It has exactly one owner and that owner is *the system* —
   `github:user:octocat` belongs to GitHub, not to any repository — so every per-repo source
   would write it. Slack's users looked identical and were not, because a bot token is issued
@@ -71,7 +81,7 @@ contain.~~ **Also wrong: `@` is taken.** It is `trigger.ChainSep` and appears in
 recovers a path from `verse:derived:rule@subject`. A claim carrying a path is therefore a
 **document** — `{ref: "linear:project:*", at: [owners, ENG]}` — with the string form unchanged
 for the ref-only case, which is additive and needs no separator at all. See
-[phase 1's plan](gh-source/1-path-claim-plan.md#two-things-the-design-got-wrong-found-while-planning-this),
+[phase 1's plan](shared-ownership/1-path-claim-plan.md#two-things-the-design-got-wrong-found-while-planning-this),
 which also finds that a cover cannot spell its path `at`, because `entity.Pattern` already uses
 that name for something else.
 
@@ -151,7 +161,7 @@ who gets slot semantics right.**
    that carries the danger, not this. A whole-payload comparison over a correct slot write only
    re-writes a value already standing, which produces no commit; what it costs is a round trip
    per pass and a `lastReflect` stamped every pass, since `Wrote` counts writes issued rather
-   than commits produced ([phase 1's plan](gh-source/1-path-claim-plan.md#why-the-replace-is-the-dangerous-half)
+   than commits produced ([phase 1's plan](shared-ownership/1-path-claim-plan.md#why-the-replace-is-the-dangerous-half)
    has both failures separated, and why the second is the one that would be invisible).
 4. **The tombstone is the only contended write**, and is the conditional delete above.
 5. **`--forget` removes the slot, then tries the delete.** A removal may only tombstone what
@@ -200,7 +210,7 @@ conservative direction.
 Three reasons this wants to be a registered mergeop rather than a struct verse parses itself:
 
 - **One document, two uses.** The same claim is compared *statically* at install and
-  *evaluated* at converge as a matcher against a payload in hand ([below](#the-price-a-predicate-carries)). A struct
+  *evaluated* at converge as a matcher against a payload in hand ([below](#the-price-a-predicate-carries-and-an-address-does-not)). A struct
   needs two implementations of one meaning, kept in step by hand; a tag is one implementation
   that both callers use.
 - **A whitelist beats a blacklist as tony grows.** Refusing `!not`, `!or`, `!glob`… in a claim

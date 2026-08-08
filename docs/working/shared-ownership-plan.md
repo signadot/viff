@@ -1,8 +1,8 @@
 # Shared ownership: implementation plan
 
-Status: plan, nothing built. The design is [shared-ownership.md](shared-ownership.md); this is
-how it lands. Read that first — this file does not restate its reasoning, only the order of
-work and what each step must prove.
+Status: **phase 1 landed; phases 2–5 are unclaimed.** The design is
+[shared-ownership.md](shared-ownership.md); this is how it lands. Read that first — this file does
+not restate its reasoning, only the order of work and what each step must prove.
 
 It carries the engine-side work that note raised as well, because the only thing that motivates
 any of it today is a shared entity. **This is a root sketch: the phases are argued, the steps
@@ -27,8 +27,9 @@ Provenance is safe under everything level-triggering already promises, because "
 touched `owners.ENG`" stays true however many changes were folded into it. History is an edge,
 and an edge that is never observed is an edge that never fires — which is the failure the
 trigger model removed on purpose ("express 'only the first time' as a state latch, not an
-edge") and which [gh-source.md](gh-source.md#actions-gets-the-window-and-nothing-else) already
-names for Actions runs, where `queued → in_progress → completed` routinely arrives as one write.
+edge") and which the GitHub source meets for real in Actions runs, where
+`queued → in_progress → completed` routinely arrives as one write
+([reference/sourced.md §github](../reference/sourced.md#github)).
 
 So: provenance first, history last and gated. And **measurement between the mechanism and its
 sugar**, because nothing yet knows the wake amplification is a problem.
@@ -39,10 +40,14 @@ Five phases. 1 is the whole of the design note and needs no engine change at all
 whether 3–4 happen; 5 is deferred by argument and listed so the deferral is a decision rather
 than an omission.
 
-### 1. The path claim, and converge
+### 1. The path claim, and converge — landed
 
-Dived, in [gh-source/1-path-claim-plan.md](gh-source/1-path-claim-plan.md) — which finds two
-spellings in the design note that do not survive contact, and reorders the steps below into six.
+Dived, in [shared-ownership/1-path-claim-plan.md](shared-ownership/1-path-claim-plan.md) — which
+finds two spellings in the design note that do not survive contact, and reorders the steps below
+into six. It is built: what runs is in
+[sources.md](../sources.md#four-of-them-and-what-the-ones-after-git-cost) and
+[reference/sourced.md §linear](../reference/sourced.md#linear), and the steps below are kept as
+the record of what each one had to prove.
 
 Verse-side only. A connector answers exactly as it does today; nothing in `source/sourced`, the
 sample program, or a source's wire behaviour moves. That is the property to protect through the
@@ -165,7 +170,7 @@ without any of this.
   a place. The design note's own first open question is whether anything wants it, and phase 1.5
   is what would find out.
 - **No org-scale GitHub source.** Phase 1.5 is Linear because it is the case that exists;
-  `github:project:*` and `github:user:*` follow the same path and are
-  [gh-source.md](gh-source.md)'s business.
+  `github:project:*` and `github:user:*` follow the same path and are the GitHub connector's
+  business ([gh-source-residual.md](gh-source-residual.md#not-built-each-with-the-trigger-that-would-revive-it)).
 - **No change to `--allow-overlap`.** It now warns about the one dangerous shape when there are
   two, and saying so properly wants a phase 1 that has landed.

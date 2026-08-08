@@ -23,3 +23,38 @@ Two things follow, both worth stating because the temptation runs the other way:
   reason to file it elsewhere — most good design notes do.
 - **Do not tidy by deleting.** A note that was wrong is more useful than no note, provided
   it says so. Mark it, keep the reasoning, and link what replaced it.
+
+## Residuals
+
+`$X-residual.md` is the one genre here that *does* owe something. A landing deletes the note and
+the plan it came from and rewrites `docs/` to say what is true
+([contributing.md](contributing.md#from-a-note-to-a-plan-to-a-doc)); the residual is what those two named and the
+landing did not build, kept so a known gap does not become an unknown one. So a residual is read
+against something that runs, and three rules follow from that:
+
+- **It names where the built thing is documented**, in its first line, because everything it says
+  is "what is missing from *that*".
+- **It is edited when the tree moves, not appended to.** A correction folded into the argument is
+  worth more than a strike-through under it — the exception being a wrong turn whose reasoning
+  still teaches, which is kept as prose rather than as a scar.
+- **A looseness inside something that runs is recorded where it runs.** A residual carries what
+  was *not built*; a corner of what was built belongs in the doc that describes it, and appears
+  here only when the fix is a design rather than a patch.
+
+The six, and what each is a residual of:
+
+| | of | what is in it |
+|---|---|---|
+| [firing-residual.md](firing-residual.md) | [trigger-model.md](../trigger-model.md), [convergence.md](../convergence.md) | time as a cause, the read per commit, what `verse entity rm` should mean |
+| [attached-resolvers-residual.md](attached-resolvers-residual.md) | [attached-resolvers.md](../attached-resolvers.md) | the gate fork, the two unbuilt drivers, a `by` nobody verifies |
+| [runners-residual.md](runners-residual.md) | [runners.md](../runners.md) | how control is applied is convention, and whether `local` should be nameable |
+| [sources-residual.md](sources-residual.md) | [sources.md](../sources.md) | dial-in, and the levers a resync has not spent |
+| [gh-source-residual.md](gh-source-residual.md) | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own, and what the budget measured |
+| [goals-residual.md](goals-residual.md) | [reference/goals.md](../reference/goals.md) | the definition that no use case has earned |
+
+[provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under
+an older name: it reads against [provider selection](../provider-selection.md) and carries what
+that landing left, which is why [contributing.md](contributing.md) cites it as one.
+
+Nothing above owes coherence to the *others* — a residual is a relation between one note and one
+landed thing, not a shared document.

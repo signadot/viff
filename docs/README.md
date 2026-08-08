@@ -99,9 +99,9 @@ the verse that owns it, through a docd controller.
 | | [reference/sources.md](reference/sources.md) — the source surface: the entity, ownership globs, the verbs, the routes, and the contract a source serves |
 | | [reference/sourced.md](reference/sourced.md) — the four verse ships: git (and mirrors), Slack, Linear, GitHub — flags, credentials, and what each reflects |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
-| ahead | [Sources: what is left](working/sources-residual.md) — dial-in for the source verse cannot reach, and what a many-to-many relation does to an ownership claim |
-| | [A GitHub source](working/gh-source.md) · [plan](working/gh-source-plan.md) — issues, discussions, PRs and Actions: covering a live set and windowing a settled one, and a second entity no address can spell |
-| | [Shared ownership](working/shared-ownership.md) — an entity with more than one writer: a claim that is a path, and sharing as single-writership one level down |
+| ahead | [Sources: what is left](working/sources-residual.md) — dial-in for the source verse cannot reach, and the levers a resync has not spent |
+| | [GitHub: what is left](working/gh-source-residual.md) — the kinds no repository can own, a rename nothing defends against, and what the budget measured |
+| | [Shared ownership](working/shared-ownership.md) — an entity with more than one writer: the claim that is a path (built), and the charter half that is not |
 | | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
 ## What is built, and what isn't

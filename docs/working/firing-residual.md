@@ -6,7 +6,8 @@ that a charter settles in [convergence](../convergence.md). What is here is what
 name as missing, gathered in one place so the next person does not have to reconstruct why each
 was left.
 
-Nothing here is a design owed to anything else here.
+Nothing here is a design owed to anything else here, and nothing here has been built since it
+was written.
 
 ## 1. Time as a cause: the clock a ticker would be
 
@@ -111,7 +112,9 @@ failure mode to want over a silent half-delete.
 
 The cost is operator-facing, which is why this is a question and not a patch. `verse entity rm`
 stops meaning "it is gone" and starts meaning "it is marked, and it goes when the reaper says".
-`verse entity` still lists it, deliberately. Two coherent answers:
+`verse entity` still lists it, deliberately. (`rm --at <field.path>` removes one field rather than
+the entity, and is not this question: a field going away is an ordinary write, observable as one,
+and nothing is left half-departed.) Two coherent answers:
 
 1. **`rm` marks**, and a default reaper charter ships with a short grace. Uniform: every
    departure is observable, including an operator's. Costs an operator the surprise, once.

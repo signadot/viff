@@ -1,8 +1,10 @@
 # Runners: what is left
 
-Status: two open corners of something that runs. [Runners](../runners.md) is built and this is
-not a plan to change it — it is the part that holds by convention rather than by construction,
-and the question the vocabulary has not had to answer yet.
+Status: residual of a landed feature — two open corners of something that runs.
+[Runners](../runners.md) is built and this is not a plan to change it. What is here is the part
+that holds by convention rather than by construction, and the question the vocabulary has not had
+to answer yet. Both still stand: there is no `GET /runner` descriptor, and `local` is still only
+the meaning of absent.
 
 ## The corner that is convention rather than construction
 

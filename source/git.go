@@ -62,7 +62,7 @@ func NewGit() *Git { return &Git{repos: map[string]repo{}, commitDepth: 50, syst
 // credentials, a partition drawn by whoever runs them. Two deployments sharing `git:*` is the
 // ordinary case and needs only disjoint claims; one that wants no coordination at all takes a
 // system of its own, and two systems are disjoint on the first segment. See
-// docs/working/gh-source.md, where the argument is made at length for the connector that raised
+// docs/sources.md, where the argument is made at length for the connector that raised
 // it.
 //
 // The system is a segment of the address and of the route that serves the registration, so

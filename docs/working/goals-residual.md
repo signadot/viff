@@ -1,10 +1,11 @@
 # Goals: what is left
 
-Status: the abstraction has not settled. [Goals](../reference/goals.md) run — a target, a
-deadline fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal outcome — and
-nothing here is a plan to change what runs. What is here is the finding that every use case
-tried against the *current definition* has fallen short, and the shapes a better definition
-might take. It will take some iterations to arrive at a good answer.
+Status: residual of a landed feature whose abstraction has not settled.
+[Goals](../reference/goals.md) run — a target, a deadline fail-latch, a live `waitingOn`, and
+owned triggers reaped on a terminal outcome — and nothing here is a plan to change what runs.
+What is here is the finding that every use case tried against the *current definition* has fallen
+short, and the shapes a better definition might take. It will take some iterations to arrive at a
+good answer, and where it is headed is [dynamic-charter.md](../roadmap/dynamic-charter.md).
 
 From a reply to [Ani's question](questions.md) about whether flows advance toward goals by
 executing tasks.

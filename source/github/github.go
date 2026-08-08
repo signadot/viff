@@ -1,5 +1,5 @@
-// Package github reflects the collaboration around a repository — its issues and its pull
-// requests — into the `github:*` slice of the entity-verse.
+// Package github reflects the collaboration around a repository — its issues, pull requests,
+// discussions, Actions runs and comments — into the `github:*` slice of the entity-verse.
 //
 // It is a deployed source: a program holding a token, serving the two routes source/sourced
 // serves, with verse dialling it and converging its answers.
@@ -13,9 +13,10 @@
 // highest-cardinality paginated reads in the repository, and paying a rate limit for what git
 // gives away free is the wrong trade at one repo and impossible at many.
 //
-// See docs/working/gh-source.md for the design and docs/working/gh-source-plan.md for what is
-// built so far — this is step 1, which is the repository, its issues and its pull requests.
-// Discussions, Actions runs, the webhook and the throttle are still ahead.
+// The surface — flags, credentials, the kinds and what each carries — is docs/reference/sourced.md
+// under `github`, and the argument for the cover shapes is in docs/sources.md. What was designed
+// and not built, and the trigger that would revive each piece, is
+// docs/working/gh-source-residual.md.
 package github
 
 import (
@@ -56,7 +57,7 @@ type Config struct {
 	// sharing `github` is the ordinary case and needs only disjoint claims; one that wants no
 	// coordination at all takes a system of its own, and two systems are disjoint on the first
 	// segment. It is also the answer to a second GitHub instance, where `org/repo#42` is unique
-	// within a host and not across two. See docs/working/gh-source.md.
+	// within a host and not across two. See docs/reference/sourced.md under `github`.
 	System string
 	// Settled is how many recently-closed issues and pull requests each repository keeps
 	// (0 → DefaultSettled). MaxOpen refuses a repository with more open items than this

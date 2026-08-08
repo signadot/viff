@@ -8,7 +8,7 @@
 #
 # GITHUB_TOKEN is a fine-grained personal access token with read access to the repositories'
 # metadata, issues, pull requests and Actions. A GitHub App is what an org-scale install wants,
-# and the measurement in docs/working/gh-source-plan.md says when: a personal token covers about
+# and the measurement in docs/working/gh-source-residual.md says when: a personal token covers about
 # forty repositories with discussions on, and effectively unbounded with `-discussions=false`.
 #
 # Install it once the pods are up (the name must match `githubSourceName`, because the hint url

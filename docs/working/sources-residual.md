@@ -1,8 +1,13 @@
 # External sources: what is left
 
-Status: residual. [Sources](../sources.md) landed and its working note and plan went away with
-it; this is what they named and the landing did not build. Nothing here is a looseness inside
-something that runs — those are recorded where they run — except where it says so.
+Status: residual of a landed subject. [Sources](../sources.md) landed and its working note and
+plan went away with it; this is what they named and the landing did not build.
+
+It is about the **seam**, not about any one connector. Two things that were open here have since
+been answered elsewhere and are not repeated: the ownership finding below produced
+[shared-ownership.md](shared-ownership.md), whose first phase is built, and the GitHub connector
+has a residual of its own in [gh-source-residual.md](gh-source-residual.md). What is left here is
+dial-in, the levers a resync has not spent, and the gaps inside what runs.
 
 ## Dial-in, for the source verse cannot reach
 
@@ -176,12 +181,12 @@ building even for the Go case.
 The test, whichever wins, is the one the transport already runs, through a third transport:
 same `source.Git`, same `Reflection`, no ingress.
 
-## The claim, now partly answered
+## The claim, and how it was answered
 
 **Ownership as an address works when a source's ids encode ownership positionally**, which
 git's do only because `source/git.go` prefixes every id with the repo. That was a property of
-that code, not a law, and this note used to say the first non-git source would settle it. Two
-have now been built (`source/slack`, `source/linear`), and they split.
+that code, not a law, and this note used to say the first non-git source would settle it. Three
+have now been built (`source/slack`, `source/linear`, `source/github`), and they split.
 
 **Slack passed, easily.** A bot token is issued for one workspace, every id is
 `<workspace>/…`, and the claim is one glob: `slack:*:<workspace>/*`. Two workspaces are
@@ -197,76 +202,54 @@ the same reason git needs two: the kinds spell their owner differently.
 **And one thing failed, which is the useful part.** A Linear **project can belong to several
 teams at once**, so it has no positional owner and no team can claim it as an address. Two
 sources over two teams sharing a project would each tombstone what the other reflected — the
-single-writer rule broken quietly, which is worse than an install refused loudly. ~~So the source
-does not reflect projects at all: an issue carries its project's *name* as a field, and there is
-no `linear:project:*` entity.~~ **It does now**, by slot: a claim may name a path inside a
-payload, so each team is the single writer of `owners.<KEY>` rather than a co-writer of the
-entity. Built in [shared-ownership.md](shared-ownership.md); the finding below stands as the
-evidence that produced it.
+single-writer rule broken quietly, which is worse than an install refused loudly. So for a while
+the source reflected no project at all, and that absence was the first real evidence against the
+grammar.
 
-That is the vocabulary's first real limit, and it is worth being precise about what it is
-evidence FOR. It is not that addresses are the wrong grammar — they held for everything
-one-owner-shaped. It is that **a many-to-many relation has no owner to spell**, and no ownership
-grammar fixes that: a predicate form (`{teams: contains ENG}`) would let both sources claim the
-project and would still leave two writers on it.
+**GitHub then produced it again, and a second shape beside it, sharing no code and no data
+model.** A GitHub project is org- or user-owned and spans repositories: many-to-many again, which
+is what settles that this is a limit of the address grammar rather than a quirk of Linear's
+schema. A GitHub *user* is a different failure — exactly one owner, and that owner is the
+**system**, which no per-repo source is. Three cases, two shapes — and two different ways out: the
+many-to-many one wants a slot, and the system-owned one wants a source of its own, claiming that
+kind alone.
 
-### The way through is the conditional write
+### The way through was a deeper address, and it is built
 
-The parked CAS finding is the answer, and it is worth writing down because the machinery is
-already here. `entity.Write` is the store's ONLY write — a value applied at a `Path` (a ref, or
-a place *inside* its payload) iff every `Require` holds, with the checks and the write
-committing as one step, and a `Require` may be about **another path**
-(`entity/commitif_test.go`). That is precisely "condition my write on yours not having
-changed", available today.
+The answer is not a different vocabulary but a longer one: **a claim may name a path inside a
+payload**, so a team is the single writer of `linear:project:<id>` at `owners.ENG` rather than a
+co-writer of the entity. Two of those are proved apart at install by the comparison one segment
+further down, converge writes, compares and tombstones there and nowhere else, and the last owner
+out takes the entity with a conditional delete —
+`!all.or [!field "ENG", !irtype null]`, which reads "every key here is mine or a tombstone". The
+design is [shared-ownership.md](shared-ownership.md), the phase that landed is
+[its phase 1](shared-ownership/1-path-claim-plan.md), and what runs is described in
+[sources.md](../sources.md#four-of-them-and-what-the-ones-after-git-cost).
 
-What a shared entity would need on top of it, in the order the trouble arrives:
+Two things this note used to say about it were wrong, and both are worth keeping because the
+mistakes are instructive:
 
-- **A source writes its own slot, not the entity.** `linear:project:<id>` carries
-  `owners: {ENG: {…}, OPS: {…}}`, and each source writes at `…owners.ENG`. Disjoint field paths
-  do not race, so this needs no precondition at all — it needs only that converge stop
-  replacing the whole payload. That rule (*a write replaces, because the answer is what the
-  entity IS*) is true of an owned slice and false of a shared one, where each answer is what a
-  PART of it is.
-- **Skip-unchanged has to compare the slot**, not the payload. Comparing the whole thing would
-  make a change by OPS look like a change to ENG's answer, and the two sources would rewrite
-  each other forever — the same "differs on every pass, fires its triggers every time" failure
-  the merge rule was written to avoid, arriving from the other side.
-- **Only the tombstone is genuinely contended**, and that is where the precondition earns its
-  keep: the last owner out deletes, and nobody else may. ~~The gap is that the match grammar
-  can say "OPS is absent" (`!not {OPS: null}`) but not "no key other than mine", so either the
-  condition names a known set — which no source has — or the entity carries a **count** and the
-  delete is `Value: nil, When: [{At: …owners.n, Pattern: 0}]`, with CAS making the decrement
-  safe. A count is expressible with what exists; "no other keys" is not.~~ **Wrong, and no
-  count is needed**: `!all.or [!field "ENG", !irtype null]` says "every key here is mine or a
-  tombstone", which is the last-owner-out question exactly. Run against the store in
-  [shared-ownership.md](shared-ownership.md#what-is-already-true-and-what-was-not), which also
-  has the trap — the obvious `!all.field "ENG"` passes over a hand-built payload and refuses
-  every delete against a real store, because logd keeps a removed key as a null leaf.
-- **And the install check would have to admit it.** `owns` proves single-writership; a shared
-  entity is by construction not that. It wants a second declaration — *these I share, by slot* —
-  or it lands under `--allow-overlap`, where the safety comes from the write discipline instead
-  of from a proof, which is exactly the thing the flag is supposed to warn about.
+- **A count is not needed.** The sketch here had the entity carry `owners.n` and the delete
+  condition on it reaching zero, on the belief that the match grammar could say "OPS is absent"
+  but not "no key other than mine". It can say the latter, and a count would have been a second
+  representation of who is here, kept in step by convention across processes that cannot see
+  each other.
+- **The conditional write was the wrong half to lean on.** Disjoint field paths do not race, so
+  the ordinary case needs no precondition at all; the precondition earns its keep on the
+  tombstone alone. What actually carried the danger was the *replace* — a whole-payload replace
+  spells its removals against a snapshot that has never heard of the other owner, so it writes
+  the other owner's slot away.
 
-Nothing here is built, and it is a change to converge's contract rather than to a connector, so
-it is not something the Linear source should do on its own. [shared-ownership.md](shared-ownership.md)
-takes the four items above further: a claim that is a `Path` rather than a `Ref`, which makes
-sharing single-writership at a deeper address rather than an exception to it.
+**What is still not spellable is ownership that is a VALUE rather than a place** — an owner in
+the payload and a uuid in the ref. That wants a predicate claim, and predicates do not compare
+statically, which is the whole reason the address form was taken. Nothing built has hit it;
+`Covers` stayed an `entity.Pattern` throughout, so the road back is open, and a check that later
+becomes more permissive breaks nothing installed under the strict one.
 
-The cheap version, if projects are
-wanted before any of that: reflect them under **no cover** — the way git carries commits — so
-each source writes its slot and nothing ever tombstones. That costs a husk per project that
-leaves every team, and buys the entity today.
-
-**What would still push this to predicates**: a system whose entities are one-owner-shaped but
-whose ids do not say so — an owner in the payload and a uuid in the ref. Nothing built has hit
-that. `Covers` stayed an `entity.Pattern` throughout, so the road back is open, and a check that
-later becomes more permissive breaks nothing installed under the strict one.
-
-The reason the predicate form was not taken: an install compares two declarations with no
-entities in hand, and proving predicates apart syntactically has traps. A null in a predicate is
-a *presence* test, so the obvious "same field, different constants" rule proves `{repo: null}`
-disjoint from `{repo: verse}` when the second entails the first — a wrong refusal from a check
-whose whole job is to be conservative.
+The trap that keeps it that way is worth carrying, because it is not obvious: a null in a
+predicate is a *presence* test, so the tempting "same field, different constants" rule proves
+`{repo: null}` disjoint from `{repo: verse}` when the second entails the first — a wrong refusal,
+from a check whose whole job is to be conservative.
 
 ## Gaps inside what runs
 
@@ -293,7 +276,7 @@ flag would settle it.
 directory is still there. The reflector reports the failure into `lastError`, which is the right
 behaviour; nothing has confirmed it end to end.
 
-**A deployed source is not registered by deploying it.** `deploy/{git,slack,linear}-source`
+**A deployed source is not registered by deploying it.** `deploy/{git,slack,linear,github}-source`
 brings the connector up; `verse source add` is still a verb somebody runs afterwards. That is
 deliberate — an install carries an ownership claim verse proves against what is already
 standing, and a manifest is not where that conversation happens — but it does mean a fresh
@@ -310,6 +293,9 @@ cursor the source deliberately does not keep.
 from an external system where nothing is happening — the same shape as the wedged-source problem
 `lastPass` exists for, one level down. Nothing reports it; a `/source` descriptor field saying
 "my floor is 2m" would, and would also let `verse source` explain why a hint took two minutes.
+`Descriptor` is still `{system, owns}`, so there is nowhere for it to go yet. The GitHub source
+adds a second invisible answer of the same kind — a pass answered entirely from 304s — which
+argues the field should say what a source's *floor* is rather than what its throttle is.
 
 **And it protects the external API, not the store**, which turns out to be the half that hurt
 first. A throttled pass still converges: `Reflector.converge` calls `current()`, which Lists the
@@ -370,15 +356,22 @@ it should, which is the argument that was available before any of this was measu
 `docs/sources.md` had said "Ownership = single writer = no CAS" since the landing — true about
 the design, false about the code, and it took a deployment to notice.
 
+The tree has since moved to `go-tony v0.0.120` and nothing has been re-measured. Nothing suggests
+it should have moved back, and the numbers above are kept as the record of what was learned
+rather than as a current benchmark.
+
 **What is left of the levers**, now that the urgent one is spent:
 
 - **A pass that changes nothing still Lists everything.** A `current()` that could ask the store
   for a slice's *revision* rather than its contents would make the steady state — most passes,
-  most of the time — one cheap question instead of a full read.
+  most of the time — one cheap question instead of a full read. This is the one with a customer
+  now: the GitHub source made the *external* read of a quiet repository free with conditional
+  requests, and against a repository with four thousand open items the List is what is left
+  ([gh-source-residual.md](gh-source-residual.md#the-cost-that-is-verses-not-githubs)).
 - **Narrower slices.** `git:ref:*` includes GitHub's `refs/pull/*`, which is 3000 of those 3377
   entities and which no SDLC flow reacts to. A `-refs heads,tags` flag on `sourced git` would
-  cut the slice by an order of magnitude; it does not exist. This is now about the store staying
-  small rather than about a pass finishing.
+  cut the slice by an order of magnitude; it still does not exist. This is now about the store
+  staying small rather than about a pass finishing.
 - **A resync interval that is not a constant.** Still true that one minute suits ten refs and
   not three thousand — but no longer urgent, since a pass now finishes well inside it.
 
