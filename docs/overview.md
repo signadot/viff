@@ -68,21 +68,35 @@ tasks, steerable as a unit, and it is assembled per request rather than maintain
 One process today (`verse up`) assembles these; each is a package behind an interface, so
 they separate into services without changing callers.
 
-```
-        cmd/verse (CLI)  ─────────────── HTTP ───────────────┐
-                                                             ▼
-   ┌─────────────────────────────  versed.Server  ─────────────────────────────┐
-   │  observation plane          │           control plane                      │
-   │  watch · get · list         │  gate approve · flow steer · task control │
-   └───────┬───────────────────────────────┬───────────────────────┬───────────┘
-           │                                │                        │
-      entity.Store                    trigger.Engine           task control
-      (logd/docd)                 (reactive, per-subtree      (how a task RUNS)
-   Write(conditional)/Get/watch    watches, gate registry)     ├─ local  (taskd, in-proc)
-           ▲                                │  spawn           ├─ remote (runner.HTTP)
-           │  mirror (task → entity)     ▼                  └─ broker (dial-in worker)
-           └──────────────  task runtime (task/taskd)  ◀──┘
-                            Task · Supervisor · Vector · Event stream · gate registry
+```mermaid
+flowchart TB
+  cli["cmd/verse (CLI)"]
+
+  subgraph versed["versed.Server"]
+    direction LR
+    obs["observation plane<br/>watch · get · list"]
+    ctl["control plane<br/>gate approve · flow steer · task control"]
+  end
+
+  store["entity.Store<br/>(logd/docd)<br/>Write(conditional) · Get · watch"]
+  trig["trigger.Engine<br/>reactive, per-subtree watches<br/>gate registry"]
+
+  subgraph run["task control — how a task RUNS"]
+    direction TB
+    local["local<br/>taskd, in-proc"]
+    remote["remote<br/>runner.HTTP"]
+    broker["broker<br/>dial-in worker"]
+  end
+
+  rt["task runtime (task/taskd)<br/>Task · Supervisor · Vector · Event stream · gate registry"]
+
+  cli -->|"HTTP"| versed
+  obs --> store
+  ctl --> trig
+  ctl --> run
+  trig -->|"spawn"| rt
+  run --> rt
+  rt -->|"mirror (task → entity)"| store
 ```
 
 `entity` is the store, and it has ONE write: a value merges in at a place — a whole entity
