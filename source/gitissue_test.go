@@ -1,0 +1,290 @@
+package source_test
+
+import (
+	"context"
+	"os/exec"
+	"testing"
+
+	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/source"
+)
+
+// fileIssue writes a real issue with git-issue's OWN storage layer, in the repository dir, and
+// answers with its XIDR.
+//
+// Upstream's writer rather than a hand-built tree, because that is what makes these tests
+// worth running: they pin that verse reads what `git issue` actually writes, so a change to
+// the tree layout, to meta.tony's field names or to the ref namespaces fails here rather than
+// in somebody's tracker. issuelib.GitStore selects its repository by the process working
+// directory and its own doc names t.Chdir as how a test does that — fine for one test, and
+// exactly why the source itself does not use it (see GitIssue's doc).
+// The description is composed the way `git issue create` composes it — "# <title>" then the
+// body — and that detail is the reason the title parsing here is worth a test at all. Create
+// takes a title argument but does not persist it: Issue.Title is `tony:"-"`, so it is absent
+// from meta.tony, and the FIRST LINE OF description.md is the only place a title is stored.
+// GetByRef reads it back exactly that way.
+func fileIssue(t *testing.T, dir, title, body string, mutate func(*issuelib.Issue)) string {
+	t.Helper()
+	t.Chdir(dir)
+	s := issuelib.NewGitStoreWithOutput(testLog{t})
+	issue, err := s.Create(title, "# "+title+"\n\n"+body)
+	if err != nil {
+		t.Fatalf("create %q: %v", title, err)
+	}
+	if mutate != nil {
+		mutate(issue)
+		if err := s.Update(issue, "update", nil); err != nil {
+			t.Fatalf("update %q: %v", title, err)
+		}
+	}
+	return issue.ID
+}
+
+// closeIssue closes one the way `git issue close` does — by MOVING its ref, which is what
+// makes the namespace authoritative for status.
+func closeIssue(t *testing.T, dir, xidr string) {
+	t.Helper()
+	t.Chdir(dir)
+	s := issuelib.NewGitStoreWithOutput(testLog{t})
+	if err := s.MoveRef(issuelib.RefForXIDR(xidr), issuelib.ClosedRefForXIDR(xidr)); err != nil {
+		t.Fatalf("closing %s: %v", xidr, err)
+	}
+}
+
+type testLog struct{ t *testing.T }
+
+func (w testLog) Write(b []byte) (int, error) { w.t.Logf("git-issue: %s", b); return len(b), nil }
+
+func needGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+}
+
+// reflectIssues runs one pass and answers ref-string → payload object, without a store: the
+// tests that are about the ANSWER do not need converge in the way.
+func reflectIssues(t *testing.T, gi *source.GitIssue, ref entity.Ref) (map[string]entity.Obj, source.Reflection) {
+	t.Helper()
+	rn, err := gi.Reflect(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("Reflect(%s): %v", ref, err)
+	}
+	out := map[string]entity.Obj{}
+	for _, e := range rn.Entities {
+		out[e.Ref.String()] = entity.ToObj(e.Payload)
+	}
+	return out, rn
+}
+
+// The git-issue Source reflects what `git issue` stores: an issue per ref, status from the ref
+// NAMESPACE rather than from meta.tony, labels and commit links carried, and a repo summary
+// counting both halves. Multi-repo, like the git source it sits beside.
+//
+// Driven through the Reflector, which is where converge lives, so this exercises the path a
+// Run and a hint take rather than just the source's return value.
+func TestGitIssueReconcile(t *testing.T) {
+	needGit(t)
+	ctx := context.Background()
+	store := entitytest.Store(t)
+
+	dirA, dirB := t.TempDir(), t.TempDir()
+	initRepo(t, dirA)
+	initRepo(t, dirB)
+	open := fileIssue(t, dirA, "the wire did not answer", "body of the first", func(i *issuelib.Issue) {
+		i.Labels = []string{"agent", "codegen"}
+		i.Commits = []string{"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}
+	})
+	shut := fileIssue(t, dirA, "already fixed upstream", "", nil)
+	elsewhere := fileIssue(t, dirB, "another repo entirely", "", nil)
+	closeIssue(t, dirA, shut)
+
+	gi := source.NewGitIssue()
+	gi.AddRepo("A", dirA)
+	gi.AddRepo("B", dirB)
+	rf := source.NewReflector(gi, store, 0)
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	get := func(kind, id string) entity.Obj {
+		e, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: kind, ID: id})
+		if !ok {
+			t.Fatalf("missing git-issue:%s:%s", kind, id)
+		}
+		return entity.ToObj(e.Payload)
+	}
+
+	o := get("issue", "A/"+open)
+	if o["status"] != "open" || o["title"] != "the wire did not answer" || o["repo"] != "A" {
+		t.Fatalf("open issue = %+v", o)
+	}
+	if o["body"] != "body of the first" {
+		t.Errorf("body = %v", o["body"])
+	}
+	if o["labels"] == nil {
+		t.Error("labels are how a charter selects an issue; none carried")
+	}
+	if o["commits"] == nil {
+		t.Error("no commits carried, so `git issue link` is invisible to a charter")
+	}
+	if o["id"] != open {
+		t.Errorf("id = %v, want %s", o["id"], open)
+	}
+
+	// Closed: the ref namespace says so, and the entity is KEPT rather than windowed away —
+	// the enumeration is local and complete, unlike the GitHub connector's.
+	if c := get("issue", "A/"+shut); c["status"] != "closed" {
+		t.Errorf("closed issue status = %v, want closed (from the ref namespace)", c["status"])
+	}
+
+	// Multi-repo: B's issue is B's, and A's summary counts only A's two.
+	get("issue", "B/"+elsewhere)
+	if _, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: "issue", ID: "A/" + elsewhere}); ok {
+		t.Error("B's issue leaked into A")
+	}
+	if s := get("repo", "A"); s["open"] != int64(1) || s["closed"] != int64(1) || s["issues"] != int64(2) {
+		t.Errorf("repo:A summary = %+v, want open 1 closed 1 issues 2", s)
+	}
+
+	// Deleting a ref tombstones the entity: the cover is complete, so absence is deletion.
+	gitRun(t, dirA, "update-ref", "-d", issuelib.ClosedRefForXIDR(shut))
+	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
+		t.Fatalf("reconcile after delete: %v", err)
+	}
+	if _, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: "issue", ID: "A/" + shut}); ok {
+		t.Error("a deleted issue ref must tombstone its entity")
+	}
+	if _, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: "issue", ID: "B/" + elsewhere}); !ok {
+		t.Error("A's reconcile tombstoned B's issue")
+	}
+}
+
+// A pass covers each repository's own issues and nothing else, so one repository's reconcile
+// never tombstones another's — and an EMPTY tracker still covers, or deleting the last issue
+// would leave it standing forever.
+func TestGitIssueCoversPerRepoEvenWhenEmpty(t *testing.T) {
+	needGit(t)
+	dir := t.TempDir()
+	initRepo(t, dir)
+
+	gi := source.NewGitIssue()
+	gi.AddRepo("A", dir)
+
+	_, rn := reflectIssues(t, gi, entity.Ref{})
+	if len(rn.Covers) != 2 {
+		t.Fatalf("an empty tracker must still cover its slice; got %+v", rn.Covers)
+	}
+	for _, c := range rn.Covers {
+		if c.System != source.GitIssueSystem {
+			t.Errorf("cover system = %q", c.System)
+		}
+		if c.Predicate == nil {
+			t.Errorf("cover %s:%s has no predicate, so it would tombstone every repo",
+				c.System, c.Kind)
+		}
+	}
+	// The summary is the one entity a tracker with no issues has.
+	if len(rn.Entities) != 1 || rn.Entities[0].Ref.Kind != "repo" {
+		t.Fatalf("want just the repo summary, got %+v", rn.Entities)
+	}
+}
+
+// A targeted reconcile reads only the repository the ref names — both spellings, since a hint
+// may name the repo summary or an individual issue.
+func TestGitIssueTargetedReconcile(t *testing.T) {
+	needGit(t)
+	dirA, dirB := t.TempDir(), t.TempDir()
+	initRepo(t, dirA)
+	initRepo(t, dirB)
+	a := fileIssue(t, dirA, "in A", "", nil)
+	fileIssue(t, dirB, "in B", "", nil)
+
+	gi := source.NewGitIssue()
+	gi.AddRepo("A", dirA)
+	gi.AddRepo("B", dirB)
+
+	for _, ref := range []entity.Ref{
+		{System: source.GitIssueSystem, Kind: "repo", ID: "A"},
+		{System: source.GitIssueSystem, Kind: "issue", ID: "A/" + a},
+	} {
+		got, rn := reflectIssues(t, gi, ref)
+		for name, p := range got {
+			if p["repo"] != "A" {
+				t.Errorf("Reflect(%s) reached outside A: %s", ref, name)
+			}
+		}
+		if len(rn.Covers) != 2 {
+			t.Errorf("Reflect(%s) covered %d patterns, want just A's two", ref, len(rn.Covers))
+		}
+	}
+}
+
+// Ownership is two globs per repository, and the shape matters: `A*` would also claim
+// `A-extras/…` and make two disjoint repositories refuse to install alongside each other.
+func TestGitIssueOwns(t *testing.T) {
+	gi := source.NewGitIssue()
+	gi.AddRepo("A", t.TempDir())
+	want := map[string]bool{"git-issue:*:A/*": true, "git-issue:repo:A": true}
+	got := gi.Owns()
+	if len(got) != len(want) {
+		t.Fatalf("Owns() = %+v, want %v", got, want)
+	}
+	for _, o := range got {
+		if !want[o.Ref] {
+			t.Errorf("unexpected claim %q", o.Ref)
+		}
+	}
+}
+
+// -system moves the whole slice, including what Owns claims and what RepoRef names — a hint at
+// git-issue:repo:x reaches nothing when the source writes tracker:repo:x.
+func TestGitIssueSystemMovesTheSlice(t *testing.T) {
+	gi := source.NewGitIssue()
+	if err := gi.SetSystem("tracker"); err != nil {
+		t.Fatal(err)
+	}
+	gi.AddRepo("A", t.TempDir())
+	if gi.System() != "tracker" {
+		t.Errorf("System() = %q", gi.System())
+	}
+	if got := gi.RepoRef("A").String(); got != "tracker:repo:A" {
+		t.Errorf("RepoRef = %q", got)
+	}
+	for _, o := range gi.Owns() {
+		if !hasPrefix(o.Ref, "tracker:") {
+			t.Errorf("claim %q is not in the moved slice", o.Ref)
+		}
+	}
+	if err := gi.SetSystem("a:b"); err == nil {
+		t.Error("a system with a colon must be refused — it is a segment of the address")
+	}
+}
+
+// Bodies are separable: an operator who wants an index of issue STATE rather than a copy of
+// everyone's prose turns them off, and nothing else about the entity changes.
+func TestGitIssueBodiesAreSeparable(t *testing.T) {
+	needGit(t)
+	dir := t.TempDir()
+	initRepo(t, dir)
+	id := fileIssue(t, dir, "a title", "a body nobody wants reflected", nil)
+
+	gi := source.NewGitIssue()
+	gi.SetBodies(false)
+	gi.AddRepo("A", dir)
+	got, _ := reflectIssues(t, gi, entity.Ref{})
+	p := got["git-issue:issue:A/"+id]
+	if p == nil {
+		t.Fatalf("missing the issue; got %+v", got)
+	}
+	if _, ok := p["body"]; ok {
+		t.Errorf("body reflected with -bodies=false: %+v", p)
+	}
+	if p["title"] != "a title" {
+		t.Errorf("title = %v; the title is not a body and stays", p["title"])
+	}
+}
+
+func hasPrefix(s, p string) bool { return len(s) >= len(p) && s[:len(p)] == p }

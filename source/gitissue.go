@@ -1,0 +1,364 @@
+package source
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os/exec"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
+	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
+)
+
+// GitIssueSystem is the entity slice a git-issue Source owns and is the single writer of.
+const GitIssueSystem = "git-issue"
+
+// GitIssue reflects the issues `git issue` keeps INSIDE a git repository into the
+// git-issue:* slice — read-only reflection, the inbound half of a Source (docs/sources.md).
+//
+// It is a separate source from Git rather than more kinds on it, because the two answer
+// different questions about the same directory. Git reflects what the repository IS — refs,
+// heads, commits — and git-issue reflects what somebody FILED in it. An operator who wants
+// branch state and no issue tracker, or the tracker and not fifty commits a pass, says so by
+// running one program and not the other; folding them together would make that a flag.
+//
+// Storage is git refs, which is what makes this reflectable at all with no service to call:
+// `refs/issues/<xidr>` is an open issue and `refs/closed/<xidr>` a closed one, each pointing
+// at a commit whose tree holds `meta.tony` (the issue struct) and `description.md` (title on
+// the first line, body under it). The ref NAMESPACE is status — closing moves the ref rather
+// than rewriting it — so status needs no field read to establish. See issuelib's package doc.
+//
+// It does not use issuelib.GitStore, and that is deliberate rather than an oversight. That
+// store drives git through the process's working directory and holds no path of its own — its
+// own doc says callers must not run two against different repositories concurrently — which is
+// exactly what a server reflecting several repositories for a concurrent caller would do. The
+// plumbing here is the same plumbing git.go already runs, with the repository as an argument.
+// What IS taken from issuelib is the part that is pure: the Issue struct, so the schema stays
+// upstream's, and the ref-name helpers.
+type GitIssue struct {
+	repos repoSet
+	// bodies reflects description.md's body under the title. Off makes the slice an index of
+	// issue STATE — which is what a rule matches on — rather than a copy of their prose.
+	bodies bool
+	// system is the slice this source writes, GitIssueSystem unless an operator said
+	// otherwise. Set once before serving and read without a lock thereafter.
+	system string
+}
+
+// NewGitIssue returns an empty git-issue Source; register repositories with AddRepo or
+// AddMirror.
+func NewGitIssue() *GitIssue {
+	return &GitIssue{repos: newRepoSet(), bodies: true, system: GitIssueSystem}
+}
+
+// SetSystem points this source at a slice other than `git-issue:*`. Call it before serving.
+// The system is a segment of the address and of the route that serves the registration, so
+// neither punctuation survives.
+func (g *GitIssue) SetSystem(system string) error {
+	if system == "" {
+		return nil
+	}
+	if strings.ContainsAny(system, ":/") {
+		return fmt.Errorf("git-issue: system %q may not contain : or / — it is a segment of the "+
+			"address (sources:<system>:<name>) and of the route that serves it", system)
+	}
+	g.system = system
+	return nil
+}
+
+// SetBodies chooses whether an issue carries its description body.
+func (g *GitIssue) SetBodies(on bool) { g.bodies = on }
+
+// AddRepo registers a repository under id (defaults to the dir's base name) and returns the
+// id used. Re-adding an id repoints it.
+func (g *GitIssue) AddRepo(id, dir string) string { return g.repos.add(id, dir) }
+
+// AddMirror registers a MIRROR of remote at dir, cloning it if dir does not already hold one.
+//
+// A mirror clone maps every ref, so it carries `refs/issues/*` and `refs/closed/*` like any
+// other — which is what makes the tracker reflectable from a pod that has no repository. It is
+// also the ONLY way this source sees a `git issue push` from somebody else's clone: issues
+// travel as refs, so a fetch is how they arrive.
+func (g *GitIssue) AddMirror(ctx context.Context, id, remote, dir string) (string, error) {
+	id, err := g.repos.addMirror(ctx, id, remote, dir)
+	if err != nil {
+		return "", fmt.Errorf("git-issue: %w", err)
+	}
+	return id, nil
+}
+
+// System is the owned slice.
+func (g *GitIssue) System() string { return g.system }
+
+// Owns is the ownership claim an install checks against the other installed sources.
+//
+// TWO ENTRIES PER REPO, for the reason git's Owns spells out: issues are `<repo>/<xidr>` but
+// the repo summary is the bare `<repo>`, and the single glob `<id>*` that covers both would
+// also claim `<id>-extras/…` and make two disjoint repositories refuse to install together.
+func (g *GitIssue) Owns() []Own {
+	ids := g.repos.ids()
+	out := make([]Own, 0, 2*len(ids))
+	for _, id := range ids {
+		out = append(out, Own{Ref: g.system + ":*:" + id + "/*"}, Own{Ref: g.system + ":repo:" + id})
+	}
+	return out
+}
+
+// RepoRef is the ref that targets one repository: a reconcile of it reconciles that
+// repository's whole tracker, since the pass enumerates refs and is complete. It is what a
+// hint names.
+//
+// This source installs no git hook, unlike Git, and the reason is that there is only one
+// `reference-transaction` hook per repository — so a source that claimed it would be taking it
+// from whoever had it, which for the ordinary deployment (both sources over one repository) is
+// the git source. Convergence is therefore the resync, and an operator who wants it faster
+// adds a line to their OWN hook posting to the hint route with this ref. docs/reference/
+// sourced.md carries the line.
+func (g *GitIssue) RepoRef(id string) entity.Ref {
+	return entity.Ref{System: g.system, Kind: "repo", ID: id}
+}
+
+var _ Source = (*GitIssue)(nil)
+
+// Reflect reads the registered repositories' trackers and returns what git-issue:* should
+// hold. A zero ref reads every repository; a git-issue:* ref reads just the one it names.
+func (g *GitIssue) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
+	var out Reflection
+	targets := g.targets(ref)
+	ids := make([]string, 0, len(targets))
+	for id := range targets {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids) // one order, so two passes over the same repositories answer the same way
+	for _, id := range ids {
+		rn, err := g.reflectRepo(ctx, id, targets[id])
+		if err != nil {
+			return Reflection{}, fmt.Errorf("git-issue reflect %s: %w", id, err)
+		}
+		out.Covers = append(out.Covers, rn.Covers...)
+		out.Entities = append(out.Entities, rn.Entities...)
+	}
+	return out, nil
+}
+
+// targets is the repo id→repo set a reconcile should touch: all of them for a zero ref, else
+// the single repository the ref belongs to (the bare id of a git-issue:repo:<id>, or the
+// leading segment of a git-issue:issue:<id>/<xidr>).
+func (g *GitIssue) targets(ref entity.Ref) map[string]repo {
+	if ref.System != g.system || ref.ID == "" {
+		return g.repos.all()
+	}
+	id := ref.ID
+	if ref.Kind != "repo" {
+		id, _, _ = strings.Cut(ref.ID, "/")
+	}
+	if r, ok := g.repos.get(id); ok {
+		return map[string]repo{id: r}
+	}
+	return nil
+}
+
+// reflectRepo reads one repository's tracker whole. Everything it returns is scoped by the
+// `repo` field — including the covers — so one repository's pass never tombstones another's.
+//
+// ONE COVER PER KIND, complete, and the contrast with the GitHub connector is the decision
+// worth stating. GitHub covers issues twice — the open set complete, the closed set as a
+// window — because the closed back catalogue is unbounded and every page of it costs a request
+// against a budget. Here the enumeration is `git for-each-ref` over a local directory: it lists
+// every issue the repository has, open and closed, for one process and no network. So the
+// answer really is complete for the whole slice, a closed issue keeps its entity for as long as
+// its ref exists, and one whose ref is deleted is tombstoned because it is genuinely gone.
+func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, error) {
+	dir := rp.dir
+	// A mirror's read starts with a fetch, and a FAILED one fails the pass rather than
+	// reflecting what was fetched last time — stale-and-silent being the worse failure, as it
+	// is for git: a source whose credential expired last Tuesday would otherwise look exactly
+	// like a tracker where nobody has filed anything.
+	if rp.remote != "" {
+		if _, err := gitCmd(ctx, dir, "fetch", "--prune"); err != nil {
+			return Reflection{}, fmt.Errorf("fetching %s: %w", rp.remote, err)
+		}
+	}
+	mine := entity.Obj{"repo": id}.Payload()
+	// Declared BEFORE the read and unconditionally: a repository whose every issue was deleted
+	// must still cover `{repo: id}`, or the ones it no longer has would stand forever.
+	rn := Reflection{Covers: []entity.Pattern{
+		{System: g.system, Kind: "repo", Predicate: mine},
+		{System: g.system, Kind: "issue", Predicate: mine},
+	}}
+
+	refs, err := gitIssueRefs(ctx, dir)
+	if err != nil {
+		return Reflection{}, err
+	}
+
+	// Every blob this pass needs, read in ONE `git cat-file --batch`. The shape that suggests
+	// itself — two `git show`s per issue — is two processes per issue, so a tracker with two
+	// hundred issues would fork four hundred times a pass to read a few kilobytes.
+	specs := make([]string, 0, 2*len(refs))
+	for _, ref := range refs {
+		specs = append(specs, ref+":meta.tony", ref+":description.md")
+	}
+	blobs, err := gitCatFile(ctx, dir, specs)
+	if err != nil {
+		return Reflection{}, err
+	}
+
+	var open, closed int
+	for _, ref := range refs {
+		xidr, err := issuelib.XIDRFromRef(ref)
+		if err != nil {
+			continue // not an issue ref; for-each-ref was asked for two prefixes, so unreachable
+		}
+		meta, ok := blobs[ref+":meta.tony"]
+		if !ok {
+			// A ref with no meta.tony is not an issue this source can describe. Skipped rather
+			// than failed: one malformed ref should not cost the pass, and the covers above
+			// mean a skipped issue is tombstoned rather than frozen — which is the honest
+			// answer, since nothing here can say what it holds.
+			continue
+		}
+		var issue issuelib.Issue
+		if err := codec.Unmarshal(meta, &issue, codec.Tony); err != nil {
+			return Reflection{}, fmt.Errorf("%s: meta.tony: %w", ref, err)
+		}
+		// The ref namespace is authoritative for status, per issuelib: closing MOVES the ref,
+		// and meta.tony's own status field is a copy that a hand-edited tree could disagree
+		// with.
+		status := issuelib.StatusFromRef(ref)
+		if status == "closed" {
+			closed++
+		} else {
+			open++
+		}
+		title, body := splitDescription(blobs[ref+":description.md"])
+		p := entity.Obj{
+			"repo":   id,
+			"id":     xidr,
+			"title":  title,
+			"status": status,
+		}
+		addTime(p, "createdAt", issue.Created)
+		addTime(p, "updatedAt", issue.Updated)
+		addStrings(p, "labels", issue.Labels)
+		addStrings(p, "commits", issue.Commits)
+		addStrings(p, "branches", issue.Branches)
+		addStrings(p, "related", issue.RelatedIssues)
+		addStrings(p, "blocks", issue.Blocks)
+		addStrings(p, "blockedBy", issue.BlockedBy)
+		addStrings(p, "duplicates", issue.Duplicates)
+		if issue.ClosedBy != nil && *issue.ClosedBy != "" {
+			p["closedBy"] = *issue.ClosedBy
+		}
+		if g.bodies && body != "" {
+			p["body"] = body
+		}
+		rn.Add(entity.Ref{System: g.system, Kind: "issue", ID: id + "/" + xidr}, p)
+	}
+
+	rn.Add(g.RepoRef(id), entity.Obj{
+		"repo": id, "open": open, "closed": closed, "issues": open + closed,
+	})
+	return rn, nil
+}
+
+// splitDescription reads description.md as git-issue writes it: the title is the first line
+// with any leading `# ` stripped, and the body is whatever follows.
+func splitDescription(b []byte) (title, body string) {
+	s := strings.ReplaceAll(string(b), "\r\n", "\n")
+	first, rest, _ := strings.Cut(s, "\n")
+	title = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(first), "# "))
+	return title, strings.TrimSpace(rest)
+}
+
+// addTime writes an RFC3339 string, and nothing at all for a zero time — the spelling the
+// other connectors' timestamps already have, since theirs arrive as strings from an API.
+func addTime(p entity.Obj, key string, t time.Time) {
+	if !t.IsZero() {
+		p[key] = t.UTC().Format(time.RFC3339)
+	}
+}
+
+// addStrings writes a list, and nothing at all for an empty one: `labels: []` and no labels
+// are the same fact, and only one of them costs a charter a special case.
+func addStrings(p entity.Obj, key string, v []string) {
+	if len(v) > 0 {
+		p[key] = v
+	}
+}
+
+// ── git plumbing ─────────────────────────────────────────────────────────────
+
+// gitIssueRefs lists every issue ref in the repository, open and closed, sorted.
+func gitIssueRefs(ctx context.Context, dir string) ([]string, error) {
+	out, err := gitCmd(ctx, dir, "for-each-ref", "--format=%(refname)",
+		"refs/issues/", "refs/closed/")
+	if err != nil {
+		return nil, err
+	}
+	refs := nonEmptyLines(out)
+	sort.Strings(refs)
+	return refs, nil
+}
+
+// gitCatFile reads several objects in ONE git invocation and answers spec→contents, leaving
+// out whatever git reported missing.
+//
+// `git cat-file --batch` answers each requested spec in the order it was asked, as a header
+// line — `<sha> <type> <size>`, or `<spec> missing` — followed by exactly size bytes and a
+// newline. Nothing in the reply identifies WHICH spec a found object answers (the header
+// carries the object's sha, not the name it was asked for), so the association is positional,
+// which is why this reads one response per spec rather than parsing to exhaustion.
+func gitCatFile(ctx context.Context, dir string, specs []string) (map[string][]byte, error) {
+	out := make(map[string][]byte, len(specs))
+	if len(specs) == 0 {
+		return out, nil
+	}
+	cmd := exec.CommandContext(ctx, "git", "cat-file", "--batch")
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(strings.Join(specs, "\n") + "\n")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			err = fmt.Errorf("%w: %s", err, msg)
+		}
+		return nil, fmt.Errorf("git cat-file: %w", err)
+	}
+	r := bufio.NewReader(bytes.NewReader(stdout))
+	for _, spec := range specs {
+		header, err := r.ReadString('\n')
+		if err != nil {
+			// git stopped answering early. Everything read so far is still good, and the
+			// caller treats a spec it did not get back as absent.
+			return out, nil
+		}
+		fields := strings.Fields(strings.TrimRight(header, "\n"))
+		if len(fields) != 3 {
+			continue // "<spec> missing", or "<spec> ambiguous" — no payload follows either
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil {
+			continue
+		}
+		buf := make([]byte, size)
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return out, nil
+		}
+		// The contents are followed by a newline that is not part of them.
+		if _, err := r.Discard(1); err != nil {
+			out[spec] = buf
+			return out, nil
+		}
+		out[spec] = buf
+	}
+	return out, nil
+}

@@ -5,14 +5,15 @@ for the registration, the ownership globs and the routes verse serves, see
 [sources.md](sources.md); to reflect something that is not here, copy
 [examples/source](examples/source/main.go).
 
-`sourced` is a **second binary**, in the same image as `verse` and `o`. Four subcommands, one
+`sourced` is a **second binary**, in the same image as `verse` and `o`. Five subcommands, one
 external system each:
 
 ```
-sourced git    [flags]   a git repository, or a mirror of a remote one
-sourced slack  [flags]   a Slack workspace
-sourced linear [flags]   Linear teams
-sourced github [flags]   GitHub repositories
+sourced git       [flags]   a git repository, or a mirror of a remote one
+sourced git-issue [flags]   the issues `git issue` keeps inside one
+sourced slack     [flags]   a Slack workspace
+sourced linear    [flags]   Linear teams
+sourced github    [flags]   GitHub repositories
 ```
 
 Each serves the same two routes verse dials (`GET /source`, `GET /reflect`), plus — for the two
@@ -77,6 +78,65 @@ converges on the resync.
 | `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents` — covered by nothing, so history stays |
 
 Owns `git:*:<id>/*` and `git:head:<id>` per repo.
+
+## git-issue
+
+```
+sourced git-issue -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-separated)
+                  -mirror [<id>=]<url>    a remote to mirror and keep fetched (repeatable)
+                  -state  <dir>           where -mirror clones live (SOURCED_STATE, default /repos)
+                  -bodies                 reflect each issue's description body (default true)
+```
+
+[`git issue`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/cmd/git-issue) keeps its
+issues **in the repository, as refs** — `refs/issues/<xidr>` open, `refs/closed/<xidr>` closed,
+each pointing at a commit whose tree holds `meta.tony` and `description.md`. So there is no
+service to call and no credential to hold: reflecting a tracker is reading a directory, and the
+same `-repo`/`-mirror` registry the git source takes serves this one.
+
+**It is a separate subcommand from `git`, not more kinds on it.** The two answer different
+questions about one directory — what the repository *is* versus what somebody *filed* in it —
+and an operator who wants branch state without a tracker, or a tracker without fifty commits a
+pass, says so by running one and not the other. Running both over the same repository is the
+ordinary case: they write disjoint slices, so nothing coordinates.
+
+| entity | payload |
+|---|---|
+| `git-issue:issue:<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy` |
+| `git-issue:repo:<repo>` | `repo, open, closed, issues` |
+
+Owns `git-issue:*:<id>/*` and `git-issue:repo:<id>` per repo, for the reason git's claim is two
+entries: `<id>*` would also claim `<id>-extras/…`.
+
+**Status comes from the ref namespace, not from `meta.tony`.** Closing an issue *moves* its ref,
+which is what preserves its history — and it leaves a `status` field behind in the tree that a
+hand-edited or half-migrated issue can disagree with. The namespace is the one that cannot be
+wrong. Match on `status`, which is that answer.
+
+**A title lives in the first line of `description.md`**, not in `meta.tony` — `Issue.Title` is
+`tony:"-"` upstream — so `# ` is stripped and what remains is the title. `-bodies=false` drops
+the rest, which is the difference between an index of issue state and a copy of everyone's prose.
+
+**One cover per kind, complete**, which is the deliberate difference from the GitHub connector.
+GitHub covers issues twice — the open set complete, the closed set as a window — because its
+closed back catalogue is unbounded and every page costs a request against a budget. Here the
+enumeration is one `git for-each-ref` over a local directory, listing every issue open and
+closed for one process and no network, so the answer really is complete: a closed issue keeps
+its entity for as long as its ref exists, and one whose ref is deleted is tombstoned because it
+is genuinely gone. Every blob a pass needs is then read in a single `git cat-file --batch`
+rather than two `git show`s per issue — 190 issues across two real trackers reflect in about
+180ms.
+
+**There is no hook, and convergence is the resync.** A repository has one
+`reference-transaction` hook and `sourced git` is usually holding it, so this source does not
+take it. An operator who wants lower latency adds a line to their own hook:
+
+```sh
+curl -fsS -X POST "$VERSE_HINT_URL?ref=git-issue:repo:<id>" >/dev/null 2>&1 || true
+```
+
+A mirror has no hook either — nobody pushes to it — and it is also the only way this source sees
+somebody else's `git issue push`, since issues travel as refs and a fetch is how they arrive.
 
 ## slack
 
@@ -255,7 +315,12 @@ reflected leaves what was written standing, frozen: nothing covers it, so nothin
 
 `deploy/git-source`, `deploy/slack-source`, `deploy/linear-source` and `deploy/github-source`
 are the manifests, each off by default and turned on by its own knob (`-e slackSource=true`,
-`-e githubSource=true -e githubRepos=org/name`). See
+`-e githubSource=true -e githubRepos=org/name`).
+
+**git-issue has no manifest yet**, which is a gap rather than a decision — it is the same
+binary and the same `-repo`/`-mirror` flags as `git-source`, so the manifest is that one with
+the subcommand and the knob changed. Run it outside the cluster, or copy `deploy/git-source`,
+until somebody driving it needs one. See
 [deploy/README.md](../../deploy/README.md) for the credentials, the ingress and the registration
 step — which stays a verb somebody runs, because an install carries an ownership claim verse
 checks against what is already standing.

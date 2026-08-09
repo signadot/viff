@@ -48,7 +48,7 @@ func gitMain(args []string) error {
 			return fmt.Errorf("-mirror %q: %w", spec, err)
 		}
 		if id == "" {
-			id = strings.TrimSuffix(filepath.Base(strings.TrimRight(remote, "/")), ".git")
+			id = source.MirrorID(remote)
 		}
 		// The clone happens here, at startup, and a failure ends the task: an unreachable
 		// remote or a credential that is not in this pod is something to find out while

@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/signadot/verse/entity"
 )
@@ -32,8 +31,7 @@ const GitSystem = "git"
 // warehouse: a task needing a diff follows the ref into the real repo (`git show`). Acting
 // back on a repo (commit, tag, push) is the separate outbound executor path, not here.
 type Git struct {
-	mu          sync.Mutex
-	repos       map[string]repo
+	repos       repoSet
 	commitDepth int // how many tip commits to reflect as git:commit:<sha>
 	// system is the slice this source writes, GitSystem unless an operator said otherwise.
 	// Set once before serving and read without the lock thereafter, as a Config field would be
@@ -41,19 +39,8 @@ type Git struct {
 	system string
 }
 
-// repo is one registered repository: where it is, and — for a mirror — what it is a mirror OF.
-//
-// A remote makes the read a fetch, and that is the difference between a source that sits next
-// to its truth (a build host, a laptop) and one deployed away from it (a pod, which has no
-// repository until it makes one). Both are the same reflection afterwards; only how the local
-// copy comes to be current differs.
-type repo struct {
-	dir    string
-	remote string // when set, `git fetch` before reading — this dir is a mirror of it
-}
-
 // NewGit returns an empty git Source; register repositories with AddRepo or AddMirror.
-func NewGit() *Git { return &Git{repos: map[string]repo{}, commitDepth: 50, system: GitSystem} }
+func NewGit() *Git { return &Git{repos: newRepoSet(), commitDepth: 50, system: GitSystem} }
 
 // SetSystem points this source at a slice other than `git:*`. Call it before serving; it is read
 // on every pass and never written again.
@@ -82,15 +69,7 @@ func (g *Git) SetSystem(system string) error {
 
 // AddRepo registers a repository under id (defaults to the dir's base name) and returns the
 // id used. Re-adding an id repoints it.
-func (g *Git) AddRepo(id, dir string) string {
-	if id == "" {
-		id = filepath.Base(filepath.Clean(dir))
-	}
-	g.mu.Lock()
-	g.repos[id] = repo{dir: dir}
-	g.mu.Unlock()
-	return id
-}
+func (g *Git) AddRepo(id, dir string) string { return g.repos.add(id, dir) }
 
 // AddMirror registers a MIRROR of remote at dir, cloning it if dir does not already hold one,
 // and returns the id used (defaulting to the remote's base name, less any `.git`).
@@ -111,26 +90,10 @@ func (g *Git) AddRepo(id, dir string) string {
 // who just deployed it, instead of a registration that installs clean and reports a failure
 // into lastError once a minute forever.
 func (g *Git) AddMirror(ctx context.Context, id, remote, dir string) (string, error) {
-	if remote == "" {
-		return "", fmt.Errorf("git: a mirror needs a remote to mirror")
+	id, err := g.repos.addMirror(ctx, id, remote, dir)
+	if err != nil {
+		return "", fmt.Errorf("git: %w", err)
 	}
-	if id == "" {
-		id = strings.TrimSuffix(filepath.Base(strings.TrimRight(remote, "/")), ".git")
-	}
-	// A mirror is a bare repository, so HEAD is the file that says one is already there. Not
-	// re-cloned when it is: the volume outliving the pod is the point of putting it on one.
-	if _, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil {
-		parent := filepath.Dir(dir)
-		if err := os.MkdirAll(parent, 0o755); err != nil {
-			return "", fmt.Errorf("git: %s: %w", parent, err)
-		}
-		if _, err := gitCmd(ctx, parent, "clone", "--mirror", remote, dir); err != nil {
-			return "", fmt.Errorf("git: cloning %s into %s: %w", remote, dir, err)
-		}
-	}
-	g.mu.Lock()
-	g.repos[id] = repo{dir: dir, remote: remote}
-	g.mu.Unlock()
 	return id, nil
 }
 
@@ -152,13 +115,7 @@ func (g *Git) System() string { return g.system }
 // `<id>-extras/main`: not a false alarm but a real overclaim, and one that would make two
 // perfectly disjoint repos refuse to install alongside each other.
 func (g *Git) Owns() []Own {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	ids := make([]string, 0, len(g.repos))
-	for id := range g.repos {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	ids := g.repos.ids()
 	out := make([]Own, 0, 2*len(ids))
 	for _, id := range ids {
 		out = append(out, Own{Ref: g.system + ":*:" + id + "/*"}, Own{Ref: g.system + ":head:" + id})
@@ -232,12 +189,7 @@ func (g *Git) RemoveHook(id string) error {
 	return nil
 }
 
-func (g *Git) dirOf(id string) (string, bool) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	d, ok := g.repos[id]
-	return d.dir, ok
-}
+func (g *Git) dirOf(id string) (string, bool) { return g.repos.dirOf(id) }
 
 // gitHooksDir resolves a repo's hooks directory (handles worktrees/bare via git rev-parse).
 func gitHooksDir(dir string) (string, error) {
@@ -284,20 +236,14 @@ func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 // single repo the ref belongs to (its id is the git:head:<repo> id, or the leading segment of
 // a git:ref:<repo>/<name> id).
 func (g *Git) targets(ref entity.Ref) map[string]repo {
-	g.mu.Lock()
-	defer g.mu.Unlock()
 	if ref.System != g.system || ref.ID == "" {
-		out := make(map[string]repo, len(g.repos))
-		for id, r := range g.repos {
-			out[id] = r
-		}
-		return out
+		return g.repos.all()
 	}
 	id := ref.ID
 	if ref.Kind == "ref" {
 		id, _, _ = strings.Cut(ref.ID, "/") // <repo>/<name>
 	}
-	if r, ok := g.repos[id]; ok {
+	if r, ok := g.repos.get(id); ok {
 		return map[string]repo{id: r}
 	}
 	return nil

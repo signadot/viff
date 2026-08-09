@@ -14,7 +14,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
 | [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
 | [sources.md](sources.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
-| [sourced.md](sourced.md) | the three sources verse ships: git (and mirrors), Slack, Linear — the flags, the credentials, the delivery endpoints, and what each reflects |
+| [sourced.md](sourced.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
 | [goals.md](goals.md) | goals — a target over the reactive substrate (being redesigned) |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
