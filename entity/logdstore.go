@@ -381,34 +381,42 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 // isNotFound reports whether a read error is the substrate saying "nothing stands there"
 // rather than "I could not look" — the distinction Get exists to preserve.
 //
-// It has to ask the MESSAGE, which is unpleasant and deliberately narrow. logd answers a
-// read of a path that does not exist with an error, not a null, and libctl renders the
-// server's typed code (api.ErrCodeNotFound) into an opaque string on the way out, so the
-// code that would settle this never reaches us. Until it does, this is the discriminator.
+// It asks the server's CODE, which is the stable half of a response. logd answers a read
+// of a path that does not exist with an error rather than a null, and since go-tony
+// v0.0.122 libctl wraps that response instead of flattening it to its message, so
+// logdapi.ErrorCode digs the ErrCode* back out through the wrapping.
 //
-// Getting it wrong in the other direction is what makes it worth the ugliness: before this,
-// every absent entity whose id, kind, or system had never been written came back as a read
-// FAILURE — so `GET /entity` for anything absent answered 502 on any verse that had ever
-// been written to, and an agent asking after a file was told the store was unreachable.
+// Getting it wrong in the other direction is what makes this worth stating at length:
+// every absent entity whose id, kind, or system had never been written used to come back
+// as a read FAILURE — so `GET /entity` for anything absent answered 502 on any verse that
+// had ever been written to, and an agent asking after a file was told the store was
+// unreachable.
 //
-// Which is exactly what a go-tony bump did. v0.0.121 replaced the wrapped "path not found"
-// sentinel with a typed PathError whose messages name what resolved and what did not, so
-// the old substring matched nothing and every absent read became a 502 again. Matching a
-// message is a standing invitation to that, and it stays until logd hands the code across;
-// TestAbsentReadsAreNotFailures is what makes the next bump say so out loud.
+// This function matched the MESSAGE until v0.0.122, and that is precisely how it broke:
+// v0.0.121 replaced the wrapped "path not found" sentinel with a typed PathError whose
+// prose names what resolved and what did not, the old substring matched nothing, and every
+// absent read was a 502 again. The code does not move when the prose improves, which is the
+// whole reason to ask it. TestAbsentReadsAreNotFailures is what made that bump say so out
+// loud, and is what will catch the next one.
 //
-// Two of PathError's three kinds mean nothing stands there: the field is absent, or it is
-// shadowed by a non-object. Both render as "no value at <path>: …". The third does NOT —
-// "cannot extract <path>: segment <seg> is not an object field" is a path that can never
-// resolve, i.e. the caller's path is wrong rather than the store's contents missing, and
-// calling that absent would answer "nothing there yet" to something no write can fix.
+// Note what is NOT absent: ErrCodeInvalidPath, which logd answers when a path addresses
+// something other than an object field. That path can never resolve, so it is the caller's
+// path being wrong rather than the store's contents missing, and reporting it as absent
+// would answer "nothing there yet" to something no write can ever fix. Asking the code
+// gets that distinction for free; the message match had to encode it by hand.
 func isNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
+	if code := logdapi.ErrorCode(err); code != "" {
+		return code == logdapi.ErrCodeNotFound
+	}
+	// No response error in the chain: either a transport failure, which is emphatically
+	// not "nothing stands there", or a pre-v0.0.122 `o` that flattened the response to its
+	// message before we could see the code. resolveO will run a skewed `o` with a warning
+	// rather than no store at all, so both older spellings stay matched — cheaper than the
+	// 502 if it comes to it, and dead weight otherwise.
 	msg := err.Error()
-	// The pre-v0.0.121 spelling is still matched: resolveO will run a skewed `o` with a
-	// warning rather than no store at all, and this is cheaper than the 502 if it does.
 	return strings.Contains(msg, "no value at ") || strings.Contains(msg, "path not found")
 }
 
@@ -821,8 +829,13 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 		for {
 			// Drain the current watch until it ends. A clean end is a force-end
 			// (a mount/unmount overlapping this subtree changed membership →
-			// WatchEndedError "membership_changed") or a dropped connection — NOT a
-			// terminal condition. We re-establish below rather than returning.
+			// WatchEndedError, reason "session_mounted" or "session_unmounted"
+			// since go-tony v0.0.122, one "membership_changed" before it) or a
+			// dropped connection — NOT a terminal condition. We re-establish below
+			// rather than returning, and the reason does not change that: every
+			// ending upstream defines is re-establishable, and re-watching is the
+			// whole response. It would matter to code deciding whether the content
+			// it is about to see SHOULD differ; this loop only has to catch up.
 		pump:
 			for {
 				select {
@@ -1043,7 +1056,7 @@ func (e errString) Error() string { return string(e) }
 // subtrees, not the root) holds no root watch to collide with a controller mount. Like
 // the contract says, it is a low-latency hint that drops under backpressure; correctness comes
 // from the cursor + Since. Today the only observer is the /watch debug stream (decision:
-// an active whole-verse watch is transient and retries on a membership_changed force-end).
+// an active whole-verse watch is transient and retries on a mount/unmount force-end).
 func (s *LogdStore) Observe() (<-chan Commit, func()) {
 	s.mu.Lock()
 	id := s.nextID
