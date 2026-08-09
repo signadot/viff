@@ -437,9 +437,12 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 	})
 }
 
-// A cursor older than a store instance's sync point can't be served (logd may have
-// compacted it, and under-delivers silently) — Since returns ok=false so the
-// consumer resyncs from current state.
+// A cursor older than a store instance's sync point is refused without asking logd —
+// Since returns ok=false so the consumer resyncs from current state. Deliberately
+// conservative: logd may well still hold that range (it refuses only below its own replay
+// floor, see TestSinceBelowReplayFloorResyncs), but a store that has not observed the
+// range cannot say so, and resyncing costs less than a catch-up that quietly misses
+// commits.
 func TestLogdStore_SinceBelowWatermarkResyncs(t *testing.T) {
 	addr := startLogd(t)
 	s1, err := OpenLogdStore(LogdConfig{Addr: addr, ClientID: "hist"})

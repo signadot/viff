@@ -1106,10 +1106,16 @@ func (s *LogdStore) startRootWatchLocked() {
 // does and a consumer cannot tell which it is reading — which is the point: the two paths
 // exist to recover each other.
 //
-// ok is false when the caller must resync from current state: the replay could not
-// be established, or `from` predates this store's low-watermark (openCommit) — logd
-// silently under-delivers a compacted range rather than erroring, so a cursor older
-// than what this instance has observed cannot be served safely.
+// ok is false when the caller must resync from current state: the replay could not be
+// established, or `from` predates this store's low-watermark (openCommit).
+//
+// A range logd has COMPACTED comes out of the loop below as ok=false without special
+// handling: logd refuses a FromCommit watch under its replay floor with a terminal
+// "replay_compacted" event, libctl raises that as a WatchEndedError, and the closed
+// channel is then reported by w.Err(). (It used to under-deliver such a range silently,
+// which is why the watermark check exists at all — it is now the cheap first guard rather
+// than the only one, and it is conservative: a cursor from before this instance synced is
+// refused even when logd still holds it. See TestSinceBelowReplayFloorResyncs.)
 func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 	s.ensureSynced() // seed the low-watermark for a store that isn't being Observed
 	s.mu.Lock()

@@ -20,22 +20,35 @@ replay window, and diverges from the interface — all symptoms of one thing, th
 store synthesising *edge* semantics the substrate doesn't carry. So: what should a change
 event actually carry, and is matching edge- or level-triggered?
 
-## What logd's watch actually delivers (measured)
+## What the watch actually delivers (measured)
 
 A watch on the root streams one event per commit, each carrying the commit's
-`Patch`. Probing a real logd (create then update the same key, then a partial patch):
+`Patch`. Probing the production path — verse → docd → logd, go-tony v0.0.122 —
+with a create, a full update, a partial one, a delete, and a re-create:
 
 ```
-CREATE demo.pr.1           {verse:{demo:{pr:{"1":{stage:open,      x:1}}}}}
-UPDATE demo.pr.1 (full)    {verse:{demo:{pr:{"1":{stage:reviewing, x:1}}}}}
-UPDATE demo.pr.1 (partial) {verse:{demo:{pr:{"1":{stage:done}}}}}
+CREATE   demo.pr.1         {verse:{demo:{pr:{"1":{stage:open,      x:1}}}}}
+UPDATE   demo.pr.1 (full)  {verse:{demo:{pr:{"1":{stage:reviewing, x:1}}}}}
+UPDATE   demo.pr.1 (deep)  {verse:{demo:{pr:{"1":{stage:done}}}}}
+DELETE   demo.pr.1         {verse:{demo:{pr:{"1":null}}}}
+RECREATE demo.pr.1         {verse:{demo:{pr:{"1":{stage:reopened}}}}}
 ```
+
+Nothing is added by going through docd, and that is structural rather than a
+coincidence of this version: docd's client face is *the logd session protocol verbatim*,
+so a client cannot tell which it is talking to, and a watch that docd routes rather than
+composes is logd's stream forwarded. What docd changes about watches is availability, not
+vocabulary — see the mount hazard below.
 
 Two facts settle the design:
 
 1. Create and update are byte-identical. Adding the new key `"1"` looks exactly
    like replacing an existing `"1"`. There is no add-vs-replace marker, no new-node
-   flag — create-vs-update is simply not in the stream.
+   flag — create-vs-update is simply not in the stream. The re-create says the same
+   thing from the other side: the commit that brings `demo:pr:1` back after its
+   tombstone is a plain merge, indistinguishable from any other write of `stage`.
+   `WatchEvent` carries `{commit, path, state, patch, replayComplete, ended, endReason}`
+   and nothing else — no pre-image field to read, and no watch option that asks for one.
 2. The delta is the writer's applied patch, verbatim — not a computed old→new
    diff. The full update re-emitted the unchanged `x:1`; a diff would have dropped
    it. logd forwards *what was written this commit*, carrying zero knowledge of prior
@@ -245,6 +258,27 @@ waiting for the one after it — while the store, which built them from a single
 See [the commit is the unit](trigger-model.md#the-commit-is-the-unit) for what the engine does
 with one.
 
+## A history-bearing watch must not span a mount
+
+Everything above assumes the watch *has* a history behind it. One docd capability decides
+whether it does. A watch whose path is a strict ancestor of a controller mount is
+**composed** — docd fans it across the base owner and every mount below, and merges them
+into one stream — and a composed watch cannot honour `FromCommit`: the sub-streams have
+independent commit sequences, so no single resume commit replays them. It does not refuse.
+It drops the replay request and never signals `ReplayComplete`, so a `Since` over such a
+path returns `ok=true` with zero events once it runs out its own timeout — a
+successful-looking under-delivery of the engine's catch-up, which is the worst shape the
+failure could take. For the same reason a membership change ends a composed watch
+(`session_mounted` / `session_unmounted`) and the re-watch re-inits from a fresh composed
+snapshot rather than replaying the gap: level recovered, transients not.
+
+The store's answer is a namespace split rather than a check: mount-owned slices render
+under `entity.MountRoot` (`versemnt`), a sibling of the entity root, so no watch verse
+takes is ever an ancestor of a mount. One root watch, `Since` untouched. The price is that
+a mounted slice fires no triggers — which is the right price, since a mount is task-driven
+and has no history to observe in the first place. See
+[controllers](controllers.md) and `entity/composedwatch_test.go`.
+
 ## Why this is the portable choice (not an exotic dependency)
 
 The capability verse leans on — an ordered, resumable, revisioned change stream
@@ -295,11 +329,23 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
   already there, checked with the write in one step. What is still missing is the event
   saying *which* it was, so a trigger cannot say "fire only on first entry"; the latch idiom
   above remains the answer, and no charter has needed more yet.
-- **Truncation detection.** logd *silently under-delivers* a `Since` range it has
-  compacted (empty index range → no error), so `ok=false` can't come from an error.
-  The store guards with a low-watermark: `Since(from)` returns `ok=false` when `from`
-  predates `openCommit` (the commit this instance synced at), forcing a resync — this
-  catches a cursor carried across a restart. A cursor *within* this instance's
-  lifetime that logd nonetheless compacts is an uncaught residual; closing it needs
-  an upstream "earliest retained commit" query (an etcd-compaction-revision
-  equivalent), which logd doesn't expose yet.
+- **Truncation detection** — *closed upstream*, and worth re-reading if you remember it
+  as open. logd persists a **replay floor** (the highest commit whose delta history
+  compaction has erased) and refuses a `FromCommit` watch below it with a terminal
+  `replay_compacted` event, sent *before* any state — a state read below the floor is
+  itself only snapshot-accurate, and handing a client an untrustworthy state and then an
+  error is worse than the error alone. libctl raises that terminal event as a
+  `WatchEndedError`, so it arrives at `Since` as `w.Err() != nil` and becomes `ok=false`
+  with no special-casing. Measured through the production path (verse → docd → logd,
+  go-tony v0.0.122) and pinned by `entity.TestSinceBelowReplayFloorResyncs`: floor at 5,
+  `Since(0)` → `ok=false`, zero commits. The distinct code is the point — `replay_failed`
+  reads as transient, and a consumer told that retries the same doomed cursor forever.
+- **No way to ask the floor in advance.** What is left of the above is smaller and
+  different in kind: the floor is discoverable only by asking for a replay and being
+  refused. There is still no client query for it (etcd's compaction revision has no
+  equivalent in the session protocol). That is enough for `Since`, whose only decision is
+  ok-or-resync, and not enough for a consumer that wants to know how much history it has
+  before it needs it. The store's low-watermark — `Since(from)` returns `ok=false` when
+  `from` predates `openCommit`, the commit this instance synced at — therefore stays, but
+  it is now the cheap first guard rather than the only one, and a deliberately
+  conservative one: after a restart it refuses cursors logd would still have served.
