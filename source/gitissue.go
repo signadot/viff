@@ -225,10 +225,18 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 			// answer, since nothing here can say what it holds.
 			continue
 		}
+		// meta.tony is ENRICHMENT, and this is where that shows. The ref already gives the id
+		// and the status, and description.md the title, so an issue whose meta will not decode
+		// is still a real issue that a charter can see — while failing the pass over it would
+		// take the whole slice out until somebody fixed one old file.
+		//
+		// Which is not hypothetical: `git issue`'s first iteration numbered issues, and those
+		// refs carry `id: 5` where the struct wants a string. issuelib's doc says such issues
+		// "remain reachable on read" until `git issue migrate` rewrites them, and upstream's
+		// own reader does not manage it — GetByRef errors and List silently returns 172 of 173.
+		// So verse reflects what it can rather than inheriting that.
 		var issue issuelib.Issue
-		if err := codec.Unmarshal(meta, &issue, codec.Tony); err != nil {
-			return Reflection{}, fmt.Errorf("%s: meta.tony: %w", ref, err)
-		}
+		metaErr := codec.Unmarshal(meta, &issue, codec.Tony)
 		// The ref namespace is authoritative for status, per issuelib: closing MOVES the ref,
 		// and meta.tony's own status field is a copy that a hand-edited tree could disagree
 		// with.
@@ -244,6 +252,12 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 			"id":     xidr,
 			"title":  title,
 			"status": status,
+		}
+		if metaErr != nil {
+			// Said on the entity rather than swallowed: a thin issue with no explanation is
+			// indistinguishable from one nobody labelled, and this is the field that tells an
+			// operator which — and that `git issue migrate` is the fix.
+			p["metaError"] = metaErr.Error()
 		}
 		addTime(p, "createdAt", issue.Created)
 		addTime(p, "updatedAt", issue.Updated)

@@ -83,7 +83,16 @@ func (s *repoSet) addMirror(ctx context.Context, id, remote, dir string) (string
 		if err := os.MkdirAll(parent, 0o755); err != nil {
 			return "", fmt.Errorf("%s: %w", parent, err)
 		}
-		if _, err := gitCmd(ctx, parent, "clone", "--mirror", remote, dir); err != nil {
+		// The clone target is made ABSOLUTE first, because the command runs with parent as its
+		// working directory and git would otherwise resolve a relative dir a second time
+		// against it — a `-state repos` cloning into `repos/repos/<id>`, which then fails
+		// every pass with "chdir repos/<id>: no such file or directory" and reads like the
+		// remote's fault. Only the default `-state /repos` being absolute kept this hidden.
+		target := dir
+		if abs, err := filepath.Abs(dir); err == nil {
+			target = abs
+		}
+		if _, err := gitCmd(ctx, parent, "clone", "--mirror", remote, target); err != nil {
 			return "", fmt.Errorf("cloning %s into %s: %w", remote, dir, err)
 		}
 	}

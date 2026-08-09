@@ -2,7 +2,9 @@ package source_test
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
@@ -219,6 +221,139 @@ func TestGitIssueTargetedReconcile(t *testing.T) {
 		if len(rn.Covers) != 2 {
 			t.Errorf("Reflect(%s) covered %d patterns, want just A's two", ref, len(rn.Covers))
 		}
+	}
+}
+
+// A LEGACY issue does not take the pass down with it.
+//
+// `git issue`'s first iteration numbered issues six digits and wrote `id: 5` — a Number where
+// the current struct wants a string — and issuelib's doc says such issues stay readable until
+// `git issue migrate` rewrites them. Upstream's own reader does not manage it (GetByRef errors,
+// List silently returns one fewer than it found), and one of these is sitting in a real
+// tracker today. Failing the pass over it would take the whole slice out until somebody fixed
+// an old file, so what is knowable without meta.tony — the id and status from the ref, the
+// title from description.md — is reflected anyway, and metaError says what was missed.
+func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
+	needGit(t)
+	dir := t.TempDir()
+	initRepo(t, dir)
+	fine := fileIssue(t, dir, "an ordinary issue", "", nil)
+	victim := fileIssue(t, dir, "will become legacy", "", nil)
+
+	// Rewrite one into the old shape, at the old six-digit ref.
+	t.Chdir(dir)
+	s := issuelib.NewGitStoreWithOutput(testLog{t})
+	legacy := "id: 5\nstatus: open\nlabels: []\ncommits: []\nbranches: []\n" +
+		"created: \"2025-12-19T12:29:27+01:00\"\nupdated: \"2025-12-19T12:29:27+01:00\"\n"
+	err := s.ReplaceTree(issuelib.RefForXIDR(victim), "make it legacy", map[string][]byte{
+		"meta.tony":      []byte(legacy),
+		"description.md": []byte("# a legacy title\n\nand its body"),
+	})
+	if err != nil {
+		t.Fatalf("ReplaceTree: %v", err)
+	}
+	if err := s.MoveRef(issuelib.RefForXIDR(victim), "refs/issues/000005"); err != nil {
+		t.Fatalf("MoveRef: %v", err)
+	}
+
+	gi := source.NewGitIssue()
+	gi.AddRepo("A", dir)
+	got, _ := reflectIssues(t, gi, entity.Ref{})
+
+	p := got["git-issue:issue:A/000005"]
+	if p == nil {
+		t.Fatalf("the legacy issue was dropped; got %v", len(got))
+	}
+	if p["status"] != "open" {
+		t.Errorf("legacy status = %v, want open (from the ref)", p["status"])
+	}
+	if p["title"] != "a legacy title" {
+		t.Errorf("legacy title = %v (from description.md)", p["title"])
+	}
+	if p["id"] != "000005" {
+		t.Errorf("legacy id = %v, want the ref's 000005", p["id"])
+	}
+	if p["metaError"] == nil {
+		t.Error("no metaError: a thin issue with no explanation reads as an unlabelled one")
+	}
+	// And the healthy issue beside it is untouched — the point of not failing the pass.
+	if q := got["git-issue:issue:A/"+fine]; q == nil || q["metaError"] != nil {
+		t.Errorf("the ordinary issue was collateral: %+v", q)
+	}
+	if sm := got["git-issue:repo:A"]; sm["issues"] != int64(2) {
+		t.Errorf("summary = %+v, want both issues counted", sm)
+	}
+}
+
+// A mirror carries the tracker. `git clone --mirror` maps every ref, so refs/issues and
+// refs/closed arrive with everything else — which is the whole deployed story, since a pod has
+// no repository and somebody else's `git issue push` reaches it only as a fetch.
+func TestGitIssueMirrorCarriesTheTracker(t *testing.T) {
+	needGit(t)
+	ctx := context.Background()
+
+	origin := t.TempDir()
+	initRepo(t, origin)
+	commit(t, origin, "a.txt", "one", "first") // a mirror of an unborn repo has nothing to clone
+	open := fileIssue(t, origin, "filed upstream", "and pushed", nil)
+	shut := fileIssue(t, origin, "settled upstream", "", nil)
+	closeIssue(t, origin, shut)
+
+	into := filepath.Join(t.TempDir(), "mirrors", "origin")
+	gi := source.NewGitIssue()
+	if _, err := gi.AddMirror(ctx, "up", origin, into); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+	got, _ := reflectIssues(t, gi, entity.Ref{})
+	if p := got["git-issue:issue:up/"+open]; p == nil || p["status"] != "open" {
+		t.Errorf("mirror lost the open issue: %+v", p)
+	}
+	if p := got["git-issue:issue:up/"+shut]; p == nil || p["status"] != "closed" {
+		t.Errorf("mirror lost the closed issue: %+v", p)
+	}
+
+	// A pass FETCHES, so an issue filed after the clone arrives without a restart.
+	later := fileIssue(t, origin, "filed after the clone", "", nil)
+	got, _ = reflectIssues(t, gi, entity.Ref{})
+	if got["git-issue:issue:up/"+later] == nil {
+		t.Errorf("a later issue did not arrive on the next pass; got %d issues", len(got)-1)
+	}
+}
+
+// A RELATIVE -state clones where it was told to.
+//
+// It did not: the clone runs with the target's parent as its working directory, so git
+// resolved a relative path against that parent a second time and put the mirror in
+// <state>/<state>/<id>. Every pass then failed with "chdir <state>/<id>: no such file or
+// directory", which reads like the remote's fault and is not. Only the default -state being
+// absolute kept it hidden, in this source and in the git source it is shared with.
+func TestGitMirrorHonoursARelativeState(t *testing.T) {
+	needGit(t)
+	ctx := context.Background()
+
+	origin := t.TempDir()
+	initRepo(t, origin)
+	commit(t, origin, "a.txt", "one", "first")
+	id := fileIssue(t, origin, "reachable through a relative state dir", "", nil)
+
+	// A relative path is only meaningful against a known cwd, which is what t.Chdir gives.
+	work := t.TempDir()
+	t.Chdir(work)
+	into := filepath.Join("state", "up")
+
+	gi := source.NewGitIssue()
+	if _, err := gi.AddMirror(ctx, "up", origin, into); err != nil {
+		t.Fatalf("AddMirror: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(work, "state", "up", "HEAD")); err != nil {
+		t.Fatalf("mirror is not at the relative path it was given: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(work, "state", "state")); err == nil {
+		t.Error("the state dir was resolved twice: mirror landed in <state>/<state>/<id>")
+	}
+	got, _ := reflectIssues(t, gi, entity.Ref{})
+	if got["git-issue:issue:up/"+id] == nil {
+		t.Errorf("reflect through a relative -state found nothing; got %+v", got)
 	}
 }
 

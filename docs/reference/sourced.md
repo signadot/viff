@@ -102,7 +102,7 @@ ordinary case: they write disjoint slices, so nothing coordinates.
 
 | entity | payload |
 |---|---|
-| `git-issue:issue:<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy` |
+| `git-issue:issue:<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError` |
 | `git-issue:repo:<repo>` | `repo, open, closed, issues` |
 
 Owns `git-issue:*:<id>/*` and `git-issue:repo:<id>` per repo, for the reason git's claim is two
@@ -126,6 +126,19 @@ its entity for as long as its ref exists, and one whose ref is deleted is tombst
 is genuinely gone. Every blob a pass needs is then read in a single `git cat-file --batch`
 rather than two `git show`s per issue — 190 issues across two real trackers reflect in about
 180ms.
+
+**A mirror carries the tracker**, which is the deployed case: `git clone --mirror` maps every
+ref, so `refs/issues` and `refs/closed` arrive with the branches, and a pass fetches — so
+somebody else's `git issue push` reaches this source without a restart. It is in fact the *only*
+way it does, since issues travel as refs.
+
+**A legacy issue does not take the pass down with it.** `git issue`'s first iteration numbered
+issues six digits and wrote `id: 5`, a number where the current struct wants a string, and those
+refs are still out there. `meta.tony` is therefore treated as *enrichment*: the id and status
+come from the ref and the title from `description.md`, so such an issue is reflected with what
+is knowable and a `metaError` field saying what was not. `git issue migrate` is the fix, and
+until somebody runs it the rest of the tracker keeps converging. (Upstream's own reader does not
+manage this: `git issue show` errors on such an issue and `git issue list` silently omits it.)
 
 **There is no hook, and convergence is the resync.** A repository has one
 `reference-transaction` hook and `sourced git` is usually holding it, so this source does not
