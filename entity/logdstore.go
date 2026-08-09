@@ -390,8 +390,26 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 // every absent entity whose id, kind, or system had never been written came back as a read
 // FAILURE — so `GET /entity` for anything absent answered 502 on any verse that had ever
 // been written to, and an agent asking after a file was told the store was unreachable.
+//
+// Which is exactly what a go-tony bump did. v0.0.121 replaced the wrapped "path not found"
+// sentinel with a typed PathError whose messages name what resolved and what did not, so
+// the old substring matched nothing and every absent read became a 502 again. Matching a
+// message is a standing invitation to that, and it stays until logd hands the code across;
+// TestAbsentReadsAreNotFailures is what makes the next bump say so out loud.
+//
+// Two of PathError's three kinds mean nothing stands there: the field is absent, or it is
+// shadowed by a non-object. Both render as "no value at <path>: …". The third does NOT —
+// "cannot extract <path>: segment <seg> is not an object field" is a path that can never
+// resolve, i.e. the caller's path is wrong rather than the store's contents missing, and
+// calling that absent would answer "nothing there yet" to something no write can fix.
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "path not found")
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// The pre-v0.0.121 spelling is still matched: resolveO will run a skewed `o` with a
+	// warning rather than no store at all, and this is cheaper than the 502 if it does.
+	return strings.Contains(msg, "no value at ") || strings.Contains(msg, "path not found")
 }
 
 // Write is THE write: value merges in at one path iff every precondition holds, in a single
