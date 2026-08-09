@@ -48,16 +48,21 @@ reflected entities are writes. See [sources](sources.md).
 
 ```go
 type Handler interface {
-    Match(ctx, path string, pattern *ir.Node, opts MatchParams) (*ir.Node, error)
-    Patch(ctx, path string, data *ir.Node, opts PatchParams) (*ir.Node, error)
-    Watch(ctx, path string, opts WatchParams, emit func(*api.WatchEvent) error) error
+    Match(ctx context.Context, path string, pattern *ir.Node, opts MatchParams) (*ir.Node, error)
+    Patch(ctx context.Context, path string, data *ir.Node, opts PatchParams) (*api.PatchResult, error)
+    Watch(ctx context.Context, path string, opts WatchParams, emit func(*api.WatchEvent) error) error
 }
 ```
 
 - `Match` returns the data at `path`. `pattern` is the client's optional field
   selection/filter; `opts.Scope` is the copy-on-write scope the read belongs to (a
   scope-aware controller returns its scoped view; a scope-agnostic one may ignore it).
-- `Patch` applies a write and returns the result. `opts.TxID` means the client is
+- `Patch` applies a write and reports where it landed: `PatchResult.Commit` is the commit
+  it committed at, `Data` the resulting data (with any generated ids). A logd-backed
+  controller returns its `LogdSession.PatchWith` result unchanged, so the client sees the
+  same commit a direct logd write would give it. A *self-backed* controller has no logd
+  commit to report and leaves `Commit` zero rather than invent one from its own timeline —
+  the same reason it cannot serve `opts.Commit` on a read. `opts.TxID` means the client is
   coordinating a multi-mount transaction the controller joins by writing to logd with
   that tx id; `opts.Match` carries a CAS precondition. A read-only controller returns
   `libctl.ErrUnsupported`.
@@ -98,9 +103,10 @@ for two independent reasons:
 
 1. A mount force-ends overlapping watches. Mount/unmount coordinates with the watch
    readers overlapping the mounted path: docd waits `force_after` (default 5s) for them
-   to drain, then force-ends them (`WatchEndedError` reason `membership_changed`). A
-   *standing* root watch overlaps every mount under the root, so every `connect` mount
-   stalls ~5s and then kills the reader. (This is why `verse connect` once took ~5s and
+   to drain, then force-ends them (`WatchEndedError` whose reason says which way the mount
+   set moved: `session_mounted` or `session_unmounted`). A *standing* root watch overlaps
+   every mount under the root, so every `connect` mount stalls ~5s and then kills the
+   reader. (This is why `verse connect` once took ~5s and
    silently broke the engine; see `verse-root-watches-eliminated`.)
 2. A root watch depends on every controller under it. docd composes an ancestor
    watch by folding in each overlapping mount's `Watch` stream. If any one controller
@@ -155,7 +161,7 @@ subtree as a document, apply each event
 ([`tony.Patch`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony#Patch) for a
 Patch, replace for a State), and diff the reconstructed entity set against the last snapshot
 for `Set`/`Delete`. On a
-`membership_changed` force-end, re-establish the watch (it re-composes against the current
+`session_mounted`/`session_unmounted` force-end, re-establish the watch (it re-composes against the current
 mount set) and let the fresh `State` resync close the gap. See [change events](change-events.md)
 and `LogdStore.WatchSubtree`.
 
@@ -197,6 +203,6 @@ session's lifetime and drops it (and its scope) on exit.
 - [ ] `Watch` implemented (no-op + block if read-only), emitting root-rooted patches.
 - [ ] No non-UTF-8 / unbounded bytes on the wire — serve markers.
 - [ ] No root/ancestor watch anywhere in the consuming path; watch the matched subtree.
-- [ ] Consumers apply deltas (`tony.Patch`), don't decode them; resync on
-      `membership_changed`.
+- [ ] Consumers apply deltas (`tony.Patch`), don't decode them; resync on a
+      `session_mounted`/`session_unmounted` force-end.
 - [ ] Readiness probed before firing consumers.
