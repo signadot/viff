@@ -81,6 +81,17 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 	if err != nil {
 		return docd{}, err
 	}
+	// The admin/pprof face gets a reserved port too. `o sys up` defaults it to a FIXED
+	// localhost:9223 and treats the bind as fatal, so leaving it unset made every verse
+	// that spawns its own daemons claim one global port: a second verse — a smoke beside
+	// a dev server, two smokes in two worktrees — died on "address already in use" from a
+	// listener neither of them asked for. Ephemeral here for the same reason as the three
+	// above; `off` would buy the same isolation but throw away the one channel that still
+	// answers when the data path has wedged.
+	adminAddr, err := freeAddr()
+	if err != nil {
+		return docd{}, err
+	}
 
 	child := exec.Command(oBin,
 		"sys", "up",
@@ -88,11 +99,17 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		"--logd-addr", logdAddr,
 		"--docd-addr", clientAddr,
 		"--docd-mount-addr", mountAddr,
+		"--admin-addr", adminAddr,
 	)
 	child.Stdout, child.Stderr = cc.Err, cc.Err
-	// Own process group, so stop() can reap the WHOLE tree: `o sys up` runs logd and docd
-	// as children, so signalling only child.Process would orphan the daemons — the leak
-	// that piled up abandoned tasks.
+	// Own process group. This once read "`o sys up` runs logd and docd as children" — it
+	// no longer does: as of v0.0.120 both are in-process listeners behind one admin face
+	// (system/…/cmd/o/system_compose.go), which is also why there is one admin port to
+	// reserve above and not three. The group still earns its keep for the other reason:
+	// it keeps `o` out of the terminal's foreground group, so a Ctrl+C reaches verse
+	// alone and verse decides when the daemons die, rather than both racing teardown.
+	// Killing -pgid rather than the pid also keeps stop() correct if `o` grows children
+	// again — the orphaned-daemon leak that piled up abandoned tasks is the history here.
 	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := child.Start(); err != nil {
 		return docd{}, fmt.Errorf("start `%s sys up`: %w", oBin, err)
