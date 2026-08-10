@@ -147,7 +147,9 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
+  answer: .[tony-base:ir]
   driver: .[string]
   environment: .[string]
   id: .[string]

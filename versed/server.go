@@ -2214,9 +2214,19 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Parsed here as well as at the runtime, and for the reason launchOf parses a charter's:
+	// a contract that cannot be meant should fail before a model call is paid for, not after
+	// a run and a repair round.
+	if body.Answer != nil {
+		if _, err := answer.Parse(body.Answer); err != nil {
+			http.Error(w, "answer contract: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
+		Answer: body.Answer,
 		// The ad-hoc path is the one place a principal exists today: somebody typed this.
 		// A firing has no equivalent until an install can record an author, so it sends
 		// Subject and Chain instead — see launchOf.

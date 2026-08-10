@@ -22,6 +22,7 @@ Leave the tree building. Edit the file and stop — do not commit, and do not ru
 suite: a single file's references are checkable by reading the code they name, and this task is
 meant to be short.
 
-Your final message IS the answer. Make it the list of what you changed and why each was wrong,
-with the line and the evidence. If nothing in the file is wrong, say exactly that and change
-nothing — a clean file is a real result, not a failure.
+Your final message IS the answer. Write the account first — what you changed and why each was
+wrong, with the line and the evidence — and end it with the block the answer contract asks for.
+`status: clean` if the file was already right and you changed nothing, which is a real result
+and not a failure; `status: fixed` if you changed it.

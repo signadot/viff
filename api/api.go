@@ -24,6 +24,8 @@ package api
 //go:generate go tool tony-codegen -dir .
 
 import (
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
 )
@@ -154,6 +156,16 @@ type Spawn struct {
 	// thing. Resolved by the runner against its own config, never by verse: see
 	// task.Launch.Environment.
 	Environment string `tony:"field=environment,omitzero"`
+	// Answer is this run's ANSWER CONTRACT — the shape its final message must have, as a tony
+	// match pattern. The ad-hoc face of a spawn's `answer:`, so `verse task run` can declare
+	// what a charter can.
+	//
+	// It is not decoration on this path. Without a contract a driver's only definition of
+	// "finished" is the model declining to call another tool, and a model that narrates a plan
+	// between steps ends the task mid-investigation — observed, with the result reading "Let me
+	// focus on:". A contract is what makes done CHECKABLE: the answer is validated when the
+	// model stops, the complaint is fed back, and the run fails if the shape never arrives.
+	Answer *ir.Node `tony:"field=answer,omitzero"`
 	// Principal is who is answerable for this run. Self-asserted — the same standing `--as`
 	// has everywhere else, and for the same reason: verifying a caller is authority's
 	// subject, not this field's. It is carried so a runner whose effects LEAVE the verse can
