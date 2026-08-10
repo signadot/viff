@@ -1,0 +1,567 @@
+# A coding runner: a workspace per task, and an agent in it
+
+Status: **partly built** — the program under `docs/reference/examples/coderunner` runs, with
+the containment stubbed at its weakest rung and the push ungated (both said so below). It is the
+consumer half of
+[runner-descriptor.md](runner-descriptor.md) — the containment vocabulary that note designs is
+what this one needs a name for, and the descriptor is where the name is published.
+
+## What it is
+
+A second example under `docs/reference/examples/coderunner`: a runner that serves the
+verse-facing [task-control](../task-control.md) contract, gives each task its own git checkouts,
+and runs the work in it — either by the [LLM harness](../../task/harness) already in the tree, or
+by invoking a coding agent binary such as Claude Code.
+
+**A second example rather than a bigger first one.** The existing sample
+([reference/examples/runner](../reference/examples/runner/main.go)) is a hundred and thirty
+lines whose whole argument is that it is *the smallest thing that serves the contract*, with the
+two functions you change marked `CHANGE THIS`. Git, workspaces, credentials, two drivers, a
+command allowlist and a containment ladder do not fit inside that argument, and folding them in
+would destroy the teaching device — the marked functions stop being the two questions a runner
+answers and become two of a dozen things to configure. Keeping both keeps a ladder: *here is the
+contract*, then *here is what a real coding runner does with it*. Both compile with the tree, for
+the reason the first one does — a stub in a fenced block goes stale the first time a signature
+moves and nobody finds out.
+
+## The workspace is the axis that already exists
+
+A coding task needs to know which repository, at which base, and where its work should go. None
+of that is on a spawn today, and the temptation is to add it: `repo:`, `branch:`, `push:`.
+
+That is the second place. [runners.md](../runners.md) closes it:
+
+> **A runner entity carries a url and nothing else.** A grant ceiling, a tool allowlist, a label
+> — anything saying "work here may only do this" — is expressible and deliberately absent. It is
+> the same narrowing a doer answers, and answering it in two places without deciding how they
+> compose is how a ceiling comes to mean two things.
+
+And `launch.Spec` already declares the axis, with no referent:
+
+```
+Vector      → the gate vector (the autonomy dial) — soft, slidable      resolved
+Grant       → hard authority — what it may do at all                    resolved
+Resolver    → how ASK gates are answered                                carried
+Environment → the sandbox/workspace floor — unbypassable                read by nothing
+```
+
+`Environment` is parsed, `$var`-expanded by `Bind`, persisted, and rendered back by `trigger
+show`. `versed.launchOf` says plainly why it goes no further — *"neither has semantics to resolve
+TO yet … the environment floor is a design note"* — and [expose.md](../roadmap/expose.md) says
+the same from the other side: *"a declared axis waiting for a named, durable, registered thing to
+point at."* Even [task-control.md](../task-control.md) reserves a slot in the spawn body,
+`{id?, prompt, subject, vector, claim?, runner-config}`, and `runner-config` appears nowhere in
+the tree.
+
+**So the coding runner is the first referent, and `environment:` is a name it resolves against
+its own config.** Carried across the wire unresolved, exactly the way `driver:` already is: verse
+does not know what drivers exist either, it passes the word, and a runner that cannot host what
+it was handed refuses. The charter says *where the work is*, the runner says *what that means
+here*, and the vocabulary lives with the party that can implement it.
+
+The cost on the verse side is four lines — a field on `task.Launch`, a key in
+`runner.HTTP.Spawn`'s request map, a field in `taskd`'s decode struct, and one assignment in
+`launchOf`. No new charter grammar.
+
+```tony
+# the runner's own config, not an entity
+environments:
+- name: verse-dev
+  repos:                                # a LIST: see below
+  - name: verse                         # the directory the agent sees
+    repo: "https://github.com/signadot/verse"
+    base: main
+    push: "refs/heads/agent/$task"      # empty: nothing leaves
+  - name: tony-format                   # there to be read; no push
+    repo: "https://github.com/signadot/tony-format"
+    base: main
+  driver: claude                        # or: llm
+  commands: [git, go, make, gofmt]      # the ceiling; see below
+  isolation: hardened                   # a profile this runner advertises; absent = its defaults
+  env: [PATH, HOME, LANG]               # passthrough allowlist; everything else is unset
+```
+
+## A workspace per task, over several repositories
+
+The runner keeps one bare mirror per repository and fetches before each spawn. A task gets a
+working directory holding **every repository its environment names**, each cloned off that
+mirror onto `agent/<taskid>` — its own branch from the first commit, so nothing a task does can
+touch another's.
+
+**Through go-git, not the git binary**, and the tradeoff is worth stating because it was not the
+first design. Shelling out inherits an ambient world: whichever `git` is on `PATH`, whatever
+credential helper the machine has, whatever `~/.gitconfig` says. The credential is the one that
+matters — a runner whose whole delivery model rests on the task being unable to reach the
+credential should be able to say where its own came from, and with a library it must
+(`-token-env`, and nothing else works).
+
+The cost is that **go-git has no linked worktrees**, so a task gets a clone rather than a
+worktree and objects are copied per task. What the mirror still saves is the network fetch, which
+is the expensive part. The next section is what the alternatives measured.
+
+One thing got simpler in exchange, and it is not nothing: **with linked worktrees the task
+branches live in the mirror's ref namespace**, so a `fetch --prune` on the next spawn deletes the
+branch of every running task. Nothing errors; a worktree is just left on a ref that is gone, its
+tree reads as entirely untracked, and its work cannot be committed. That defect was real, and a
+clone per task makes it structurally impossible — task refs live inside the directory that gets
+removed. A test guards the property anyway.
+
+### What the prior art does, and what it costs here
+
+**Nobody automating checkouts at scale uses worktrees for it.** The mainstream CI answer is a
+bare mirror plus `git clone --reference` — object *alternates* — which is what Jenkins' reference
+repositories and Buildkite's git mirror do. The reasoning is the one this design arrived at from
+the other side: a worktree shares more than the object store. It shares the ref namespace, and a
+branch cannot be checked out in two worktrees at once. That extra coupling is exactly what
+produced the prune defect above.
+
+So the prior art says alternates. Measured on this repository, in go-git:
+
+| approach | objects per task | setup | |
+|---|---|---|---|
+| clone from the mirror | 3.2 MB | 0.55 s | what is built; ordinary git, well-travelled code |
+| `CloneOptions{Shared: true}` | **3.2 MB** | 0.59 s | writes an alternates file that saves nothing |
+| hand-rolled alternates, no fetch | **81 B** | 1.7 s | the real saving, and three times slower |
+
+**`Shared: true` is a trap and is worth writing down.** It looks like the porcelain for exactly
+this, and it does write `objects/info/alternates` — then fetches, and because a fresh repository
+advertises no refs the fetch copies every object anyway. You get the file and none of the
+benefit. The real saving needs the alternates file written by hand, the ref set straight off the
+mirror, and **no fetch at all** — at which point it is three times slower, because go-git's
+alternate lookup is a per-miss fallback that reconstructs the alternate storage on each miss
+rather than holding a second store open. It also needs `filesystem.Options.AlternatesFS`, without
+which an absolute alternate path is resolved relative to the `.git` directory and nothing is
+found.
+
+**The clone stays**, and the reasoning is cost against want rather than principle. The disk cost
+is proportional to repository size and this example ships against small ones; swapping in
+alternates is one function when somebody meets a monorepo, where 3.2 MB becomes gigabytes and the
+argument inverts. Until then it would trade the well-travelled path for a hand-rolled storage
+construction, in a file whose job is to be read.
+
+Partial clone (`--filter=blob:none`), where git itself went, is not reachable: the filter exists
+in go-git's protocol layer and is not plumbed to `CloneOptions`.
+
+### The axis this does not touch: reuse
+
+The bigger thing prior art suggests is not cheaper cloning but **not cloning**. GitLab's
+`GIT_STRATEGY=fetch` and Jenkins' workspace reuse keep a warm checkout per runner and reset it
+between jobs, and that — not clone speed — is how CI actually gets fast. It is the same idea as
+the `SandboxWarmPool` [expose.md](../roadmap/expose.md) already cites from Agent Sandbox:
+pre-provisioned instances so a claim does not cold-start.
+
+It is also in **direct tension with containment**, which is what makes the isolation classes worth
+having. A reused workspace is a channel between tasks: it undermines `principal: distinct` at
+precisely the point that class exists to establish, and no amount of `reset --hard` closes it,
+because the valuable part of reuse is the part that survives a reset.
+
+That valuable part is the **build cache** — `node_modules`, a warm Go build cache, a populated
+module cache. For a coding agent it is the difference between a two-minute task and a
+twenty-minute one, and it is the same cross-task channel wearing a performance argument. Which is
+the point: it should be a thing an environment *declares*, weighed against the containment it is
+asking for, rather than something a runner arranges quietly because it makes the demo faster.
+Nothing here builds it, and the shape it would take is a warm pool keyed by (repository, base)
+with the pool's reuse policy named in the environment beside `isolation:`.
+
+**A set rather than one repo, because the work usually is.** A change to a service and the
+library it consumes; a generator and the code it generates; a tree being changed beside one that
+only needs reading to make sense of it. Side by side under one root, that is one task rather
+than two that have to be coordinated — and an agent that can only see one of them is guessing
+about the rest. `push` is **per repository** for the same reason: the ordinary shape is one tree
+being changed beside reference trees, and a reference tree that could push back is a blast
+radius nobody asked for.
+
+A repository that cannot be opened fails the whole workspace rather than yielding a partial one:
+an agent handed three of the four it was promised does not know that, and reads an absent
+directory as "this code does not exist" rather than "I was short-changed".
+
+Removed on terminal, with `-keep` for the case an operator is debugging — one directory tree and
+nothing else, since a clone per task keeps every task's refs inside what is being removed. A
+branch outlives the workspace only if it was pushed; otherwise it goes with it, and *that is the
+reason the push question cannot be deferred*. A coding runner that cannot push produces nothing durable: the work is in a
+directory that is about to be deleted, and the task's `result` is a description of changes nobody
+can read.
+
+### One thing that does not fit
+
+`task.RepoContext` is **singular** and a workspace is not. Root and ChangedFiles generalize
+cleanly — the root is the working directory and paths are relative to it, so `verse/task/loop.go`
+says which repository it is in, which is also what a charter's `paths:` predicate should be
+written against. Branch does too, since every repository carries the same task branch. `Base` and
+`PushTarget` do not, and today they report the **primary** (first) repository's. A workspace whose
+repositories have different bases and different push targets is exactly the case that wants a
+plural `RepoContext`, and nothing in the tree has needed one yet.
+
+### The agent does not push
+
+Once the task runs as a different uid than the runner (below), the git credential is unreachable
+from it by file mode. So **fetch and push are runner actions, and the agent only ever touches the
+files.** That is better than it sounds:
+
+- **`git` can be absent from the task's PATH — and from the image — entirely** without costing
+  the task anything it needed. The agent edits files; the runner commits and pushes what
+  changed, through a library rather than a binary.
+- **The push becomes a gateable effect rather than a side effect nobody declared.** The runner
+  raises it as an action at a boundary, so the vector decides — and `task.RepoContext` is already
+  built for exactly this, carrying `Root`, `Branch`, `Base`, `ChangedFiles` and `PushTarget`,
+  with `GateMatch.OnPush` and `GateMatch.Branches` matching on it. Nothing in the tree sets it
+  today outside `task/vector_test.go`; `Task.SetRepo` exists and has no production caller. This
+  would be its first.
+- A charter can then write `vector: ask` on the push and `auto` on everything else, which is the
+  shape a coding flow actually wants: work freely, ask before anything leaves.
+
+The alternative — the agent runs `git push` in its shell — makes the push a string in a command
+line, indistinguishable from any other string, and puts the credential inside the blast radius of
+every prompt injection in every issue body the agent reads.
+
+**And the remote must be pinned, not named.** This is where the first cut was wrong, and the
+defect is general enough to be worth stating rather than fixing quietly: `.git/config` lives
+*inside* the workspace — the one place the agent is meant to be able to write — and go-git
+resolves a remote *name* through `Repository.Config()` at push time, re-reading that file. So a
+push by name goes wherever the agent last wrote, carrying the runner's credential to a host of
+the agent's choosing. Verified, then fixed by building an in-memory remote from the configured
+url, with a test that writes the attack.
+
+The general form: **anything the delivery path reads out of the workspace is agent input.** The
+credential split says the task cannot reach the credential; it says nothing about the task
+reaching the *configuration* that decides where the credential is spent, and the second is as
+good as the first if you are the attacker. Worth re-asking of every field delivery consults.
+
+What it costs is attribution at the far end: the push lands under the runner's own identity, so
+the external record names a bot and the link back to a person lives only inside verse. That is
+the first time verse-caused effects leave through a credential it does not hold, and
+[attribution.md](attribution.md) covers it — including the cheap channel back, which is that the
+branch name and the commit trailers can carry the charter, the firing and the task id, checkable
+by anyone who can read both the repository and the verse.
+
+### The push is an edge, not an output
+
+The deeper reason to take the push off the agent is not credential hygiene. **It is the moment
+the work becomes a fact other charters react to.** A [git source](../sources.md) reflects the
+branch, a charter conditions on it, and what follows — review this, here is a bug, fix it — is a
+flow that continues from the push. The push is the edge into all of it.
+
+Which makes where it happens a design question rather than a detail, and the answer this example
+gives is wrong in a way worth naming. **The push happens after the terminal.** `finish` waits for
+a terminal status frame and only then delivers, so the branch appears after verse has already
+recorded the task as done. Three consequences, and the first was the only one already written
+down:
+
+- **It is not gated.** The vector never sees it, `GateMatch.OnPush` never fires, and
+  `RepoContext.PushTarget` — set for exactly this — is decoration.
+- **It is not recorded.** The task's own read plane, and therefore its entity, never names the
+  branch it produced. `verse task get` cannot answer "where did this work go".
+- **It is not a cause.** A downstream flow chains from a ref appearing in a source reflection,
+  not from a boundary in the task that made it — so verse reacts to an event it did not observe
+  itself causing, and the connection has to be re-derived rather than handed over.
+
+Inside the loop, before terminal, all three close at once: an action the vector gates, a boundary
+the read plane records, and a cause the next flow chains from — with `$result` still in hand when
+it happens.
+
+**What blocks it is a seam, and it is the harness's to offer.** `harness.Build` returns a finished
+`*task.Task` and exposes neither its driver nor its executor, so a runner cannot compose a final
+push action onto the loop. Something like `harness.BuildParts`, handing back the driver and
+executor for the caller to wrap, is the change — small, and better made against this want than
+guessed at in advance. Doing it from the example instead would mean reimplementing the harness,
+which is the thing the example exists not to do.
+
+**The gap downstream is now closed.** `source/git.go` formatted recent commits with `%s`, so the
+commit body never reached a `git:commit` entity and every trailer this runner writes was
+invisible to any charter conditioning on the push — leaving the branch name as the only
+provenance that survived into the verse.
+
+The fix was not `%B` on the payload, which would have warehoused an entire message per commit
+*and* broken the parser (it reads one line per commit, so three commits became seventy-nine
+lines). It was `%B` as **input**: `git log -z` so NUL separates records, the message read and
+the trailer block parsed, and only the trailers stored. `git:commit` now carries `trailers` when
+a commit has any, so `Verse-Task` and `Verse-Chain` are matchable and the flow that reviews this
+runner's work can find it by what it declared.
+
+Every key is reflected and none is interpreted, which is the right division: a source cannot
+tell a meaningful trailer from an accidental one better than the repository can, and the block
+is a heuristic over the last paragraph — a message merely ending in something shaped like
+`Status: proposal` yields `Status`, in git's own parser too. So the convention lives in the key
+**namespace**, which is why this runner's trailers are `Verse-*` and not bare words.
+
+## Two drivers
+
+`driver:` selects, per spawn, as it already does. Both build a task whose `Root` is the workspace,
+so every repository in it is reachable by a relative path.
+
+**`llm`** is `harness.Build` with `Root` set to the workspace — the loop already in the tree,
+unchanged, with `read_file` / `list_dir` / `write_file` / `run_bash` confined to it.
+
+**`claude`** invokes the agent binary. The shape that makes it a driver rather than a shell-out:
+
+- **One action per turn.** `Next` returns a single `ToolUse` carrying the prompt; the executor
+  runs the binary in the workspace and returns its final message. verse gates *the invocation*,
+  not the agent's internal steps — the `CallAgent` verb and `AgentRes(name)` resource already
+  exist for precisely this ("the child may be a foreign one-shot (opaque leaf) or a recursive
+  invocation of our own loop (transparent frame)"), and this is the opaque leaf.
+- **Multi-turn by session resume.** After a turn completes, `Next` returns another invocation
+  resuming the session when there is something to say to it, and `false` when there is not. That
+  is what makes two things work that a single `claude -p` cannot:
+  - **Steers.** `task.Steerable` delivers drained instructions at the boundary before `Next`, so
+    a `verse task say` lands as the next turn of the same session. A single-shot driver would
+    have to drop them, and a dropped steer is a control call that reported success and did
+    nothing.
+  - **The answer contract.** `task.Launch.Answer` is unambiguous that a runtime whose driver
+    cannot enforce a contract must *fail the spawn* rather than run it unchecked. With resume it
+    can enforce it: `answer.Contract.Check` on the final message, `Failure.Repair` fed back as
+    the next turn, bounded by `Contract.Repairs()` — the same loop `llmDriver.checkAnswer`
+    already runs, against a different back end.
+- **Cancel is process death.** `exec.CommandContext` kills the turn; control is applied
+  synchronously, which is what the contract assumes of anything behind a url and what the sample
+  runner's header tells you not to break.
+- **Narration onto the read plane.** The agent's streaming output maps onto `exec` frames, so
+  `verse task get` shows which commands ran inside the foreign agent — the observability that a
+  containment-by-absence design (below) otherwise gives up.
+
+`Result()` is the agent's final message, which is what a completed task's `result` carries and
+what a charter's `$result` derefs — so the frame advice in `harness.defaultFrame` about the final
+message being the answer applies here too, and has to be passed to the binary rather than assumed.
+
+## Commands: a ceiling, an opt-in, and one honest enforcement
+
+A coding image carries a lot: compilers, test runners, linters, package managers. Opting in per
+task is right. The question is which layer holds the opt-in and what actually enforces it.
+
+[expose.md](../roadmap/expose.md) already draws the layers — *possible ⊇ granted ⊇ auto* — and
+commands split across the first two:
+
+| | | |
+|---|---|---|
+| **the image** | what exists at all | a property of the deployment; the environment's ceiling |
+| **the spawn** | what this task opted into | request-specific, so it belongs to the claim, not the definition |
+| the vector | which of those must ask | already built |
+
+The middle row is request-specific data, and `expose.md` is explicit that this matters: *"an
+environment record has to stay free of request-specific data … a derived grant belongs to the
+claim, not the definition, or environments stop being shareable and pre-warmable."*
+
+### Matching on the command string is theatre
+
+`grant:` can nearly express the opt-in already. `harness.demoDeriver` derives `run_bash` into
+`Effect{Verb: Exec, Resource: {Kind: KindTask, Ref: <the command>}}`, and `ResourcePred` globs on
+`Resource.Ref`. So this type-checks and runs today:
+
+```tony
+grant: { allow: [ { resources: [ { kind: task, pattern: "go test*" } ] } ] }
+```
+
+And it is worth nothing. `go test`, `x=go; $x test`, and `make test` are the same action past a
+glob, and every one of them is a string the agent chose. `task.ToolUse`'s own doc names this as
+the thing the model is built to avoid — it separates "what the task *asked for* (Name/Input,
+self-reported and untrusted for classification)" from "what it *actually does* (Effects, derived
+by the platform)" — and then `Ref` here *is* the raw self-reported string. A permission enforced
+by globbing it is advice wearing a permission's name.
+
+### So: PATH is the allowlist
+
+The opted-in set becomes a directory of symlinks to exactly those binaries, and that directory is
+the task's entire `PATH`, over a filesystem where the rest are not reachable. A command outside
+the set fails as *not found*.
+
+That puts it on the right side of `expose.md`'s line — *denials belong in the ledger; absences
+belong in the definition* — and the cost is real and should be stated rather than discovered: an
+absence produces no gate, no decision record, and nothing on the docket. It appears only as a
+failed command inside the agent's own output. **Present-and-gated and absent-entirely are
+different mechanisms with different observability, and a design that pretends one covers both
+will surprise someone.** The rule of thumb: gate what a task legitimately does and a human should
+weigh (the push, a write outside the workspace); make absent what it has no business reaching for
+at all.
+
+An absolute path defeats a `PATH` allowlist, so this is only a floor when the filesystem is
+restricted too — which is the next section, and is why the two cannot be designed apart.
+
+## Isolation, and the refusal that keeps it honest
+
+Containment is **verse's vocabulary, provided by the runner** — a tree of properties whose leaves
+are ordered chains, sketched in [runner-descriptor.md](runner-descriptor.md). What this runner
+provides at each leaf, and what each rung actually is here:
+
+| leaf | rung | what it is on this runner | what it costs |
+|---|---|---|---|
+| `filesystem.scope` | `shared` | a checkout per task in a shared rootfs | tidiness, not isolation |
+| | `private` | a mount namespace: only the workspace and the toolchain | Linux, and a kernel that allows it |
+| `filesystem.readOnly` | `no` | the workspace is writable, which the work requires | — |
+| `principal` | `runner` | the task runs as the runner does | no separation, and the credential is reachable |
+| | `distinct` | a per-task uid from a pool, workspace 0700 | the runner must be root in its own container |
+| `network.ingress` | `none` | nothing reaches the task | — |
+| `network.egress` | `restricted` | an allowlist that reaches the model API | a proxy to run and keep true |
+| | `none` | no interfaces | `claude` cannot reach its model API |
+
+`principal: distinct` is where the credential split above becomes true, and it is cheap: a runner
+root inside its own container is ordinary, and dropping to a per-task uid needs nothing exotic.
+`filesystem.scope: private` is what makes the PATH allowlist a floor rather than a convention, and
+the pragmatic implementation is `bwrap` — in the image, which this design controls — rather than
+hand-rolled `CLONE_*` flags and mount setup in Go.
+
+**The tree is what lets the two drivers differ honestly.** The harness makes its model call from
+the *runner's* process and only `run_bash` runs inside the containment, so an `llm` task can sit
+at `network.egress: none` and still do real work. `claude` **is** the contained process and needs
+egress to reach its API, so it cannot. That is one leaf's difference between two profiles, visible
+to whoever reads the descriptor — where a single ordered ladder could only have recorded it as a
+suspicion that the ladder belonged to the (runner, driver) pair.
+
+**The obligation this puts on the implementation**: the point formed by every leaf's default must
+be constructible, since it is where a spawn naming no profile lands. That is the acceptance
+criterion for this example — a task spawned with no profile must edit files in its workspace and
+produce a result under the `llm` driver, and `claude` must fail *loudly* on egress rather than
+quietly running less contained than it said. A runner that cannot build its own default is
+advertising coverage it does not implement.
+
+**Both upper rungs are Linux, and depend on distro and kernel switches that must be verified
+rather than assumed** (unprivileged user namespaces are enabled on some distributions and
+restricted on others; Kubernetes has its own switch). Neither exists on macOS, where this is
+being written.
+
+Which forces the sharpest claim in this note: **an environment declares its isolation, and a
+runner that cannot provide it refuses the launch.** Not "runs it with less". The argument is the
+one `runners-residual.md` already makes one layer up — *a real runner knows what it is and what
+it can host; verse does not, and cannot be made to* — and the alternative is a runner that runs
+the work with a weaker floor than the charter named, which is undetectable from the outside,
+which is the direction that costs. A refused spawn is a mechanism: it comes back as a failed
+handle carrying the runner's own words, onto the flow.
+
+### The environment leak this fixes by construction
+
+`fsExec.runBash` builds `exec.CommandContext(ctx, "bash", "-lc", command)` and never sets
+`c.Env`, so the agent's shell inherits the *entire* server environment — including the
+`PORTKEY_API_KEY` and `PORTKEY_VIRTUAL_KEY` the harness itself runs on. (`-l` also sources login
+profiles, so it inherits whatever those set as well.) `expose.md` flags this and prescribes the
+fix: *"an environment record fixes that by construction rather than by policy: the environment
+defines the variables, so the default becomes 'what this sandbox declares' and inheritance
+becomes an explicit passthrough list. A floor that has to be enforced by a gate is not a floor."*
+
+The `env:` allowlist above is that list, and a coding runner is where the leak actually bites,
+because it is the runner that holds a git credential and hands out a shell.
+
+## Network is the unresolved one
+
+Default-deny is right for the task's shell, and `claude` needs egress to a model API from inside
+that same namespace — it is the process being contained. So the containment cannot simply be "no
+network" without also disabling the agent.
+
+The likely answer is an allowlisting egress proxy the environment declares, with the model API
+reachable and nothing else, and with `go mod download` / `npm install` either pre-warmed into the
+image or explicitly allowed through it. That is a guess and is written here as one. It is the
+place this design is least certain, and it interacts with everything: a proxy that can be reached
+is a proxy a prompt-injected agent can try to reach, and an image with dependencies pre-warmed is
+an image that goes stale.
+
+The `llm` driver does not have this problem in the same shape — the harness makes the model call
+from the *runner's* process, and only `run_bash` runs inside the containment. That asymmetry is
+expressible rather than awkward now that containment is factored into classes: the two drivers
+sit at the same `filesystem` and `identity` coordinates and differ in `network`, which is a fact
+about them worth publishing rather than a wrinkle in the model.
+
+The proxy is still what an environment declares, and `network: proxied` is still the rung with
+the most left to design.
+
+## The image
+
+Separate from the runtime `Dockerfile`, which is deliberately thin: `debian:bookworm-slim` plus
+ca-certificates, git, curl and three binaries, and its header explains that one image with
+several roles is what keeps the deploy to one ref to pin. A coding image is the opposite kind of
+thing — a toolchain, sized by what the repos it serves need to build — and pinning it to the
+engine's release cadence would be wrong in both directions.
+
+So: its own Dockerfile beside the example, carrying the coderunner binary, the agent binary, and
+the toolchain, with the `commands:` ceiling of an environment being a claim about *that* image.
+Which makes the environment name and the image a pair that must be kept true together, and
+nothing in this design checks that — an environment naming `go` in an image without it produces a
+task whose commands are not found, with no better diagnosis than the agent's confusion.
+
+## What this does not do
+
+**No scheduling, no queue, no capacity.** Unchanged from [runners.md](../runners.md). A workspace
+per task means concurrent tasks means concurrent checkouts — and with a clone per repository
+that is disk, not just inodes — and the bound on how many is a flag,
+not a scheduler. Over it, the spawn is refused.
+
+**No merge, no PR, no review.** The runner pushes a branch. What happens to that branch is a
+charter's business, and the [github source](../reference/sourced.md) is what would see it come
+back. A runner that opened pull requests would be a runner with opinions about a workflow.
+
+That is the division this design is betting on, and it is worth saying which way the bet runs:
+**the runner's job ends at the edge, and everything interesting is downstream of it.** Reviewing
+the work, finding a bug in it, spawning the fix — those are charters conditioning on a branch,
+not features of a runner. Which is exactly why the push has to be disciplined: it is the one
+event the whole downstream depends on, so it happens once, at a defined moment, to a target the
+environment named, caused by a party verse knows. An agent pushing when it felt like it would
+give the same flows a cause verse never saw, at a moment nobody chose, possibly several times
+per task.
+
+**No conflict handling.** Two tasks on the same base produce two branches, and if both push, both
+exist. Reconciling them is the flow's problem.
+
+**No incremental workspaces.** Each task starts from `base`, not from another task's output.
+Chaining is a charter writing a second spawn whose environment names a different base — not
+something the runner arranges.
+
+## Open questions
+
+- **Where the per-spawn command opt-in is written.** It is request-specific, so not the
+  environment; `grant:` can carry it and is the wrong mechanism for it (above). A field beside
+  `environment:` on the spawn is the obvious third answer and adds charter grammar this note has
+  otherwise avoided.
+- **Whether `$task` in a push target is a template the runner expands.** `launch.Spec` already
+  has a `$var` expansion pass and it runs on the *charter* side against the matched event. A
+  second expansion, on the runner side, against a different vocabulary, is two template languages
+  that look alike.
+- **What a task's result should be.** The agent's final message, or the branch it pushed, or
+  both. `$result.branch` is what a charter wants to deref, which argues for an answer contract
+  the runner *imposes* — and a runner imposing a contract on the work is a new kind of thing.
+- **Whether the LLM harness can reach the upper `filesystem` rungs at all.** It runs `bash -lc`
+  in-process today, so `filesystem.scope: private` would have to contain the runner's *own* executor and
+  not merely a child binary — a harder problem than wrapping a subprocess, and possibly the
+  honest reason the two drivers differ in more classes than `network`.
+- **Credential form.** A token in the runner's environment, a git credential helper, or an SSH
+  agent socket — differing in what a compromised runner process leaks, and all of them equal from
+  the *task's* side, which cannot reach any of them.
+- ~~Whether the mirror is shared across environments.~~ **Built**: mirrors are keyed by the
+  remote, so two environments on one repository share objects and a lock, and two on different
+  repositories share neither.
+- **The harness seam that moves the push inside the loop.** The sharpest one, because it is
+  three defects held open by one missing export: `harness.Build` returns a finished `*task.Task`
+  and hands back neither driver nor executor, so nothing can compose a final action onto the
+  loop. `harness.BuildParts` (or an equivalent) is the change, and it belongs to the harness
+  package, made against this want rather than guessed at. It is also the case that decides
+  whether `Task.SetRepo` and `GateMatch.OnPush` ever mean anything: both exist, and neither has a
+  production consumer until a push is an action.
+- ~~A `git:commit` entity carries no trailers.~~ **Built**: `source/git.go` reads `%B` over
+  NUL-separated records and stores the parsed trailer block, so `Verse-Task` is conditionable.
+  What is left is a naming question rather than a formatting one — whether anything should
+  reserve the `Verse-*` prefix, given that a repository is free to write those trailers itself.
+- **Whether workspaces should be pooled and reused**, and what that costs the floor — the
+  reuse-versus-containment tension above. The measured case for it is the build cache rather
+  than the checkout, which is also what makes it a cross-task channel rather than a cache.
+- **When the clone should become alternates.** The trigger is repository size, and the switch is
+  one function (write `objects/info/alternates`, set the ref off the mirror, skip the fetch,
+  construct the storage with `AlternatesFS`). Worth doing against a real monorepo rather than
+  against an argument — and worth a note that the mirror can then never be garbage-collected
+  under a running task without breaking it.
+- **Whether a repository can be added to a running workspace.** A task that discovers halfway
+  through that it needs a third repository has no way to ask for one, and the environment is
+  fixed at spawn. That is probably right — it is the floor argument again, a set declared rather
+  than accumulated — but it is untested against real work.
+- **What a `paths:` predicate means across repositories.** Changed files are workspace-relative
+  (`verse/task/loop.go`), so a charter's existing path globs need a repository segment they did
+  not need before. Nothing warns about a predicate written for the single-repo shape.
+
+## What it would touch
+
+New: `docs/reference/examples/coderunner` (the program, its config, its Dockerfile) and an entry
+in [reference/examples/README.md](../reference/examples/README.md) and
+[docs/README.md](../README.md)'s table. Existing: the `environment` field through `task.Launch`,
+`runner.HTTP.Spawn`, `taskd`'s decode and `versed.launchOf` — which removes one of the two names
+in that function's "still unread" comment, and that comment must be edited to say so rather than
+left describing a state that no longer holds. [expose.md](../roadmap/expose.md) then has a
+referent for the axis it says is waiting for one, and its section on the `run_bash` environment
+leak has a place where the fix is built; both want editing on landing rather than leaving as
+prophecy.
+
+Nothing here changes the charter grammar, the entity model, or the meaning of an existing field,
+so it is `change`. The `environment:` plumbing is a field with a safe absence at every hop.
