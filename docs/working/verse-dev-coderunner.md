@@ -1,6 +1,6 @@
 # verse-dev: a coding pipeline, and what it is expected to break on
 
-Status: **phase 1 works; ten findings.** The first clean run verified a document against the
+Status: **phase 1 works; eleven findings, and the drive has moved to the `llm` driver.** The first clean run verified a document against the
 code and correctly changed nothing. The run before it produced fourteen real findings and the
 runner destroyed them, which is finding 9. The first
 experiment of the [verse-dev](verse-dev.md) drive: verse coordinating work on verse, done by
@@ -116,7 +116,7 @@ the API are the same hop with no carrier at all — which is where
 
 ## Found by running it
 
-Ten, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
+Eleven, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
 
 One through five **stopped the work**, and three of those are verse rather than the coderunner.
 They also hid each other, which is the part worth remembering: fixing the first is what exposed
@@ -348,6 +348,41 @@ one without guessing.
 Worth stating as a rule, because it will recur wherever a runner decides anything about what a
 task produced: **a runner should not infer intent from a filesystem.** Absence of change is not
 evidence of anything. Ask the task, or do not ask.
+
+### 11. A foreign agent has no autonomy dial, which is most of what verse is for
+
+The sharpest finding, and it is about kind rather than degree. verse's central claim is a dial
+between "just do it" and "ask" — per action, slidable, observed. **A foreign agent has two
+positions on that dial: invoke it, or do not.** Everything the vector can express between them is
+unreachable, because there is nothing between them to see. Findings 6 and 7 are that fact showing
+up as missing narration and a missing path; this is the fact itself.
+
+It also cost containment. The agent escaped its workspace and edited the real checkout — writing
+files was never observed, never gated, never confined, because none of those things exist for a
+box that gets a prompt and returns a paragraph.
+
+**So the drive moves to the `llm` driver.** Not because the harness is better at the work — the
+foreign agent's output was excellent — but because every action it takes is one the vector sees,
+gates, and narrates onto the read plane. That is the autonomy dial actually working rather than
+being nominally present, and it is what verse is *for*.
+
+The containment comes with it, and needs no kernel feature. `read_file`, `list_dir` and
+`write_file` are confined to the workspace by construction — `harness.safePath` refuses a path
+that resolves outside the root — while `run_bash` gets the root as a working directory and
+nothing else. So **the shell is the one tool that can leave**, and an environment whose work is
+reading and editing files does not need one. Withholding it is a stronger statement than any
+prompt, and the only one available on a machine with neither runc nor bwrap.
+
+`Environment.Tools` is that floor, checked when the runner starts rather than at the first
+firing. The drive's environment offers `read_file`, `list_dir`, `write_file` and no shell, which
+is what makes it safe to point at a real checkout again.
+
+One thing this exposed on the way: the runner had **no place for model credentials at all**, so
+`driver: llm` worked only if `PORTKEY_*` happened to be in the runner process's environment.
+verse's own configured creds live in another process and are invisible here. That is the ambient
+credential this design refuses everywhere else, and it is now named in the runner's config the
+same way the git token is — as the NAME of an environment variable, so a config that is copied
+carries no secret.
 
 ### Findings 6 and 7 are one complaint
 

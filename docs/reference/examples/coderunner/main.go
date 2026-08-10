@@ -154,10 +154,24 @@ func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentRe
 		// The harness, rooted at the workspace root so every repository is reachable from it.
 		// Frame, tools, answer and vector come from the spawn, exactly as they do for an
 		// in-process task: the seam is complete or the guarantee is local-only.
+		// Tools: the spawn narrows, the environment floors. A spawn that names none gets the
+		// environment's set, and a tool absent from the environment is never offered whatever
+		// a spawn asks for — which is what makes withholding `run_bash` a floor rather than
+		// advice.
+		tools := l.Tools
+		if len(tools) == 0 {
+			tools = env.Tools
+		}
 		t, _ = harness.Build(harness.Config{
 			ID: l.ID, Prompt: l.Prompt, Root: ws.Root, Resolver: reg, Content: content,
-			Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
+			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
 			Log: r.log,
+			// Named by the runner's own config rather than inherited: verse's configured
+			// creds live in another process and are not visible here, so without this the
+			// harness silently falls back to whatever PORTKEY_* is in the environment.
+			LLMBaseURL: r.cfg.LLM.BaseURL, LLMModel: r.cfg.LLM.Model,
+			LLMKey:        os.Getenv(r.cfg.LLM.APIKeyEnv),
+			LLMVirtualKey: os.Getenv(r.cfg.LLM.VirtualKeyEnv),
 		})
 	case "claude":
 		t, err = r.buildClaude(l, reg, ws, env, point)

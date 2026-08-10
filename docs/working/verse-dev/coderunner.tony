@@ -8,6 +8,14 @@
 
 default: verse-docs
 
+# Where the llm driver's model credentials come from. NAMES of environment variables, not
+# values: this file is read and copied, and verse's own configured creds live in another
+# process where this runner cannot see them.
+llm:
+  apiKeyEnv: PORTKEY_API_KEY
+  virtualKeyEnv: PORTKEY_VIRTUAL_KEY
+  model: claude-sonnet-4-6
+
 environments:
 
 # verse, working on verse. One repository: the task both reads the docs and edits them, so
@@ -21,7 +29,16 @@ environments:
     # read, where a person can diff it, and nothing reaches a remote until somebody has.
     # Phase 4 is the step that changes this, and it is gated for that reason.
     push: "refs/heads/agent/$task"
-  driver: claude
+  # The harness, not the agent binary. A foreign agent is opaque, so a vector has two
+  # positions for it — invoke or do not — and neither the actions it takes nor its reasoning
+  # reach the read plane. Every tool below is an action the vector sees, gates and narrates,
+  # which is the autonomy dial actually working rather than being nominally present.
+  driver: llm
+  # The FLOOR: no shell. read_file/list_dir/write_file are confined to the workspace by
+  # construction (harness.safePath refuses a path resolving outside the root); run_bash is
+  # the one tool that can leave, and a docs task does not need it. This is the containment
+  # that is available today, on a Mac, without a kernel feature.
+  tools: [read_file, list_dir, write_file]
   # The ceiling, as a claim about this machine rather than an image. Nothing enforces it yet
   # (see confine.go): the task's PATH is not built from it until `filesystem.scope: private`
   # is real, so today it documents intent and is worth keeping honest anyway.

@@ -2,11 +2,17 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/signadot/verse/codec"
 )
+
+// knownTools is the llm driver's vocabulary, as harness.toolDefs offers it. Named here so an
+// environment's floor can be checked at startup; `call_agent` and `fail` are deliberately
+// absent from what an environment would list, being the loop's own rather than the work's.
+var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent"}
 
 // Config is the runner's own file. It is NOT an entity: verse installs a runner as a url and
 // nothing else, deliberately, so what a runner can be asked for is the runner's to declare and
@@ -20,6 +26,22 @@ type Config struct {
 	// name one, which is the safer of the two and is what an operator serving several
 	// repositories wants.
 	Default string `tony:"field=default,omitzero"`
+	// LLM is where the `llm` driver's model credentials come from, and it exists for the
+	// reason `-token-env` does: a runner is a separate process from verse, so verse's own
+	// configured creds are not visible to it, and without this the harness falls back to
+	// whatever PORTKEY_* happens to be in the runner's environment. That is the ambient
+	// credential this design refuses everywhere else — named here instead.
+	LLM LLM `tony:"field=llm,omitzero"`
+}
+
+// LLM names where the model credentials live. Env-var NAMES rather than values, so a config
+// file that is read, copied and committed carries no secret — the same choice the git token
+// makes, for the same reason.
+type LLM struct {
+	BaseURL       string `tony:"field=baseUrl,omitzero"`
+	APIKeyEnv     string `tony:"field=apiKeyEnv,omitzero"`
+	VirtualKeyEnv string `tony:"field=virtualKeyEnv,omitzero"`
+	Model         string `tony:"field=model,omitzero"`
 }
 
 // Environment is one workspace: where the code comes from, what may run against it, and where
@@ -48,6 +70,22 @@ type Environment struct {
 	// while `filesystem.scope` is `shared` — a PATH allowlist is a convention until the
 	// filesystem is restricted, since an absolute path walks straight past it.
 	Commands []string `tony:"field=commands,omitzero"`
+	// Tools is the FLOOR for the `llm` driver: which tools exist at all, as against which the
+	// agent is advised to avoid. Empty = the driver's full set. A spawn's own `tools:` narrows
+	// further; it cannot widen, because a tool absent here is never offered.
+	//
+	// This is where a shell is granted or withheld, and withholding it is the sharpest
+	// containment available without a kernel. `read_file`, `list_dir` and `write_file` are
+	// confined to the workspace by construction — harness.safePath refuses a path that
+	// resolves outside the root — while `run_bash` gets the root as its working directory and
+	// nothing else, so it is the one tool that can leave. An environment whose work is reading
+	// and editing files does not need it, and a task that cannot run a shell cannot escape
+	// through one whatever it decides to do.
+	//
+	// It also makes the autonomy dial mean something. A foreign agent is opaque, so a vector
+	// has exactly two positions for it — invoke or do not — where every tool listed here is an
+	// action the vector sees, gates, and narrates onto the read plane.
+	Tools []string `tony:"field=tools,omitzero"`
 	// Env is the passthrough allowlist: the variables a task's shell inherits. Everything
 	// else is UNSET, which is the point — the harness today runs `bash -lc` with no
 	// c.Env at all, so an agent's shell inherits the server's entire environment including
@@ -107,6 +145,15 @@ func LoadConfig(path string) (*Config, error) {
 		if d := e.Driver; d != "" && d != "llm" && d != "claude" {
 			return nil, fmt.Errorf("coderunner: environment %q wants driver %q (want llm or claude)",
 				e.Name, d)
+		}
+		// A tool the harness does not have fails the spawn rather than shrinking the set in
+		// silence — the same rule harness.selectTools applies, checked here so a typo in a
+		// FLOOR is caught when the runner starts rather than at the first firing.
+		for _, name := range e.Tools {
+			if !slices.Contains(knownTools, name) {
+				return nil, fmt.Errorf("coderunner: environment %q offers tool %q, which the llm "+
+					"driver does not have (it has: %s)", e.Name, name, strings.Join(knownTools, ", "))
+			}
 		}
 		dirs := map[string]bool{}
 		for j, r := range e.Repos {

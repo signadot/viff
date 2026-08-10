@@ -592,3 +592,60 @@ func TestWorkspaceSurvivesAFailedDelivery(t *testing.T) {
 		t.Fatalf("the work is not where it was left: %v", err)
 	}
 }
+
+// An environment's `tools` is a FLOOR, and withholding the shell is the containment available
+// without a kernel.
+//
+// read_file/list_dir/write_file are confined to the workspace by harness.safePath; run_bash gets
+// the root as a working directory and nothing else, so it is the one tool that can leave. An
+// environment that does not offer it cannot be escaped through it whatever the agent decides —
+// which is a stronger statement than any prompt, and the only one available on a machine with
+// neither runc nor bwrap.
+func TestToolFloorIsCheckedAtStartup(t *testing.T) {
+	if _, err := LoadConfig("coderunner.tony"); err != nil {
+		t.Fatalf("the shipped config: %v", err)
+	}
+	// A tool the harness does not have is refused when the runner starts, not at the first
+	// firing — the same rule harness.selectTools applies, moved earlier.
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.tony")
+	if err := os.WriteFile(bad, []byte(`environments:
+- name: e
+  repos:
+  - {name: r, repo: ".", base: main}
+  tools: [read_file, run_bash_but_spelled_wrong]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := func() error { _, e := LoadConfig(bad); return e }()
+	if err == nil || !strings.Contains(err.Error(), "does not have") {
+		t.Fatalf("a misspelled tool in a floor was accepted: %v", err)
+	}
+}
+
+// The drive's own environment withholds the shell, which is the property that made this
+// runner safe to point at a real checkout again.
+func TestDriveEnvironmentOffersNoShell(t *testing.T) {
+	c, err := LoadConfig("../../../working/verse-dev/coderunner.tony")
+	if err != nil {
+		t.Skipf("drive config not readable from here: %v", err)
+	}
+	e, err := c.Environment("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Driver != "llm" {
+		t.Errorf("driver = %q; a foreign agent cannot be gated per action", e.Driver)
+	}
+	if len(e.Tools) == 0 {
+		t.Fatal("no tool floor: the agent gets every tool, including a shell")
+	}
+	if slices.Contains(e.Tools, "run_bash") {
+		t.Error("the drive environment offers run_bash — the one tool that can leave the workspace")
+	}
+	for _, want := range []string{"read_file", "write_file"} {
+		if !slices.Contains(e.Tools, want) {
+			t.Errorf("the floor withholds %s, which the work needs", want)
+		}
+	}
+}
