@@ -192,8 +192,14 @@ DEFAULT runner**. A task on a runner named per spawn — the entire point of the
 invisible to it, so the owner comes back empty, the answer is offered to the local registry, and
 that registry has never heard of the question.
 
-**Fixed** rather than routed around, since an unanswerable gate is most of the supervision story
-for remote work. It was a lookup gap and not a design one: `task:instance` already records the
+The blast radius was the DOCKET path specifically, and that is worth being exact about:
+`verse task approve <task-id> <decision-id>` posts to `/tasks/{id}/resolve` and hands the owner
+over, so it always worked. What failed is `verse gate approve <id>`, which has only the question
+id and must find the owner — which is to say, the path an operator uses when they are answering
+from the list of what is waiting rather than from a task they already had in hand. That is the
+ordinary case for supervision, and the one a resolver would automate.
+
+**Fixed** rather than routed around. It was a lookup gap and not a design one: `task:instance` already records the
 runner url precisely so a restart can reconstruct it, so `Server.placeOf` now reads it back the
 way `reconcileTasks` does, and both the owner lookup and the answer path consult the runner a
 task actually went to before the default one. Order matters there and is not a preference — an
