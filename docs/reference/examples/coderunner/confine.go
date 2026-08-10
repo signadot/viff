@@ -74,6 +74,14 @@ func (p Point) String() string {
 // give an operator a task running with a weaker floor than the environment declared, which is
 // undetectable from the outside — the direction that costs. A refusal, by contrast, comes back
 // as a failed spawn carrying this runner's own words, onto the flow.
+//
+// It is also the seam where the DEPLOYMENT decides how a point is built, and the mechanism
+// varies by more than taste. On a single host it is a uid pool and namespaces; on Kubernetes it
+// is a sandbox the platform hands you (docs/roadmap/expose.md surveys Agent Sandbox, which
+// reaches several of these leaves at once with gVisor or a lightweight VM). Neither is more
+// correct than the other, and neither changes anything above this line: the classes, the
+// comparison and the refusal are the same either way, which is what makes the vocabulary worth
+// having separately from any one substrate.
 type Confiner interface {
 	// Provides reports whether this confiner can build p, and says what it cannot if not.
 	Provides(p Point) error
@@ -87,11 +95,15 @@ type Confiner interface {
 // runner has — so `filesystem.scope: shared` is real (each task gets its own worktree
 // directory) and nothing else is.
 //
-// The real implementation is a per-task uid from a pool for `principal: distinct`, a mount
-// namespace for `filesystem.scope: private`, and a net namespace or an allowlisting proxy for
-// the network leaves — `bwrap` rather than hand-rolled CLONE_* flags, since the image controls
-// what is installed. All of it is Linux and some of it depends on kernel switches that vary by
-// distribution, which is exactly why the honest answer here is a refusal rather than a
+// The single-host implementation is a per-task uid from a pool for `principal: distinct`, a
+// mount namespace for `filesystem.scope: private`, and a net namespace or an allowlisting proxy
+// for the network leaves — `bwrap` rather than hand-rolled CLONE_* flags, since the image
+// controls what is installed. That is one Confiner and not the only one: a runner deployed on a
+// platform gets the same leaves from a sandbox it claims rather than a process it wraps, and
+// implements this interface by asking for one.
+//
+// All of the single-host version is Linux, and some of it depends on kernel switches that vary
+// by distribution, which is exactly why the honest answer here is a refusal rather than a
 // best-effort.
 type hostConfiner struct{}
 

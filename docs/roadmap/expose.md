@@ -213,10 +213,19 @@ The authority axis is the *grant* — the word the type (`task.Grant`), the dele
 (`Grant.Subset`), and the launch field (`launch.Spec.Grant`, wire field `grant`) all use. This
 note says *grant* for authority and reserves *scope* for isolation.
 
-`Environment` has no referent. `Bind` expands its `$vars` and that is the entire implementation —
-nothing in the tree resolves the name (`launch/launch.go`); the test binds it to the suggestive
-`sandbox-demo:pr:1`. It is a declared axis waiting for a named, durable, registered thing to
-point at, and `expose` is minting exactly such a thing.
+`Environment` **now has a referent, and not the one this note assumes.** It used to have none —
+`Bind` expanded its `$vars` and nothing resolved the name — and the axis has since been plumbed
+to the runner, where [the coding runner](../working/coding-runner.md) resolves it against its own
+config: a workspace of repositories, a toolchain, a containment.
+
+That is worth reading as a fork rather than as this note being answered. The runner-side referent
+carries the name **unresolved**, the way `driver:` travels, so the vocabulary lives with the
+party that can build one and a runner handed a name it does not have refuses the launch. What
+this note proposes is a *verse-side* referent — a registry of named, durable environments the
+engine itself knows, which is what makes an exposure filterable by a trigger and shareable
+across tasks. Both can hold: one is where an environment is *built*, the other is where it is
+*named and programmed*. What is not yet decided is whether a verse-side registry resolves down
+into the runner-side one, or whether they stay two vocabularies that happen to share a field.
 
 `Vector` is in the same state, and it is the more visible of the two: the spawned task's
 vector is whatever its driver hardcodes (`harness.Vector()` for llm, an empty `Default: auto` for

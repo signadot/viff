@@ -394,9 +394,22 @@ provides at each leaf, and what each rung actually is here:
 
 `principal: distinct` is where the credential split above becomes true, and it is cheap: a runner
 root inside its own container is ordinary, and dropping to a per-task uid needs nothing exotic.
-`filesystem.scope: private` is what makes the PATH allowlist a floor rather than a convention, and
-the pragmatic implementation is `bwrap` — in the image, which this design controls — rather than
+`filesystem.scope: private` is what makes the PATH allowlist a floor rather than a convention; on
+a single host that is `bwrap` — in the image, which this design controls — rather than
 hand-rolled `CLONE_*` flags and mount setup in Go.
+
+**`bwrap` is one implementation, not the answer.** The mechanism lives behind `Confiner`, and it
+varies by deployment: a process wrapped in namespaces on one host, a sandbox *claimed* from a
+platform on a cluster — [expose.md](../roadmap/expose.md) surveys Agent Sandbox, which reaches
+several of these leaves at once with gVisor or a lightweight VM. Nothing above that seam changes
+between them, which is the argument for having the vocabulary at all: it is what lets two
+substrates be compared without verse knowing either.
+
+Factoring into classes also dissolved something the first draft had wrong. That draft's ladder
+made `pod` — one container per task — its top rung, and a container is not a *degree* of
+containment. It is a mechanism that reaches strong values on several independent axes at once.
+Under classes it stops being a rung and becomes a `Confiner`, which is the better model and one
+the prior art does not have, since there the sandbox *is* the unit.
 
 **The tree is what lets the two drivers differ honestly.** The harness makes its model call from
 the *runner's* process and only `run_bash` runs inside the containment, so an `llm` task can sit
