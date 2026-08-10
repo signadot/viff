@@ -347,7 +347,7 @@ type taskRunConfig struct {
 	// The shape this run's final message must have — a tony match pattern in a file, the
 	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model
 	// stopped calling tools, which is also what a model narrating its next step looks like.
-	Answer string `cli:"name=answer desc='file holding this run\'s answer contract (a tony match pattern)'"`
+	Answer string `cli:"name=answer desc='file holding the answer contract for this run (a tony match pattern)'"`
 	// Which workspace the runner should build — a repo at a base, a toolchain, a
 	// containment. Resolved by the runner against its own config; verse carries the name.
 	Environment string `cli:"name=environment desc='workspace the runner should run this in (a name the runner knows)'"`
