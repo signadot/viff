@@ -139,7 +139,7 @@ on a read. See [entities.md](entities.md#conditional-writes).
 
 ## The scripts
 
-Three scripts write into a verse you are already running, and each one prints what to type
+Four scripts write into a verse you are already running, and each one prints what to type
 next. They are for reading as much as for running: each is a worked example of the surface it
 seeds.
 

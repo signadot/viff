@@ -155,10 +155,11 @@ walk can come up short, and it says so.
 - **Two rules writing one field is a different hazard and is not caught.** They settle wherever
   the last write lands, without any chain growing. See
   [firing residual §3](working/firing-residual.md#3-two-triggers-one-field).
-- **Strata would tighten the bound and are not built.** A chain that crossed levels could reset
-  its counter on every crossing, since a derive strictly increases level and nothing writes
-  downward, making the cap max|stratum| rather than the whole charter. With no strata there is one
-  implicit stratum and the cap is the installed trigger count, which is a usable bound.
+- **Strata would tighten the bound, and the throttle does not use them.** A chain that crossed
+  levels could reset its counter on every crossing, since a derive strictly increases level and
+  nothing writes downward, making the cap max|stratum| rather than the whole charter. That part is
+  not built: the cap is the installed trigger count whether or not a charter declares
+  [strata](strata.md), which is a usable bound.
 - **One commit, one chain.** `Store.Write` writes one path and the store emits one commit per
   delta, so a commit has exactly one cause. logd has transactions, so a multi-path atomic write
   would let one commit carry several chains and the reader would need a merge rule — max being the

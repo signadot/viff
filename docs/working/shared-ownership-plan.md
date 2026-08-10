@@ -45,7 +45,7 @@ than an omission.
 Dived, in [shared-ownership/1-path-claim-plan.md](shared-ownership/1-path-claim-plan.md) — which
 finds two spellings in the design note that do not survive contact, and reorders the steps below
 into six. It is built: what runs is in
-[sources.md](../sources.md#four-of-them-and-what-the-ones-after-git-cost) and
+[sources.md](../sources.md#five-of-them-and-what-the-ones-after-git-cost) and
 [reference/sourced.md §linear](../reference/sourced.md#linear), and the steps below are kept as
 the record of what each one had to prove.
 

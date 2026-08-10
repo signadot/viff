@@ -21,7 +21,7 @@ the first thing to get right:
 
 | | what it decides | who writes it |
 |---|---|---|
-| `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go, per runtime — a spawn's `resolver` field is [declared and unread](roadmap/authority.md) |
+| `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go, per runtime — or an [attached resolver](attached-resolvers.md), which is what a spawn's `resolver` field names |
 | the supervisor here | whether *a firing* proceeds — the charter-level question a gate would put to a person | a charter rule, installable over the wire |
 
 The first is the inside of a task: `write_file` on a path, a `call_agent`, a `run_bash`.
@@ -249,7 +249,7 @@ ends `landed`, `closed`, or waiting at a gate.
   but that is a clock on an unanswered QUESTION, not on a task that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor
   wrote it, which is weaker than what the *whether* axis already gives a human: a `!quorum`
-  gate keeps an attributable, retractable ballot per voter ([§6 of the
+  gate keeps an attributable, retractable ballot per voter ([§5 of the
   tutorial](tutorial.md#5-gates-and-the-docket)). An agent casting a
   ballot on that same surface is what the reserved `!judgment` requirement kind is for, and
   it is a stub — so today an agent cannot be one of two approvals, only the thing that decides

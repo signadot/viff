@@ -3,7 +3,7 @@
 Status: **the first phase runs; the rest is proposal.** A claim may name a path inside a payload,
 a cover carries a slot, converge writes and tombstones there, and Linear reflects a shared project
 by team — that is everything up to and including "the move" below, and it is described where it
-runs, in [sources.md](../sources.md#four-of-them-and-what-the-ones-after-git-cost) and
+runs, in [sources.md](../sources.md#five-of-them-and-what-the-ones-after-git-cost) and
 [reference/sourced.md §linear](../reference/sourced.md#linear). What is still proposal is the
 engine half: a rule over a shared entity is evaluated on every owner's write and cannot say which
 owner it cares about. The order of work is

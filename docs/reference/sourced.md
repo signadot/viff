@@ -16,7 +16,7 @@ sourced linear    [flags]   Linear teams
 sourced github    [flags]   GitHub repositories
 ```
 
-Each serves the same two routes verse dials (`GET /source`, `GET /reflect`), plus — for the two
+Each serves the same two routes verse dials (`GET /source`, `GET /reflect`), plus — for the three
 that have one — the delivery endpoint it owns. Install one exactly like any other source:
 
 ```sh

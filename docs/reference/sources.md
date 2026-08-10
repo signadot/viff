@@ -42,7 +42,8 @@ because an install compares declarations with no entities in hand.
 (`entity.Path`). It is what lets two sources share an entity without either being a second
 writer of anything: one is the single writer of `owners.ENG`, the other of `owners.OPS`.
 Sharing is not an exception to single-writership; it is single-writership at a deeper address.
-Absent — which is every claim the three connectors make — the claim is to the whole entity.
+Absent — which is every claim the connectors make but Linear's on a project — the claim is to
+the whole entity.
 
 Two claims are **disjoint** when any segment is: two literal systems that differ, two literal
 kinds that differ, two id prefixes neither of which prefixes the other, or two paths neither of
@@ -174,7 +175,7 @@ One per installed registration, started at install, stopped at removal, restored
 after the charter — a reflection is a write triggers react to, and a level-triggered pass does
 not repeat itself, so a rule restored late misses what it missed for good.
 
-Each runs an initial full pass, a periodic full pass every `source.ResyncEvery` (one minute),
+Each runs an initial full pass, a periodic full pass every `versed.ResyncEvery` (one minute),
 and a targeted pass per hint.
 
 Scoped registrations are **not** restored on restart: `entity.Store` has no way to enumerate

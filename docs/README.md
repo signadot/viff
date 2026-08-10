@@ -97,7 +97,7 @@ the verse that owns it, through a docd controller.
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, Slack and Linear: a source you deploy, hint as hint, reconcile as truth |
 | | [reference/sources.md](reference/sources.md) — the source surface: the entity, ownership globs, the verbs, the routes, and the contract a source serves |
-| | [reference/sourced.md](reference/sourced.md) — the four verse ships: git (and mirrors), Slack, Linear, GitHub — flags, credentials, and what each reflects |
+| | [reference/sourced.md](reference/sourced.md) — the five verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — flags, credentials, and what each reflects |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | ahead | [Sources: what is left](working/sources-residual.md) — dial-in for the source verse cannot reach, and the levers a resync has not spent |
 | | [GitHub: what is left](working/gh-source-residual.md) — the kinds no repository can own, a rename nothing defends against, and what the budget measured |

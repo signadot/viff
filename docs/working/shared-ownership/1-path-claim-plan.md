@@ -3,7 +3,7 @@
 Status: **landed, and kept for its reasoning.** Every step below is built: a claim is a document
 carrying a path, a cover carries a slot, converge writes, compares and tombstones there, and
 Linear reflects a shared project by team. What runs is described in
-[sources.md](../../sources.md#four-of-them-and-what-the-ones-after-git-cost) and
+[sources.md](../../sources.md#five-of-them-and-what-the-ones-after-git-cost) and
 [reference/sourced.md §linear](../../reference/sourced.md#linear); what phases 2–5 still owe is in
 [shared-ownership-plan.md](../shared-ownership-plan.md). This file stays because two of its
 findings are arguments rather than code — why a claim cannot be a terse string, and why the

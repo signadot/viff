@@ -536,7 +536,9 @@ offered whatever you list, since it is how a task reports it could not do the wo
 
 An unknown `vector`, `grant`, or tool name fails the spawn rather than falling back to
 unbounded: a field that reads back as written and enforces nothing is the failure this is
-built to avoid. `resolver` and `environment` remain declared and unread — see
+built to avoid. `resolver` names the binding that answers this run's gates, and a spawn naming
+one that is not installed is refused rather than left unsupervised — see
+[attached resolvers](attached-resolvers.md). `environment` remains declared and unread — see
 [authority](roadmap/authority.md).
 
 ```tony

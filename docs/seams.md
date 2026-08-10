@@ -52,7 +52,7 @@ flowchart LR
   cli["verse CLI<br/>operator"]
   res["resolver<br/>an answerer"]
   worker["worker<br/>laptop · pod · human"]
-  wh["Slack · Linear"]
+  wh["Slack · Linear · GitHub"]
   hook["git hook<br/>reference-transaction"]
 
   subgraph host["the verse"]
@@ -280,12 +280,13 @@ dial, is designed and **refused at install** until it is built ([sources](refere
 
 ## 7. Webhooks: the only seam facing the internet
 
-A source may accept deliveries from the system it reflects. Two ship:
+A source may accept deliveries from the system it reflects. Three ship:
 
 | Route | Verification |
 |---|---|
 | `POST /slack/events` | HMAC-SHA256 over `v0:{ts}:{body}`, constant-time, plus a skew window on the signed timestamp |
 | `POST /linear/webhook` | HMAC-SHA256 over the body, constant-time |
+| `POST /github/webhook` | HMAC-SHA256 over the body, `sha256=`-prefixed, constant-time |
 
 This is the only seam that is meant to be reachable from the public internet — in the deploy it
 is the only one that gets an Ingress, and an absent webhook host *drops* the Ingress rather than

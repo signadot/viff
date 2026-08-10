@@ -75,13 +75,13 @@ creds configured the default driver is llm, so the command you just typed comes 
 `⏸ gate "shell" (run_bash) — approve?`. Nothing was decided that you had not already decided.
 The prompt only reveals that verse chose to satisfy your command with an agent.
 
-The vector is fixed by the driver and nothing overrides it at spawn (`run` takes only
-`--wait/--attach/--driver`; the `vector` axis is one of the launch spec's "later" fields). So
-today: pass `--driver scripted` when your prompt *is* a command — that is exactly what it is
-for — or slide the vector once it starts (`task vector <id> auto`). A trigger hits the
-same edge from the other side: its gates approve *the firing*, not the actions the spawned
-agent then chooses, and it has no way to say it already decided. Where the permission *should*
-come from is [authority](../roadmap/authority.md).
+The driver picks the vector unless the spawn says otherwise, and what verse cannot read is
+which of the two things you meant by the prompt. So today you say it: pass `--driver scripted`
+when your prompt *is* a command — that is exactly what it is for — pass `--vector auto` to keep
+the agent and drop the asking, or slide the vector once it starts (`task vector <id> auto`).
+A trigger hits the same edge from the other side: its gates approve *the firing*, not the
+actions the spawned agent then chooses, and it has no way to say it already decided. Where the
+permission *should* come from is [authority](../roadmap/authority.md).
 
 ## The mirror
 

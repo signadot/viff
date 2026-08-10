@@ -46,16 +46,22 @@ of them refuses the install:
 | | |
 |---|---|
 | *a runner* | it answered, and the body decoded as the task list the contract promises |
-| *not a runner* | it answered, and is not that — the install is **refused** |
-| *unreachable* | nothing answered — **installed, with a warning** |
+| *not a runner* | it answered *that it has no task list* — 404 or 501, or a body that does not decode — the install is **refused** |
+| *unreachable* | nothing answered, or what answered was failing rather than saying what it is — **installed, with a warning** |
 
-They differ on whether waiting could change the answer. A url that answers wrongly is answering
-*now*: something is at that address and it is not a runner face. A broker's worker leg is exactly
-this — it serves claim, inbox and report and no `GET /tasks` — and it is the confusion
-worth catching at install rather than at the first spawn. A url nothing answers, by contrast,
-is the ordinary state of a runner deployed alongside the entity that names it: the manifest
-lands, the pod is pending, the entity is already written. Refusing that would make deployment
-order-dependent for a fact that fixes itself.
+They differ on whether waiting could change the answer, not on whether anything answered. A url
+that answers *that it has no task list* is stating what it is, and stating it now: something is at
+that address and it is not a runner face. A broker's worker leg is exactly this — it serves claim,
+inbox and report and no `GET /tasks` — and it is the confusion worth catching at install rather
+than at the first spawn. A url nothing answers, by contrast, is the ordinary state of a runner
+deployed alongside the entity that names it: the manifest lands, the pod is pending, the entity is
+already written. Refusing that would make deployment order-dependent for a fact that fixes itself.
+
+**A runner answering 500 is *unreachable*, not *not a runner*** — so it is installed with a
+warning, not refused. A url speaking HTTP and failing has said nothing about whether it serves the
+contract, and is a runner having a bad day at least as often as it is the wrong address: another
+fact that can fix itself on its own. Only 404 and 501 — no such face — and an undecodable task
+list are answers about what is there.
 
 `--no-probe` installs either way. A check with no way past it is a trap, and verse is not the
 authority on what is at the end of a url an operator chose.

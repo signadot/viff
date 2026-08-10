@@ -6,8 +6,8 @@ and agents *read* the reflected entities and react. A source only reflects: acti
 external system is the outbound path, not this one.
 
 For the surface — the entity, the verbs, the routes, the contract a source serves — see
-[reference/sources.md](reference/sources.md). For the four verse ships — git, Slack, Linear,
-GitHub — see [reference/sourced.md](reference/sourced.md). To build one of your own, copy
+[reference/sources.md](reference/sources.md). For the five verse ships — git, git-issue, Slack,
+Linear, GitHub — see [reference/sourced.md](reference/sourced.md). To build one of your own, copy
 [examples/source](reference/examples/source/main.go), which is a real program that compiles
 with the tree.
 
@@ -186,8 +186,9 @@ lot and can be proved apart from nothing in its own system.
 
 A claim may also name a place **inside** an entity (`at: [owners, ENG]`), which is the one way
 two sources may write one entity: each is the single writer of its own slot, proved apart by the
-same comparison a segment further down. Nothing built declares one yet — the design and what
-converge still owes it are in [what is left](working/shared-ownership.md).
+same comparison a segment further down. The Linear source declares one — a project belongs to
+several teams at once, so each team claims `owners.<KEY>` and nothing at the top (below) — and
+what converge still owes it is in [what is left](working/shared-ownership.md).
 
 ## Removing one, and the fork
 
@@ -256,21 +257,22 @@ value, and the scoped hide does not remove baseline's key.
 Baseline stays the default: one shared reflection everything reads is what most of a deployment
 wants, and an empty `scope` is what it gets.
 
-## Four of them, and what the ones after git cost
+## Five of them, and what the ones after git cost
 
 verse ships `sourced`, a second binary with a subcommand per system it connects
-([reference/sourced.md](reference/sourced.md)) — git, Slack, Linear, GitHub. It rides in the same image
-as `verse` and is deliberately not in the same process: folding a connector into the engine
-would put every API's wire format and every credential's failure mode in the binary that runs
-everybody's triggers. There is nothing privileged about the four; they are ordinary external
-sources that happen to be maintained here, and the sample program is still the thing to copy
-for a fifth. **Nothing in `source/`, `versed/` or the CLI changed for the third or the fourth**,
-which is the seam's claim, tested twice.
+([reference/sourced.md](reference/sourced.md)) — git, git-issue, Slack, Linear, GitHub. It rides
+in the same image as `verse` and is deliberately not in the same process: folding a connector
+into the engine would put every API's wire format and every credential's failure mode in the
+binary that runs everybody's triggers. There is nothing privileged about the five; they are
+ordinary external sources that happen to be maintained here, and the sample program is still the
+thing to copy for a sixth. **Nothing in `source/`, `versed/` or the CLI changed for the third or
+the fourth**, which is the seam's claim, tested twice.
 
-**Only one thing actually differs between them, and it is the credential.** git needs none, so
-it can also run in task (`--dir`) and its "webhook" is a four-line shell script. The other
-three hold a token, which is what puts them on the far side of the seam for good — and what
-"nothing new about credentials" below turns out to mean in practice.
+**Only one thing actually differs between them, and it is the credential.** git needs none — nor
+does git-issue, which reads the same directory — so git can also run in task (`--dir`) and its
+"webhook" is a four-line shell script. The three that reach a service hold a token, which is
+what puts them on the far side of the seam for good — and what "nothing new about credentials"
+below turns out to mean in practice.
 
 Four things came out of building the three that need one.
 

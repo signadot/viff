@@ -224,7 +224,7 @@ out takes the entity with a conditional delete —
 `!all.or [!field "ENG", !irtype null]`, which reads "every key here is mine or a tombstone". The
 design is [shared-ownership.md](shared-ownership.md), the phase that landed is
 [its phase 1](shared-ownership/1-path-claim-plan.md), and what runs is described in
-[sources.md](../sources.md#four-of-them-and-what-the-ones-after-git-cost).
+[sources.md](../sources.md#five-of-them-and-what-the-ones-after-git-cost).
 
 Two things this note used to say about it were wrong, and both are worth keeping because the
 mistakes are instructive:
