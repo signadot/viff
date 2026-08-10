@@ -220,6 +220,15 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 		Answer *ir.Node     `tony:"field=answer,omitzero"`
 		Vector *task.Vector `tony:"field=vector,omitzero"`
 		Grant  *task.Grant  `tony:"field=grant,omitzero"`
+		// Environment names the workspace the runner should build; Provenance is what it
+		// needs to make its own effects auditable. Both are the runner's to interpret —
+		// taskd carries them to the Builder and reads neither.
+		Environment string `tony:"field=environment,omitzero"`
+		Provenance  struct {
+			Principal string `tony:"field=principal,omitzero"`
+			Subject   string `tony:"field=subject,omitzero"`
+			Chain     string `tony:"field=chain,omitzero"`
+		} `tony:"field=provenance,omitzero"`
 	}
 	_ = codec.Read(r, &body)
 	id := body.Id // a runner client (the engine) passes its own id so it matches
@@ -234,6 +243,12 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	h, created := d.spawnHosted(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
 		Answer: body.Answer, Vector: body.Vector, Grant: body.Grant,
+		Environment: body.Environment,
+		Provenance: task.Provenance{
+			Principal: body.Provenance.Principal,
+			Subject:   body.Provenance.Subject,
+			Chain:     body.Provenance.Chain,
+		},
 	}, nil)
 	// 201 built it, 200 found it already running. A retrying client needs no more than
 	// that, and a client that does not care can ignore it: both mean "this id is running".

@@ -73,6 +73,25 @@ func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
 	if l.Grant != nil {
 		req["grant"] = l.Grant
 	}
+	if l.Environment != "" {
+		req["environment"] = l.Environment
+	}
+	// Provenance is sent field by field for the reason every other field here is conditional:
+	// an empty one means verse did not know, and writing it out empty would be a claim of
+	// having asked rather than a record of not knowing.
+	if p := l.Provenance; p != (task.Provenance{}) {
+		prov := map[string]any{}
+		if p.Principal != "" {
+			prov["principal"] = p.Principal
+		}
+		if p.Subject != "" {
+			prov["subject"] = p.Subject
+		}
+		if p.Chain != "" {
+			prov["chain"] = p.Chain
+		}
+		req["provenance"] = prov
+	}
 	body, _ := codec.Marshal(req, codec.Tony)
 	resp, err := p.cl.Post(p.base+"/tasks", codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {

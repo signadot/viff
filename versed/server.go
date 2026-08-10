@@ -410,15 +410,25 @@ func (s *Server) spawnerFor(st entity.Store, content task.ContentReader) trigger
 // what crosses the wire is the predicate rather than a word two builds might read
 // differently.
 //
-// Resolver and Environment are still unread, and still named in the spec. They are not
-// resolved here because neither has semantics to resolve TO yet — there is no registry of
-// named resolvers, and the environment floor is a design note (docs/roadmap/expose.md).
-// Naming that plainly is better than another silent drop.
+// Resolver is still unread, and still named in the spec — there is no registry of named
+// resolvers to resolve it TO. Naming that plainly is better than another silent drop.
+//
+// Environment is now CARRIED rather than resolved, and the difference from vector and grant
+// is the point: verse holds the vocabulary for an envelope because it can enforce one, and
+// holds none for a workspace because only the runner can build one. So it travels as a name,
+// the way `driver:` does, and a runner handed one it does not have refuses the launch. That
+// is the first consumer the field has had (docs/working/coding-runner.md).
+//
+// Provenance travels for a different reason: not so the runner can decide anything, but so
+// it can record why it was asked. Subject and Chain are what a firing knows about its own
+// cause, and verse has always kept them on its side of the wire — which left a remote runner
+// unable to attribute its own effects (docs/working/attribution.md).
 func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
-		Resolver: spec.Resolver,
+		Resolver: spec.Resolver, Environment: spec.Environment,
+		Provenance: task.Provenance{Subject: spec.Subject, Chain: spec.Chain},
 	}
 	// The contract travels as source, but it is PARSED here as well, and the parse is the
 	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
@@ -2206,7 +2216,11 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	}
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
-		Resolver: body.Resolver, Vector: vec,
+		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
+		// The ad-hoc path is the one place a principal exists today: somebody typed this.
+		// A firing has no equivalent until an install can record an author, so it sends
+		// Subject and Chain instead — see launchOf.
+		Provenance: task.Provenance{Principal: body.Principal, Subject: body.Subject},
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,

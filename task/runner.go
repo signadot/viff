@@ -82,6 +82,59 @@ type Launch struct {
 	// mentioned a grant.
 	Vector *Vector
 	Grant  *Grant
+
+	// Environment names the workspace this task should run in — a repo at a base, a
+	// toolchain, a containment — resolved by the RUNNER against its own config, not by
+	// verse. It is the launch.Spec axis that has been parsed, `$var`-expanded and read by
+	// nothing (see versed.launchOf); this is the first consumer.
+	//
+	// It travels as a NAME, unresolved, the way Driver does rather than the way Vector and
+	// Grant do. The asymmetry is deliberate: verse holds the vocabulary for an envelope
+	// because it can enforce one, and holds none for a workspace because only the runner can
+	// build one. A runner handed a name it does not have refuses the launch, which is how a
+	// runner declines anything.
+	//
+	// Empty = the runner's own default workspace.
+	Environment string
+
+	// Provenance is what the runner needs to make its own effects auditable: who is
+	// answerable for this launch, and what it is about.
+	//
+	// It crosses the wire because a runner's effects can leave the verse — a coding runner
+	// pushes a branch under a credential verse does not hold — and the only externally
+	// checkable link back is what the runner itself writes down (a commit trailer, a branch
+	// name). A runner that was never told cannot record it. See docs/working/attribution.md.
+	Provenance Provenance
+}
+
+// Provenance is the answer to "on whose account, and about what" for one launch. Every
+// field is optional and an empty one means verse did not know, which is a real state and
+// not a default.
+//
+// It is deliberately NOT authority. A runner must not read Principal and confer anything on
+// the strength of it — that is the on-behalf-of model docs/roadmap/authority.md rejects by
+// name, where an agent inherits what a user may do rather than what a user asked for. What
+// may be done is Grant, and nothing here widens it.
+type Provenance struct {
+	// Principal is who is answerable for this launch — the argument half of the
+	// parameter-at-install / argument-at-launch split in docs/working/attribution.md.
+	//
+	// Self-asserted, and known to be: verifying that a caller is who it says is
+	// authority's whole subject, and nothing local could do better than a lock with the key
+	// taped to it. It is carried anyway because a chain of one asserted link and several
+	// derived ones is checkable against the store, where a bare unattributed effect is not.
+	//
+	// Empty on a charter firing today: what is answerable there is whoever installed the
+	// charter, which is the PARAMETER half and wants an author on an entity write —
+	// `entity.Write` carries none. Subject and Chain below are what the firing does know.
+	Principal string
+	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR), and Chain is
+	// the kpath of the action inside its trigger ("review", "review.onDone"). Together they
+	// are the precipitating cause of a charter firing — which verse has always recorded on
+	// its own side and never told the runner, so a remote runner could not say why it was
+	// asked for anything.
+	Subject string
+	Chain   string
 }
 
 // Runner runs and governs tasks on some substrate; verse (the engine) is its

@@ -149,6 +149,19 @@ type Spawn struct {
 	// two places and the same place may host either of two doers, so folding them together
 	// would make one selection answer two questions.
 	Runner string `tony:"field=runner,omitzero"`
+	// Environment names the workspace the runner should build for this run — the ad-hoc face
+	// of a spawn's `environment:`, so `verse task run` and a firing can ask for the same
+	// thing. Resolved by the runner against its own config, never by verse: see
+	// task.Launch.Environment.
+	Environment string `tony:"field=environment,omitzero"`
+	// Principal is who is answerable for this run. Self-asserted — the same standing `--as`
+	// has everywhere else, and for the same reason: verifying a caller is authority's
+	// subject, not this field's. It is carried so a runner whose effects LEAVE the verse can
+	// write an externally checkable link back (docs/working/attribution.md).
+	//
+	// A charter firing has no equivalent yet, and deliberately no default here: an empty
+	// principal means nobody said, which is a fact worth recording as itself.
+	Principal string `tony:"field=principal,omitzero"`
 }
 
 // Spawned is what a spawn answers with: the id to address the new task by.

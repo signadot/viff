@@ -149,8 +149,10 @@ context:
 - tony-format/context
 define:
   driver: .[string]
+  environment: .[string]
   id: .[string]
   name: .[string]
+  principal: .[string]
   prompt: .[string]
   resolver: .[string]
   retain: .[int]
