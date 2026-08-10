@@ -304,8 +304,13 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	// diverges under rebase/amend, and the object format (sha1→sha256) changes hashes. So a
 	// commit belongs to its repo; two repos never share one entity.
 	for _, c := range gitRecentCommits(ctx, dir, g.commitDepth) {
-		rn.Add(entity.Ref{System: g.system, Kind: "commit", ID: id + "/" + c.sha},
-			entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents})
+		p := entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
+		// Trailers are the one part of a commit BODY that reaches the verse, and only when
+		// there are any — an empty map on every commit is noise in every payload.
+		if len(c.trailers) > 0 {
+			p["trailers"] = c.trailers
+		}
+		rn.Add(entity.Ref{System: g.system, Kind: "commit", ID: id + "/" + c.sha}, p)
 	}
 	return rn, nil
 }
@@ -350,21 +355,117 @@ func gitHead(ctx context.Context, dir string) entity.Obj {
 	return p
 }
 
-type commitInfo struct{ sha, msg, author, parents string }
+type commitInfo struct {
+	sha, msg, author, parents string
+	trailers                  map[string]string
+}
 
 func gitRecentCommits(ctx context.Context, dir string, depth int) []commitInfo {
-	// Unit-separated fields (0x1f) so subjects with spaces survive the split.
-	out, err := gitCmd(ctx, dir, "log", "-n", strconv.Itoa(depth), "--format=%H%x1f%s%x1f%an%x1f%P")
+	// Unit-separated fields (0x1f) so subjects with spaces survive the split, and NUL-separated
+	// RECORDS (-z) so the raw message can be one of them.
+	//
+	// The record separator is what changed when trailers arrived, and it had to. `%B` is
+	// multi-line, and a line-per-commit scan turns three commits into seventy-nine lines and
+	// then drops all of them for having the wrong field count. `-z` costs nothing and the
+	// alternative — asking git for named trailers with `%(trailers:key=…)` — cannot serve
+	// "whatever this commit declared", because it makes the caller name the keys first.
+	out, err := gitCmd(ctx, dir, "log", "-z", "-n", strconv.Itoa(depth),
+		"--format=%H%x1f%s%x1f%an%x1f%P%x1f%B")
 	if err != nil {
 		return nil // no commits
 	}
 	var cs []commitInfo
-	for _, line := range nonEmptyLines(out) {
-		if f := strings.Split(line, "\x1f"); len(f) == 4 {
-			cs = append(cs, commitInfo{sha: f[0], msg: f[1], author: f[2], parents: f[3]})
+	for _, rec := range strings.Split(out, "\x00") {
+		if strings.TrimSpace(rec) == "" {
+			continue
 		}
+		// SplitN with the raw message LAST, so a message containing 0x1f cannot shift the
+		// fields before it — a commit body is arbitrary text and one of them will.
+		f := strings.SplitN(rec, "\x1f", 5)
+		if len(f) != 5 {
+			continue
+		}
+		cs = append(cs, commitInfo{sha: f[0], msg: f[1], author: f[2],
+			parents: f[3], trailers: parseTrailers(f[4])})
 	}
 	return cs
+}
+
+// parseTrailers extracts a commit's trailer block — the `Key: value` lines git's own
+// `interpret-trailers` reads, which is where `Tier:`, `Co-Authored-By:` and this tree's own
+// `Breaks:` live (docs/working/contributing.md).
+//
+// It is a deliberate SUBSET of git's heuristic, and stricter in one way: git accepts a final
+// paragraph in which only some lines parse, and this requires all of them. That trades a few
+// real trailer blocks — one stray prose line at the end of an otherwise-trailer paragraph — for
+// not lifting arbitrary prose into an entity payload.
+//
+// It cannot be made exact, and that is a property of trailers rather than of this function. A
+// trailer block is a heuristic over the last paragraph, so a commit whose body simply ENDS with
+// something shaped like `Status: proposal` yields `Status` as a trailer, in git's parser too.
+// Which is the argument for the convention living in the key NAMESPACE rather than in a curated
+// allowlist here: a charter matching `Verse-Task` is safe, one matching bare `Status` never was.
+// This source has no opinion about which keys are meaningful, because it cannot have a better
+// one than the repository it is reflecting.
+func parseTrailers(msg string) map[string]string {
+	lines := strings.Split(strings.TrimRight(msg, "\n"), "\n")
+	// The last paragraph: everything after the final blank line.
+	start := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			start = i + 1
+			break
+		}
+	}
+	if start == 0 {
+		return nil // a one-paragraph message is a subject, not a trailer block
+	}
+	out := map[string]string{}
+	last := ""
+	for _, line := range lines[start:] {
+		// A continuation line — leading whitespace — belongs to the trailer above it.
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			if last == "" {
+				return nil
+			}
+			out[last] += " " + strings.TrimSpace(line)
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || !trailerKey(key) {
+			return nil // one line that is not a trailer, and this paragraph is prose
+		}
+		if _, seen := out[key]; seen {
+			// A repeated key — Co-Authored-By is the common one — joined with a space, which
+			// is what git's own `%(trailers:…,separator=…)` does and what makes the result a
+			// scalar a charter can glob rather than a list it has to reach into.
+			out[key] += " "
+		}
+		out[key] += strings.TrimSpace(value)
+		last = key
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// trailerKey reports whether s can be a trailer key: a token, no spaces. Git is looser about
+// what it accepts; the point here is only to reject the prose that a bare `Cut` on ":" admits —
+// "So Op stays set" has a colon in it somewhere often enough to matter.
+func trailerKey(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case (r == '-' || r == '_') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // gitCmd runs one git command in dir and returns its stdout, with git's own stderr folded into

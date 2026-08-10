@@ -75,9 +75,29 @@ converges on the resync.
 |---|---|
 | `git:ref:<repo>/<name>` | `repo, name, sha, type` |
 | `git:head:<repo>` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
-| `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents` — covered by nothing, so history stays |
+| `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any — covered by nothing, so history stays |
 
 Owns `git:*:<id>/*` and `git:head:<id>` per repo.
+
+`msg` is the **subject** — the first line — and the body is not reflected. `trailers` is the
+exception: the `Key: value` block at the end of a message, as an object, so a charter can
+condition on what a commit *declared* rather than search prose.
+
+```tony
+condition:
+  subject: {system: git, kind: commit, value: {trailers: {Tier: change}}}
+```
+
+and `!glob "*"` in place of a value matches any commit that *declared* the key at all — which is
+how a charter finds the pushes a coding runner made, by their `Verse-Task`.
+
+**Every key is reflected; none is interpreted.** There is no allowlist, because this source
+cannot tell a meaningful key from an accidental one better than the repository can — and a
+trailer block is a *heuristic* over the last paragraph, so a message that merely ends with
+something shaped like `Status: proposal` yields `Status`, in git's own parser too. The
+convention therefore belongs in the key **namespace**: matching `Verse-Task` is safe, matching
+a bare `Status` never was. Absent when a commit has no trailer block, rather than an empty
+object on every commit.
 
 ## git-issue
 
