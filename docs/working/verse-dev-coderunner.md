@@ -1,6 +1,6 @@
 # verse-dev: a coding pipeline, and what it is expected to break on
 
-Status: **phase 1 works; eleven findings, and the drive has moved to the `llm` driver.** The first clean run verified a document against the
+Status: **phase 1 works; twelve findings, and the drive has moved to the `llm` driver.** The first clean run verified a document against the
 code and correctly changed nothing. The run before it produced fourteen real findings and the
 runner destroyed them, which is finding 9. The first
 experiment of the [verse-dev](verse-dev.md) drive: verse coordinating work on verse, done by
@@ -116,7 +116,7 @@ the API are the same hop with no carrier at all — which is where
 
 ## Found by running it
 
-Eleven, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
+Twelve, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
 
 One through five **stopped the work**, and three of those are verse rather than the coderunner.
 They also hid each other, which is the part worth remembering: fixing the first is what exposed
@@ -383,6 +383,34 @@ verse's own configured creds live in another process and are invisible here. Tha
 credential this design refuses everywhere else, and it is now named in the runner's config the
 same way the git token is — as the NAME of an environment variable, so a config that is copied
 carries no secret.
+
+### 12. Nothing records whether a run was governed
+
+The contract run completed `done` with an answer that **does not satisfy its contract** —
+checked against the real result: *"file: absent: expected !irtype string"*. So either the
+contract never reached the run, or it was not enforced. The plumbing is wired end to end (CLI →
+`api.Spawn` → `versed` → the spawn wire → `taskd` → `harness.Build`), and a model told about a
+contract would almost certainly have emitted the field it names, so the likely answer is that
+the flag was not passed.
+
+**The point is that this cannot be settled from the record.** `task:instance` carries prompt,
+status, result, runner and resolver; `mirror.Meta` can carry `grant` and `tools`, and the
+charter path fills them. It has no field for the answer contract at all, and the ad-hoc path
+records none of the envelope — not vector, not grant, not tools. So "was this run governed, and
+by what?" is unanswerable an hour later, which is exactly the question an operator asks after a
+run does something surprising.
+
+[authority.md](../roadmap/authority.md) already names this as an obligation, about a derived
+envelope rather than a declared one, and the argument does not care which:
+
+> The derived envelope must be recorded on the task entity so it is inspectable (`task get`),
+> reviewable after the fact, and **diffable against what the task actually did**.
+
+That last clause is the one this run failed. The task did something (produced an answer of one
+shape) and the record cannot say what was required of it, so no diff is possible. It is the same
+complaint as findings 6 and 7 — verse says *that* work happened and little about it — moved from
+the read plane to the entity, and it is worse here because the envelope is precisely the part a
+person needs after the fact rather than during.
 
 ### Findings 6 and 7 are one complaint
 
