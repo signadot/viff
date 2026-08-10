@@ -2362,10 +2362,46 @@ func (s *Server) isTask(id string) bool {
 		return true
 	}
 	if l, ok := s.runner.(taskLister); ok {
+		if _, err := l.TaskSnapshot(id); err == nil {
+			return true
+		}
+	}
+	if l, ok := s.placeOf(id).(taskLister); ok {
 		_, err := l.TaskSnapshot(id)
 		return err == nil
 	}
 	return false
+}
+
+// placeOf is the runner a task actually ran on, which is not necessarily this verse's DEFAULT
+// one — `runner:` on a spawn picks per task, and that is the whole feature. nil when the task
+// ran locally, ran on the default runner, or is not one this verse knows.
+//
+// Everything that reached across the seam used to consult `s.runner` alone, so work sent
+// somewhere by name was invisible to it: a gate raised on a per-spawn runner could be LISTED
+// and not answered, because the owner lookup could not see the task and the answer was offered
+// to the local registry, which had never heard of the question. Listing worked because it reads
+// the mirror; answering did not because it read a field.
+//
+// The url is read off task:instance for the same reason a restart reads it there — it is
+// stamped beside the NAME precisely so reaching the work does not depend on the runner entity
+// still existing, which is what keeps removing a runner from orphaning work that is running
+// perfectly well (see reconcileTasks, and docs/runners.md on what a restart does).
+func (s *Server) placeOf(id string) task.Runner {
+	e, ok, err := s.Store.Get(mirror.Ref(id))
+	if err != nil || !ok {
+		return nil
+	}
+	ref := entity.Str(e.Payload, "runner")
+	// `local` means in-process, which the taskd branch above already covers; equal to the
+	// default runner means the branch above covered it too, and rebuilding a second client
+	// for the same place would lose whatever the configured one knows about itself — a
+	// broker's handle relays control, and an HTTP client reconstructed from its url does not
+	// say so.
+	if ref == "" || ref == "local" || ref == s.runner.Ref() {
+		return nil
+	}
+	return runner.HTTP(ref)
 }
 
 // taskHoldingGate finds which task has decisionID open, for a gate id that does not
@@ -2421,7 +2457,18 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 		// record can, and the caller consults it; here the honest answer is "not open".
 		return task.ErrNoSuchDecision
 	}
-	if h := s.runner.Attach(taskID); h != nil {
+	// The runner this task actually went to, before the default one. Order matters and is not
+	// a preference: an HTTP runner's Attach hands back a handle for ANY id without asking, so
+	// trying the default first would route an answer to whichever place happens to be
+	// configured rather than the one holding the question.
+	for _, p := range []task.Runner{s.placeOf(taskID), s.runner} {
+		if p == nil {
+			continue
+		}
+		h := p.Attach(taskID)
+		if h == nil {
+			continue
+		}
 		// by is carried across this seam, not dropped: the local leg above takes the whole
 		// Resolution, so a brokered gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.

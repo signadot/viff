@@ -192,11 +192,17 @@ DEFAULT runner**. A task on a runner named per spawn — the entire point of the
 invisible to it, so the owner comes back empty, the answer is offered to the local registry, and
 that registry has never heard of the question.
 
-It is a lookup gap and not a design one: `task:instance` already records the runner url precisely
-so a restart can reconstruct it (`reconcileTasks` does exactly that), so the fix has a shape
-already in the tree. What it costs today is that **any ASK gate on a per-spawn runner is
-unanswerable through verse** — which is most of the supervision story for remote work, and it is
-why the drive's first act should be to fix it rather than to route around it with `vector: auto`.
+**Fixed** rather than routed around, since an unanswerable gate is most of the supervision story
+for remote work. It was a lookup gap and not a design one: `task:instance` already records the
+runner url precisely so a restart can reconstruct it, so `Server.placeOf` now reads it back the
+way `reconcileTasks` does, and both the owner lookup and the answer path consult the runner a
+task actually went to before the default one. Order matters there and is not a preference — an
+HTTP runner's `Attach` hands back a handle for any id without asking, so trying the default
+first would route an answer to whichever place happens to be configured rather than the one
+holding the question.
+
+`--vector auto` therefore stops being necessary, and the by-hand command keeps it only because
+watching the first generations by hand is the point.
 
 ## What to record
 
