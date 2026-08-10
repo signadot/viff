@@ -1,0 +1,21 @@
+A reviewer read your last pass over @FILE@ in the verse repository and disagreed with one of
+your calls. Re-examine that one thing, and act on your own judgement.
+
+The disagreement:
+
+@DISAGREEMENT@
+
+Check it against the tree yourself rather than taking either side on authority. Then do one of
+two things, and say which:
+
+- **fix it**, if the reviewer is right — edit @FILE@ so the claim is true;
+- **defend it**, if you are right — change nothing and say why the reviewer's reading is wrong,
+  citing the code.
+
+"Defend it" is a real answer and not a failure. A reviewer who is wrong should be told so with
+evidence; a document should not be edited because somebody asked twice.
+
+Do not widen the scope. This is one claim in one file, not another pass over the document.
+
+Leave the tree building. Edit the file and stop — do not commit. Your final message IS the
+answer: say fixed or defended, what you changed if anything, and the evidence either way.

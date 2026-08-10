@@ -398,14 +398,47 @@ root inside its own container is ordinary, and dropping to a per-task uid needs 
 a single host that is `bwrap` — in the image, which this design controls — rather than
 hand-rolled `CLONE_*` flags and mount setup in Go.
 
-**`bwrap` is one implementation, not the answer.** The mechanism lives behind `Confiner`, and it
-varies by deployment: a process wrapped in namespaces on one host, a sandbox *claimed* from a
-platform on a cluster — [expose.md](../roadmap/expose.md) surveys Agent Sandbox, which reaches
-several of these leaves at once with gVisor or a lightweight VM. Nothing above that seam changes
-between them, which is the argument for having the vocabulary at all: it is what lets two
-substrates be compared without verse knowing either.
+**There is no one implementation, and on this machine there were none.** The mechanism lives
+behind `Confiner`, and what can build a point depends entirely on where the runner is deployed:
 
-Factoring into classes also dissolved something the first draft had wrong. That draft's ladder
+| deployment | mechanism | reaches |
+|---|---|---|
+| a pod on Linux | **rootless runc** | `filesystem.scope: private`, `filesystem.readOnly`, pid/ipc/uts isolation |
+| a Linux host | `bwrap` | the same, without an image runtime |
+| **macOS, locally** | **`sandbox-exec`** | `filesystem.scope` only — no namespaces, no principal |
+| none of the above | — | refuse, which is what `hostConfiner` does |
+
+The rootless-runc row is not hypothetical: signadot's own
+`sandboxes/internal/managedrunners/actionbox/runimage` builds an OCI spec and executes it that
+way, and reading it corrected something this note had wrong.
+
+**Its UID mapping is size ONE** — `{ContainerID: 0, HostID: <the outer process's uid>, Size: 1}`
+— so the container's root is the *same host principal* the runner already was. That is namespace
+isolation without a distinct host identity, and it is the combination the flat ladder could not
+express: `filesystem.scope: private` **without** `principal: distinct`.
+
+Which dissolves the collision predicted in the drive's finding 4. The agent's credential is keyed
+on the OS user, so `principal: distinct` breaks its authentication — but a private filesystem does
+not require a distinct principal, and rootless runc is the proof. The two axes are independent,
+the tree says so, and a real implementation takes one and not the other. A single ladder would
+have forced them to move together and made agent auth the price of filesystem isolation.
+
+Two more things worth taking from that code, both of which are choices rather than defaults: it
+**omits the network namespace deliberately**, so the container shares the pod's network
+(`network.egress: full` in this vocabulary, with restriction left to a proxy — the same
+conclusion this note reached from the other side); and it sets `Root.Readonly` with explicit
+bind mounts for what must be writable, which is `filesystem.readOnly` enforced by construction
+rather than by asking.
+
+**And macOS has an answer, which matters because it is where this runner first escaped.**
+Neither runc nor `bwrap` exists there. `sandbox-exec` does — deprecated, undocumented, and
+present on every Mac — and an SBPL profile denying `file-write*` outside the workspace is enough
+for `filesystem.scope`. Verified: a write to `~/Dev` under such a profile fails with *Operation
+not permitted* while `/tmp` stays writable. It reaches nothing else — no namespaces, no principal,
+no network — which is exactly what a class vocabulary is for: it can claim the one leaf it
+provides and refuse the rest, instead of being called "a sandbox" and believed.
+
+Factoring into classes also dissolved something the first draft had wrong.Factoring into classes also dissolved something the first draft had wrong. That draft's ladder
 made `pod` — one container per task — its top rung, and a container is not a *degree* of
 containment. It is a mechanism that reaches strong values on several independent axes at once.
 Under classes it stops being a rung and becomes a `Confiner`, which is the better model and one

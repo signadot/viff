@@ -95,16 +95,24 @@ type Confiner interface {
 // runner has — so `filesystem.scope: shared` is real (each task gets its own worktree
 // directory) and nothing else is.
 //
-// The single-host implementation is a per-task uid from a pool for `principal: distinct`, a
-// mount namespace for `filesystem.scope: private`, and a net namespace or an allowlisting proxy
-// for the network leaves — `bwrap` rather than hand-rolled CLONE_* flags, since the image
-// controls what is installed. That is one Confiner and not the only one: a runner deployed on a
-// platform gets the same leaves from a sandbox it claims rather than a process it wraps, and
-// implements this interface by asking for one.
+// What could replace it depends entirely on where the runner is deployed, and no single mechanism
+// covers the cases:
 //
-// All of the single-host version is Linux, and some of it depends on kernel switches that vary
-// by distribution, which is exactly why the honest answer here is a refusal rather than a
-// best-effort.
+//   - a pod on Linux: ROOTLESS RUNC — an OCI spec with mount/pid/ipc/uts/user namespaces and a
+//     read-only rootfs reaches `filesystem.scope: private` and `filesystem.readOnly`. Note that
+//     the usual UID mapping is size ONE (container 0 → the outer process's own uid), which is
+//     namespace isolation WITHOUT a distinct host principal — so it does not reach
+//     `principal: distinct`, and does not need to. Those leaves are independent, which is why
+//     they are separate leaves.
+//   - a Linux host without an image runtime: `bwrap`, same leaves.
+//   - macOS: neither exists. `sandbox-exec` does, and an SBPL profile denying `file-write*`
+//     outside the workspace reaches `filesystem.scope` and nothing else — no namespaces, no
+//     principal, no network.
+//   - `principal: distinct` is a per-task uid from a pool, and is orthogonal to all of the above.
+//
+// A confiner claims the leaves its mechanism actually reaches and refuses the rest. That is the
+// point of naming leaves separately rather than shipping "a sandbox": "sandboxed" is a word, and
+// four of these five mechanisms would qualify for it while providing different things.
 type hostConfiner struct{}
 
 // hostProvides is the strongest point this confiner can build. `filesystem.scope: shared` is
