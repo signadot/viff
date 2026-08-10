@@ -1,6 +1,7 @@
 # verse-dev: a coding pipeline, and what it is expected to break on
 
-Status: **phase 1 runs end to end; seven findings, none of them in the agent's output.** The first
+Status: **phase 1 runs end to end; nine findings.** The agent's first real output was
+destroyed by the runner, which is finding 9. The first
 experiment of the [verse-dev](verse-dev.md) drive: verse coordinating work on verse, done by
 [coding runners](coding-runner.md). The predictions below were written before the first run and
 are kept as written; [what running it found](#found-by-running-it) is recorded after them.
@@ -114,8 +115,7 @@ the API are the same hop with no carrier at all — which is where
 
 ## Found by running it
 
-Seven, in two kinds. **None came from the agent's output** — which is itself the finding the
-drive was for: the pipeline's first job was to exercise verse, and verse is what broke.
+Nine, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
 
 One through five **stopped the work**, and three of those are verse rather than the coderunner.
 They also hid each other, which is the part worth remembering: fixing the first is what exposed
@@ -124,6 +124,10 @@ the second, and the second is why no test had ever caught the third.
 Six and seven stop nothing. They mean **nobody can see the work happening** — the quieter
 failure, and the one a drive is uniquely good at finding, because it is only visible to somebody
 sitting and waiting for a task that might as well be dead.
+
+Eight and nine came from the run that finally worked, and they are the two that matter most.
+Eight is a missing primitive the right shape asks for. Nine is the runner destroying the first
+real result this drive produced.
 
 ### 1. Reaching a task on a per-spawn runner was written three times, all wrong
 
@@ -253,6 +257,69 @@ made readable *through* the verse rather than described by a path. So "where is 
 happening" is a local convenience today and an exposure later, and the distinction is worth
 keeping rather than papering over with a string field.
 
+### 8. A task can find N things, and verse cannot make them N facts
+
+The task as written was **too big**: it conflated find, decide and do, and only the last needs a
+workspace at all. The symptom was that nothing was visible for ten minutes — a task with no
+intermediate artifact has no checkpoint, so working and stuck are indistinguishable. The shape
+that fixes it is a fan-out: one task finds and *answers with a list*, a second prioritizes, a
+third fixes each item.
+
+That decomposition should be **entities, not a chain of three tasks**, which is the difference
+between using verse and scripting through it. As entities, each finding is independently
+matchable, prioritizable, gateable, re-fireable and visible in the flow tree, and "prioritize"
+and "fix" become rules over them rather than steps in a pipeline. `derive` is the mechanism — it
+writes an entity that is not the subject, the one thing `patch` cannot do.
+
+**And there is no way to get from a list to entities.** `deref`'s own doc is explicit that it
+*"names a value, it does not compute one"*: `$result.findings[0].severity` is a fixed index.
+`derive` writes one entity per firing. Fan-out fires per matched **entity**, over what is already
+in the store. So the hop from "one task answered with twelve findings" to "twelve finding
+entities" has no spelling in the grammar.
+
+Every available answer is unbuilt and costs something: derive-per-element is a loop, which cuts
+against deref's stated non-computation; the task writing entities itself needs the agent holding
+verse credentials, reopening the grant question the credential split exists to close; and one
+entity carrying the list cannot be fanned over, which only moves the problem.
+
+This is a sharper form of the complaint `deref.go` opens with — that a task's output could never
+become a fact the next `when` matches on. That was closed for one value and not for a list. It is
+also a wall neither prediction anticipated, and it came from wanting a shape that is obviously
+right rather than from anything failing.
+
+**Interim**: one file per task, named in the prompt. Minutes rather than tens of minutes, a diff
+small enough to judge, and a cheap failure — without needing the missing primitive.
+
+### 9. The runner destroyed the first real result it produced
+
+The agent completed, reported fourteen verified findings with file, line and evidence across a
+dozen documents — the first genuinely useful output of this drive — and **nothing survived**. No
+branch on the target repository, no branch in the mirror, no dangling objects, no workspace.
+
+Two defects, both in the coderunner, and the second explains the first.
+
+`Runner.finish` removed the workspace **unconditionally** after attempting delivery. A delivery
+that failed, or that found nothing to deliver, therefore destroyed the tree the work was in —
+and because a task's commits live in its own clone, `os.RemoveAll` takes the object store with
+them. The disk argument for removing is an argument about *successful* runs; it says nothing
+about keeping the only copy of work nobody has seen. Now: an error keeps it, and so does a
+workspace that was supposed to deliver and did not, both said loudly with the path.
+
+And `deliver` tested for **dirt** rather than for **work**: `len(changed()) == 0` meant "nothing
+happened". An agent that commits its own edits — which a coding agent will do, told not to or
+otherwise — leaves a clean tree with its work in commits, which read as nothing to deliver. Now
+the test is "the tree is dirty **or** the branch moved off the sha it started from", and an
+already-committed branch is pushed as it stands.
+
+That second path costs the trailers, since they are written by the runner's own commit. Work
+preserved without provenance beats work destroyed, and it is the reason a prompt should still say
+*do not commit* — the trade is deliberate rather than a preference.
+
+The generalizable form, and the reason this is worth more than its fix: **a runner is the last
+place a result exists before it is anywhere else.** Every cleanup path in one is a chance to
+destroy the only copy, and "clean up after yourself" is the instinct that does it. Cleanup must
+be conditional on the work having left.
+
 ### Findings 6 and 7 are one complaint
 
 Both say the same thing from different sides: **verse can tell you that work is happening on a
@@ -296,8 +363,13 @@ export VERSE_ADDR=localhost:19797                     # host:port, not a url
 
 ./verse task run --runner runners:pool:code --environment verse-docs \
   --as "$USER" --name docsdrift --attach \
-  "$(cat docs/working/verse-dev/docs-drift.prompt)"
+  "$(sed 's|@FILE@|docs/runners.md|' docs/working/verse-dev/docs-drift.prompt)"
 ```
+
+**One file per task**, named where the command runs. That is not a shortcut, it is the fix for
+finding 8: a task scoped to one file answers in minutes, produces a diff small enough to judge,
+and fails cheaply. `docs/runners.md` is a reasonable first target — dense with references to
+code, and recently moved under it.
 
 It stops at a gate — defect 3, which is the design rather than a bug. Answer it from the docket,
 which is the path defect 1 broke and this drive fixed:

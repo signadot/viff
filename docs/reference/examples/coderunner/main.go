@@ -247,12 +247,34 @@ func (r *Runner) finish(t *task.Task, ws *Workspace, l task.Launch) {
 	if err != nil {
 		fmt.Fprintf(r.log, "coderunner: %s: deliver: %v\n", l.ID, err)
 	}
-	if r.keep {
+	// A workspace is removed only when its work LEFT, and this is the second thing this
+	// function got wrong rather than a precaution.
+	//
+	// It used to remove unconditionally, so a delivery that failed — or that found nothing to
+	// deliver — destroyed the tree the work was in. That is not a lost push, it is a lost
+	// result: the commit lives in the task's own clone, and `os.RemoveAll` takes its object
+	// store with it. Observed: an agent produced fourteen verified findings across a dozen
+	// files, delivered nothing, and left nothing behind to look at. The disk argument for
+	// removing is real and is an argument about SUCCESSFUL runs; it says nothing about
+	// keeping the only copy of work nobody has seen.
+	//
+	// So: an error keeps it, and so does a workspace that was supposed to deliver and did
+	// not. A read-only environment — no push target anywhere — has nothing to preserve and is
+	// removed as before.
+	switch {
+	case r.keep:
 		fmt.Fprintf(r.log, "coderunner: %s: workspace kept at %s\n", l.ID, ws.Root)
-		return
-	}
-	if err := ws.Remove(ctx); err != nil {
-		fmt.Fprintf(r.log, "coderunner: %s: remove workspace: %v\n", l.ID, err)
+	case err != nil:
+		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — delivery failed and this is the only "+
+			"copy of the work\n", l.ID, ws.Root)
+	case ws.Deliverable() && len(delivered) == 0:
+		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — this environment pushes somewhere and "+
+			"nothing was delivered, so either the task changed nothing or something is wrong\n",
+			l.ID, ws.Root)
+	default:
+		if err := ws.Remove(ctx); err != nil {
+			fmt.Fprintf(r.log, "coderunner: %s: remove workspace: %v\n", l.ID, err)
+		}
 	}
 }
 

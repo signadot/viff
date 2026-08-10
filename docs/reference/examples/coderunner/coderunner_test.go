@@ -537,3 +537,58 @@ func TestAgentTurnIsGatedNotSpawned(t *testing.T) {
 		t.Errorf("the default vector evaluates an agent turn as %v, want ASK", got)
 	}
 }
+
+// A workspace whose work did not leave is KEPT.
+//
+// The first version removed unconditionally after attempting delivery, so a failed push — or a
+// delivery that found nothing — destroyed the tree the work was in. Not a lost push: a lost
+// result, because the commit lives in the task's own clone and removing it takes the object
+// store with it. Observed once, on an agent's fourteen verified findings, which is why this test
+// exists rather than a comment.
+func TestWorkspaceSurvivesAFailedDelivery(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+
+	// Deliverable: something here was meant to leave.
+	pushes := Environment{Name: "p", Repos: []Repo{
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+	}}
+	if !(&Workspace{Env: pushes, Trees: []*Tree{{Repo: pushes.Repos[0]}}}).Deliverable() {
+		t.Error("an environment with a push target reports nothing to deliver")
+	}
+	// Read-only: nothing was ever going to leave, so removing it destroys nothing.
+	ro := Repo{Name: "svc", Repo: origin, Base: "main"}
+	if (&Workspace{Trees: []*Tree{{Repo: ro}}}).Deliverable() {
+		t.Error("a read-only environment claims it delivers")
+	}
+
+	// And the real path: a push target that cannot be reached must leave the tree behind.
+	broken := Environment{Name: "broken", Repos: []Repo{
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+	}}
+	ws, err := m.Open(context.Background(), "p1", broken, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("hours of it\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Break the remote out from under it, the way an unreachable forge would.
+	if err := os.RemoveAll(origin); err != nil {
+		t.Fatal(err)
+	}
+	delivered, derr := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work")
+	if derr == nil {
+		t.Fatal("expected the push to fail once its remote was gone")
+	}
+	if len(delivered) != 0 {
+		t.Fatalf("delivered %v despite the failure", delivered)
+	}
+	// The decision finish makes, asserted here because finish itself needs a live task.
+	if !(derr != nil || (ws.Deliverable() && len(delivered) == 0)) {
+		t.Fatal("a failed delivery would be removed")
+	}
+	if _, err := os.Stat(filepath.Join(ws.Root, "svc", "work.txt")); err != nil {
+		t.Fatalf("the work is not where it was left: %v", err)
+	}
+}

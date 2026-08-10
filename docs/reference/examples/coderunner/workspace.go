@@ -405,12 +405,34 @@ func (t *Tree) deliver(ctx context.Context, branch string, l task.Launch, result
 	if target == "" {
 		return "", nil // nothing leaves: a reference repository, stated as one
 	}
-	if len(t.changed()) == 0 {
-		return "", nil // untouched; an empty commit would be a lie about work
+	// What counts as work is "the branch moved OR the tree is dirty", not "the tree is dirty".
+	//
+	// The difference is not pedantry: an agent that commits its own edits — which a coding
+	// agent will do, told not to or otherwise — leaves a CLEAN tree with its work sitting in
+	// commits. Testing only for dirt read that as "nothing happened", delivered nothing, and
+	// (before Runner.finish learned better) removed the workspace, taking the only copy with
+	// it. That is the exact shape of the first real result this runner produced and lost.
+	dirty := len(t.changed()) > 0
+	moved := false
+	if head, err := t.repo.Head(); err == nil {
+		moved = head.Hash().String() != t.Head // Head is the sha this checkout started from
+	}
+	if !dirty && !moved {
+		return "", nil // genuinely untouched; an empty commit would be a lie about work
 	}
 	wt, err := t.repo.Worktree()
 	if err != nil {
 		return "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+	}
+	if !dirty {
+		// Already committed by whatever did the work: push it as it stands rather than putting
+		// an empty commit on top purely to carry trailers.
+		//
+		// The cost is real and is the reason a prompt should still say "do not commit": the
+		// trailers are this runner's only attribution channel out of the verse, and a commit
+		// the agent wrote carries none of them. Work preserved without provenance beats work
+		// destroyed, which is the trade being made here and not a preference.
+		return t.push(ctx, branch, target)
 	}
 	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
 		return "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
@@ -422,6 +444,11 @@ func (t *Tree) deliver(ctx context.Context, branch string, l task.Launch, result
 	if _, err := wt.Commit(commitMessage(l, result), &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
 		return "", fmt.Errorf("repo %s: commit: %w", t.Repo.Name, err)
 	}
+	return t.push(ctx, branch, target)
+}
+
+// push sends this repository's task branch to the ref the environment named.
+func (t *Tree) push(ctx context.Context, branch, target string) (string, error) {
 	// Force, and the reason is that the branch is namespaced by the TASK ID: this runner is its
 	// only writer by construction, so the only thing a force can overwrite is an earlier attempt
 	// of the same task, which is what a retried spawn means.
@@ -484,8 +511,21 @@ func commitMessage(l task.Launch, result string) string {
 	return b.String()
 }
 
+// Deliverable reports whether any repository here was supposed to send work somewhere. False
+// means a read-only workspace — nothing was ever going to leave it — which is the only case
+// where removing it after delivering nothing is not destroying something.
+func (w *Workspace) Deliverable() bool {
+	for _, t := range w.Trees {
+		if t.Repo.Push != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // Remove drops the whole workspace. Called on terminal unless -keep, because the alternative is
-// a disk that fills at the rate work arrives.
+// a disk that fills at the rate work arrives — an argument about SUCCESSFUL runs, and see
+// Runner.finish for the cases where it does not apply.
 //
 // One directory tree and nothing else — no worktree to unregister and no branch to delete out
 // of a shared mirror, because a clone per task keeps every task's refs inside the directory
