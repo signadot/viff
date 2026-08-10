@@ -1,6 +1,6 @@
 # verse-dev: a coding pipeline, and what it is expected to break on
 
-Status: **phase 1 runs end to end; five defects found, none of them in the agent's output.** The first
+Status: **phase 1 runs end to end; seven findings, none of them in the agent's output.** The first
 experiment of the [verse-dev](verse-dev.md) drive: verse coordinating work on verse, done by
 [coding runners](coding-runner.md). The predictions below were written before the first run and
 are kept as written; [what running it found](#found-by-running-it) is recorded after them.
@@ -114,13 +114,16 @@ the API are the same hop with no carrier at all — which is where
 
 ## Found by running it
 
-Five, and three of them are verse rather than the coderunner. **None came from the agent's
-output** — four of them stopped the agent from running at all, and the fifth is the one that let
-it run and then be understood. Which is itself the finding the drive was for: the pipeline's first job was to exercise
-verse, and verse is what broke.
+Seven, in two kinds. **None came from the agent's output** — which is itself the finding the
+drive was for: the pipeline's first job was to exercise verse, and verse is what broke.
 
-They also hid each other, which is the part worth remembering. Fixing the first is what exposed
+One through five **stopped the work**, and three of those are verse rather than the coderunner.
+They also hid each other, which is the part worth remembering: fixing the first is what exposed
 the second, and the second is why no test had ever caught the third.
+
+Six and seven stop nothing. They mean **nobody can see the work happening** — the quieter
+failure, and the one a drive is uniquely good at finding, because it is only visible to somebody
+sitting and waiting for a task that might as well be dead.
 
 ### 1. Reaching a task on a per-spawn runner was written three times, all wrong
 
@@ -201,6 +204,61 @@ outside chose — so a prompt written against it was guessing, and one written a
 single-repo workspace ("look in `docs/`") is simply wrong the moment a second repository appears.
 `Workspace.Brief` now says what is there and which repository is reference-only, so an agent does
 not spend a turn editing a tree whose changes are discarded.
+
+### 6. The read plane is blank for the entire run
+
+`--attach` shows a boundary, the gate, the decision — and then nothing at all for as long as the
+agent works. The driver invokes the binary with `--output-format json`, which returns one
+document when the whole turn finishes, so the executor has nothing to emit until it is over. An
+operator watching a ten-minute task sees a task that might be dead.
+
+This is worse than an ergonomic gap, and the design note said so before the code did:
+
+> Narration onto the read plane. The agent's streaming output maps onto `exec` frames, so `verse
+> task get` shows which commands ran inside the foreign agent — the observability that a
+> containment-by-absence design otherwise gives up.
+
+The reasoning still holds and the code went the other way. verse gates the *invocation* and not
+the agent's steps — deliberately, because it cannot see inside one — so **narration is the entire
+compensating mechanism**. Without it, "verse supervises this work" is true only at the boundary
+where the work starts.
+
+`--output-format stream-json` is the fix, and it carries one real decision rather than being
+mechanical: how much to emit. Every tool use is faithful and chatty, and a task's read plane has
+a bounded retain window. `launch.Spec.Retain` is per-spawn for exactly this reason — *"a task
+that narrates every token and one that reports four boundaries an hour want windows two orders of
+magnitude apart"* — and a streaming foreign agent is the first thing in the tree that is
+emphatically the former. So the question is what an observer needs rather than what the agent
+said, and that is a judgement to make once, here, rather than per charter.
+
+### 7. Nothing says where the work is happening
+
+The runner knows the workspace path. It never tells anyone. `verse task get` reports status,
+result and which runner — not the one piece of live information a coding task has, which is the
+directory changing under the agent's hands. The path reaches stderr only at teardown, and only
+under `-keep`, so it is recoverable during a run solely by knowing the layout convention
+(`<data>/workspaces/<task-id>/<repo-name>`). Found the ordinary way: by looking for it and not
+finding it.
+
+There is a home for it already. `task.RepoContext` carries `Root`, the runner sets it through
+`SetRepo`, and the mirror already projects task state onto `task:instance` — so the path could
+surface with no new vocabulary.
+
+But it should not simply be printed, and the reason is the more interesting half. **A filesystem
+path is only meaningful to someone on the runner's own machine.** For a remote runner it is a
+string nobody can `cd` into, and publishing it would be naming something no reader can
+dereference — the opposite of what index-not-warehouse asks. The honest version is that a
+workspace is exactly the kind of thing [expose.md](../roadmap/expose.md) federates: a directory
+made readable *through* the verse rather than described by a path. So "where is this work
+happening" is a local convenience today and an exposure later, and the distinction is worth
+keeping rather than papering over with a string field.
+
+### Findings 6 and 7 are one complaint
+
+Both say the same thing from different sides: **verse can tell you that work is happening on a
+foreign agent, and almost nothing about what it is doing or where.** That is the price of an
+opaque leaf, and it is payable — narration and a readable workspace both exist as designs. It is
+only unpaid.
 
 ## Phase 1, concretely
 
