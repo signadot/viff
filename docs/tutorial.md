@@ -676,7 +676,7 @@ scopes, CAS writes, edge-faithful watches, and the entity — not the transactio
 reactive grain.
 
 **Running it somewhere** — [deployment and steering](deployment-and-steering.md) and the
-[Kubernetes deploy](../deploy/README.md).
+[Kubernetes deploy](https://github.com/signadot/verse/blob/main/deploy/README.md).
 
 And the two flat references you will come back to:
 [the command surface](reference/README.md) and [the trigger model](trigger-model.md).

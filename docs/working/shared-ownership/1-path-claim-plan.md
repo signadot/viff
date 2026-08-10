@@ -23,7 +23,7 @@ rather than assumes.
 
 **`@` does not survive contact.** The note spells a claim `linear:project:*@owners.ENG`, and
 `@` is already `trigger.ChainSep`, appearing *inside* ids today. The worked example is running
-in the tree: [`scripts/lineage.sh`](../../../scripts/lineage.sh) writes
+in the tree: [`scripts/lineage.sh`](https://github.com/signadot/verse/blob/main/scripts/lineage.sh) writes
 `lineage:trace:lin-pr-lineage@lingh:pr:42`, an id carrying both a `@` and two colons. No split
 rule recovers a path from that, from either end. `resolver.go` already refuses a `@` inside a
 resolver *name* for the same reason (`resolver/resolver.go:177`), which is the tell that the

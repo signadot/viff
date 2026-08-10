@@ -334,6 +334,6 @@ are the manifests, each off by default and turned on by its own knob (`-e slackS
 binary and the same `-repo`/`-mirror` flags as `git-source`, so the manifest is that one with
 the subcommand and the knob changed. Run it outside the cluster, or copy `deploy/git-source`,
 until somebody driving it needs one. See
-[deploy/README.md](../../deploy/README.md) for the credentials, the ingress and the registration
+[deploy/README.md](https://github.com/signadot/verse/blob/main/deploy/README.md) for the credentials, the ingress and the registration
 step — which stays a verb somebody runs, because an install carries an ownership claim verse
 checks against what is already standing.

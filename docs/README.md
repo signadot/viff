@@ -59,7 +59,7 @@ drive a local agent, a remote one, and a human.
 
 | | |
 |---|---|
-| walk | [§3 tasks](tutorial.md#3-tasks) · [attached-resolver.sh](../scripts/attached-resolver.sh) — five acts of supervision, one command each |
+| walk | [§3 tasks](tutorial.md#3-tasks) · [attached-resolver.sh](https://github.com/signadot/verse/blob/main/scripts/attached-resolver.sh) — five acts of supervision, one command each |
 | read | [reference/tasks.md](reference/tasks.md) — the whole surface: drivers and vectors, gates, the mirror, steering, and executing one by hand |
 | | [Task control](task-control.md) — the base-URL contract and the dial-in protocol |
 | | [Attached resolvers](attached-resolvers.md) — a service that answers gates: the two doors, the layers, and whose answer counts |
@@ -127,7 +127,7 @@ into an existing note — which is why promotion is rarely a `git mv`.
 
 ## Elsewhere
 
-- [Kubernetes deploy](../deploy/README.md) — build the image and run verse on a cluster.
+- [Kubernetes deploy](https://github.com/signadot/verse/blob/main/deploy/README.md) — build the image and run verse on a cluster.
 - [tony](https://signadot.github.io/tony-format/) — the document language a charter is
   written in, and [docd](https://signadot.github.io/tony-format/docd/), the store behind a
   durable verse.

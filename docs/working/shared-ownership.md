@@ -245,7 +245,7 @@ it is the exception and carries a runtime cost the default does not.
 
 ## What this is not for, and the thing that bounds it
 
-[`scripts/lineage.sh`](../../scripts/lineage.sh) answers a neighbouring question and answers it
+[`scripts/lineage.sh`](https://github.com/signadot/verse/blob/main/scripts/lineage.sh) answers a neighbouring question and answers it
 differently, which is what makes it the boundary marker for this design rather than a competitor
 to it. Its subject is how one piece of work keeps its identity across three systems, and the
 answer is that **no fourth id is minted**: a correlation is a *derived* entity whose address is

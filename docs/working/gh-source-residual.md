@@ -77,7 +77,7 @@ author is a `login` string on the payload, which is what a charter matches on an
 
 **Releases and tags.** `github:release:<org>/<name>/<tag>` is repo-owned and spells its owner
 positionally, so it is a sixth claim and nothing else. It is absent because the ask was the other
-four. **Trigger:** [`scripts/lineage.sh`](../../scripts/lineage.sh) already correlates a release,
+four. **Trigger:** [`scripts/lineage.sh`](https://github.com/signadot/verse/blob/main/scripts/lineage.sh) already correlates a release,
 so something will want it.
 
 **Check-run entities.** Deliberately not, and this one is a decision rather than a deferral: "is
@@ -144,7 +144,7 @@ does to the "wrote something" bookkeeping has not been thought through.
 
 ## What the drive turned up, which is the part worth keeping
 
-[`scripts/lineage.sh`](../../scripts/lineage.sh) was this connector's acceptance test, and it has
+[`scripts/lineage.sh`](https://github.com/signadot/verse/blob/main/scripts/lineage.sh) was this connector's acceptance test, and it has
 been run for real: pointed at `github:pr:*` and `git:commit:*` against this repository, with two
 live connectors and a real pull request. It passes.
 

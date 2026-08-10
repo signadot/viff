@@ -12,7 +12,7 @@ supervisor's remit is written in the charter, not in the supervisor, and a super
 fails to decide has thereby decided to promote.
 
 Everything here runs today. The gaps are named at the end, and a test drives the charter
-below through each of its routes ([`trigger/supervise_test.go`](../trigger/supervise_test.go)).
+below through each of its routes ([`trigger/supervise_test.go`](https://github.com/signadot/verse/blob/main/trigger/supervise_test.go)).
 
 ## Two supervisors, one word
 

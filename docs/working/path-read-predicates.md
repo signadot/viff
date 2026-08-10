@@ -54,7 +54,7 @@ narrows that walk. So the rule was buying "no cost that grows with the verse" by
 version whose cost grows with the verse — the one thing on the original list that a predicate
 straightforwardly helps with.
 
-[`scripts/lineage.sh`](../../scripts/lineage.sh) is where this surfaced: a release's manifest had
+[`scripts/lineage.sh`](https://github.com/signadot/verse/blob/main/scripts/lineage.sh) is where this surfaced: a release's manifest had
 to collect every trace in the store, because the thing that would have narrowed it was refused.
 
 ## The change

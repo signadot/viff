@@ -3,7 +3,7 @@
 The surface: the binding, the two entities, the routes a resolver service lives on, and the
 verbs an operator types. Why it is shaped this way is
 [attached resolvers](../attached-resolvers.md); the five acts you can drive are
-[`scripts/attached-resolver.sh`](../../scripts/attached-resolver.sh).
+[`scripts/attached-resolver.sh`](https://github.com/signadot/verse/blob/main/scripts/attached-resolver.sh).
 
 ## The binding
 
