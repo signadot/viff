@@ -1,0 +1,31 @@
+# verse-dev drive: the coderunner's config for phase 1 (docs/working/verse-dev-coderunner.md).
+#
+#   go run ./docs/reference/examples/coderunner \
+#     -config docs/working/verse-dev/coderunner.tony -data ~/.verse-coderunner -addr :9802
+#
+# Drive scratch. It names one machine's checkout, so it is here to be read and copied rather
+# than run as-is — change `repo` to your own clone before anything works.
+
+default: verse-docs
+
+environments:
+
+# verse, working on verse. One repository: the task both reads the docs and edits them, so
+# there is no reference tree to add yet — phase 2 is where a second one shows up.
+- name: verse-docs
+  repos:
+  - name: verse
+    repo: "/Users/scott/Dev/github.com/signadot/verse"
+    base: main
+    # A LOCAL ref for the first generations. The branch lands in the same repository the task
+    # read, where a person can diff it, and nothing reaches a remote until somebody has.
+    # Phase 4 is the step that changes this, and it is gated for that reason.
+    push: "refs/heads/agent/$task"
+  driver: claude
+  # The ceiling, as a claim about this machine rather than an image. Nothing enforces it yet
+  # (see confine.go): the task's PATH is not built from it until `filesystem.scope: private`
+  # is real, so today it documents intent and is worth keeping honest anyway.
+  commands: [git, go, make, gofmt, rg]
+  # Everything not named here is UNSET for the agent. The runner's own credentials — model
+  # keys, git tokens — are not on this list and that is the point.
+  env: [PATH, HOME, LANG, TERM]

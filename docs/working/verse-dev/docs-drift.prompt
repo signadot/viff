@@ -1,0 +1,17 @@
+Find references in docs/ that no longer resolve against this tree, and fix them.
+
+A reference is anything the prose asserts exists in the code: a function or type name, a file
+path, a CLI flag, an HTTP route, a make target, an environment variable. It "no longer resolves"
+when the thing named is absent from the tree, or is named differently, or the doc describes a
+signature or behaviour the code contradicts.
+
+Only report what you have checked against the tree. A claim you could not verify is not a
+finding — say so instead of guessing, and prefer a short list you are sure of over a long one
+you are not. Do not rewrite prose you merely disagree with: this is about references that are
+FALSE, not about style.
+
+Read docs/working/contributing.md before you change anything, and hold to it: docs/ describes
+what is true, docs/working/ and docs/roadmap/ are exempt because they describe what is coming.
+
+Leave the tree building and the tests passing. Do not commit; edit the files and stop. Your
+final message is the answer, so make it the list of what you changed and why each was wrong.

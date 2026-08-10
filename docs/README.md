@@ -76,6 +76,7 @@ drive a local agent, a remote one, and a human.
 | | [A runner descriptor](working/runner-descriptor.md) — `GET /runner`: how control is applied, and isolation as ordered classes verse compares and does not interpret |
 | | [A coding runner](working/coding-runner.md) — a workspace of repositories per task, an agent in it, and the first referent for `environment:` |
 | | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; why entity writes having no author is the one defect underneath several |
+| | [verse-dev: a coding pipeline](working/verse-dev-coderunner.md) — the first drive experiment, and the walls it is predicted to hit, written down before the first run |
 | | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a task can see |
 
 ### Steering
