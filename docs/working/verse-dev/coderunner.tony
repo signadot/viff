@@ -28,4 +28,6 @@ environments:
   commands: [git, go, make, gofmt, rg]
   # Everything not named here is UNSET for the agent. The runner's own credentials — model
   # keys, git tokens — are not on this list and that is the point.
-  env: [PATH, HOME, LANG, TERM]
+  # USER is load-bearing and not decoration: the agent binary looks its credential up by
+  # OS user, so without it every turn fails "Not logged in". Found by the run, not by reading.
+  env: [PATH, HOME, USER, LANG, TERM]

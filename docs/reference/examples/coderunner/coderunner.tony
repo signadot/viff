@@ -18,7 +18,7 @@ environments:
     repo: "."
     base: main
   driver: llm
-  env: [PATH, HOME, LANG]
+  env: [PATH, HOME, USER, LANG]
 
 # What a real one looks like, and why `repos` is a list. The work is usually a change to one
 # tree that only makes sense against another — a service and the library it consumes, a
@@ -44,7 +44,7 @@ environments:
   commands: [git, go, make, gofmt]
   # The passthrough allowlist. Everything else is UNSET — which is the point, since the harness
   # today hands an agent's shell the server's whole environment, model credentials and all.
-  env: [PATH, HOME, LANG]
+  env: [PATH, HOME, USER, LANG]
   # A containment profile this runner advertises. The sketch runner publishes none, so naming
   # one here is refused rather than run less contained — which is the behaviour to keep when
   # the real confiner lands.
