@@ -499,3 +499,41 @@ func commitAt(t *testing.T, repoDir, ref string) string {
 	}
 	return c.Message
 }
+
+// An agent turn is gated as a delegation and is NOT a sub-task spawn.
+//
+// The two are one field apart and only one of them works here. `ToolUse.CallAgent` is not a
+// label saying "this delegates" — it is the instruction that makes the loop route the action to
+// spawnChild and build a child through a SpawnFunc. This runner has none by design: the agent
+// binary is a foreign one-shot the executor runs, an opaque leaf rather than a recursive
+// invocation of our own loop.
+//
+// Setting it cost every task a terminal failure — "no spawn factory configured" — the instant
+// its gate was approved, which no test caught because the tests stopped at the gate.
+func TestAgentTurnIsGatedNotSpawned(t *testing.T) {
+	d := &claudeDriver{prompt: "work"}
+	tu := d.turn("do the thing")
+
+	if tu.CallAgent != nil {
+		t.Error("the turn carries a CallAgent request, so the loop will try to spawn a child " +
+			"task through a factory this runner does not provide")
+	}
+	var delegates bool
+	for _, e := range tu.Effects {
+		if e.Verb == task.CallAgent {
+			delegates = true
+		}
+	}
+	if !delegates {
+		t.Error("the turn derives no call-agent effect, so a vector cannot gate the invocation " +
+			"— which is the only thing about a foreign agent there is to decide")
+	}
+	// And the vector must actually match it, since that is the whole point of the effect.
+	vec := &task.Vector{Default: task.Auto, Gates: []task.Gate{{
+		Name: "agent", Mode: task.Ask,
+		Match: task.GateMatch{Verbs: []task.Verb{task.CallAgent}},
+	}}}
+	if got := vec.Evaluate(tu).Mode; got != task.Ask {
+		t.Errorf("the default vector evaluates an agent turn as %v, want ASK", got)
+	}
+}

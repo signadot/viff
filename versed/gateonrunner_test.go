@@ -142,3 +142,52 @@ func (d *oneAction) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bo
 	d.done = true
 	return task.ToolUse{Name: "noop"}, true, nil
 }
+
+// A task's read plane can be attached wherever it runs.
+//
+// Same root cause as the gate above and a wider blast radius: `streamEvents` reached for
+// `s.runner` — the DEFAULT runner — so `verse task attach` on work sent somewhere by name
+// answered `404 page not found`. A resolver reads this same stream (see the note on
+// streamEvents), so supervision of remote work went with it.
+func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
+	face := runnerFace(t)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	postTony(t, ts.URL+"/runners", map[string]any{
+		"name": "code", "kind": "pool", "url": face.URL,
+	}).Body.Close()
+
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{
+		"prompt": "work", "runner": "runners:pool:code", "name": "streamed",
+	})
+	var sp map[string]any
+	decodeResp(t, resp, &sp)
+	id, _ := sp["id"].(string)
+	if id == "" {
+		t.Fatal("no task id")
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/tasks/"+id+"/events", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ev, err := ts.Client().Do(req.WithContext(ctx))
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	defer ev.Body.Close()
+	if ev.StatusCode == http.StatusNotFound {
+		t.Fatal("attaching to a task on a per-spawn runner = 404 — verse can list the task " +
+			"and not watch it, which takes a resolver's supervision with it")
+	}
+	if ev.StatusCode != http.StatusOK {
+		t.Fatalf("attach = %s, want 200", ev.Status)
+	}
+	// It is a live stream, so reading a single frame is enough: the point is that it opened
+	// against the right runner rather than 404ing against the wrong one.
+	buf := make([]byte, 1)
+	if _, err := ev.Body.Read(buf); err != nil {
+		t.Fatalf("the stream opened and produced nothing: %v", err)
+	}
+}

@@ -133,17 +133,21 @@ func (d *claudeDriver) opening() string {
 }
 
 func (d *claudeDriver) turn(text string) task.ToolUse {
-	tu := task.ToolUse{
+	return task.ToolUse{
 		Name:  "agent",
 		Input: map[string]any{"text": text, "agent": "claude"},
-		// Derived rather than left to a deriver's guess: this action invokes another agent,
-		// which is the one verb the vector already knows how to gate as delegation.
+		// Derived here rather than left to a deriver's guess: this action invokes another
+		// agent, which is the one verb the vector already knows how to gate as delegation.
+		//
+		// The EFFECT says so and the `CallAgent` field is deliberately left nil, which is a
+		// distinction worth stating because setting it looks right and is not. That field is
+		// not a label — it is the instruction that makes the loop route this action to
+		// spawnChild and build a sub-task through a SpawnFunc. This runner has none, and
+		// should not: the agent is a foreign one-shot run by the executor below, an opaque
+		// leaf rather than a recursive invocation of our own loop. With it set, every task
+		// failed with "no spawn factory configured" the moment its gate was approved.
 		Effects: []task.Effect{{Verb: task.CallAgent, Resource: task.AgentRes("claude")}},
-		CallAgent: &task.CallAgentRequest{
-			Agent: "claude", Prompt: text,
-		},
 	}
-	return tu
 }
 
 // Steer implements task.Steerable: the loop drains instructions at the boundary before Next,

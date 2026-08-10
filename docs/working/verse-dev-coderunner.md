@@ -173,9 +173,19 @@ git -C /path/to/verse diff main..agent/<id>              # what it actually chan
 [verse-dev/docs-drift.tony](verse-dev/docs-drift.tony) fires on a commit landing on `main`. It
 conditions on nothing about trailers: the loop is the experiment, not a thing to prevent.
 
-## Found while wiring it, before the first agent turn
+## Found by running it
 
-Two, and the second is a verse bug rather than a coderunner one.
+Four, and two of them are verse bugs rather than coderunner ones. None came from the agent's
+output, because none of them let the agent run — which is itself the finding the drive was for:
+the pipeline's first job was to exercise verse, and verse is what broke.
+
+**Every claude task failed the moment its gate was approved**, with `no spawn factory
+configured`. The driver set `ToolUse.CallAgent` to make the delegation effect derivable — but
+that field is not a label, it is the instruction that routes an action to the loop's child-spawn
+path, which needs a `SpawnFunc` this runner does not and should not have: the agent binary is a
+foreign one-shot the executor runs, not a recursive invocation of our own loop. The effect alone
+was always enough to gate it. No test caught it because every test stopped AT the gate; the one
+that pins it now asserts the turn carries the effect and not the request.
 
 **The claude driver ASK-gates its own invocation, so an unattended `task run` parks
 immediately.** That is the designed default — verse cannot see inside a foreign agent, so the
@@ -183,7 +193,12 @@ invocation is the only thing there is to decide about — but it means the by-ha
 `--vector auto`, or an `--attach` and someone to answer. The charter already says `vector: auto`;
 the instructions did not, which is why running it is written out below rather than assumed.
 
-**A gate raised on a per-spawn runner can be listed but not answered.** `verse gate` shows it;
+**Reaching a task on a per-spawn runner was written three times, and every copy assumed the
+DEFAULT runner.** `runner:` on a spawn exists precisely so work goes somewhere else, and each
+copy was blind to that:
+
+- **answering a gate.** `verse gate` lists it; `verse gate approve <id>` returns `404 no such
+  question`. `verse gate` shows it;
 `verse gate approve <id>` returns `404 no such question`. Posting the identical body straight at
 the runner's `/tasks/{id}/resolve` returns 204, so the runner and the gate id are both fine —
 the break is in verse. `Server.ownerOf` recovers the owning task by cutting the id at `~` and

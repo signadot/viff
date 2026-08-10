@@ -2457,18 +2457,7 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 		// record can, and the caller consults it; here the honest answer is "not open".
 		return task.ErrNoSuchDecision
 	}
-	// The runner this task actually went to, before the default one. Order matters and is not
-	// a preference: an HTTP runner's Attach hands back a handle for ANY id without asking, so
-	// trying the default first would route an answer to whichever place happens to be
-	// configured rather than the one holding the question.
-	for _, p := range []task.Runner{s.placeOf(taskID), s.runner} {
-		if p == nil {
-			continue
-		}
-		h := p.Attach(taskID)
-		if h == nil {
-			continue
-		}
+	if h := s.attach(taskID); h != nil {
 		// by is carried across this seam, not dropped: the local leg above takes the whole
 		// Resolution, so a brokered gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.
@@ -2478,6 +2467,26 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 		return task.ErrUnsupported
 	}
 	return task.ErrNoSuchTask
+}
+
+// attach reaches a task wherever it actually runs: the runner its own task:instance records
+// first, this verse's default runner second.
+//
+// The order is not a preference. An HTTP runner's Attach hands back a handle for ANY id without
+// asking, so consulting the default first would reach whichever place happens to be configured
+// rather than the one holding the task — silently, and only for work sent somewhere by name.
+//
+// One helper rather than the same two lines at each call site, because "reach this task" was
+// written three times and every copy assumed the default runner: answering a gate, streaming a
+// read plane, and deciding whether an id is a task at all. A per-spawn runner is the whole point
+// of `runner:` on a spawn, and each copy was blind to it.
+func (s *Server) attach(id string) task.Handle {
+	if p := s.placeOf(id); p != nil {
+		if h := p.Attach(id); h != nil {
+			return h
+		}
+	}
+	return s.runner.Attach(id)
 }
 
 // getTask resolves one task across backends: the local runtime first (live detail),
@@ -2563,7 +2572,10 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http
 // different stream there are two orders to reconcile and a supervised run that reads
 // differently depending on who is looking.
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string) {
-	h := s.runner.Attach(id)
+	// Wherever it runs, not wherever the default runner is: `verse task attach` on work sent
+	// to a per-spawn runner answered 404, and so — per the note above, since a resolver reads
+	// this same stream — did every attempt to supervise it.
+	h := s.attach(id)
 	if h == nil {
 		http.NotFound(w, r)
 		return
