@@ -1,7 +1,8 @@
 # verse-dev: a coding pipeline, and what it is expected to break on
 
-Status: **phase 1 runs end to end; nine findings.** The agent's first real output was
-destroyed by the runner, which is finding 9. The first
+Status: **phase 1 works; ten findings.** The first clean run verified a document against the
+code and correctly changed nothing. The run before it produced fourteen real findings and the
+runner destroyed them, which is finding 9. The first
 experiment of the [verse-dev](verse-dev.md) drive: verse coordinating work on verse, done by
 [coding runners](coding-runner.md). The predictions below were written before the first run and
 are kept as written; [what running it found](#found-by-running-it) is recorded after them.
@@ -115,7 +116,7 @@ the API are the same hop with no carrier at all — which is where
 
 ## Found by running it
 
-Nine, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
+Ten, in three kinds. The pipeline's first job was to exercise verse, and verse is what broke.
 
 One through five **stopped the work**, and three of those are verse rather than the coderunner.
 They also hid each other, which is the part worth remembering: fixing the first is what exposed
@@ -125,9 +126,9 @@ Six and seven stop nothing. They mean **nobody can see the work happening** — 
 failure, and the one a drive is uniquely good at finding, because it is only visible to somebody
 sitting and waiting for a task that might as well be dead.
 
-Eight and nine came from the run that finally worked, and they are the two that matter most.
-Eight is a missing primitive the right shape asks for. Nine is the runner destroying the first
-real result this drive produced.
+Eight, nine and ten came from runs that worked, and they are the ones that matter most. Eight is
+a missing primitive the right shape asks for; nine is the runner destroying the first real result
+this drive produced; ten is that its own fix cannot tell success from failure.
 
 ### 1. Reaching a task on a per-spawn runner was written three times, all wrong
 
@@ -319,6 +320,34 @@ The generalizable form, and the reason this is worth more than its fix: **a runn
 place a result exists before it is anywhere else.** Every cleanup path in one is a chance to
 destroy the only copy, and "clean up after yourself" is the instinct that does it. Cleanup must
 be conditional on the work having left.
+
+### 10. "Nothing to do" and "something went wrong" are the same signal
+
+The first clean run: one file, `docs/runners.md`, about four minutes. The agent checked roughly
+eighteen claims against the code — exported symbols, route tables, the exact wording of a
+refusal message, which test asserts the doc's own charter parses — reported every one as true
+with file and line, and **changed nothing**, which the prompt explicitly allows as a real result.
+
+The runner then said:
+
+> KEEPING … — this environment pushes somewhere and nothing was delivered, so either the task
+> changed nothing or something is wrong
+
+Correct, and useless, because it is a disjunction the runner cannot resolve. It sees a clean
+tree and an unmoved branch, and those look identical whether the work was done and found nothing
+or the work never happened. So finding 9's safety net — keep what did not leave — turns every
+legitimately clean run into a workspace nobody reclaims, and disk fills at the rate of good news.
+
+**The party that knows is the task**, and it said so in prose: *"Nothing in `docs/runners.md` is
+wrong. I changed nothing."* Unreadable to a runner. This is finding 8 from the other end — a
+result that is text cannot be acted on — except that here the fix already exists rather than
+being missing: `launch.Spec.Answer` is a contract the claude driver enforces, so a spawn can
+require `{clean: bool, findings: [...]}` and the runner can tell a finished job from a failed
+one without guessing.
+
+Worth stating as a rule, because it will recur wherever a runner decides anything about what a
+task produced: **a runner should not infer intent from a filesystem.** Absence of change is not
+evidence of anything. Ask the task, or do not ask.
 
 ### Findings 6 and 7 are one complaint
 
