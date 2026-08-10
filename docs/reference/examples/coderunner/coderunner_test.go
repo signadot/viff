@@ -293,6 +293,30 @@ func TestTaskIDCannotEscapeTheWorkspaceRoot(t *testing.T) {
 	}
 }
 
+// The agent is told what its working directory contains, because the layout is this runner's
+// convention and nothing else can tell it.
+func TestWorkspaceBriefNamesTheRepos(t *testing.T) {
+	svc, lib := initRepo(t), initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	env := Environment{Name: "multi", Repos: []Repo{
+		{Name: "svc", Repo: svc, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "lib", Repo: lib, Base: "main"},
+	}}
+	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := ws.Brief()
+	for _, want := range []string{"svc/", "lib/", "2 repositories", "reference only"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("brief is missing %q:\n%s", want, b)
+		}
+	}
+	if strings.Contains(b[:strings.Index(b, "lib/")], "reference only") {
+		t.Error("the pushable repo is described as reference only")
+	}
+}
+
 // A containment the runner cannot build is REFUSED, not quietly downgraded. This is the rule
 // the whole isolation design rests on: a weaker floor than the environment declared is
 // invisible from the outside, which is the direction that costs.

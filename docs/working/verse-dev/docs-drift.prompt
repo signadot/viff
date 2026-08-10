@@ -1,4 +1,6 @@
-Find references in docs/ that no longer resolve against this tree, and fix them.
+Find references in the verse repository's docs/ that no longer resolve against that
+tree, and fix them. Your working directory holds the repository as a subdirectory — the
+brief above names it — so the docs are at <repo>/docs/.
 
 A reference is anything the prose asserts exists in the code: a function or type name, a file
 path, a CLI flag, an HTTP route, a make target, an environment variable. It "no longer resolves"
@@ -10,7 +12,7 @@ finding — say so instead of guessing, and prefer a short list you are sure of 
 you are not. Do not rewrite prose you merely disagree with: this is about references that are
 FALSE, not about style.
 
-Read docs/working/contributing.md before you change anything, and hold to it: docs/ describes
+Read <repo>/docs/working/contributing.md before you change anything, and hold to it: docs/ describes
 what is true, docs/working/ and docs/roadmap/ are exempt because they describe what is coming.
 
 Leave the tree building and the tests passing. Do not commit; edit the files and stop. Your

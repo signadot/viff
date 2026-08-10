@@ -12,7 +12,7 @@ condition:
   subject: { system: git, kind: commit, value: { repo: verse } }
 action:
   spawn:
-    prompt:      "$subject landed. Find references in docs/ that no longer resolve against this tree, and fix them."
+    prompt:      "$subject landed. Find references in the verse repository's docs/ that no longer resolve against that tree, and fix them."
     runner:      runners:pool:code
     environment: verse-docs
     driver:      claude

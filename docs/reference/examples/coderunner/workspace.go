@@ -283,6 +283,39 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo, auth: m.auth(r.Repo)}, nil
 }
 
+// Brief tells the agent what its working directory contains, and it is the runner's to say
+// rather than the charter's.
+//
+// The layout is a CONVENTION of this runner — one directory per repository, named by the
+// environment, under a root nobody outside chose — so a prompt written against it would be
+// guessing, and a prompt written against a single-repo workspace ("look in docs/") is simply
+// wrong the moment a second repository appears. An agent dropped into a directory it did not
+// create, with no map, spends its first turns discovering one.
+func (w *Workspace) Brief() string {
+	if len(w.Trees) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Your working directory holds ")
+	if len(w.Trees) == 1 {
+		b.WriteString("one repository:\n")
+	} else {
+		fmt.Fprintf(&b, "%d repositories, side by side:\n", len(w.Trees))
+	}
+	for _, t := range w.Trees {
+		fmt.Fprintf(&b, "  %s/ — %s at %s", t.Repo.Name, t.Repo.Repo, t.Repo.Base)
+		if t.Repo.Push == "" {
+			// Saying so matters: an agent that edits a reference tree has done work that will
+			// be thrown away, and nothing downstream would report that it was.
+			b.WriteString(" (reference only — changes here are not delivered anywhere)")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("Every path is relative to that directory, so a file in the first repository " +
+		"above is `" + w.Trees[0].Repo.Name + "/…`.\n\n")
+	return b.String()
+}
+
 // RepoContext is what a gate can match on: the branch this work is on, the base it came from,
 // what it has touched, and where it would go. `GateMatch.Branches` and `GateMatch.OnPush` read
 // exactly this, so a charter can say `vector: ask` on anything touching a release branch.

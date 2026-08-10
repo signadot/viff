@@ -142,6 +142,12 @@ func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentRe
 		return task.NewFailed(l.ID, reg, fmt.Sprintf("environment %q: %v", env.Name, err))
 	}
 
+	// The workspace layout is this runner's convention, so the runner describes it. It rides
+	// the PROMPT rather than the frame because harness.Build derives a default frame from the
+	// tools and vector when a spawn writes none, and setting one here would silently replace
+	// advice that is more useful than this.
+	l.Prompt = ws.Brief() + l.Prompt
+
 	var t *task.Task
 	switch driver {
 	case "llm":

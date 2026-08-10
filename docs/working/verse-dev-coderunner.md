@@ -147,14 +147,56 @@ here, by design, so the bound during the experiment is a person — and the firs
 should not also be the first bill.
 
 ```sh
-verse task run --runner runners:pool:code --environment verse-docs --as "$USER" \
-  --attach "$(cat docs/working/verse-dev/docs-drift.prompt)"
+verse runner add pool:code http://localhost:9802     # prints: reach: "a runner"
+
+verse task run --runner runners:pool:code --environment verse-docs \
+  --as "$USER" --vector auto --name docsdrift \
+  "$(cat docs/working/verse-dev/docs-drift.prompt)"
+
+verse task                          # id, runner, status
+verse task get <id>                 # the result, once it is done
+```
+
+`--vector auto` is not optional today, and the reason is the second finding above: the claude
+driver ASK-gates its own invocation, and a gate on a per-spawn runner cannot currently be
+answered. With it, the run proceeds unattended; without it, the task parks and stays parked.
+
+Then read what it produced before anything else:
+
+```sh
+git -C /path/to/verse log --format='%B' -1 agent/<id>    # the trailers, and the agent's summary
+git -C /path/to/verse diff main..agent/<id>              # what it actually changed
 ```
 
 ### Then the charter
 
 [verse-dev/docs-drift.tony](verse-dev/docs-drift.tony) fires on a commit landing on `main`. It
 conditions on nothing about trailers: the loop is the experiment, not a thing to prevent.
+
+## Found while wiring it, before the first agent turn
+
+Two, and the second is a verse bug rather than a coderunner one.
+
+**The claude driver ASK-gates its own invocation, so an unattended `task run` parks
+immediately.** That is the designed default — verse cannot see inside a foreign agent, so the
+invocation is the only thing there is to decide about — but it means the by-hand path needs
+`--vector auto`, or an `--attach` and someone to answer. The charter already says `vector: auto`;
+the instructions did not, which is why running it is written out below rather than assumed.
+
+**A gate raised on a per-spawn runner can be listed but not answered.** `verse gate` shows it;
+`verse gate approve <id>` returns `404 no such question`. Posting the identical body straight at
+the runner's `/tasks/{id}/resolve` returns 204, so the runner and the gate id are both fine —
+the break is in verse. `Server.ownerOf` recovers the owning task by cutting the id at `~` and
+then asks `Server.isTask`, which consults only the local taskd and `s.runner`, **the verse's
+DEFAULT runner**. A task on a runner named per spawn — the entire point of the feature — is
+invisible to it, so the owner comes back empty, the answer is offered to the local registry, and
+that registry has never heard of the question.
+
+It is a lookup gap and not a design one: `task:instance` already records the runner url precisely
+so a restart can reconstruct it (`reconcileTasks` does exactly that), so the fix has a shape
+already in the tree. What it costs today is that **any ASK gate on a per-spawn runner is
+unanswerable through verse** — which is most of the supervision story for remote work, and it is
+why the drive's first act should be to fix it rather than to route around it with `vector: auto`.
 
 ## What to record
 
