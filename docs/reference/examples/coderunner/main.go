@@ -57,6 +57,8 @@ func main() {
 	keep := flag.Bool("keep", false, "keep workspaces after a task ends, for debugging")
 	tokenEnv := flag.String("token-env", "CODERUNNER_GIT_TOKEN",
 		"environment variable holding the git token this runner pushes with")
+	confine := flag.String("confine", "host",
+		"how to build a containment point: host (claims almost nothing) | bwrap")
 	flag.Parse()
 
 	cfg, err := LoadConfig(*cfgPath)
@@ -72,11 +74,18 @@ func main() {
 	// The credential, named. A runner that shells out to `git` would have picked one up from a
 	// credential helper or an ssh agent without anything in the code saying so; this says so.
 	// Empty is fine and is what a local path wants.
+	// Named by the deployment rather than sniffed. Choosing a confiner by what happens to be
+	// installed would mean an image missing bwrap silently runs every task unconfined, which
+	// is the degrade-instead-of-refuse this whole design is arranged against.
+	conf, err := confinerNamed(*confine)
+	if err != nil {
+		log.Fatal(err)
+	}
 	r := &Runner{
 		cfg:        cfg,
 		mirrors:    NewMirrors(filepath.Join(root, "mirrors"), TokenAuth(os.Getenv(*tokenEnv))),
 		workspaces: filepath.Join(root, "workspaces"),
-		conf:       hostConfiner{},
+		conf:       conf,
 		keep:       *keep,
 		log:        os.Stderr,
 	}

@@ -148,3 +148,114 @@ func (hostConfiner) Confine(cmd *exec.Cmd, _ Point, dir string) error {
 	cmd.Dir = dir
 	return nil
 }
+
+// bwrapConfiner builds a point with bubblewrap: namespaces and bind mounts, no daemon, no
+// image runtime, no privilege. It is the Linux single-host implementation, and what a container
+// image can carry (see the Dockerfile beside this program).
+//
+// It reaches `filesystem.scope: private` — a read-only system rootfs with the workspace as the
+// only writable path — and, when asked, no network. It does NOT reach `principal: distinct`:
+// `--unshare-user` maps the caller to itself, so the host uid is unchanged. That is the same
+// property rootless runc has with a size-one UID mapping, and it is why the two are separate
+// leaves: a private filesystem does not require a distinct principal, and taking the first
+// without the second is what keeps an agent's credential working.
+type bwrapConfiner struct{ bin string }
+
+// bwrapProvides is the strongest point bwrap can build, per leaf. The combination rule below
+// is what a per-leaf ceiling cannot express.
+var bwrapProvides = Point{
+	"network.ingress":     "none",
+	"network.egress":      "none",
+	"filesystem.scope":    "private",
+	"filesystem.readOnly": "yes",
+	"principal":           "runner",
+}
+
+func (b bwrapConfiner) Provides(p Point) error {
+	var missing []string
+	for leaf := range chains {
+		if rank(leaf, p[leaf]) > rank(leaf, bwrapProvides[leaf]) {
+			missing = append(missing, fmt.Sprintf("%s: asked for %q, bwrap provides at most %q",
+				leaf, p[leaf], bwrapProvides[leaf]))
+		}
+	}
+	// The combination rule, and the reason a catalogue of buildable POINTS is not the same
+	// thing as a product of chains. bwrap's network control is one switch: `--unshare-net`
+	// takes ingress and egress together. So it builds (full, full) and (none, none), and
+	// nothing in between or either side of it — an egress-only restriction needs a proxy or a
+	// configured netns, which is a different mechanism rather than a stronger flag.
+	in, eg := p["network.ingress"], p["network.egress"]
+	switch {
+	case in == "restricted" || eg == "restricted":
+		missing = append(missing, "network: bwrap has no `restricted` — it can share the "+
+			"host's network or unshare it, and an allowlist is a proxy's job")
+	case in != eg && in != "" && eg != "":
+		missing = append(missing, fmt.Sprintf(
+			"network: asked for ingress %q with egress %q, and --unshare-net takes both together",
+			in, eg))
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("this runner cannot provide the containment this environment declares:\n  %s",
+		strings.Join(missing, "\n  "))
+}
+
+// Confine rewrites cmd to run under bwrap. Called only after Provides said yes.
+func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, dir string) error {
+	args := []string{
+		// The child dies with this runner rather than outliving it as an orphan holding a
+		// workspace open.
+		"--die-with-parent",
+		"--unshare-pid", "--unshare-ipc", "--unshare-uts",
+		// A fresh /proc is what makes --unshare-pid mean anything, and /dev is the minimal
+		// device set bwrap synthesizes rather than binding the host's.
+		"--proc", "/proc", "--dev", "/dev",
+		// Scratch that is not the workspace, so a program with nowhere to write does not
+		// decide the workspace is the place for it.
+		"--tmpfs", "/tmp",
+	}
+	// The system, read-only. Named explicitly rather than binding / because binding the root
+	// read-only and then re-binding a writable subtree is the shape that quietly re-exposes
+	// whatever was not thought of.
+	for _, ro := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"} {
+		args = append(args, "--ro-bind-try", ro, ro)
+	}
+	// The workspace, writable, and the only thing that is.
+	args = append(args, "--bind", dir, dir, "--chdir", dir)
+	if p["filesystem.readOnly"] == "yes" {
+		args[len(args)-4] = "--ro-bind" // the workspace bind, made read-only
+	}
+	if p["network.egress"] == "none" {
+		args = append(args, "--unshare-net")
+	}
+	args = append(args, "--")
+	args = append(args, cmd.Args...)
+
+	cmd.Path = b.bin
+	cmd.Args = append([]string{b.bin}, args...)
+	cmd.Dir = dir
+	return nil
+}
+
+// confinerNamed resolves the -confine flag. A name this build does not have, or a mechanism
+// this machine cannot run, fails at STARTUP rather than at the first spawn — the alternative
+// being a runner that accepts work it will not contain and says nothing until something
+// escapes.
+func confinerNamed(name string) (Confiner, error) {
+	switch name {
+	case "host":
+		return hostConfiner{}, nil
+	case "bwrap":
+		bin, err := exec.LookPath("bwrap")
+		if err != nil {
+			return nil, fmt.Errorf("-confine bwrap: bubblewrap is not on PATH (%w). It is "+
+				"Linux-only; on macOS neither it nor runc exists, and `-confine host` claims "+
+				"almost nothing on purpose", err)
+		}
+		return bwrapConfiner{bin: bin}, nil
+	default:
+		return nil, fmt.Errorf("-confine %q: want host or bwrap", name)
+	}
+}

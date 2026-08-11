@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -694,5 +695,87 @@ func TestCommandArgv(t *testing.T) {
 	next := c.argv("and now this", "sess-1")
 	if !slices.Contains(next, "--resume") || !slices.Contains(next, "sess-1") {
 		t.Errorf("resumed argv = %v", next)
+	}
+}
+
+// bwrap builds a private filesystem and cannot build a distinct principal, and the network is
+// one switch rather than two leaves.
+//
+// The last part is why a catalogue of buildable POINTS is not the same thing as a product of
+// chains: `--unshare-net` takes ingress and egress together, so bwrap builds (full, full) and
+// (none, none) and nothing else. A per-leaf ceiling cannot say that, which is exactly the case
+// Provides exists to catch.
+func TestBwrapProvidesAndRefuses(t *testing.T) {
+	b := bwrapConfiner{bin: "/nonexistent/bwrap"} // Provides is a claim, not an invocation
+
+	if err := b.Provides(Point{"filesystem.scope": "private", "filesystem.readOnly": "yes"}); err != nil {
+		t.Errorf("bwrap refuses a private filesystem, which is the whole reason it is here: %v", err)
+	}
+	if err := b.Provides(Point{"principal": "distinct"}); err == nil {
+		t.Error("bwrap claimed a distinct principal; --unshare-user maps the caller to itself")
+	}
+	if err := b.Provides(Point{"network.ingress": "none", "network.egress": "none"}); err != nil {
+		t.Errorf("bwrap refuses an unshared network: %v", err)
+	}
+	// The combination it cannot build, and the one a naive per-leaf check would accept because
+	// each leaf on its own is within reach.
+	err := b.Provides(Point{"network.ingress": "none", "network.egress": "full"})
+	if err == nil {
+		t.Fatal("bwrap accepted ingress:none with egress:full — one flag cannot do that")
+	}
+	if !strings.Contains(err.Error(), "together") {
+		t.Errorf("the refusal does not say why: %v", err)
+	}
+	if err := b.Provides(Point{"network.egress": "restricted"}); err == nil {
+		t.Error("bwrap claimed `restricted`, which needs a proxy rather than a flag")
+	}
+}
+
+// Confine wraps the command rather than replacing it, and the workspace is the only writable
+// path.
+func TestBwrapConfineWrapsTheCommand(t *testing.T) {
+	b := bwrapConfiner{bin: "/usr/bin/bwrap"}
+	cmd := exec.Command("claude", "-p", "do the thing")
+	if err := b.Confine(cmd, Point{"filesystem.scope": "private", "network.egress": "none"}, "/w"); err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Path != "/usr/bin/bwrap" {
+		t.Errorf("Path = %q, want the bwrap binary", cmd.Path)
+	}
+	joined := strings.Join(cmd.Args, " ")
+	for _, want := range []string{"--die-with-parent", "--unshare-pid", "--unshare-net",
+		"--bind /w /w", "--chdir /w", "-- claude -p do the thing"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("argv is missing %q:\n%s", want, joined)
+		}
+	}
+	// The system is read-only; nothing binds it writable.
+	if strings.Contains(joined, "--bind /usr") {
+		t.Error("/usr is bound writable")
+	}
+	// And with the network shared, no unshare.
+	cmd2 := exec.Command("x")
+	_ = b.Confine(cmd2, Point{"network.egress": "full"}, "/w")
+	if strings.Contains(strings.Join(cmd2.Args, " "), "--unshare-net") {
+		t.Error("the network was unshared for a point that asked for full egress")
+	}
+}
+
+// A confiner is named by the deployment, and an unknown or unavailable one fails at STARTUP.
+func TestConfinerNamed(t *testing.T) {
+	if _, err := confinerNamed("host"); err != nil {
+		t.Errorf("host: %v", err)
+	}
+	if _, err := confinerNamed("nonsense"); err == nil {
+		t.Error("an unknown confiner name was accepted")
+	}
+	// bwrap resolves or refuses depending on the machine; either is correct, and silence is
+	// not — the point is that it never falls back to a weaker one.
+	if c, err := confinerNamed("bwrap"); err != nil {
+		if !strings.Contains(err.Error(), "bubblewrap is not on PATH") {
+			t.Errorf("bwrap refusal does not say why: %v", err)
+		}
+	} else if _, ok := c.(bwrapConfiner); !ok {
+		t.Errorf("-confine bwrap resolved to %T", c)
 	}
 }

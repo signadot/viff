@@ -410,9 +410,21 @@ behind `Confiner`, and what can build a point depends entirely on where the runn
 | deployment | mechanism | reaches |
 |---|---|---|
 | a pod on Linux | **rootless runc** | `filesystem.scope: private`, `filesystem.readOnly`, pid/ipc/uts isolation |
-| a Linux host | `bwrap` | the same, without an image runtime |
+| a Linux host, or this example's image | **`bwrap`** — built, `-confine bwrap` | `filesystem.scope: private`, `filesystem.readOnly`, network shared or unshared, pid/ipc/uts |
 | **macOS, locally** | **`sandbox-exec`** | `filesystem.scope` only — no namespaces, no principal |
 | none of the above | — | refuse, which is what `hostConfiner` does |
+
+The bwrap one is now the built path rather than a plan, and writing it produced the sharpest
+argument yet for a **catalogue** of points beside the product of chains. `--unshare-net` takes
+ingress and egress *together*, so bwrap builds `(full, full)` and `(none, none)` and nothing
+else — a per-leaf ceiling accepts `ingress: none, egress: full` because each leaf on its own is
+within reach, and the mechanism cannot do it. `Provides` refuses that combination by name, and
+`restricted` outright, because an allowlist is a proxy's job rather than a stronger flag.
+
+It also confirms the independence the runc reading predicted: bwrap reaches
+`filesystem.scope: private` and **not** `principal: distinct`, since `--unshare-user` maps the
+caller to itself. Two mechanisms, same split, which is what makes them separate leaves rather
+than rungs of one ladder.
 
 The rootless-runc row is not hypothetical: signadot's own
 `sandboxes/internal/managedrunners/actionbox/runimage` builds an OCI spec and executes it that

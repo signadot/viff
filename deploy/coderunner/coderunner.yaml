@@ -1,0 +1,131 @@
+# The coderunner, as a deployed runner: a workspace per task, an agent in it, bubblewrap around
+# the agent.
+#
+# It is not a source and not the engine — it is a place work RUNS, reached by url, and verse
+# learns about it the same way it learns about any runner:
+#
+#   kubectl -n verse exec deploy/versed -- verse runner add pool:code http://coderunner:9802
+#
+# That install probes it, so a `reach: "a runner"` is the deployment's own acceptance test.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coderunner-config
+  labels: {app: verse, tier: runner}
+data:
+  # An environment names a repository, a base and where the work goes. Nothing here is a
+  # default the image could have guessed: what to work on and where to push it are a
+  # deployment's to state.
+  #
+  # `tools:` is the FLOOR for the llm driver — which tools exist at all. No `run_bash`: the file
+  # tools are confined to the workspace by construction, a shell is the one that can leave, and
+  # a docs task does not need one. Withholding it is a stronger statement than any prompt.
+  coderunner.tony: |
+    default: verse-docs
+
+    llm:
+      apiKeyEnv: PORTKEY_API_KEY
+      virtualKeyEnv: PORTKEY_VIRTUAL_KEY
+      model: claude-sonnet-4-6
+
+    environments:
+    - name: verse-docs
+      repos:
+      - name: verse
+        repo: "https://github.com/signadot/verse"
+        base: main
+        push: "refs/heads/agent/$task"
+      driver: llm
+      tools: [read_file, list_dir, write_file]
+      commands: [go, gofmt]
+      env: [PATH, HOME, USER, LANG]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coderunner
+  labels: {app: verse, tier: runner, runner: code}
+spec:
+  replicas: 1
+  # Recreate, for a reason a source shares and a runner has more sharply: the mirrors and
+  # workspaces live on one volume, and two pods writing one mirror is a fetch racing a fetch.
+  # It also keeps `verse runner remove` honest — the work on a runner is on THAT pod, and a
+  # second replica would make "3 tasks are running on it" ambiguous about where.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: verse, tier: runner, runner: code}
+  template:
+    metadata:
+      labels: {app: verse, tier: runner, runner: code}
+    spec:
+      containers:
+      - name: coderunner
+        image: example/verse-coderunner:latest
+        args:
+        - -config
+        - /config/coderunner.tony
+        - -data
+        - /state
+        - -addr
+        - :9802
+        # The containment, named rather than sniffed. If the kernel refuses unprivileged user
+        # namespaces this runner REFUSES the spawn naming the rung it could not build — it does
+        # not run the work uncontained. That is the failure mode to want: a spawn that fails
+        # loudly beats an agent with the run of the pod.
+        - -confine
+        - bwrap
+        ports:
+        - {name: control, containerPort: 9802}
+        env:
+        # The model credentials the llm driver uses. Named env vars rather than values in the
+        # config, so the ConfigMap above carries no secret and can be read by anyone who can
+        # read the deployment.
+        - name: PORTKEY_API_KEY
+          valueFrom:
+            secretKeyRef: {name: verse-llm, key: apiKey, optional: true}
+        - name: PORTKEY_VIRTUAL_KEY
+          valueFrom:
+            secretKeyRef: {name: verse-llm, key: virtualKey, optional: true}
+        # What this runner pushes with. The TASK never sees it: delivery is the runner's act,
+        # in the runner's process, and the agent has neither the variable nor a shell to read
+        # it from.
+        #
+        #   kubectl -n verse create secret generic verse-coderunner \
+        #     --from-literal=gitToken=<PAT>
+        - name: CODERUNNER_GIT_TOKEN
+          valueFrom:
+            secretKeyRef: {name: verse-coderunner, key: gitToken, optional: true}
+        volumeMounts:
+        - {name: config, mountPath: /config, readOnly: true}
+        - {name: state, mountPath: /state}
+        readinessProbe:
+          # GET /tasks is what verse's own install probe asks — the cheapest question with an
+          # answer, and the one that decides whether this is a runner at all. A readiness probe
+          # asking anything else would be a second opinion about the same thing.
+          httpGet: {path: /tasks, port: control}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        securityContext:
+          # bubblewrap needs to create user namespaces, which is unprivileged on a kernel that
+          # allows it — no CAP_SYS_ADMIN, no privileged: true. What it does need is for the
+          # runtime not to block the clone: some default seccomp profiles do. If containment
+          # fails here it fails as a refused spawn, which is the diagnosis you want.
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities: {drop: ["ALL"]}
+      volumes:
+      - name: config
+        configMap: {name: coderunner-config}
+      - name: state
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coderunner
+  labels: {app: verse, tier: runner, runner: code}
+spec:
+  selector: {app: verse, tier: runner, runner: code}
+  ports:
+  - {name: control, port: 9802, targetPort: control}
