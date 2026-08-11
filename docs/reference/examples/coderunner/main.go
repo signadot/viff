@@ -224,7 +224,20 @@ func (r *Runner) Descriptor(w http.ResponseWriter, req *http.Request) {
 // it is an unknown one.
 func pointFor(env Environment) Point {
 	if env.Isolation == "" {
-		return hostProvides
+		p := Point{}
+		for leaf, v := range hostProvides {
+			p[leaf] = v
+		}
+		// An egress allowlist IS the declaration of restricted egress, derived here rather than
+		// stated twice so the two cannot disagree — and `restricted` is built by unsharing the
+		// network and binding one socket back in, so it arrives with `ingress: none` attached.
+		// A confiner that cannot do both refuses, which is how a machine without bwrap declines
+		// to pretend.
+		if len(env.Egress) > 0 {
+			p["network.egress"] = "restricted"
+			p["network.ingress"] = "none"
+		}
+		return p
 	}
 	// Deliberately unknown: naming a profile this sketch does not define asks for containment
 	// that cannot be checked, and the strongest point is the safe reading of "I asked for

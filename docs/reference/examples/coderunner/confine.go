@@ -85,8 +85,29 @@ func (p Point) String() string {
 type Confiner interface {
 	// Provides reports whether this confiner can build p, and says what it cannot if not.
 	Provides(p Point) error
-	// Confine configures cmd to run at p, rooted at dir. Called only after Provides said yes.
-	Confine(cmd *exec.Cmd, p Point, dir string) error
+	// Confine configures cmd to run at p in box. Called only after Provides said yes.
+	Confine(cmd *exec.Cmd, p Point, box Sandbox) error
+	// EgressAt is where a socket the runner prepared at hostPath appears to the TASK. Only the
+	// confiner knows: one that remaps the filesystem binds it somewhere fixed, one that does not
+	// hands back the path it was given. The task process dials whatever comes back.
+	EgressAt(hostPath string) string
+}
+
+// Sandbox is what the runner has PREPARED for one task, as against what the point asks for. The
+// two are different kinds of thing and were briefly the same argument: a point is a
+// specification, and these are the resources that exist because of it.
+//
+// It is a struct because the list grows. `network.egress: restricted` is the first rung that
+// needs the runner to hand something in rather than only to take something away — a channel out
+// of a namespace with no network — and it will not be the last: a private principal needs a uid,
+// a mounted cache needs a path.
+type Sandbox struct {
+	// Dir is the workspace: the task's working directory and the only writable path.
+	Dir string
+	// Egress is the HOST path of this task's egress proxy socket, when the point asks for
+	// `restricted`. Inside the sandbox it appears at egressPath, which is what the task process
+	// is told to dial. Empty when the point does not ask for it.
+	Egress string
 }
 
 // hostConfiner is the CHANGE THIS of this file: it provides the weakest rung of every leaf and
@@ -142,12 +163,17 @@ func (hostConfiner) Provides(p Point) error {
 		strings.Join(missing, "\n  "))
 }
 
-// Confine sets the working directory and, critically, the ENVIRONMENT — which is the one part
-// of the floor a plain process can enforce. Everything else this confiner declines to claim.
-func (hostConfiner) Confine(cmd *exec.Cmd, _ Point, dir string) error {
-	cmd.Dir = dir
+// Confine sets the working directory. The environment is built by the caller and is the one part
+// of the floor a plain process can enforce; everything else this confiner declines to claim.
+func (hostConfiner) Confine(cmd *exec.Cmd, _ Point, box Sandbox) error {
+	cmd.Dir = box.Dir
 	return nil
 }
+
+// EgressAt: nothing is remapped here, so the task sees the path the runner made. It never comes
+// up in practice — this confiner refuses `restricted` — and is written out rather than left to
+// panic because a confiner that cannot answer this cannot be one.
+func (hostConfiner) EgressAt(hostPath string) string { return hostPath }
 
 // bwrapConfiner builds a point with bubblewrap: namespaces and bind mounts, no daemon, no
 // image runtime, no privilege. It is the Linux single-host implementation, and what a container
@@ -179,17 +205,27 @@ func (b bwrapConfiner) Provides(p Point) error {
 				leaf, p[leaf], bwrapProvides[leaf]))
 		}
 	}
-	// The combination rule, and the reason a catalogue of buildable POINTS is not the same
-	// thing as a product of chains. bwrap's network control is one switch: `--unshare-net`
-	// takes ingress and egress together. So it builds (full, full) and (none, none), and
-	// nothing in between or either side of it — an egress-only restriction needs a proxy or a
-	// configured netns, which is a different mechanism rather than a stronger flag.
+	// The combination rule, and the reason a catalogue of buildable POINTS is not the same thing
+	// as a product of chains. bwrap's network control is one switch: `--unshare-net` takes
+	// ingress and egress together, so on its own it builds (full, full) and (none, none) and
+	// nothing else.
+	//
+	// `egress: restricted` is buildable anyway, and NOT by a stronger flag — by a different
+	// mechanism the runner supplies. Unshare the network so the sandbox has no route at all,
+	// then bind in one socket that reaches an allowlisting proxy on the outside (egress.go). The
+	// task's only way out is through a list, by construction. Ingress stays `none` because there
+	// is still no route in, which is why the combination below is the one that survives.
 	in, eg := p["network.ingress"], p["network.egress"]
 	switch {
-	case in == "restricted" || eg == "restricted":
-		missing = append(missing, "network: bwrap has no `restricted` — it can share the "+
-			"host's network or unshare it, and an allowlist is a proxy's job")
-	case in != eg && in != "" && eg != "":
+	case in == "restricted":
+		missing = append(missing, "network.ingress: bwrap has no `restricted` inbound — there is "+
+			"either a route in or there is not, and admitting some of it is a listener's job")
+	case eg == "restricted" && in != "none":
+		missing = append(missing, fmt.Sprintf(
+			"network: `egress: restricted` is built by unsharing the network and binding in a "+
+				"proxy socket, so it comes with `ingress: none` — this asked for ingress %q",
+			orDefault(in, "full")))
+	case eg != "restricted" && in != eg && in != "" && eg != "":
 		missing = append(missing, fmt.Sprintf(
 			"network: asked for ingress %q with egress %q, and --unshare-net takes both together",
 			in, eg))
@@ -214,7 +250,8 @@ func (b bwrapConfiner) Provides(p Point) error {
 // The program itself must also EXIST inside the sandbox — it is the same binary as this runner,
 // so /usr/local/bin/coderunner is covered by the /usr bind below, and a runner installed
 // somewhere else would need its own.
-func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, dir string) error {
+func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, box Sandbox) error {
+	dir := box.Dir
 	args := []string{
 		// The child dies with this runner rather than outliving it as an orphan holding a
 		// workspace open.
@@ -244,8 +281,21 @@ func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, dir string) error {
 		bind = "--ro-bind"
 	}
 	args = append(args, bind, dir, dir, "--chdir", dir)
-	if p["network.egress"] == "none" {
+	switch p["network.egress"] {
+	case "none":
 		args = append(args, "--unshare-net")
+	case "restricted":
+		// No route out, and then exactly one thing bound back in. A socket rather than an
+		// address, because an address inside an unshared netns is a different netns's address
+		// and reaches nothing — the same reason the control plane is a descriptor.
+		//
+		// Unlike the control socket, this one is MEANT to be reachable by the task: what is on
+		// the other end is an allowlist, so dialing it is the point rather than the risk.
+		if box.Egress == "" {
+			return fmt.Errorf("network.egress: restricted, but this task was given no egress " +
+				"proxy to bind — the runner builds one per task and did not")
+		}
+		args = append(args, "--unshare-net", "--bind", box.Egress, egressPath)
 	}
 	args = append(args, "--")
 	args = append(args, cmd.Args...)
@@ -255,6 +305,10 @@ func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, dir string) error {
 	cmd.Dir = dir
 	return nil
 }
+
+// EgressAt: bound to a fixed path inside, because the filesystem is remapped and the host's path
+// means nothing in there.
+func (bwrapConfiner) EgressAt(string) string { return egressPath }
 
 // confinerNamed resolves the -confine flag. A name this build does not have, or a mechanism
 // this machine cannot run, fails at STARTUP rather than at the first spawn — the alternative

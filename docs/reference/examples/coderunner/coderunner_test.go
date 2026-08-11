@@ -736,7 +736,7 @@ func TestBwrapProvidesAndRefuses(t *testing.T) {
 func TestBwrapConfineWrapsTheCommand(t *testing.T) {
 	b := bwrapConfiner{bin: "/usr/bin/bwrap"}
 	cmd := exec.Command("claude", "-p", "do the thing")
-	if err := b.Confine(cmd, Point{"filesystem.scope": "private", "network.egress": "none"}, "/w"); err != nil {
+	if err := b.Confine(cmd, Point{"filesystem.scope": "private", "network.egress": "none"}, Sandbox{Dir: "/w"}); err != nil {
 		t.Fatal(err)
 	}
 	if cmd.Path != "/usr/bin/bwrap" {
@@ -755,7 +755,7 @@ func TestBwrapConfineWrapsTheCommand(t *testing.T) {
 	}
 	// And with the network shared, no unshare.
 	cmd2 := exec.Command("x")
-	_ = b.Confine(cmd2, Point{"network.egress": "full"}, "/w")
+	_ = b.Confine(cmd2, Point{"network.egress": "full"}, Sandbox{Dir: "/w"})
 	if strings.Contains(strings.Join(cmd2.Args, " "), "--unshare-net") {
 		t.Error("the network was unshared for a point that asked for full egress")
 	}
@@ -763,7 +763,7 @@ func TestBwrapConfineWrapsTheCommand(t *testing.T) {
 	// and did not work: the flag was patched into the argv by index, and the index was off by
 	// one, so the source path became the word `--ro-bind`.
 	cmd3 := exec.Command("x")
-	_ = b.Confine(cmd3, Point{"filesystem.readOnly": "yes"}, "/w")
+	_ = b.Confine(cmd3, Point{"filesystem.readOnly": "yes"}, Sandbox{Dir: "/w"})
 	ro := strings.Join(cmd3.Args, " ")
 	if !strings.Contains(ro, "--ro-bind /w /w") {
 		t.Errorf("a read-only workspace is not bound read-only:\n%s", ro)
@@ -788,7 +788,7 @@ func TestConfiningKeepsTheInheritedDescriptors(t *testing.T) {
 	} {
 		cmd := exec.Command("coderunner", "-task")
 		cmd.ExtraFiles = []*os.File{f, f}
-		if err := c.Confine(cmd, Point{}, t.TempDir()); err != nil {
+		if err := c.Confine(cmd, Point{}, Sandbox{Dir: t.TempDir()}); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if len(cmd.ExtraFiles) != 2 {

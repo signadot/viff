@@ -56,15 +56,63 @@ var (
 	settleTimeout = 2 * time.Second
 )
 
+// egressServer is one task's way out: an allowlisting proxy on a unix socket this side owns.
+// nil when the point did not ask for `network.egress: restricted`.
+type egressServer struct {
+	sock string
+	ln   net.Listener
+	srv  *http.Server
+	eg   *Egress
+}
+
+// startEgress builds the proxy for one task and starts serving it.
+func (r *Runner) startEgress(id string, env Environment) (*egressServer, error) {
+	eg, err := NewEgress(id, env.Egress, r.log)
+	if err != nil {
+		return nil, err
+	}
+	sock := filepath.Join(r.control, fmt.Sprintf("e%d.sock", r.seq.Add(1)))
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		return nil, fmt.Errorf("egress socket: %w", err)
+	}
+	// 0600 on the socket is not the boundary — the boundary is that the only thing that can
+	// reach this path is whatever the confiner bound it into. It is here because a runner that
+	// shares a host with anything else should not widen by default.
+	_ = os.Chmod(sock, 0o600)
+	srv := &http.Server{Handler: eg}
+	go func() { _ = srv.Serve(ln) }()
+	return &egressServer{sock: sock, ln: ln, srv: srv, eg: eg}, nil
+}
+
+// insideAs is where this socket appears to the task, which only the confiner knows: one that
+// remaps the filesystem binds it somewhere fixed, one that does not hands back what it was given.
+// A nil server has no path, which is how a task with no restricted egress is told there is none.
+func (e *egressServer) insideAs(c Confiner) string {
+	if e == nil {
+		return ""
+	}
+	return c.EgressAt(e.sock)
+}
+
+func (e *egressServer) stop() {
+	if e == nil {
+		return
+	}
+	_ = e.srv.Close()
+	_ = os.Remove(e.sock)
+}
+
 // child is one task's process, from this side.
 type child struct {
-	id   string
-	sock string
-	ws   *Workspace
-	cmd  *exec.Cmd
-	life *os.File // write end of the lifeline; closing it asks the child to exit
-	rt   task.Runner
-	prox *httputil.ReverseProxy
+	id     string
+	sock   string
+	ws     *Workspace
+	cmd    *exec.Cmd
+	life   *os.File // write end of the lifeline; closing it asks the child to exit
+	egress *egressServer
+	rt     task.Runner
+	prox   *httputil.ReverseProxy
 	// gone is closed by the one goroutine that calls cmd.Wait, so any number of readers can
 	// wait for the process and exactly one reaps it.
 	gone chan struct{}
@@ -156,6 +204,9 @@ func (c *child) stop() {
 		<-c.gone
 	}
 	_ = os.Remove(c.sock)
+	// The way out closes with the task that had it. A proxy outliving its task is a route into
+	// this runner's network with nobody's name on it.
+	c.egress.stop()
 }
 
 // startChild prepares and starts one task process, and returns once it is answering.
@@ -189,9 +240,24 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	}
 	defer lifeR.Close()
 
+	// The way out, when the point says there is a restricted one. It is a socket on this side of
+	// the boundary, bound into the sandbox by the confiner and dialled by the task process —
+	// which is what makes an allowlist a route rather than a setting.
+	box := Sandbox{Dir: ws.Root}
+	var eg *egressServer
+	if point["network.egress"] == "restricted" {
+		eg, err = r.startEgress(id, env)
+		if err != nil {
+			_ = os.Remove(sock)
+			lifeW.Close()
+			return nil, err
+		}
+		box.Egress = eg.sock
+	}
+
 	cfg := childConfig{
 		ID: id, Workspace: ws.Root, Branch: ws.Branch, Brief: ws.Brief(),
-		Environment: env, Agents: r.cfg.Agents,
+		Environment: env, Agents: r.cfg.Agents, Egress: eg.insideAs(r.conf),
 		LLM: LLMCreds{
 			BaseURL: r.cfg.LLM.BaseURL, Model: r.cfg.LLM.Model,
 			Key:        os.Getenv(r.cfg.LLM.APIKeyEnv),
@@ -202,6 +268,7 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	if err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
+		eg.stop()
 		return nil, err
 	}
 
@@ -223,21 +290,23 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	// The containment, built around the whole process — which is the point of the hop. Confine
 	// rewrites Path and Args (bwrap becomes the program and this becomes its argument); ExtraFiles
 	// ride along, since they are descriptors rather than arguments.
-	if err := r.conf.Confine(cmd, point, ws.Root); err != nil {
+	if err := r.conf.Confine(cmd, point, box); err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
+		eg.stop()
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
+		eg.stop()
 		return nil, fmt.Errorf("starting the task process: %w", err)
 	}
 
 	// One transport, so the supervisor and the proxy share a connection pool to this child.
 	tr := unixTransport(sock)
 	c := &child{
-		id: id, sock: sock, ws: ws, cmd: cmd, life: lifeW,
+		id: id, sock: sock, ws: ws, cmd: cmd, life: lifeW, egress: eg,
 		gone: make(chan struct{}),
 		// The contract, over a transport that ignores the host and dials the socket. The URL is
 		// what Ref reports and what the request line carries, so it names the peer rather than an

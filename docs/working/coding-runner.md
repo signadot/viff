@@ -418,8 +418,13 @@ The bwrap one is now the built path rather than a plan, and writing it produced 
 argument yet for a **catalogue** of points beside the product of chains. `--unshare-net` takes
 ingress and egress *together*, so bwrap builds `(full, full)` and `(none, none)` and nothing
 else — a per-leaf ceiling accepts `ingress: none, egress: full` because each leaf on its own is
-within reach, and the mechanism cannot do it. `Provides` refuses that combination by name, and
-`restricted` outright, because an allowlist is a proxy's job rather than a stronger flag.
+within reach, and the mechanism cannot do it. `Provides` refuses that combination by name.
+
+`restricted` was refused outright here too, on the reasoning that an allowlist is a proxy's job
+rather than a stronger flag. The first half was right and the conclusion was not: it *is* a
+proxy's job, and the runner runs the proxy. `--unshare-net` plus one bound socket builds it — see
+[Network](#network-the-egress-proxy) — which is the clearest case yet for the catalogue, since the
+buildable point `(ingress: none, egress: restricted)` is not a per-leaf fact about either leaf.
 
 It also confirms the independence the runc reading predicted: bwrap reaches
 `filesystem.scope: private` and **not** `principal: distinct`, since `--unshare-user` maps the
@@ -555,10 +560,13 @@ The credential split was always the second. Claiming the first as well was over-
 And it moves the real question somewhere more useful: once a secret is inside, what bounds it is
 **what the sandbox can reach**, not whether the value is present. That is
 `network.egress: restricted` — an allowlist to the model API and nothing else — which is one
-mechanism covering every secret rather than one proxy per secret. It is also the rung bwrap
-cannot build, since `--unshare-net` is all-or-nothing, which is why `Provides` refuses
-`restricted` by name. So the egress proxy stops being a nicety and becomes the piece the whole
-secret story rests on.
+mechanism covering every secret rather than one proxy per secret. So the egress proxy stops being
+a nicety and becomes the piece the whole secret story rests on.
+
+It is built ([Network](#network-the-egress-proxy)). What it does not do is bound what *leaves*
+through an allowed destination: a list says where, never what, and `api.anthropic.com` will accept
+anything you care to send it. So this bounds a secret against a task that wanders, and not against
+one that is trying.
 
 Structurally the parent then looks like a **broker with the polarity reversed**, spawn-out
 instead of dial-in, and the broker already exists for the dial-in half.
@@ -622,24 +630,53 @@ becomes an explicit passthrough list. A floor that has to be enforced by a gate 
 The `env:` allowlist above is that list, and a coding runner is where the leak actually bites,
 because it is the runner that holds a git credential and hands out a shell.
 
-## Network is the unresolved one
+## Network: the egress proxy
 
-Default-deny is right for the task's shell, and `claude` needs egress to a model API from inside
-that same namespace — it is the process being contained. So the containment cannot simply be "no
-network" without also disabling the agent.
+Default-deny is right for the task, and the task needs a model API from inside the same namespace
+— since the hop it is the process being contained, so the asymmetry that used to let the `llm`
+driver call out from the runner's process is gone. The containment cannot be "no network" without
+disabling the work.
 
-The likely answer is an allowlisting egress proxy the environment declares, with the model API
-reachable and nothing else, and with `go mod download` / `npm install` either pre-warmed into the
-image or explicitly allowed through it. That is a guess and is written here as one. It is the
-place this design is least certain, and it interacts with everything: a proxy that can be reached
-is a proxy a prompt-injected agent can try to reach, and an image with dependencies pre-warmed is
-an image that goes stale.
+`egress.go` is the answer this note guessed at, built: an allowlisting proxy per task, on the
+runner's side, and the sandbox's only route to it.
 
-The `llm` driver does not have this problem in the same shape — the harness makes the model call
-from the *runner's* process, and only `run_bash` runs inside the containment. That asymmetry is
-expressible rather than awkward now that containment is factored into classes: the two drivers
-sit at the same `filesystem` and `identity` coordinates and differ in `network`, which is a fact
-about them worth publishing rather than a wrinkle in the model.
+**Declaring the list IS declaring the rung.** An environment writes `egress: [api.anthropic.com,
+proxy.golang.org]` and `pointFor` derives `network.egress: restricted` from it. Two reasons: the
+list and the claim cannot then disagree, and "restricted" with no list is a claim with no content.
+`*` is refused by name — that is `egress: full`, which says so where a descriptor can read it.
+
+**The mechanism is a namespace with no route plus one socket bound back in.** `--unshare-net`, so
+there is nothing to reach; `--bind <proxy socket> /run/verse-egress`, so there is exactly one
+thing. That is why `restricted` arrives with `ingress: none` attached — there is still no way in —
+and it is the answer to the combination rule that previously made `restricted` unbuildable. bwrap's
+network flag is all-or-nothing; the rung is not built by a better flag but by a different
+mechanism the runner supplies.
+
+**Two hops, both forced by the same fact.** Nothing speaks "HTTP proxy over a unix socket" — not
+Go's transport, not curl, not `go`, not npm — so the task process listens on its own loopback and
+pipes each connection down the socket, which turns it into an ordinary `http://127.0.0.1:<port>`
+proxy everything already knows. Loopback is safe to expose there for the same reason the socket is:
+inside an unshared netns it is a network of one process tree. Without the unshare it would be the
+host's loopback and an open proxy — one more reason a confiner that cannot unshare **refuses**
+rather than approximating.
+
+Which is the cost, and it is real: **`restricted` cannot run on a machine without bwrap.** The
+proxy works under `hostConfiner` — it is a socket and a port — and it would be advice, because
+nothing stops the task opening its own connection. A floor that can be stepped around is not one,
+so an environment with an allowlist is refused on macOS. The proxy, the allowlist and the forwarder
+are all tested for real; the combination that makes them a floor is not, and cannot be here.
+
+**A finding about the medium.** A refused `CONNECT` is answered rather than dropped, so an agent can
+report "not on the allowlist" instead of a network problem. But `http.Error(w, why, 403)` loses the
+message entirely: Go's transport reads a failed CONNECT and returns `errors.New(reasonPhrase)`,
+discarding the status code *and* the body. The agent saw the single word `Forbidden`. So the
+explanation goes in the reason phrase, sanitized to one ASCII line — the destination comes from the
+task, and a host with a CRLF in it would otherwise write headers of its own choosing.
+
+Still open, and unchanged: an image with dependencies pre-warmed goes stale, and a proxy that can
+be reached is a proxy a prompt-injected agent can try to reach. What the allowlist bounds is
+*where*, never *what* — a destination list says nothing about what leaves through an allowed
+destination, and `api.anthropic.com` is a place you can send anything you like.
 
 The proxy is still what an environment declares, and `network: proxied` is still the rung with
 the most left to design.

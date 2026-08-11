@@ -113,6 +113,19 @@ type Environment struct {
 	// the model credentials the harness itself runs on (docs/roadmap/expose.md names this).
 	// A floor that has to be enforced by a gate is not a floor.
 	Env []string `tony:"field=env,omitzero"`
+	// Egress is the allowlist of destinations a task here may reach: `api.anthropic.com`,
+	// `proxy.golang.org`, `*.githubusercontent.com`, or any of those with an explicit `:port`.
+	//
+	// Declaring it IS the declaration of `network.egress: restricted` — the point is derived
+	// from this rather than stated beside it, because the two cannot then disagree, and because
+	// "restricted" with no list is a claim with no content. Empty leaves egress wherever the
+	// rest of the containment puts it.
+	//
+	// A confiner that cannot build `restricted` refuses the launch rather than running the task
+	// with the proxy present and unenforced, which is the whole difference between a floor and
+	// a suggestion. On a machine without bwrap that means an environment with an allowlist
+	// cannot run at all — correct, and inconvenient in exactly the way a refusal should be.
+	Egress []string `tony:"field=egress,omitzero"`
 	// Isolation names a containment profile this runner advertises. Empty = the runner's
 	// defaults. A profile this runner cannot build refuses the launch rather than running
 	// the work less contained than the environment said.
@@ -177,6 +190,14 @@ func LoadConfig(path string) (*Config, error) {
 			if !slices.Contains(knownTools, name) {
 				return nil, fmt.Errorf("coderunner: environment %q offers tool %q, which the llm "+
 					"driver does not have (it has: %s)", e.Name, name, strings.Join(knownTools, ", "))
+			}
+		}
+		// An allowlist entry that does not parse is caught at STARTUP, because the alternative is
+		// a runner that accepts the launch and then refuses every destination on it — which
+		// reads to whoever wrote the environment as the network being down.
+		for _, entry := range e.Egress {
+			if _, err := parseAllow(entry); err != nil {
+				return nil, fmt.Errorf("coderunner: environment %q: %w", e.Name, err)
 			}
 		}
 		dirs := map[string]bool{}

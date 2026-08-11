@@ -243,7 +243,7 @@ func (e *commandExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepRe
 	// consulted: a passthrough list is a floor, and "everything except what we remembered to
 	// strip" is not.
 	cmd.Env = buildEnv(d.env.Env, d.env.Commands)
-	if err := d.conf.Confine(cmd, d.point, d.dir); err != nil {
+	if err := d.conf.Confine(cmd, d.point, Sandbox{Dir: d.dir}); err != nil {
 		return task.StepResult{Use: tu}, nil, err
 	}
 	var out, errb bytes.Buffer

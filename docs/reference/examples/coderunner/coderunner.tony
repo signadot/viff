@@ -56,3 +56,36 @@ environments:
   # one here is refused rather than run less contained — which is the behaviour to keep when
   # the real confiner lands.
   # isolation: hardened
+
+# What a restricted egress looks like, and the point of it.
+#
+# Declaring `egress:` IS declaring `network.egress: restricted` — the point is derived from the
+# list so the two cannot disagree, and "restricted" with no list would be a claim with no content.
+# It is built by unsharing the network and binding in one socket that reaches an allowlisting
+# proxy on the runner's side, so the task's only route out is through this list.
+#
+# That is what bounds a secret once it is INSIDE the sandbox, which is where the model key has to
+# be. A key in a box that can only reach the model API is bounded; the same key in a box that can
+# reach anything is not.
+#
+# THIS ENVIRONMENT WILL NOT RUN under `-confine host`: hostConfiner cannot unshare a network, so
+# it refuses the launch rather than starting the proxy and leaving the task free to ignore it.
+# That refusal is the feature. Run it under `-confine bwrap` on Linux, or see deploy/coderunner.
+- name: verse-dev-hardened
+  repos:
+  - name: verse
+    repo: "https://github.com/signadot/verse"
+    base: main
+    push: "refs/heads/agent/$task"
+  driver: llm
+  tools: [read_file, list_dir, write_file]
+  env: [PATH, HOME, USER, LANG]
+  egress:
+  # The model API: without it the llm driver cannot make its one call.
+  - api.anthropic.com
+  # The Go module path, because a task that cannot build cannot verify.
+  - proxy.golang.org
+  - sum.golang.org
+  # A wildcard covers subdomains and NOT the bare domain, which are different names and often
+  # different owners.
+  - "*.githubusercontent.com"

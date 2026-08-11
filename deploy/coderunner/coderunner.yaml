@@ -45,6 +45,23 @@ data:
       tools: [read_file, list_dir, write_file]
       commands: [go, gofmt]
       env: [PATH, HOME, USER, LANG]
+      # The way out, and the only one. Declaring this IS declaring
+      # `network.egress: restricted`: the task process runs with its network unshared, so it has
+      # no route anywhere, and one socket is bound back in that reaches an allowlisting proxy in
+      # the runner. Everything else fails with the list in the error message.
+      #
+      # This is what bounds the model key, which HAS to be inside the sandbox — the llm driver
+      # makes the call. A key in a box that can only reach the model API is bounded; the same key
+      # in a box that can reach anything is not. One mechanism for every secret, rather than one
+      # proxy per secret.
+      #
+      # It needs bwrap, which is why `-confine bwrap` below is not optional for this environment:
+      # a confiner that cannot unshare the network REFUSES the launch rather than running the
+      # task with a proxy it is free to ignore.
+      egress:
+      - api.anthropic.com
+      - proxy.golang.org
+      - sum.golang.org
 ---
 apiVersion: apps/v1
 kind: Deployment

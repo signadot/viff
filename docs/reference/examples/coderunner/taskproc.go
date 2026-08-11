@@ -75,6 +75,10 @@ type childConfig struct {
 	Environment Environment        `tony:"field=environment"`
 	Agents      map[string]Command `tony:"field=agents,omitzero"`
 	LLM         LLMCreds           `tony:"field=llm,omitzero"`
+	// Egress is the unix socket, AS THIS PROCESS SEES IT, that reaches the allowlisting proxy
+	// the runner built for this task. Empty means egress is whatever the containment left it —
+	// either everything or nothing, both of which need no channel.
+	Egress string `tony:"field=egress,omitzero"`
 }
 
 // LLMCreds is the resolved form of Config.LLM: values, not the names of variables to read them
@@ -114,8 +118,72 @@ func runTaskProcess() error {
 	}
 	go dieWithParent()
 
+	if cc.Egress != "" {
+		if err := useEgress(&cc); err != nil {
+			return fmt.Errorf("-task: %w", err)
+		}
+	}
 	p := &taskProc{cfg: cc, ws: ws}
 	return http.Serve(ln, taskd.New(p.build).Handler())
+}
+
+// useEgress makes the runner's allowlisting proxy usable as a proxy.
+//
+// The proxy is on the other side of a unix socket, and nothing speaks "HTTP proxy over a unix
+// socket" — not Go's transport, not curl, not go, not npm. So this process listens on its OWN
+// loopback and pipes each connection down the socket, which turns the socket into an ordinary
+// `http://127.0.0.1:<port>` proxy that everything already knows how to use.
+//
+// Loopback is safe to expose here for the reason the socket is: with `--unshare-net` this is a
+// network namespace of one process tree, so 127.0.0.1 is reachable by the task and by nothing
+// else on the machine. Without the unshare it would be the host's loopback and this would be a
+// proxy anything could use — which is one more reason a confiner that cannot unshare refuses
+// `restricted` rather than approximating it.
+//
+// The variables are then set two ways because there are two consumers: this process, for the llm
+// driver's own model call, and the task's subprocesses, which get them by the environment
+// allowlist rather than by inheritance.
+func useEgress(cc *childConfig) error {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("egress: no loopback to put the proxy on (%w) — with the network "+
+			"unshared this is the one interface there should be", err)
+	}
+	sock := cc.Egress
+	go func() {
+		for {
+			down, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer down.Close()
+				up, err := net.Dial("unix", sock)
+				if err != nil {
+					return
+				}
+				defer up.Close()
+				go func() { _, _ = io.Copy(up, down) }()
+				_, _ = io.Copy(down, up)
+			}()
+		}
+	}()
+
+	proxy := "http://" + ln.Addr().String()
+	names := []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
+	for _, n := range names {
+		// Set on this process before anything makes a request: net/http reads the proxy
+		// environment ONCE, on the first use, and caches it for the life of the program.
+		if err := os.Setenv(n, proxy); err != nil {
+			return err
+		}
+	}
+	// And declared as passthrough, so the environment allowlist carries them into every
+	// subprocess. Appending to the allowlist rather than special-casing them in buildEnv keeps
+	// one mechanism: what a task's process gets is what the environment names, and the runner has
+	// just named four more.
+	cc.Environment.Env = append(cc.Environment.Env, names...)
+	return nil
 }
 
 // dieWithParent exits when the lifeline closes. Exit 0 because the ordinary case is the parent
