@@ -140,8 +140,21 @@ spec:
       volumes:
       - name: config
         configMap: {name: coderunner-config}
+      # emptyDir is wrong here and is left as the thing you change first.
+      #
+      # /state holds the mirrors, and since staging the mirrors hold WORK: a delivery that could
+      # not reach its remote leaves the commit under `refs/pending/<task>/<repo>` for the runner
+      # to retry, and a refused one leaves it under `refs/held/...` for somebody to look at. On an
+      # emptyDir all of that dies with the pod, so "the work is safe in the mirror" is only true
+      # relative to the workspace being removed.
+      #
+      # A PVC also makes the mirrors what they are meant to be — a cache that survives restarts,
+      # which is the whole reason a task's clone costs no network. Recreate above already means
+      # one writer, so ReadWriteOnce is the right access mode.
       - name: state
         emptyDir: {}
+      # - name: state
+      #   persistentVolumeClaim: {claimName: coderunner-state}
 ---
 apiVersion: v1
 kind: Service

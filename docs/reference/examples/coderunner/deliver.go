@@ -177,16 +177,19 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 		// this one exists precisely because the first cannot cross the credential boundary.
 		return deliverReply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
-	refs, err := c.ws.Deliver(context.Background(), l, req.Result)
-	c.recordDelivery(refs, err)
-	for _, d := range refs {
-		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, d)
+	d := c.ws.Deliver(context.Background(), l, req.Result)
+	c.recordDelivery(d)
+	for _, p := range d.Pushed {
+		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, p)
 	}
-	if err != nil {
-		fmt.Fprintf(r.log, "coderunner: %s: deliver: %v\n", c.id, err)
-		return deliverReply{Refs: refs, Error: err.Error()}
+	for _, s := range d.Staged {
+		fmt.Fprintf(r.log, "coderunner: %s: staged in the mirror at %s\n", c.id, s)
 	}
-	return deliverReply{OK: true, Refs: refs}
+	if d.Err != nil {
+		fmt.Fprintf(r.log, "coderunner: %s: deliver: %v\n", c.id, d.Err)
+		return deliverReply{Refs: d.Pushed, Error: d.Err.Error()}
+	}
+	return deliverReply{OK: true, Refs: d.Pushed}
 }
 
 // ── framing ─────────────────────────────────────────────────────────────────────────────────

@@ -296,35 +296,66 @@ unsayable. A failed delivery **fails the task**, instead of being a line in a ru
 asked for, so "nothing was delivered" is a fact about the run rather than about that function's
 ordering.
 
-#### Reflecting through the mirror, which is the next question
+#### Reflecting through the mirror
 
-The suggestion is to have the runner publish task branches into its own **mirror** and reflect
-the mirror to origin, rather than pushing from the task's clone straight out. It is better than
-what is there, for reasons that are not about tidiness:
+Delivery is two hops now (`stage.go`): commit, push into this runner's **mirror**, then push the
+mirror to origin. The first hop is local, costs a thin pack against a repository that already has
+every base object, and cannot fail for anything the network owns.
 
-- **The workspace stops being the only copy.** Today a delivery that fails keeps the workspace
-  precisely because `os.RemoveAll` would take the object store with it. If the work were in the
-  mirror, the workspace could always go and the retry would still have something to push.
-- **It makes delivery retryable at all.** A failed push is currently terminal for that work.
-- **It is verse's own shape.** A source reflects the world in; a runner reflecting agent branches
-  out is the same relation with the arrow reversed, which is an argument for it beyond mechanics.
+**Staged always, not only on failure.** The cheap version — salvage when a push fails — was
+rejected, because salvage-only code runs exclusively when things are already broken, which is the
+worst moment for it to be the path nothing exercises. This example has been bitten twice by
+exactly that shape: a workspace removed unconditionally, and a delivery that tested for dirt
+instead of work. Now recovery is the ordinary path minus its last step.
 
-Two costs, and one fact discovered while checking:
+That needed `Tree.deliver` split into `commitWork` and `push`, which it wanted anyway — the commit
+is local and always safe, the push is neither.
 
-- Two stages means two places a ref can be, and `verse task get` has to say which — more states,
-  and a reflection loop has its own retry policy and its own failure modes.
-- The deploy's mirror is an `emptyDir`, so "durable" there is only relative to the workspace.
-  Worth a PVC if this lands.
+**Two namespaces, and the difference is authorization.**
+
+| | |
+|---|---|
+| `refs/pending/<task>/<repo>` | approved, did not land. Safe to retry: somebody already said yes. |
+| `refs/held/<task>/<repo>` | refused at the gate, or the task never got that far. Never pushed automatically. |
+
+One namespace would have been simpler and wrong. Making the push gateable was for letting an
+operator decline it; a sweep over a single namespace would push declined work, silently, later.
+The split makes the retry safe by construction rather than by remembering — and it is the one
+thing here worth getting right before the rest, because the failure is invisible.
+
+**The retention rule is "drop it once the far side has it"**, which needs no TTL and gives the
+namespace a meaning worth reporting: what is under `refs/pending` is exactly the work this runner
+holds that the world does not.
+
+**Prune cannot reach either.** `ensure` fetches `+refs/heads/*` and `+refs/tags/*` with `Prune`
+set, and go-git's `pruneRemotes` only removes refs matching the *reverse* of a configured refspec.
+So the layout is chosen for that, and a test pins it — this runner has already lost task branches
+once to a prune over a shared mirror.
+
+**The retry runs where the lock already is.** `Mirrors.Reflect` sweeps one repository's pending
+refs; it is called after a spawn fetches that mirror (in the background, so a backlog against a
+down remote cannot hold up an unrelated task) and once at startup. No timer, no loop of its own: a
+runner nobody is using has nothing to retry for.
+
+**What it bought.** The `KEEPING <workspace>` rule is gone. A workspace is removed unless
+something is genuinely *loose* — work that could not even be staged, which is the disk rather than
+the network. A refused delivery, a failed push, a task that died: all three end with the work in
+the mirror and the checkout removed.
+
+Two things to know about it:
+
+- The deploy's mirror is an `emptyDir`, so "durable" there is only relative to the workspace. This
+  wants a PVC, which the manifest now says.
 - **go-git's local transport shells out.** `transport/file` runs `git-upload-pack` /
-  `git-receive-pack`, so *the mirror→clone step already depends on the git binary being on the
-  runner's PATH* — `workspace.go`'s headline claim that this speaks go-git and not the git binary
-  is true of the network remotes, where the credential argument lives, and false of local paths.
-  Verified by shimming those two binaries: the clone fails. A mirror-staged delivery would add a
-  second local push and so lean on it harder, which is fine in the image and a thing to say out
-  loud rather than discover.
+  `git-receive-pack`, so the mirror→clone step already depended on the git binary being on the
+  runner's PATH — `workspace.go`'s headline claim is true of the network remotes, where the
+  credential argument lives, and false of local paths. Verified by shimming those two binaries:
+  the clone fails. Staging leans on it harder, which is fine in the image and worth saying rather
+  than discovering.
 
-Not built. It is independent of everything above — the gated action is the same action either
-way, and only what the parent does when asked would change.
+Left undone deliberately: `verse task get` does not name the staged ref. The read plane carries it
+(the delivery action's output, and the runner's log), but the task entity does not, so "where is
+the work that did not land" is still a question you answer by reading rather than by querying.
 
 **The gap downstream is now closed.** `source/git.go` formatted recent commits with `%s`, so the
 commit body never reached a `git:commit` entity and every trailer this runner writes was

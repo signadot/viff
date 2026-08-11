@@ -126,22 +126,21 @@ type child struct {
 	// loop now (deliver.go), so this side finds out by being asked rather than by doing it —
 	// and a task that was never asked is one whose work did not leave, which is what the
 	// workspace decision below turns on.
-	delivered []string
-	deliverEr error
+	delivered Delivery
 	asked     bool
 }
 
-func (c *child) recordDelivery(refs []string, err error) {
+func (c *child) recordDelivery(d Delivery) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.asked = true
-	c.delivered, c.deliverEr = refs, err
+	c.delivered = d
 }
 
-func (c *child) delivery() ([]string, error, bool) {
+func (c *child) delivery() (Delivery, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.delivered, c.deliverEr, c.asked
+	return c.delivered, c.asked
 }
 
 // exitStatus is what cmd.Wait said, readable after gone closes.
@@ -462,6 +461,15 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ws, err := r.mirrors.Open(req.Context(), id, env, r.workspaces)
+	// The mirrors this spawn just fetched are the mirrors anything undelivered is waiting in, so
+	// this is the cheapest place to retry: the fetch has already taken the lock and paid the
+	// round trip. In the background, because a backlog against a remote that is down must not
+	// hold up a task that has nothing to do with it.
+	go func() {
+		for _, repo := range env.Repos {
+			r.reflect(context.Background(), repo)
+		}
+	}()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("environment %q: %v", env.Name, err), http.StatusInternalServerError)
 		return
@@ -559,24 +567,39 @@ func (r *Runner) supervise(c *child, l task.Launch) {
 	// charter could not decline it, and nothing downstream could chain off it. Now a task that
 	// was never asked to deliver is one whose work did not leave, and that is a fact about the
 	// run rather than about this function's ordering.
-	delivered, derr, asked := c.delivery()
-	// A workspace is removed only when its work LEFT. It used to be removed unconditionally, so a
-	// delivery that failed — or that found nothing — destroyed the tree the work was in: not a
-	// lost push, a lost result, since the commit lives in the task's own clone and os.RemoveAll
-	// takes its object store with it. Observed once, on fourteen verified findings.
+	d, asked := c.delivery()
+	// Work that did not leave is SALVAGED into the mirror rather than left in a directory
+	// somebody has to know to look in — under `held`, because it was never authorized to go
+	// anywhere and a retry must not push it (stage.go).
+	//
+	// This covers three endings that used to be one ugly rule: a gate that refused the push, a
+	// task that failed before reaching its delivery step, and a process that died. In all three
+	// the runner has work and nobody said it could leave.
+	if !asked || (c.ws.Deliverable() && len(d.Pushed) == 0) {
+		held := c.ws.Salvage(ctx, l)
+		for _, ref := range held.Staged {
+			fmt.Fprintf(r.log, "coderunner: %s: the work did not leave; it is in this runner's "+
+				"mirror at %s\n", c.id, ref)
+		}
+		if held.Err != nil {
+			fmt.Fprintf(r.log, "coderunner: %s: salvage: %v\n", c.id, held.Err)
+		}
+		d.Loose = append(d.Loose, held.Loose...)
+	}
+	// A workspace is removed only when nothing is LOOSE in it. It used to be removed
+	// unconditionally, so a delivery that failed — or that found nothing — destroyed the tree the
+	// work was in: not a lost push, a lost result, since the commit lived only in the task's own
+	// clone. Observed once, on fourteen verified findings.
+	//
+	// Staging is what makes the ordinary answer "remove". The work is in the mirror before any
+	// push is attempted, so a failed delivery is no longer a reason to keep a checkout — only a
+	// failure to stage is, and that one is the disk rather than the network.
 	switch {
 	case r.keep:
 		fmt.Fprintf(r.log, "coderunner: %s: workspace kept at %s\n", c.id, c.ws.Root)
-	case derr != nil:
-		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — delivery failed and this is the only "+
-			"copy of the work\n", c.id, c.ws.Root)
-	case c.ws.Deliverable() && len(delivered) == 0:
-		why := "the task never reached its delivery step, or its gate refused it"
-		if asked {
-			why = "the task asked to deliver and there was nothing to push"
-		}
-		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — this environment pushes somewhere and "+
-			"nothing was delivered: %s\n", c.id, c.ws.Root, why)
+	case len(d.Loose) > 0:
+		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — %s could not be staged, so this is the "+
+			"only copy of the work\n", c.id, c.ws.Root, strings.Join(d.Loose, ", "))
 	default:
 		if err := c.ws.Remove(ctx); err != nil {
 			fmt.Fprintf(r.log, "coderunner: %s: remove workspace: %v\n", c.id, err)

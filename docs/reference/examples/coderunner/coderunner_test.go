@@ -74,12 +74,17 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	l := task.Launch{ID: "p1", Environment: "test", Provenance: task.Provenance{
 		Principal: "scott", Subject: "demo:pr:1", Chain: "review",
 	}}
-	delivered, err := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails")
-	if err != nil {
-		t.Fatalf("deliver: %v", err)
+	d := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails")
+	if d.Err != nil {
+		t.Fatalf("deliver: %v", d.Err)
 	}
-	if len(delivered) != 1 || !strings.Contains(delivered[0], "refs/heads/agent/p1") {
-		t.Fatalf("delivered %v", delivered)
+	if len(d.Pushed) != 1 || !strings.Contains(d.Pushed[0], "refs/heads/agent/p1") {
+		t.Fatalf("delivered %v", d.Pushed)
+	}
+	// Staged on the way out and dropped once the far side had it: what is left under
+	// refs/pending is exactly the work this runner holds that the world does not.
+	if len(d.Staged) != 0 {
+		t.Errorf("work is still staged after a successful delivery: %v", d.Staged)
 	}
 	// The push landed on the origin, under the ref the environment named.
 	if out := commitAt(t, origin, "refs/heads/agent/p1"); out == "" {
@@ -153,12 +158,12 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 		}
 	}
 
-	delivered, err := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing")
-	if err != nil {
-		t.Fatalf("deliver: %v", err)
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing")
+	if d.Err != nil {
+		t.Fatalf("deliver: %v", d.Err)
 	}
-	if len(delivered) != 1 || !strings.HasPrefix(delivered[0], "svc ") {
-		t.Fatalf("delivered %v — only the repository with a push target should leave", delivered)
+	if len(d.Pushed) != 1 || !strings.HasPrefix(d.Pushed[0], "svc ") {
+		t.Fatalf("delivered %v — only the repository with a push target should leave", d.Pushed)
 	}
 	if commitAt(t, libOrigin, "refs/heads/agent/p1") != "" {
 		t.Error("the reference repository received a push it never declared a target for")
@@ -214,9 +219,9 @@ func TestNoPushTargetDeliversNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "x"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	delivered, err := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done")
-	if err != nil || len(delivered) != 0 {
-		t.Fatalf("Deliver = %v, %v — a read-only environment pushes nowhere", delivered, err)
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done")
+	if d.Err != nil || len(d.Pushed) != 0 || len(d.Staged) != 0 {
+		t.Fatalf("Deliver = %+v — a read-only environment pushes nowhere and stages nothing", d)
 	}
 }
 
@@ -256,8 +261,8 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work"); err != nil {
-		t.Fatalf("deliver: %v", err)
+	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work"); d.Err != nil {
+		t.Fatalf("deliver: %v", d.Err)
 	}
 	if commitAt(t, attacker, "refs/heads/agent/p1") != "" {
 		t.Fatal("the task redirected its own push by editing .git/config — the runner's " +
@@ -539,16 +544,19 @@ func TestAgentTurnIsGatedNotSpawned(t *testing.T) {
 	}
 }
 
-// A workspace whose work did not leave is KEPT.
+// Work that could not be pushed is not lost: it is in the mirror, and the workspace is then
+// disposable.
 //
-// The first version removed unconditionally after attempting delivery, so a failed push — or a
-// delivery that found nothing — destroyed the tree the work was in. Not a lost push: a lost
-// result, because the commit lives in the task's own clone and removing it takes the object
-// store with it. Observed once, on an agent's fourteen verified findings, which is why this test
-// exists rather than a comment.
-func TestWorkspaceSurvivesAFailedDelivery(t *testing.T) {
+// The first version of this test protected a different mechanism — the workspace was KEPT on a
+// failed delivery, because the commit lived only in the task's own clone and os.RemoveAll took
+// the object store with it. Observed once, on an agent's fourteen verified findings, which is why
+// there is a test here at all. Staging keeps the same property by a better means: the work goes
+// into the runner's mirror BEFORE the push is attempted, so a delivery that fails leaves nothing
+// behind that a directory removal could destroy.
+func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	origin := initRepo(t)
-	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	mirrors := t.TempDir()
+	m := NewMirrors(mirrors, TokenAuth(""))
 
 	// Deliverable: something here was meant to leave.
 	pushes := Environment{Name: "p", Repos: []Repo{
@@ -563,34 +571,43 @@ func TestWorkspaceSurvivesAFailedDelivery(t *testing.T) {
 		t.Error("a read-only environment claims it delivers")
 	}
 
-	// And the real path: a push target that cannot be reached must leave the tree behind.
-	broken := Environment{Name: "broken", Repos: []Repo{
-		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
-	}}
-	ws, err := m.Open(context.Background(), "p1", broken, t.TempDir())
+	ws, err := m.Open(context.Background(), "p1", pushes, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("hours of it\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Break the remote out from under it, the way an unreachable forge would.
+	// Break the remote out from under it, the way an unreachable forge would. The MIRROR is
+	// still here — it is this runner's own disk — which is the whole point.
 	if err := os.RemoveAll(origin); err != nil {
 		t.Fatal(err)
 	}
-	delivered, derr := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work")
-	if derr == nil {
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work")
+	if d.Err == nil {
 		t.Fatal("expected the push to fail once its remote was gone")
 	}
-	if len(delivered) != 0 {
-		t.Fatalf("delivered %v despite the failure", delivered)
+	if len(d.Pushed) != 0 {
+		t.Fatalf("delivered %v despite the failure", d.Pushed)
 	}
-	// The decision finish makes, asserted here because finish itself needs a live task.
-	if !(derr != nil || (ws.Deliverable() && len(delivered) == 0)) {
-		t.Fatal("a failed delivery would be removed")
+	want := stagedRef(stagePending, "p1", "svc")
+	if len(d.Staged) != 1 || d.Staged[0] != want {
+		t.Fatalf("Staged = %v, want [%s] — the work has nowhere to wait", d.Staged, want)
 	}
-	if _, err := os.Stat(filepath.Join(ws.Root, "svc", "work.txt")); err != nil {
-		t.Fatalf("the work is not where it was left: %v", err)
+	// pending, not held: this delivery was authorized, so a retry may complete it.
+	if !strings.Contains(d.Staged[0], "refs/pending/") {
+		t.Errorf("approved work waits under %q, which a retry will not sweep", d.Staged[0])
+	}
+	// Nothing loose, so the workspace can go — which is the improvement over keeping it.
+	if len(d.Loose) != 0 {
+		t.Fatalf("Loose = %v after a successful stage", d.Loose)
+	}
+	// And the commit really is in the mirror, reachable by that ref, after the workspace is gone.
+	if err := ws.Remove(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if msg := commitAt(t, m.dirFor(origin), want); !strings.Contains(msg, "Verse-Task: p1") {
+		t.Fatalf("the mirror does not hold the work at %s: %q", want, msg)
 	}
 }
 

@@ -25,7 +25,9 @@
 //     runner serves to verse — so this process is a proxy and the sandbox is drawn once, around
 //     everything the task does. See hop.go (this side) and taskproc.go (the other).
 //   - Delivery, by the runner and not by the agent. The task never runs `git push`: it cannot
-//     reach the credential, so the push is the runner's act and carries provenance trailers.
+//     reach the credential, so the push is the runner's act and carries provenance trailers. It
+//     is also an ACTION of the task — gated, narrated, and before terminal — and the work is
+//     staged in the mirror on its way out, so a push that fails loses nothing. See stage.go.
 //   - Two drivers. `llm` is harness.Build rooted at the workspace, every action gated and
 //     narrated; anything else names a program under `agents:`, run through ONE subprocess path.
 //     A program that declares how to resume gets steering and answer-contract repair; one that
@@ -37,6 +39,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
@@ -127,6 +130,11 @@ func main() {
 		r.Shutdown()
 		os.Exit(0)
 	}()
+
+	// Anything this runner staged and never delivered gets another try now, before it serves
+	// anything: a pod that died holding approved work should not wait for the next task on that
+	// repository to notice. Only `pending` is swept — `held` was never authorized to leave.
+	r.reflectAll(context.Background())
 
 	log.Printf("coderunner listening on %s, state under %s — install it with: verse runner add <kind>:<name> http://<host>%s",
 		*addr, root, *addr)

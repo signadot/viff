@@ -67,6 +67,11 @@ type Workspace struct {
 	Root   string // the directory holding every checkout: the agent's working directory
 	Branch string // agent/<task id> — the same in every repository
 	Trees  []*Tree
+
+	// mirrors is where work waits on its way out (stage.go). Set by Open and nil in a Reopen:
+	// the task process holds neither the mirrors nor the credential, so the side that cannot
+	// deliver also cannot stage, which is one fact rather than two rules.
+	mirrors *Mirrors
 }
 
 // Tree is one repository's checkout inside a workspace.
@@ -89,7 +94,8 @@ func (w *Workspace) Primary() *Tree {
 	return w.Trees[0]
 }
 
-// Mirrors keeps one bare mirror per repository, fetched before a task clones off it.
+// Mirrors keeps one bare mirror per repository, fetched before a task clones off it — and, since
+// staging, the place a task's work waits on its way out (stage.go).
 //
 // It is per REPOSITORY rather than per environment so two environments on one repo at different
 // bases share it — and the lock is per repository too, because two concurrent fetches into one
@@ -158,8 +164,15 @@ func (m *Mirrors) ensure(ctx context.Context, remote string) (string, error) {
 		if r, err = git.PlainInit(dir, true); err != nil {
 			return "", fmt.Errorf("mirror %s: %w", remote, err)
 		}
-		// The mirror holds UPSTREAM refs only — task branches live in each task's own clone —
-		// so `refs/heads/*` here is unambiguous and a prune cannot reach anybody's work.
+		// `refs/heads/*` here mirrors upstream exactly — task branches live in each task's own
+		// clone — so this refspec is unambiguous.
+		//
+		// It is also what makes the STAGED namespaces safe, and that is now the load-bearing
+		// half. go-git's pruneRemotes removes only refs matching the reverse of a configured
+		// refspec, so `refs/pending/*` and `refs/held/*` (stage.go) are outside everything this
+		// prunes. Put work under `refs/heads/` instead and the next spawn deletes it without a
+		// word — which this runner has already done once, to the task branches of every running
+		// task.
 		if _, err = r.CreateRemote(&config.RemoteConfig{
 			Name: "origin", URLs: []string{remote},
 			Fetch: []config.RefSpec{"+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"},
@@ -236,7 +249,7 @@ func (m *Mirrors) Open(ctx context.Context, id string, env Environment, worktree
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}
-	w := &Workspace{Env: env, Root: root, Branch: branch}
+	w := &Workspace{Env: env, Root: root, Branch: branch, mirrors: m}
 	for _, r := range env.Repos {
 		t, err := m.open(ctx, r, branch, root)
 		if err != nil {
@@ -402,82 +415,60 @@ func (t *Tree) PushTarget(branch string) string {
 	return strings.ReplaceAll(t.Repo.Push, "$task", strings.TrimPrefix(branch, "agent/"))
 }
 
-// Deliver commits whatever the task changed and pushes it, and is the ONLY thing here that
-// touches a remote. The task never does: it runs as something that cannot reach the credential,
-// and `git` need not be on its PATH — or in the image — at all.
+// commitWork commits whatever the task produced and reports whether there is anything to deliver.
 //
-// The trailers are the attribution channel. A push made under a shared bot credential says
-// nothing at the far end about who it was for, so the only externally checkable link back into
-// the verse is what this writes down — and it is checkable, by anyone who can read both the
-// repository and the verse. See docs/working/attribution.md.
-func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result string) ([]string, error) {
-	var delivered []string
-	var errs []error
-	for _, t := range w.Trees {
-		target, err := t.deliver(ctx, w.Branch, l, result)
-		if err != nil {
-			// One repository failing does not abandon the others. A workspace spanning four
-			// repositories where the third cannot push is three deliveries and one problem, and
-			// dropping the other three turns a partial failure into a total one.
-			errs = append(errs, err)
-			continue
-		}
-		if target != "" {
-			delivered = append(delivered, t.Repo.Name+" -> "+target)
-		}
-	}
-	return delivered, errors.Join(errs...)
-}
-
-func (t *Tree) deliver(ctx context.Context, branch string, l task.Launch, result string) (string, error) {
-	target := t.PushTarget(branch)
-	if target == "" {
-		return "", nil // nothing leaves: a reference repository, stated as one
-	}
+// It is the first half of what used to be one `deliver`, and splitting it is what lets the work be
+// STAGED before it is sent (stage.go): the commit is local and always safe, the push is neither.
+//
+// The trailers are the attribution channel. A push made under a shared bot credential says nothing
+// at the far end about who it was for, so the only externally checkable link back into the verse is
+// what this writes down — and it is checkable, by anyone who can read both the repository and the
+// verse. See docs/working/attribution.md.
+func (t *Tree) commitWork(l task.Launch, result string) (bool, error) {
 	// What counts as work is "the branch moved OR the tree is dirty", not "the tree is dirty".
 	//
 	// The difference is not pedantry: an agent that commits its own edits — which a coding
 	// agent will do, told not to or otherwise — leaves a CLEAN tree with its work sitting in
 	// commits. Testing only for dirt read that as "nothing happened", delivered nothing, and
-	// (before Runner.finish learned better) removed the workspace, taking the only copy with
-	// it. That is the exact shape of the first real result this runner produced and lost.
+	// (before the workspace rule learned better) removed the workspace, taking the only copy
+	// with it. That is the exact shape of the first real result this runner produced and lost.
 	dirty := len(t.changed()) > 0
 	moved := false
 	if head, err := t.repo.Head(); err == nil {
 		moved = head.Hash().String() != t.Head // Head is the sha this checkout started from
 	}
 	if !dirty && !moved {
-		return "", nil // genuinely untouched; an empty commit would be a lie about work
-	}
-	wt, err := t.repo.Worktree()
-	if err != nil {
-		return "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, nil // genuinely untouched; an empty commit would be a lie about work
 	}
 	if !dirty {
-		// Already committed by whatever did the work: push it as it stands rather than putting
+		// Already committed by whatever did the work: take it as it stands rather than putting
 		// an empty commit on top purely to carry trailers.
 		//
 		// The cost is real and is the reason a prompt should still say "do not commit": the
 		// trailers are this runner's only attribution channel out of the verse, and a commit
 		// the agent wrote carries none of them. Work preserved without provenance beats work
 		// destroyed, which is the trade being made here and not a preference.
-		return t.push(ctx, branch, target)
+		return true, nil
+	}
+	wt, err := t.repo.Worktree()
+	if err != nil {
+		return false, fmt.Errorf("repo %s: %w", t.Repo.Name, err)
 	}
 	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
-		return "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, fmt.Errorf("repo %s: %w", t.Repo.Name, err)
 	}
 	// The committer identity is the RUNNER's, and it says so. It is not the principal's: the
 	// runner made this commit on somebody's behalf, and writing their name into the author
 	// field would assert something no forge can check. Who it was for is a trailer.
 	sig := &object.Signature{Name: "verse coderunner", Email: "coderunner@invalid", When: time.Now()}
 	if _, err := wt.Commit(commitMessage(l, result), &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
-		return "", fmt.Errorf("repo %s: commit: %w", t.Repo.Name, err)
+		return false, fmt.Errorf("repo %s: commit: %w", t.Repo.Name, err)
 	}
-	return t.push(ctx, branch, target)
+	return true, nil
 }
 
 // push sends this repository's task branch to the ref the environment named.
-func (t *Tree) push(ctx context.Context, branch, target string) (string, error) {
+func (t *Tree) push(ctx context.Context, branch, target string) error {
 	// Force, and the reason is that the branch is namespaced by the TASK ID: this runner is its
 	// only writer by construction, so the only thing a force can overwrite is an earlier attempt
 	// of the same task, which is what a retried spawn means.
@@ -503,9 +494,9 @@ func (t *Tree) push(ctx context.Context, branch, target string) (string, error) 
 	if err := remote.PushContext(ctx, &git.PushOptions{
 		RemoteName: deliveryRemote, RefSpecs: []config.RefSpec{spec}, Force: true, Auth: t.auth,
 	}); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return "", fmt.Errorf("repo %s: push %s: %w", t.Repo.Name, target, err)
+		return fmt.Errorf("repo %s: push %s: %w", t.Repo.Name, target, err)
 	}
-	return target, nil
+	return nil
 }
 
 // deliveryRemote is the in-memory remote a push is made through. It is not a remote in any
