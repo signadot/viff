@@ -6,7 +6,7 @@ example in a fenced block goes stale the first time a signature moves and nobody
 | | |
 |---|---|
 | [runner/](runner/main.go) | a verse runner: the smallest thing that serves the task-control contract, with the two functions a drive changes marked |
-| [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, an LLM loop or an agent binary in it, and the runner — not the agent — pushing the result |
+| [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, an LLM loop or an external program in it, and the runner — not the agent — pushing the result |
 | [source/](source/main.go) | a verse source: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
 
 The two runners are a ladder rather than one program trying to be both: `runner/` is the

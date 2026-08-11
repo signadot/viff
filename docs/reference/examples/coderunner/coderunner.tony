@@ -9,6 +9,13 @@
 
 default: local
 
+# External programs this runner can drive, named by `driver:` on a spawn.
+agents:
+  claude:
+    argv: [claude, "-p", "$prompt", "--output-format", json, "--permission-mode", bypassPermissions]
+    resume: ["--resume", "$session"]
+    output: json
+
 environments:
 
 # The one you can run right now: this checkout, nothing pushed anywhere.

@@ -14,6 +14,22 @@ import (
 // absent from what an environment would list, being the loop's own rather than the work's.
 var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent"}
 
+// driverLLM is the one driver this runner implements itself. Every other driver name selects a
+// program from `agents:` — see Command.
+const driverLLM = "llm"
+
+func agentNames(m map[string]Command) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		return []string{"none declared"}
+	}
+	return out
+}
+
 // Config is the runner's own file. It is NOT an entity: verse installs a runner as a url and
 // nothing else, deliberately, so what a runner can be asked for is the runner's to declare and
 // the operator's to deploy. See docs/runners.md.
@@ -32,6 +48,11 @@ type Config struct {
 	// whatever PORTKEY_* happens to be in the runner's environment. That is the ambient
 	// credential this design refuses everywhere else — named here instead.
 	LLM LLM `tony:"field=llm,omitzero"`
+	// Agents are the external programs this runner can drive, by the name a spawn writes in
+	// `driver:`. `claude` is an entry here rather than a type in the code, which is the point:
+	// nothing in this runner knows what a coding agent is, only how to run a program and read
+	// what it said.
+	Agents map[string]Command `tony:"field=agents,omitzero"`
 }
 
 // LLM names where the model credentials live. Env-var NAMES rather than values, so a config
@@ -142,9 +163,12 @@ func LoadConfig(path string) (*Config, error) {
 		case len(e.Repos) == 0:
 			return nil, fmt.Errorf("coderunner: environment %q has no repos", e.Name)
 		}
-		if d := e.Driver; d != "" && d != "llm" && d != "claude" {
-			return nil, fmt.Errorf("coderunner: environment %q wants driver %q (want llm or claude)",
-				e.Name, d)
+		if d := e.Driver; d != "" && d != driverLLM {
+			if _, ok := c.Agents[d]; !ok {
+				return nil, fmt.Errorf("coderunner: environment %q wants driver %q, which is "+
+					"neither %q nor an agent this runner declares (%s)",
+					e.Name, d, driverLLM, strings.Join(agentNames(c.Agents), ", "))
+			}
 		}
 		// A tool the harness does not have fails the spawn rather than shrinking the set in
 		// silence — the same rule harness.selectTools applies, checked here so a typo in a
@@ -176,6 +200,14 @@ func LoadConfig(path string) (*Config, error) {
 			dirs[r.Name] = true
 		}
 		seen[e.Name] = true
+	}
+	for name, a := range c.Agents {
+		if len(a.Argv) == 0 {
+			return nil, fmt.Errorf("coderunner: agent %q has no argv — there is nothing to run", name)
+		}
+		if o := a.Output; o != "" && o != "text" && o != "json" {
+			return nil, fmt.Errorf("coderunner: agent %q reads output as %q (want text or json)", name, o)
+		}
 	}
 	if c.Default != "" && !seen[c.Default] {
 		return nil, fmt.Errorf("coderunner: default environment %q is not declared", c.Default)

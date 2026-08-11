@@ -8,6 +8,17 @@
 
 default: verse-docs
 
+# The external programs this runner can drive, by the name a spawn writes in `driver:`. Nothing
+# in the runner knows what a coding agent is — only how to run a program and read what it said.
+agents:
+  claude:
+    argv: [claude, "-p", "$prompt", "--output-format", json, "--permission-mode", bypassPermissions]
+    # How a later turn continues the same conversation. Without it a program gets exactly one
+    # turn, so a steer has nowhere to go and an answer that misses its contract cannot be
+    # repaired.
+    resume: ["--resume", "$session"]
+    output: json
+
 # Where the llm driver's model credentials come from. NAMES of environment variables, not
 # values: this file is read and copied, and verse's own configured creds live in another
 # process where this runner cannot see them.

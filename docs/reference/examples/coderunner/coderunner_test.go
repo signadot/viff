@@ -500,7 +500,7 @@ func commitAt(t *testing.T, repoDir, ref string) string {
 	return c.Message
 }
 
-// An agent turn is gated as a delegation and is NOT a sub-task spawn.
+// A command turn is gated as a delegation and is NOT a sub-task spawn.
 //
 // The two are one field apart and only one of them works here. `ToolUse.CallAgent` is not a
 // label saying "this delegates" — it is the instruction that makes the loop route the action to
@@ -511,7 +511,7 @@ func commitAt(t *testing.T, repoDir, ref string) string {
 // Setting it cost every task a terminal failure — "no spawn factory configured" — the instant
 // its gate was approved, which no test caught because the tests stopped at the gate.
 func TestAgentTurnIsGatedNotSpawned(t *testing.T) {
-	d := &claudeDriver{prompt: "work"}
+	d := &commandDriver{name: "claude", prompt: "work"}
 	tu := d.turn("do the thing")
 
 	if tu.CallAgent != nil {
@@ -647,5 +647,52 @@ func TestDriveEnvironmentOffersNoShell(t *testing.T) {
 		if !slices.Contains(e.Tools, want) {
 			t.Errorf("the floor withholds %s, which the work needs", want)
 		}
+	}
+}
+
+// A command that declares no way to resume gets one turn, and says so rather than dropping a
+// steer or looping on a contract it can never repair.
+//
+// Both needs are the same capability, which is why re-invoking is the one thing NOT folded away
+// when the claude driver became a configured command: a driver that runs once cannot honour a
+// steer (nowhere to put it) and cannot repair an answer (cannot ask again).
+func TestCommandWithoutResumeCannotBeSteered(t *testing.T) {
+	d := &commandDriver{name: "oneshot", cmd: Command{Argv: []string{"true"}}, started: true}
+	d.Steer([]string{"try the other thing"})
+	_, more, err := d.Next(context.Background(), task.StepResult{})
+	if more {
+		t.Fatal("a command with no resume asked for another turn it cannot take")
+	}
+	if err == nil || !strings.Contains(err.Error(), "no way to resume") {
+		t.Fatalf("err = %v — a dropped steer must be reported, not silent", err)
+	}
+
+	// And with resume declared, the steer becomes the next turn.
+	d2 := &commandDriver{name: "agent", cmd: Command{
+		Argv: []string{"x"}, Resume: []string{"--resume", "$session"},
+	}, started: true}
+	d2.Steer([]string{"try the other thing"})
+	tu, more, err := d2.Next(context.Background(), task.StepResult{})
+	if err != nil || !more {
+		t.Fatalf("a resumable command dropped a steer: more=%v err=%v", more, err)
+	}
+	if txt, _ := tu.Input["text"].(string); !strings.Contains(txt, "try the other thing") {
+		t.Errorf("the next turn does not carry the steer: %q", txt)
+	}
+}
+
+// argv substitution is the whole of what this runner knows about any particular program.
+func TestCommandArgv(t *testing.T) {
+	c := Command{
+		Argv:   []string{"claude", "-p", "$prompt", "--output-format", "json"},
+		Resume: []string{"--resume", "$session"},
+	}
+	first := c.argv("do the thing", "")
+	if !slices.Equal(first, []string{"claude", "-p", "do the thing", "--output-format", "json"}) {
+		t.Errorf("first turn argv = %v", first)
+	}
+	next := c.argv("and now this", "sess-1")
+	if !slices.Contains(next, "--resume") || !slices.Contains(next, "sess-1") {
+		t.Errorf("resumed argv = %v", next)
 	}
 }

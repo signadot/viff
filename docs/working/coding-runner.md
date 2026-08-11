@@ -11,7 +11,7 @@ what this one needs a name for, and the descriptor is where the name is publishe
 A second example under `docs/reference/examples/coderunner`: a runner that serves the
 verse-facing [task-control](../task-control.md) contract, gives each task its own git checkouts,
 and runs the work in it — either by the [LLM harness](https://github.com/signadot/verse/tree/main/task/harness) already in the tree, or
-by invoking a coding agent binary such as Claude Code.
+by invoking an external program — a coding agent binary, a script — named in its config.
 
 **A second example rather than a bigger first one.** The existing sample
 ([reference/examples/runner](../reference/examples/runner/main.go)) is a hundred and thirty
@@ -290,35 +290,41 @@ is a heuristic over the last paragraph — a message merely ending in something 
 so every repository in it is reachable by a relative path.
 
 **`llm`** is `harness.Build` with `Root` set to the workspace — the loop already in the tree,
-unchanged, with `read_file` / `list_dir` / `write_file` / `run_bash` confined to it.
+unchanged, with `read_file` / `list_dir` / `write_file` / `run_bash` confined to it. Every action
+is one the vector sees, gates and narrates.
 
-**`claude`** invokes the agent binary. The shape that makes it a driver rather than a shell-out:
+**Everything else is a `command`**: an external program named in the runner's config under
+`agents:`, invoked with the prompt, its output taken as the result. A coding agent binary is one
+such program; so is a script.
 
-- **One action per turn.** `Next` returns a single `ToolUse` carrying the prompt; the executor
-  runs the binary in the workspace and returns its final message. verse gates *the invocation*,
-  not the agent's internal steps — the `CallAgent` verb and `AgentRes(name)` resource already
-  exist for precisely this ("the child may be a foreign one-shot (opaque leaf) or a recursive
-  invocation of our own loop (transparent frame)"), and this is the opaque leaf.
-- **Multi-turn by session resume.** After a turn completes, `Next` returns another invocation
-  resuming the session when there is something to say to it, and `false` when there is not. That
-  is what makes two things work that a single `claude -p` cannot:
-  - **Steers.** `task.Steerable` delivers drained instructions at the boundary before `Next`, so
-    a `verse task say` lands as the next turn of the same session. A single-shot driver would
-    have to drop them, and a dropped steer is a control call that reported success and did
-    nothing.
-  - **The answer contract.** `task.Launch.Answer` is unambiguous that a runtime whose driver
-    cannot enforce a contract must *fail the spawn* rather than run it unchecked. With resume it
-    can enforce it: `answer.Contract.Check` on the final message, `Failure.Repair` fed back as
-    the next turn, bounded by `Contract.Repairs()` — the same loop `llmDriver.checkAnswer`
-    already runs, against a different back end.
-- **Cancel is process death.** `exec.CommandContext` kills the turn; control is applied
-  synchronously, which is what the contract assumes of anything behind a url and what the sample
-  runner's header tells you not to break.
-- **Narration onto the read plane.** The agent's streaming output maps onto `exec` frames, so
-  `verse task get` shows which commands ran inside the foreign agent — the observability that a
-  containment-by-absence design (below) otherwise gives up.
+That is a fold, and it replaced a driver called `claude`. From verse's side the two shapes were
+identical — one opaque action, a subprocess, an exit status, some output — and keeping them
+apart meant **two subprocess spawners**, so two places to apply containment, build an
+environment and choose a working directory. The duplication had already cost something: the
+`Confiner` was applied on the agent path and not on the harness's `run_bash`, so the one tool
+that can leave a workspace was the one not covered. One path is one place to get that right, and
+`claude` is now a config entry rather than a type — nothing in the runner knows what a coding
+agent is.
 
-`Result()` is the agent's final message, which is what a completed task's `result` carries and
+What is deliberately **not** folded away is the ability to RE-INVOKE. A driver that runs once
+and completes cannot honour a steer (nowhere to put it) and cannot repair an answer that missed
+its contract (cannot ask again). Those are the same capability, and it is generic rather than
+anything to do with agents — a `resume:` in the config, and a program that can continue a session
+gets steering and contract repair for free. A program that declares none gets one turn and
+**says so** when a steer arrives, rather than dropping it.
+
+The rest of what the command driver does is the shape any opaque leaf needs:
+
+- **One action per turn.** verse gates the invocation, not what the program does inside it.
+  Nothing can gate inside a subprocess, and saying so is better than implying a supervision that
+  is not there — the `CallAgent` verb and `AgentRes(name)` exist for exactly this.
+- **Cancel is process death.** `exec.CommandContext` kills the turn, so control is applied
+  synchronously, which is what the contract assumes of anything behind a url.
+- **`CallAgent` on the ToolUse is left nil**, because that field is not a label: it is the
+  instruction that routes an action to the loop's child-spawn path, which needs a `SpawnFunc`
+  this runner does not have.
+
+`Result()` is the program's last output, which is what a completed task's `result` carries and
 what a charter's `$result` derefs — so the frame advice in `harness.defaultFrame` about the final
 message being the answer applies here too, and has to be passed to the binary rather than assumed.
 

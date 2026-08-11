@@ -1,6 +1,6 @@
 // Command coderunner is a verse runner that gives each task its own git checkout and runs an
-// agent in it — either the LLM harness in this tree or a coding agent binary such as Claude
-// Code.
+// agent in it — either the LLM harness in this tree, or an external program named in its config
+// (a coding agent binary such as Claude Code, or a script).
 //
 //	go run ./docs/reference/examples/coderunner -config coderunner.tony -addr :9802
 //	verse runner add pool:code http://localhost:9802
@@ -23,8 +23,10 @@
 //     go-git — no git binary, and no ambient credential. See workspace.go.
 //   - Delivery, by the runner and not by the agent. The task never runs `git push`: it cannot
 //     reach the credential, so the push is the runner's act and carries provenance trailers.
-//   - Two drivers. `llm` is harness.Build rooted at the workspace; `claude` runs the agent
-//     binary multi-turn over a resumed session, so steers and answer contracts work.
+//   - Two drivers. `llm` is harness.Build rooted at the workspace, every action gated and
+//     narrated; anything else names a program under `agents:`, run through ONE subprocess path
+//     so containment is applied in one place. A program that declares how to resume gets
+//     steering and answer-contract repair; one that does not gets a turn and says so.
 //   - A containment point per task, refused rather than degraded when it cannot be built.
 //
 // [examples/runner]: ../runner/main.go
@@ -133,8 +135,10 @@ func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentRe
 	if driver == "" {
 		driver = orDefault(env.Driver, "llm")
 	}
-	if driver != "llm" && driver != "claude" {
-		return task.NewFailed(l.ID, reg, fmt.Sprintf("this runner has no driver %q (want llm or claude)", driver))
+	if _, isAgent := r.cfg.Agents[driver]; driver != driverLLM && !isAgent {
+		return task.NewFailed(l.ID, reg, fmt.Sprintf(
+			"this runner has no driver %q — it has %q and the agents it declares: %s",
+			driver, driverLLM, strings.Join(agentNames(r.cfg.Agents), ", ")))
 	}
 
 	ws, err := r.mirrors.Open(context.Background(), l.ID, env, r.workspaces)
@@ -150,7 +154,7 @@ func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentRe
 
 	var t *task.Task
 	switch driver {
-	case "llm":
+	case driverLLM:
 		// The harness, rooted at the workspace root so every repository is reachable from it.
 		// Frame, tools, answer and vector come from the spawn, exactly as they do for an
 		// in-process task: the seam is complete or the guarantee is local-only.
@@ -173,8 +177,8 @@ func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentRe
 			LLMKey:        os.Getenv(r.cfg.LLM.APIKeyEnv),
 			LLMVirtualKey: os.Getenv(r.cfg.LLM.VirtualKeyEnv),
 		})
-	case "claude":
-		t, err = r.buildClaude(l, reg, ws, env, point)
+	default:
+		t, err = r.buildCommand(driver, l, reg, ws, env, point)
 		if err != nil {
 			_ = ws.Remove(context.Background())
 			return task.NewFailed(l.ID, reg, err.Error())
@@ -188,7 +192,9 @@ func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentRe
 	return t
 }
 
-func (r *Runner) buildClaude(l task.Launch, reg *task.Registry, ws *Workspace, env Environment, point Point) (*task.Task, error) {
+// buildCommand builds a task that runs an external program — an agent binary, a script,
+// anything the config names under `agents:`. One path for every subprocess this runner starts.
+func (r *Runner) buildCommand(name string, l task.Launch, reg *task.Registry, ws *Workspace, env Environment, point Point) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -202,19 +208,21 @@ func (r *Runner) buildClaude(l task.Launch, reg *task.Registry, ws *Workspace, e
 	}
 	vec := l.Vector
 	if vec == nil {
-		// One action per turn, and that action is a delegation to a foreign agent. ASK is
-		// the honest default for it — verse cannot see inside, so the invocation is the only
-		// thing there is to decide about.
+		// One action per turn, and that action hands the work to another program. ASK is the
+		// honest default for it — verse cannot see inside a subprocess, so the invocation is
+		// the only thing there is to decide about, which is the whole difference from the
+		// `llm` driver above and the reason both exist.
 		vec = &task.Vector{Default: task.Auto, Gates: []task.Gate{{
 			Name: "agent", Mode: task.Ask,
 			Match: task.GateMatch{Verbs: []task.Verb{task.CallAgent}},
 		}}}
 	}
-	d := &claudeDriver{
+	d := &commandDriver{
+		name: name, cmd: r.cfg.Agents[name],
 		prompt: l.Prompt, frame: l.Frame, env: env, point: point, conf: r.conf,
 		dir: ws.Root, contract: contract,
 	}
-	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, &claudeExec{d: d})
+	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, &commandExec{d: d})
 	t.SetLog(r.log)
 	d.emit = t.Emit
 	return t, nil

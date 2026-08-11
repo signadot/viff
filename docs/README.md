@@ -68,7 +68,7 @@ drive a local agent, a remote one, and a human.
 | | [Runners](runners.md) — where work runs: installing one, naming it on a spawn, and what removing one does to the work on it |
 | | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a task records |
 | | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
-| | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, an LLM loop or an agent binary in it, and the runner pushing the result |
+| | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, an LLM loop or an external program in it, and the runner pushing the result |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | | [External tasks](external-tasks.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
