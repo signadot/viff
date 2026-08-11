@@ -207,6 +207,14 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 
 	cmd := exec.Command(r.self, "-task")
 	cmd.Stdin = bytes.NewReader(blob)
+	// The environment the whole task tree gets, built from the allowlist rather than inherited.
+	//
+	// This is where the credential split is actually enforced, and leaving it out was a hole
+	// rather than an omission: the runner reads its git token out of its own environment, so a
+	// child started with the default environment inherits it — and the harness's `run_bash` sets
+	// no env of its own, so the task's SHELL had the push credential. An allowlist applied only
+	// to the agent binary was never a floor; applied to the process that hosts everything, it is.
+	cmd.Env = buildEnv(env.Env, env.Commands)
 	// One writer for both streams, so a line on stderr cannot land inside a line on stdout.
 	out := tagged(r.log, id)
 	cmd.Stdout, cmd.Stderr = out, out

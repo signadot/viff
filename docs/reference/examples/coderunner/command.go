@@ -301,8 +301,13 @@ func (d *commandDriver) read(stdout []byte, stderr string, runErr error) (comman
 // an allowlist, so this is a floor when `filesystem.scope` is `private` and a convention
 // otherwise. Stated here rather than discovered, because a list that looks like a permission and
 // is not is worse than no list.
+// It NEVER returns nil, and that is not a style choice. `exec.Cmd.Env == nil` means "inherit
+// os.Environ()", so an environment that declared no passthrough — or whose variables all happened
+// to be unset — got the opposite of what it asked for: the whole of the runner's environment,
+// including the git token, handed to the task. A list that is a floor when non-empty and an open
+// door when empty is worse than no list, and the comment above claimed the opposite.
 func buildEnv(passthrough, commands []string) []string {
-	var env []string
+	env := []string{}
 	for _, name := range passthrough {
 		if v, ok := lookupEnv(name); ok {
 			env = append(env, name+"="+v)

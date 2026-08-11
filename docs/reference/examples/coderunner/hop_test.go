@@ -386,3 +386,78 @@ func TestTheLLMDriverRunsInTheChildToo(t *testing.T) {
 		t.Error("the failure crossed the hop with nothing to say about it")
 	}
 }
+
+// The push credential does not reach the task, and the mechanism is the process boundary rather
+// than a variable somebody remembered to strip.
+//
+// The runner reads its git token out of its OWN environment, so a child started with the default
+// environment inherits it — and `exec.Cmd.Env == nil` means inherit, which is what an empty
+// allowlist produced. The harness's run_bash sets no env either, so the leak reached the task's
+// shell. Two nils, one hole.
+func TestTheTaskEnvironmentIsBuiltNotInherited(t *testing.T) {
+	t.Setenv("CODERUNNER_GIT_TOKEN", "ghp-not-for-the-task")
+	t.Setenv("ALLOWED_ONE", "yes")
+
+	// An environment that declares nothing gets NOTHING — not everything.
+	if env := buildEnv(nil, nil); env == nil {
+		t.Fatal("an empty allowlist yields a nil env, which exec reads as `inherit everything` — " +
+			"so the task gets the runner's whole environment including the push credential")
+	}
+	if got := len(buildEnv(nil, nil)); got != 0 {
+		t.Errorf("an empty allowlist yielded %d variables", got)
+	}
+	// And one that declares a name gets that name and no other.
+	env := buildEnv([]string{"ALLOWED_ONE"}, nil)
+	if len(env) != 1 || env[0] != "ALLOWED_ONE=yes" {
+		t.Fatalf("allowlist produced %v", env)
+	}
+	for _, kv := range env {
+		if strings.Contains(kv, "ghp-not-for-the-task") {
+			t.Fatal("the push credential is in the task's environment")
+		}
+	}
+}
+
+// End to end: a variable the environment did not name is not there when the agent looks.
+func TestASecretOutsideTheAllowlistDoesNotReachTheAgent(t *testing.T) {
+	fastLifecycle(t)
+	t.Setenv("CODERUNNER_GIT_TOKEN", "ghp-not-for-the-task")
+	origin := initRepo(t)
+	r := testRunner(t, &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}},
+			Driver: "sh", Env: []string{"PATH"},
+		}},
+		Agents: map[string]Command{"sh": {Argv: []string{"/bin/sh", "-c", "env"}}},
+	})
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "t8", Prompt: "print your environment", Vector: &task.Vector{Default: task.Auto},
+	}, nil)
+	if st := awaitTerminal(t, h); st != task.Done {
+		t.Fatalf("task ended %s (%s)", st, h.Err())
+	}
+	if strings.Contains(h.Result(), "ghp-not-for-the-task") {
+		t.Errorf("the agent can read the runner's push credential:\n%s", h.Result())
+	}
+	// The agent's own environment is rebuilt by the command driver, so the check above would pass
+	// even if the PROCESS around it were dirty — and that process is what the harness's run_bash
+	// inherits. So assert the boundary itself, which is the thing that makes this a floor for
+	// every driver rather than for one of them.
+	c := r.childOf("t8")
+	if c == nil {
+		t.Fatal("no child")
+	}
+	if c.cmd.Env == nil {
+		t.Fatal("the task process was started with a nil env, which exec reads as `inherit " +
+			"everything` — the push credential is in the task's process tree")
+	}
+	for _, kv := range c.cmd.Env {
+		if strings.Contains(kv, "ghp-not-for-the-task") {
+			t.Errorf("the task process holds the runner's push credential: %s", kv)
+		}
+	}
+}
