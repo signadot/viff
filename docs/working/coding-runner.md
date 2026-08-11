@@ -661,14 +661,15 @@ something the runner arranges.
   wrapping can be complete — but a bwrapped child running the loop contains `run_bash` by
   construction. The question was the wrong shape; what is left of it is building the
   parent↔child hop.
-- **`safePath` does not resolve symlinks.** It rejects `../..` traversal and allows a write
-  *through* a symlink inside the root — demonstrated: `write_file` to `link/pwned` writes
-  outside it. That matters because a workspace is a git checkout and git checks symlinks out as
-  symlinks, so a repository carrying one hands the file tools an escape with no shell involved.
-  The floor holds today only by conjunction: no tool offered can *create* a symlink, **and** no
-  repository in use ships one. The fix is to resolve the deepest existing ancestor and require
-  that to be inside the root, since the leaf may not exist yet for a write. It is a bug in
-  `task/harness` rather than in this example, and reaches `verse up --root` too.
+- ~~`safePath` does not resolve symlinks.~~ **Fixed** in `task/harness`. It rejected `../..` and
+  allowed a write *through* a symlink inside the root — `write_file` to `link/pwned` wrote
+  outside it, which mattered because a workspace is a git checkout and git checks symlinks out
+  as symlinks, so a repository carrying one was an escape needing no shell. It now resolves the
+  deepest existing ancestor (a write names a file that does not exist yet) and the root as well
+  (`/var` is `/private/var`, so resolving one side only would refuse every legitimate write).
+  The race is not closed and says so: a symlink planted between the check and the open would
+  still be followed, which needs an `openat2`/`O_NOFOLLOW` walk rather than check-then-open, and
+  is unreachable through the tools this package offers because none of them creates a symlink.
 - **Credential form.** A token in the runner's environment, a git credential helper, or an SSH
   agent socket — differing in what a compromised runner process leaks, and all of them equal from
   the *task's* side, which cannot reach any of them.
