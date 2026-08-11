@@ -489,6 +489,84 @@ the work with a weaker floor than the charter named, which is undetectable from 
 which is the direction that costs. A refused spawn is a mechanism: it comes back as a failed
 handle carrying the runner's own words, onto the flow.
 
+### The task should be a process, not a call
+
+The containment above wraps whatever the *command* driver spawns. It reaches nothing the `llm`
+driver does, and that asymmetry is bad in the direction that matters: `harness.Config` has no
+exec hook and `fsExec.runBash` calls `exec.CommandContext` inside the harness package, in the
+runner's own process. So **the more supervisable driver is the less contained one** — per-action
+gates and narration, and no kernel floor — which is why the drive's environment withholds
+`run_bash` rather than because a docs task happens not to need it. Today you can have
+verification or containment, not both, and for a coding runner that is eventually fatal, since
+edit-and-verify is the loop.
+
+Wrapping each tool the harness might spawn is the obvious fix and the wrong one. The complete
+version is to stop running the loop in-process:
+
+```
+verse ──HTTP──▶ coderunner (parent)        credential, network, delivery, mirrors
+                     │
+                     │ spawns one per task, under bwrap
+                     ▼
+                coderunner -task ──▶ taskd + harness
+                                     workspace only
+```
+
+The parent stops being a runtime and becomes a proxy: it spawns a contained child and forwards
+control and the read plane to it over the same task-control contract it already speaks to verse.
+`taskd.New(build).Handler()` is one line on the child's side, and `runner.HTTP` is already the
+client.
+
+**This is the seam's own claim, cashed at process granularity.** `task/runner.go` says *"there is
+no privileged in-memory path, so the contract stays complete and local ≡ remote"* — and a
+contained child on the same machine is the smallest possible test of it. If it works, that is the
+strongest evidence the contract is right. If it does not, the failure is a finding about the
+contract rather than about sandboxing.
+
+What it buys is not incremental. `run_bash` is inside the sandbox, contained by construction,
+because the whole loop is — so containment stops being "wrap each subprocess a task might start",
+which can never be complete, and becomes "the task IS a subprocess", which is. Per-action gating
+and narration survive untouched, because they travel over a **protocol** rather than depending on
+shared process memory. And it downgrades `safePath`'s symlink hole from an escape to a nuisance:
+a write through a checked-out symlink reaches the sandbox's view — the workspace and a read-only
+system — rather than the host.
+
+It also retires two asks. The harness does **not** need a `Confiner` seam, and it does not need
+its model client exported: a child that is a process needs neither.
+
+**Secrets go in, and that is not a regression.** The child makes the model call, so the model key
+is inside the sandbox. Proxying that call through the parent to avoid it would solve one secret
+by special case, while every other secret a real coding task needs — registry tokens, credentials
+for the service under test — has to be plumbed anyway. That plumbing is deployment machinery and
+belongs at the verse or deployment level ([expose.md](../roadmap/expose.md) already carries the
+open question of whether an environment holds values or references a secret store), and
+`Environment.Env` is the mechanism today.
+
+Which sharpens a distinction this note had blurred. Two kinds of secret, and only one of them was
+ever the point:
+
+| | | |
+|---|---|---|
+| what the **task** needs to do its work | model key, registry tokens | into the sandbox, declared by the environment |
+| what the **runner** needs to act on its behalf | the git push token | stays in the parent, never in the sandbox |
+
+The credential split was always the second. Claiming the first as well was over-reach.
+
+And it moves the real question somewhere more useful: once a secret is inside, what bounds it is
+**what the sandbox can reach**, not whether the value is present. That is
+`network.egress: restricted` — an allowlist to the model API and nothing else — which is one
+mechanism covering every secret rather than one proxy per secret. It is also the rung bwrap
+cannot build, since `--unshare-net` is all-or-nothing, which is why `Provides` refuses
+`restricted` by name. So the egress proxy stops being a nicety and becomes the piece the whole
+secret story rests on.
+
+**Still to design**: a transport for the parent↔child hop (`runner.HTTP` builds its own
+`http.Client` with no injection point, so a unix socket per task needs a constructor variant, or
+a loopback port, which is cruder and works today), and lifecycle — the parent must reap children
+and turn a dead one into a terminal `failed`, or a crashed sandbox becomes a task that never
+reports. Structurally the parent then looks like a **broker with the polarity reversed**,
+spawn-out instead of dial-in, and the broker already exists for the dial-in half.
+
 ### The environment leak this fixes by construction
 
 `fsExec.runBash` builds `exec.CommandContext(ctx, "bash", "-lc", command)` and never sets
@@ -578,10 +656,19 @@ something the runner arranges.
 - **What a task's result should be.** The agent's final message, or the branch it pushed, or
   both. `$result.branch` is what a charter wants to deref, which argues for an answer contract
   the runner *imposes* — and a runner imposing a contract on the work is a new kind of thing.
-- **Whether the LLM harness can reach the upper `filesystem` rungs at all.** It runs `bash -lc`
-  in-process today, so `filesystem.scope: private` would have to contain the runner's *own* executor and
-  not merely a child binary — a harder problem than wrapping a subprocess, and possibly the
-  honest reason the two drivers differ in more classes than `network`.
+- ~~Whether the LLM harness can reach the upper `filesystem` rungs at all.~~ **Answered by
+  making the task a process.** It runs `bash -lc` in-process today, so no amount of per-tool
+  wrapping can be complete — but a bwrapped child running the loop contains `run_bash` by
+  construction. The question was the wrong shape; what is left of it is building the
+  parent↔child hop.
+- **`safePath` does not resolve symlinks.** It rejects `../..` traversal and allows a write
+  *through* a symlink inside the root — demonstrated: `write_file` to `link/pwned` writes
+  outside it. That matters because a workspace is a git checkout and git checks symlinks out as
+  symlinks, so a repository carrying one hands the file tools an escape with no shell involved.
+  The floor holds today only by conjunction: no tool offered can *create* a symlink, **and** no
+  repository in use ships one. The fix is to resolve the deepest existing ancestor and require
+  that to be inside the root, since the leaf may not exist yet for a write. It is a bug in
+  `task/harness` rather than in this example, and reaches `verse up --root` too.
 - **Credential form.** A token in the runner's environment, a git credential helper, or an SSH
   agent socket — differing in what a compromised runner process leaks, and all of them equal from
   the *task's* side, which cannot reach any of them.
