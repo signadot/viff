@@ -203,3 +203,43 @@ type bareDriver struct{}
 func (bareDriver) Next(context.Context, StepResult) (ToolUse, bool, error) {
 	return ToolUse{}, false, nil
 }
+
+// `no-delegate` means what it says: the whole envelope minus delegation.
+//
+// This exists because adding the `push` verb broke it silently. The name is documented in
+// docs/trigger-model.md and spelled in charters; its allow-list was six literals; a seventh verb
+// therefore narrowed a published promise without touching it, and the symptom would have been a
+// coding task whose delivery was refused by its own scope — which Grant refuses rather than asks,
+// so no gate and no operator could have let it through.
+//
+// Pinned against AllVerbs rather than against a list, so the NEXT verb fails here instead.
+func TestNoDelegateAdmitsEveryVerbButDelegation(t *testing.T) {
+	g, ok, err := NamedGrant("no-delegate")
+	if err != nil || !ok {
+		t.Fatalf("NamedGrant: %v %v", ok, err)
+	}
+	// Excluded on purpose: delegation, because a sub-agent nobody can approve is a park; and
+	// answering, because a task that may resolve gate questions approves itself, which is the
+	// last thing an envelope for UNATTENDED work should hand out. Both are pinned so a widening
+	// has to be deliberate.
+	excluded := map[Verb]bool{CallAgent: true, Resolve: true}
+	for _, v := range AllVerbs {
+		tu := ToolUse{Name: "probe", Effects: []Effect{{Verb: v, Resource: Resource{Ref: "x"}}}}
+		permitted := g.Permits(tu)
+		if excluded[v] {
+			if permitted {
+				t.Errorf("no-delegate permits %q, which it excludes on purpose", v)
+			}
+			continue
+		}
+		if !permitted {
+			t.Errorf("no-delegate refuses %q — a new verb narrows this published name unless it "+
+				"is added to AllVerbs, and the narrowing is a refusal no gate can approve", v)
+		}
+	}
+	// read-only stays read-only: adding verbs must not widen the narrow name either.
+	ro, _, _ := NamedGrant("read-only")
+	if ro.Permits(ToolUse{Effects: []Effect{{Verb: Push, Resource: Resource{Ref: "x"}}}}) {
+		t.Error("read-only permits a push")
+	}
+}

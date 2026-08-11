@@ -34,6 +34,20 @@ const (
 	// boundary, so it is a separate verb added later, not a flag on CallAgent.
 )
 
+// AllVerbs is the vocabulary, in one place, and adding a verb above means adding it here.
+//
+// It exists because a named grant is defined by EXCLUSION — `no-delegate` promises "the whole
+// envelope minus delegation" — and the first version of that spelled the whole envelope out as
+// six literals. Adding `Push` therefore narrowed a documented name without touching it or its
+// docs: a task under `no-delegate` would have had its delivery refused by its own scope, which is
+// a refusal no gate can approve and no message explains. Exactly the failure authority.go warns
+// about, in the other direction — a name that under-delivers rather than over-promises.
+//
+// So the exclusion is computed from this, and the test beside it pins the promise. A new verb
+// that nobody adds here is a verb no grant admits, which fails loudly the first time it is used
+// rather than quietly forever.
+var AllVerbs = []Verb{Read, Write, Create, Delete, Exec, Network, CallAgent, Resolve, Push}
+
 // MarshalText / UnmarshalText spell Verb as its text, which is what it already is.
 //
 // They were REQUIRED until go-tony v0.0.94: a named string type was emitted as an integer
