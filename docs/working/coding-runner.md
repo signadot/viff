@@ -10,7 +10,7 @@ what this one needs a name for, and the descriptor is where the name is publishe
 
 A second example under `docs/reference/examples/coderunner`: a runner that serves the
 verse-facing [task-control](../task-control.md) contract, gives each task its own git checkouts,
-and runs the work in it — either by the [LLM harness](../../task/harness) already in the tree, or
+and runs the work in it — either by the [LLM harness](https://github.com/signadot/verse/tree/main/task/harness) already in the tree, or
 by invoking a coding agent binary such as Claude Code.
 
 **A second example rather than a bigger first one.** The existing sample
