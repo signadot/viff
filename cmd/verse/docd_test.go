@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,9 @@ import (
 // notices if that stops being readable: resolveO would quietly go back to "whatever `o` is
 // on PATH", which is the skew the version check exists to catch.
 func TestPinnedGoTonyIsReadable(t *testing.T) {
+	if goTonyIsReplaced() {
+		t.Skip("go-tony is replaced in this build: no pin is the right answer, not a lost one")
+	}
 	v := pinnedGoTony()
 	if !strings.HasPrefix(v, "v") {
 		t.Fatalf("pinnedGoTony() = %q, want the go-tony version this binary was built against", v)
@@ -26,6 +30,23 @@ func TestPinnedGoTonyIsReadable(t *testing.T) {
 	if got := goTonyOf(self); got != v {
 		t.Errorf("goTonyOf(self) = %q, pinnedGoTony() = %q — want the same version", got, v)
 	}
+}
+
+// goTonyIsReplaced reports whether this binary was built against a `replace`d go-tony — a
+// worktree under development, say. That is the one case where pinnedGoTony returning "" is
+// the deliberate answer (a filesystem replacement has no version to `go install`) rather
+// than the silent failure the test above exists to catch.
+func goTonyIsReplaced() bool {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, d := range bi.Deps {
+		if d.Path == goTonyModule {
+			return d.Replace != nil
+		}
+	}
+	return false
 }
 
 // The cache is keyed by version so a verse built against a newer go-tony installs BESIDE
