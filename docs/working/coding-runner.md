@@ -241,11 +241,11 @@ the work becomes a fact other charters react to.** A [git source](../sources.md)
 branch, a charter conditions on it, and what follows — review this, here is a bug, fix it — is a
 flow that continues from the push. The push is the edge into all of it.
 
-Which makes where it happens a design question rather than a detail, and the answer this example
-gives is wrong in a way worth naming. **The push happens after the terminal.** `finish` waits for
-a terminal status frame and only then delivers, so the branch appears after verse has already
-recorded the task as done. Three consequences, and the first was the only one already written
-down:
+Which makes where it happens a design question rather than a detail. The first answer this
+example gave was wrong in a way worth keeping written down: **the push happened after the
+terminal.** `finish` waited for a terminal status frame and only then delivered, so the branch
+appeared after verse had already recorded the task as done. Three consequences, and the first was
+the only one already noticed:
 
 - **It is not gated.** The vector never sees it, `GateMatch.OnPush` never fires, and
   `RepoContext.PushTarget` — set for exactly this — is decoration.
@@ -259,12 +259,72 @@ Inside the loop, before terminal, all three close at once: an action the vector 
 the read plane records, and a cause the next flow chains from — with `$result` still in hand when
 it happens.
 
-**What blocks it is a seam, and it is the harness's to offer.** `harness.Build` returns a finished
-`*task.Task` and exposes neither its driver nor its executor, so a runner cannot compose a final
-push action onto the loop. Something like `harness.BuildParts`, handing back the driver and
-executor for the caller to wrap, is the change — small, and better made against this want than
-guessed at in advance. Doing it from the example instead would mean reimplementing the harness,
-which is the thing the example exists not to do.
+#### The seam, built
+
+`task.Finisher` is it, and it landed in `task` rather than in `harness` because it is about
+drivers and executors, which are `task`'s — the command driver in this runner needs it as much as
+the LLM one does. `harness.Config.Finish` passes one through, since `harness.Build` returns a
+finished `*task.Task` and exposes neither piece; composing from outside would have meant
+reimplementing the harness, which is what this example exists not to do.
+
+**An action, not an `OnComplete` hook.** The hook is the obvious shape and it is a fourth thing to
+supervise. An action is already supervised: the vector gates it because it is an action, the read
+plane narrates it because it is an action, it happens before terminal because it is an action.
+Nothing new had to learn about delivery.
+
+`push` is now a verb. `write` on a `KindGitRef` would have worked and would have been caught by
+every `verbs: [write]` gate anybody wrote about files; a charter that wants to stop work leaving
+should be able to say that and nothing else. It is also the only verb here whose effect is not
+undoable from inside the verse.
+
+**The awkward part is that the task is in another process and the credential deliberately is
+not.** So the action is proposed and gated on one side of the boundary and performed on the other:
+the child's executor asks the parent over an inherited *connected* socket (fd 5), and the parent
+commits, pushes, and answers with the refs — which become the action's output, on the read plane,
+before terminal. Inherited rather than a path in the sandbox, unlike the egress socket, because
+nothing but that process should be able to ask: a `deliver` endpoint the agent's shell could reach
+is a delivery that skips its own gate.
+
+That channel is not the task-control contract and does not pretend to be. It is a capability the
+parent holds and the task may ask it to exercise — one operation, no arguments that change where
+anything goes. Where the work lands is the environment's to say and the trailers are the runner's
+to write, so asking cannot redirect anything.
+
+Three things fall out. A refused delivery now means the runner does not push — previously
+unsayable. A failed delivery **fails the task**, instead of being a line in a runner's log. And
+`supervise` no longer delivers at all: it only decides about the workspace, from what the task
+asked for, so "nothing was delivered" is a fact about the run rather than about that function's
+ordering.
+
+#### Reflecting through the mirror, which is the next question
+
+The suggestion is to have the runner publish task branches into its own **mirror** and reflect
+the mirror to origin, rather than pushing from the task's clone straight out. It is better than
+what is there, for reasons that are not about tidiness:
+
+- **The workspace stops being the only copy.** Today a delivery that fails keeps the workspace
+  precisely because `os.RemoveAll` would take the object store with it. If the work were in the
+  mirror, the workspace could always go and the retry would still have something to push.
+- **It makes delivery retryable at all.** A failed push is currently terminal for that work.
+- **It is verse's own shape.** A source reflects the world in; a runner reflecting agent branches
+  out is the same relation with the arrow reversed, which is an argument for it beyond mechanics.
+
+Two costs, and one fact discovered while checking:
+
+- Two stages means two places a ref can be, and `verse task get` has to say which — more states,
+  and a reflection loop has its own retry policy and its own failure modes.
+- The deploy's mirror is an `emptyDir`, so "durable" there is only relative to the workspace.
+  Worth a PVC if this lands.
+- **go-git's local transport shells out.** `transport/file` runs `git-upload-pack` /
+  `git-receive-pack`, so *the mirror→clone step already depends on the git binary being on the
+  runner's PATH* — `workspace.go`'s headline claim that this speaks go-git and not the git binary
+  is true of the network remotes, where the credential argument lives, and false of local paths.
+  Verified by shimming those two binaries: the clone fails. A mirror-staged delivery would add a
+  second local push and so lean on it harder, which is fine in the image and a thing to say out
+  loud rather than discover.
+
+Not built. It is independent of everything above — the gated action is the same action either
+way, and only what the parent does when asked would change.
 
 **The gap downstream is now closed.** `source/git.go` formatted recent commits with `%s`, so the
 commit body never reached a `git:commit` entity and every trailer this runner writes was

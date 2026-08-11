@@ -35,6 +35,14 @@ import (
 // CREDENTIAL becomes ambient, and a runner whose whole delivery model rests on the task not
 // being able to reach the credential should be able to say where the credential comes from.
 //
+// One correction, since the claim above is broader than the truth: go-git's LOCAL transport shells
+// out. `transport/file` runs `git-upload-pack` and `git-receive-pack`, so the mirror→clone step
+// below needs those two binaries on the runner's PATH — verified by shimming them, at which point
+// the clone fails. What is genuinely go-git is every remote that carries a credential, which is
+// where the argument above actually lives: nothing here hands a token to a subprocess, and no
+// credential helper or ssh agent is consulted. The git binary is a build dependency of the local
+// path, not an ambient authority.
+//
 // The cost is real and is paid here: go-git has no linked worktrees. `git worktree add` shares
 // one object store across many working trees, and go-git offers nothing equivalent (its
 // alternates support needs a non-obvious AlternatesFS and a path convention the git binary does

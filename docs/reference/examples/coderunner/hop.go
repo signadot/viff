@@ -111,6 +111,7 @@ type child struct {
 	cmd    *exec.Cmd
 	life   *os.File // write end of the lifeline; closing it asks the child to exit
 	egress *egressServer
+	svc    net.Conn // the delivery channel's parent end (deliver.go)
 	rt     task.Runner
 	prox   *httputil.ReverseProxy
 	// gone is closed by the one goroutine that calls cmd.Wait, so any number of readers can
@@ -121,6 +122,26 @@ type child struct {
 	exit  error
 	final *task.Instance // the last word on this task, once there is one
 	dead  bool
+	// What delivery did, recorded when the task asked for it. Delivery is an action inside the
+	// loop now (deliver.go), so this side finds out by being asked rather than by doing it —
+	// and a task that was never asked is one whose work did not leave, which is what the
+	// workspace decision below turns on.
+	delivered []string
+	deliverEr error
+	asked     bool
+}
+
+func (c *child) recordDelivery(refs []string, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.asked = true
+	c.delivered, c.deliverEr = refs, err
+}
+
+func (c *child) delivery() ([]string, error, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.delivered, c.deliverEr, c.asked
 }
 
 // exitStatus is what cmd.Wait said, readable after gone closes.
@@ -204,6 +225,9 @@ func (c *child) stop() {
 		<-c.gone
 	}
 	_ = os.Remove(c.sock)
+	if c.svc != nil {
+		_ = c.svc.Close()
+	}
 	// The way out closes with the task that had it. A proxy outliving its task is a route into
 	// this runner's network with nobody's name on it.
 	c.egress.stop()
@@ -239,6 +263,18 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		return nil, err
 	}
 	defer lifeR.Close()
+
+	// The delivery channel: a connected pair, one end inherited by the task process. A CONNECTED
+	// socket rather than a path, because nothing but that process should be able to ask — a path
+	// inside the sandbox is one the agent's shell could write to, and a task that can call
+	// `deliver` itself is a task that delivers without passing its gate.
+	svcParent, svcChild, err := socketPair()
+	if err != nil {
+		_ = os.Remove(sock)
+		lifeW.Close()
+		return nil, err
+	}
+	defer svcChild.Close()
 
 	// The way out, when the point says there is a restricted one. It is a socket on this side of
 	// the boundary, bound into the sandbox by the confiner and dialled by the task process —
@@ -285,20 +321,23 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	// One writer for both streams, so a line on stderr cannot land inside a line on stdout.
 	out := tagged(r.log, id)
 	cmd.Stdout, cmd.Stderr = out, out
-	// Order matters: fd 3 is the listener, fd 4 the lifeline (see taskproc.go).
-	cmd.ExtraFiles = []*os.File{lf, lifeR}
+	// Order matters: fd 3 is the listener, fd 4 the lifeline, fd 5 the delivery channel (see
+	// taskproc.go).
+	cmd.ExtraFiles = []*os.File{lf, lifeR, svcChild}
 	// The containment, built around the whole process — which is the point of the hop. Confine
 	// rewrites Path and Args (bwrap becomes the program and this becomes its argument); ExtraFiles
 	// ride along, since they are descriptors rather than arguments.
 	if err := r.conf.Confine(cmd, point, box); err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
+		svcParent.Close()
 		eg.stop()
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
+		svcParent.Close()
 		eg.stop()
 		return nil, fmt.Errorf("starting the task process: %w", err)
 	}
@@ -306,7 +345,7 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	// One transport, so the supervisor and the proxy share a connection pool to this child.
 	tr := unixTransport(sock)
 	c := &child{
-		id: id, sock: sock, ws: ws, cmd: cmd, life: lifeW, egress: eg,
+		id: id, sock: sock, ws: ws, cmd: cmd, life: lifeW, egress: eg, svc: svcParent,
 		gone: make(chan struct{}),
 		// The contract, over a transport that ignores the host and dials the socket. The URL is
 		// what Ref reports and what the request line carries, so it names the peer rather than an
@@ -460,14 +499,18 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	// externally checkable link back into the verse from a push made under a shared credential.
 	// See docs/working/attribution.md.
 	prov := ir.Get(&body, "provenance")
-	go r.supervise(c, task.Launch{
+	l := task.Launch{
 		ID: id, Prompt: field(&body, "prompt"), Driver: driver, Environment: env.Name,
 		Provenance: task.Provenance{
 			Principal: field(prov, "principal"),
 			Subject:   field(prov, "subject"),
 			Chain:     field(prov, "chain"),
 		},
-	})
+	}
+	// The delivery channel is served for as long as the task process lives: it is how the task's
+	// own closing action reaches the credential this side holds.
+	go r.serveDeliver(c, l, c.svc)
+	go r.supervise(c, l)
 }
 
 // supervise watches one child to its end, records the last word about it, delivers what it
@@ -507,17 +550,16 @@ func (r *Runner) supervise(c *child, l task.Launch) {
 	})
 
 	ctx := context.Background()
-	final, _ := c.snapshot()
-	// Both halves are reported, and neither is conditional on the other: a workspace over several
-	// repositories can deliver two and fail on a third, and an operator who is told only about
-	// the failure does not know what did land.
-	delivered, err := c.ws.Deliver(ctx, l, final.Result)
-	for _, d := range delivered {
-		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, d)
-	}
-	if err != nil {
-		fmt.Fprintf(r.log, "coderunner: %s: deliver: %v\n", c.id, err)
-	}
+	// Delivery is no longer something this function does. It is the task's own closing action,
+	// gated by its vector and recorded on its read plane (deliver.go, task.Finisher) — so what
+	// happens here is only the decision about the workspace, from what the task ASKED for.
+	//
+	// The difference is not bookkeeping. Pushing from out here meant pushing whatever was in the
+	// tree regardless of what the vector said about it, after the task was already terminal; a
+	// charter could not decline it, and nothing downstream could chain off it. Now a task that
+	// was never asked to deliver is one whose work did not leave, and that is a fact about the
+	// run rather than about this function's ordering.
+	delivered, derr, asked := c.delivery()
 	// A workspace is removed only when its work LEFT. It used to be removed unconditionally, so a
 	// delivery that failed — or that found nothing — destroyed the tree the work was in: not a
 	// lost push, a lost result, since the commit lives in the task's own clone and os.RemoveAll
@@ -525,13 +567,16 @@ func (r *Runner) supervise(c *child, l task.Launch) {
 	switch {
 	case r.keep:
 		fmt.Fprintf(r.log, "coderunner: %s: workspace kept at %s\n", c.id, c.ws.Root)
-	case err != nil:
+	case derr != nil:
 		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — delivery failed and this is the only "+
 			"copy of the work\n", c.id, c.ws.Root)
 	case c.ws.Deliverable() && len(delivered) == 0:
+		why := "the task never reached its delivery step, or its gate refused it"
+		if asked {
+			why = "the task asked to deliver and there was nothing to push"
+		}
 		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — this environment pushes somewhere and "+
-			"nothing was delivered, so either the task changed nothing or something is wrong\n",
-			c.id, c.ws.Root)
+			"nothing was delivered: %s\n", c.id, c.ws.Root, why)
 	default:
 		if err := c.ws.Remove(ctx); err != nil {
 			fmt.Fprintf(r.log, "coderunner: %s: remove workspace: %v\n", c.id, err)

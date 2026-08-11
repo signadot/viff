@@ -163,6 +163,19 @@ type Config struct {
 	// would be described by a frame written against the wrong one.
 	Vector *task.Vector
 
+	// Finish is the RUNTIME's own closing act, composed onto the end of this task's loop: a
+	// coding runner's push, and anything else a runtime does with the work rather than to it.
+	// nil → nothing is composed and the loop ends where the driver does.
+	//
+	// It is a Config field rather than something the caller wraps afterwards because Build
+	// returns a finished Task and exposes neither driver nor executor — so there was nothing to
+	// compose onto, and a runner that wanted its delivery gated had to reimplement the harness
+	// to get one. See task.WithFinisher for what it buys.
+	//
+	// The agent is not told about it. It is not a tool, it is not in the frame, and it is
+	// proposed after the driver has stopped.
+	Finish task.Finisher
+
 	// LLM creds for the model client (resolved from verse config: file ← env). Any
 	// empty field falls back to its default (base URL, model) or the environment.
 	LLMBaseURL    string
@@ -227,7 +240,15 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Prompt,
 		log: cfg.Log, contract: contract}
 	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
-	p := task.NewTask(cfg.ID, sup, driver, ex)
+	// The runtime's closing act, if it has one. Composed here rather than left to the caller
+	// because the pieces are unexported: everything below wires this driver and this executor
+	// into one task, and a caller reaching in to add a step would have to rebuild all of it.
+	var d task.Driver = driver
+	var x task.Executor = ex
+	if cfg.Finish != nil {
+		d, x = task.WithFinisher(driver, ex, cfg.Finish)
+	}
+	p := task.NewTask(cfg.ID, sup, d, x)
 	p.SetLog(cfg.Log)
 	driver.emit = p.Emit // narration onto this task's read plane
 

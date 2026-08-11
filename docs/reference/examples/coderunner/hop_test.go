@@ -461,3 +461,140 @@ func TestASecretOutsideTheAllowlistDoesNotReachTheAgent(t *testing.T) {
 		}
 	}
 }
+
+// Delivery is an action of the task: gated by its vector, narrated on its read plane, and
+// performed by the runner on the far side of the credential boundary.
+//
+// The push used to happen after the loop returned, which cost three things at once — the vector
+// never saw it, the read plane never named the branch, and nothing downstream could chain off it.
+// This asserts all three, plus the part that is specific to this runner: the task ASKS and the
+// parent PUSHES, because the token is not on the task's side.
+func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	r := testRunner(t, deliveringConfig(origin))
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	rt := runner.HTTP(srv.URL)
+	// A charter that wants to be asked before work leaves says exactly this, and could not have
+	// before: `push` is the verb, and the action carrying it did not exist.
+	h := rt.Spawn(task.Launch{
+		ID: "d1", Prompt: "write the file",
+		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
+			Name: "delivery", Mode: task.Ask,
+			Match: task.GateMatch{Verbs: []task.Verb{task.Push}},
+		}}},
+	}, nil)
+	frames, cancel := h.Subscribe()
+	defer cancel()
+	res := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+
+	var gate, exec, terminal string
+	for f := range frames {
+		switch {
+		case f.Kind == task.EvPending && f.Tool == "deliver":
+			gate = f.Gate
+			if err := res.Resolve(f.ID, true, "", "human:test"); err != nil {
+				t.Fatalf("approving the delivery: %v", err)
+			}
+		case f.Kind == task.EvExec && f.Tool == "deliver":
+			exec = f.Text
+		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+			terminal = f.Text
+		}
+		if terminal != "" {
+			break
+		}
+	}
+	if gate != "delivery" {
+		t.Fatal("no gate was posed for the push, so a charter cannot decline one")
+	}
+	if !strings.Contains(exec, "refs/heads/agent/d1") {
+		t.Errorf("the read plane does not name the branch the work went to: %q", exec)
+	}
+	if terminal != string(task.Done) {
+		t.Fatalf("task ended %s (%s)", terminal, h.Err())
+	}
+	// The push landed, and the parent made it: the child never had the credential.
+	waitFor(t, "the branch on origin", func() bool {
+		return commitOn(origin, "refs/heads/agent/d1") != ""
+	})
+	// And the workspace went away, because the work left.
+	waitFor(t, "the workspace to be removed", func() bool {
+		_, err := os.Stat(r.childOf("d1").ws.Root)
+		return os.IsNotExist(err)
+	})
+}
+
+// A refused delivery means nothing is pushed, and the work is kept where somebody can get it.
+//
+// This is the case that could not exist before: the push happened whatever the vector said, so
+// "decline this push" was unsayable. Now it is a decision, and the consequence of the decision is
+// that the runner does not act.
+func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	r := testRunner(t, deliveringConfig(origin))
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "d2", Prompt: "write the file",
+		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
+			Name: "delivery", Mode: task.Ask,
+			Match: task.GateMatch{Verbs: []task.Verb{task.Push}},
+		}}},
+	}, nil)
+	frames, cancel := h.Subscribe()
+	defer cancel()
+	res := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+	var terminal string
+	for f := range frames {
+		if f.Kind == task.EvPending && f.Tool == "deliver" {
+			if err := res.Resolve(f.ID, false, "not this branch", "human:test"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+			terminal = f.Text
+			break
+		}
+	}
+	// A refusal is a decision the task complied with, not a failure of it.
+	if terminal != string(task.Done) {
+		t.Errorf("a refused delivery ended the task %s, want done", terminal)
+	}
+	if commitOn(origin, "refs/heads/agent/d2") != "" {
+		t.Fatal("the work was pushed despite the gate refusing it")
+	}
+	// And it is still on disk: a refusal is somebody deciding where the work goes, not deciding
+	// to destroy it.
+	waitFor(t, "the workspace to be kept", func() bool {
+		c := r.childOf("d2")
+		if c == nil {
+			return false
+		}
+		_, err := os.Stat(filepath.Join(c.ws.Root, "svc", "out.txt"))
+		return err == nil
+	})
+}
+
+func deliveringConfig(origin string) *Config {
+	return &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name:   "e",
+			Repos:  []Repo{{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"}},
+			Driver: "sh",
+			Env:    []string{"PATH"},
+		}},
+		Agents: map[string]Command{"sh": {
+			Argv: []string{"/bin/sh", "-c", "echo hello > svc/out.txt; echo done"},
+		}},
+	}
+}

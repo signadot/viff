@@ -124,6 +124,12 @@ func runTaskProcess() error {
 		}
 	}
 	p := &taskProc{cfg: cc, ws: ws}
+	// The runner's closing act, proposed inside this task's loop so the vector can gate it and
+	// the read plane can record it. The credential to perform it is on the other side of fd 5,
+	// which is the whole reason this is a request rather than a push (deliver.go).
+	if conn, err := net.FileConn(os.NewFile(deliverFD, "deliver")); err == nil {
+		p.fin = &deliverFinisher{ws: ws, conn: conn}
+	}
 	return http.Serve(ln, taskd.New(p.build).Handler())
 }
 
@@ -206,6 +212,7 @@ func dieWithParent() {
 type taskProc struct {
 	cfg childConfig
 	ws  *Workspace
+	fin task.Finisher // the runner's closing act: deliver (deliver.go)
 }
 
 // build is the taskd Builder on this side of the hop — the driver dispatch that used to happen
@@ -236,7 +243,8 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 		t, _ = harness.Build(harness.Config{
 			ID: l.ID, Prompt: l.Prompt, Root: p.ws.Root, Resolver: reg, Content: content,
 			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
-			Log: os.Stderr, // the parent copies this onto its own log, tagged with the task id
+			Log:    os.Stderr, // the parent copies this onto its own log, tagged with the task id
+			Finish: p.fin,     // the runner's own closing act, inside the loop
 			// Resolved by the parent and sent on stdin. Nothing here reads an environment
 			// variable for a credential: that is the ambient-credential shape this design
 			// refuses everywhere else.
@@ -253,7 +261,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 				"this task process was not given an agent named %q", l.Driver))
 		}
 		var err error
-		t, err = buildCommandTask(l, reg, cmd, p.cfg.Environment, p.ws.Root)
+		t, err = buildCommandTask(l, reg, cmd, p.cfg.Environment, p.ws.Root, p.fin)
 		if err != nil {
 			return task.NewFailed(l.ID, reg, err.Error())
 		}
@@ -267,7 +275,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 
 // buildCommandTask builds a task that runs an external program — an agent binary, a script,
 // anything the config names under `agents:`.
-func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Environment, dir string) (*task.Task, error) {
+func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Environment, dir string, fin task.Finisher) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -298,7 +306,15 @@ func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Enviro
 		point: hostProvides, conf: hostConfiner{},
 		dir: dir, contract: contract,
 	}
-	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, &commandExec{d: d})
+	// The same composition the harness does for the llm driver, applied here by hand because
+	// this driver is this program's own: whatever the agent did, the runner's delivery is the
+	// last action of the task and is gated like one.
+	var drv task.Driver = d
+	var ex task.Executor = &commandExec{d: d}
+	if fin != nil {
+		drv, ex = task.WithFinisher(drv, ex, fin)
+	}
+	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), drv, ex)
 	t.SetLog(os.Stderr)
 	d.emit = t.Emit
 	return t, nil

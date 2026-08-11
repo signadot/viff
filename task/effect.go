@@ -18,6 +18,16 @@ const (
 	// becomes unsayable. Answering is also not a Write — nothing in the store moves, and
 	// the thing it acts on is a question rather than a document.
 	Resolve Verb = "resolve"
+	// Push moves work OUT of the verse: a ref advanced on a remote nobody here controls. It is
+	// its own verb rather than a Write on a KindGitRef for the reason Resolve is not a Write —
+	// a predicate that cannot name it can only speak about it by catching everything else too,
+	// and `verbs: [write]` is a gate somebody wrote about files. A charter that wants to stop
+	// work leaving should be able to say so and nothing else.
+	//
+	// It is also the one verb here whose effect is not undoable from inside the verse. The
+	// runner performs it, so it carries the runner's credential and lands somewhere with its
+	// own history — which is exactly why it is worth a gate and worth a name.
+	Push Verb = "push"
 	// Reserved: an asynchronous "spawn"/"go" verb (fork a concurrent task,
 	// teardown-at-join) is deliberately omitted — it needs a different lifetime
 	// model (structured concurrency + monitoring) and breaks the quiescent
