@@ -489,16 +489,15 @@ the work with a weaker floor than the charter named, which is undetectable from 
 which is the direction that costs. A refused spawn is a mechanism: it comes back as a failed
 handle carrying the runner's own words, onto the flow.
 
-### The task should be a process, not a call
+### The task is a process, not a call
 
-The containment above wraps whatever the *command* driver spawns. It reaches nothing the `llm`
-driver does, and that asymmetry is bad in the direction that matters: `harness.Config` has no
-exec hook and `fsExec.runBash` calls `exec.CommandContext` inside the harness package, in the
-runner's own process. So **the more supervisable driver is the less contained one** — per-action
-gates and narration, and no kernel floor — which is why the drive's environment withholds
-`run_bash` rather than because a docs task happens not to need it. Today you can have
-verification or containment, not both, and for a coding runner that is eventually fatal, since
-edit-and-verify is the loop.
+Before the hop, the containment above wrapped whatever the *command* driver spawned and reached
+nothing the `llm` driver did — `harness.Config` has no exec hook and `fsExec.runBash` calls
+`exec.CommandContext` inside the harness package, in the runner's own process. So **the more
+supervisable driver was the less contained one** — per-action gates and narration, and no kernel
+floor — which is why the drive's environment withholds `run_bash` rather than because a docs task
+happens not to need it. You could have verification or containment, not both, and for a coding
+runner that is eventually fatal, since edit-and-verify is the loop.
 
 Wrapping each tool the harness might spawn is the obvious fix and the wrong one. The complete
 version is to stop running the loop in-process:
@@ -519,9 +518,10 @@ client.
 
 **This is the seam's own claim, cashed at process granularity.** `task/runner.go` says *"there is
 no privileged in-memory path, so the contract stays complete and local ≡ remote"* — and a
-contained child on the same machine is the smallest possible test of it. If it works, that is the
-strongest evidence the contract is right. If it does not, the failure is a finding about the
-contract rather than about sandboxing.
+contained child on the same machine is the smallest possible test of it. It passed: gating,
+steering, narration, the answer contract and the result all cross the hop with nothing added to
+the contract. Everything that broke on the way (below) was lifecycle or a client's error path,
+never a missing verb.
 
 What it buys is not incremental. `run_bash` is inside the sandbox, contained by construction,
 because the whole loop is — so containment stops being "wrap each subprocess a task might start",
@@ -560,12 +560,54 @@ cannot build, since `--unshare-net` is all-or-nothing, which is why `Provides` r
 `restricted` by name. So the egress proxy stops being a nicety and becomes the piece the whole
 secret story rests on.
 
-**Still to design**: a transport for the parent↔child hop (`runner.HTTP` builds its own
-`http.Client` with no injection point, so a unix socket per task needs a constructor variant, or
-a loopback port, which is cruder and works today), and lifecycle — the parent must reap children
-and turn a dead one into a terminal `failed`, or a crashed sandbox becomes a task that never
-reports. Structurally the parent then looks like a **broker with the polarity reversed**,
-spawn-out instead of dial-in, and the broker already exists for the dial-in half.
+Structurally the parent then looks like a **broker with the polarity reversed**, spawn-out
+instead of dial-in, and the broker already exists for the dial-in half.
+
+#### Built, and what it cost
+
+It works, and `local ≡ remote` held: `hop.go` is the parent, `taskproc.go` the child, and the
+child is `taskd.New(build).Handler()` over an inherited listener. The parent's whole verse-facing
+surface is now `POST /tasks` plus a reverse proxy; nothing translates, so nothing can drift.
+`runner.HTTPOver(baseURL, transport)` is the injection point the client was missing.
+
+Five things this cost, all of them findings rather than chores.
+
+**The control plane is a descriptor, not a path.** The obvious hop is a unix socket per task, by
+name — and a socket the child can dial by name is one the *agent* can dial by name, which is a
+task that can answer its own gates. So the parent listens, hands the child the listening fd, and
+keeps the only path outside every mount namespace. It is also the only design that survives
+`network.egress: none`: a loopback port inside an unshared netns is a different loopback, and a
+bind-mounted socket directory is the thing we just refused. The parent's own `/tmp` also keeps
+the path under the sun-path limit, which a socket beside `-data` would not.
+
+**`net.UnixListener.Close()` unlinks.** Taking `File()` and closing the listener removes the
+socket the child is about to serve on. `SetUnlinkOnClose(false)` first. Half an hour, and what it
+looks like is a child that starts and never answers.
+
+**Subscribing before the task exists declares it dead.** The parent registered the child, started
+supervising, *then* forwarded the launch — so the supervisor's `GET /events` hit a task that did
+not exist yet, and `remoteHandle.SubscribeSince` reports a refused subscribe as a **failed status
+frame** on the plane the caller is reading. Every task was killed at birth by the one thing
+watching it. That error path is right for a mirror and wrong for a supervisor, and the fix is
+ordering: forward first, supervise after.
+
+**The snapshot lags the terminal frame.** The loop emits its last status during teardown; taskd
+records status and result when `Run` *returns*. Asking once, at the instant of the frame, catches
+`running` with no result — and the parent then answers that forever, which is worse than
+remembering nothing. It asks until the snapshot agrees, and falls back to the frame for the
+status. Worth knowing beyond this runner: **the read plane is ahead of the snapshot**, and
+anything that reconciles the two needs to know which one it is reading.
+
+**Refusals got better for free.** Environment, driver and containment checks are now HTTP errors
+rather than a task that fails immediately, so `runner.HTTP` turns them into
+`spawn refused by <url>: <reason>`. A launch this runner will not host used to look downstream
+like work that was attempted.
+
+**Untested**: whether `bwrap` passes fds 3 and 4 through to the program it execs. It is expected
+to — bwrap's own `--args FD` proves fds reach it — but this machine has no bwrap, so it is an
+assumption the first Linux deploy checks. The diagnosis if it is wrong is already in place: the
+child fails with *"fd 3 is not the listener this process serves on"* and the parent reports the
+child's output. The fallback is a bind-mounted socket directory, at the cost named above.
 
 ### The environment leak this fixes by construction
 

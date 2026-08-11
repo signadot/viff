@@ -41,6 +41,10 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
  && ln -s /usr/local/go/bin/go /usr/local/bin/go \
  && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
+# Under /usr/local/bin deliberately: each task runs THIS binary again, as `coderunner -task`,
+# inside the sandbox — so the program has to exist there, and /usr is what the bwrap confiner
+# binds read-only. A binary installed outside /usr would start fine and then fail to spawn
+# anything.
 COPY dist/linux/${TARGETARCH}/coderunner /usr/local/bin/coderunner
 
 # Mirrors and workspaces. A volume, because a mirror is a cache worth keeping across restarts

@@ -21,12 +21,15 @@
 //   - A workspace per task, over as many repositories as the environment names: a bare mirror
 //     per repository, a clone per task on its own branch, removed when the task ends. Pure
 //     go-git — no git binary, and no ambient credential. See workspace.go.
+//   - A PROCESS per task, inside the containment, serving the same task-control contract this
+//     runner serves to verse — so this process is a proxy and the sandbox is drawn once, around
+//     everything the task does. See hop.go (this side) and taskproc.go (the other).
 //   - Delivery, by the runner and not by the agent. The task never runs `git push`: it cannot
 //     reach the credential, so the push is the runner's act and carries provenance trailers.
 //   - Two drivers. `llm` is harness.Build rooted at the workspace, every action gated and
-//     narrated; anything else names a program under `agents:`, run through ONE subprocess path
-//     so containment is applied in one place. A program that declares how to resume gets
-//     steering and answer-contract repair; one that does not gets a turn and says so.
+//     narrated; anything else names a program under `agents:`, run through ONE subprocess path.
+//     A program that declares how to resume gets steering and answer-contract repair; one that
+//     does not gets a turn and says so.
 //   - A containment point per task, refused rather than degraded when it cannot be built.
 //
 // [examples/runner]: ../runner/main.go
@@ -34,23 +37,31 @@
 package main
 
 import (
-	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 
-	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
-	"github.com/signadot/verse/task/taskd"
 )
 
 func main() {
+	// `-task` is this program's other half: one task, in its own process, inside the
+	// containment, serving the same contract (taskproc.go). It is checked before the flag set
+	// is even defined because that process takes NO flags — everything it is told arrives on
+	// stdin, so there is nothing here for it to parse.
+	if len(os.Args) > 1 && os.Args[1] == "-task" {
+		if err := runTaskProcess(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	addr := flag.String("addr", ":9802", "address to serve the task-control contract on")
 	cfgPath := flag.String("config", "coderunner.tony", "the runner's config: environments")
 	data := flag.String("data", "", "directory for mirrors and workspaces (default: a temp dir)")
@@ -81,6 +92,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Where this process reaches its task processes. NOT under -data, and deliberately: it holds
+	// one unix socket per running task, and a control plane a task can dial is a task that can
+	// answer its own gates. Under a temp root it is short (the sun path limit is about a hundred
+	// bytes), outside every workspace, and outside anything a confiner binds into a sandbox.
+	control, err := os.MkdirTemp("", "coderunner-ctl-")
+	if err != nil {
+		log.Fatal(err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
 	r := &Runner{
 		cfg:        cfg,
 		mirrors:    NewMirrors(filepath.Join(root, "mirrors"), TokenAuth(os.Getenv(*tokenEnv))),
@@ -88,15 +111,22 @@ func main() {
 		conf:       conf,
 		keep:       *keep,
 		log:        os.Stderr,
+		self:       self,
+		control:    control,
+		children:   map[string]*child{},
 	}
+	defer r.Shutdown()
 
-	d := taskd.New(r.Build)
-	mux := http.NewServeMux()
-	// The descriptor comes first: it is what an operator reads before pointing a charter
-	// here, and what `verse runner add` should ask. A STUB — it says what this runner is and
-	// what it can contain, and nothing yet consumes it.
-	mux.HandleFunc("GET /runner", r.Descriptor)
-	mux.Handle("/", d.Handler())
+	// A runner that is killed must not leave task processes holding workspaces. The lifeline
+	// covers a crash; this covers the ordinary stop, and does it before the sockets go.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-stop
+		log.Printf("coderunner: stopping %d task process(es)", r.running())
+		r.Shutdown()
+		os.Exit(0)
+	}()
 
 	log.Printf("coderunner listening on %s, state under %s — install it with: verse runner add <kind>:<name> http://<host>%s",
 		*addr, root, *addr)
@@ -107,12 +137,33 @@ func main() {
 				rp.Name, rp.Repo, rp.Base, orDefault(rp.Push, "nowhere"))
 		}
 	}
-	if err := http.ListenAndServe(*addr, mux); err != nil {
+	if err := http.ListenAndServe(*addr, r.Handler()); err != nil {
 		log.Fatalf("coderunner: %v", err)
 	}
 }
 
-// Runner holds what every task needs and nothing a task owns.
+// Handler is the verse-facing surface: the task-control contract, served by FORWARDING it.
+//
+// There is no taskd here. This process hosts no task — it prepares a workspace, starts one
+// contained process per task, and proxies the contract to it (hop.go). The routes are the same
+// ones taskd registers, which is the property worth keeping: verse cannot tell, and neither can
+// `verse task attach`.
+func (r *Runner) Handler() http.Handler {
+	mux := http.NewServeMux()
+	// The descriptor comes first: it is what an operator reads before pointing a charter here,
+	// and what `verse runner add` should ask. A STUB — it says what this runner is and what it
+	// can contain, and nothing yet consumes it.
+	mux.HandleFunc("GET /runner", r.Descriptor)
+	mux.HandleFunc("POST /tasks", r.spawn)
+	mux.HandleFunc("GET /tasks", r.list)
+	mux.HandleFunc("/tasks/{id}", r.forward)
+	mux.HandleFunc("/tasks/{id}/{op}", r.forward)
+	return mux
+}
+
+// Runner holds what every task needs and nothing a task owns — and, since the hop, nothing a
+// task may REACH: the mirrors, the push credential inside them, and the control sockets all live
+// on this side of a process boundary the task cannot cross.
 type Runner struct {
 	cfg        *Config
 	mirrors    *Mirrors
@@ -120,193 +171,21 @@ type Runner struct {
 	conf       Confiner
 	keep       bool
 	log        *os.File
+
+	// self is the program to start for each task — this binary, with `-task`. A field rather
+	// than a call to os.Executable at each spawn so a test can point it at what it built.
+	self    string
+	control string // the directory holding one control socket per task
+	seq     atomic.Uint64
+
+	mu       sync.Mutex
+	children map[string]*child
 }
 
-// Build turns one launch into one task: resolve the workspace it names, check the containment
-// can be built, open the workspace, and hand it to a driver.
-//
-// Every refusal here is a FAILED task carrying the reason rather than a smaller task that runs
-// anyway. That is the contract a runner declines by — an error from a spawn travels onto the
-// flow with its words, and the drive that deployed the runner is the party that knows.
-func (r *Runner) Build(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
-	env, err := r.cfg.Environment(l.Environment)
-	if err != nil {
-		return task.NewFailed(l.ID, reg, err.Error())
-	}
-	// The containment this environment declares, checked BEFORE any work is set up. A runner
-	// that cannot provide the floor does not run the task with a weaker one: that difference
-	// is invisible from the outside, which is the direction that costs.
-	point := pointFor(env)
-	if err := r.conf.Provides(point); err != nil {
-		return task.NewFailed(l.ID, reg, fmt.Sprintf("environment %q: %v", env.Name, err))
-	}
-	driver := l.Driver
-	if driver == "" {
-		driver = orDefault(env.Driver, "llm")
-	}
-	if _, isAgent := r.cfg.Agents[driver]; driver != driverLLM && !isAgent {
-		return task.NewFailed(l.ID, reg, fmt.Sprintf(
-			"this runner has no driver %q — it has %q and the agents it declares: %s",
-			driver, driverLLM, strings.Join(agentNames(r.cfg.Agents), ", ")))
-	}
-
-	ws, err := r.mirrors.Open(context.Background(), l.ID, env, r.workspaces)
-	if err != nil {
-		return task.NewFailed(l.ID, reg, fmt.Sprintf("environment %q: %v", env.Name, err))
-	}
-
-	// The workspace layout is this runner's convention, so the runner describes it. It rides
-	// the PROMPT rather than the frame because harness.Build derives a default frame from the
-	// tools and vector when a spawn writes none, and setting one here would silently replace
-	// advice that is more useful than this.
-	l.Prompt = ws.Brief() + l.Prompt
-
-	var t *task.Task
-	switch driver {
-	case driverLLM:
-		// The harness, rooted at the workspace root so every repository is reachable from it.
-		// Frame, tools, answer and vector come from the spawn, exactly as they do for an
-		// in-process task: the seam is complete or the guarantee is local-only.
-		// Tools: the spawn narrows, the environment floors. A spawn that names none gets the
-		// environment's set, and a tool absent from the environment is never offered whatever
-		// a spawn asks for — which is what makes withholding `run_bash` a floor rather than
-		// advice.
-		tools := l.Tools
-		if len(tools) == 0 {
-			tools = env.Tools
-		}
-		t, _ = harness.Build(harness.Config{
-			ID: l.ID, Prompt: l.Prompt, Root: ws.Root, Resolver: reg, Content: content,
-			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
-			Log: r.log,
-			// Named by the runner's own config rather than inherited: verse's configured
-			// creds live in another process and are not visible here, so without this the
-			// harness silently falls back to whatever PORTKEY_* is in the environment.
-			LLMBaseURL: r.cfg.LLM.BaseURL, LLMModel: r.cfg.LLM.Model,
-			LLMKey:        os.Getenv(r.cfg.LLM.APIKeyEnv),
-			LLMVirtualKey: os.Getenv(r.cfg.LLM.VirtualKeyEnv),
-		})
-	default:
-		t, err = r.buildCommand(driver, l, reg, ws, env, point)
-		if err != nil {
-			_ = ws.Remove(context.Background())
-			return task.NewFailed(l.ID, reg, err.Error())
-		}
-	}
-	// What a gate can match on: the branch, the base, what has been touched, and where it
-	// would go. `GateMatch.Branches` and `GateMatch.OnPush` read this, so a charter can say
-	// `ask` on anything touching a release branch and `auto` everywhere else.
-	t.SetRepo(ws.RepoContext)
-	go r.finish(t, ws, l)
-	return t
-}
-
-// buildCommand builds a task that runs an external program — an agent binary, a script,
-// anything the config names under `agents:`. One path for every subprocess this runner starts.
-func (r *Runner) buildCommand(name string, l task.Launch, reg *task.Registry, ws *Workspace, env Environment, point Point) (*task.Task, error) {
-	var contract *answer.Contract
-	if l.Answer != nil {
-		c, err := answer.Parse(l.Answer)
-		if err != nil {
-			// A contract that cannot be parsed fails the spawn, for the reason an unknown
-			// tool name does: the charter asked for something specific, and running without
-			// it while saying nothing is how a field comes to mean nothing.
-			return nil, fmt.Errorf("answer contract: %w", err)
-		}
-		contract = c
-	}
-	vec := l.Vector
-	if vec == nil {
-		// One action per turn, and that action hands the work to another program. ASK is the
-		// honest default for it — verse cannot see inside a subprocess, so the invocation is
-		// the only thing there is to decide about, which is the whole difference from the
-		// `llm` driver above and the reason both exist.
-		vec = &task.Vector{Default: task.Auto, Gates: []task.Gate{{
-			Name: "agent", Mode: task.Ask,
-			Match: task.GateMatch{Verbs: []task.Verb{task.CallAgent}},
-		}}}
-	}
-	d := &commandDriver{
-		name: name, cmd: r.cfg.Agents[name],
-		prompt: l.Prompt, frame: l.Frame, env: env, point: point, conf: r.conf,
-		dir: ws.Root, contract: contract,
-	}
-	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, &commandExec{d: d})
-	t.SetLog(r.log)
-	d.emit = t.Emit
-	return t, nil
-}
-
-// finish waits for the task to end, delivers whatever it produced, and removes the workspace.
-//
-// It watches the read plane rather than being called back, because the loop offers no
-// completion hook — and it must not hold the Build call, which taskd expects to return a task
-// it can start.
-//
-// Delivering AFTER the terminal is this example's sharpest shortcut, and it costs more than the
-// missing gate it looks like.
-//
-// The push is the edge into whatever happens next: a git source reflects the branch, a charter
-// conditions on it, and "review this work" is a flow that continues from it. Happening out here,
-// it is three things it should not be — ungated (the vector never sees it, so
-// `RepoContext.PushTarget` and `GateMatch.OnPush` are decoration), unrecorded (the task's read
-// plane never names the branch it produced, so `verse task get` cannot say where the work went),
-// and not a cause (the next flow chains from a ref appearing in a source reflection rather than
-// from a boundary in the task that made it).
-//
-// Inside the loop, before terminal, all three close at once. What blocks it is that
-// harness.Build returns a finished *task.Task and exposes neither driver nor executor, so there
-// is nothing here to compose a final action onto — and reimplementing the harness to get one is
-// the thing this example exists not to do. See docs/working/coding-runner.md.
-func (r *Runner) finish(t *task.Task, ws *Workspace, l task.Launch) {
-	frames, cancel := t.Subscribe()
-	defer cancel()
-	for f := range frames {
-		if f.Kind != task.EvStatus || !task.Status(f.Text).Terminal() {
-			continue
-		}
-		break
-	}
-	ctx := context.Background()
-	// Both halves are reported, and neither is conditional on the other: a workspace over
-	// several repositories can deliver two and fail on a third, and an operator who is told
-	// only about the failure does not know what did land.
-	delivered, err := ws.Deliver(ctx, l, t.Result())
-	for _, d := range delivered {
-		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", l.ID, ws.Branch, d)
-	}
-	if err != nil {
-		fmt.Fprintf(r.log, "coderunner: %s: deliver: %v\n", l.ID, err)
-	}
-	// A workspace is removed only when its work LEFT, and this is the second thing this
-	// function got wrong rather than a precaution.
-	//
-	// It used to remove unconditionally, so a delivery that failed — or that found nothing to
-	// deliver — destroyed the tree the work was in. That is not a lost push, it is a lost
-	// result: the commit lives in the task's own clone, and `os.RemoveAll` takes its object
-	// store with it. Observed: an agent produced fourteen verified findings across a dozen
-	// files, delivered nothing, and left nothing behind to look at. The disk argument for
-	// removing is real and is an argument about SUCCESSFUL runs; it says nothing about
-	// keeping the only copy of work nobody has seen.
-	//
-	// So: an error keeps it, and so does a workspace that was supposed to deliver and did
-	// not. A read-only environment — no push target anywhere — has nothing to preserve and is
-	// removed as before.
-	switch {
-	case r.keep:
-		fmt.Fprintf(r.log, "coderunner: %s: workspace kept at %s\n", l.ID, ws.Root)
-	case err != nil:
-		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — delivery failed and this is the only "+
-			"copy of the work\n", l.ID, ws.Root)
-	case ws.Deliverable() && len(delivered) == 0:
-		fmt.Fprintf(r.log, "coderunner: %s: KEEPING %s — this environment pushes somewhere and "+
-			"nothing was delivered, so either the task changed nothing or something is wrong\n",
-			l.ID, ws.Root)
-	default:
-		if err := ws.Remove(ctx); err != nil {
-			fmt.Fprintf(r.log, "coderunner: %s: remove workspace: %v\n", l.ID, err)
-		}
-	}
+func (r *Runner) running() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.children)
 }
 
 // Descriptor is the `GET /runner` stub: what this is, how it applies control, what it can host,
@@ -321,7 +200,9 @@ func (r *Runner) Descriptor(w http.ResponseWriter, req *http.Request) {
 	body := map[string]any{
 		"runner":  "coderunner",
 		"control": "synchronous",
-		"drivers": []string{"llm", "claude"},
+		// Derived, not listed: `claude` is a config entry rather than a type in this program, so
+		// a hard-coded list here would describe a build instead of a deployment.
+		"drivers": drivers(r.cfg),
 		"isolation": map[string]any{
 			"provides": pointMap(hostProvides),
 			"defaults": pointMap(hostProvides),
@@ -369,6 +250,16 @@ func pointMap(p Point) map[string]any {
 			cur = next
 		}
 		cur[parts[len(parts)-1]] = v
+	}
+	return out
+}
+
+// drivers is what this deployment can actually run: the one driver this program implements, plus
+// every program its config names.
+func drivers(c *Config) []string {
+	out := []string{driverLLM}
+	if len(c.Agents) > 0 {
+		out = append(out, agentNames(c.Agents)...)
 	}
 	return out
 }

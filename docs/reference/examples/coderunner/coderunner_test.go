@@ -759,6 +759,45 @@ func TestBwrapConfineWrapsTheCommand(t *testing.T) {
 	if strings.Contains(strings.Join(cmd2.Args, " "), "--unshare-net") {
 		t.Error("the network was unshared for a point that asked for full egress")
 	}
+	// A read-only workspace binds read-only, and the bind is still a bind. This rung had no test
+	// and did not work: the flag was patched into the argv by index, and the index was off by
+	// one, so the source path became the word `--ro-bind`.
+	cmd3 := exec.Command("x")
+	_ = b.Confine(cmd3, Point{"filesystem.readOnly": "yes"}, "/w")
+	ro := strings.Join(cmd3.Args, " ")
+	if !strings.Contains(ro, "--ro-bind /w /w") {
+		t.Errorf("a read-only workspace is not bound read-only:\n%s", ro)
+	}
+	if strings.Contains(ro, "--bind /w") {
+		t.Errorf("the workspace is also bound writable:\n%s", ro)
+	}
+}
+
+// The task process is reached by an inherited DESCRIPTOR, so confining it must not disturb the
+// descriptors — a confiner that rebuilt the command rather than rewriting it would drop them, and
+// the symptom would be a child that starts and never answers.
+func TestConfiningKeepsTheInheritedDescriptors(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for name, c := range map[string]Confiner{
+		"host":  hostConfiner{},
+		"bwrap": bwrapConfiner{bin: "/usr/bin/bwrap"},
+	} {
+		cmd := exec.Command("coderunner", "-task")
+		cmd.ExtraFiles = []*os.File{f, f}
+		if err := c.Confine(cmd, Point{}, t.TempDir()); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(cmd.ExtraFiles) != 2 {
+			t.Errorf("%s: the confiner dropped the control listener and the lifeline", name)
+		}
+		if !strings.Contains(strings.Join(cmd.Args, " "), "coderunner -task") {
+			t.Errorf("%s: the task process is no longer what gets run: %v", name, cmd.Args)
+		}
+	}
 }
 
 // A confiner is named by the deployment, and an unknown or unavailable one fails at STARTUP.

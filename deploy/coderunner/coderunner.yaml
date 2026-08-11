@@ -1,5 +1,11 @@
-# The coderunner, as a deployed runner: a workspace per task, an agent in it, bubblewrap around
-# the agent.
+# The coderunner, as a deployed runner: a workspace per task, a PROCESS per task, and bubblewrap
+# around the process.
+#
+# The pod runs one coderunner that hosts no task itself. Each task is `coderunner -task` under
+# bwrap, serving the same task-control contract back to its parent over an inherited socket, and
+# the parent forwards verse's requests to it. So the sandbox is drawn once, around everything the
+# task does — including the shell — and the git credential below stays outside it by construction
+# rather than by an env allowlist.
 #
 # It is not a source and not the engine — it is a place work RUNS, reached by url, and verse
 # learns about it the same way it learns about any runner:

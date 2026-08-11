@@ -203,6 +203,17 @@ func (b bwrapConfiner) Provides(p Point) error {
 }
 
 // Confine rewrites cmd to run under bwrap. Called only after Provides said yes.
+//
+// It REWRITES rather than rebuilds, which matters more than it looks: what is being confined is
+// the task process (hop.go), and that process is reached by descriptors it inherits — the control
+// listener and the lifeline. They ride on cmd.ExtraFiles rather than in the argv, so they survive
+// this untouched, and bwrap is expected to pass them through to the program it execs. That last
+// clause is the one assumption here nobody has run: if bwrap closes them, the child fails saying
+// fd 3 is not a listener and the parent reports it. See docs/working/coding-runner.md.
+//
+// The program itself must also EXIST inside the sandbox — it is the same binary as this runner,
+// so /usr/local/bin/coderunner is covered by the /usr bind below, and a runner installed
+// somewhere else would need its own.
 func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, dir string) error {
 	args := []string{
 		// The child dies with this runner rather than outliving it as an orphan holding a
@@ -222,11 +233,17 @@ func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, dir string) error {
 	for _, ro := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"} {
 		args = append(args, "--ro-bind-try", ro, ro)
 	}
-	// The workspace, writable, and the only thing that is.
-	args = append(args, "--bind", dir, dir, "--chdir", dir)
+	// The workspace, writable unless the point says otherwise, and the only thing that is.
+	//
+	// The flag is chosen BEFORE it is appended. It used to be appended and then patched by
+	// index, which counted the offset wrong and overwrote the bind's source path with the word
+	// `--ro-bind` — so `filesystem.readOnly: yes` produced an argv bwrap would reject rather
+	// than a read-only workspace. Nothing caught it because no test asked for that rung.
+	bind := "--bind"
 	if p["filesystem.readOnly"] == "yes" {
-		args[len(args)-4] = "--ro-bind" // the workspace bind, made read-only
+		bind = "--ro-bind"
 	}
+	args = append(args, bind, dir, dir, "--chdir", dir)
 	if p["network.egress"] == "none" {
 		args = append(args, "--unshare-net")
 	}

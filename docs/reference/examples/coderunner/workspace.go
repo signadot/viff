@@ -283,6 +283,27 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo, auth: m.auth(r.Repo)}, nil
 }
 
+// Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
+// what the runner prepared for it (see taskproc.go).
+//
+// Two absences are the design rather than an omission. There is no auth on these trees, because
+// nothing on that side of the process boundary may reach a remote; the credential stays in the
+// parent and delivery is the parent's act. And Head is empty, because the sha the work started
+// from is what a DIFF is taken against, which is also the parent's job — this side only needs to
+// know what the working tree currently says, which it reads from the working tree.
+func Reopen(root string, env Environment, branch string) (*Workspace, error) {
+	w := &Workspace{Env: env, Root: root, Branch: branch}
+	for _, r := range env.Repos {
+		dir := filepath.Join(root, r.Name)
+		repo, err := git.PlainOpen(dir)
+		if err != nil {
+			return nil, fmt.Errorf("reopen %s in %s: %w", r.Name, root, err)
+		}
+		w.Trees = append(w.Trees, &Tree{Repo: r, Dir: dir, repo: repo})
+	}
+	return w, nil
+}
+
 // Brief tells the agent what its working directory contains, and it is the runner's to say
 // rather than the charter's.
 //
