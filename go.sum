@@ -72,12 +72,12 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/scott-cotton/cli v0.2.4 h1:d3Kit1chF0Zt4/D8mE1vfcVmHptSjwOKIOhZ1g07H0s=
-github.com/scott-cotton/cli v0.2.4/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
+github.com/scott-cotton/cli v0.3.0 h1:RwzjjiunEJBfXdnJoNwGW1IxZSlG6uXwyxoRy7+fblc=
+github.com/scott-cotton/cli v0.3.0/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
-github.com/signadot/tony-format/go-tony v0.0.123 h1:mQlf+O8wKgs7qE9qd8DYBDScLLby7/KNj3MulDLpGUw=
-github.com/signadot/tony-format/go-tony v0.0.123/go.mod h1:bx0B/JRp9uqqVwMEcdQShWW1vU+yr9wobGHY62EzQUE=
+github.com/signadot/tony-format/go-tony v0.0.126 h1:AlB/VpC2s31if3VReUnCTW9+GgDShIJjec2EVk/G9uQ=
+github.com/signadot/tony-format/go-tony v0.0.126/go.mod h1:e5euej3pJ4t2jISXcIA+PJ+Tsjzu9CUkh/V44XsWh+0=
 github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/skeema/knownhosts v1.3.1 h1:X2osQ+RAjK76shCbvhHHHVl3ZlgDm8apHEHFqRjnBY8=
 github.com/skeema/knownhosts v1.3.1/go.mod h1:r7KTdC8l4uxWRyK2TpQZ/1o5HaSzh06ePQNxPwTcfiY=
