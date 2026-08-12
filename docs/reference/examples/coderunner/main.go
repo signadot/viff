@@ -138,6 +138,11 @@ func main() {
 
 	log.Printf("coderunner listening on %s, state under %s — install it with: verse runner add <kind>:<name> http://<host>%s",
 		*addr, root, *addr)
+	// Said once, loudly, at the top: a missing model credential is otherwise invisible until a
+	// task fails with a vendor error about an invalid key.
+	if why := cfg.MissingLLMCreds(); why != "" {
+		log.Printf("coderunner: WARNING: %s. Environments using it will refuse their spawns.", why)
+	}
 	for _, e := range cfg.Environments {
 		log.Printf("  environment %s (driver %s):", e.Name, orDefault(e.Driver, "llm"))
 		for _, rp := range e.Repos {

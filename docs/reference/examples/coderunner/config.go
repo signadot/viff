@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -234,6 +235,29 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("coderunner: default environment %q is not declared", c.Default)
 	}
 	return &c, nil
+}
+
+// MissingLLMCreds reports why the `llm` driver cannot run here, or "" if it can.
+//
+// The credential is named as a VARIABLE and read from the runner's own environment, which means
+// there are two ways to have nothing: no `llm.apiKeyEnv` in the config at all, and a name that is
+// not set in the process. Both produce the same thing at the model call — an empty key, and a
+// vendor error about an invalid one — and neither says which variable anybody should look at.
+//
+// Checked at startup so it is visible before a spawn, and again at the spawn so it REFUSES rather
+// than running a task that cannot possibly finish. That is the same rule the containment follows:
+// a runner that cannot do what an environment asks says so instead of trying.
+func (c *Config) MissingLLMCreds() string {
+	if c.LLM.APIKeyEnv == "" {
+		return "this runner's config sets no `llm.apiKeyEnv`, so the `llm` driver has no model " +
+			"credential to use"
+	}
+	if os.Getenv(c.LLM.APIKeyEnv) == "" {
+		return fmt.Sprintf("$%s is not set in this runner's environment, so the `llm` driver has "+
+			"no model credential — it is read HERE and sent to the task process, so it must be "+
+			"set for the runner rather than for verse or for your shell", c.LLM.APIKeyEnv)
+	}
+	return ""
 }
 
 // Environment resolves the name a spawn carried. A name this runner does not have is an

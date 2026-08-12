@@ -334,3 +334,49 @@ func TestShippedHardenedEnvironmentAsksForRestrictedEgress(t *testing.T) {
 		t.Errorf("its allowlist does not build a proxy: %v", err)
 	}
 }
+
+// A missing model credential is refused at the spawn, naming the variable.
+//
+// It used to be discovered at the first model call and reported as the vendor's opinion —
+// `Portkey Error: Invalid API Key` — which says nothing about which variable, or that it is read
+// in the RUNNER's environment rather than verse's. Found by driving it.
+func TestAMissingModelCredentialIsRefusedNotDiscovered(t *testing.T) {
+	fastLifecycle(t)
+	t.Setenv("DRIVE_KEY", "")
+	origin := initRepo(t)
+	cfg := &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}}, Driver: driverLLM,
+		}},
+		LLM: LLM{APIKeyEnv: "DRIVE_KEY", Model: "m"},
+	}
+	if why := cfg.MissingLLMCreds(); !strings.Contains(why, "DRIVE_KEY") {
+		t.Fatalf("the complaint does not name the variable: %q", why)
+	}
+	r := testRunner(t, cfg)
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k1", Prompt: "x"}, nil)
+	e := h.Err()
+	for _, want := range []string{"refused", "DRIVE_KEY", "runner's environment"} {
+		if !strings.Contains(e, want) {
+			t.Errorf("the refusal does not say %q: %s", want, e)
+		}
+	}
+	if r.running() != 0 {
+		t.Error("a task that cannot possibly finish was started anyway")
+	}
+	// With the variable set it is not refused — the check is about the credential, not about
+	// the driver.
+	t.Setenv("DRIVE_KEY", "sk-whatever")
+	if why := cfg.MissingLLMCreds(); why != "" {
+		t.Errorf("a set variable still reads as missing: %q", why)
+	}
+	// And a config that names no variable at all says THAT, rather than naming an empty one.
+	none := &Config{Environments: cfg.Environments}
+	if why := none.MissingLLMCreds(); !strings.Contains(why, "apiKeyEnv") {
+		t.Errorf("a config with no llm block does not say so: %q", why)
+	}
+}

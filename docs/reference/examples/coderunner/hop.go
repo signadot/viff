@@ -453,6 +453,14 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 		// used to be recorded as having none, which is the one thing a reader cannot recover.
 		setField(&body, "driver", driver)
 	}
+	// A launch that cannot possibly finish is refused here rather than at the first model call,
+	// where it arrives as somebody else's error message about an invalid key.
+	if driver == driverLLM {
+		if why := r.cfg.MissingLLMCreds(); why != "" {
+			http.Error(w, why, http.StatusBadRequest)
+			return
+		}
+	}
 	if _, isAgent := r.cfg.Agents[driver]; driver != driverLLM && !isAgent {
 		http.Error(w, fmt.Sprintf(
 			"this runner has no driver %q — it has %q and the agents it declares: %s",
