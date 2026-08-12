@@ -1,0 +1,19 @@
+# docd's mount (controller) face: where a controller mounts a subtree of the document tree
+# to own it, serving reads for it on demand (docs/seams.md, seam 3). Its own Service rather
+# than a second port on `docd`, so that reaching it is a grant of its own — a controller
+# needs this face and has no business on the client face.
+apiVersion: v1
+kind: Service
+metadata:
+  name: docd-mount
+  labels:
+    app: verse
+    tier: docd
+spec:
+  selector:
+    app: verse
+    tier: docd
+  ports:
+  - name: mount
+    port: 7072
+    targetPort: mount

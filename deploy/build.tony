@@ -117,8 +117,6 @@ build:
     dir: eks
   - if: '.[hostPV]'
     dir: hostpv
-  - if: '.[tailscaleExpose]'
-    dir: tailscale
   - if: '.[gitSource]'
     dir: git-source
   - if: '.[slackSource]'
@@ -325,17 +323,21 @@ build:
           tailscale.com/expose: "true"
           tailscale.com/hostname: $[namespace]
 
-  # docd's two faces — the Services in tailscale/, which exist only when this is on. Only the
-  # name is patched; `expose` is in each file, since the file IS the switch. Two devices
-  # rather than one with both ports, so the ACL can reach one face without the other.
+  # docd's two faces. Nothing is added to reach them — they are ordinary Services the deploy
+  # always has, and this only annotates them. Two devices rather than one Service with both
+  # ports, so an ACL can grant the mount face without granting the store.
+  #
+  # docd-headless is deliberately absent: the operator refuses a headless Service, recording
+  # an INVALIDSERVICE event, and nothing dials it anyway.
   - if: '.[tailscaleExpose]'
     match:
       kind: Service
       metadata:
-        name: docd-client
+        name: docd
     patch:
       metadata:
         annotations:
+          tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd"
   - if: '.[tailscaleExpose]'
     match:
@@ -345,13 +347,14 @@ build:
     patch:
       metadata:
         annotations:
+          tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd-mount"
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
     match:
       kind: Service
       metadata:
-        name: !or [verse, docd-client, docd-mount]
+        name: !or [verse, docd, docd-mount]
     patch:
       metadata:
         annotations:

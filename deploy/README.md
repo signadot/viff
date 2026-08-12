@@ -15,8 +15,24 @@ Two tiers, split so the storage fragility stays off the engine:
   Singleton because two engines would double-fire triggers; leader-election is the scale-out
   answer later.
 
-Plus a headless `Service` for docd (client+mount), a `Service` for the versed API, and — when
-`brokerFace` — one for the broker face.
+Plus a `Service` for the versed API, one for the broker face when `brokerFace`, and three for
+docd — one per face, because a face is the unit anything grants or reaches:
+
+| | |
+|---|---|
+| `docd` | the client face (7071) — the store, read/write; what versed is pointed at |
+| `docd-mount` | the mount face (7072) — where a controller mounts a subtree it owns |
+| `docd-headless` | the StatefulSet's governing Service. Nobody dials it; it exists so `docd-0` has a stable per-pod name |
+
+> ⚠️ **An existing deploy needs the StatefulSet recreated once.** `docd` used to be the
+> headless governing Service, and `spec.serviceName` is immutable — so an apply over a
+> StatefulSet that still names it fails with `Forbidden: updates to statefulset spec ... are
+> forbidden`. Drop it and reapply; the PVC and the data are untouched:
+> ```sh
+> kubectl -n verse delete statefulset docd     # NOT the pvc — data-docd-0 survives
+> kubectl -n verse delete service docd         # was headless; comes back as the client face
+> o build deploy -p <profile> | kubectl apply -f -
+> ```
 
 Optionally a third tier: **source connectors**, one `Deployment` + `Service` each, running
 `sourced` (git, Slack, Linear). Each is a singleton for the reason versed is — a source is the
@@ -163,17 +179,17 @@ The device names track `namespace`, so a second verse on the same tailnet is a s
 rather than the `-1` suffix the operator would otherwise pick. `-e tailscaleTags=tag:verse`
 if the ACL wants its own tag instead of the operator's default `tag:k8s`.
 
-**docd's faces are Services of their own, not annotations on `docd`.** Its Service is headless
-— that is what gives `docd-0.docd` a stable name — and the operator refuses a headless Service
+`tailscaleExpose` adds no Services — it annotates the three the deploy already has. Two
+devices for docd rather than one Service with both ports, because a Service gets one tailnet
+IP, so two is what lets an ACL grant the mount face without granting the store. The fourth
+Service, `docd-headless`, is deliberately not exposed: the operator refuses a headless Service
 outright, recording `headless Services are not supported` as an `INVALIDSERVICE` warning event
-on it and exposing nothing. So `tailscaleExpose` emits `docd-client` and `docd-mount` ClusterIP
-Services over the same pod. Two rather than one Service with both ports, because two Services
-are two tailnet IPs — which is what lets an ACL grant the mount face without granting the
-client face, and the client face is the whole store read/write.
+and exposing nothing — which is the reason the plain name `docd` belongs to a face and the
+governing Service carries the suffix.
 
 ⚠️ **Still not enough for `verse connect` from a laptop** — both faces are reachable now, but
 `connect` does not learn *these* addresses. It reads them from the running verse's `/status`,
-which advertises what versed was started with: the in-cluster `docd:7071` and `docd:7072`
+which advertises what versed was started with: the in-cluster `docd:7071` and `docd-mount:7072`
 ([docs/working/connect.md](../docs/working/connect.md)). There is no flag to override them, and
 pointing versed's own `--docd-addr` at the tailnet names would route the engine's traffic
 through a proxy pod to reach the container beside it. `/status` advertising an address that is

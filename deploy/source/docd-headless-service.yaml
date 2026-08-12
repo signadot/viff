@@ -1,0 +1,27 @@
+# The StatefulSet's governing Service — nobody dials this one. It exists so docd-0 has a
+# stable per-pod name (docd-0.docd-headless), which is what makes a StatefulSet a StatefulSet;
+# the faces above are what anything actually connects to.
+#
+# It carries the `-headless` suffix and not the plain name because headless is the property
+# that matters here and the property that limits it: the Tailscale operator refuses a headless
+# Service outright ("headless Services are not supported", an INVALIDSERVICE event), so the
+# name `docd` belongs to the Service that can be reached and exposed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: docd-headless
+  labels:
+    app: verse
+    tier: docd
+spec:
+  clusterIP: None
+  selector:
+    app: verse
+    tier: docd
+  ports:
+  - name: client
+    port: 7071
+    targetPort: client
+  - name: mount
+    port: 7072
+    targetPort: mount

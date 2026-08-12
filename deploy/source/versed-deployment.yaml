@@ -31,7 +31,7 @@ spec:
         - --docd-addr
         - docd:7071
         - --docd-mount-addr
-        - docd:7072
+        - docd-mount:7072
         - --addr
         - :9797
         - --broker-addr

@@ -6,7 +6,10 @@ metadata:
     app: verse
     tier: docd
 spec:
-  serviceName: docd
+  # The governing Service must be headless, so it is the one carrying the suffix; `docd` is
+  # the client face (docd-headless-service.yaml). Immutable — see deploy/README.md if an
+  # existing StatefulSet still names the old one.
+  serviceName: docd-headless
   replicas: 1
   selector:
     matchLabels:

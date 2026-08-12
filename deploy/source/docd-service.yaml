@@ -1,3 +1,10 @@
+# docd's client face: where store clients read and write entities, including the scoped
+# (copy-on-write) writes `verse connect` makes. The address versed is pointed at, and the
+# one to be deliberate about in a tailnet ACL — it is the whole store, read/write.
+#
+# Three Services over one pod, one per face plus the StatefulSet's governing one, rather than
+# one Service with every port: a face is what an ACL grants, and the Tailscale operator gives
+# a Service one tailnet IP. See docd-headless-service.yaml for the third.
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,7 +13,6 @@ metadata:
     app: verse
     tier: docd
 spec:
-  clusterIP: None
   selector:
     app: verse
     tier: docd
@@ -14,6 +20,3 @@ spec:
   - name: client
     port: 7071
     targetPort: client
-  - name: mount
-    port: 7072
-    targetPort: mount
