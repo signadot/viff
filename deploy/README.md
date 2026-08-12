@@ -221,6 +221,7 @@ should be passed the Service names directly rather than discovering them.
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `llmSecretKey` | `""` | secret-store entry to materialise `verse-llm` from; `""` emits no `ExternalSecret` |
 | `llmSecretStore` | `aws-secretsmanager` | the `ClusterSecretStore` it comes from |
+| `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | the source knobs | off | see [Sources](#sources-optional) |
 
 ## Sources (optional)
@@ -338,12 +339,32 @@ kubectl -n verse create secret generic verse-llm \
 
 …or name where it already lives, and let the External Secrets Operator materialise it —
 `llmSecretKey` emits an `ExternalSecret` that produces the same `verse-llm`, refreshed hourly.
-Staging does this, against the Portkey entry `signadot-control` already uses:
+Staging does this, against verse's own Portkey credential:
 
 ```
-llmSecretKey: "staging/signadot-control/llm-gateway-credentials"
+llmSecretKey: "staging/verse/llm"
 llmSecretStore: "aws-secretsmanager"          # the ClusterSecretStore; only read when a key is set
+llmModel: "claude-sonnet-5"                   # what that credential routes to; "" = the driver's gpt-4o
 ```
+
+A console is where a key is **issued**; a secret store is how it reaches a cluster that cannot
+log into that console. So a Portkey key belongs in both — created there, written here once:
+
+```sh
+printf '{"PORTKEY_API_KEY":"%s","PORTKEY_VIRTUAL_KEY":"%s"}' "$pk" "$vk" > /tmp/llm.json
+aws secretsmanager create-secret --region us-west-2 \
+  --name staging/verse/llm --secret-string file:///tmp/llm.json && rm /tmp/llm.json
+```
+
+Two values, not three: verse sends `x-portkey-api-key` and `x-portkey-virtual-key` to
+Portkey's gateway and nothing else. **The provider key the virtual key resolves to — an
+Anthropic key, say — stays in Portkey.** verse never sees it and has nowhere to put it.
+
+That indirection is also why `llmModel` exists. A virtual key resolves to one provider, so the
+model has to be one *that* provider serves: an Anthropic-backed key asked for the driver's
+`gpt-4o` default fails on every call, and nothing about the credential can warn you. It is set
+as an explicit env var, which also means it wins over an `OPENAI_MODEL` in the Secret — model
+choice is deployment config and belongs in the open, not smuggled into a secret store entry.
 
 The credential is then never in this tree, never in a shell history, and rotates without
 anybody visiting the cluster. Two things to know:

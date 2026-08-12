@@ -66,6 +66,13 @@ build:
     # PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY (PORTKEY_BASE_URL, OPENAI_MODEL optional).
     llmSecretKey: ""
     llmSecretStore: "aws-secretsmanager"
+    # The model id, when the driver's default (gpt-4o) is not what the credential routes to.
+    # A Portkey virtual key resolves to ONE provider, so the model has to be one that provider
+    # serves — an Anthropic-backed key asked for gpt-4o fails on every call, and the credential
+    # cannot tell you that. Model choice is deployment config, not a secret, so it is here in
+    # the open rather than smuggled into the store entry: as an explicit env it also WINS over
+    # an OPENAI_MODEL in the Secret, which is the right way round.
+    llmModel: ""
 
     # ── Sources: what reflects an external system into the verse ──────────────
     #
@@ -180,6 +187,21 @@ build:
     patch:
       imagePullSecrets:
       - name: $[imagePullSecret]
+
+  - if: '.[ llmModel != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              env: !key(name)
+              - name: OPENAI_MODEL
+                value: $[llmModel]
 
   # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
   # runs `verse` — one image, two roles).
