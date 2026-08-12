@@ -69,6 +69,16 @@ coderunner-docker: coderunner-linux ## build the coderunner image (bubblewrap co
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
 	  -t $(CODERUNNER_IMAGE) -f docs/reference/examples/coderunner/Dockerfile .
 
+# No CODERUNNER_PUSH_IMAGE to pair with PUSH_IMAGE: CODERUNNER_IMAGE already carries the
+# registry, so there is nothing to retag. Override it whole — including into the same
+# repository as the runtime image under a distinguishing tag, which is one repository to
+# create and one pull credential to grant:
+#
+#   make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
+.PHONY: coderunner-push
+coderunner-push: coderunner-docker ## build + push $(CODERUNNER_IMAGE)
+	$(DOCKER) push $(CODERUNNER_IMAGE)
+
 .PHONY: load
 load: docker ## build + load the image into minikube (Docker Desktop k8s needs no load)
 	minikube image load $(IMAGE)
@@ -83,6 +93,12 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 # make deploy PROFILE=staging                      # the profile's own registry ref
 # make deploy PROFILE=staging IMAGE=example/verse-staging:v3    # …a particular build of it
 # make deploy E='-e gitSource=true -e slackSource=true'          # …plus source connectors
+#
+# `-O yaml` is not decoration. The default output is TONY, which for block-style input happens
+# to also be valid YAML — every manifest here was, so this went unnoticed until one used flow
+# mappings. Tony spells a multi-entry map `{` newline-separated pairs `}`, and YAML wants
+# commas in flow style, so kubectl refuses the stream with a parse error pointing at a line
+# number in a document nobody wrote by hand. Ask for the format we are piping into.
 #
 # E is the escape hatch for everything the three named variables do not cover — the source
 # knobs are a dozen on their own (deploy/README.md), and naming each here would make this
@@ -109,7 +125,7 @@ DEPLOY_IMAGE := $(if $(PROFILE),$(if $(IMAGE_NAMED),$(IMAGE)),$(IMAGE))
 
 .PHONY: deploy
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
-	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
+	$(O) build deploy -O yaml $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
 
 # config, launch and task carry //go:generate tony-codegen directives; their <pkg>_gen.go
 # and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.

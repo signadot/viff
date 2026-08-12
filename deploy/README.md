@@ -31,7 +31,7 @@ docd — one per face, because a face is the unit anything grants or reaches:
 > ```sh
 > kubectl -n verse delete statefulset docd     # NOT the pvc — data-docd-0 survives
 > kubectl -n verse delete service docd         # was headless; comes back as the client face
-> o build deploy -p <profile> | kubectl apply -f -
+> o build deploy -O yaml -p <profile> | kubectl apply -f -
 > ```
 
 Optionally a third tier: **source connectors**, one `Deployment` + `Service` each, running
@@ -58,10 +58,11 @@ roles, so there is one ref to pin and one build to cache.
 ## Render + apply
 
 ```sh
-o build deploy | kubectl apply -f -                          # defaults (dynamic PVC)
-o build deploy -p minikube -e image=verse:dev | kubectl apply -f -
-o build deploy -p staging | kubectl apply -f -               # EKS spot + EBS
+o build deploy -O yaml | kubectl apply -f -                  # defaults (dynamic PVC)
+o build deploy -O yaml -p minikube -e image=verse:dev | kubectl apply -f -
+o build deploy -O yaml -p staging | kubectl apply -f -       # EKS + EBS + tailnet
 o build deploy -s                                            # show the resolved env
+#   -O yaml is not optional: the default output is tony, which is only accidentally YAML
 ```
 
 ## Storage (per profile)
@@ -222,6 +223,8 @@ should be passed the Service names directly rather than discovering them.
 | `llmSecretKey` | `""` | secret-store entry to materialise `verse-llm` from; `""` emits no `ExternalSecret` |
 | `llmSecretStore` | `aws-secretsmanager` | the `ClusterSecretStore` it comes from |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
+| `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
+| `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
 | the source knobs | off | see [Sources](#sources-optional) |
 
 ## Sources (optional)
@@ -232,7 +235,7 @@ independently — the git one costs a clone, the other two cost a credential in 
 
 ```sh
 make deploy E='-e gitSource=true'
-o build deploy -e slackSource=true -e linearSource=true | kubectl apply -f -
+o build deploy -O yaml -e slackSource=true -e linearSource=true | kubectl apply -f -
 ```
 
 They run `sourced`, the connector binary in the same image
@@ -275,7 +278,7 @@ leave it empty and there is none, and the source converges on the periodic resyn
 instead of on delivery.
 
 ```sh
-o build deploy -e slackSource=true -e slackWebhookHost=slack.verse.example.com \
+o build deploy -O yaml -e slackSource=true -e slackWebhookHost=slack.verse.example.com \
                -e ingressClassName=nginx | kubectl apply -f -
 ```
 
@@ -376,6 +379,38 @@ anybody visiting the cluster. Two things to know:
   `llm.available` and a masked key.
 - **`envFrom` is read when the pod starts.** A Secret that lands after versed does nothing
   until it restarts — `kubectl -n verse rollout restart deploy/versed`.
+
+## The coderunner (`coderunner`, off by default)
+
+A place code work **runs** — its own `Deployment` + `Service` + `ConfigMap`, a workspace and a
+process per task, bubblewrap around the process. Not a source and not the engine: verse reaches
+it by url, and deploying it does not install it.
+
+```sh
+make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
+make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
+kubectl -n verse exec deploy/versed -- verse runner add pool:code http://coderunner:9802
+```
+
+That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
+acceptance test.
+
+**Its own image, not necessarily its own repository.** The two images are sized by different
+things (the runtime image is thin and pinned to the engine; this one carries the toolchain the
+repositories it serves must build), which is a reason for two *builds*, not two registry
+repositories. A tag in the existing one is a repository you do not have to create and a pull
+credential you do not have to re-grant. It needs no `imagePullSecrets` of its own either way:
+it runs as the namespace's `default` ServiceAccount like everything else here.
+
+⚠️ **Two things it shares with versed have to agree, and nothing checks that they do.** The
+`ConfigMap`'s `llm.model` must be a model the `verse-llm` credential's provider serves — the
+same value as `llmModel` — and its `egress` allowlist must contain **`api.portkey.ai`**, the
+gateway the driver actually dials, not the model vendor behind the virtual key. Both fail at
+the first spawn rather than at deploy.
+
+`/state` is an `emptyDir`, and the manifest says why that is the first thing to change: a
+delivery that could not reach its remote leaves the commit under `refs/pending/<task>/<repo>`
+for the runner to retry, and on an `emptyDir` that work dies with the pod.
 
 ## Not here yet
 

@@ -32,7 +32,10 @@ data:
     llm:
       apiKeyEnv: PORTKEY_API_KEY
       virtualKeyEnv: PORTKEY_VIRTUAL_KEY
-      model: claude-sonnet-4-6
+      # A model the virtual key's provider serves, and the same one versed is given
+      # (deploy/profiles/staging.tony): one credential, one provider, one answer about which
+      # model this deployment runs.
+      model: claude-sonnet-5
 
     environments:
     - name: verse-docs
@@ -58,8 +61,13 @@ data:
       # It needs bwrap, which is why `-confine bwrap` below is not optional for this environment:
       # a confiner that cannot unshare the network REFUSES the launch rather than running the
       # task with a proxy it is free to ignore.
+      # api.portkey.ai, NOT the model vendor: the driver dials Portkey's gateway (the harness
+      # defaults there when no baseUrl is set), and which provider sits behind the virtual key
+      # is Portkey's business, not a route the task has. Allowlisting the vendor instead buys a
+      # refused model call with the allowlist in the message — loud, but not until the first
+      # spawn, and the config reads right until then.
       egress:
-      - api.anthropic.com
+      - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
 ---
@@ -99,16 +107,21 @@ spec:
         - bwrap
         ports:
         - {name: control, containerPort: 9802}
+        # The model credentials the llm driver uses. The config above names the ENV VARS it
+        # reads and never values, so the ConfigMap carries no secret and stays readable by
+        # anyone who can read the deployment.
+        #
+        # envFrom takes the Secret's own key names as variable names — verse-llm, the one
+        # versed uses, whose keys ARE those names (PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY). This
+        # named two keys explicitly before, and named ones that Secret does not have: a
+        # secretKeyRef with optional: true is SILENT about a key that is not there, so the pod
+        # came up with no credential and every task would have died at the model call. Taking
+        # the whole Secret cannot drift from it.
+        envFrom:
+        - secretRef:
+            name: verse-llm
+            optional: true
         env:
-        # The model credentials the llm driver uses. Named env vars rather than values in the
-        # config, so the ConfigMap above carries no secret and can be read by anyone who can
-        # read the deployment.
-        - name: PORTKEY_API_KEY
-          valueFrom:
-            secretKeyRef: {name: verse-llm, key: apiKey, optional: true}
-        - name: PORTKEY_VIRTUAL_KEY
-          valueFrom:
-            secretKeyRef: {name: verse-llm, key: virtualKey, optional: true}
         # What this runner pushes with. The TASK never sees it: delivery is the runner's act,
         # in the runner's process, and the agent has neither the variable nor a shell to read
         # it from.
