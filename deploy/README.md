@@ -428,9 +428,21 @@ kubectl -n verse get secret verse-git -o go-template='{{range $k,$v := .data}}{{
 and the first one used. Read-only on **Contents, Metadata, Issues, Pull requests and Actions**
 (plus Discussions with `githubDiscussions`). Without Contents the connector's first read is a
 `403 Resource not accessible by personal access token` on `git/ref/heads/<branch>` — it reads
-the default branch's ref before anything else. Permissions can be edited on an existing token
-without regenerating it, so the stored value stays good; if the org reviews tokens, an edit can
-send it back to `Pending`.
+the default branch's ref before anything else. Get the set wrong and it costs a new token: GitHub
+documents creating and deleting fine-grained tokens and not editing one's permissions. Updating
+the entry afterwards is `put-secret-value`, not `create-secret` — the name already exists:
+
+```sh
+printf '{"GITHUB_TOKEN":"%s"}' "$tok" > /tmp/e.json
+aws secretsmanager put-secret-value --region us-west-2 \
+  --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
+kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
+kubectl -n verse rollout restart deploy/github-source
+```
+
+The last two lines are why a rotation is three commands and not one: `refreshInterval` is an
+hour, so the `force-sync` annotation is what makes ESO look now, and `envFrom` is read at pod
+start, so the connector needs restarting to see the new value even once the Secret has it.
 
 **Create the entry before setting the knob.** A knob naming an entry that does not exist is an
 `ExternalSecret` stuck in `SecretSyncedError` and a Secret that never appears — which for the
