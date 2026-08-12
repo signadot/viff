@@ -460,8 +460,16 @@ export VERSE_ADDR=localhost:19797
 
 ./verse task run --runner runners:pool:code --environment verse-docs \
   --as "$USER" --name docsdrift --attach \
+  --answer docs/working/verse-dev/docs-drift.answer \
   "$(sed 's|@FILE@|docs/runners.md|' docs/working/verse-dev/docs-drift.prompt)"
 ```
+
+**`--answer` is not optional here**, and leaving it off is a mistake this note made for
+several runs. Without a contract the loop's only definition of finished is the model declining to
+call another tool — which is also what a model narrating its next step looks like. Observed twice:
+a run ended mid-verification with a page of ✓ marks as its `result`, and `done` on the read plane.
+[docs-drift.answer](verse-dev/docs-drift.answer) says exactly this in its own header, which is
+what makes the omission worth recording rather than just fixing.
 
 **One file per task**, named where the command runs. That is not a shortcut, it is the fix for
 finding 8: a task scoped to one file answers in minutes, produces a diff small enough to judge,
@@ -487,6 +495,30 @@ Then read what it produced, before anything else. Nothing has left the machine: 
 git -C <checkout> log --format='%B' -1 agent/<id>   # trailers, and the agent's own summary
 git -C <checkout> diff main..agent/<id>             # what it actually changed
 ```
+
+### One file is not a unit of work
+
+Three runs, same prompt, three different sizes of job:
+
+| file | lines | boundaries | outcome |
+|---|---|---|---|
+| `docs/runners.md` | 240 | 35 | clean, contract shape, delivered nothing |
+| `docs/trigger-model.md` | 1126 | 43 | died on a model timeout, mid-finding |
+| `docs/trigger-model.md` | 1126 | 49 | stopped mid-verification, ungoverned |
+
+"One file per task" was this drive's own fix for finding 8, and it worked for the file it was
+chosen against. It is not a unit: a 4.7× bigger document is a 4.7× bigger job, and the prompt says
+*check EVERY such reference in that file*, which on the largest doc in the tree is not a thing that
+converges in one task.
+
+The contract makes `done` mean something. It does not make the checking complete — a run that
+answers `status: clean` having verified a third of the file is a run that lied without meaning to,
+and nothing in the shape can tell.
+
+Which arrives back at finding 8 from the other side. The natural next scoping is per SECTION or per
+CLAIM, and that is exactly a fan-out over a list nobody can write down in advance — the primitive
+that does not exist. The drive keeps walking into the same missing thing from different directions,
+which is the strongest evidence yet that it is the right thing to build.
 
 ### What changed under this since the last drive
 
