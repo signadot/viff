@@ -2,11 +2,13 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/task"
 )
@@ -163,5 +165,75 @@ func TestFilesystemErrorsAreActionableAndRelative(t *testing.T) {
 				t.Errorf("%s %s leaks the working directory into the agent's view: %q", tool, p, got)
 			}
 		}
+	}
+}
+
+// flakyCompleter fails a set number of times, then answers. (llm_test.go already has a
+// fakeCompleter, which scripts turns rather than failures.)
+type flakyCompleter struct {
+	fails int
+	err   error
+	calls int
+}
+
+func (f *flakyCompleter) complete(context.Context, []chatMessage, []toolDef) (chatMessage, string, error) {
+	f.calls++
+	if f.calls <= f.fails {
+		return chatMessage{}, "", f.err
+	}
+	return chatMessage{Role: "assistant", Content: "done"}, "stop", nil
+}
+
+// A transient model failure is retried; a permanent one is not.
+//
+// One slow response used to end the whole task: 43 boundaries of work — reads, reasoning, a
+// finding half-written — died on `Client.Timeout exceeded while awaiting headers`, and a task's
+// conversation lives in its driver, so there was nothing to resume. Found by driving it.
+func TestTheModelCallIsRetriedWhenTheFailureSaysNothingAboutTheRequest(t *testing.T) {
+	saved := modelBackoff
+	modelBackoff = []time.Duration{time.Millisecond, time.Millisecond}
+	defer func() { modelBackoff = saved }()
+
+	// Two transient failures, then an answer: the task survives.
+	f := &flakyCompleter{fails: 2, err: transient{errors.New("context deadline exceeded")}}
+	d := &llmDriver{client: f, log: io.Discard}
+	msg, _, err := d.completeWithRetry(context.Background())
+	if err != nil {
+		t.Fatalf("a hiccup ended the task: %v", err)
+	}
+	if msg.Content != "done" || f.calls != 3 {
+		t.Errorf("calls = %d, msg = %q", f.calls, msg.Content)
+	}
+
+	// A permanent failure is not retried: asking again cannot change a bad key or a malformed
+	// request, and doing so spends the task's budget on a fixed answer.
+	f = &flakyCompleter{fails: 99, err: errors.New("api: Invalid API Key")}
+	d = &llmDriver{client: f, log: io.Discard}
+	if _, _, err = d.completeWithRetry(context.Background()); err == nil {
+		t.Fatal("a permanent failure was swallowed")
+	}
+	if f.calls != 1 {
+		t.Errorf("a permanent failure was retried %d times", f.calls-1)
+	}
+
+	// Exhausted retries say how many attempts, and carry the last failure.
+	f = &flakyCompleter{fails: 99, err: transient{errors.New("boom")}}
+	d = &llmDriver{client: f, log: io.Discard}
+	_, _, err = d.completeWithRetry(context.Background())
+	if f.calls != 3 {
+		t.Errorf("attempts = %d, want 1 + %d retries", f.calls, len(modelBackoff))
+	}
+	if !strings.Contains(err.Error(), "3 time(s)") || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("the failure does not account for itself: %v", err)
+	}
+
+	// A cancelled task stops asking, and reports the cancel rather than the failure it was
+	// retrying — the cancel is the better account of why the run ended.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f = &flakyCompleter{fails: 99, err: transient{errors.New("boom")}}
+	d = &llmDriver{client: f, log: io.Discard}
+	if _, _, err = d.completeWithRetry(ctx); !errors.Is(err, context.Canceled) {
+		t.Errorf("a cancelled task kept retrying: %v", err)
 	}
 }
