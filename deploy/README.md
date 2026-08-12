@@ -187,13 +187,18 @@ outright, recording `headless Services are not supported` as an `INVALIDSERVICE`
 and exposing nothing — which is the reason the plain name `docd` belongs to a face and the
 governing Service carries the suffix.
 
-⚠️ **Still not enough for `verse connect` from a laptop** — both faces are reachable now, but
-`connect` does not learn *these* addresses. It reads them from the running verse's `/status`,
-which advertises what versed was started with: the in-cluster `docd:7071` and `docd-mount:7072`
-([docs/working/connect.md](../docs/working/connect.md)). There is no flag to override them, and
-pointing versed's own `--docd-addr` at the tailnet names would route the engine's traffic
-through a proxy pod to reach the container beside it. `/status` advertising an address that is
-reachable from where the client is, distinct from the one versed dials, is the actual gap.
+**`/status` answers with the tailnet names too**, which is what makes `verse connect` work from
+a laptop. `connect` is its own process: it reads docd's two addresses off `/status` and dials
+them from where *it* is, so being told `docd:7071` — true inside the cluster, meaningless
+outside — was enough to stop it. With `tailscaleExpose`, versed is given
+`--docd-advertise-addr verse-docd:7071` and `--docd-mount-advertise-addr verse-docd-mount:7072`
+([up.md](../docs/reference/up.md#when-a-client-cannot-reach-docd-where-verse-does)). It keeps
+*dialling* `docd:7071` and `docd-mount:7072` — routing the engine's own traffic through a proxy
+pod to reach a container beside it would be absurd — and only the answer changes.
+
+There is one published pair, so this is a choice about which client matters, and it goes to the
+one outside. A controller running *inside* the namespace would now be handed tailnet names; it
+should be passed the Service names directly rather than discovering them.
 
 [Tailscale Kubernetes operator]: https://tailscale.com/kb/1236/kubernetes-operator
 

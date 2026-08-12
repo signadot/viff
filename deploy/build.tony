@@ -350,6 +350,40 @@ build:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd-mount"
 
+  # …and tell clients so. /status is where a controller (`verse connect`) reads docd's
+  # addresses, and it reads them from wherever IT is — which, once the faces are on a tailnet,
+  # is somewhere `docd:7071` does not resolve. versed keeps dialling the Service names; only
+  # what it PUBLISHES changes, to the tailnet names those same two Services now answer to.
+  #
+  # No knob: these are not a choice, they are the names the two devices were given four
+  # patches up, spelled from the same namespace. A knob would only be a way to disagree with
+  # the annotations.
+  - if: '.[tailscaleExpose]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              args:
+              - up
+              - --docd-addr
+              - docd:7071
+              - --docd-mount-addr
+              - docd-mount:7072
+              - --docd-advertise-addr
+              - "$[namespace]-docd:7071"
+              - --docd-mount-advertise-addr
+              - "$[namespace]-docd-mount:7072"
+              - --addr
+              - ":9797"
+              - --broker-addr
+              - ":9090"
+
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
     match:
       kind: Service

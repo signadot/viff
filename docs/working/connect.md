@@ -86,6 +86,11 @@ metadata store, the mount address for the content controller. This is why the tw
 surfaced on the operator API at all: so a controller process can find docd's mount face
 without guessing.
 
+Being a separate process is also why the published address is not always the one verse dials:
+`connect` dials from where *it* runs. `up --docd-advertise-addr` sets what is published when
+the two differ, which is what a cluster does to you — verse reaches docd by a Service name
+that resolves nowhere else. See [up.md](../reference/up.md#when-a-client-cannot-reach-docd-where-verse-does).
+
 `connect` also waits for the content controller to be mounted and serving before
 installing the trigger (`waitContentReady`), so a validator can't fire and race an unmounted
 controller into a spurious "file not found."

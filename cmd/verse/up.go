@@ -33,8 +33,15 @@ type upConfig struct {
 	// logd+docd up on, or nothing for a fresh temp data dir.
 	DocdAddr      string `cli:"name=docd-addr desc='connect to a running docd (client face); if set, verse spawns nothing'"`
 	DocdMountAddr string `cli:"name=docd-mount-addr desc='the running docd controller/MOUNT face (with --docd-addr)'"`
-	Data          string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
-	OBin          string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
+	// What to PUBLISH on /status, when that is not what versed dials. A client reads
+	// docd's addresses off /status and connects to them itself, from where IT is — and
+	// where it is may not be where versed is. In a cluster versed reaches docd by a
+	// Service name that resolves nowhere else, so a laptop given that name has been told
+	// something true and useless.
+	DocdAdvertiseAddr      string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
+	DocdMountAdvertiseAddr string `cli:"name=docd-mount-advertise-addr desc='publish this MOUNT-face address on /status instead of --docd-mount-addr'"`
+	Data                   string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
+	OBin                   string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
 	// runner: where tasks run. Default is the in-process local supervisor.
 	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
@@ -59,6 +66,16 @@ func (cfg *upConfig) validate() error {
 	}
 	if cfg.DocdAddr == "" && cfg.DocdMountAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-mount-addr needs --docd-addr (it is the mount face of the docd being connected to)", cli.ErrUsage)
+	}
+	// An advertised address is a claim about a face that exists; each needs the face it
+	// re-addresses. Without --docd-addr the faces are ephemeral ports on a docd verse
+	// spawned itself, and publishing some other address for them is a promise nothing
+	// keeps — the failure would land on whoever believed /status, a process away.
+	if cfg.DocdAddr == "" && cfg.DocdAdvertiseAddr != "" {
+		return fmt.Errorf("%w: verse up: --docd-advertise-addr needs --docd-addr (it re-addresses the docd being connected to, and verse spawns its own on ephemeral ports)", cli.ErrUsage)
+	}
+	if cfg.DocdMountAddr == "" && cfg.DocdMountAdvertiseAddr != "" {
+		return fmt.Errorf("%w: verse up: --docd-mount-advertise-addr needs --docd-mount-addr (there is no mount face to re-address)", cli.ErrUsage)
 	}
 	if cfg.Runner != "" && cfg.Broker {
 		return fmt.Errorf("%w: verse up: --runner and --broker are mutually exclusive (one runner)", cli.ErrUsage)
@@ -173,8 +190,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	defer store.Close()
 	srv := versed.NewWithStore(build, store)
 	// Publish docd's faces on /status so `verse connect` (its own process) can find
-	// the mount face and run the file controller against it.
-	srv.DocdClient, srv.DocdMount = d.clientAddr, d.mountAddr
+	// the mount face and run the file controller against it — as the CLIENT should reach
+	// them, which is not always how versed did (--docd-advertise-addr). storeKind below
+	// stays the dialled pair: it describes what this process connected to.
+	srv.DocdClient = advertised(d.clientAddr, cfg.DocdAdvertiseAddr)
+	srv.DocdMount = advertised(d.mountAddr, cfg.DocdMountAdvertiseAddr)
 	storeKind := fmt.Sprintf("docd[client=%s mount=%s]", d.clientAddr, d.mountAddr)
 
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
@@ -267,6 +287,18 @@ func openDocdStore(cfg entity.LogdConfig, wait time.Duration, cc *cli.Context) (
 		}
 		time.Sleep(1 * time.Second)
 	}
+}
+
+// advertised picks what /status publishes for one of docd's faces: the address a client
+// was told to use, when it was given, else the one versed dialled. They differ whenever
+// versed and the client are not in the same place to dial from — a cluster Service name is
+// the whole reason this exists — and the dialled address stays the sane default, because
+// most of the time there is only one place.
+func advertised(dialled, advertise string) string {
+	if advertise != "" {
+		return advertise
+	}
+	return dialled
 }
 
 // brokerFace turns a broker listen address into a URL a worker can dial. An empty or

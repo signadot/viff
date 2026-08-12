@@ -63,6 +63,12 @@ type Server struct {
 	// when store-kind is docd. They are published on GET /status so a separately-run
 	// controller task (e.g. `verse connect`) can find docd's mount face without
 	// guessing the ephemeral ports `up` chose.
+	//
+	// They are what a CLIENT should dial, which is not necessarily what versed dialled:
+	// `up --docd-advertise-addr` sets these when the two differ, as they do in a cluster,
+	// where versed reaches docd by a Service name that resolves nowhere else. The server
+	// never connects to them — it is handed an open store — so there is one reader, and
+	// it is somewhere else.
 	DocdClient string
 	DocdMount  string
 

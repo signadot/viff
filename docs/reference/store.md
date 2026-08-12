@@ -17,7 +17,9 @@ document store, over logd. What that buys:
 
 With no store flags, `up` brings up logd and docd on a fresh temp data dir via `o sys up` and
 points the store at docd's client face; `--data <dir>` uses a durable dir, and
-`--docd-addr`/`--docd-mount-addr` attach to an already-running docd. See
+`--docd-addr`/`--docd-mount-addr` attach to an already-running docd — with
+`--docd-advertise-addr`/`--docd-mount-advertise-addr` to publish a different pair on `/status`
+when a controller reaches docd by another address than verse does. See
 [up.md](up.md#the-store).
 
 ## The mapping

@@ -30,6 +30,8 @@ verse
        [--data <dir>]                        bring logd+docd up on <dir> (default: fresh temp dir)
        [--docd-addr host:port]               attach to a running docd (client face) …
        [--docd-mount-addr host:port]         … and its controller/MOUNT face
+       [--docd-advertise-addr host:port]     publish THESE on /status instead, when a client
+       [--docd-mount-advertise-addr h:p]     reaches docd by a different address than verse does
        [--o-bin path]                        the o binary to spawn daemons with (default: resolved —
                                              see up.md)
        [--runner <url>]                      run tasks on a remote task-control base URL …

@@ -31,6 +31,30 @@ verse up --data ~/.verse/data                       # a durable dir rather than 
 verse up --docd-addr host:port --docd-mount-addr host:port   # attach to an already-running docd
 ```
 
+### When a client cannot reach docd where verse does
+
+`up` publishes both docd addresses on `GET /status`, because a controller is its own process
+and has to find the faces itself — that is how [`verse connect`](connect.md) reaches the mount
+face. It reads them from wherever *it* runs, which is not always where verse runs. In a
+cluster verse reaches docd by a Service name that resolves nowhere else, so a laptop handed
+that name has been told something true and useless.
+
+`--docd-advertise-addr` and `--docd-mount-advertise-addr` say what to publish. Verse keeps
+dialling `--docd-addr`; only the answer changes:
+
+```sh
+verse up --docd-addr docd:7071 --docd-mount-addr docd-mount:7072 \
+         --docd-advertise-addr verse-docd:7071 \
+         --docd-mount-advertise-addr verse-docd-mount:7072
+```
+
+Each needs the face it re-addresses — `--docd-advertise-addr` without `--docd-addr` is
+refused, since the faces of a docd verse spawned itself are ephemeral ports, and publishing
+some other address for them is a promise nothing keeps. There is one published address, so
+this is a choice about *which* client matters; a deployment reachable both ways publishes the
+one its controllers use. `deploy/README.md` is a worked example, where the pair is the
+tailnet names of the two Services verse dials internally.
+
 ## The driver
 
 Which driver runs a task when nothing says otherwise. With LLM creds configured — an `llm`
