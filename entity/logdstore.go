@@ -293,22 +293,25 @@ func payloadToNode(p Payload) *ir.Node {
 }
 
 // nodeToPayload is the read face. A node is already a payload; the only work left is
-// dropping null-valued FIELDS of an object — logd's tombstones — so callers see only what
-// is present. A scalar payload has no fields and passes through untouched; a null one is an
-// absent entity and reads as nil.
+// dropping null-valued FIELDS of an object — VERSE's tombstones, not logd's — so callers
+// see only what is present. A scalar payload has no fields and passes through untouched; a
+// null one is an absent entity and reads as nil.
 //
 // It recurses, because a tombstone can be at any depth now that a write can be: removing
 // `labels.urgent` leaves a null AT that key, and a reader shown `labels: {urgent: null}`
 // would say the label is still there, holding nothing. Arrays are left alone — a null in a
 // list is a position, not an absence.
 //
-// A TAGGED null is not a tombstone but a value, and is kept. Absence is spelled by the store
-// and by nothing else: every null verse writes to remove something — a nil Value, the
-// explicit nulls of a whole-value replace — is written bare, and so is logd's own. A null
-// wearing a tag got there as data, `patch: {tmp: !delete null}` in a stored rule being the
-// case this exists for, and dropping it takes an operation out of a charter that reads back
-// otherwise intact. (A null a writer meant as data and wrote bare is still indistinguishable
-// from a tombstone; that was true before and is unchanged.)
+// A TAGGED null is not a tombstone but a value, and is kept. Absence is spelled by VERSE and
+// by nothing else: logd itself stores a bare null as an ordinary value, so a stray untagged
+// null would read back unchanged forever. The convention is this package's own, and this is
+// one half of a matched pair — addRemovedNulls (and Write with a nil value) write a bare
+// null to mean "this field is gone"; this function drops every untagged null it reads, at
+// any depth, so a caller never sees the marker. A null wearing a tag got there as data,
+// `patch: {tmp: !delete null}` in a stored rule being the case this exists for, and dropping
+// it takes an operation out of a charter that reads back otherwise intact. (A null a writer
+// meant as data and wrote bare is still indistinguishable from a tombstone; that was true
+// before and is unchanged.)
 //
 // An object is rebuilt without its dead fields, and KEEPS ITS OWN TAG. Rebuilding used to
 // drop it, which is invisible for the record-shaped payloads verse writes — they are untagged

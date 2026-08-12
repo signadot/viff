@@ -247,9 +247,10 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 			// each other forever: comparing whole payloads would make a change by OPS look like a
 			// change to ENG's answer, and each pass would write a value nobody asked to change.
 			//
-			// And against the payload AS THE STORE WILL HOLD IT: a read strips null fields (they
-			// are how the log spells a tombstone), so comparing against the raw answer would make
-			// a source that writes one differ from itself on every pass.
+			// And against the payload AS THE STORE WILL HOLD IT: a read strips null fields (verse
+			// writes a bare null to mean a field is gone, and strips it back out on read — logd
+			// itself just holds the value), so comparing against the raw answer would make a
+			// source that writes one differ from itself on every pass.
 			curAt, nextAt := valueAt(cur, p.Field), valueAt(e.Payload, p.Field)
 			if exists && entity.Equal(curAt, asStored(nextAt)) {
 				continue
