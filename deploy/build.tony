@@ -304,8 +304,18 @@ build:
           tailscale.com/expose: "true"
           tailscale.com/hostname: $[namespace]
 
-  # docd's mount face — the Service in tailscale/, which exists only when this is on. Only
-  # the name is patched; `expose` is in the file, since the file IS the switch.
+  # docd's two faces — the Services in tailscale/, which exist only when this is on. Only the
+  # name is patched; `expose` is in each file, since the file IS the switch. Two devices
+  # rather than one with both ports, so the ACL can reach one face without the other.
+  - if: '.[tailscaleExpose]'
+    match:
+      kind: Service
+      metadata:
+        name: docd-client
+    patch:
+      metadata:
+        annotations:
+          tailscale.com/hostname: "$[namespace]-docd"
   - if: '.[tailscaleExpose]'
     match:
       kind: Service
@@ -314,13 +324,13 @@ build:
     patch:
       metadata:
         annotations:
-          tailscale.com/hostname: "$[namespace]-mount"
+          tailscale.com/hostname: "$[namespace]-docd-mount"
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
     match:
       kind: Service
       metadata:
-        name: !or [verse, docd-mount]
+        name: !or [verse, docd-client, docd-mount]
     patch:
       metadata:
         annotations:

@@ -126,24 +126,28 @@ an unexposed Service looks exactly like an exposed one until you go looking on t
 | tailnet name | what | port |
 |---|---|---|
 | `verse` | the versed API — `verse -addr http://verse:9797 …` | 9797 |
-| `verse-mount` | docd's mount face, where a controller mounts a subtree ([seam 3](../docs/seams.md)) | 7072 |
+| `verse-docd` | docd's client face: the store, read/write, including scoped writes | 7071 |
+| `verse-docd-mount` | docd's mount face, where a controller mounts a subtree ([seam 3](../docs/seams.md)) | 7072 |
 
 The device names track `namespace`, so a second verse on the same tailnet is a second name
 rather than the `-1` suffix the operator would otherwise pick. `-e tailscaleTags=tag:verse`
 if the ACL wants its own tag instead of the operator's default `tag:k8s`.
 
-**docd's mount face is a second Service, not an annotation on the first.** `docd`'s Service is
-headless — that is what gives `docd-0.docd` a stable name — and the operator refuses a headless
-Service outright, recording `headless Services are not supported` as an `INVALIDSERVICE`
-warning event on it and exposing nothing. So `tailscaleExpose` also emits a `docd-mount`
-ClusterIP Service over the same pod, carrying the mount face alone.
+**docd's faces are Services of their own, not annotations on `docd`.** Its Service is headless
+— that is what gives `docd-0.docd` a stable name — and the operator refuses a headless Service
+outright, recording `headless Services are not supported` as an `INVALIDSERVICE` warning event
+on it and exposing nothing. So `tailscaleExpose` emits `docd-client` and `docd-mount` ClusterIP
+Services over the same pod. Two rather than one Service with both ports, because two Services
+are two tailnet IPs — which is what lets an ACL grant the mount face without granting the
+client face, and the client face is the whole store read/write.
 
-⚠️ **This is not enough for `verse connect` from a laptop.** `connect` uses *both* of docd's
-faces — the client face (7071) for scoped metadata writes, the mount face for the content
-controller ([docs/working/connect.md](../docs/working/connect.md)) — and it learns their
-addresses from the running verse's `/status`, which advertises the in-cluster `docd:7071` and
-`docd:7072`. Neither resolves on a tailnet. Exposing the client face too is one more port on
-`docd-mount`; making `/status` advertise a reachable address is the actual gap.
+⚠️ **Still not enough for `verse connect` from a laptop** — both faces are reachable now, but
+`connect` does not learn *these* addresses. It reads them from the running verse's `/status`,
+which advertises what versed was started with: the in-cluster `docd:7071` and `docd:7072`
+([docs/working/connect.md](../docs/working/connect.md)). There is no flag to override them, and
+pointing versed's own `--docd-addr` at the tailnet names would route the engine's traffic
+through a proxy pod to reach the container beside it. `/status` advertising an address that is
+reachable from where the client is, distinct from the one versed dials, is the actual gap.
 
 [Tailscale Kubernetes operator]: https://tailscale.com/kb/1236/kubernetes-operator
 
@@ -161,7 +165,7 @@ addresses from the running verse's `/status`, which advertises the in-cluster `d
 | `hostPath` | `/mnt/verse` | the PV's in-VM host path when `hostPV` |
 | `docdPool` | `""` | put docd on the `signadot.com/pool=<x>` nodes, tolerating their taint |
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
-| `tailscaleExpose` | `false` | put the API and docd's mount face on the tailnet (staging: on) |
+| `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet (staging: on) |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | the source knobs | off | see [Sources](#sources-optional) |
 
