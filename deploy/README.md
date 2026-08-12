@@ -498,7 +498,18 @@ same value as `llmModel` — and its `egress` allowlist must contain **`api.port
 gateway the driver actually dials, not the model vendor behind the virtual key. Both fail at
 the first spawn rather than at deploy.
 
-⚠️ **It needs `seccompProfile: Unconfined`, and that is not decoration.** Bottlerocket's kubelet
+⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
+`hostUsers: false`, `procMount: Unmasked`, `seccompProfile: Unconfined` — in that order of
+dependency, because the API will not accept the second without the first.
+
+| symptom | actual cause |
+|---|---|
+| `bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces` | the kernel does allow them; a seccomp filter blocks the `clone` |
+| `bwrap: Can't mount proc on /newroot/proc: Operation not permitted` | `/proc` has masked submounts, so it is not *fully visible*, and an unprivileged userns may not mount a fresh procfs |
+
+Both messages name the wrong layer, which is worth knowing before you go reading sysctls.
+
+**`seccompProfile: Unconfined`.** Bottlerocket's kubelet
 applies `RuntimeDefault` to every pod naming no profile, and containerd's default profile masks
 the namespace flags out of `clone` unless the caller holds `CAP_SYS_ADMIN` — which this pod
 drops. bwrap then reports *"the kernel does not allow non-privileged user namespaces"*, which
@@ -506,12 +517,25 @@ sends you to a sysctl that is fine (`user.max_user_namespaces` was `15000` on th
 this was found). The kernel allows it; the seccomp filter does not. Check with
 `grep ^Seccomp /proc/self/status` in the pod — `2` means a filter is loaded.
 
-The trade is real and worth stating: the pod loses the runtime's blanket syscall filter so the
-*task* can be given namespace containment. That is the right way round here — the runner binary
-is ours and the agent is not — and without it the runner refuses every spawn, so the strictly
-safer pod is one that runs nothing. A `Localhost` profile (RuntimeDefault plus the clone flags)
-is tighter and costs a profile file on every node. Pod Security Admission set to `restricted`
-would reject `Unconfined` outright; the `verse` namespace carries no PSA labels.
+**`procMount: Unmasked`.** With the filter lifted, bwrap got one step further and failed to
+mount `/proc`. `--unshare-pid` and `--proc /proc` were already in its argv, so the PID namespace
+was not it: the runtime masks eleven paths under `/proc` (`bus`, `fs`, `irq`, `sys`,
+`sysrq-trigger` read-only; `acpi`, `interrupts`, `kcore`, `keys`, `latency_stats`, `timer_list`
+covered), and since Linux 4.x an unprivileged user namespace may only mount a fresh procfs when
+it can already see a **fully visible** one. `grep " /proc" /proc/self/mountinfo` in the pod
+shows them.
+
+**`hostUsers: false`.** Required — `procMount: Unmasked` is refused without it — and it is also
+what makes the other two affordable. The trade is real and worth stating: this pod gives up the
+runtime's blanket syscall filter and its `/proc` masking so the *task* can be given namespace
+containment. That is the right way round here (the runner binary is ours, the agent is not), and
+without it the runner refuses every spawn, so the strictly safer pod is one that runs nothing.
+The pod's own user namespace is what keeps that from being a straight loss: unfiltered syscalls
+against an unmasked `/proc` from inside a userns are not the exposure they are in the host's.
+
+A `Localhost` seccomp profile (RuntimeDefault plus the clone flags) is tighter and costs a
+profile file on every node. Pod Security Admission set to `baseline` or `restricted` would
+reject both `Unconfined` and `Unmasked`; the `verse` namespace carries no PSA labels.
 
 `/state` is an `emptyDir`, and the manifest says why that is the first thing to change: a
 delivery that could not reach its remote leaves the commit under `refs/pending/<task>/<repo>`

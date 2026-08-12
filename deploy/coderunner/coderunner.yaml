@@ -89,6 +89,13 @@ spec:
     metadata:
       labels: {app: verse, tier: runner, runner: code}
     spec:
+      # The pod gets its own user namespace, which is here for two reasons and only one of
+      # them is bwrap's. The API requires it before it will accept `procMount: Unmasked`
+      # below — "hostUsers must be false to use Unmasked" is the literal refusal — and it is
+      # also what makes the two relaxations below affordable: a process making unfiltered
+      # syscalls against an unmasked /proc from inside its own user namespace is not the same
+      # exposure as one doing it in the host's.
+      hostUsers: false
       containers:
       - name: coderunner
         image: example/verse-coderunner:latest
@@ -163,6 +170,18 @@ spec:
           # tighter answer and costs a profile file on every node.
           seccompProfile:
             type: Unconfined
+          # And the second one, found the same way: with the filter lifted, bwrap got as far
+          # as `Can't mount proc on /newroot/proc: Operation not permitted`. --unshare-pid and
+          # --proc /proc were already in the argv, so the PID namespace was not the problem.
+          # The runtime masks eleven paths under /proc (bus, fs, irq, sys, sysrq-trigger
+          # read-only; acpi, interrupts, kcore, keys, latency_stats, timer_list covered), and
+          # since Linux 4.x an unprivileged user namespace may only mount a fresh procfs when
+          # it can already see a FULLY VISIBLE one. Eleven submounts is not fully visible.
+          #
+          # Unmasked lifts the covers so the mount is allowed. What made it acceptable is
+          # hostUsers above: the masking exists to keep a container from reading the HOST's
+          # /proc, and in its own user namespace that is not what it is reading.
+          procMount: Unmasked
           allowPrivilegeEscalation: false
           runAsNonRoot: true
           runAsUser: 65532
