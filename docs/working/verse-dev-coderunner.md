@@ -520,6 +520,13 @@ CLAIM, and that is exactly a fan-out over a list nobody can write down in advanc
 that does not exist. The drive keeps walking into the same missing thing from different directions,
 which is the strongest evidence yet that it is the right thing to build.
 
+What blocks it turns out not to be a missing loop, and it is written up in
+[derive-residual.md](derive-residual.md): a derive may carry the firing's IDENTITY and never its
+STATE, because a derived entity's address is a function of (rule, subject) and that is what keeps a
+re-fire a no-op. A fan-out over an answer breaks it by construction. The generalization that might
+not — *a derive may carry state iff its address is a function of that same state* — is there with
+the two questions it turns on.
+
 ### What changed under this since the last drive
 
 Four layers landed between that run and this one, and three of them alter what an operator sees.
