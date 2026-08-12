@@ -100,6 +100,12 @@ over the rest. The pool is *reserved*, not merely labelled — its nodes carry a
 `signadot.com/pool=stateful:NoSchedule` taint — so docd needs both halves: the `nodeSelector`
 to go there and the matching toleration to be let in. That is what `docdPool` emits.
 
+It pulls `example/verse-staging:latest` — its own repository rather than a tag on the shared
+one, so a build driven on staging is never what everything else pulls. Push there with
+`make push PUSH_IMAGE=example/verse-staging:latest`. (`make deploy PROFILE=staging` passes
+`-e image=$(IMAGE)`, which overrides that — for staging, render with `o` and pipe to
+`kubectl`.)
+
 Nothing here creates the class or the pool; the cluster has both. On a cluster that has
 neither, `-e emitStorageClass=true` emits a `verse-gp3` class (`WaitForFirstConsumer` → the
 pod is auto-affinitized to the volume's AZ), which needs the [EBS CSI driver addon] with
@@ -112,7 +118,7 @@ node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 | key | default | meaning |
 |---|---|---|
 | `namespace` | `verse` | target namespace |
-| `image` | `signadot/verse:latest` | full image ref incl. tag |
+| `image` | `signadot/verse:latest` | full image ref incl. tag (staging: `example/verse-staging:latest`) |
 | `brokerFace` | `true` | serve + expose the broker face; `false` drops its Service |
 | `storageClassName` | `""` | PVC class; `""` = cluster default (staging sets `gp3`) |
 | `storageSize` | `10Gi` | docd volume size |
