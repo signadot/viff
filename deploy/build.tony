@@ -44,6 +44,15 @@ build:
     docdPool: ""
     spotVersed: false
 
+    # Put the versed API and docd's mount face on the tailnet, through the Tailscale
+    # Kubernetes operator — which has to be installed already; these are just annotations it
+    # watches for, and nothing here notices if nobody is watching. The devices are named after
+    # the namespace (verse, verse-mount), so a second deploy under another namespace does not
+    # collide. tailscaleTags is for a tailnet whose ACL wants its own tag rather than the
+    # operator's default tag:k8s; "" leaves the default.
+    tailscaleExpose: false
+    tailscaleTags: ""
+
     # ── Sources: what reflects an external system into the verse ──────────────
     #
     # Each is off by default and independent of the others, because each costs something
@@ -97,6 +106,8 @@ build:
     dir: eks
   - if: '.[hostPV]'
     dir: hostpv
+  - if: '.[tailscaleExpose]'
+    dir: tailscale
   - if: '.[gitSource]'
     dir: git-source
   - if: '.[slackSource]'
@@ -272,6 +283,48 @@ build:
                     - key: eks.amazonaws.com/capacityType
                       operator: In
                       values: [SPOT]
+
+  # ── Tailscale ─────────────────────────────────────────────────────────────
+  #
+  # The versed API. An annotation on the existing Service is all the operator needs — it
+  # stands up its own proxy pod and dials this Service's ClusterIP, so nothing about the
+  # Service itself changes for in-cluster callers.
+  #
+  # The hostname is the tailnet device name, i.e. what somebody types (`verse:9797`). It
+  # tracks the namespace rather than being fixed, so two verses on one tailnet are two names
+  # instead of a name and a name-1 the operator picked.
+  - if: '.[tailscaleExpose]'
+    match:
+      kind: Service
+      metadata:
+        name: verse
+    patch:
+      metadata:
+        annotations:
+          tailscale.com/expose: "true"
+          tailscale.com/hostname: $[namespace]
+
+  # docd's mount face — the Service in tailscale/, which exists only when this is on. Only
+  # the name is patched; `expose` is in the file, since the file IS the switch.
+  - if: '.[tailscaleExpose]'
+    match:
+      kind: Service
+      metadata:
+        name: docd-mount
+    patch:
+      metadata:
+        annotations:
+          tailscale.com/hostname: "$[namespace]-mount"
+
+  - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
+    match:
+      kind: Service
+      metadata:
+        name: !or [verse, docd-mount]
+    patch:
+      metadata:
+        annotations:
+          tailscale.com/tags: $[tailscaleTags]
 
   # The source connectors. One image, three roles: these run `sourced`, versed runs `verse`,
   # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list

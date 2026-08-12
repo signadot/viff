@@ -116,6 +116,37 @@ node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 
 [EBS CSI driver addon]: https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
 
+## Reaching it: the tailnet (`tailscaleExpose`, on for staging)
+
+Two annotations the [Tailscale Kubernetes operator] watches for — it stands up its own proxy
+pod per Service and dials that Service's ClusterIP, so nothing changes for in-cluster callers.
+The operator has to already be installed; **nothing here notices if nobody is watching**, and
+an unexposed Service looks exactly like an exposed one until you go looking on the tailnet.
+
+| tailnet name | what | port |
+|---|---|---|
+| `verse` | the versed API — `verse -addr http://verse:9797 …` | 9797 |
+| `verse-mount` | docd's mount face, where a controller mounts a subtree ([seam 3](../docs/seams.md)) | 7072 |
+
+The device names track `namespace`, so a second verse on the same tailnet is a second name
+rather than the `-1` suffix the operator would otherwise pick. `-e tailscaleTags=tag:verse`
+if the ACL wants its own tag instead of the operator's default `tag:k8s`.
+
+**docd's mount face is a second Service, not an annotation on the first.** `docd`'s Service is
+headless — that is what gives `docd-0.docd` a stable name — and the operator refuses a headless
+Service outright, recording `headless Services are not supported` as an `INVALIDSERVICE`
+warning event on it and exposing nothing. So `tailscaleExpose` also emits a `docd-mount`
+ClusterIP Service over the same pod, carrying the mount face alone.
+
+⚠️ **This is not enough for `verse connect` from a laptop.** `connect` uses *both* of docd's
+faces — the client face (7071) for scoped metadata writes, the mount face for the content
+controller ([docs/working/connect.md](../docs/working/connect.md)) — and it learns their
+addresses from the running verse's `/status`, which advertises the in-cluster `docd:7071` and
+`docd:7072`. Neither resolves on a tailnet. Exposing the client face too is one more port on
+`docd-mount`; making `/status` advertise a reachable address is the actual gap.
+
+[Tailscale Kubernetes operator]: https://tailscale.com/kb/1236/kubernetes-operator
+
 ## Knobs (`build.tony` `env`; override with `-e` or a profile)
 
 | key | default | meaning |
@@ -130,6 +161,8 @@ node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 | `hostPath` | `/mnt/verse` | the PV's in-VM host path when `hostPV` |
 | `docdPool` | `""` | put docd on the `signadot.com/pool=<x>` nodes, tolerating their taint |
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
+| `tailscaleExpose` | `false` | put the API and docd's mount face on the tailnet (staging: on) |
+| `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | the source knobs | off | see [Sources](#sources-optional) |
 
 ## Sources (optional)
