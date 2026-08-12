@@ -59,6 +59,14 @@ build:
     tailscaleExpose: false
     tailscaleTags: ""
 
+    # LLM credentials by reference: the entry in a secret store that becomes the `verse-llm`
+    # Secret versed envFroms (External Secrets Operator). "" emits nothing — versed runs on
+    # the credential-free `scripted` driver, and a hand-made verse-llm works just as well.
+    # The entry's own keys are what land in the Secret, so they must be the ones verse reads:
+    # PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY (PORTKEY_BASE_URL, OPENAI_MODEL optional).
+    llmSecretKey: ""
+    llmSecretStore: "aws-secretsmanager"
+
     # ── Sources: what reflects an external system into the verse ──────────────
     #
     # Each is off by default and independent of the others, because each costs something
@@ -112,6 +120,11 @@ build:
   # does nothing for the pods already standing.
   - if: '.[ imagePullSecret != "" ]'
     dir: pull-secret
+  # Also before the workloads, for the same reason and a different mechanism: envFrom is read
+  # when the POD starts, so a Secret that appears afterwards is a rollout away from being in
+  # versed's environment.
+  - if: '.[ llmSecretKey != "" ]'
+    dir: llm-secret
   - dir: source
   - if: '.[emitStorageClass]'
     dir: eks
@@ -136,10 +149,27 @@ build:
 
   # Namespace every namespaced resource (StorageClass is cluster-scoped — excluded).
   - match:
-      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress, ServiceAccount]
+      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress, ServiceAccount, ExternalSecret]
     patch:
       metadata:
         namespace: $[namespace]
+
+  # Which store, and which entry in it. Both are patched rather than written into the file
+  # because a store name is a property of the cluster and the entry is a property of the
+  # deployment, and neither is a property of verse.
+  - if: '.[ llmSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-llm
+    patch:
+      spec:
+        secretStoreRef:
+          kind: ClusterSecretStore
+          name: $[llmSecretStore]
+        dataFrom:
+        - extract:
+            key: $[llmSecretKey]
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
   - if: '.[ imagePullSecret != "" ]'

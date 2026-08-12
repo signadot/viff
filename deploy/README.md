@@ -219,6 +219,8 @@ should be passed the Service names directly rather than discovering them.
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
 | `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet (staging: on) |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
+| `llmSecretKey` | `""` | secret-store entry to materialise `verse-llm` from; `""` emits no `ExternalSecret` |
+| `llmSecretStore` | `aws-secretsmanager` | the `ClusterSecretStore` it comes from |
 | the source knobs | off | see [Sources](#sources-optional) |
 
 ## Sources (optional)
@@ -325,14 +327,34 @@ run the same binary next to it with `-repo`, or skip the deployment entirely and
 ## LLM creds (optional)
 
 versed does `envFrom` a `verse-llm` Secret (`optional: true`), so it deploys and runs on the
-credential-free `scripted` driver without it. For `llm`-driver agents:
+credential-free `scripted` driver without it. For `llm`-driver agents, either make one:
 
 ```sh
 kubectl -n verse create secret generic verse-llm \
   --from-literal=PORTKEY_API_KEY=... \
   --from-literal=PORTKEY_VIRTUAL_KEY=... \
-  --from-literal=OPENAI_MODEL=gpt-4o
+  --from-literal=OPENAI_MODEL=gpt-4o          # optional; the driver defaults to gpt-4o
 ```
+
+…or name where it already lives, and let the External Secrets Operator materialise it —
+`llmSecretKey` emits an `ExternalSecret` that produces the same `verse-llm`, refreshed hourly.
+Staging does this, against the Portkey entry `signadot-control` already uses:
+
+```
+llmSecretKey: "staging/signadot-control/llm-gateway-credentials"
+llmSecretStore: "aws-secretsmanager"          # the ClusterSecretStore; only read when a key is set
+```
+
+The credential is then never in this tree, never in a shell history, and rotates without
+anybody visiting the cluster. Two things to know:
+
+- **The entry's own key names are what land in the Secret.** `dataFrom.extract` copies them
+  through verbatim, so they must be the names verse reads — `PORTKEY_API_KEY`,
+  `PORTKEY_VIRTUAL_KEY`, optionally `PORTKEY_BASE_URL` and `OPENAI_MODEL`. An entry with
+  different names syncs green and configures nothing. `verse status` is the check: it reports
+  `llm.available` and a masked key.
+- **`envFrom` is read when the pod starts.** A Secret that lands after versed does nothing
+  until it restarts — `kubectl -n verse rollout restart deploy/versed`.
 
 ## Not here yet
 
