@@ -123,9 +123,26 @@ E        ?=
 IMAGE_NAMED  := $(filter-out file default undefined,$(origin IMAGE) $(origin NAME) $(origin TAG))
 DEPLOY_IMAGE := $(if $(PROFILE),$(if $(IMAGE_NAMED),$(IMAGE)),$(IMAGE))
 
+# WHERE this goes, which `kubectl apply` otherwise takes from whatever context your shell is
+# pointing at. That makes this target a function of ambient state: the command that deploys
+# staging to staging is character for character the command that deploys it to production, and
+# the difference is something you did in another terminal an hour ago. So a profile NAMES its
+# cluster (`kubeContext`) and we pass it explicitly. Empty falls back to the current context —
+# right for minikube, and for any cluster deploy/ has never heard of.
+#
+# It prints where it is going before it goes, because a guard you cannot see is a guard you
+# stop believing in. CONTEXT= overrides, for a cluster that is the same shape under a different
+# name (a second staging, a colleague's kubeconfig entry).
+CONTEXT ?=
 .PHONY: deploy
-deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
-	$(O) build deploy -O yaml $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
+deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; CONTEXT= to override the target cluster; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
+	@ctx='$(CONTEXT)'; \
+	if [ -z "$$ctx" ]; then \
+	  ctx=$$($(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -s | sed -n 's/^kubeContext: *//p' | tr -d '"'); \
+	fi; \
+	echo "deploy: $(if $(PROFILE),profile '$(PROFILE)',defaults) → context '$${ctx:-$$(kubectl config current-context)}'"; \
+	$(O) build deploy -O yaml $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) \
+	  | kubectl $${ctx:+--context "$$ctx"} apply -f -
 
 # config, launch and task carry //go:generate tony-codegen directives; their <pkg>_gen.go
 # and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.

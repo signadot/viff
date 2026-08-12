@@ -12,6 +12,13 @@
 build:
   env:
     namespace: verse
+    # The cluster this profile is FOR, as a kubectl context name. `kubectl apply` otherwise
+    # goes wherever your shell happens to point, which makes `make deploy PROFILE=staging` a
+    # function of ambient state — and the command that deploys staging to staging is character
+    # for character the command that deploys it to production. Naming it here makes the
+    # manifests and the cluster travel together. "" falls back to the current context, which is
+    # right for minikube and for anyone whose cluster this file has never heard of.
+    kubeContext: ""
     # Full image ref incl. tag (deploy/Dockerfile). Override: -e image=localhost:5000/verse:dev
     image: "signadot/verse:latest"
     # Container imagePullPolicy. "" = leave the k8s default (Always for :latest, else

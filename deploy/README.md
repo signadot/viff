@@ -58,12 +58,30 @@ roles, so there is one ref to pin and one build to cache.
 ## Render + apply
 
 ```sh
-o build deploy -O yaml | kubectl apply -f -                  # defaults (dynamic PVC)
-o build deploy -O yaml -p minikube -e image=verse:dev | kubectl apply -f -
-o build deploy -O yaml -p staging | kubectl apply -f -       # EKS + EBS + tailnet
-o build deploy -s                                            # show the resolved env
-#   -O yaml is not optional: the default output is tony, which is only accidentally YAML
+make deploy                                    # defaults (dynamic PVC)
+make deploy PROFILE=minikube
+make deploy PROFILE=staging                    # EKS + EBS + tailnet + coderunner
+o build deploy -s                              # show the resolved env, apply nothing
 ```
+
+Prefer `make deploy` over piping `o` into `kubectl` by hand, for two reasons that are easy to
+get wrong once each:
+
+- **`-O yaml`.** `o`'s default output is *tony*, which for block-style input happens to be
+  valid YAML too — so a hand-rolled pipe works until a manifest uses flow mappings, and then
+  `kubectl` refuses the whole stream over a line in a document nobody wrote.
+- **The cluster.** `kubectl apply` goes wherever your shell's current context points, which
+  makes a hand-rolled pipe a function of ambient state — and the command that deploys staging
+  to staging is character for character the command that deploys it somewhere else. A profile
+  names its cluster in `kubeContext`, `make deploy` passes it explicitly, and it prints where
+  it is going before it goes:
+
+```
+deploy: profile 'staging' → context 'my-cluster.example.ts.net'
+```
+
+`CONTEXT=` overrides that, for the same shape of cluster under a different kubeconfig name.
+An empty `kubeContext` — the default, and minikube — falls back to the current context.
 
 ## Storage (per profile)
 
