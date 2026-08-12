@@ -59,13 +59,28 @@ build:
     tailscaleExpose: false
     tailscaleTags: ""
 
-    # LLM credentials by reference: the entry in a secret store that becomes the `verse-llm`
-    # Secret versed envFroms (External Secrets Operator). "" emits nothing — versed runs on
-    # the credential-free `scripted` driver, and a hand-made verse-llm works just as well.
-    # The entry's own keys are what land in the Secret, so they must be the ones verse reads:
-    # PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY (PORTKEY_BASE_URL, OPENAI_MODEL optional).
+    # ── Credentials by reference ──────────────────────────────────────────────
+    #
+    # Each names the entry in a secret store that becomes one of the Secrets this deploy
+    # already expects, via an ExternalSecret (deploy/secrets/). "" emits none, and the Secret
+    # is yours to create by hand — which is the answer on a cluster with no External Secrets
+    # Operator, and why nothing here is required.
+    #
+    # One knob per credential rather than one for all of them, because they are held by
+    # different processes and revoked on different days: the git source's PAT and the
+    # coderunner's push token can be the same secret and should still be two entries, so
+    # taking one away does not take the other.
+    #
+    # The entry's OWN key names land in the Secret verbatim — deploy/README.md tabulates what
+    # each consumer reads. An entry that spells them differently syncs green and configures
+    # nothing.
+    secretStore: "aws-secretsmanager"
     llmSecretKey: ""
-    llmSecretStore: "aws-secretsmanager"
+    gitSecretKey: ""
+    slackSecretKey: ""
+    linearSecretKey: ""
+    githubSecretKey: ""
+    coderunnerSecretKey: ""
     # The model id, when the driver's default (gpt-4o) is not what the credential routes to.
     # A Portkey virtual key resolves to ONE provider, so the model has to be one that provider
     # serves — an Anthropic-backed key asked for gpt-4o fails on every call, and the credential
@@ -139,11 +154,14 @@ build:
   # does nothing for the pods already standing.
   - if: '.[ imagePullSecret != "" ]'
     dir: pull-secret
-  # Also before the workloads, for the same reason and a different mechanism: envFrom is read
-  # when the POD starts, so a Secret that appears afterwards is a rollout away from being in
-  # versed's environment.
-  - if: '.[ llmSecretKey != "" ]'
-    dir: llm-secret
+  # Also before the workloads, for the same reason and a different mechanism: envFrom and a
+  # secret volume are both read when the POD starts, so a Secret that appears afterwards is a
+  # rollout away from being in its consumer's environment — and the Slack connector's secretRef
+  # is not optional, so it would not start at all.
+  #
+  # Unconditional, unlike the dirs below: each file in it deletes itself when its own knob is
+  # empty, which is one rule per credential rather than an `if` here that has to name six.
+  - dir: secrets
   - dir: source
   - if: '.[emitStorageClass]'
     dir: eks
@@ -175,9 +193,19 @@ build:
       metadata:
         namespace: $[namespace]
 
-  # Which store, and which entry in it. Both are patched rather than written into the file
-  # because a store name is a property of the cluster and the entry is a property of the
-  # deployment, and neither is a property of verse.
+  # The store is one patch over all of them — a store name is a property of the cluster, and
+  # the same one serves every entry.
+  - match:
+      kind: ExternalSecret
+    patch:
+      spec:
+        secretStoreRef:
+          kind: ClusterSecretStore
+          name: $[secretStore]
+
+  # Then the entry, one pair per credential: name it, or delete the ExternalSecret entirely.
+  # A pair rather than one patch over `kind: ExternalSecret`, because each names a different
+  # entry — and the `!delete null` half is what makes the dir above unconditional.
   - if: '.[ llmSecretKey != "" ]'
     match:
       kind: ExternalSecret
@@ -185,12 +213,100 @@ build:
         name: verse-llm
     patch:
       spec:
-        secretStoreRef:
-          kind: ClusterSecretStore
-          name: $[llmSecretStore]
         dataFrom:
         - extract:
             key: $[llmSecretKey]
+  - if: '.[ llmSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-llm
+    patch: !delete null
+
+  - if: '.[ gitSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-git
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[gitSecretKey]
+  - if: '.[ gitSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-git
+    patch: !delete null
+
+  - if: '.[ slackSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-slack
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[slackSecretKey]
+  - if: '.[ slackSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-slack
+    patch: !delete null
+
+  - if: '.[ linearSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-linear
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[linearSecretKey]
+  - if: '.[ linearSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-linear
+    patch: !delete null
+
+  - if: '.[ githubSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-github
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[githubSecretKey]
+  - if: '.[ githubSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-github
+    patch: !delete null
+
+  - if: '.[ coderunnerSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-coderunner
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[coderunnerSecretKey]
+  - if: '.[ coderunnerSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-coderunner
+    patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
   - if: '.[ imagePullSecret != "" ]'

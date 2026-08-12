@@ -220,8 +220,9 @@ should be passed the Service names directly rather than discovering them.
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
 | `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet (staging: on) |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
-| `llmSecretKey` | `""` | secret-store entry to materialise `verse-llm` from; `""` emits no `ExternalSecret` |
-| `llmSecretStore` | `aws-secretsmanager` | the `ClusterSecretStore` it comes from |
+| `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
+| `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
+| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `coderunnerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
 | `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
@@ -258,7 +259,8 @@ verse 404s every delivery — loud, but only if you look.
 
 The two that need one take it from a Secret, and `optional` is **false** on purpose: a Slack
 source with no token has nothing to reflect, so it fails to start rather than installing clean
-and failing every pass.
+and failing every pass. Either name a store entry — `slackSecretKey`, `linearSecretKey`,
+`githubSecretKey`, see [Credentials](#credentials) — or create the Secret yourself:
 
 ```sh
 kubectl -n verse create secret generic verse-slack \
@@ -290,8 +292,8 @@ own signature; verse never sees the delivery.
 
 The git connector mounts a `verse-git` Secret at `/git-credentials`, `optional: true`, and
 points git's credential helper at it. No Secret means an empty mount, a helper that answers
-nothing, and an anonymous clone — which is what a public mirror wants — so there is no knob to
-set for the common case.
+nothing, and an anonymous clone — which is what a public *mirror* wants, and is exactly what a
+private one gets 404s from. `gitSecretKey` names the store entry, or create it yourself:
 
 ```sh
 kubectl -n verse create secret generic verse-git \
@@ -328,7 +330,49 @@ run the same binary next to it with `-repo`, or skip the deployment entirely and
 | `linearWebhookHost` | `""` | Ingress host for `/linear/webhook` |
 | `ingressClassName` | `""` | class for both Ingresses; `""` leaves the cluster default |
 
-## LLM creds (optional)
+## Credentials
+
+Every credential this deploy needs is a Secret it **names** and does not carry. Each has a
+knob naming the secret-store entry it comes from, and each emits an `ExternalSecret`
+(`deploy/secrets/`) that materialises it, refreshed hourly. Leave the knob empty and no
+`ExternalSecret` is emitted at all — then the Secret is yours to create by hand, which is the
+right answer on a cluster with no External Secrets Operator.
+
+One knob per credential rather than one for all, because they are held by different processes
+and revoked on different days: the git source's PAT and the coderunner's push token can be the
+same secret and should still be two entries, so taking one away does not take the other.
+
+⚠️ **The entry's own key names land in the Secret verbatim** (`dataFrom.extract` copies them
+through), so an entry that spells them differently syncs green and configures nothing. These
+are the names each consumer reads:
+
+| knob | Secret | keys the entry must have | read as |
+|---|---|---|---|
+| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the coderunner |
+| `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
+| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start |
+| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env |
+| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | env |
+| `coderunnerSecretKey` | `verse-coderunner` | `gitToken` | env, in the runner and never in the sandbox |
+
+Creating one, with the values reaching a file rather than your shell history:
+
+```sh
+printf '{"PORTKEY_API_KEY":"%s","PORTKEY_VIRTUAL_KEY":"%s"}' "$pk" "$vk" > /tmp/e.json
+aws secretsmanager create-secret --region us-west-2 \
+  --name staging/verse/llm --secret-string file:///tmp/e.json && rm /tmp/e.json
+```
+
+**Create the entry before setting the knob.** A knob naming an entry that does not exist is an
+`ExternalSecret` stuck in `SecretSyncedError` and a Secret that never appears — which for the
+Slack connector is a pod that will not start, and for the git source is an empty credential
+mount, an anonymous clone, and a private repository answering 404.
+
+**`envFrom` and secret volumes are read when the pod starts**, so a Secret that lands after its
+consumer needs `kubectl -n verse rollout restart deploy/<x>`. The `secrets/` dir renders ahead
+of the workloads so a first apply does not need that.
+
+### The model credential (`llmSecretKey`)
 
 versed does `envFrom` a `verse-llm` Secret (`optional: true`), so it deploys and runs on the
 credential-free `scripted` driver without it. For `llm`-driver agents, either make one:
@@ -340,43 +384,26 @@ kubectl -n verse create secret generic verse-llm \
   --from-literal=OPENAI_MODEL=gpt-4o          # optional; the driver defaults to gpt-4o
 ```
 
-…or name where it already lives, and let the External Secrets Operator materialise it —
-`llmSecretKey` emits an `ExternalSecret` that produces the same `verse-llm`, refreshed hourly.
-Staging does this, against verse's own Portkey credential:
+Staging names verse's own Portkey credential:
 
 ```
 llmSecretKey: "staging/verse/llm"
-llmSecretStore: "aws-secretsmanager"          # the ClusterSecretStore; only read when a key is set
-llmModel: "claude-sonnet-5"                   # what that credential routes to; "" = the driver's gpt-4o
+llmModel: "claude-sonnet-5"     # what that credential routes to; "" = the driver's gpt-4o
 ```
 
 A console is where a key is **issued**; a secret store is how it reaches a cluster that cannot
-log into that console. So a Portkey key belongs in both — created there, written here once:
+log into that console. So a Portkey key belongs in both.
 
-```sh
-printf '{"PORTKEY_API_KEY":"%s","PORTKEY_VIRTUAL_KEY":"%s"}' "$pk" "$vk" > /tmp/llm.json
-aws secretsmanager create-secret --region us-west-2 \
-  --name staging/verse/llm --secret-string file:///tmp/llm.json && rm /tmp/llm.json
-```
-
-Two values, not three: verse sends `x-portkey-api-key` and `x-portkey-virtual-key` to
-Portkey's gateway and nothing else. **The provider key the virtual key resolves to — an
-Anthropic key, say — stays in Portkey.** verse never sees it and has nowhere to put it.
+Two values, not three: verse sends `x-portkey-api-key` and `x-portkey-virtual-key` to Portkey's
+gateway and nothing else. **The provider key the virtual key resolves to — an Anthropic key,
+say — stays in Portkey.** verse never sees it and has nowhere to put it.
 
 That indirection is also why `llmModel` exists. A virtual key resolves to one provider, so the
 model has to be one *that* provider serves: an Anthropic-backed key asked for the driver's
 `gpt-4o` default fails on every call, and nothing about the credential can warn you. It is set
 as an explicit env var, which also means it wins over an `OPENAI_MODEL` in the Secret — model
-choice is deployment config and belongs in the open, not smuggled into a secret store entry.
-
-The credential is then never in this tree, never in a shell history, and rotates without
-anybody visiting the cluster. Two things to know:
-
-- **The entry's own key names are what land in the Secret.** `dataFrom.extract` copies them
-  through verbatim, so they must be the names verse reads — `PORTKEY_API_KEY`,
-  `PORTKEY_VIRTUAL_KEY`, optionally `PORTKEY_BASE_URL` and `OPENAI_MODEL`. An entry with
-  different names syncs green and configures nothing. `verse status` is the check: it reports
-  `llm.available` and a masked key.
+choice is deployment config and belongs in the open, not smuggled into a store entry.
+`verse status` is the check: it reports `llm.available` and a masked key.
 - **`envFrom` is read when the pod starts.** A Secret that lands after versed does nothing
   until it restarts — `kubectl -n verse rollout restart deploy/versed`.
 
