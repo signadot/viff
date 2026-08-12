@@ -164,6 +164,23 @@ func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []to
 // should fail while somebody still has the context to care.
 var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second}
 
+// modelWaitNotice is how often a call still in flight says so on the read plane, and
+// modelTotalBudget bounds the whole retried sequence.
+//
+// Both exist because the retry, on its own, made a stall INVISIBLE FOR LONGER. Before it, a stuck
+// call failed in two minutes; after, three attempts at five minutes each is a quarter of an hour
+// in which a task emits nothing at all and cannot be told from one that has died. A drive watched
+// exactly that and reported "it appears hung" — which was the correct reading of the evidence
+// available, and is findings 6 and 7 of that drive with a new cause.
+//
+// So a long call announces itself while it is still going, rather than only when it fails, and
+// the sequence stops asking once the budget is spent. The point of a retry is a hiccup; past a
+// few minutes it is not a hiccup and somebody should be told rather than waited out.
+var (
+	modelWaitNotice  = 30 * time.Second
+	modelTotalBudget = 8 * time.Minute
+)
+
 // completeWithRetry is the model call, repeated when the failure says nothing about the request.
 //
 // It exists because one slow response used to be terminal for the whole task. Forty-three
@@ -176,14 +193,20 @@ var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second}
 // drive make about everything else.
 func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string, error) {
 	var last error
+	started := time.Now()
 	for attempt := 0; ; attempt++ {
-		msg, finish, err := d.client.complete(ctx, d.messages, d.tools)
+		msg, finish, err := d.completeAloud(ctx)
 		if err == nil {
 			return msg, finish, nil
 		}
 		last = err
 		var t transient
 		if !errors.As(err, &t) || attempt >= len(modelBackoff) {
+			break
+		}
+		if spent := time.Since(started); spent > modelTotalBudget {
+			last = fmt.Errorf("%w (giving up after %s of retrying: this is not a hiccup)", err,
+				spent.Round(time.Second))
 			break
 		}
 		wait := modelBackoff[attempt]
@@ -203,6 +226,36 @@ func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string,
 	}
 	return chatMessage{}, "", fmt.Errorf("the model call failed %d time(s) and this task cannot "+
 		"continue without it: %w", len(modelBackoff)+1, last)
+}
+
+// completeAloud is one attempt, saying so periodically while it is still in flight.
+//
+// A model call is the one step of the loop that emits nothing until it is over, and it is also the
+// longest. Everything else — a read, a write, a gate — puts a frame on the read plane the moment it
+// happens, so silence during a call reads as death rather than as thought.
+func (d *llmDriver) completeAloud(ctx context.Context) (chatMessage, string, error) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(modelWaitNotice)
+		defer t.Stop()
+		started := time.Now()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				note := fmt.Sprintf("still waiting on the model (%s)",
+					time.Since(started).Round(time.Second))
+				fmt.Fprintf(d.log, "   … %s\n", note)
+				if d.emit != nil {
+					d.emit(task.Frame{Kind: task.EvSay, Text: note})
+				}
+			}
+		}
+	}()
+	msg, finish, err := d.client.complete(ctx, d.messages, d.tools)
+	close(done)
+	return msg, finish, err
 }
 
 // llmDriver adapts the model's turn-based tool calling onto the task loop's

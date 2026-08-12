@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -235,5 +236,67 @@ func TestTheModelCallIsRetriedWhenTheFailureSaysNothingAboutTheRequest(t *testin
 	d = &llmDriver{client: f, log: io.Discard}
 	if _, _, err = d.completeWithRetry(ctx); !errors.Is(err, context.Canceled) {
 		t.Errorf("a cancelled task kept retrying: %v", err)
+	}
+}
+
+// slowCompleter blocks until released, so a call in flight can be observed.
+type slowCompleter struct{ release chan struct{} }
+
+func (s *slowCompleter) complete(context.Context, []chatMessage, []toolDef) (chatMessage, string, error) {
+	<-s.release
+	return chatMessage{Role: "assistant", Content: "eventually"}, "stop", nil
+}
+
+// A model call in flight says so, and a retried sequence stops asking once its budget is spent.
+//
+// The retry alone made a stall invisible for LONGER: three attempts at five minutes is a quarter
+// of an hour in which a task emits nothing and cannot be told from one that has died. A drive
+// watched exactly that and reported "it appears hung", which was the correct reading of the
+// evidence available.
+func TestALongModelCallSaysSoAndARetriedSequenceIsBounded(t *testing.T) {
+	savedNotice, savedBudget, savedBackoff := modelWaitNotice, modelTotalBudget, modelBackoff
+	defer func() {
+		modelWaitNotice, modelTotalBudget, modelBackoff = savedNotice, savedBudget, savedBackoff
+	}()
+	modelWaitNotice = 5 * time.Millisecond
+
+	// In flight: the read plane hears about it before the call returns.
+	var mu sync.Mutex
+	var said []string
+	slow := &slowCompleter{release: make(chan struct{})}
+	d := &llmDriver{client: slow, log: io.Discard, emit: func(f task.Frame) {
+		mu.Lock()
+		said = append(said, f.Text)
+		mu.Unlock()
+	}}
+	go func() { time.Sleep(60 * time.Millisecond); close(slow.release) }()
+	if _, _, err := d.completeWithRetry(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	heard := len(said)
+	mu.Unlock()
+	if heard == 0 {
+		t.Error("a call that took twelve notice periods emitted nothing — a task mid-call is " +
+			"indistinguishable from one that has died")
+	}
+
+	// Budget: a sequence that keeps failing stops asking rather than spending every attempt.
+	modelBackoff = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+	modelTotalBudget = 0 // anything already spent is over budget
+	f := &flakyCompleter{fails: 99, err: transient{errors.New("boom")}}
+	d = &llmDriver{client: f, log: io.Discard}
+	_, _, err := d.completeWithRetry(context.Background())
+	if err == nil {
+		t.Fatal("expected failure")
+	}
+	// The property is that the sequence stops EARLY, not that it stops at a particular count:
+	// a budget already spent has nothing left to give, so it does not even reach the first
+	// retry. Asserting a count here would be asserting the arithmetic rather than the rule.
+	if f.calls >= 1+len(modelBackoff) {
+		t.Errorf("attempts = %d — the budget did not stop the sequence", f.calls)
+	}
+	if !strings.Contains(err.Error(), "not a hiccup") {
+		t.Errorf("giving up does not say why: %v", err)
 	}
 }
