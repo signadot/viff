@@ -35,7 +35,10 @@ environments:
   repos:
   - name: verse
     repo: "/Users/scott/Dev/github.com/signadot/verse"
-    base: main
+    # The branch, not main. Every doc this drive could find drift in has been changed on
+    # `git-coding-runner` and not on main, so a task based on main checks prose against code
+    # that has had no reason to diverge from it — which is why two runs came back clean.
+    base: git-coding-runner
     # A LOCAL ref for the first generations. The branch lands in the same repository the task
     # read, where a person can diff it, and nothing reaches a remote until somebody has.
     # Phase 4 is the step that changes this, and it is gated for that reason.
