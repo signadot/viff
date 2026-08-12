@@ -17,6 +17,12 @@ build:
     # Container imagePullPolicy. "" = leave the k8s default (Always for :latest, else
     # IfNotPresent). minikube/Docker Desktop use a locally-loaded image → set Never.
     imagePullPolicy: ""
+    # The name of an image pull secret for a private registry. NOT created here — this names
+    # a Secret that already exists in the namespace, because a registry credential is not
+    # something a checked-in manifest should be carrying. On staging one arrives on its own
+    # (the signadot-registry ClusterExternalSecret fans it into every namespace); see
+    # deploy/README.md. "" attaches none.
+    imagePullSecret: ""
     # Serve + expose the broker face (needed by remote policies / k8s Jobs workers).
     brokerFace: true
     storageSize: "10Gi"
@@ -101,6 +107,11 @@ build:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
   # precede the Namespace (else "namespaces \"verse\" not found" on the first apply).
   - dir: namespace
+  # Before the workloads on purpose: a ServiceAccount's imagePullSecrets are copied into a
+  # pod when the POD is created, so an account that gains the secret after the Deployment
+  # does nothing for the pods already standing.
+  - if: '.[ imagePullSecret != "" ]'
+    dir: pull-secret
   - dir: source
   - if: '.[emitStorageClass]'
     dir: eks
@@ -127,10 +138,20 @@ build:
 
   # Namespace every namespaced resource (StorageClass is cluster-scoped — excluded).
   - match:
-      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress]
+      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress, ServiceAccount]
     patch:
       metadata:
         namespace: $[namespace]
+
+  # The pull secret, onto the `default` ServiceAccount every pod here runs as.
+  - if: '.[ imagePullSecret != "" ]'
+    match:
+      kind: ServiceAccount
+      metadata:
+        name: default
+    patch:
+      imagePullSecrets:
+      - name: $[imagePullSecret]
 
   # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
   # runs `verse` — one image, two roles).

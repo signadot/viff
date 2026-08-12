@@ -116,6 +116,36 @@ node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 
 [EBS CSI driver addon]: https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
 
+## A private registry (`imagePullSecret`)
+
+That repository is private, so `imagePullSecret: signadot-registry` on staging. It **names** a
+Secret; it does not create one — a checked-in manifest is not where a registry credential
+belongs, and on this cluster nobody creates it by hand either. A `ClusterExternalSecret` named
+`signadot-registry` fans the Docker Hub credential from AWS Secrets Manager into every
+namespace *except* a deny list, and `verse` is not on it — so creating the namespace is what
+puts the Secret there, hourly-refreshed and rotating on its own:
+
+```sh
+kubectl apply -f deploy/namespace/namespace.yaml
+kubectl -n verse get secret signadot-registry     # ESO fills it in within seconds
+```
+
+⚠️ **Do not copy the Secret between namespaces.** It carries `ownerReferences` to the
+`ExternalSecret` in the namespace it came from, owner references are namespace-local, and the
+garbage collector deletes a dependent whose owner it cannot find — so the copy disappears,
+with an `OwnerRefInvalidNamespace` event as the only trace.
+
+The knob attaches it to the namespace's **`default` ServiceAccount**, not to each pod spec:
+the ServiceAccount admission plugin copies `imagePullSecrets` into every pod created in the
+namespace, so versed, docd and every source connector are covered by one object rather than a
+patch each. The build emits that ServiceAccount immediately after the Namespace, before the
+workloads, because the copy happens **at pod creation** — an account that gains the secret
+later does nothing for pods already standing:
+
+```sh
+kubectl -n verse rollout restart deploy/versed statefulset/docd   # after attaching it late
+```
+
 ## Reaching it: the tailnet (`tailscaleExpose`, on for staging)
 
 Two annotations the [Tailscale Kubernetes operator] watches for — it stands up its own proxy
@@ -157,6 +187,7 @@ reachable from where the client is, distinct from the one versed dials, is the a
 |---|---|---|
 | `namespace` | `verse` | target namespace |
 | `image` | `signadot/verse:latest` | full image ref incl. tag (staging: `example/verse-staging:latest`) |
+| `imagePullSecret` | `""` | name an existing pull Secret, onto the `default` ServiceAccount |
 | `brokerFace` | `true` | serve + expose the broker face; `false` drops its Service |
 | `storageClassName` | `""` | PVC class; `""` = cluster default (staging sets `gp3`) |
 | `storageSize` | `10Gi` | docd volume size |
