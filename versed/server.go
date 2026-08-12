@@ -417,7 +417,7 @@ func (s *Server) spawnerFor(st entity.Store, content task.ContentReader) trigger
 // is the point: verse holds the vocabulary for an envelope because it can enforce one, and
 // holds none for a workspace because only the runner can build one. So it travels as a name,
 // the way `driver:` does, and a runner handed one it does not have refuses the launch. That
-// is the first consumer the field has had (docs/working/coding-runner.md).
+// is the first consumer the field has had (docs/working/coding-runner-residual.md).
 //
 // Provenance travels for a different reason: not so the runner can decide anything, but so
 // it can record why it was asked. Subject and Chain are what a firing knows about its own

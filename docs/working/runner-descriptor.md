@@ -1,9 +1,24 @@
 # A runner descriptor — sketch
 
-Status: **sketch**, nothing here runs and none of it is argued to the end. It exists to keep
-[the coding runner](coding-runner.md) honest about what it will need from the contract, and to
-park the reasoning somewhere while the attention goes to the example. Treat every section as a
-placeholder with a decision in it, not as a design.
+Status: **sketch**, and none of it is argued to the end. Treat every section as a placeholder with
+a decision in it, not as a design.
+
+Since it was written, the [coding runner](coding-runner-residual.md) landed and built the half that
+lives on a runner: it serves `GET /runner` with its drivers, its environments, the containment it
+can build **per leaf**, and what work it is holding undelivered. The isolation vocabulary below —
+leaves, ordered chains, componentwise comparison, refuse rather than degrade — is implemented there
+and has been exercised.
+
+What is still sketch is everything on **verse's** side. Nothing consumes the descriptor: `verse
+runner add` still probes with `GET /tasks`, verse holds no isolation vocabulary of its own, and an
+environment naming a `profile` is refused whatever it names because no runner publishes a
+catalogue.
+
+One thing the landing settled and this note had not: a **per-leaf ceiling is not a catalogue of
+buildable points**. bwrap's network is one switch, so it builds `(full, full)`, `(none, none)` and
+— with an egress proxy — `(none, restricted)`, while a per-leaf reading of the same numbers admits
+`(none, full)`, which cannot be built. `provides:` below should be read as `perLeaf:`, which is what
+the runner actually calls it, and the refusal stays the authority.
 
 Wire compatibility is **not** a constraint here: breaking it is fine at this stage, which
 collapses most of what an earlier draft spent its length on.

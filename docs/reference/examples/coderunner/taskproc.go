@@ -40,7 +40,7 @@ import (
 //   - what the TASK needs — the model key for the `llm` driver — does cross, on stdin below,
 //     because a real coding agent needs secrets plumbed to it and pretending otherwise just
 //     moves the problem. What bounds a secret once it is inside is `network.egress: restricted`,
-//     which no confiner here builds yet: see docs/working/coding-runner.md.
+//     which no confiner here builds yet: see docs/working/coding-runner-residual.md.
 //
 // The config arrives on STDIN rather than as a file or an environment. A file would have to be
 // bind-mounted into the sandbox, where the task could read it; an environment variable is

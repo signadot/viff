@@ -6,7 +6,7 @@ example in a fenced block goes stale the first time a signature moves and nobody
 | | |
 |---|---|
 | [runner/](runner/main.go) | a verse runner: the smallest thing that serves the task-control contract, with the two functions a drive changes marked |
-| [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, an LLM loop or an external program in it, and the runner — not the agent — pushing the result |
+| [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, a contained process per task, and delivery as a gated action of the task that the runner performs |
 | [source/](source/main.go) | a verse source: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
 
 The two runners are a ladder rather than one program trying to be both: `runner/` is the
@@ -39,16 +39,18 @@ go run ./docs/reference/examples/coderunner \
 ```
 
 Its config declares **environments** — a set of repositories, each with a base and optionally
-somewhere its result goes, plus which driver runs the work — and a spawn names one:
+somewhere its result goes, plus which driver runs the work, which tools exist, and what the task
+may reach — and a spawn names one:
 
 ```sh
 verse runner add pool:code http://localhost:9802
 verse task run --runner runners:pool:code --environment local --as "$USER" "add a test for firstLine"
 ```
 
-Each task gets its own working directory holding **every repository the environment names**,
-each cloned off a shared bare mirror, all on the same `agent/<task>` branch, removed when
-the task ends (`-keep` holds onto it):
+### A workspace per task
+
+Each task gets its own working directory holding **every repository the environment names**, each
+cloned off a shared bare mirror, all on the same `agent/<task>` branch:
 
 ```
 <workspace>/verse/         ← being changed;  push: refs/heads/agent/$task
@@ -56,12 +58,42 @@ the task ends (`-keep` holds onto it):
 ```
 
 That is a list rather than one repo because the work usually is: a change to a service and the
-library it consumes, a generator and the code it generates. Side by side under one root, they
-are one task rather than two that have to be coordinated — and `push` being **per repository**
-is what keeps a reference tree read-only.
+library it consumes, a generator and the code it generates. Side by side under one root, they are
+one task rather than two that have to be coordinated — and `push` being **per repository** is what
+keeps a reference tree read-only.
 
-Where a repository declares a `push`, the **runner** commits and pushes it when the task
-finishes — the task never does, because the whole point is that it cannot reach the credential.
+### A process per task
+
+The runner hosts no task. It prepares the workspace, starts `coderunner -task` inside the
+containment, and **forwards the task-control contract to it** — the same routes verse calls on the
+runner. So spawn, attach, gate answers, steering, cancel and vector changes all cross a process
+boundary and nothing is translated.
+
+The reason is that containment is applied by exec'ing something. A loop running in the runner's own
+process is a loop no sandbox reaches, which made the *more* supervisable driver the *less* contained
+one. Drawing the boundary once, around the whole task, is what puts `run_bash` inside it — and it
+keeps the runner's git credential outside, as a property of the boundary rather than of an env-var
+allowlist.
+
+The child is reached over a socket it inherits as a descriptor rather than by path, because a
+control plane the agent can dial is an agent that can answer its own gates.
+
+### Delivery is an action of the task
+
+Where a repository declares a `push`, the work leaves as the **last action of the task's own loop**
+— gated by its vector, narrated on its read plane, and done before the terminal status:
+
+```tony
+vector:
+  default: auto
+  gates:
+  - {name: delivery, mode: ask, match: {verbs: [push]}}
+```
+
+The **runner** performs it, because the task cannot reach the credential; the task asks over a
+channel that carries one operation and no argument that changes where anything goes. A refused gate
+means nothing is pushed. A failed push fails the task.
+
 The commit carries what verse told the runner:
 
 ```
@@ -71,13 +103,34 @@ Verse-Subject: demo:pr:1
 Verse-Chain: review
 ```
 
-which is the only externally checkable link back into the verse when the push lands under a
-shared bot identity.
+which is the only externally checkable link back into the verse when the push lands under a shared
+bot identity.
 
-`GET /runner` says what this runner is, what drivers it hosts and what containment it can
-build. It is a stub — nothing consumes it yet — but the containment it reports is true: this
-example provides only the weakest rung of each class, and **refuses** any environment asking
-for more rather than running the work less contained than it said.
+### Work waits in the mirror
+
+Before any push is attempted the commit is staged in the runner's own mirror, under
+`refs/pending/<task>/<repo>` when its delivery was approved and `refs/held/<task>/<repo>` when it
+was refused or the task never got that far. The staged copy is dropped once the far side has it, so
+what remains is exactly the work this runner holds that the world does not — and `pending` is
+retried on the next spawn against that repository, while `held` never is.
+
+That is what makes the workspace disposable: it is removed unless something could not be staged.
+`GET /runner` lists what is waiting, with the command to fetch it:
+
+```sh
+curl -s localhost:9802/runner        # `undelivered:` — each with a pasteable git fetch
+```
+
+### Containment, refused rather than degraded
+
+An environment declares what the task may reach; the runner builds it or **refuses the launch**.
+`-confine host` claims almost nothing and is what a laptop can honestly provide; `-confine bwrap`
+reaches a private filesystem and an unshared network on Linux. An environment listing `egress:`
+destinations is asking for `network.egress: restricted`, which is built by unsharing the network
+and binding in a socket to an allowlisting proxy — so it cannot run under `host`, and says so
+rather than running the task with a proxy it is free to ignore.
+
+`GET /runner` reports the containment **this deployment** can build, per leaf.
 
 ## Running the source
 

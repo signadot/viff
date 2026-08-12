@@ -256,7 +256,7 @@ func (b bwrapConfiner) Provides(p Point) error {
 // listener and the lifeline. They ride on cmd.ExtraFiles rather than in the argv, so they survive
 // this untouched, and bwrap is expected to pass them through to the program it execs. That last
 // clause is the one assumption here nobody has run: if bwrap closes them, the child fails saying
-// fd 3 is not a listener and the parent reports it. See docs/working/coding-runner.md.
+// fd 3 is not a listener and the parent reports it. See docs/working/coding-runner-residual.md.
 //
 // The program itself must also EXIST inside the sandbox — it is the same binary as this runner,
 // so /usr/local/bin/coderunner is covered by the /usr bind below, and a runner installed

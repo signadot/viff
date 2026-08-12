@@ -215,7 +215,7 @@ note says *grant* for authority and reserves *scope* for isolation.
 
 `Environment` **now has a referent, and not the one this note assumes.** It used to have none —
 `Bind` expanded its `$vars` and nothing resolved the name — and the axis has since been plumbed
-to the runner, where [the coding runner](../working/coding-runner.md) resolves it against its own
+to the runner, where [the coding runner](../working/coding-runner-residual.md) resolves it against its own
 config: a workspace of repositories, a toolchain, a containment.
 
 That is worth reading as a fork rather than as this note being answered. The runner-side referent

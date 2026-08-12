@@ -41,7 +41,7 @@ against something that runs, and three rules follow from that:
   was *not built*; a corner of what was built belongs in the doc that describes it, and appears
   here only when the fix is a design rather than a patch.
 
-The seven, and what each is a residual of:
+The eight, and what each is a residual of:
 
 | | of | what is in it |
 |---|---|---|
@@ -52,6 +52,7 @@ The seven, and what each is a residual of:
 | [gh-source-residual.md](gh-source-residual.md) | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own, and what the budget measured |
 | [goals-residual.md](goals-residual.md) | [reference/goals.md](../reference/goals.md) | the definition that no use case has earned |
 | [derive-residual.md](derive-residual.md) | [trigger-model.md](../trigger-model.md) | one firing derives one entity, and what a fan-out would cost the ordering |
+| [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | never deployed, `principal: distinct` unreached, staged work never swept |
 
 [provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under
 an older name: it reads against [provider selection](../provider-selection.md) and carries what

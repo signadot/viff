@@ -12,15 +12,18 @@
 // to be both. Both compile with the tree, for the same reason: a stub in a fenced block goes
 // stale the first time a signature moves and nobody finds out.
 //
-// The design and its open corners are in docs/working/coding-runner.md; the containment
+// The design and its open corners are in docs/working/coding-runner-residual.md; the containment
 // vocabulary is docs/working/runner-descriptor.md, and it is a SKETCH — the chains here are
 // real and only their weakest rungs are implemented (confine.go).
 //
 // # What it does that the small example does not
 //
 //   - A workspace per task, over as many repositories as the environment names: a bare mirror
-//     per repository, a clone per task on its own branch, removed when the task ends. Pure
-//     go-git — no git binary, and no ambient credential. See workspace.go.
+//     per repository, a clone per task on its own branch, removed when the task ends. go-git for
+//     every remote that carries a credential, so nothing hands a token to a subprocess and no
+//     credential helper is consulted — though the LOCAL transport shells out to git-upload-pack
+//     and git-receive-pack, so the binary is a build dependency of the mirror hops. See
+//     workspace.go and stage.go.
 //   - A PROCESS per task, inside the containment, serving the same task-control contract this
 //     runner serves to verse — so this process is a proxy and the sandbox is drawn once, around
 //     everything the task does. See hop.go (this side) and taskproc.go (the other).

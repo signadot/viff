@@ -1,9 +1,24 @@
 # Attribution: a parameter at install, an argument at launch
 
-Status: proposal, nothing here runs. It came out of designing
-[a coding runner](coding-runner.md) and [a runner descriptor](runner-descriptor.md) — the point
-of that exercise being to find out how attribution threads through a system once there are real
-doers in it, since that is the layer [authority](../roadmap/authority.md) has to stand on.
+Status: proposal. The **mechanism** is unbuilt — no descriptor takes an identity at install and no
+launch fills one in — but the exercise it came from has since landed, and one half of what it argued
+for runs.
+
+What runs: a spawn carries `Provenance{Principal, Subject, Chain}` to the runner over the
+task-control contract, `verse task run --as` is the run's principal rather than only the identity
+for a gate answered while attached, and the [coding
+runner](../reference/examples/README.md#running-the-coderunner) writes all of it into the commit it
+pushes — which is the case this note names below as *where effects leave verse*, now with a
+referent. `source/git.go` parses trailers back off a commit, so the loop closes.
+
+What does not: everything below about an identity being a **parameter at install** and an
+**argument at launch**. The runner is told who a launch is for and is trusted to say so; nothing
+verifies it, and no installed thing carries an identity of its own.
+
+It came out of designing [a coding runner](coding-runner-residual.md) and [a runner
+descriptor](runner-descriptor.md) — the point of that exercise being to find out how attribution
+threads through a system once there are real doers in it, since that is the layer
+[authority](../roadmap/authority.md) has to stand on.
 
 It concerns *who is responsible*, not *what may be done*. The second is `Grant` and it is
 authority's subject; this note must not be read as producing one. See [the guards](#two-guards).

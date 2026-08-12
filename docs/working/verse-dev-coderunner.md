@@ -4,7 +4,7 @@ Status: **phase 1 works; twelve findings, and the drive has moved to the `llm` d
 code and correctly changed nothing. The run before it produced fourteen real findings and the
 runner destroyed them, which is finding 9. The first
 experiment of the [verse-dev](verse-dev.md) drive: verse coordinating work on verse, done by
-[coding runners](coding-runner.md). The predictions below were written before the first run and
+[coding runners](coding-runner-residual.md). The predictions below were written before the first run and
 are kept as written; [what running it found](#found-by-running-it) is recorded after them.
 
 The point of writing predictions first is that a wall you predicted confirms the model and a
@@ -23,7 +23,7 @@ Four phases, each picking up what the previous one left in git:
 | 4 | publish | a **gated** trigger pushes local `main` to the remote |
 
 Deliberately branches and not pull requests. A PR is a forge's opinion about a workflow, and the
-[coding runner](coding-runner.md) pushes a ref and stops there — what happens next is a charter's
+[coding runner](coding-runner-residual.md) pushes a ref and stops there — what happens next is a charter's
 business, which is the thing this drive is testing.
 
 ## What runs today
@@ -57,7 +57,7 @@ operation: [sources.md](../sources.md) reserves an outbound-executor path that i
 
 Both available shapes are wrong in a way worth naming in advance. Spawning an agent to run a
 push is absurd — a model call to perform a fixed command. Giving the coderunner a merge driver is
-worse, because [coding-runner.md](coding-runner.md) closed exactly that: *a runner that opened
+worse, because [coding-runner.md](coding-runner-residual.md) closed exactly that: *a runner that opened
 pull requests would be a runner with opinions about a workflow*. So the prediction is that these
 two phases either wait for outbound effects or stay a human's job, and that the drive makes that
 case better than an argument can.
