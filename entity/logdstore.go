@@ -338,8 +338,9 @@ func nodeToPayload(node *ir.Node) Payload {
 }
 
 // addRemovedNulls makes a Patch replace rather than merge: for every field present
-// in the old value but absent from the new payload, it appends an explicit null so
-// logd tombstones it. This is what gives Put its whole-value replace semantics.
+// in the old value but absent from the new payload, it appends an explicit null — VERSE's
+// tombstone mark, not logd's — so nodeToPayload reads it back as gone. This is what gives
+// Put its whole-value replace semantics.
 //
 // It applies only when BOTH sides are objects, which is the only case where a merge could
 // leave a stale field behind. A scalar (or array) new value replaces the old outright —
@@ -364,7 +365,8 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 // Get reads one entity. A failed READ is reported as an error, never as absence: the
 // read crosses a network and may traverse a mount owned by another task, so "I could
 // not ask" and "it is not there" are genuinely different answers and the caller has to be
-// able to tell them apart. A null node IS absence — that is how the log spells a tombstone.
+// able to tell them apart. A null node IS absence — that is how verse spells a tombstone,
+// not logd, which just holds the bare value.
 func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -532,11 +534,12 @@ type pathPattern struct {
 
 // absentPath renders "nothing stands at ref" — which over docd is TWO shapes, not one.
 // A ref that was never written has no key at its path, so absence is a negated presence
-// (a null pattern is the presence test). A ref that was DELETED still has its key: logd
-// tombstones with a null leaf, and the tombstone is what makes the delete replayable. So
-// the two are ORed, and a claim released by Delete can be taken again — without the
-// second branch, releaseRun would free a claim that claimRun could never re-win, and a
-// sequence would run exactly once per subject for the lifetime of the document.
+// (a null pattern is the presence test). A ref that was DELETED still has its key: verse
+// tombstones it with a null leaf, not logd — and that mark is what makes the delete
+// replayable. So the two are ORed, and a claim released by Delete can be taken again —
+// without the second branch, releaseRun would free a claim that claimRun could never
+// re-win, and a sequence would run exactly once per subject for the lifetime of the
+// document.
 func absentPath(at Path) *ir.Node {
 	noKey, tombstone := patTree{}, patTree{}
 	nestPattern(noKey, at, ir.Null())    // negated below: no key at the path at all

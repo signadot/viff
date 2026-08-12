@@ -436,8 +436,8 @@ func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) ([]
 }
 
 // asStored renders a payload the way a read of it will come back: an object's null fields are
-// how the log spells a tombstone, so the store drops them (entity's nodeToPayload) and a
-// comparison against the unstripped answer would never hold.
+// how VERSE spells a tombstone, not the log's, so the store drops them (entity's nodeToPayload)
+// and a comparison against the unstripped answer would never hold.
 func asStored(p entity.Payload) entity.Payload {
 	if p == nil || p.Type != ir.ObjectType {
 		return p
