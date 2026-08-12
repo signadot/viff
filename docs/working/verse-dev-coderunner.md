@@ -449,9 +449,14 @@ go run ./docs/reference/examples/coderunner \
 
 # a verse
 ./verse up --data ~/.verse-drive --addr :19797
-export VERSE_ADDR=localhost:19797                     # host:port, not a url
+# host:port, not a url. Without it the CLI talks to :9797 and reports a refused connection.
+export VERSE_ADDR=localhost:19797
 
-./verse runner add pool:code http://localhost:9802    # prints: reach: "a runner"
+# Prints `reach: "a runner"`. NOTE: no trailing `# comment` on any line in this block —
+# interactive zsh has INTERACTIVE_COMMENTS off, so a pasted comment arrives as ARGUMENTS. Here
+# that made `runner add` see four extra positionals, fall through to its `[file]` form, and
+# report `open pool:code: no such file or directory`.
+./verse runner add pool:code http://localhost:9802
 
 ./verse task run --runner runners:pool:code --environment verse-docs \
   --as "$USER" --name docsdrift --attach \
@@ -467,7 +472,8 @@ It stops at a gate — defect 3, which is the design rather than a bug. Answer i
 which is the path defect 1 broke and this drive fixed:
 
 ```sh
-./verse gate                              # what is waiting
+# `verse gate` alone lists what is waiting.
+./verse gate
 ./verse gate approve <id> --as "$USER"
 ```
 

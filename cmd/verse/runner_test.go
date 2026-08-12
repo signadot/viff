@@ -134,3 +134,25 @@ func writeInstance(t *testing.T, s entity.Store, id string, rec entity.Obj) {
 		t.Fatalf("writing the task:instance for %s: %v", id, err)
 	}
 }
+
+// Extra positionals get a message about the arguments, not about a file.
+//
+// `runner add <ref> <url>` needs exactly two, and the fall-through reads args[0] as a FILENAME —
+// so one extra argument produced "open pool:code: no such file or directory", which names a file
+// the person never mentioned. The way it happens is a pasted command with a trailing `#` comment:
+// interactive zsh does not strip those, so four more arguments arrive.
+func TestRunnerAddNamesExtraArgumentsRatherThanAMissingFile(t *testing.T) {
+	_, err := runCLI(t, "runner", "add", "pool:code", "http://localhost:9802",
+		"#", "prints:", "reach:", "a runner")
+	if err == nil {
+		t.Fatal("extra arguments were accepted")
+	}
+	if strings.Contains(err.Error(), "no such file") {
+		t.Errorf("the failure still points at a file nobody named: %v", err)
+	}
+	for _, want := range []string{"arguments", "zsh"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the failure does not mention %q: %v", want, err)
+		}
+	}
+}
