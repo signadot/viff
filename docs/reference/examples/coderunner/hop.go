@@ -349,7 +349,13 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		// The contract, over a transport that ignores the host and dials the socket. The URL is
 		// what Ref reports and what the request line carries, so it names the peer rather than an
 		// address anything could reach.
-		rt:   runner.HTTPOver("http://task."+id, tr),
+		//
+		// Through hostSafe, because a task id is not a hostname. Every id a TRIGGER spawns is
+		// `<chain>@<subject>` — `comment-drift@drift:head:head-moved@git:head:verse` — and an @
+		// makes the rest of it userinfo, after which the colons read as a port and the url does
+		// not parse. So no charter-spawned task could start here at all, while every
+		// hand-launched `run-<hex>` one could.
+		rt:   runner.HTTPOver("http://task."+hostSafe(id), tr),
 		prox: unixProxy(tr, id),
 	}
 	go func() {
@@ -709,6 +715,20 @@ func (r *Runner) Shutdown() {
 		c.stop()
 	}
 	_ = os.RemoveAll(r.control)
+}
+
+// hostSafe renders a task id as something a URL host may hold: everything but a letter, a
+// digit and a dash becomes a dash. It is not an encoding and does not have to be reversible —
+// nothing decodes it. The host is a NAME here, printed in a request line and in Ref, while the
+// transport dials a socket and ignores it entirely.
+func hostSafe(id string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
+			return r
+		}
+		return '-'
+	}, id)
 }
 
 // unixTransport dials one child's control socket whatever host the URL names.

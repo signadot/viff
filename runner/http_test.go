@@ -442,3 +442,32 @@ func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
 		}
 	}
 }
+
+// A base url that cannot be parsed is an ERROR, not a panic. `http.NewRequest` answers an
+// unparseable url with a nil request, and `Do(nil)` dereferences it — so discarding that error
+// turned a bad url into a panic serving HTTP, three call sites deep in whoever was asking.
+//
+// It is reachable from data rather than from a typo: the coderunner builds a per-child url out
+// of the task id, and every id a trigger spawns is `<chain>@<subject>` — an `@` makes the rest
+// of it userinfo, and the subject's colons are then read as a port. `review@demo:pr:1`, the
+// shape the tutorial's own charter produces, is enough.
+func TestHTTPRunnerRefusesAnUnparseableURL(t *testing.T) {
+	bad := runner.HTTP("http://task.review@demo:pr:1")
+	if _, err := bad.(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
+		t.Fatalf("list on an unparseable url = %v, want ErrUnreachable", err)
+	}
+	if _, err := bad.(task.Lister).TaskSnapshot("x"); !errors.Is(err, task.ErrUnreachable) {
+		t.Fatalf("snapshot on an unparseable url = %v, want ErrUnreachable", err)
+	}
+	// The read plane has no error to return, so it says so where the caller is already
+	// looking — the same place a rejected subscribe reports.
+	frames, _ := bad.Attach("x").Subscribe()
+	select {
+	case f := <-frames:
+		if f.Err == "" {
+			t.Fatalf("subscribe on an unparseable url reported no error: %+v", f)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("subscribe on an unparseable url said nothing at all")
+	}
+}

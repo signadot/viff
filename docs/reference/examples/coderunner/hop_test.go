@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -641,5 +642,24 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 	}
 	if commitOn(origin, "refs/heads/agent/n1") != "" {
 		t.Error("a branch appeared for work nobody did")
+	}
+}
+
+// A child is addressed by a url built out of its task id, and a task id is not a hostname.
+// Every id a TRIGGER spawns is `<chain>@<subject>`, so the @ makes the rest of it userinfo and
+// the subject's colons are then read as a port: the url does not parse, `http.NewRequest`
+// answers nil, and the supervisor's first readiness probe used to panic on it. So no
+// charter-spawned task could start under the hop at all, while every hand-launched
+// `run-<hex>` one could — which is why it survived the tests and was found on a deployment.
+func TestChildURLSurvivesATriggerSpawnedTaskID(t *testing.T) {
+	for _, id := range []string{
+		"run-7818e07b47dd",
+		"review@demo:pr:1",
+		"comment-drift@drift:head:head-moved@git:head:verse",
+		"review.seq.2@demo:pr:1",
+	} {
+		if _, err := http.NewRequest(http.MethodGet, "http://task."+hostSafe(id)+"/tasks", nil); err != nil {
+			t.Errorf("task %q gives an unusable child url: %v", id, err)
+		}
 	}
 }

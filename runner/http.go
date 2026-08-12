@@ -152,7 +152,14 @@ func (p *httpRunner) Ref() string { return p.base }
 func (p *httpRunner) ListTasks() ([]task.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks", nil)
+	// The error is READ, and that is not defensive tidying: NewRequest returns a nil request
+	// with it, and `Do(nil)` panics rather than failing. A base is built by whoever installed
+	// the runner — and by the coderunner out of a task id — so an unparseable one is a thing a
+	// caller can cause, and it arrived as a panic serving HTTP.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks", nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s is not a usable runner url: %w", task.ErrUnreachable, p.base, err)
+	}
 	resp, err := p.cl.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, p.base, err)
@@ -190,7 +197,11 @@ func (p *httpRunner) ListTasks() ([]task.Instance, error) {
 func (p *httpRunner) TaskSnapshot(id string) (task.Instance, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks/"+id, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks/"+id, nil)
+	if err != nil { // nil request, and Do panics on one — see ListTasks
+		return task.Instance{}, fmt.Errorf("%w: %s is not a usable runner url: %w",
+			task.ErrUnreachable, p.base, err)
+	}
 	resp, err := p.cl.Do(req)
 	if err != nil {
 		return task.Instance{}, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, p.base, err)
@@ -231,8 +242,18 @@ func (h *remoteHandle) Subscribe() (<-chan task.Frame, func()) {
 func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan task.Frame, 256)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		h.url("/events?since="+strconv.FormatInt(since, 10)), nil)
+	if err != nil { // nil request, and Do panics on one — see ListTasks
+		out <- task.Frame{
+			Kind: task.EvStatus,
+			Text: string(task.Failed),
+			Err:  fmt.Sprintf("subscribe %s: %s is not a usable runner url: %v", h.id, h.base, err),
+		}
+		close(out)
+		cancel()
+		return out, func() {}
+	}
 	resp, err := h.stream.Do(req)
 	if err != nil {
 		close(out)
