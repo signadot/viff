@@ -377,7 +377,7 @@ are the names each consumer reads:
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
 | `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start |
 | `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env |
-| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | env |
+| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `coderunnerSecretKey` | `verse-coderunner` | `gitToken` | env, in the runner and never in the sandbox |
 
 ### Creating the entries
@@ -423,6 +423,14 @@ only, never values:
 ```sh
 kubectl -n verse get secret verse-git -o go-template='{{range $k,$v := .data}}{{$k}}{{"\n"}}{{end}}'
 ```
+
+**The GitHub token needs `Contents` as well**, which is the permission easiest to leave off
+and the first one used. Read-only on **Contents, Metadata, Issues, Pull requests and Actions**
+(plus Discussions with `githubDiscussions`). Without Contents the connector's first read is a
+`403 Resource not accessible by personal access token` on `git/ref/heads/<branch>` — it reads
+the default branch's ref before anything else. Permissions can be edited on an existing token
+without regenerating it, so the stored value stays good; if the org reviews tokens, an edit can
+send it back to `Pending`.
 
 **Create the entry before setting the knob.** A knob naming an entry that does not exist is an
 `ExternalSecret` stuck in `SecretSyncedError` and a Secret that never appears — which for the

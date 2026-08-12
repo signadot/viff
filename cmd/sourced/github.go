@@ -13,7 +13,8 @@ import (
 // The GitHub source: a token, a set of repositories, and a webhook it owns.
 //
 // GITHUB_TOKEN is a fine-grained personal access token with read access to the repositories'
-// metadata, issues, pull requests and Actions — which is what a dogfood deployment wants: it is
+// metadata, CONTENTS, issues, pull requests and Actions — which is what a dogfood deployment
+// wants: it is
 // issued from Settings → Developer settings, it carries its owner's visibility, and it needs no
 // app registration or private key. A GitHub App is what an org-scale install needs, for the
 // higher ceiling and for not being tied to a person, and the measurement in

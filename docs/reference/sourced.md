@@ -275,7 +275,7 @@ sourced github -repo <org>/<name>   a repository to reflect (repeatable, comma-s
 
 | environment | |
 |---|---|
-| `GITHUB_TOKEN` | a fine-grained PAT with read access to the repositories' metadata, issues, pull requests and Actions. Required |
+| `GITHUB_TOKEN` | a fine-grained PAT, read-only on the repositories' **Contents, Metadata, Issues, Pull requests and Actions** (Discussions too with `-discussions`). Required. Contents is easy to leave off and is the FIRST thing read: a pass with it missing dies on `git/ref/heads/<branch>` with `403 Resource not accessible by personal access token` |
 | `GITHUB_WEBHOOK_SECRET` | the webhook signing secret. Without it `POST /github/webhook` refuses every delivery |
 | `GITHUB_API_BASE` | the API root, for GitHub Enterprise Server |
 
