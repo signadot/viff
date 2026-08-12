@@ -854,6 +854,35 @@ build:
         name: linear-source
     patch: !delete null
 
+  # The GitHub one, which had neither half until a staging deploy emitted its Ingress with the
+  # base manifest's placeholder host — so `githubWebhookHost` was inert, and the cluster was
+  # asked to route `github-source.example.com` to a Service. A knob that does nothing is worse
+  # than an absent one: the deployment says a thing it is not doing.
+  - if: '.[ githubWebhookHost != "" ]'
+    match:
+      kind: Ingress
+      metadata:
+        name: github-source
+    patch:
+      spec:
+        rules:
+        - host: $[githubWebhookHost]
+          http:
+            paths:
+            - path: /github/webhook
+              pathType: Prefix
+              backend:
+                service:
+                  name: github-source
+                  port:
+                    number: 9801
+  - if: '.[ githubWebhookHost == "" ]'
+    match:
+      kind: Ingress
+      metadata:
+        name: github-source
+    patch: !delete null
+
   - if: '.[ ingressClassName != "" ]'
     match:
       kind: Ingress
