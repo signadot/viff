@@ -11,6 +11,7 @@ verse task run "echo summarizing; sleep 2"       # prints a run-… id
 verse task run --wait "echo done"                # …and block for the final output
 verse task run --attach 'Write a file hello.txt containing "hi".'   # …and stream it
 verse task run --driver scripted "go test ./..."
+verse task run --answer shape.tony "…"   # …and declare the shape its answer must have
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"
@@ -27,6 +28,32 @@ relayed through its inbox.
 
 A trigger's `spawn` runs a task the same way, from the same `launch.Spec`; what a charter
 may say about one is in [the trigger model](../trigger-model.md#action--what-fires).
+
+### `--answer`: what finished means
+
+```sh
+verse task run --answer shape.tony "check every reference in docs/runners.md"
+```
+
+The file is a tony match pattern — the ad-hoc face of a charter's `answer:` — and it is the
+run's definition of **done**.
+
+Without one, finished means only that the model stopped calling tools. That is also what a model
+narrating its next step looks like, and the two are indistinguishable from outside: a run has ended
+mid-investigation, with a page of working notes as its `result` and `done` on its read plane.
+With a contract, the final message is checked the moment the model stops, a mismatch is fed back
+naming what is wrong, and a run that never satisfies it **fails** — which is a branch every rule
+already declares, unlike a charter that could not deref what it got.
+
+It does a second job worth stating separately: it tells *nothing to do* from *something went
+wrong*. Those are identical on disk and identical in an exit status, and a runner cannot infer
+which it was.
+
+Keep it small and let it govern only what will be matched on. A `summary: !irtype string` field
+looks harmless and is a trap — a model writes `summary: nothing was wrong`, which is not valid
+tony, and the run fails for a reason that has nothing to do with the work. The prose account belongs
+outside the governed document; `answer.Extract` lifts a fenced block out of the final message, so
+the writing can be writing.
 
 ## The dial
 

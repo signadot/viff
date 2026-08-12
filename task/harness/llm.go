@@ -101,9 +101,25 @@ func clientFrom(base, key, virtualKey, model string) *llmClient {
 		portkeyKey: key,
 		virtualKey: virtualKey,
 		model:      model,
-		http:       &http.Client{Timeout: 120 * time.Second},
+		http:       &http.Client{Timeout: modelCallTimeout},
 	}
 }
+
+// modelCallTimeout bounds ONE model call. It is generous because it is a backstop against a
+// stalled connection, not a latency budget: a completion over a large conversation legitimately
+// takes minutes, and 120s — the first guess — killed a task that had done 43 boundaries of real
+// work, on one slow response. Without streaming there is no way to tell slow from stuck, so the
+// number errs toward slow and the retry below covers stuck.
+const modelCallTimeout = 5 * time.Minute
+
+// transient marks a failure worth trying again: the request did not reach a decision, or the far
+// side said "not now". The distinction is the whole of the retry policy — a bad key, a malformed
+// request and a refused tool schema are all permanent, and retrying them spends a task's budget
+// on a result that cannot change.
+type transient struct{ err error }
+
+func (t transient) Error() string { return t.err.Error() }
+func (t transient) Unwrap() error { return t.err }
 
 func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []toolDef) (chatMessage, string, error) {
 	body, _ := json.Marshal(chatRequest{Model: c.model, Messages: msgs, Tools: tools, ToolChoice: "auto"})
@@ -118,7 +134,9 @@ func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []to
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return chatMessage{}, "", err
+		// Nothing came back: a timeout, a reset, a DNS failure. None of them says the request
+		// was wrong, which is what makes them worth repeating.
+		return chatMessage{}, "", transient{err}
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
@@ -130,9 +148,114 @@ func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []to
 		return chatMessage{}, "", fmt.Errorf("api: %s", out.Error.Message)
 	}
 	if resp.StatusCode >= 300 || len(out.Choices) == 0 {
-		return chatMessage{}, "", fmt.Errorf("http %d: %s", resp.StatusCode, truncate(string(raw), 300))
+		err := fmt.Errorf("http %d: %s", resp.StatusCode, truncate(string(raw), 300))
+		// 429 and 5xx are the far side saying "not now" and "not me"; everything else in the
+		// 4xx range is this request being wrong, and asking again will not fix it.
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return chatMessage{}, "", transient{err}
+		}
+		return chatMessage{}, "", err
 	}
 	return out.Choices[0].Message, out.Choices[0].FinishReason, nil
+}
+
+// modelRetries is how many EXTRA attempts a transient model failure gets, and the backoff before
+// each. Small on purpose: this covers a hiccup, not an outage, and a task that keeps failing
+// should fail while somebody still has the context to care.
+var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second}
+
+// modelWaitNotice is how often a call still in flight says so on the read plane, and
+// modelTotalBudget bounds the whole retried sequence.
+//
+// Both exist because the retry, on its own, made a stall INVISIBLE FOR LONGER. Before it, a stuck
+// call failed in two minutes; after, three attempts at five minutes each is a quarter of an hour
+// in which a task emits nothing at all and cannot be told from one that has died. A drive watched
+// exactly that and reported "it appears hung" — which was the correct reading of the evidence
+// available, and is findings 6 and 7 of that drive with a new cause.
+//
+// So a long call announces itself while it is still going, rather than only when it fails, and
+// the sequence stops asking once the budget is spent. The point of a retry is a hiccup; past a
+// few minutes it is not a hiccup and somebody should be told rather than waited out.
+var (
+	modelWaitNotice  = 30 * time.Second
+	modelTotalBudget = 8 * time.Minute
+)
+
+// completeWithRetry is the model call, repeated when the failure says nothing about the request.
+//
+// It exists because one slow response used to be terminal for the whole task. Forty-three
+// boundaries of work — reads, reasoning, a finding half-written — ended on a client timeout, and
+// the run was not resumable because a task's conversation lives in its driver. Against that, two
+// retries costing ten seconds are free.
+//
+// Each attempt is announced on the read plane. A run that pauses for ten seconds and says nothing
+// is indistinguishable from one that has hung, which is the complaint findings 6 and 7 of the
+// drive make about everything else.
+func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string, error) {
+	var last error
+	started := time.Now()
+	for attempt := 0; ; attempt++ {
+		msg, finish, err := d.completeAloud(ctx)
+		if err == nil {
+			return msg, finish, nil
+		}
+		last = err
+		var t transient
+		if !errors.As(err, &t) || attempt >= len(modelBackoff) {
+			break
+		}
+		if spent := time.Since(started); spent > modelTotalBudget {
+			last = fmt.Errorf("%w (giving up after %s of retrying: this is not a hiccup)", err,
+				spent.Round(time.Second))
+			break
+		}
+		wait := modelBackoff[attempt]
+		note := fmt.Sprintf("the model call failed and is being retried in %s (attempt %d of %d): %v",
+			wait, attempt+2, len(modelBackoff)+1, err)
+		fmt.Fprintf(d.log, "   ↻ %s\n", note)
+		if d.emit != nil {
+			d.emit(task.Frame{Kind: task.EvSay, Text: note})
+		}
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			// A cancelled task must not keep asking. The cancel is the better account of why
+			// this ended than the failure that was being retried.
+			return chatMessage{}, "", ctx.Err()
+		}
+	}
+	return chatMessage{}, "", fmt.Errorf("the model call failed %d time(s) and this task cannot "+
+		"continue without it: %w", len(modelBackoff)+1, last)
+}
+
+// completeAloud is one attempt, saying so periodically while it is still in flight.
+//
+// A model call is the one step of the loop that emits nothing until it is over, and it is also the
+// longest. Everything else — a read, a write, a gate — puts a frame on the read plane the moment it
+// happens, so silence during a call reads as death rather than as thought.
+func (d *llmDriver) completeAloud(ctx context.Context) (chatMessage, string, error) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(modelWaitNotice)
+		defer t.Stop()
+		started := time.Now()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				note := fmt.Sprintf("still waiting on the model (%s)",
+					time.Since(started).Round(time.Second))
+				fmt.Fprintf(d.log, "   … %s\n", note)
+				if d.emit != nil {
+					d.emit(task.Frame{Kind: task.EvSay, Text: note})
+				}
+			}
+		}
+	}()
+	msg, finish, err := d.client.complete(ctx, d.messages, d.tools)
+	close(done)
+	return msg, finish, err
 }
 
 // llmDriver adapts the model's turn-based tool calling onto the task loop's
@@ -214,7 +337,7 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			d.messages = append(d.messages, d.pendingSteer...)
 			d.pendingSteer = nil
 		}
-		msg, finish, err := d.client.complete(ctx, d.messages, d.tools)
+		msg, finish, err := d.completeWithRetry(ctx)
 		if err != nil {
 			return task.ToolUse{}, false, err
 		}

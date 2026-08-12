@@ -31,15 +31,30 @@ import (
 // Generous rather than tight. It is a backstop against a hung peer, not a latency budget.
 const ControlTimeout = 30 * time.Second
 
-func HTTP(baseURL string) task.Runner {
+func HTTP(baseURL string) task.Runner { return HTTPOver(baseURL, nil) }
+
+// HTTPOver is HTTP over a transport of the caller's choosing — nil means the default one, so
+// HTTP is this with nothing supplied.
+//
+// It exists because the contract is HTTP but the WIRE need not be TCP. A runner that hosts each
+// task in its own contained process reaches that process over something the task itself cannot
+// dial: a unix socket outside its mount namespace, an inherited listener with no name at all.
+// Without this seam the only way to speak the contract to such a child is to re-implement the
+// client beside it — which is how two readings of one protocol come to exist, and the SSE half
+// is not small.
+//
+// The baseURL still matters even when the transport ignores its host: it is what Ref reports,
+// and it is what the request line carries. A caller dialing a socket conventionally passes
+// something that names the peer rather than a reachable address.
+func HTTPOver(baseURL string, tr http.RoundTripper) task.Runner {
 	return &httpRunner{
 		base: strings.TrimRight(baseURL, "/"),
 		// Its OWN client, never http.DefaultClient: that one is shared task-wide, so a
 		// timeout set on it would silently bound every other caller's requests too.
-		cl: &http.Client{Timeout: ControlTimeout},
+		cl: &http.Client{Timeout: ControlTimeout, Transport: tr},
 		// The event stream is long-lived by design, so a whole-request deadline would cut
 		// a healthy subscription. It is bounded by its context instead (Subscribe/cancel).
-		stream: &http.Client{},
+		stream: &http.Client{Transport: tr},
 	}
 }
 
@@ -72,6 +87,25 @@ func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
 	}
 	if l.Grant != nil {
 		req["grant"] = l.Grant
+	}
+	if l.Environment != "" {
+		req["environment"] = l.Environment
+	}
+	// Provenance is sent field by field for the reason every other field here is conditional:
+	// an empty one means verse did not know, and writing it out empty would be a claim of
+	// having asked rather than a record of not knowing.
+	if p := l.Provenance; p != (task.Provenance{}) {
+		prov := map[string]any{}
+		if p.Principal != "" {
+			prov["principal"] = p.Principal
+		}
+		if p.Subject != "" {
+			prov["subject"] = p.Subject
+		}
+		if p.Chain != "" {
+			prov["chain"] = p.Chain
+		}
+		req["provenance"] = prov
 	}
 	body, _ := codec.Marshal(req, codec.Tony)
 	resp, err := p.cl.Post(p.base+"/tasks", codec.MediaType(codec.Tony), bytes.NewReader(body))

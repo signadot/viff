@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/scott-cotton/cli"
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
@@ -335,11 +336,21 @@ type taskRunConfig struct {
 	// Without this a scripted run is `auto` and asks nothing, so a --resolver bound to it
 	// would have no question to answer.
 	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
-	// For --attach: a gate that arrives while attached is answered as this. Watching needs
-	// no identity; answering has needed one since a decision became a durable record.
-	As       string `cli:"name=as desc='identity for a gate answered while attached (with --attach)'"`
+	// Who is running this — used twice, because it is one fact. A gate that arrives while
+	// attached is answered as this (watching needs no identity; answering has needed one
+	// since a decision became a durable record), and it rides the spawn as the run's
+	// PRINCIPAL, so a runner whose effects leave the verse can say on whose account.
+	// Self-asserted, like every other `--as` here.
+	As       string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
 	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
 	Runner   string `cli:"name=runner desc='where this run runs: an installed runner (runners:<kind>:<name>); default: the verse default'"`
+	// The shape this run's final message must have — a tony match pattern in a file, the
+	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model
+	// stopped calling tools, which is also what a model narrating its next step looks like.
+	Answer string `cli:"name=answer desc='file holding the answer contract for this run (a tony match pattern)'"`
+	// Which workspace the runner should build — a repo at a base, a toolchain, a
+	// containment. Resolved by the runner against its own config; verse carries the name.
+	Environment string `cli:"name=environment desc='workspace the runner should run this in (a name the runner knows)'"`
 }
 
 func taskRunCmd() *cli.Command {
@@ -365,10 +376,19 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: task run wants a prompt", cli.ErrUsage)
 	}
 	prompt := strings.Join(args, " ")
+	var contract *ir.Node
+	if cfg.Answer != "" {
+		n, _, err := codec.ReadFileNode(cfg.Answer)
+		if err != nil {
+			return fmt.Errorf("task run: answer contract: %w", err)
+		}
+		contract = n
+	}
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: cfg.Vector,
-		Runner: cfg.Runner,
+		Runner: cfg.Runner, Environment: cfg.Environment, Principal: cfg.As,
+		Answer: contract,
 	})
 	if err != nil {
 		return fmt.Errorf("task run: %w", err)

@@ -410,15 +410,25 @@ func (s *Server) spawnerFor(st entity.Store, content task.ContentReader) trigger
 // what crosses the wire is the predicate rather than a word two builds might read
 // differently.
 //
-// Resolver and Environment are still unread, and still named in the spec. They are not
-// resolved here because neither has semantics to resolve TO yet — there is no registry of
-// named resolvers, and the environment floor is a design note (docs/roadmap/expose.md).
-// Naming that plainly is better than another silent drop.
+// Resolver is still unread, and still named in the spec — there is no registry of named
+// resolvers to resolve it TO. Naming that plainly is better than another silent drop.
+//
+// Environment is now CARRIED rather than resolved, and the difference from vector and grant
+// is the point: verse holds the vocabulary for an envelope because it can enforce one, and
+// holds none for a workspace because only the runner can build one. So it travels as a name,
+// the way `driver:` does, and a runner handed one it does not have refuses the launch. That
+// is the first consumer the field has had (docs/working/coding-runner-residual.md).
+//
+// Provenance travels for a different reason: not so the runner can decide anything, but so
+// it can record why it was asked. Subject and Chain are what a firing knows about its own
+// cause, and verse has always kept them on its side of the wire — which left a remote runner
+// unable to attribute its own effects (docs/working/attribution.md).
 func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
-		Resolver: spec.Resolver,
+		Resolver: spec.Resolver, Environment: spec.Environment,
+		Provenance: task.Provenance{Subject: spec.Subject, Chain: spec.Chain},
 	}
 	// The contract travels as source, but it is PARSED here as well, and the parse is the
 	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
@@ -2204,9 +2214,23 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Parsed here as well as at the runtime, and for the reason launchOf parses a charter's:
+	// a contract that cannot be meant should fail before a model call is paid for, not after
+	// a run and a repair round.
+	if body.Answer != nil {
+		if _, err := answer.Parse(body.Answer); err != nil {
+			http.Error(w, "answer contract: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
-		Resolver: body.Resolver, Vector: vec,
+		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
+		Answer: body.Answer,
+		// The ad-hoc path is the one place a principal exists today: somebody typed this.
+		// A firing has no equivalent until an install can record an author, so it sends
+		// Subject and Chain instead — see launchOf.
+		Provenance: task.Provenance{Principal: body.Principal, Subject: body.Subject},
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
@@ -2348,10 +2372,46 @@ func (s *Server) isTask(id string) bool {
 		return true
 	}
 	if l, ok := s.runner.(taskLister); ok {
+		if _, err := l.TaskSnapshot(id); err == nil {
+			return true
+		}
+	}
+	if l, ok := s.placeOf(id).(taskLister); ok {
 		_, err := l.TaskSnapshot(id)
 		return err == nil
 	}
 	return false
+}
+
+// placeOf is the runner a task actually ran on, which is not necessarily this verse's DEFAULT
+// one — `runner:` on a spawn picks per task, and that is the whole feature. nil when the task
+// ran locally, ran on the default runner, or is not one this verse knows.
+//
+// Everything that reached across the seam used to consult `s.runner` alone, so work sent
+// somewhere by name was invisible to it: a gate raised on a per-spawn runner could be LISTED
+// and not answered, because the owner lookup could not see the task and the answer was offered
+// to the local registry, which had never heard of the question. Listing worked because it reads
+// the mirror; answering did not because it read a field.
+//
+// The url is read off task:instance for the same reason a restart reads it there — it is
+// stamped beside the NAME precisely so reaching the work does not depend on the runner entity
+// still existing, which is what keeps removing a runner from orphaning work that is running
+// perfectly well (see reconcileTasks, and docs/runners.md on what a restart does).
+func (s *Server) placeOf(id string) task.Runner {
+	e, ok, err := s.Store.Get(mirror.Ref(id))
+	if err != nil || !ok {
+		return nil
+	}
+	ref := entity.Str(e.Payload, "runner")
+	// `local` means in-process, which the taskd branch above already covers; equal to the
+	// default runner means the branch above covered it too, and rebuilding a second client
+	// for the same place would lose whatever the configured one knows about itself — a
+	// broker's handle relays control, and an HTTP client reconstructed from its url does not
+	// say so.
+	if ref == "" || ref == "local" || ref == s.runner.Ref() {
+		return nil
+	}
+	return runner.HTTP(ref)
 }
 
 // taskHoldingGate finds which task has decisionID open, for a gate id that does not
@@ -2407,7 +2467,7 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 		// record can, and the caller consults it; here the honest answer is "not open".
 		return task.ErrNoSuchDecision
 	}
-	if h := s.runner.Attach(taskID); h != nil {
+	if h := s.attach(taskID); h != nil {
 		// by is carried across this seam, not dropped: the local leg above takes the whole
 		// Resolution, so a brokered gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.
@@ -2417,6 +2477,26 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 		return task.ErrUnsupported
 	}
 	return task.ErrNoSuchTask
+}
+
+// attach reaches a task wherever it actually runs: the runner its own task:instance records
+// first, this verse's default runner second.
+//
+// The order is not a preference. An HTTP runner's Attach hands back a handle for ANY id without
+// asking, so consulting the default first would reach whichever place happens to be configured
+// rather than the one holding the task — silently, and only for work sent somewhere by name.
+//
+// One helper rather than the same two lines at each call site, because "reach this task" was
+// written three times and every copy assumed the default runner: answering a gate, streaming a
+// read plane, and deciding whether an id is a task at all. A per-spawn runner is the whole point
+// of `runner:` on a spawn, and each copy was blind to it.
+func (s *Server) attach(id string) task.Handle {
+	if p := s.placeOf(id); p != nil {
+		if h := p.Attach(id); h != nil {
+			return h
+		}
+	}
+	return s.runner.Attach(id)
 }
 
 // getTask resolves one task across backends: the local runtime first (live detail),
@@ -2502,7 +2582,10 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http
 // different stream there are two orders to reconcile and a supervised run that reads
 // differently depending on who is looking.
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string) {
-	h := s.runner.Attach(id)
+	// Wherever it runs, not wherever the default runner is: `verse task attach` on work sent
+	// to a per-spawn runner answered 404, and so — per the note above, since a resolver reads
+	// this same stream — did every attempt to supervise it.
+	h := s.attach(id)
 	if h == nil {
 		http.NotFound(w, r)
 		return

@@ -20,6 +20,7 @@ TAG       ?= dev
 IMAGE     ?= $(NAME):$(TAG)                 # local dev tag (docker-desktop/minikube)
 PUSH_IMAGE?= $(REGISTRY)/$(NAME):$(TAG)     # registry ref for `make push`
 IMAGE_ARCH?= $(GOARCH)
+CODERUNNER_IMAGE ?= $(REGISTRY)/verse-coderunner:$(TAG)   # its own image; see its Dockerfile
 
 DIST := dist
 
@@ -54,6 +55,19 @@ dist-linux: ## cross-compile verse + o + sourced for linux/$(IMAGE_ARCH) → dis
 .PHONY: docker
 docker: dist-linux ## build the image, COPYing the pre-built linux binaries (no go build in docker)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) -t $(IMAGE) .
+
+# The coderunner is its OWN image and its own target. It is not folded into `docker` because the
+# two images have nothing to do with each other's cadence: the runtime image is thin and pinned
+# to the engine, this one is sized by the toolchain the repositories it serves need to build.
+.PHONY: coderunner-linux
+coderunner-linux: ## cross-compile the coderunner example for linux/$(IMAGE_ARCH)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
+	  -o $(DIST)/linux/$(IMAGE_ARCH)/coderunner ./docs/reference/examples/coderunner
+
+.PHONY: coderunner-docker
+coderunner-docker: coderunner-linux ## build the coderunner image (bubblewrap containment)
+	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
+	  -t $(CODERUNNER_IMAGE) -f docs/reference/examples/coderunner/Dockerfile .
 
 .PHONY: load
 load: docker ## build + load the image into minikube (Docker Desktop k8s needs no load)

@@ -441,6 +441,11 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
@@ -485,6 +490,21 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Runner
 	if s.Runner != "" {
 		irMap["runner"] = ir.FromString(string(s.Runner))
+	}
+
+	// Field: Environment
+	if s.Environment != "" {
+		irMap["environment"] = ir.FromString(string(s.Environment))
+	}
+
+	// Field: Answer (optional)
+	if s.Answer != nil {
+		irMap["answer"] = s.Answer
+	}
+
+	// Field: Principal
+	if s.Principal != "" {
+		irMap["principal"] = ir.FromString(string(s.Principal))
 	}
 
 	return ir.FromMap(irMap), nil
@@ -574,6 +594,24 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
 			}
 			s.Runner = string(fieldNodeUnwrapped.String)
+		case "environment":
+			// Field: Environment
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "environment", fieldNodeUnwrapped.Type)
+			}
+			s.Environment = string(fieldNodeUnwrapped.String)
+		case "answer":
+			if gomap.GetUnmapComments(opts...) {
+				s.Answer = fieldNode
+			} else {
+				s.Answer = fieldNodeUnwrapped
+			}
+		case "principal":
+			// Field: Principal
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "principal", fieldNodeUnwrapped.Type)
+			}
+			s.Principal = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Spawn", fieldName.String)

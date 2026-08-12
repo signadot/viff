@@ -1,0 +1,91 @@
+# The coderunner's own config — not an entity. verse installs a runner as a url and nothing
+# else, so what a runner can be asked for is the runner's to declare and the operator's to
+# deploy (docs/runners.md).
+#
+#   go run ./docs/reference/examples/coderunner -config docs/reference/examples/coderunner/coderunner.tony
+#
+# A spawn names an environment by name and verse carries the name without resolving it — the
+# same indirection `driver:` already is.
+
+default: local
+
+# External programs this runner can drive, named by `driver:` on a spawn.
+agents:
+  claude:
+    argv: [claude, "-p", "$prompt", "--output-format", json, "--permission-mode", bypassPermissions]
+    resume: ["--resume", "$session"]
+    output: json
+
+environments:
+
+# The one you can run right now: this checkout, nothing pushed anywhere.
+- name: local
+  repos:
+  - name: verse
+    repo: "."
+    base: main
+  driver: llm
+  env: [PATH, HOME, USER, LANG]
+
+# What a real one looks like, and why `repos` is a list. The work is usually a change to one
+# tree that only makes sense against another — a service and the library it consumes, a
+# generator and the code it generates. They land side by side under one working directory, so
+# `verse/task/loop.go` and `tony-format/ir/node.go` are both just paths to the agent, and a
+# change that spans them is ONE task rather than two that have to be coordinated.
+- name: verse-dev
+  repos:
+  # The one being changed. $task expands to the task id, so two tasks never contend for a ref.
+  - name: verse
+    repo: "https://github.com/signadot/verse"
+    base: main
+    push: "refs/heads/agent/$task"
+  # There to be read. No `push`, so nothing can go back to it — a reference repository that
+  # could push is a blast radius nobody asked for.
+  - name: tony-format
+    repo: "https://github.com/signadot/tony-format"
+    base: main
+  driver: claude
+  # The ceiling: which binaries the task's PATH holds. It is a claim about the IMAGE, and
+  # nothing here checks the image agrees — an environment naming `go` in an image without it
+  # produces a task whose commands are not found and no better diagnosis than confusion.
+  commands: [git, go, make, gofmt]
+  # The passthrough allowlist. Everything else is UNSET — which is the point, since the harness
+  # today hands an agent's shell the server's whole environment, model credentials and all.
+  env: [PATH, HOME, USER, LANG]
+  # A containment profile this runner advertises. The sketch runner publishes none, so naming
+  # one here is refused rather than run less contained — which is the behaviour to keep when
+  # the real confiner lands.
+  # isolation: hardened
+
+# What a restricted egress looks like, and the point of it.
+#
+# Declaring `egress:` IS declaring `network.egress: restricted` — the point is derived from the
+# list so the two cannot disagree, and "restricted" with no list would be a claim with no content.
+# It is built by unsharing the network and binding in one socket that reaches an allowlisting
+# proxy on the runner's side, so the task's only route out is through this list.
+#
+# That is what bounds a secret once it is INSIDE the sandbox, which is where the model key has to
+# be. A key in a box that can only reach the model API is bounded; the same key in a box that can
+# reach anything is not.
+#
+# THIS ENVIRONMENT WILL NOT RUN under `-confine host`: hostConfiner cannot unshare a network, so
+# it refuses the launch rather than starting the proxy and leaving the task free to ignore it.
+# That refusal is the feature. Run it under `-confine bwrap` on Linux, or see deploy/coderunner.
+- name: verse-dev-hardened
+  repos:
+  - name: verse
+    repo: "https://github.com/signadot/verse"
+    base: main
+    push: "refs/heads/agent/$task"
+  driver: llm
+  tools: [read_file, list_dir, write_file]
+  env: [PATH, HOME, USER, LANG]
+  egress:
+  # The model API: without it the llm driver cannot make its one call.
+  - api.anthropic.com
+  # The Go module path, because a task that cannot build cannot verify.
+  - proxy.golang.org
+  - sum.golang.org
+  # A wildcard covers subdomains and NOT the bare domain, which are different names and often
+  # different owners.
+  - "*.githubusercontent.com"

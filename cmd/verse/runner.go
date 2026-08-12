@@ -195,6 +195,19 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 		})
 		return runnerAdded(cc, resp, err)
 	}
+	// More positionals than either form takes. Worth its own message, because the fall-through
+	// below reads args[0] as a FILENAME — so `runner add pool:code <url> <anything else>` failed
+	// with "open pool:code: no such file or directory", which names a file nobody mentioned and
+	// sends the reader looking for one.
+	//
+	// The way it actually happens is a pasted command with a trailing comment: interactive zsh
+	// has INTERACTIVE_COMMENTS off, so `# prints: …` arrives as four more arguments. Naming that
+	// here is cheap and it is what the reader needs.
+	if cfg.File == "" && len(args) > 2 {
+		return fmt.Errorf("%w: `runner add` takes `<kind>:<name> <url>` or one file, and got %d "+
+			"arguments: %q.\nIf you pasted a line with a trailing `#` comment, zsh keeps it — it "+
+			"is not stripped outside a script", cli.ErrUsage, len(args), strings.Join(args, " "))
+	}
 	src := cfg.File
 	if src == "" && len(args) >= 1 {
 		src = args[0]

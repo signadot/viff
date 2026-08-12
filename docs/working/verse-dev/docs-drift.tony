@@ -1,0 +1,21 @@
+# verse-dev drive, phase 1: a commit lands, and the docs get checked against it.
+#
+#   verse trigger add -f docs/working/verse-dev/docs-drift.tony
+#
+# NOT installed yet on purpose — see the note. The loop this creates (phase 3 merges, the
+# source reflects, this fires again) is the experiment rather than a thing to prevent, and the
+# cycle throttle deliberately does not engage across a paced hop through the world. So the
+# bound during the experiment is a person watching.
+
+name: docs-drift
+condition:
+  subject: { system: git, kind: commit, value: { repo: verse } }
+action:
+  spawn:
+    prompt:      "$subject landed. Find references in the verse repository's docs/ that no longer resolve against that tree, and fix them."
+    runner:      runners:pool:code
+    environment: verse-docs
+    driver:      claude
+    # Read freely, write freely inside the workspace: the floor is the workspace, and the
+    # interesting decision is not per-edit, it is whether what came out is worth keeping.
+    vector:      auto

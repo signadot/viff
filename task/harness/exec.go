@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,43 @@ func (demoDeriver) Derive(tu *task.ToolUse) {
 		cmd, _ := tu.Input["command"].(string)
 		tu.Effects = append(tu.Effects, task.Effect{Verb: task.Exec, Resource: task.Resource{Kind: task.KindTask, Ref: cmd}})
 	}
+}
+
+// fsProblem turns a filesystem error into something an agent can act on, in the vocabulary it
+// actually has.
+//
+// Two things were wrong with handing back the os error, and a drive found both in one line:
+//
+//	ERROR: read /Users/scott/.verse-coderunner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
+//
+// It does not say what to do. "is a directory" is a fact about the path and not an instruction,
+// so the model spends a turn working out that the tool it wanted was list_dir — and the whole
+// point of the offered-tool set is that the loop knows which tools exist and the model has to be
+// told. Naming the sibling tool costs one clause and saves a model call.
+//
+// And it speaks in ABSOLUTE paths, when the frame told the agent every path is relative to its
+// working directory. That is a contradiction the agent has to resolve, it publishes the runner's
+// filesystem layout onto a read plane other people watch, and under `filesystem.scope: private`
+// it would be a path that does not exist from where the task is standing. So every message here
+// is phrased in the path the agent ASKED for, including the fall-through.
+func fsProblem(tool, asked, resolved string, err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf("%s: no such file or directory", asked)
+	case errors.Is(err, fs.ErrPermission):
+		return fmt.Sprintf("%s: permission denied", asked)
+	}
+	// Stat rather than errno matching: EISDIR and ENOTDIR are the two confusions worth naming,
+	// and asking the filesystem what the path IS answers both without a platform table.
+	if st, serr := os.Stat(resolved); serr == nil {
+		switch {
+		case st.IsDir() && tool == "read_file":
+			return fmt.Sprintf("%s is a directory, not a file — use list_dir to see what is in it", asked)
+		case !st.IsDir() && tool == "list_dir":
+			return fmt.Sprintf("%s is a file, not a directory — use read_file to read it", asked)
+		}
+	}
+	return strings.ReplaceAll(err.Error(), resolved, asked)
 }
 
 // ExecRecord is the structured record of one tool execution — the executor's
@@ -131,7 +169,7 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 		} else if p, err := e.path(tu, "path"); err != nil {
 			rec.Err = err.Error()
 		} else if b, err := os.ReadFile(p); err != nil {
-			rec.Err = err.Error()
+			rec.Err = fsProblem("read_file", str(tu.Input, "path"), p, err)
 		} else {
 			rec.Stdout = string(b)
 		}
@@ -139,7 +177,7 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 		if p, err := e.path(tu, "path"); err != nil {
 			rec.Err = err.Error()
 		} else if entries, err := os.ReadDir(p); err != nil {
-			rec.Err = err.Error()
+			rec.Err = fsProblem("list_dir", str(tu.Input, "path"), p, err)
 		} else {
 			var sb strings.Builder
 			for _, en := range entries {
@@ -225,17 +263,74 @@ func echoStream(w io.Writer, name, s string) {
 	}
 }
 
-// safePath confines a model-supplied path to root (rejects traversal/escape).
+// safePath confines a model-supplied path to root. It rejects traversal (`../..`) and, since
+// the lexical check alone is not enough, escape through a SYMLINK.
+//
+// The lexical check was all there was, and a symlink walked straight past it: `link/pwned`
+// contains no `..`, so `filepath.Join` and `filepath.Rel` both approve it, and the write then
+// follows the link wherever it goes. That is not a hypothetical shape. A working directory here
+// is frequently a git checkout, and git checks symlinks out as symlinks — so a repository
+// carrying one is an escape that needs no shell, no traversal and no cleverness from the model.
+//
+// So the path is also resolved. EvalSymlinks needs something that exists, and a write commonly
+// names something that does not yet, so the DEEPEST EXISTING ANCESTOR is resolved and the
+// not-yet-created tail rejoined to it. The root is resolved too, and must be: /var is a symlink
+// to /private/var on macOS, so comparing a resolved candidate against an unresolved root would
+// refuse every legitimate write under a temp dir.
+//
+// What this does not do is close the race. A symlink planted between this check and the open
+// would still be followed, and closing that needs the whole walk to be openat2/O_NOFOLLOW rather
+// than a check followed by an ordinary open. It is not reachable through the tools this package
+// offers — none of them creates a symlink — so it is a hazard only where `run_bash` is, and a
+// task with a shell has larger problems than this function.
 func safePath(root, p string) (string, error) {
 	if strings.TrimSpace(p) == "" {
 		return "", fmt.Errorf("empty path")
 	}
 	full := filepath.Join(root, p)
-	rel, err := filepath.Rel(root, full)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if escapes(root, full) {
 		return "", fmt.Errorf("path %q escapes the working directory", p)
 	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("working directory %q: %w", root, err)
+	}
+	real, err := resolveExisting(full)
+	if err != nil {
+		return "", fmt.Errorf("path %q: %w", p, err)
+	}
+	if escapes(realRoot, real) {
+		return "", fmt.Errorf("path %q escapes the working directory through a symlink", p)
+	}
 	return full, nil
+}
+
+// escapes reports whether target lies outside root, lexically.
+func escapes(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	return err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolveExisting resolves the symlinks in p as far as p exists, and rejoins whatever tail does
+// not exist yet. A write names a file that is about to be created; every directory above it is
+// already there, and those are the ones a symlink can hide in.
+func resolveExisting(p string) (string, error) {
+	tail := ""
+	for cur := p; ; {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			return filepath.Join(resolved, tail), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur { // reached the filesystem root without finding anything that exists
+			return "", fmt.Errorf("no part of it exists")
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
+	}
 }
 
 func compactArgs(m map[string]any) string {

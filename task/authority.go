@@ -59,15 +59,38 @@ var namedGrants = map[string]Grant{
 	// "read-only" is the one the complaint reached for: reads pass, everything else is
 	// refused. Note it refuses rather than asks — see Grant.Permits.
 	"read-only": {Allow: []GateMatch{{Verbs: []Verb{Read}}}},
-	// "no-delegate" is the whole envelope minus delegation: the useful shape for an
-	// unattended firing, where a sub-agent nobody can approve is a park waiting to happen.
-	"no-delegate": {Allow: []GateMatch{
-		{Verbs: []Verb{Read}}, {Verbs: []Verb{Write}}, {Verbs: []Verb{Create}},
-		{Verbs: []Verb{Delete}}, {Verbs: []Verb{Exec}}, {Verbs: []Verb{Network}},
-	}},
+	// "no-delegate" is the whole envelope minus delegation — and minus ANSWERING, which the
+	// name does not say and which is worth keeping: the shape this is for is an unattended
+	// firing, where a sub-agent nobody can approve is a park waiting to happen, and a task
+	// that may answer gate questions is a task that approves itself. `Resolve` is a verb for
+	// exactly that reason (see effect.go), and an envelope for unattended work is the last
+	// place to hand it out.
+	//
+	// Computed by exclusion from AllVerbs rather than listed, because it is DEFINED by
+	// exclusion and a list drifts from its own definition in silence. It had already: adding
+	// `Resolve` never reached the list, and adding `Push` would have narrowed the name again,
+	// so a task under `no-delegate` would have had its delivery refused by its own scope — a
+	// refusal Grant makes rather than asks, so no gate and no operator could let it through.
+	"no-delegate": grantAllVerbsExcept(CallAgent, Resolve),
 	// "none" grants nothing. A task under it can only report, which makes it the
 	// honest spelling of "I want this to fail if it tries to act".
 	"none": {},
+}
+
+// grantAllVerbsExcept builds an envelope admitting every verb but the named ones — one clause per
+// verb, which is what Grant.Permits reads.
+func grantAllVerbsExcept(deny ...Verb) Grant {
+	blocked := make(map[Verb]bool, len(deny))
+	for _, v := range deny {
+		blocked[v] = true
+	}
+	g := Grant{}
+	for _, v := range AllVerbs {
+		if !blocked[v] {
+			g.Allow = append(g.Allow, GateMatch{Verbs: []Verb{v}})
+		}
+	}
+	return g
 }
 
 // NamedGrant resolves a spawn's `grant:` to a hard envelope.
