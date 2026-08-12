@@ -101,10 +101,13 @@ over the rest. The pool is *reserved*, not merely labelled — its nodes carry a
 to go there and the matching toleration to be let in. That is what `docdPool` emits.
 
 It pulls `example/verse-staging:latest` — its own repository rather than a tag on the shared
-one, so a build driven on staging is never what everything else pulls. Push there with
-`make push PUSH_IMAGE=example/verse-staging:latest`. (`make deploy PROFILE=staging` passes
-`-e image=$(IMAGE)`, which overrides that — for staging, render with `o` and pipe to
-`kubectl`.)
+one, so a build driven on staging is never what everything else pulls:
+
+```sh
+make push PUSH_IMAGE=example/verse-staging:latest IMAGE_ARCH=amd64
+make deploy PROFILE=staging                          # the profile's ref
+make deploy PROFILE=staging IMAGE=example/verse-staging:v3   # a particular build
+```
 
 Nothing here creates the class or the pool; the cluster has both. On a cluster that has
 neither, `-e emitStorageClass=true` emits a `verse-gp3` class (`WaitForFirstConsumer` → the

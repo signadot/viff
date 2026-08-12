@@ -66,6 +66,8 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
+# make deploy PROFILE=staging                      # the profile's own registry ref
+# make deploy PROFILE=staging IMAGE=example/verse-staging:v3    # …a particular build of it
 # make deploy E='-e gitSource=true -e slackSource=true'          # …plus source connectors
 #
 # E is the escape hatch for everything the three named variables do not cover — the source
@@ -75,9 +77,25 @@ PROFILE  ?=
 HOSTPV   ?=
 HOSTPATH ?=
 E        ?=
+
+# Which image the render gets, and when NOT to say. `-e` beats a profile, so passing
+# `-e image=$(IMAGE)` unconditionally overrode every profile that names its own ref — which
+# deployed the local dev tag to staging, where no node can pull it. So:
+#
+#   no PROFILE  — nothing else names one; pass $(IMAGE), the local flow's just-built tag.
+#   a PROFILE   — it names its own (minikube: verse:dev, staging: example/verse-staging),
+#                 so stay quiet unless this invocation named one itself.
+#
+# `origin` is what tells "you said IMAGE/NAME/TAG" from the `?=` defaults at the top of this
+# file: those report `file`, a command-line or exported one reports otherwise. NAME/TAG count
+# as naming one, but they compose into $(NAME):$(TAG) — the SHARED repository — so on staging
+# `TAG=v9` renders `verse:v9` and fails to pull. Name IMAGE= outright there.
+IMAGE_NAMED  := $(filter-out file default undefined,$(origin IMAGE) $(origin NAME) $(origin TAG))
+DEPLOY_IMAGE := $(if $(PROFILE),$(if $(IMAGE_NAMED),$(IMAGE)),$(IMAGE))
+
 .PHONY: deploy
-deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
-	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -e image=$(IMAGE) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
+deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
+	$(O) build deploy $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) | kubectl apply -f -
 
 # config, launch and task carry //go:generate tony-codegen directives; their <pkg>_gen.go
 # and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.
