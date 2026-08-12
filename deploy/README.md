@@ -355,12 +355,48 @@ are the names each consumer reads:
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | env |
 | `coderunnerSecretKey` | `verse-coderunner` | `gitToken` | env, in the runner and never in the sandbox |
 
-Creating one, with the values reaching a file rather than your shell history:
+### Creating the entries
+
+An entry is a JSON object whose keys are the ones in the table. Write it to a file rather than
+an argument, so no value reaches your shell history, and remove the file at the end. The region
+has to be the one the `ClusterSecretStore` reads — `us-west-2` here; an entry in another region
+or another account is invisible to the cluster no matter what the knob says.
 
 ```sh
+put() { aws secretsmanager create-secret --region us-west-2 --name "$1" --secret-string file://"$2"; }
+
 printf '{"PORTKEY_API_KEY":"%s","PORTKEY_VIRTUAL_KEY":"%s"}' "$pk" "$vk" > /tmp/e.json
-aws secretsmanager create-secret --region us-west-2 \
-  --name staging/verse/llm --secret-string file:///tmp/e.json && rm /tmp/e.json
+put staging/verse/llm /tmp/e.json
+
+# `credential` is a FILE git's helper cats, so its value carries real newlines — a \n inside a
+# JSON string is one, and the trailing one matters to git.
+printf '{"credential":"username=x-access-token\\npassword=%s\\n"}' "$pat" > /tmp/e.json
+put staging/verse/git /tmp/e.json
+
+# The same PAT, held by a different process and revocable on its own.
+printf '{"gitToken":"%s"}' "$pat" > /tmp/e.json
+put staging/verse/coderunner /tmp/e.json
+
+printf '{"SLACK_BOT_TOKEN":"%s","SLACK_SIGNING_SECRET":"%s"}' "$bot" "$sig" > /tmp/e.json
+put staging/verse/slack /tmp/e.json
+
+printf '{"LINEAR_API_KEY":"%s","LINEAR_WEBHOOK_SECRET":"%s"}' "$key" "$sig" > /tmp/e.json
+put staging/verse/linear /tmp/e.json
+
+printf '{"GITHUB_TOKEN":"%s","GITHUB_WEBHOOK_SECRET":"%s"}' "$tok" "$sig" > /tmp/e.json
+put staging/verse/github /tmp/e.json
+
+rm -f /tmp/e.json
+```
+
+Rotating one later is `put-secret-value --secret-id <name>` instead of `create-secret`; ESO
+picks it up on the next refresh, and the pods that already read it need a rollout.
+
+**Check the key names landed**, which is the failure nothing else catches — this prints names
+only, never values:
+
+```sh
+kubectl -n verse get secret verse-git -o go-template='{{range $k,$v := .data}}{{$k}}{{"\n"}}{{end}}'
 ```
 
 **Create the entry before setting the knob.** A knob naming an entry that does not exist is an
