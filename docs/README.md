@@ -99,7 +99,7 @@ the verse that owns it, through a docd controller.
 |---|---|
 | walk | [reference/connect.md](reference/connect.md) — federating a tree, and scopes |
 | read | [verse connect and docd](working/connect.md) — the mechanics, through docd's two faces |
-| | [Content federation](content-federation.md) — why `connect` replaced `--root` |
+| | [Content federation](content-federation.md) — how `connect` federates a tree: the index/warehouse split, and what a task reads through |
 | | [Writing a controller](controllers.md) — the `Handler` contract and its invariants |
 | | [Sources](sources.md) — reflecting git, Slack and Linear: a source you deploy, hint as hint, reconcile as truth |
 | | [reference/sources.md](reference/sources.md) — the source surface: the entity, ownership globs, the verbs, the routes, and the contract a source serves |

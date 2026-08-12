@@ -1,13 +1,15 @@
 # Writing a docd controller for verse
 
-A controller is how verse gains a subtree of the entity-verse that isn't backed by logd
-storage: a [`libctl.Handler`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl)
-mounted at a [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath), to
-which docd routes every client operation (`Match`/`Patch`/`Watch`) for that subtree by
-longest-prefix mount. To verse's store client — which points at docd's client address — a
-controller-served subtree is indistinguishable *to a read*: `demo:*`/`task:*` resolve to
-logd, `local:dir-content-*` resolves to a controller, with no store rewrite. To a *watch* it is
-not indistinguishable at all, which is the first thing to know and is below.
+A docd controller is how verse can implement a
+subtree of the entity-verse by way of a process: a
+[`libctl.Handler`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl) mounted at a
+[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath),
+to which docd routes every client operation (`Match`/`Patch`/`Watch`) for that
+subtree by longest-prefix mount. To verse's store client — which points at
+docd's client address — a controller-served subtree is indistinguishable *to a
+read*: `demo:*`/`task:*` resolve to logd, `local:dir-content-*` resolves to a
+controller, with no store rewrite. To a *watch* it is not indistinguishable at
+all, which is the first thing to know and is below.
 
 You can see one running in [reference/connect.md](reference/connect.md),
 where `verse connect` mounts the content controller over your working tree.
@@ -20,13 +22,15 @@ controller at all.
 
 ## The first question: should this be a controller at all?
 
-**A mounted slice fires no triggers.** Mounts live under `entity.MountRoot`, a top-level segment
-disjoint from the entity root, because a mount is task-driven and so has no history, and a
-history-bearing watch must never span one (`entity/logdstore.go`, and the "no root watches"
-invariant below is the other half of the same story). `refPath` renders a mount-owned slice
-under `MountRoot`; `LogdStore.WatchSubtree` renders only under the entity root. So a
-controller-served subtree is reachable by its ordinary ref and **invisible to every watch there
-is** — no change events, no `Since` replay, and therefore nothing a charter can react to.
+**A mounted slice fires no triggers.** Mounts live under `entity.MountRoot`, a
+top-level segment disjoint from the entity root, because a mount is task-driven
+and so has no history, and a history-bearing watch must either never span one
+or be resilient to mounts coming and going (`entity/logdstore.go`, and the "no
+root watches" invariant below is the other half of the same story). `refPath`
+renders a mount-owned slice under `MountRoot`; `LogdStore.WatchSubtree` renders
+only under the entity root. So a controller-served subtree is reachable by its
+ordinary ref and **invisible to every watch there is** — no change events, no
+`Since` replay, and therefore nothing a charter can react to.
 
 That gives a rule with no exceptions: **bytes somebody asks for may be a mount; facts something
 reacts to must be ordinary writes.** `verse connect` is the worked example on both sides of it,
@@ -98,29 +102,11 @@ returns), or you race a not-yet-serving mount and consumers see "not found".
 
 ## The load-bearing invariant: no root watches
 
-A watch on the whole verse (or any ancestor of where controllers mount) is untenable,
-for two independent reasons:
+A watch on the whole verse (or any ancestor of where controllers mount) is not
+recommended because it must then be resilient to the comings and goings of
+mount processes.
 
-1. A mount force-ends overlapping watches. Mount/unmount coordinates with the watch
-   readers overlapping the mounted path: docd waits `force_after` (default 5s) for them
-   to drain, then force-ends them (`WatchEndedError` whose reason says which way the mount
-   set moved: `session_mounted` or `session_unmounted`). A *standing* root watch overlaps
-   every mount under the root, so every `connect` mount stalls ~5s and then kills the
-   reader. (This is why `verse connect` once took ~5s and
-   silently broke the engine; see `verse-root-watches-eliminated`.)
-2. A root watch depends on every controller under it. docd composes an ancestor
-   watch by folding in each overlapping mount's `Watch` stream. If any one controller
-   declines `Watch`, the composed ancestor watch has no stream for that subtree and
-   cannot establish. A root watch is thus hostage to every controller in the tree.
-
-Hence: no root watches. An engine (or any consumer) watches exactly the
-`(system[,kind])` subtree it matches — `LogdStore.WatchSubtree` / `Engine.ObserveScoped`
-— never the root. Two things then keep a watch clear of a mount, and the belt matters as
-much as the braces: mounts render under `MountRoot`, disjoint from the entity root, so no
-watch verse takes *can* contain one; and a watch that somehow overlapped anyway survives by
-re-establishing and resyncing (below) rather than by dying. An unfiltered `verse watch` (no
-`--system`/`--kind`) may take a transient root watch while a human is actively watching,
-and it retries on a force-end — but nothing holds one at rest.
+In verse, we've chosen to simply not have such mounts and it simplifies things.
 
 ## Invariants for the Handler itself
 

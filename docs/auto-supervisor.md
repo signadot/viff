@@ -14,6 +14,11 @@ fails to decide has thereby decided to promote.
 Everything here runs today. The gaps are named at the end, and a test drives the charter
 below through each of its routes ([`trigger/supervise_test.go`](https://github.com/signadot/verse/blob/main/trigger/supervise_test.go)).
 
+While this work demonstrates a naive way of implementing supervision, it is a valid
+charter pattern and worth keeping. More advanced supervision capabilities are with
+[attached resolvers](attached-resolvers.md) — a service that answers gates, where the
+decision is a live conversation rather than a rule fixed at install.
+
 ## Two supervisors, one word
 
 verse already has a thing called a Supervisor, and it is not this one. Keeping them apart is

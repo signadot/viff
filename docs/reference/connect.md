@@ -4,8 +4,8 @@
 *scope*, and wires a validator to every file — the local-dev loop. It is its own process, so
 give it a terminal and leave it running.
 
-The mechanics, through docd's two faces, are in [connect](../working/connect.md); why it
-replaced a server-side `--root` is [content federation](../content-federation.md).
+The mechanics, through docd's two faces, are in [connect](../working/connect.md); how a tree
+is split into an index and served bytes is [content federation](../content-federation.md).
 
 ## What one command does
 

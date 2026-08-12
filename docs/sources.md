@@ -58,12 +58,11 @@ write it made was a compare-and-swap, defending a single-writer slice against a 
 writer that cannot exist. It now writes with no precondition (`entity.ReplaceFrom`), using the
 snapshot it already read to spell the removals that keep it a replace rather than a merge.
 
-The cost of *not* doing that was briefly enormous and is now modest: a conditional patch was two
-orders of magnitude slower than an unconditional one in go-tony ≤ v0.0.113, which is why a first
-pass over a repository reflected as 3400 entities never finished at all. That was an upstream
-defect and it is fixed; on v0.0.116 the same pass takes 11.5s without preconditions and 15.8s
-with them. So this is worth about a quarter, and the reason to keep it is the rule rather than
-the measurement — which is the right way round, and was not how it was found.
+The cost of *not* doing that was briefly enormous and is now modest: a conditional patch was
+once two orders of magnitude slower than an unconditional one, which is why a first pass over a
+repository reflected as 3400 entities never finished at all. That was an upstream defect and it
+is fixed; the same pass is now worth about a quarter either way. The reason to keep it is the
+rule rather than the measurement — which is the right way round, and was not how it was found.
 
 ## The seam: a source answers, verse converges
 

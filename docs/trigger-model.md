@@ -130,7 +130,7 @@ the store rather than stored by it. A charter is full of them: `id: !glob "hotfi
 back wrong, it is one that cannot be read back at all: the write leaves an entity whose own
 patch log no longer applies (`glob patching "null" gave cannot patch with glob operation`).
 
-`!raw` (go-tony v0.0.100) says *this tag is data*: the subtree is stored verbatim, nothing
+`!raw` says *this tag is data*: the subtree is stored verbatim, nothing
 beneath it is interpreted at any depth, and the escape itself is consumed, so the rule lands
 carrying its own tags. `entity.Raw` is that wrap on the way in; a rule read back is ordinary
 data, which is why putting one back means escaping it again (`entity.AsData`, which is what

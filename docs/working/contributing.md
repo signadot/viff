@@ -262,7 +262,7 @@ Each has a trigger that would change the answer; naming it is what stops "not ye
 
 ## Open questions
 
-- **How does this relate to tony-format?** verse pins `go-tony v0.0.113`, and the charter
+- **How does this relate to tony-format?** verse pins `go-tony`, and the charter
   grammar *is* tony — so a bump can break charters with no verse commit declaring it, and a
   defect found driving verse is often a tony defect (filed today on that repo's living issue).
   `git issue` itself ships from there, so even the notice mechanism is downstream of it. Does

@@ -23,8 +23,8 @@ event actually carry, and is matching edge- or level-triggered?
 ## What the watch actually delivers (measured)
 
 A watch on the root streams one event per commit, each carrying the commit's
-`Patch`. Probing the production path — verse → docd → logd, go-tony v0.0.122 —
-with a create, a full update, a partial one, a delete, and a re-create:
+`Patch`. Probing the production path — verse → docd → logd — with a create, a full
+update, a partial one, a delete, and a re-create:
 
 ```
 CREATE   demo.pr.1         {verse:{demo:{pr:{"1":{stage:open,      x:1}}}}}
@@ -258,26 +258,23 @@ waiting for the one after it — while the store, which built them from a single
 See [the commit is the unit](trigger-model.md#the-commit-is-the-unit) for what the engine does
 with one.
 
-## A history-bearing watch must not span a mount
+## A history-bearing watch, and a mount
 
-Everything above assumes the watch *has* a history behind it. One docd capability decides
-whether it does. A watch whose path is a strict ancestor of a controller mount is
-**composed** — docd fans it across the base owner and every mount below, and merges them
-into one stream — and a composed watch cannot honour `FromCommit`: the sub-streams have
-independent commit sequences, so no single resume commit replays them. It does not refuse.
-It drops the replay request and never signals `ReplayComplete`, so a `Since` over such a
-path returns `ok=true` with zero events once it runs out its own timeout — a
-successful-looking under-delivery of the engine's catch-up, which is the worst shape the
-failure could take. For the same reason a membership change ends a composed watch
-(`session_mounted` / `session_unmounted`) and the re-watch re-inits from a fresh composed
-snapshot rather than replaying the gap: level recovered, transients not.
+Everything above assumes the watch *has* a history behind it. A watch whose path is a
+strict ancestor of a controller mount is **composed** — docd fans it across the base owner
+and every mount below, and merges them into one stream — and a composed watch cannot
+honour `FromCommit`: the sub-streams have independent commit sequences, so no single
+resume commit replays them. It does not refuse. It drops the replay request and never
+signals that the replay is complete, so a `Since` over such a path returns `ok=true` with
+zero events once it runs out its own timeout — a successful-looking under-delivery of the
+engine's catch-up, which is the worst shape the failure could take.
 
-The store's answer is a namespace split rather than a check: mount-owned slices render
-under `entity.MountRoot` (`versemnt`), a sibling of the entity root, so no watch verse
-takes is ever an ancestor of a mount. One root watch, `Since` untouched. The price is that
-a mounted slice fires no triggers — which is the right price, since a mount is task-driven
-and has no history to observe in the first place. See
-[controllers](controllers.md) and `entity/composedwatch_test.go`.
+A consumer could be made resilient to mounts arriving and leaving under it. verse takes a
+namespace split instead, because it is simpler: mount-owned slices render under a sibling
+of the entity root, so no watch verse takes is ever an ancestor of a mount. One root watch,
+`Since` untouched. The price is that a mounted slice fires no triggers — which is the right
+price, since a mount is task-driven and has no history to observe in the first place. See
+[controllers](controllers.md).
 
 ## Why this is the portable choice (not an exotic dependency)
 
@@ -336,8 +333,8 @@ state-driven flow; you give up native "once, ever," recoverable with a latch.
   itself only snapshot-accurate, and handing a client an untrustworthy state and then an
   error is worse than the error alone. libctl raises that terminal event as a
   `WatchEndedError`, so it arrives at `Since` as `w.Err() != nil` and becomes `ok=false`
-  with no special-casing. Measured through the production path (verse → docd → logd,
-  go-tony v0.0.122) and pinned by `entity.TestSinceBelowReplayFloorResyncs`: floor at 5,
+  with no special-casing. Measured through the production path (verse → docd → logd)
+  and pinned by `entity.TestSinceBelowReplayFloorResyncs`: floor at 5,
   `Since(0)` → `ok=false`, zero commits. The distinct code is the point — `replay_failed`
   reads as transient, and a consumer told that retries the same doomed cursor forever.
 - **No way to ask the floor in advance.** What is left of the above is smaller and

@@ -168,6 +168,9 @@ for.
 
 ## Permissions on the radar (not now, but don't preclude)
 
+Where this is headed is [authority](roadmap/authority.md); what follows is only the part
+that must not be precluded now.
+
 The in-process agent is trusted by construction — verse built its executor, derives its
 effects, and gates each one. An external worker is a separate principal, and the
 boundary moves:
