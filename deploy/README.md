@@ -263,11 +263,18 @@ They run `sourced`, the connector binary in the same image
 standing, so it stays a verb somebody runs.
 
 ```sh
-kubectl -n verse exec deploy/versed -- verse source add git:cluster    http://git-source:9801
-kubectl -n verse exec deploy/versed -- verse source add slack:workspace http://slack-source:9801
-kubectl -n verse exec deploy/versed -- verse source add linear:teams   http://linear-source:9801
-kubectl -n verse exec deploy/versed -- verse source
+verse source add git:cluster     http://git-source:9801
+verse source add slack:workspace http://slack-source:9801
+verse source add linear:teams    http://linear-source:9801
+verse source
 ```
+
+Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and none wanted: it
+would depend on your current kubectx and skip the version-skew check the CLI's own transport
+does on every request. **The url stays the in-cluster Service name**, because it is *versed*
+that dials it: the CLI only posts `{kind, name, url}`, and the probe happens server-side
+(`versed/sources.go`). The mirror image of `--docd-advertise-addr`, where the client dials and
+so the address has to be reachable from where the client is.
 
 ⚠️ **The name has to match `<x>SourceName`.** The hint url is baked into the pod
 (`http://verse:9797/sources/slack/<name>/hint`), so a registration under a different name means
@@ -470,11 +477,13 @@ it by url, and deploying it does not install it.
 ```sh
 make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
 make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
-kubectl -n verse exec deploy/versed -- verse runner add pool:code http://coderunner:9802
+verse runner add pool:code http://coderunner:9802
 ```
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
-acceptance test.
+acceptance test, and the first thing that exercises bubblewrap on the node. As with a source,
+the url is the in-cluster Service name because versed dials it (`runner.Probe`, server-side);
+your CLI needs to reach the *API*, not the runner.
 
 **Its own image, not necessarily its own repository.** The two images are sized by different
 things (the runtime image is thin and pinned to the engine; this one carries the toolchain the

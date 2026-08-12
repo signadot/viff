@@ -6,7 +6,7 @@
 # instead, or use verse's in-process path (`verse source add --dir`) and skip this entirely.
 #
 # Install it once the pods are up (the name here must match `gitSourceName`):
-#   kubectl -n verse exec deploy/versed -- verse source add git:cluster http://git-source:9801
+#   verse source add git:cluster http://git-source:9801
 apiVersion: apps/v1
 kind: Deployment
 metadata:
