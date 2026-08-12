@@ -663,3 +663,49 @@ func TestChildURLSurvivesATriggerSpawnedTaskID(t *testing.T) {
 		}
 	}
 }
+
+// A task id that has FINISHED can be spawned again, because verse mints ids that repeat.
+//
+// A trigger's task id is `<chain>@<subject>` — deterministic on purpose, which is what makes a
+// re-fire idempotent — and the engine's dedupe on it lasts only while the task is live. So a
+// rule that fires twice about one subject asks this runner to run one id twice, and the second
+// ask is a new run rather than a retry of the first.
+//
+// It used to be answered by the first: the child record outlives its process, so the spawn was
+// proxied into a socket that had been unlinked with it, and came back 502. What that looked like
+// on the deployment is a charter whose first review worked and whose every later one failed
+// until the runner was restarted.
+func TestAFinishedTaskIDRunsAgain(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	r := testRunner(t, &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name:   "e",
+			Repos:  []Repo{{Name: "svc", Repo: origin, Base: "main"}},
+			Driver: "sh",
+			Env:    []string{"PATH"},
+		}},
+		Agents: map[string]Command{"sh": {Argv: []string{"/bin/sh", "-c", "echo ran"}}},
+	})
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	rt := runner.HTTP(srv.URL)
+	id := "comment-drift@drift:head:head-moved@git:head:verse"
+	for i, want := range []string{"ran", "ran"} {
+		h := rt.Spawn(task.Launch{ID: id, Prompt: "go", Vector: &task.Vector{Default: task.Auto}}, nil)
+		if st := awaitTerminal(t, h); st != task.Done {
+			t.Fatalf("run %d ended %s (%s)", i+1, st, h.Err())
+		}
+		if got := h.Result(); got != want {
+			t.Fatalf("run %d result = %q, want %q", i+1, got, want)
+		}
+		// The process has to be gone before the next spawn, or this is testing the retry path
+		// rather than the re-run one.
+		waitFor(t, "the child process to be reaped", func() bool {
+			c := r.childOf(id)
+			return c != nil && !c.running()
+		})
+	}
+}

@@ -153,6 +153,18 @@ func (c *child) exitStatus() string {
 	return c.exit.Error()
 }
 
+// running reports whether this task's process is still there. The record outlives it — that is
+// what answers a `task get` about a task that has ended — so "this runner knows the id" and
+// "the id is live" are different questions, and the spawn path needs the second one.
+func (c *child) running() bool {
+	select {
+	case <-c.gone:
+		return false
+	default:
+		return true
+	}
+}
+
 func (c *child) snapshot() (task.Instance, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -428,11 +440,29 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 		id = fmt.Sprintf("p%d", r.seq.Add(1))
 		setField(&body, "id", id)
 	}
-	// An id is spawned ONCE, and a repeated spawn of a live one is answered by it — the same
-	// retry-safety taskd has, which a client whose request timed out depends on.
-	if c := r.childOf(id); c != nil {
-		c.prox.ServeHTTP(w, requestWithBody(req, raw))
-		return
+	// An id is spawned ONCE WHILE IT RUNS, and a repeated spawn of a live one is answered by it
+	// — the same retry-safety taskd has, which a client whose request timed out depends on.
+	//
+	// A FINISHED one is a different question, and answering it the same way was wrong twice
+	// over. The record outlives the process on purpose, so that `forward` can keep answering
+	// about a task that has ended — but the socket goes with the process, so this proxied into a
+	// path that no longer exists and the spawn came back `502: the process running task … did
+	// not answer: dial unix …: no such file or directory`.
+	//
+	// And a repeat is not an anomaly. The engine mints `<chain>@<subject>`, deterministic ON
+	// PURPOSE, and its own dedupe lasts only while the task is live — so a rule firing twice
+	// about one subject is a second run of the same id, by design. Treating the id as spent
+	// meant a charter could run once per subject per runner lifetime: the first review worked,
+	// every later one 502'd, and only a restart cleared it.
+	//
+	// Falling through re-runs it, and `r.children[id] = c` below replaces the record: the id now
+	// names the new run, which is what every reader of it wants. The old workspace is already
+	// gone, removed at reap unless it held work nothing could stage.
+	if c := r.childOf(id); c != nil && c.running() {
+		if _, done := c.snapshot(); !done {
+			c.prox.ServeHTTP(w, requestWithBody(req, raw))
+			return
+		}
 	}
 
 	// Every refusal below is an HTTP error rather than a task that fails immediately, and that
