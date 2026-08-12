@@ -119,6 +119,14 @@ func (d *deliverFinisher) Do(_ context.Context, _ task.ToolUse) (string, error) 
 	if !rep.OK {
 		return "", fmt.Errorf("delivery failed: %s", rep.Error)
 	}
+	if len(rep.Refs) == 0 {
+		// "Nothing to deliver" is a RESULT, and it must not render as a successful push with an
+		// empty list. It did: the read plane carried `exec deliver: "pushed "` for a task that
+		// changed nothing, which is finding 10 in a new place — nothing-to-do and
+		// something-went-wrong reading identically, on the one frame that says where the work
+		// went. A drive caught it on the first clean run.
+		return "nothing to deliver: no repository with a push target was changed", nil
+	}
 	return "pushed " + strings.Join(rep.Refs, "; "), nil
 }
 

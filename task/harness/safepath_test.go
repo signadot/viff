@@ -1,10 +1,14 @@
 package harness
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/task"
 )
 
 // A path may not leave the working directory, by traversal OR through a symlink.
@@ -110,5 +114,54 @@ func TestSafePathNamesTheSymlinkCase(t *testing.T) {
 	_, err := safePath(root, "link/x")
 	if err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("err = %v, want it to name the symlink", err)
+	}
+}
+
+// A filesystem error tells the agent what to do next, in the paths it was given.
+//
+// Both halves come from one line a drive produced:
+//
+//	ERROR: read /Users/scott/.verse-coderunner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
+//
+// It names no remedy, so the model spends a turn deducing that list_dir exists; and it speaks in
+// absolute paths after the frame told the agent every path is relative to its working directory.
+func TestFilesystemErrorsAreActionableAndRelative(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "trigger"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "note.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e := &fsExec{root: root, log: io.Discard}
+	fail := func(tool, path string) string {
+		t.Helper()
+		out, _, err := e.Execute(context.Background(), task.ToolUse{
+			Name: tool, Input: map[string]any{"path": path}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out.Output
+	}
+
+	// read_file on a directory names the tool that would have worked.
+	if got := fail("read_file", "trigger"); !strings.Contains(got, "use list_dir") {
+		t.Errorf("read_file on a directory does not name the remedy: %q", got)
+	}
+	// list_dir on a file, symmetrically.
+	if got := fail("list_dir", "note.md"); !strings.Contains(got, "use read_file") {
+		t.Errorf("list_dir on a file does not name the remedy: %q", got)
+	}
+	// A missing path is a missing path, said plainly.
+	if got := fail("read_file", "nope.md"); !strings.Contains(got, "no such file") {
+		t.Errorf("a missing file: %q", got)
+	}
+	// And no message leaks the host path the agent was never told about.
+	for _, p := range []string{"trigger", "note.md", "nope.md"} {
+		for _, tool := range []string{"read_file", "list_dir"} {
+			if got := fail(tool, p); strings.Contains(got, root) {
+				t.Errorf("%s %s leaks the working directory into the agent's view: %q", tool, p, got)
+			}
+		}
 	}
 }

@@ -598,3 +598,48 @@ func deliveringConfig(origin string) *Config {
 		}},
 	}
 }
+
+// A task that changed nothing says so, rather than reporting an empty push.
+//
+// The read plane carried `exec deliver: "pushed "` — a success with nothing after it — for a run
+// that correctly found nothing to change. That is finding 10 in a new place: "nothing to do" and
+// "something went wrong" rendering identically, on the one frame that says where the work went.
+// Caught by a drive, on the first clean run.
+func TestATaskThatChangedNothingSaysSo(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	cfg := deliveringConfig(origin)
+	// An agent that reads and reports, and writes nothing — the shape of a verification task.
+	cfg.Agents["sh"] = Command{Argv: []string{"/bin/sh", "-c", "echo no drift found"}}
+	r := testRunner(t, cfg)
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "n1", Prompt: "check it", Vector: &task.Vector{Default: task.Auto},
+	}, nil)
+	frames, cancel := h.Subscribe()
+	defer cancel()
+	var deliver, terminal string
+	for f := range frames {
+		if f.Kind == task.EvExec && f.Tool == "deliver" {
+			deliver = f.Text
+		}
+		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+			terminal = f.Text
+			break
+		}
+	}
+	if terminal != string(task.Done) {
+		t.Fatalf("task ended %s (%s)", terminal, h.Err())
+	}
+	if strings.HasPrefix(deliver, "pushed ") {
+		t.Errorf("a task that changed nothing reported a push: %q", deliver)
+	}
+	if !strings.Contains(deliver, "nothing to deliver") {
+		t.Errorf("the read plane does not say nothing was delivered: %q", deliver)
+	}
+	if commitOn(origin, "refs/heads/agent/n1") != "" {
+		t.Error("a branch appeared for work nobody did")
+	}
+}

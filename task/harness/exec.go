@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,43 @@ func (demoDeriver) Derive(tu *task.ToolUse) {
 		cmd, _ := tu.Input["command"].(string)
 		tu.Effects = append(tu.Effects, task.Effect{Verb: task.Exec, Resource: task.Resource{Kind: task.KindTask, Ref: cmd}})
 	}
+}
+
+// fsProblem turns a filesystem error into something an agent can act on, in the vocabulary it
+// actually has.
+//
+// Two things were wrong with handing back the os error, and a drive found both in one line:
+//
+//	ERROR: read /Users/scott/.verse-coderunner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
+//
+// It does not say what to do. "is a directory" is a fact about the path and not an instruction,
+// so the model spends a turn working out that the tool it wanted was list_dir — and the whole
+// point of the offered-tool set is that the loop knows which tools exist and the model has to be
+// told. Naming the sibling tool costs one clause and saves a model call.
+//
+// And it speaks in ABSOLUTE paths, when the frame told the agent every path is relative to its
+// working directory. That is a contradiction the agent has to resolve, it publishes the runner's
+// filesystem layout onto a read plane other people watch, and under `filesystem.scope: private`
+// it would be a path that does not exist from where the task is standing. So every message here
+// is phrased in the path the agent ASKED for, including the fall-through.
+func fsProblem(tool, asked, resolved string, err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf("%s: no such file or directory", asked)
+	case errors.Is(err, fs.ErrPermission):
+		return fmt.Sprintf("%s: permission denied", asked)
+	}
+	// Stat rather than errno matching: EISDIR and ENOTDIR are the two confusions worth naming,
+	// and asking the filesystem what the path IS answers both without a platform table.
+	if st, serr := os.Stat(resolved); serr == nil {
+		switch {
+		case st.IsDir() && tool == "read_file":
+			return fmt.Sprintf("%s is a directory, not a file — use list_dir to see what is in it", asked)
+		case !st.IsDir() && tool == "list_dir":
+			return fmt.Sprintf("%s is a file, not a directory — use read_file to read it", asked)
+		}
+	}
+	return strings.ReplaceAll(err.Error(), resolved, asked)
 }
 
 // ExecRecord is the structured record of one tool execution — the executor's
@@ -131,7 +169,7 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 		} else if p, err := e.path(tu, "path"); err != nil {
 			rec.Err = err.Error()
 		} else if b, err := os.ReadFile(p); err != nil {
-			rec.Err = err.Error()
+			rec.Err = fsProblem("read_file", str(tu.Input, "path"), p, err)
 		} else {
 			rec.Stdout = string(b)
 		}
@@ -139,7 +177,7 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 		if p, err := e.path(tu, "path"); err != nil {
 			rec.Err = err.Error()
 		} else if entries, err := os.ReadDir(p); err != nil {
-			rec.Err = err.Error()
+			rec.Err = fsProblem("list_dir", str(tu.Input, "path"), p, err)
 		} else {
 			var sb strings.Builder
 			for _, en := range entries {
