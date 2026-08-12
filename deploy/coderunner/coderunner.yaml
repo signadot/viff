@@ -146,6 +146,23 @@ spec:
           # allows it — no CAP_SYS_ADMIN, no privileged: true. What it does need is for the
           # runtime not to block the clone: some default seccomp profiles do. If containment
           # fails here it fails as a refused spawn, which is the diagnosis you want.
+          #
+          # And one does. Bottlerocket's kubelet applies RuntimeDefault to every pod that names
+          # no profile, and containerd's default profile masks the namespace flags out of
+          # `clone` unless the caller holds CAP_SYS_ADMIN — which is dropped three lines down,
+          # on purpose. So the syscall returns EPERM and bwrap reports "No permissions to
+          # create new namespace, likely because the kernel does not allow non-privileged user
+          # namespaces", which sends you to a sysctl that is fine (max_user_namespaces was
+          # 15000 on the node this was found on). The kernel allows it; the filter does not.
+          #
+          # Unconfined is a real trade and worth stating: this pod loses the runtime's blanket
+          # syscall filter so that the TASK can be given namespace containment. It is the right
+          # way round for the threat here — the runner binary is ours and the agent is not, and
+          # without this the runner refuses every spawn, so the strictly safer pod is one that
+          # runs nothing. A Localhost profile (RuntimeDefault plus the clone flags) is the
+          # tighter answer and costs a profile file on every node.
+          seccompProfile:
+            type: Unconfined
           allowPrivilegeEscalation: false
           runAsNonRoot: true
           runAsUser: 65532

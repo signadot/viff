@@ -498,6 +498,21 @@ same value as `llmModel` — and its `egress` allowlist must contain **`api.port
 gateway the driver actually dials, not the model vendor behind the virtual key. Both fail at
 the first spawn rather than at deploy.
 
+⚠️ **It needs `seccompProfile: Unconfined`, and that is not decoration.** Bottlerocket's kubelet
+applies `RuntimeDefault` to every pod naming no profile, and containerd's default profile masks
+the namespace flags out of `clone` unless the caller holds `CAP_SYS_ADMIN` — which this pod
+drops. bwrap then reports *"the kernel does not allow non-privileged user namespaces"*, which
+sends you to a sysctl that is fine (`user.max_user_namespaces` was `15000` on the node where
+this was found). The kernel allows it; the seccomp filter does not. Check with
+`grep ^Seccomp /proc/self/status` in the pod — `2` means a filter is loaded.
+
+The trade is real and worth stating: the pod loses the runtime's blanket syscall filter so the
+*task* can be given namespace containment. That is the right way round here — the runner binary
+is ours and the agent is not — and without it the runner refuses every spawn, so the strictly
+safer pod is one that runs nothing. A `Localhost` profile (RuntimeDefault plus the clone flags)
+is tighter and costs a profile file on every node. Pod Security Admission set to `restricted`
+would reject `Unconfined` outright; the `verse` namespace carries no PSA labels.
+
 `/state` is an `emptyDir`, and the manifest says why that is the first thing to change: a
 delivery that could not reach its remote leaves the commit under `refs/pending/<task>/<repo>`
 for the runner to retry, and on an `emptyDir` that work dies with the pod.
