@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
@@ -279,4 +280,90 @@ func (r *Runner) reflect(ctx context.Context, repo Repo) {
 	if err != nil {
 		fmt.Fprintf(r.log, "coderunner: reflecting %s: %v\n", repo.Name, err)
 	}
+}
+
+// StagedWork is one commit this runner is holding: what it was for, why it is still here, and the
+// exact command that gets it out.
+//
+// The recovery instruction is part of the record rather than something to look up, because the
+// mirror is a directory named by a HASH of a remote url. Told only "the work is in the mirror", the
+// next question is always "which one, and how do I read it", and the answer involves knowing that
+// this runner hashes remotes at all.
+type StagedWork struct {
+	Task  string `tony:"field=task"`
+	Repo  string `tony:"field=repo"`
+	Why   string `tony:"field=why"` // pending: approved, not landed. held: nobody authorized it to leave.
+	Ref   string `tony:"field=ref"`
+	Fetch string `tony:"field=fetch"` // paste this to get the commit into a checkout
+}
+
+// Staged is everything waiting in one repository's mirror, both namespaces.
+//
+// It exists because staging made workspaces disposable, and a workspace was the thing an operator
+// could `cd` into. Removing that without replacing it would have traded a lost result for an
+// unfindable one, which is the same failure wearing a better hat.
+func (m *Mirrors) Staged(r Repo) ([]StagedWork, error) {
+	dir := m.dirFor(r.Repo)
+	lock := m.lockFor(dir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	mirror, err := git.PlainOpen(dir)
+	if err != nil {
+		return nil, nil // no mirror: nothing has ever been staged for this repository
+	}
+	refs, err := mirror.References()
+	if err != nil {
+		return nil, err
+	}
+	var out []StagedWork
+	err = refs.ForEach(func(ref *plumbing.Reference) error {
+		name := ref.Name().String()
+		for _, kind := range []string{stagePending, stageHeld} {
+			rest, ok := strings.CutPrefix(name, "refs/"+kind+"/")
+			if !ok {
+				continue
+			}
+			taskID, repo, ok := strings.Cut(rest, "/")
+			if !ok || repo != safeSeg(r.Name) {
+				continue
+			}
+			out = append(out, StagedWork{
+				Task: taskID, Repo: r.Name, Why: whyStaged(kind), Ref: name,
+				Fetch: fmt.Sprintf("git fetch %s %s:refs/heads/recovered/%s-%s", dir, name, taskID, repo),
+			})
+		}
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Ref < out[j].Ref })
+	return out, err
+}
+
+func whyStaged(kind string) string {
+	if kind == stagePending {
+		return "delivery was approved and has not landed — this runner retries it"
+	}
+	return "nobody authorized this to leave: refused at the gate, or the task never got that far"
+}
+
+// staged is every repository this runner serves, for the descriptor.
+func (r *Runner) staged() []StagedWork {
+	var out []StagedWork
+	seen := map[string]bool{}
+	for _, env := range r.cfg.Environments {
+		for _, repo := range env.Repos {
+			key := repo.Repo + "\x00" + repo.Name
+			if repo.Push == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			work, err := r.mirrors.Staged(repo)
+			if err != nil {
+				fmt.Fprintf(r.log, "coderunner: listing staged work for %s: %v\n", repo.Name, err)
+				continue
+			}
+			out = append(out, work...)
+		}
+	}
+	return out
 }

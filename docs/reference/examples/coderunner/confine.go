@@ -91,6 +91,15 @@ type Confiner interface {
 	// confiner knows: one that remaps the filesystem binds it somewhere fixed, one that does not
 	// hands back the path it was given. The task process dials whatever comes back.
 	EgressAt(hostPath string) string
+	// Ceiling is the strongest rung this confiner reaches at each leaf — what a descriptor
+	// publishes, and what an operator reads before pointing a charter here.
+	//
+	// It is NOT the authority on what is buildable, and Provides is. A per-leaf ceiling cannot
+	// express a combination rule, and bwrap has one: `--unshare-net` takes ingress and egress
+	// together, so a ceiling saying `ingress: none, egress: none` reads as though
+	// `ingress: none, egress: full` were within reach, and it is not. The two answers differ on
+	// purpose and the descriptor says which is which.
+	Ceiling() Point
 }
 
 // Sandbox is what the runner has PREPARED for one task, as against what the point asks for. The
@@ -169,6 +178,8 @@ func (hostConfiner) Confine(cmd *exec.Cmd, _ Point, box Sandbox) error {
 	cmd.Dir = box.Dir
 	return nil
 }
+
+func (hostConfiner) Ceiling() Point { return hostProvides }
 
 // EgressAt: nothing is remapped here, so the task sees the path the runner made. It never comes
 // up in practice — this confiner refuses `restricted` — and is written out rather than left to
@@ -305,6 +316,8 @@ func (b bwrapConfiner) Confine(cmd *exec.Cmd, p Point, box Sandbox) error {
 	cmd.Dir = dir
 	return nil
 }
+
+func (bwrapConfiner) Ceiling() Point { return bwrapProvides }
 
 // EgressAt: bound to a fixed path inside, because the filesystem is remapped and the host's path
 // means nothing in there.

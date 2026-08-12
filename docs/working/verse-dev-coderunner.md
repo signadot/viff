@@ -482,6 +482,43 @@ git -C <checkout> log --format='%B' -1 agent/<id>   # trailers, and the agent's 
 git -C <checkout> diff main..agent/<id>             # what it actually changed
 ```
 
+### What changed under this since the last drive
+
+Four layers landed between that run and this one, and three of them alter what an operator sees.
+
+**The task is its own process.** Every runner log line is tagged `[<task id>]`, because that
+output is a child's stderr copied onto the runner's log. A task that dies now becomes a `failed`
+this runner reports with the exit status in it, rather than a stream that goes quiet.
+
+**The push is an action of the task**, gated by its vector, narrated on the read plane before the
+terminal status. Under the harness's default vector it runs `auto` — `Vector()` gates write, exec
+and call-agent, and `push` is a verb none of them name — so phase 1 behaves as it did. Phase 4,
+whose whole point was a gated push, can now say so:
+
+```tony
+vector:
+  default: auto
+  gates:
+  - {name: delivery, mode: ask, match: {verbs: [push]}}
+```
+
+**Workspaces are gone when a task ends, and that is safe now.** Work is staged into the runner's
+mirror before any push is attempted, so a refused delivery, a failed push and a dead task all end
+with the commit in the mirror rather than in a directory. Which means the old habit — go find the
+workspace under `-data` and look — no longer works. Ask the runner instead:
+
+```sh
+curl -s localhost:9802/runner        # `undelivered:` lists it, with the command to fetch it
+```
+
+Each entry carries a pasteable `git fetch <mirror> <ref>:refs/heads/recovered/<task>-<repo>`,
+because the mirror is a directory named after a hash of a url and nobody should have to know that.
+`-keep` still keeps workspaces if watching one live is what you want.
+
+**Nothing has run through bwrap or the egress proxy.** This drive is `-confine host`, which claims
+almost nothing, so the tool floor — no `run_bash` — is still the containment that is actually
+doing the work here.
+
 ### Then the charter
 
 [verse-dev/docs-drift.tony](verse-dev/docs-drift.tony) fires on a commit landing on `main`, and

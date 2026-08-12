@@ -212,10 +212,22 @@ func (r *Runner) Descriptor(w http.ResponseWriter, req *http.Request) {
 		// a hard-coded list here would describe a build instead of a deployment.
 		"drivers": drivers(r.cfg),
 		"isolation": map[string]any{
-			"provides": pointMap(hostProvides),
+			// What THIS deployment can build, which is the confiner it was started with — not
+			// what the weakest one could. Reporting hostProvides regardless of `-confine` made
+			// the descriptor understate a bwrap runner in the one document an operator reads
+			// before pointing a charter at it.
+			//
+			// Per leaf, and per leaf is not the whole truth: `Provides` refuses combinations no
+			// ceiling can express (bwrap's network is one switch). Named `perLeaf` so nobody
+			// reads it as a catalogue of buildable points.
+			"perLeaf":  pointMap(r.conf.Ceiling()),
 			"defaults": pointMap(hostProvides),
 		},
 		"environments": r.cfg.names(),
+		// What this runner holds that the world does not. It belongs in the same document as the
+		// capabilities because it is the other thing an operator needs before touching a runner:
+		// removing one with undelivered work in it throws that work away.
+		"undelivered": r.staged(),
 	}
 	out, err := codec.Marshal(body, codec.Tony)
 	if err != nil {

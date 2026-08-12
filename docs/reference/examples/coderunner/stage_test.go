@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,5 +157,80 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 	}
 	if msg := commitAt(t, m.dirFor(origin), want); !strings.Contains(msg, "Verse-Task: s1") {
 		t.Fatalf("held work carries no provenance: %q", msg)
+	}
+}
+
+// Work that did not leave is FINDABLE, and the descriptor is where you find it.
+//
+// Staging made workspaces disposable, which removed the thing an operator used to `cd` into.
+// Replacing it with a log line would have traded a lost result for an unfindable one — the mirror
+// is a directory named by a hash of a remote url, so "it is in the mirror" is not an answer. The
+// record carries the command.
+func TestUndeliveredWorkIsListedWithHowToGetItBack(t *testing.T) {
+	origin := initRepo(t)
+	repo := Repo{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"}
+	cfg := &Config{Default: "e", Environments: []Environment{{Name: "e", Repos: []Repo{repo}}}}
+	r := testRunner(t, cfg)
+
+	// Nothing held yet.
+	if got := r.staged(); len(got) != 0 {
+		t.Fatalf("a fresh runner claims to hold %v", got)
+	}
+	ws, err := r.mirrors.Open(context.Background(), "s9", cfg.Environments[0], t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d := ws.Salvage(context.Background(), task.Launch{ID: "s9"}); d.Err != nil {
+		t.Fatal(d.Err)
+	}
+
+	got := r.staged()
+	if len(got) != 1 {
+		t.Fatalf("staged = %+v, want one entry", got)
+	}
+	w := got[0]
+	if w.Task != "s9" || w.Repo != "svc" || w.Ref != stagedRef(stageHeld, "s9", "svc") {
+		t.Errorf("entry does not identify the work: %+v", w)
+	}
+	if !strings.Contains(w.Why, "authorized") {
+		t.Errorf("held work does not say why it is held: %q", w.Why)
+	}
+	// The recovery command names the mirror by its real path, because a hash of a url is not
+	// something anybody can be expected to reconstruct.
+	if !strings.Contains(w.Fetch, r.mirrors.dirFor(origin)) || !strings.Contains(w.Fetch, w.Ref) {
+		t.Errorf("the fetch command cannot be pasted: %q", w.Fetch)
+	}
+	// And the descriptor carries it, since that is the document an operator reads before
+	// removing a runner — which would throw this away.
+	rec := httptest.NewRecorder()
+	r.Descriptor(rec, httptest.NewRequest("GET", "/runner", nil))
+	if body := rec.Body.String(); !strings.Contains(body, "s9") || !strings.Contains(body, "undelivered") {
+		t.Errorf("GET /runner does not report undelivered work:\n%s", body)
+	}
+}
+
+// The descriptor publishes the containment THIS deployment can build, not the weakest one.
+func TestTheDescriptorReportsTheConfinerItWasStartedWith(t *testing.T) {
+	origin := initRepo(t)
+	cfg := &Config{Default: "e", Environments: []Environment{{
+		Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}},
+	}}}
+	r := testRunner(t, cfg)
+	r.conf = bwrapConfiner{bin: "/usr/bin/bwrap"}
+
+	rec := httptest.NewRecorder()
+	r.Descriptor(rec, httptest.NewRequest("GET", "/runner", nil))
+	body := rec.Body.String()
+	// A bwrap runner reaches a private filesystem; reporting the host confiner's floor here
+	// understated it in the one document an operator reads before pointing a charter at it.
+	if !strings.Contains(body, "private") {
+		t.Errorf("a bwrap runner publishes the host floor:\n%s", body)
+	}
+	// And the field says per-leaf, because Provides refuses combinations no ceiling can express.
+	if !strings.Contains(body, "perLeaf") {
+		t.Errorf("the ceiling is not labelled as per-leaf, so it reads as a catalogue:\n%s", body)
 	}
 }

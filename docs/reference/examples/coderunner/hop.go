@@ -579,7 +579,7 @@ func (r *Runner) supervise(c *child, l task.Launch) {
 		held := c.ws.Salvage(ctx, l)
 		for _, ref := range held.Staged {
 			fmt.Fprintf(r.log, "coderunner: %s: the work did not leave; it is in this runner's "+
-				"mirror at %s\n", c.id, ref)
+				"mirror at %s — GET /runner lists it with the command to fetch it\n", c.id, ref)
 		}
 		if held.Err != nil {
 			fmt.Fprintf(r.log, "coderunner: %s: salvage: %v\n", c.id, held.Err)
