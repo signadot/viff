@@ -57,7 +57,7 @@ PVC varies by profile:
 |---|---|---|
 | default | dynamic | cluster default StorageClass |
 | **minikube** | static hostPath PV | data on your laptop fs — survives pod restarts, Docker Desktop stop/start, **and** `minikube delete`; browsable |
-| **staging** | dynamic EBS gp3 | emitted `verse-gp3` SC (`WaitForFirstConsumer`), docd on-demand |
+| **staging** | dynamic EBS gp3 | the cluster's own `gp3` SC, docd on the `stateful` node pool |
 
 **minikube** — docd's data lives on your **laptop fs** (the only place that survives
 `minikube delete`), reached through a mount. Configure the mount **once** in your shell so a
@@ -94,11 +94,16 @@ cluster. (The minikube profile sets `hostPV: true`, `hostPath: /mnt/verse`.)
 > kubectl -n verse get pvc              # confirm data-docd-0 → the PV you expect
 > ```
 
-**staging (EKS spot, managed node groups)** — docd is pinned to `ON_DEMAND` nodes on an EBS
-gp3 volume (`WaitForFirstConsumer` → the pod is auto-affinitized to the volume's AZ); versed
-prefers `SPOT` and floats. **Prereq:** the [EBS CSI driver addon] installed with node-role
-IAM to create/attach volumes — otherwise the PVC stays `Pending`. To use an existing
-StorageClass instead of the emitted one: `-e storageClassName=<name> -e emitStorageClass=false`.
+**staging (EKS)** — docd lands on the cluster's dedicated `stateful` node pool (on-demand),
+on a dynamic volume from the cluster's `gp3` StorageClass; versed prefers `SPOT` and floats
+over the rest. The pool is *reserved*, not merely labelled — its nodes carry a
+`signadot.com/pool=stateful:NoSchedule` taint — so docd needs both halves: the `nodeSelector`
+to go there and the matching toleration to be let in. That is what `docdPool` emits.
+
+Nothing here creates the class or the pool; the cluster has both. On a cluster that has
+neither, `-e emitStorageClass=true` emits a `verse-gp3` class (`WaitForFirstConsumer` → the
+pod is auto-affinitized to the volume's AZ), which needs the [EBS CSI driver addon] with
+node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 
 [EBS CSI driver addon]: https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
 
@@ -109,12 +114,13 @@ StorageClass instead of the emitted one: `-e storageClassName=<name> -e emitStor
 | `namespace` | `verse` | target namespace |
 | `image` | `signadot/verse:latest` | full image ref incl. tag |
 | `brokerFace` | `true` | serve + expose the broker face; `false` drops its Service |
-| `storageClassName` | `""` | PVC class; `""` = cluster default (staging sets `verse-gp3`) |
+| `storageClassName` | `""` | PVC class; `""` = cluster default (staging sets `gp3`) |
 | `storageSize` | `10Gi` | docd volume size |
 | `emitStorageClass` | `false` | emit a `verse-gp3` StorageClass |
 | `hostPV` | `false` | back the PVC with a static hostPath `PersistentVolume` (minikube) |
 | `hostPath` | `/mnt/verse` | the PV's in-VM host path when `hostPV` |
-| `onDemandDocd` / `spotVersed` | `false` | `eks.amazonaws.com/capacityType` placement |
+| `docdPool` | `""` | put docd on the `signadot.com/pool=<x>` nodes, tolerating their taint |
+| `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
 | the source knobs | off | see [Sources](#sources-optional) |
 
 ## Sources (optional)

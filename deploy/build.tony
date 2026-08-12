@@ -36,9 +36,12 @@ build:
     # minikube-mount: the node mount target (e.g. /mnt/verse). See deploy/README.md.
     hostPath: "/mnt/verse"
 
-    # Managed-node-group capacity placement (label eks.amazonaws.com/capacityType). Keep the
-    # stateful docd on on-demand; let the stateless versed prefer spot.
-    onDemandDocd: false
+    # Placement. docd goes on a dedicated node pool: nodes labelled signadot.com/pool=<x>
+    # and tainted with the same key/value, so the label selects the pool and the toleration
+    # gets past the fence that keeps everything else off it. "" leaves docd wherever it lands.
+    # versed is stateless, so it only PREFERS spot (label eks.amazonaws.com/capacityType) —
+    # a preference costs nothing on a cluster that has no such label.
+    docdPool: ""
     spotVersed: false
 
     # ── Sources: what reflects an external system into the verse ──────────────
@@ -232,22 +235,23 @@ build:
           namespace: $[namespace]
           name: data-docd-0
 
-  # Pin the stateful docd tier to on-demand nodes.
-  - if: '.[onDemandDocd]'
+  # Pin the stateful docd tier to its node pool. Both halves are needed and neither implies
+  # the other: the selector says where docd goes, the toleration is what lets it past the
+  # taint that reserves those nodes. A pool named here that the cluster does not label leaves
+  # docd Pending — which is the right failure for the tier that owns the data.
+  - if: '.[ docdPool != "" ]'
     match:
       kind: StatefulSet
     patch:
       spec:
         template:
           spec:
-            affinity:
-              nodeAffinity:
-                requiredDuringSchedulingIgnoredDuringExecution:
-                  nodeSelectorTerms:
-                  - matchExpressions:
-                    - key: eks.amazonaws.com/capacityType
-                      operator: In
-                      values: [ON_DEMAND]
+            nodeSelector:
+              signadot.com/pool: $[docdPool]
+            tolerations:
+            - key: signadot.com/pool
+              value: $[docdPool]
+              effect: NoSchedule
 
   # Let the stateless versed prefer spot.
   - if: '.[spotVersed]'
