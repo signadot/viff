@@ -88,6 +88,28 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 	$(DOCKER) tag $(IMAGE) $(PUSH_IMAGE)
 	$(DOCKER) push $(PUSH_IMAGE)
 
+# STAGING, BY IMMUTABLE REF. `make ship` builds both images tagged with the COMMIT, pushes them,
+# and deploys that ref — so "which build is staging running" is answered by reading the tag
+# instead of comparing registry digests by hand, which is what a moving tag costs the first time
+# a rollout reports success and runs the binary from before it (deploy/profiles/staging.tony).
+#
+# It refuses a dirty tree, because the whole value here is that the tag names a commit somebody
+# can check out. A tag that says 8f2c1a4 over a build that was 8f2c1a4-plus-whatever-was-open is
+# worse than `latest`: it is a moving tag wearing an immutable one's clothes.
+STAGING_SHA ?= $(shell git rev-parse --short HEAD)
+
+.PHONY: ship
+ship: ## build+push both images at the current commit and deploy staging at that ref
+	@if [ -n "$$(git status --porcelain)" ]; then \
+	  echo "ship: the tree is dirty — the image tag would name a commit that is not what is built"; \
+	  git status --short; exit 1; \
+	fi
+	@echo "ship: staging → $(STAGING_SHA)"
+	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA)
+	$(MAKE) coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=$(REGISTRY)/verse-coderunner:$(STAGING_SHA)
+	$(MAKE) deploy PROFILE=staging IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA) \
+	  E="-e coderunnerImage=$(REGISTRY)/verse-coderunner:$(STAGING_SHA)"
+
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
 # make deploy PROFILE=staging                      # the profile's own registry ref
