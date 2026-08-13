@@ -181,18 +181,24 @@ check it, since `go` is on that environment's PATH and `go doc ./entity nodeToPa
 resolves or does not. Cheap verification of a key is worth more here than anywhere else, because
 a wrong key is not a wrong answer: it is a second entity that looks like a first.
 
-**Fan out per SYMBOL, not per finding.** One entity per symbol, holding the findings outstanding
-against it. That is what makes the sub-symbol case — a comment on a loop, on a branch, on a
-`switch` arm — need no new identity at all: it is a finding inside the symbol's entity, located
-by its own content. Keying those individually would mean either a positional id (`#3`), which
-renumbers everything below it the moment somebody inserts a comment, or a hash of the comment
-text, whose identity changes exactly when the finding is fixed. The residual already rejected
-positional ids for the first reason; the second is worse, because it makes a resolution
-unrecordable against the thing it resolved.
+**The symbol IS the finding.** Not one entity per symbol holding a list — one entity per symbol
+holding one claim: *the comments on `entity.nodeToPayload` disagree with its code, here is how*,
+and later, *they agree, as of `69861bf0`*. Every comment under that symbol folds into it,
+including the sub-symbol ones — a comment on a loop, on a branch, on a `switch` arm — which is
+what makes them need no new identity at all.
 
-If per-comment addressing turns out to be wanted, the extension anchors to **what the fix does
-not change** — the code the comment sits on, not the comment — and it should be designed then,
-against a case somebody hit, rather than guessed at now.
+That is the grain worth having for a reason beyond convenience: a claim about a symbol is
+**re-checkable**. A reader can ask whether it still holds by reading one declaration, and the
+next run can confirm or contradict it against exactly the same scope. A per-comment finding
+cannot say that, and its identity churns at the worst moment — keyed positionally (`#3`) it
+renumbers when somebody inserts a comment above, and keyed by a hash of the comment text it
+changes identity precisely when the comment is fixed, which makes the resolution unrecordable
+against the thing it resolved.
+
+The cost is real and small: two unrelated problems in one symbol share a slot, and are told apart
+by the body rather than by address. If per-comment addressing is ever wanted, the extension
+anchors to **what the fix does not change** — the code the comment sits on, never the comment —
+and should be designed against a case somebody hit rather than guessed at now.
 
 One consequence to carry into step 3's test: `entity.(*LogdStore).Get` flattens through
 `safeSeg`, so the address is not the name. The readable symbol has to be a FIELD on the derived
