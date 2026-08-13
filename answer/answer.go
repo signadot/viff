@@ -239,8 +239,9 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 		// state. Observed twice in a row on one run: the first answer was a sentence, the
 		// second was a document whose `report:` held unquoted prose, which the parser reads as
 		// more keys and refuses at the first word that is not one.
-		b.WriteString("Write a tony document, and QUOTE every string value — `report: \"…\"`, " +
-			"not bare prose. Unquoted text after a key is read as more keys.\n")
+		b.WriteString("Answer with a DOCUMENT and nothing else. The json below is the easiest " +
+			"shape to get right; if you write tony instead, quote every string value and do not " +
+			"indent a list under its key.\n")
 	default:
 		b.WriteString("Your final message did not satisfy this spawn's answer contract:\n")
 		for _, line := range f.lines() {
@@ -250,6 +251,12 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 	b.WriteString("\nThe contract is:\n\n")
 	for _, line := range strings.Split(strings.TrimRight(c.Source(), "\n"), "\n") {
 		fmt.Fprintf(&b, "  %s\n", line)
+	}
+	// And an INSTANCE of it, because the lines above are a specification and what has just gone
+	// wrong is the writing of one. See example.go for why it is json when nothing else here is.
+	if ex := c.Example(); ex != "" {
+		fmt.Fprintf(&b, "\nAn answer of this shape satisfies it — json is accepted everywhere "+
+			"verse takes an answer, since valid json is valid tony:\n\n  %s\n", ex)
 	}
 	b.WriteString("\nReply with the corrected answer and nothing else — no preamble, no " +
 		"commentary after it. Everything you want to say about the work has already been said.\n")

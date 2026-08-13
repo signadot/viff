@@ -343,10 +343,38 @@ func TestRepairForAnUnparseableAnswerSaysToQuote(t *testing.T) {
 		t.Fatalf("check failed with %T, want a *Failure", checkErr)
 	}
 	repair := f.Repair(c, "fail")
-	if !strings.Contains(repair, "QUOTE") {
-		t.Errorf("the repair does not say to quote a string:\n%s", repair)
-	}
 	if !strings.Contains(repair, "report") {
 		t.Errorf("the repair does not carry the contract:\n%s", repair)
+	}
+	// The instance, not only the specification: three runs of one charter failed writing a
+	// document from a pattern, each in a different way, and every attempt was a reasonable
+	// reading of a description by something that needed an example.
+	if !strings.Contains(repair, `{"files":0,"report":"text"}`) {
+		t.Errorf("the repair carries no example of the shape:\n%s", repair)
+	}
+	if !strings.Contains(repair, "json") {
+		t.Errorf("the repair does not say json is accepted, which is the escape hatch:\n%s", repair)
+	}
+}
+
+// The example is derived from the pattern, so a contract and its example cannot drift.
+func TestExampleIsAnInstanceOfTheContract(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{`{files: !irtype 0, report: !irtype "text"}`, `{"files":0,"report":"text"}`},
+		{`{class: !or [bug, nit, risk]}`, `{"class":"bug"}`},
+		{`{stage: reviewed}`, `{"stage":"reviewed"}`},
+	} {
+		c, err := ParseSource(tc.src)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.src, err)
+		}
+		got := c.Example()
+		if got != tc.want {
+			t.Errorf("example of %s\n  got  %s\n  want %s", tc.src, got, tc.want)
+		}
+		// And it is not merely plausible: it SATISFIES the contract it was rendered from.
+		if _, err := c.Check(got); err != nil {
+			t.Errorf("the example of %s does not satisfy it: %v", tc.src, err)
+		}
 	}
 }
