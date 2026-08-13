@@ -1015,11 +1015,6 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
-	sse, err := codec.NewSSE(w, r)
-	if err != nil {
-		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
 	match := pat.MatchEvent
 
@@ -1029,21 +1024,51 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	ch, unsub := store.Observe()
 	defer unsub()
 
+	// A cursor the store cannot answer from is REFUSED, before NewSSE commits the response.
+	//
+	// `Since` reports ok=false when `since` is below what the store still retains, and it does
+	// that deliberately rather than returning what it happens to still have. Skipping the
+	// catch-up on that answer — which is what this did — hands the client an open stream with no
+	// history and no notice, indistinguishable from a verse where nothing has happened. Observed
+	// from the outside as: the same `--since 700` printing three commits, then nothing, then only
+	// new ones, as the window slid past the cursor between runs.
+	//
+	// A gap MARKER would be the wrong shape here even though the live path has one: `Gap` means
+	// "commits were dropped, recover them with Since", and Since is exactly what just could not
+	// answer. So this is a refusal that says what to ask for instead — the caller wanted history
+	// and has to decide whether to take what is retained or to stream from now.
+	catchUp, ok := store.Since(since)
+	if !ok {
+		oldest := int64(0)
+		if kept, keptOK := store.Since(0); keptOK && len(kept) > 0 {
+			oldest = kept[0].Rev
+		}
+		codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
+			"since=%d is below the retained window: the store still has commits from %d. "+
+				"Ask for --since %d to replay what it kept, or drop --since to stream from now",
+			since, oldest, oldest))
+		return
+	}
+
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	// The wire is a stream of EVENTS, not commits: a reader of /watch is watching entities,
 	// and the commit framing is the store's way of saying which changes were atomic — a fact
 	// this surface has never carried and nothing consuming it asks for. So a commit is
 	// flattened here, in commit order, and its Rev rides each event as it always did.
 	last := since
-	if commits, ok := store.Since(since); ok {
-		for _, c := range commits {
-			for _, ev := range c.Changes {
-				if match(ev) {
-					_ = sse.Send(ev)
-				}
+	for _, c := range catchUp {
+		for _, ev := range c.Changes {
+			if match(ev) {
+				_ = sse.Send(ev)
 			}
-			if c.Rev > last {
-				last = c.Rev
-			}
+		}
+		if c.Rev > last {
+			last = c.Rev
 		}
 	}
 	sse.Flush()

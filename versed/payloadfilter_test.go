@@ -3,6 +3,7 @@ package versed
 import (
 	"bufio"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -279,4 +280,38 @@ func sameRefs(got []string, want ...string) bool {
 		}
 	}
 	return true
+}
+
+// A cursor below the retained window is REFUSED, not answered with silence.
+//
+// `Since` reports ok=false when it cannot answer from `from`, deliberately rather than
+// returning what it happens to still have. Watch used to skip the catch-up on that answer and
+// stream live anyway, so a client asking for history got an open stream, no history and no
+// notice — indistinguishable from a verse where nothing had happened. From the outside it looks
+// like flakiness: the same `--since 700` prints three commits, then nothing, then only new ones,
+// as the window slides past the cursor between runs.
+//
+// The refusal has to name what to ask for instead, because the caller wanted history and now has
+// to choose: take what is retained, or stream from now.
+func TestWatchRefusesACursorItCannotAnswer(t *testing.T) {
+	ts := httptest.NewServer(testServer(t).Handler())
+	defer ts.Close()
+
+	// Far beyond anything this store has retained — the same shape as a cursor left behind by
+	// compaction, which is how it is reached in the world.
+	resp, err := http.Get(ts.URL + "/watch?" + url.Values{"since": {"-1"}}.Encode())
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("an unanswerable cursor answered 200 — a client cannot tell that from a quiet verse")
+	}
+	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("the refusal went out as a stream (%s)", ct)
+	}
+	if msg := string(body); !strings.Contains(msg, "retained window") || !strings.Contains(msg, "since") {
+		t.Errorf("the refusal does not say what to ask for instead: %q", msg)
+	}
 }

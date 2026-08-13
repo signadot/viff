@@ -147,11 +147,20 @@ func TestRevAndSince(t *testing.T) {
 	}
 }
 
-// A cursor older than what this store instance has observed returns ok=false — the
-// caller resyncs from current state rather than being handed a partial replay. The
-// low-watermark is per-instance: a store that opens onto an already-written verse has
-// no standing to answer for the commits that preceded it.
-func TestSinceTooOld(t *testing.T) {
+// A cursor is about the STORE, not about this process — so a store that opens onto an
+// already-written verse answers for the commits that preceded it.
+//
+// This asserted the opposite, and the opposite was a guard rather than a decision: a
+// per-instance low-watermark added when logd under-delivered a compacted range silently, kept
+// after that was fixed. What it cost is what a cursor is for. `--since` names a store revision
+// — the CLI's own help says so — so a reader asking for one is asking about the log, and
+// refusing on where THIS instance happened to open answers a question nobody asked. Every
+// restart truncated readable history to "since the restart", which from outside looks like
+// flakiness rather than truncation.
+//
+// A range logd genuinely cannot replay is still ok=false, reported by logd itself:
+// TestSinceBelowReplayFloorResyncs compacts one away and asserts exactly that.
+func TestSinceIsAboutTheStoreNotThisProcess(t *testing.T) {
 	addr := startLogd(t)
 	first := openStoreAt(t, addr)
 	ref := Ref{"demo", "x", "1"}
@@ -160,8 +169,13 @@ func TestSinceTooOld(t *testing.T) {
 	}
 
 	late := openStoreAt(t, addr) // opens at commit 5; commits 1..5 are before its time
-	if _, ok := late.Since(0); ok {
-		t.Fatal("Since(0) on a store opened after those commits should be too-old")
+	evs, ok := late.Since(0)
+	if !ok {
+		t.Fatal("a store that opened late cannot read history logd still holds — the cursor " +
+			"is a store revision, not a mark in this process's memory")
+	}
+	if len(evs) == 0 {
+		t.Fatal("Since(0) answered ok with nothing, over five commits that are still there")
 	}
 	cur := late.Rev()
 	set(t, first, ref, Obj{"n": 99}.Payload())

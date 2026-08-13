@@ -45,8 +45,10 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 	}
 	defer s.Close()
 
-	// Fix openCommit at 0 BEFORE writing, so the store's own watermark cannot fire and
-	// the ok=false below can only have come from logd refusing the replay.
+	// The cursor is taken BEFORE the writes, so what is asked for is a range that really
+	// existed and was really compacted away — the ok=false below can only be logd refusing
+	// the replay, which since the per-instance watermark went away is the only thing that
+	// can produce one.
 	from := s.Rev()
 	for i := range 5 {
 		set(t, s, Ref{System: "demo", Kind: "pr", ID: string(rune('a' + i))}, Obj{"stage": "open"}.Payload())

@@ -437,13 +437,17 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 	})
 }
 
-// A cursor older than a store instance's sync point is refused without asking logd —
-// Since returns ok=false so the consumer resyncs from current state. Deliberately
-// conservative: logd may well still hold that range (it refuses only below its own replay
-// floor, see TestSinceBelowReplayFloorResyncs), but a store that has not observed the
-// range cannot say so, and resyncing costs less than a catch-up that quietly misses
-// commits.
-func TestLogdStore_SinceBelowWatermarkResyncs(t *testing.T) {
+// A store answers Since for commits that landed before it opened: the cursor names a STORE
+// revision, not a mark in this process's memory, so a restarted verse still replays what its
+// predecessor wrote.
+//
+// This asserted the opposite, and called itself deliberately conservative — logd may well still
+// hold that range, but a store that has not observed it "cannot say so". It can: it asks. The
+// watermark was added when logd under-delivered a compacted range SILENTLY and was kept after
+// that was fixed, by which time the only thing it still did was truncate readable history at
+// every restart. What is genuinely unreplayable is logd's to report, and it reports it
+// (TestSinceBelowReplayFloorResyncs).
+func TestLogdStore_SinceReadsBeforeThisStoreOpened(t *testing.T) {
 	addr := startLogd(t)
 	s1, err := OpenLogdStore(LogdConfig{Addr: addr, ClientID: "hist"})
 	if err != nil {
@@ -454,15 +458,25 @@ func TestLogdStore_SinceBelowWatermarkResyncs(t *testing.T) {
 	eventually(t, "history to land", func() bool { return s1.Rev() >= 2 })
 	s1.Close()
 
-	// s2 opens at the current (high) commit; a cursor from before it synced is below
-	// its watermark.
+	// s2 opens at the current (high) commit — a restart, in miniature.
 	s2, err := OpenLogdStore(LogdConfig{Addr: addr, ClientID: "fresh"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s2.Close()
-	if _, ok := s2.Since(0); ok {
-		t.Fatal("Since(0) below the store's open watermark should return ok=false (resync)")
+	commits, ok := s2.Since(0)
+	if !ok {
+		t.Fatal("a fresh store refused history logd still holds — this is the case that made " +
+			"every restart truncate what a cursor could read")
+	}
+	var refs []string
+	for _, c := range commits {
+		for _, ev := range c.Changes {
+			refs = append(refs, ev.Ref.String())
+		}
+	}
+	if len(refs) < 2 {
+		t.Errorf("replayed %v, want the two commits written before this store opened", refs)
 	}
 }
 

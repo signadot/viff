@@ -143,11 +143,10 @@ type LogdStore struct {
 
 	mu          sync.Mutex
 	rev         int64 // highest logd commit observed (by the lazy root watch, when running)
-	openCommit  int64 // commit at which this store first synced — the Since low-watermark
 	subs        map[int]*observer
 	nextID      int
 	closed      bool
-	synced      bool               // openCommit has been fixed (by ensureSynced or the lazy watch)
+	synced      bool               // this store has seeded rev from a first sync
 	watchCancel context.CancelFunc // cancels the lazy root watch; nil when no Observe subscribers
 	// doc is the watched document as of the last applied commit — seeded by the root
 	// watch's State and advanced by each delta. It is what an event's level payload is read
@@ -218,7 +217,7 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 	// and subtree Matches) and per-trigger observation via WatchSubtree — so nothing
 	// here holds a whole-verse watch that a controller mount under verse would overlap
 	// and force-end. A root watch is opened lazily, and only while something Observe()s
-	// (the /watch debug stream); see Observe. openCommit stays 0 (the Since
+	// (the /watch debug stream); see Observe. (The Since
 	// low-watermark) and rev is seeded by that lazy watch when it runs.
 	return s, nil
 }
@@ -629,8 +628,7 @@ func (s *LogdStore) Rev() int64 {
 // Observes: a write goes straight to logd and the authoritative commit comes back on a
 // watch stream that isn't running, so a once-only seed would pin Rev to whatever the
 // commit was when the store opened (a /status reporting storeRev 0 after a hundred
-// writes). openCommit — this instance's Since low-watermark — IS once-only: it is a
-// floor, and raising it later would tell a live consumer its valid cursor had aged out.
+// writes).
 func (s *LogdStore) ensureSynced() {
 	s.mu.Lock()
 	watching := s.watchCancel != nil
@@ -653,10 +651,7 @@ func (s *LogdStore) ensureSynced() {
 	case <-ctx.Done():
 	}
 	s.mu.Lock()
-	if !s.synced {
-		s.synced = true
-		s.openCommit = s.rev // this instance's low-watermark for Since, fixed at first sync
-	}
+	s.synced = true
 	s.mu.Unlock()
 }
 
@@ -1112,27 +1107,27 @@ func (s *LogdStore) startRootWatchLocked() {
 // does and a consumer cannot tell which it is reading — which is the point: the two paths
 // exist to recover each other.
 //
-// ok is false when the caller must resync from current state: the replay could not be
-// established, or `from` predates this store's low-watermark (openCommit).
+// ok is false when the caller must resync from current state, and the only thing that
+// decides that is the REPLAY: logd refuses a FromCommit watch under its own floor with a
+// terminal "replay_compacted" event, libctl raises it as a WatchEndedError, and the closed
+// channel reports it through w.Err(). See TestSinceBelowReplayFloorResyncs.
 //
-// A range logd has COMPACTED comes out of the loop below as ok=false without special
-// handling: logd refuses a FromCommit watch under its replay floor with a terminal
-// "replay_compacted" event, libctl raises that as a WatchEndedError, and the closed
-// channel is then reported by w.Err(). (It used to under-deliver such a range silently,
-// which is why the watermark check exists at all — it is now the cheap first guard rather
-// than the only one, and it is conservative: a cursor from before this instance synced is
-// refused even when logd still holds it. See TestSinceBelowReplayFloorResyncs.)
+// There used to be a cheaper first guard: a per-instance low-watermark, refusing anything
+// below the commit at which THIS STORE first synced. It was added when logd under-delivered
+// a compacted range silently, and it outlived that fix while quietly costing the thing a
+// cursor is for. A `--since` names a STORE REVISION — the CLI's own help says so — and the
+// watermark answered a different question, about this process's memory. So a fresh store
+// refused history logd still held, including history it had itself written moments before,
+// and every restart truncated what could be read to "since the restart". From the outside
+// that reads as flakiness: the same `--since 700` answering three commits, then nothing.
+//
+// Asking logd is not expensive and it is the only source with standing.
 func (s *LogdStore) Since(from int64) ([]Commit, bool) {
-	s.ensureSynced() // seed the low-watermark for a store that isn't being Observed
-	s.mu.Lock()
-	low := s.openCommit
-	s.mu.Unlock()
-	if from < low {
-		return nil, false // older than we've observed; logd may have compacted it
-	}
-	// No rev>=from early-out: without a standing watch rev may be stale, so let the
-	// FromCommit replay itself be authoritative — it streams commits after `from` and
-	// signals ReplayComplete when caught up (empty when there is nothing new).
+	s.ensureSynced()
+	// No rev>=from early-out: without a standing watch rev may be stale, so the FromCommit
+	// replay is authoritative — it streams commits after `from` and signals ReplayComplete
+	// when caught up (empty when there is nothing new), and it is also what reports a range
+	// logd can no longer replay.
 
 	// Concurrent Since calls need no serialization: each replay is its own id-keyed watch,
 	// so several may be in flight on this session at once, on this same path (see
