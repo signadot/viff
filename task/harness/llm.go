@@ -531,7 +531,21 @@ func toolDefs() []toolDef {
 			map[string]any{"path": s, "content": s}, []string{"path", "content"}),
 		mk("run_bash", "Run a bash command in the working directory; returns combined stdout/stderr.",
 			map[string]any{"command": s}, []string{"command"}),
-		mk("call_agent", "Delegate a self-contained subtask to a sub-agent that runs concurrently. Give a short agent name and a full prompt describing the task; its result comes back when it finishes. Use for independent subtasks you can run in parallel.",
+		// HOW TO WAIT is half of this description, and leaving it out was expensive. The
+		// loop joins children only when a turn ENDS (loop.go: `!more` → awaitChild → fold →
+		// re-invoke), so ending the turn is both the correct way to wait and a free one: it
+		// blocks in Go, costs no tokens, and the model is called again the moment a child
+		// reports. Told only that a result "comes back when it finishes", a model reaches
+		// for the wait it can see — `run_bash {command: "sleep 120"}` — and pays a model
+		// round trip per poll to learn nothing. Observed on a review that spent eighteen
+		// minutes and twenty-five boundaries mostly asleep (git-issue 91r674qzh12ks35vfnn0).
+		mk("call_agent", "Delegate a self-contained subtask to a sub-agent that runs concurrently. "+
+			"Give a short agent name and a full prompt describing the task. Use for independent "+
+			"subtasks you can run in parallel. TO WAIT FOR RESULTS, END YOUR TURN: say what you are "+
+			"waiting for and stop, without calling a tool. You will be called again as soon as a "+
+			"sub-agent finishes, with its result. Never sleep or poll for a sub-agent — sleeping "+
+			"delays the result rather than waiting for it, because a turn that is still running is "+
+			"a turn whose children cannot be folded in.",
 			map[string]any{"agent": s, "prompt": s}, []string{"agent", "prompt"}),
 		mk(failTool, "Declare that you could NOT complete the task, and stop. Call this instead of "+
 			"finishing with an explanation when the task could not be done — a file you needed was "+
