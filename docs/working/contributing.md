@@ -52,9 +52,9 @@ deliberately moves. Not a release — a record of where one drive's ground is.
 Per-drive rather than per-date, because then nobody owns cutting tags: you cut your own. Two
 drives on different points of `main` is a normal, visible state.
 
-Cut only with `make check && make test && ./smoke.sh` green on that commit and the thing
-actually driven. The message says what moved; the breaking half is generated, never recalled
-(`Breaks:` is defined [below](#say-what-you-held-yourself-to)):
+Cut only with `make check && make test && ./smoke.sh` green on that commit, and the drive
+actually run against **that build**. The message says what moved; the breaking half is
+generated, never recalled (`Breaks:` is defined [below](#say-what-you-held-yourself-to)):
 
 ```sh
 fmt='%h %s ::%(trailers:key=Breaks,valueonly,separator=%x20)'         # :: ends the subject
@@ -66,6 +66,22 @@ git push origin dogfood/verse-dev.4   # tags are NOT pushed by a bare git push
 
 Upgrading is: read the `Breaks:` lines between your tag and the new one. That is the entire
 coupling between somebody filing an edge off on Tuesday and somebody driving a flow on Friday.
+
+**"Driven" is about the build, not about the commit**, and the difference stops being pedantic
+the moment a drive's subject is this repository. `verse-dev` runs a charter over verse's own
+commits: driving it PRODUCES commits — a fix from a review, a defect found and landed — so a
+tag that required its own sha to have been the subject of a run would be chasing something it
+moves by looking at it. Two hours of that is how this paragraph got written.
+
+So the tag asserts the ground is usable: these checks passed here, and the drive ran on a build
+carrying this code. It does not assert that this commit was reviewed, deployed first, or
+reached quiescence — none of which a self-referential drive can ever quite reach.
+
+**And a tag is cut when somebody needs ground**, not when main moves. `N` advances when a drive
+deliberately moves, which is a decision somebody makes for a reason: a new drive starting, an
+upgrade being coordinated, an announcement that wants a name. Cutting one per improvement turns
+"ground that does not move" into a changelog with worse ergonomics, and it is the same instinct
+that makes people tag releases nobody asked for.
 
 Not semver — a version number implies a compatibility promise, and the `contract` tier says we
 are not making one. Revisit when there is a consumer outside this handful.
