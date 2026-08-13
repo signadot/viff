@@ -1,6 +1,7 @@
 package answer
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -317,5 +318,35 @@ func TestEmptyAcceptStillRequiresADocument(t *testing.T) {
 	f, ok := err.(*Failure)
 	if !ok || f.Kind != NoDocument {
 		t.Fatalf("prose -> %v, want a NoDocument failure", err)
+	}
+}
+
+// A repair for a message that did not PARSE says the one mechanical thing the contract cannot.
+//
+// The contract is a match pattern — `report: !irtype "text"` — which specifies the shape and
+// says nothing about how to write one. A model that has just answered in prose reads that as a
+// description rather than a form to fill in, and its second attempt was a document whose
+// `report:` held unquoted prose: read as more keys, refused at the first word that was not one,
+// two repair attempts spent, task failed. Both attempts were reasonable readings of what it was
+// told.
+func TestRepairForAnUnparseableAnswerSaysToQuote(t *testing.T) {
+	c, err := ParseSource(`{files: !irtype 0, report: !irtype "text"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, checkErr := c.Check("No Go files were touched by this commit, so there is nothing to do.")
+	if checkErr == nil {
+		t.Fatal("prose satisfied an answer contract")
+	}
+	var f *Failure
+	if !errors.As(checkErr, &f) {
+		t.Fatalf("check failed with %T, want a *Failure", checkErr)
+	}
+	repair := f.Repair(c, "fail")
+	if !strings.Contains(repair, "QUOTE") {
+		t.Errorf("the repair does not say to quote a string:\n%s", repair)
+	}
+	if !strings.Contains(repair, "report") {
+		t.Errorf("the repair does not carry the contract:\n%s", repair)
 	}
 }

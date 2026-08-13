@@ -234,6 +234,13 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 		if f.ParseErr != nil {
 			fmt.Fprintf(&b, "What the parser said about the closest thing to one: %v\n", f.ParseErr)
 		}
+		// The contract below is a MATCH PATTERN — a specification, not an example — and a
+		// model that has just written prose needs the one mechanical fact the pattern does not
+		// state. Observed twice in a row on one run: the first answer was a sentence, the
+		// second was a document whose `report:` held unquoted prose, which the parser reads as
+		// more keys and refuses at the first word that is not one.
+		b.WriteString("Write a tony document, and QUOTE every string value — `report: \"…\"`, " +
+			"not bare prose. Unquoted text after a key is read as more keys.\n")
 	default:
 		b.WriteString("Your final message did not satisfy this spawn's answer contract:\n")
 		for _, line := range f.lines() {
