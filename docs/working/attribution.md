@@ -181,7 +181,7 @@ The coding runner is the first place verse-caused effects leave through **a cred
 not hold and cannot bind to the originator.** A source's outbound write is caused directly by a
 charter; a coding runner's push is executed by the runner under its own identity, on behalf of a
 task whose internal steps verse only ever saw as self-report. The external record reads
-"coderunner-bot pushed `agent/xyz`" and the entire link back to a person is inside verse.
+"coderunner-bot pushed `verse/auto/xyz`" and the entire link back to a person is inside verse.
 
 There is a cheap externalization channel and it is worth designing in rather than discovering:
 **the commit trailer and the branch name.** Trailers naming the charter, the firing and the task

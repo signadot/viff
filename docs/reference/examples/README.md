@@ -50,10 +50,10 @@ verse task run --runner runners:pool:code --environment local --as "$USER" "add 
 ### A workspace per task
 
 Each task gets its own working directory holding **every repository the environment names**, each
-cloned off a shared bare mirror, all on the same `agent/<task>` branch:
+cloned off a shared bare mirror, all on the same `verse/auto/<task>` branch:
 
 ```
-<workspace>/verse/         ← being changed;  push: refs/heads/agent/$task
+<workspace>/verse/         ← being changed;  push: refs/heads/verse/auto/$task
 <workspace>/tony-format/   ← there to be read; no push declared
 ```
 

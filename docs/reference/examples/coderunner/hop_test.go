@@ -45,7 +45,7 @@ func TestATaskRunsInItsOwnProcessAndDelivers(t *testing.T) {
 		Default: "e",
 		Environments: []Environment{{
 			Name:   "e",
-			Repos:  []Repo{{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"}},
+			Repos:  []Repo{{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"}},
 			Driver: "sh",
 			Env:    []string{"PATH"},
 		}},
@@ -74,7 +74,7 @@ func TestATaskRunsInItsOwnProcessAndDelivers(t *testing.T) {
 	}
 	// And the work left, pushed by the PARENT under a credential the child never had.
 	waitFor(t, "the branch to land on origin", func() bool {
-		return commitOn(origin, "refs/heads/agent/t1") != ""
+		return commitOn(origin, "refs/heads/verse/auto/t1") != ""
 	})
 }
 
@@ -513,7 +513,7 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 	if gate != "delivery" {
 		t.Fatal("no gate was posed for the push, so a charter cannot decline one")
 	}
-	if !strings.Contains(exec, "refs/heads/agent/d1") {
+	if !strings.Contains(exec, "refs/heads/verse/auto/d1") {
 		t.Errorf("the read plane does not name the branch the work went to: %q", exec)
 	}
 	if terminal != string(task.Done) {
@@ -521,7 +521,7 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 	}
 	// The push landed, and the parent made it: the child never had the credential.
 	waitFor(t, "the branch on origin", func() bool {
-		return commitOn(origin, "refs/heads/agent/d1") != ""
+		return commitOn(origin, "refs/heads/verse/auto/d1") != ""
 	})
 	// And the workspace went away, because the work left.
 	waitFor(t, "the workspace to be removed", func() bool {
@@ -570,7 +570,7 @@ func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
 	if terminal != string(task.Done) {
 		t.Errorf("a refused delivery ended the task %s, want done", terminal)
 	}
-	if commitOn(origin, "refs/heads/agent/d2") != "" {
+	if commitOn(origin, "refs/heads/verse/auto/d2") != "" {
 		t.Fatal("the work was pushed despite the gate refusing it")
 	}
 	// And it is still on disk: a refusal is somebody deciding where the work goes, not deciding
@@ -590,7 +590,7 @@ func deliveringConfig(origin string) *Config {
 		Default: "e",
 		Environments: []Environment{{
 			Name:   "e",
-			Repos:  []Repo{{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"}},
+			Repos:  []Repo{{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"}},
 			Driver: "sh",
 			Env:    []string{"PATH"},
 		}},
@@ -640,7 +640,7 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 	if !strings.Contains(deliver, "nothing to deliver") {
 		t.Errorf("the read plane does not say nothing was delivered: %q", deliver)
 	}
-	if commitOn(origin, "refs/heads/agent/n1") != "" {
+	if commitOn(origin, "refs/heads/verse/auto/n1") != "" {
 		t.Error("a branch appeared for work nobody did")
 	}
 }

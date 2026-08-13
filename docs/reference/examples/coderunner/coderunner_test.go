@@ -29,7 +29,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "test", Repos: []Repo{
-		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"},
 	}}
 	worktrees := t.TempDir()
 
@@ -40,8 +40,8 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ws.Root, "svc", "README")); err != nil {
 		t.Fatalf("checkout does not carry the base's content under its repo name: %v", err)
 	}
-	if ws.Branch != "agent/p1" {
-		t.Errorf("branch = %q, want agent/p1 — the branch is per task or two tasks share one", ws.Branch)
+	if ws.Branch != "verse/auto/p1" {
+		t.Errorf("branch = %q, want verse/auto/p1 — the branch is per task or two tasks share one", ws.Branch)
 	}
 
 	// A second task on the same repository must get its own tree and its own branch: the
@@ -59,7 +59,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	rc := ws.RepoContext()
-	if rc.Branch != "agent/p1" || rc.Base != "main" {
+	if rc.Branch != "verse/auto/p1" || rc.Base != "main" {
 		t.Errorf("RepoContext = %+v, want the task's branch and its base", rc)
 	}
 	// Workspace-relative, not repo-relative: the path says which repository it is in, which
@@ -67,7 +67,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	if len(rc.ChangedFiles) != 1 || rc.ChangedFiles[0] != "svc/new.txt" {
 		t.Errorf("ChangedFiles = %v, want [svc/new.txt]", rc.ChangedFiles)
 	}
-	if rc.PushTarget != "refs/heads/agent/p1" {
+	if rc.PushTarget != "refs/heads/verse/auto/p1" {
 		t.Errorf("PushTarget = %q, want $task expanded", rc.PushTarget)
 	}
 
@@ -78,7 +78,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	if d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
-	if len(d.Pushed) != 1 || !strings.Contains(d.Pushed[0], "refs/heads/agent/p1") {
+	if len(d.Pushed) != 1 || !strings.Contains(d.Pushed[0], "refs/heads/verse/auto/p1") {
 		t.Fatalf("delivered %v", d.Pushed)
 	}
 	// Staged on the way out and dropped once the far side had it: what is left under
@@ -87,8 +87,8 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 		t.Errorf("work is still staged after a successful delivery: %v", d.Staged)
 	}
 	// The push landed on the origin, under the ref the environment named.
-	if out := commitAt(t, origin, "refs/heads/agent/p1"); out == "" {
-		t.Fatal("origin has no agent/p1")
+	if out := commitAt(t, origin, "refs/heads/verse/auto/p1"); out == "" {
+		t.Fatal("origin has no verse/auto/p1")
 	} else {
 		// The trailers are the whole attribution channel out of the verse: a push under a
 		// shared credential says nothing at the far end about who it was for.
@@ -123,7 +123,7 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 	svcOrigin, libOrigin := initRepo(t), initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "multi", Repos: []Repo{
-		{Name: "svc", Repo: svcOrigin, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: svcOrigin, Base: "main", Push: "refs/heads/verse/auto/$task"},
 		{Name: "lib", Repo: libOrigin, Base: "main"}, // read-only: no push
 	}}
 	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
@@ -137,8 +137,8 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 	}
 	// The same task branch in both, so a gate matching on branch has one answer.
 	for _, tr := range ws.Trees {
-		if got := headBranch(t, tr.Dir); got != "agent/p1" {
-			t.Errorf("%s is on %q, want agent/p1", tr.Repo.Name, got)
+		if got := headBranch(t, tr.Dir); got != "verse/auto/p1" {
+			t.Errorf("%s is on %q, want verse/auto/p1", tr.Repo.Name, got)
 		}
 	}
 
@@ -165,7 +165,7 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 	if len(d.Pushed) != 1 || !strings.HasPrefix(d.Pushed[0], "svc ") {
 		t.Fatalf("delivered %v — only the repository with a push target should leave", d.Pushed)
 	}
-	if commitAt(t, libOrigin, "refs/heads/agent/p1") != "" {
+	if commitAt(t, libOrigin, "refs/heads/verse/auto/p1") != "" {
 		t.Error("the reference repository received a push it never declared a target for")
 	}
 }
@@ -174,7 +174,7 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 //
 // This guards a failure that was real and was quiet. The first version of this runner used
 // linked worktrees off a shared mirror, so task branches lived in the MIRROR's ref namespace —
-// and `fetch --prune` on the next spawn deleted every `agent/*`, because none of them exists
+// and `fetch --prune` on the next spawn deleted every `verse/auto/*`, because none of them exists
 // upstream. Nothing errored; a running worktree was simply left on a ref that was gone, its
 // whole tree read as untracked, and its work could not be committed.
 //
@@ -186,7 +186,7 @@ func TestFetchDoesNotPruneRunningTasksBranches(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "test", Repos: []Repo{
-		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"},
 	}}
 	worktrees := t.TempDir()
 
@@ -198,7 +198,7 @@ func TestFetchDoesNotPruneRunningTasksBranches(t *testing.T) {
 	if _, err := m.Open(context.Background(), "p2", env, worktrees); err != nil {
 		t.Fatal(err)
 	}
-	if got := headBranch(t, ws.Primary().Dir); got != "agent/p1" {
+	if got := headBranch(t, ws.Primary().Dir); got != "verse/auto/p1" {
 		t.Fatalf("first task's HEAD = %q — a second spawn disturbed its branch", got)
 	}
 	if clean, st := isClean(t, ws.Primary().Dir); !clean {
@@ -239,7 +239,7 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 	intended, attacker := initRepo(t), initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "test", Repos: []Repo{
-		{Name: "svc", Repo: intended, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: intended, Base: "main", Push: "refs/heads/verse/auto/$task"},
 	}}
 	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
 	if err != nil {
@@ -264,11 +264,11 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work"); d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
-	if commitAt(t, attacker, "refs/heads/agent/p1") != "" {
+	if commitAt(t, attacker, "refs/heads/verse/auto/p1") != "" {
 		t.Fatal("the task redirected its own push by editing .git/config — the runner's " +
 			"credential goes wherever the agent points it")
 	}
-	if commitAt(t, intended, "refs/heads/agent/p1") == "" {
+	if commitAt(t, intended, "refs/heads/verse/auto/p1") == "" {
 		t.Fatal("the push did not reach the remote the environment configured")
 	}
 }
@@ -305,7 +305,7 @@ func TestWorkspaceBriefNamesTheRepos(t *testing.T) {
 	svc, lib := initRepo(t), initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "multi", Repos: []Repo{
-		{Name: "svc", Repo: svc, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: svc, Base: "main", Push: "refs/heads/verse/auto/$task"},
 		{Name: "lib", Repo: lib, Base: "main"},
 	}}
 	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
@@ -560,7 +560,7 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 
 	// Deliverable: something here was meant to leave.
 	pushes := Environment{Name: "p", Repos: []Repo{
-		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"},
 	}}
 	if !(&Workspace{Env: pushes, Trees: []*Tree{{Repo: pushes.Repos[0]}}}).Deliverable() {
 		t.Error("an environment with a push target reports nothing to deliver")

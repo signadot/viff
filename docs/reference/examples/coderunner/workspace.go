@@ -65,7 +65,7 @@ import (
 type Workspace struct {
 	Env    Environment
 	Root   string // the directory holding every checkout: the agent's working directory
-	Branch string // agent/<task id> — the same in every repository
+	Branch string // verse/auto/<task id> — the same in every repository
 	Trees  []*Tree
 
 	// mirrors is where work waits on its way out (stage.go). Set by Open and nil in a Reopen:
@@ -237,6 +237,14 @@ func fixHead(r *git.Repository) error {
 	return r.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.ReferenceName(pick)))
 }
 
+// autoBranchPrefix namespaces every branch a task works on, and so every ref a delivery pushes
+// from. `verse/auto/` rather than `agent/`, and the reason is a person rather than a machine: a
+// developer who pulls and finds a commit they did not write asks what made it, and the first
+// segments of a branch name are the cheapest place to answer — which system, and that nothing
+// human proposed it. `agent/` said neither, and there is more than one thing in a tree that
+// calls itself an agent.
+const autoBranchPrefix = "verse/auto/"
+
 // Open builds the workspace for one task: every repository the environment names, checked out
 // under one root.
 //
@@ -244,7 +252,7 @@ func fixHead(r *git.Repository) error {
 // one. An agent handed three of the four it was promised does not know that, and will read an
 // absent directory as "this code does not exist" rather than "I was short-changed".
 func (m *Mirrors) Open(ctx context.Context, id string, env Environment, worktrees string) (*Workspace, error) {
-	branch := "agent/" + safeSeg(id)
+	branch := autoBranchPrefix + safeSeg(id)
 	root := filepath.Join(worktrees, safeSeg(id))
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
@@ -412,7 +420,7 @@ func (t *Tree) PushTarget(branch string) string {
 	if t.Repo.Push == "" {
 		return ""
 	}
-	return strings.ReplaceAll(t.Repo.Push, "$task", strings.TrimPrefix(branch, "agent/"))
+	return strings.ReplaceAll(t.Repo.Push, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
 }
 
 // commitWork commits whatever the task produced and reports whether there is anything to deliver.

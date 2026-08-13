@@ -43,7 +43,7 @@ data:
       - name: verse
         repo: "https://github.com/signadot/verse"
         base: main
-        push: "refs/heads/agent/$task"
+        push: "refs/heads/verse/auto/$task"
       driver: llm
       tools: [read_file, list_dir, write_file]
       commands: [go, gofmt]

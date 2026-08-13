@@ -29,7 +29,7 @@ business, which is the thing this drive is testing.
 ## What runs today
 
 **Phase 1, entire.** A commit lands, a charter fires, a coderunner opens a workspace over this
-repository, an agent works in it, and the runner pushes `agent/<task>` carrying provenance
+repository, an agent works in it, and the runner pushes `verse/auto/<task>` carrying provenance
 trailers. Every piece exists: `environment:` reaches the runner, the git source reflects both the
 ref and the commit's trailers, and a trigger can condition on either.
 
@@ -492,8 +492,8 @@ Then read what it produced, before anything else. Nothing has left the machine: 
 **local** ref, and phase 4 is the gated step that would change that.
 
 ```sh
-git -C <checkout> log --format='%B' -1 agent/<id>   # trailers, and the agent's own summary
-git -C <checkout> diff main..agent/<id>             # what it actually changed
+git -C <checkout> log --format='%B' -1 verse/auto/<id>   # trailers, and the agent's own summary
+git -C <checkout> diff main..verse/auto/<id>             # what it actually changed
 ```
 
 ### One file is not a unit of work

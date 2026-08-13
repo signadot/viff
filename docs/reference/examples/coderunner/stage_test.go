@@ -25,7 +25,7 @@ func TestFetchDoesNotPruneStagedWork(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "e", Repos: []Repo{
-		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"},
 	}}
 	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
 	if err != nil {
@@ -62,7 +62,7 @@ func TestFetchDoesNotPruneStagedWork(t *testing.T) {
 func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
-	repo := Repo{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"}
+	repo := Repo{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"}
 	env := Environment{Name: "e", Repos: []Repo{repo}}
 
 	// One task whose delivery was approved and failed, one whose delivery was refused.
@@ -101,11 +101,11 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("reflected %d refs, want exactly the approved one", n)
 	}
-	if msg := commitAt(t, origin, "refs/heads/agent/ok1"); !strings.Contains(msg, "Verse-Task: ok1") {
+	if msg := commitAt(t, origin, "refs/heads/verse/auto/ok1"); !strings.Contains(msg, "Verse-Task: ok1") {
 		t.Errorf("the retry did not push the WORK (got %q) — an empty check here passes on the "+
 			"base commit, which is what a stage-before-commit bug looks like", msg)
 	}
-	if commitAt(t, origin, "refs/heads/agent/no1") != "" {
+	if commitAt(t, origin, "refs/heads/verse/auto/no1") != "" {
 		t.Fatal("work a gate REFUSED was pushed by the retry — the sweep overrode the refusal")
 	}
 	// The pending ref is dropped once it lands; the held one stays where it is.
@@ -127,7 +127,7 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
 	env := Environment{Name: "e", Repos: []Repo{
-		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"},
+		{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"},
 		{Name: "ref", Repo: initRepo(t), Base: "main"}, // reference tree: nothing to hold
 	}}
 	ws, err := m.Open(context.Background(), "s1", env, t.TempDir())
@@ -168,7 +168,7 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 // record carries the command.
 func TestUndeliveredWorkIsListedWithHowToGetItBack(t *testing.T) {
 	origin := initRepo(t)
-	repo := Repo{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/agent/$task"}
+	repo := Repo{Name: "svc", Repo: origin, Base: "main", Push: "refs/heads/verse/auto/$task"}
 	cfg := &Config{Default: "e", Environments: []Environment{{Name: "e", Repos: []Repo{repo}}}}
 	r := testRunner(t, cfg)
 

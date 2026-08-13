@@ -38,7 +38,7 @@ environments:
   - name: verse
     repo: "https://github.com/signadot/verse"
     base: main
-    push: "refs/heads/agent/$task"
+    push: "refs/heads/verse/auto/$task"
   # There to be read. No `push`, so nothing can go back to it — a reference repository that
   # could push is a blast radius nobody asked for.
   - name: tony-format
@@ -76,7 +76,7 @@ environments:
   - name: verse
     repo: "https://github.com/signadot/verse"
     base: main
-    push: "refs/heads/agent/$task"
+    push: "refs/heads/verse/auto/$task"
   driver: llm
   tools: [read_file, list_dir, write_file]
   env: [PATH, HOME, USER, LANG]
