@@ -321,9 +321,13 @@ func TestAnInstanceFollowsItsOrigin(t *testing.T) {
 	// beside the spine — a different origin, a different plane, a different position.
 	spawnFor(t, ts, "run-1", "change:pr:1", "")
 	waitQuestion(t, srv, "run-1")
-	got = instances(t, srv)
+	// waitFor, not instances: the question and the instance are written by different paths,
+	// so a question that has arrived does not mean the instance beside it has. Reading once
+	// here failed about one run in five of the whole package — never alone, only under the
+	// load of its neighbours, which is the signature of waiting for the wrong thing.
+	got = waitFor(t, srv, "payments-review@run-1")
 	fine := got["payments-review@run-1"]
-	if fine == nil || fine["origin"] != "task:instance:run-1" {
+	if fine["origin"] != "task:instance:run-1" {
 		t.Fatalf("the run instance does not watch the run: %v", got)
 	}
 	if spine["binding"] != fine["binding"] {
