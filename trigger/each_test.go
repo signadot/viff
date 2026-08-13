@@ -498,3 +498,93 @@ func TestEachOverATaskAnswer(t *testing.T) {
 		t.Errorf("ids = %v, want the flattened symbol to survive in the address", ids)
 	}
 }
+
+// The seam, both directions, in the shape the charter uses it: facts a fan-out wrote become the
+// next prompt's input.
+//
+// A ledger of findings lives as entities, so a rule reads the OUTSTANDING ones onto its subject
+// with `!list-paths` — a patch may read upward freely; only a path read inside a derive is
+// confined to its own level — and the spawn that fires next binds them as tony. Before
+// composites rendered as tony this arrived as Go's `map[…]`, which is why the two halves are
+// one test: either alone is half a loop.
+func TestLedgerReachesThePrompt(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+
+	// Two findings: one still open, one a person marked resolved by hand.
+	for _, f := range []struct{ id, payload string }{
+		{"a", `{symbol: "entity.nodeToPayload", status: open, says: "claims logd spells tombstones"}`},
+		{"b", `{symbol: "source/github.Reflect", status: resolved, says: "fixed in aaebbc0"}`},
+	} {
+		p, err := codec.ParseNode([]byte(f.payload), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref := entity.Ref{System: "drift", Kind: "finding", ID: f.id}
+		if _, _, err := store.Write(entity.Write{At: ref.At(), Value: p}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	src := `
+- name: drift
+  level: 10
+  match: {system: drift, kind: head}
+- name: ledger
+  level: 20
+  match: {system: drift, kind: finding}
+---
+- name: gather
+  stratum: drift
+  condition:
+    subject: {system: drift, kind: head, value: {reviewed: pending}}
+  action:
+    patch:
+      reviewed: gathered
+      outstanding: !list-paths {system: drift, kind: finding, id: "*", value: {status: open}}
+`
+	trigs, _, strata, ok := parseBlock(src)
+	if !ok {
+		t.Fatal("did not parse as a charter")
+	}
+	for _, s := range strata {
+		if err := eng.addStratum(s, false); err != nil {
+			t.Fatalf("stratum %q: %v", s.Name, err)
+		}
+	}
+	if err := eng.addTrigger(trigs[0], false); err != nil {
+		t.Fatalf("gather does not install: %v", err)
+	}
+
+	subj := entity.Ref{System: "drift", Kind: "head", ID: "verse"}
+	head, _ := codec.ParseNode([]byte(`{sha: abc, reviewed: pending}`), codec.Tony)
+	if _, _, err := store.Write(entity.Write{At: subj.At(), Value: head}); err != nil {
+		t.Fatal(err)
+	}
+	oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}, ev: entity.Event{Ref: subj, To: head}}
+	if _, err := trigs[0].Action.applyOne("gather", oc, subj, eng, fromSubject); err != nil {
+		t.Fatalf("gather failed: %v", err)
+	}
+
+	got, _, err := store.Get(subj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What the NEXT rule's spawn would interpolate.
+	b := bindingFor(got.Payload, subj)
+	if !strings.Contains(b["outstanding"], "entity.nodeToPayload") {
+		t.Errorf("$outstanding does not carry the open finding:\n%s", b["outstanding"])
+	}
+	if strings.Contains(b["outstanding"], "source/github.Reflect") {
+		t.Errorf("$outstanding carries a resolved finding — the human override does not hold:\n%s",
+			b["outstanding"])
+	}
+	// And it is a document, not Go's formatting of one: a prompt a person can read, and an
+	// answer shaped like what it was shown.
+	if strings.Contains(b["outstanding"], "map[") {
+		t.Errorf("$outstanding is Go's map formatting:\n%s", b["outstanding"])
+	}
+	if _, err := codec.ParseNode([]byte(b["outstanding"]), codec.Tony); err != nil {
+		t.Errorf("$outstanding does not parse as tony: %v\n%s", err, b["outstanding"])
+	}
+}
