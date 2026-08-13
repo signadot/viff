@@ -77,6 +77,22 @@ So the tag asserts the ground is usable: these checks passed here, and the drive
 carrying this code. It does not assert that this commit was reviewed, deployed first, or
 reached quiescence — none of which a self-referential drive can ever quite reach.
 
+**`verse-dev` stands on `main`, deliberately, and it is the exception this rule is worth
+stating against.** `make ship` deploys the checkout's HEAD, so staging runs main's tip rather
+than any tag — read literally, the drive is doing the one thing the paragraph above says nobody
+dogfooding does.
+
+It is right anyway, and the reason names what the rule is FOR: a tag protects a drive from
+OTHER PEOPLE's churn, from `main` moving breakingly under a flow somebody is halfway through.
+`verse-dev`'s churn is entirely its own — one hand, and the changes are the drive — so pinning
+would only mean waiting for a tag to see your own fix, which is the loop above in a different
+hat. What the tag means here is what it means to everybody else: a point to upgrade from, a
+name an announcement can carry, the ground a SECOND drive stands on so this one's churn does
+not reach it.
+
+Deploying a tag is one command when that is what you want — `git checkout dogfood/<name>.N &&
+make ship`, which the refuse-if-dirty guard and the immutable image ref both survive.
+
 **And a tag is cut when somebody needs ground**, not when main moves. `N` advances when a drive
 deliberately moves, which is a decision somebody makes for a reason: a new drive starting, an
 upgrade being coordinated, an announcement that wants a name. Cutting one per improvement turns
