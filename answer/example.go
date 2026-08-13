@@ -64,6 +64,12 @@ func exampleOf(n *ir.Node) *ir.Node {
 			if child != nil && child.Type == ir.ArrayType && len(child.Values) > 0 {
 				return exampleOf(child.Values[0])
 			}
+		case "all":
+			// `!all P` constrains every element of a LIST, so an example of it is a list —
+			// peeling to P alone would show the shape of a member where a member is not what
+			// the field holds. One element, because one is enough to show the shape and two
+			// would imply the count matters.
+			return ir.FromSlice([]*ir.Node{exampleOf(child)})
 		}
 		if child != nil {
 			return exampleOf(child)

@@ -378,3 +378,25 @@ func TestExampleIsAnInstanceOfTheContract(t *testing.T) {
 		}
 	}
 }
+
+// `!all P` constrains every element of a list, so its example is a LIST — the operator that
+// says "each of these" would otherwise exemplify as one of them, which is the shape of a member
+// rather than of the field.
+//
+// It matters because `!all` is how a contract states an element shape at ALL, and an element
+// shape is what a fan-out needs: a derive referencing `$item.says` fails the firing when one
+// element omits it, after the task has finished and its work is done. Stated in the contract,
+// the same omission is caught while there is still a repair loop to fix it.
+func TestExampleOfAllIsAList(t *testing.T) {
+	c, err := ParseSource(`{findings: !all {symbol: !irtype "pkg.Name", status: !or [open, resolved]}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"findings": [{"status":"open","symbol":"pkg.Name"}]}`
+	if got := c.Example(); got != want {
+		t.Errorf("example\n  got  %s\n  want %s", got, want)
+	}
+	if _, err := c.Check(c.Example()); err != nil {
+		t.Errorf("the example does not satisfy its own contract: %v", err)
+	}
+}
