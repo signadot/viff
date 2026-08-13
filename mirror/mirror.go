@@ -462,12 +462,30 @@ func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
 // hook would deref against a different document than the one the store ends up holding. The
 // answer contract's check is a third such reader, which is why the extraction itself lives
 // in one place rather than being written out again here.
+// It comes back AS DATA, escaped, and that is not a detail of this function — it is the
+// whole reason a projection may hold an agent's document at all.
+//
+// Extract parses the final message AS TONY, so whatever the agent wrote is what comes back,
+// tags included. An agent asked to satisfy a contract written in `!or` and `!irtype` echoes
+// that shape often enough — it is being shown the pattern and asked for something like it —
+// and the result is a document full of merge operators nobody wrote deliberately. Stored
+// unescaped, those are executed rather than kept, and the damage is not local: the operator
+// lands in the log, every later read replays the log, and from then on reading ANY entity
+// fails with "irtype patching null gave cannot patch with irtype operation" while writes
+// keep succeeding. That is a store that cannot be read and cannot be repaired, which is a
+// staging deployment lost twice in one day (see
+// entity.TestAnOperatorTagInAPayloadDoesNotPoisonTheStore).
+//
+// Here rather than at the two writers, because both of them store what this returns and
+// there is nothing else to do with it — this function's whole job is to hand the store a
+// document, so handing it a storable one is the job. For the ordinary answer it is a no-op:
+// AsData escapes tagged values, and a document with no tags has none.
 func ParseResult(text string) entity.Payload {
 	n := answer.Extract(text)
 	if n == nil {
 		return nil
 	}
-	return n
+	return entity.AsData(n)
 }
 
 // preview bounds a narration line for the index; the full text is on the read plane
