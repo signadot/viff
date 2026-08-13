@@ -97,6 +97,27 @@ type Launch struct {
 	// Empty = the runner's own default workspace.
 	Environment string
 
+	// Scope is the federation this task was spawned into — a `verse connect` scope, or
+	// empty for baseline. The RUNTIME does nothing with it: a task runs the same either
+	// way, and the runner never sees it.
+	//
+	// It rides here because a task's records have to land where the task lives, and the one
+	// piece of machinery that publishes on a task's behalf is scope-blind. taskd is a single
+	// global runtime shared by baseline and every scoped engine, so the gate questions it
+	// posts went to whichever store the ONE OnQuestion callback closed over — baseline —
+	// while the task's own `task:instance` record went to the spawning scope. One run,
+	// two records, two different stores: `verse gates` showed a pending gate whose task
+	// `verse ps` would not list, one dev's decision appeared on every other dev's docket,
+	// and the question named `local:dir-status-<scope>:*` entities the reader could not
+	// read (git-issue kwxxm8cth12ksn99fhn0).
+	//
+	// Carried rather than looked up, because the alternatives are worse where it matters.
+	// A side map from task id to store is state that a restart loses and that leaks an
+	// entry per task; resolving the scope by hunting for the `task:instance` record across
+	// scopes races the very first gate, since a task can ask something before its own
+	// record is written. The launch is the one thing that exists before the task does.
+	Scope string
+
 	// Provenance is what the runner needs to make its own effects auditable: who is
 	// answerable for this launch, and what it is about.
 	//

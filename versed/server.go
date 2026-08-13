@@ -160,7 +160,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	//
 	// Absent layers are skipped rather than ranked. A standing binding is not a wider claim
 	// on a named one's questions; it answers a different set.
-	owner := func(q *task.GateQuestion) {
+	owner := func(st entity.Store, q *task.GateQuestion) {
 		if q.BoundTo != "" || q.Subject == "" {
 			return
 		}
@@ -168,7 +168,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		if err != nil {
 			return
 		}
-		if res, ok := resolver.Owner(store, ref); ok {
+		if res, ok := resolver.Owner(st, ref); ok {
 			q.BoundTo = resolver.Ref(res.Kind, res.Name).String()
 		}
 	}
@@ -188,7 +188,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// resolver should be reading before the first ask; a standing binding cannot be minted
 	// that early, because one installed mid-run would own questions an earlier mint never
 	// heard of. Both call the same create-only Watch, so the two are one act done twice.
-	watch := func(q task.GateQuestion, taskID string) {
+	watch := func(st entity.Store, q task.GateQuestion, taskID string) {
 		if q.BoundTo == "" {
 			return
 		}
@@ -199,16 +199,16 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		if err != nil {
 			return
 		}
-		mirror.Watch(store, q.BoundTo, resolverName(q.BoundTo), origin)
+		mirror.Watch(st, q.BoundTo, resolverName(q.BoundTo), origin)
 	}
 	// The clock a binding puts on its own silence, stamped when the question is posed and
 	// ABSOLUTE so a restart cannot slide it. A binding cannot know when a question will
 	// arrive, so it says a duration and the question says an instant.
-	arm := func(q task.GateQuestion) {
+	arm := func(st entity.Store, q task.GateQuestion) {
 		if q.BoundTo == "" {
 			return
 		}
-		res, ok := resolver.Find(store, q.BoundTo)
+		res, ok := resolver.Find(st, q.BoundTo)
 		if !ok || res.Deadline == nil {
 			return
 		}
@@ -216,22 +216,35 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		if err != nil {
 			return
 		}
-		_, _, _ = store.Write(entity.Write{
+		_, _, _ = st.Write(entity.Write{
 			At:    mirror.QuestionRef(q.ID).At(),
 			Value: entity.Obj{"escalatesAt": time.Now().Add(after).UTC().Format(time.RFC3339Nano)}.Payload(),
 		})
 	}
 	reg.OnPost(func(p task.Pending) {
-		owner(&p.Question)
-		watch(p.Question, "")
+		// The registry's own posts are baseline's: this seam is the standing-gate path,
+		// which has no task and therefore no scope to be in.
+		owner(store, &p.Question)
+		watch(store, p.Question, "")
 		mirror.PostQuestion(store, p, "")
-		arm(p.Question)
+		arm(store, p.Question)
 	})
 	// And the counterpart. A question whose last waiter was cancelled leaves the registry
 	// silently; without this the record it published stays `pending` on the docket, offering
 	// a decision nothing is left to receive.
 	reg.OnDrop(func(q task.GateQuestion) { mirror.DropQuestion(store, q.ID) })
-	taskd.OnQuestion(func(taskID string, p task.Pending) {
+	taskd.OnQuestion(func(taskID, scope string, p task.Pending) {
+		// WHERE this question goes is the task's to say, not this closure's. taskd is one
+		// runtime under baseline and every scoped engine, so a publisher registered once
+		// closed over the baseline store and posted every scope's questions there — while
+		// the task's own record went to the scope that spawned it. `verse gates` then
+		// showed a pending gate `verse ps` would not list, on every dev's docket at once,
+		// naming content only one of them could read (git-issue kwxxm8cth12ksn99fhn0).
+		//
+		// The scope rides on the launch, so it is known before the task is, and every
+		// record this callback writes goes to the same store as the instance record: the
+		// docket a reader sees is the tasks a reader sees.
+		store := s.storeForScope(scope)
 		// A task gate's question knows what it would DO but not what it is about: the
 		// flow belongs to the task, not to the action. Fill it in from the mirror, so a
 		// rule can select "the questions about demo:pr:1" by matching one record rather
@@ -242,15 +255,15 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 				p.Question.Subject = entity.Str(e.Payload, "flow")
 			}
 		}
-		owner(&p.Question)
-		watch(p.Question, taskID)
+		owner(store, &p.Question)
+		watch(store, p.Question, taskID)
 		mirror.PostQuestion(store, p, taskID)
-		arm(p.Question)
+		arm(store, p.Question)
 	})
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
-	eng.SetSpawner(s.spawnerFor(store, nil))
+	eng.SetSpawner(s.spawnerFor(store, "", nil))
 	return s
 }
 
@@ -356,7 +369,11 @@ func mintNonce() string {
 // state into st — the baseline store for the baseline engine, a scoped store for a
 // per-scope engine, so a scoped flow's task state stays in that scope. content (nil
 // for baseline) routes a spawned agent's read_file through the verse.
-func (s *Server) spawnerFor(st entity.Store, content task.ContentReader) trigger.Spawner {
+// scope is the federation st belongs to (empty for baseline). It is passed rather than
+// derived from st because a task must be able to say where it lives before it exists —
+// see task.Launch.Scope, and git-issue kwxxm8cth12ksn99fhn0 for what publishing without
+// it cost.
+func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentReader) trigger.Spawner {
 	return func(id string, spec launch.Spec) task.Handle {
 		// WHERE this runs, resolved before anything is attempted, so the meta below records
 		// the runner the work actually went to rather than the default it did not.
@@ -396,6 +413,7 @@ func (s *Server) spawnerFor(st entity.Store, content task.ContentReader) trigger
 			s.reflect(st, id, h, meta)
 			return h
 		}
+		l.Scope = scope // where this task's records live, so its gates land there too
 		h := place.Spawn(l, content)
 		s.reflect(st, id, h, meta)
 		// Who is watching this run, if anybody was named. Minted beside the mirror because
@@ -680,7 +698,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 	// Scoped agents read file content through the verse (the connect content
 	// controller), so a validator isn't tied to the machine holding the files.
 	content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
-	eng.SetSpawner(s.spawnerFor(scoped, content))
+	eng.SetSpawner(s.spawnerFor(scoped, scope, content))
 	sctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 	// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
@@ -972,6 +990,16 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 // scopedStore returns the store view for the request's ?scope (baseline if absent).
 // The seam for local-dev federation — the logd-backed store isolates the scope (see
 // docs/deployment-and-steering.md).
+// storeForScope is the store a scope's records belong in: the scope's own overlay, or
+// baseline when the scope is empty. It is the non-HTTP half of scopedStore — same question,
+// asked by machinery that has a task rather than a request.
+func (s *Server) storeForScope(scope string) entity.Store {
+	if scope == "" {
+		return s.Store
+	}
+	return s.Store.Scope(scope)
+}
+
 func (s *Server) scopedStore(r *http.Request) entity.Store {
 	if sc := r.URL.Query().Get("scope"); sc != "" {
 		return s.Store.Scope(sc)
@@ -2223,8 +2251,9 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// Honor --scope: mirror the task:instance into that scope's copy-on-write view, not
 	// baseline — else a scoped run leaks into baseline (a baseline watch would see it). On the
 	// memory store Scope is a passthrough, so isolation only applies to the docd/logd store.
+	scope := r.URL.Query().Get("scope")
 	store := s.Store
-	if scope := r.URL.Query().Get("scope"); scope != "" {
+	if scope != "" {
 		store = s.Store.Scope(scope)
 	}
 	if why := ghostResolver(store, body.Resolver); why != "" {
@@ -2258,6 +2287,9 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
 		Answer: body.Answer,
+		// And the same scope the record above goes to, so this run's gates reach the
+		// docket of whoever asked for it rather than everybody's.
+		Scope: scope,
 		// The ad-hoc path is the one place a principal exists today: somebody typed this.
 		// A firing has no equivalent until an install can record an author, so it sends
 		// Subject and Chain instead — see launchOf.

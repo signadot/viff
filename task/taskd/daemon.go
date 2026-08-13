@@ -45,12 +45,18 @@ type Daemon struct {
 	// owns one, and this is the seam that hands it over with the derived effects still
 	// attached — the read plane's own EvPending frame carries only what an attached client
 	// needs to see, which is less than a record needs to be matchable.
-	onQuestion func(taskID string, p task.Pending)
+	//
+	// SCOPE is passed with the id because this daemon is one runtime shared by baseline and
+	// every scoped engine, and a publisher that closed over a single store sent every
+	// scope's questions to that one (git-issue kwxxm8cth12ksn99fhn0). The daemon still holds
+	// no store and makes no decision about where anything goes — it repeats what the launch
+	// said, and the publisher decides what that means.
+	onQuestion func(taskID, scope string, p task.Pending)
 }
 
 // OnQuestion registers the publisher. Optional: taskd runs standalone in tests and under
 // `verse task run` with nothing behind it.
-func (d *Daemon) OnQuestion(f func(taskID string, p task.Pending)) { d.onQuestion = f }
+func (d *Daemon) OnQuestion(f func(taskID, scope string, p task.Pending)) { d.onQuestion = f }
 
 type hosted struct {
 	task   *task.Task
@@ -176,7 +182,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	// attached client sees what a gate is blocked on and can resolve it by id.
 	reg.OnPost(func(p task.Pending) {
 		if d.onQuestion != nil {
-			d.onQuestion(l.ID, p)
+			d.onQuestion(l.ID, l.Scope, p)
 		}
 		tk.Emit(task.Frame{
 			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
