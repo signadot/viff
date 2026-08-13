@@ -563,6 +563,14 @@ func streamEvents(cc *cli.Context, id, as string) error {
 		if msg == "" {
 			msg = resp.Status
 		}
+		// A 404 from the events route and a 404 about the id are different facts. A task
+		// that failed at spawn has no stream to attach to, so the transport is telling the
+		// truth about the question it was asked and nothing about the run: reported as-is
+		// it says "404 page not found" while the record says which runner refused it and
+		// why. Ask the record first (git-issue ykpt9g3eh12kss9wfhn0).
+		if why := recordedFailure(id); why != "" {
+			return fmt.Errorf("task %s: %s", id, why)
+		}
 		return fmt.Errorf("task attach %s: %s", id, msg)
 	}
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
@@ -619,6 +627,30 @@ func streamEvents(cc *cli.Context, id, as string) error {
 		}
 	}
 	return nil
+}
+
+// recordedFailure asks the server what it knows about a task that could not be attached to:
+// its own account, in one line, or empty when it has none.
+//
+// Empty covers three different situations on purpose — the task is unknown, it is alive, or
+// it ended without a reason — because the caller does the same thing in all three: report
+// the transport error it already has. Only a terminal status WITH a reason displaces that,
+// since only then is there something better to say.
+func recordedFailure(id string) string {
+	resp, err := httpGet("/tasks/"+id, nil)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "" // the id is unknown here too: the 404 the caller has is the whole story
+	}
+	var snap task.Instance
+	decodeBody(resp, &snap)
+	if !snap.Status.Terminal() || snap.Err == "" {
+		return ""
+	}
+	return snap.Err
 }
 
 // isTerminalStatus reports whether a status EvStatus text is an end state — covering the

@@ -272,6 +272,25 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 			msg = resp.Status
 		}
 		resp.Body.Close()
+		// WHY the subscribe failed and why the TASK failed are different facts, and only
+		// one of them is worth a reader's time. A task that never started has no stream and
+		// no child to forward to, so 404 is the honest answer to the question that was
+		// asked — but reported as the run's outcome it says "404 page not found" where the
+		// record says "the task process exited before it served anything (exit status 1) —
+		// its output is on this runner's log, tagged <id>". The second is the one that ends
+		// the investigation; the first cost three trips to `kubectl logs` to get past
+		// (git-issue ykpt9g3eh12kss9wfhn0).
+		//
+		// So ask the record before reporting. Only a TERMINAL status with a reason wins:
+		// a task the remote still considers live has no better account of itself than the
+		// transport error, and overwriting a live task's frame with a stale record would
+		// be the same mistake pointed the other way.
+		if snap, ok := h.snapshot(); ok && snap.Status.Terminal() && snap.Err != "" {
+			out <- task.Frame{Kind: task.EvStatus, Text: string(snap.Status), Err: snap.Err}
+			close(out)
+			cancel()
+			return out, func() {}
+		}
 		out <- task.Frame{
 			Kind: task.EvStatus,
 			Text: string(task.Failed),
@@ -376,30 +395,38 @@ func (h *remoteHandle) Resolve(decision string, proceed bool, say, by string) er
 
 // Err reads the terminal failure detail off the snapshot — the remote's task.Instance
 // already carries it, so this is the same read as Result against a different field.
-func (h *remoteHandle) Err() string {
+// snapshot reads the remote's own account of this task — GET /tasks/{id}, the shape both
+// ends already speak. ok is false when the remote could not be asked or did not answer in
+// that shape, which is a different thing from a task with nothing to report.
+//
+// It is one function rather than a field-at-a-time read because the three callers want three
+// fields of ONE answer, and asking three times invites them to disagree: a task that ends
+// between two of those calls would have its status read from before and its reason from
+// after.
+func (h *remoteHandle) snapshot() (task.Instance, bool) {
 	resp, err := h.cl.Get(h.url(""))
 	if err != nil {
-		return ""
+		return task.Instance{}, false
 	}
 	defer resp.Body.Close()
-	var snap struct {
-		Err string `tony:"field=err"`
+	if resp.StatusCode >= http.StatusBadRequest {
+		return task.Instance{}, false
 	}
-	_ = decodeResp(resp, &snap)
+	var snap task.Instance
+	if err := decodeResp(resp, &snap); err != nil {
+		return task.Instance{}, false
+	}
+	return snap, true
+}
+
+func (h *remoteHandle) Err() string {
+	snap, _ := h.snapshot()
 	return snap.Err
 }
 
 // Result reads the terminal result off the snapshot.
 func (h *remoteHandle) Result() string {
-	resp, err := h.cl.Get(h.url(""))
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-	var snap struct {
-		Result string `tony:"field=result"`
-	}
-	_ = decodeResp(resp, &snap)
+	snap, _ := h.snapshot()
 	return snap.Result
 }
 
