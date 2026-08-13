@@ -70,6 +70,50 @@ data:
       - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
+
+    # The fixing environment: read the repository, correct what disagrees with the code, and
+    # leave it on a branch somebody can diff.
+    #
+    # It is the same repository as verse-docs and differs in two ways, both of which are the
+    # charter that uses it (docs/working/verse-dev/comment-drift.tony) asking for something the
+    # docs environment does not need.
+    #
+    # It PUSHES, which is the whole shape of the deliverable: a stale comment is cheap to read
+    # as a diff and expensive to read as prose about a diff, and a branch is droppable in a way
+    # a report on an entity is not. Delivery is the runner's act — the token lives in this
+    # process, outside the sandbox — and the task only proposes it, at the end, carrying a push
+    # effect the vector sees. A run that changed nothing proposes nothing, so a commit with no
+    # stale comment in it leaves no branch.
+    #
+    # A SHELL, and `git` on the PATH — which the image's own Dockerfile keeps OFF a task's PATH
+    # on purpose, and it is worth saying exactly why that is not being undone here. Its reason
+    # is delivery: the whole model rests on a task being unable to reach the push credential.
+    # That credential is not in `env:` below, it lives in the runner's process outside the
+    # sandbox, and `egress:` has no route to github.com — so `git` in here can read this clone
+    # and can reach nothing. What it buys is the one question a charter cannot answer for
+    # itself: which files a commit changed. `git:commit:*` carries the sha, the message and the
+    # trailers, and not the paths, so without a shell the task cannot find out what it is
+    # reviewing. The day that list is a field on the commit entity, this environment goes back
+    # to the file tools alone — that is the first item in the note.
+    #
+    # `call_agent`, because the unit of review is a FILE and this task is handed a commit. verse
+    # fans out per entity and a changed file is not one, so the fan-out lands inside the task.
+    - name: verse-fix
+      repos:
+      - name: verse
+        repo: "https://github.com/signadot/verse"
+        base: main
+        # $task expands to the task id, so two runs never contend for a ref. A charter-spawned
+        # id is `<chain>@<subject>`, which is not a legal ref name — the runner flattens it.
+        push: "refs/heads/agent/$task"
+      driver: llm
+      tools: [read_file, list_dir, write_file, run_bash, call_agent]
+      commands: [git, go, gofmt]
+      env: [PATH, HOME, USER, LANG]
+      egress:
+      - api.portkey.ai
+      - proxy.golang.org
+      - sum.golang.org
 ---
 apiVersion: apps/v1
 kind: Deployment
