@@ -249,11 +249,12 @@ func ModifyFrom(ctx context.Context, s Store, ref Ref, cur Payload, exists bool,
 	return Modify(ctx, s, ref, fn)
 }
 
-// withRemovals adds a bare null for every field of old that next does not mention, so a
-// read-modify-write that drops a field drops it in the store too. The null IS the tombstone —
-// the store recognises an untagged null at a field as a removal and strips it on the way back
-// out, which is why nothing downstream ever sees one. Only objects have fields to drop; any
-// other value replaces outright.
+// withRemovals adds an explicit deleteOp() for every field of old that next does not mention, so
+// a read-modify-write that drops a field drops it in the store too. The tag is what makes it a
+// removal rather than a value — a bare null would be stored and handed back like any other
+// field, so the marker has to be the tagged one deleteOp() returns, and it executes as a removal
+// rather than surviving to the next read. Only objects have fields to drop; any other value
+// replaces outright.
 func withRemovals(next, old Payload) Payload {
 	if next == nil || next.Type != ir.ObjectType || old == nil || old.Type != ir.ObjectType {
 		return next

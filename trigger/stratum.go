@@ -1069,10 +1069,11 @@ func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj ent
 
 // eachKey resolves one element's address suffix.
 //
-// An element whose key is empty is SKIPPED and the rest are derived, which is the residual's
-// open question answered the way it costs least: one malformed element in a twelve-element
-// answer should not throw away the eleven that were fine, so the firing carries on and the
-// skip is reported on the task's own read plane for whoever is watching.
+// An empty key FAILS THE FIRING, and this is the residual's open question answered: derive the
+// others and record the refusal, or refuse the lot. Refuse. A fan-out that drops a member
+// produces a ledger that is quietly short, and short is the one failure a reader cannot see —
+// where a refused firing is loud, is about the whole answer, and leaves the previous state
+// standing to be re-derived when the answer is fixed.
 func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
 	ref, _ := soleRef(spec.Key) // install-checked
 	n, err := deref(root, ref)
