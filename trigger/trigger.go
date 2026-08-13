@@ -605,6 +605,17 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// linkage — which subject this derivation is about — on the precedent the spawn below sets
 	// for its own subject.
 	for _, d := range a.derives() {
+		// A fan-out parses and validates (stratum.go) and does not fire yet. It fails the
+		// firing rather than deriving nothing: a shape the charter accepted and the engine
+		// silently ignores is the failure this project keeps finding elsewhere, and a rule
+		// that installs cleanly and writes nothing is indistinguishable from one whose
+		// condition never matched. See docs/working/derive-each-plan.md, step 2.
+		if d.Each != nil {
+			err := fmt.Errorf("derive into %s: !each is not implemented yet — it parses and "+
+				"validates, and no firing may rely on it", d.addr())
+			e.tracef("trigger %s: %v; not spawning", chain, err)
+			return nil, err
+		}
 		ref := entity.Ref{System: d.System, Kind: d.Kind, ID: deriveID(chainID(chain), subj)}
 		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
 		if err != nil {

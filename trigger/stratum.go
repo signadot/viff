@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/gomap"
@@ -649,9 +650,100 @@ func (e *Engine) stratumFor(target Match) *Stratum {
 type deriveTarget struct {
 	System, Kind string
 	Payload      entity.Payload
+	// Each is set when this target fans out: one derived entity per element of `over`,
+	// addressed by `key`. Payload is nil then, and vice versa.
+	Each *eachSpec
 }
 
 func (d deriveTarget) addr() string { return d.System + ":" + d.Kind }
+
+// eachSpec is `!each {over, key, value}` — the fan-out form of a derive.
+//
+// It exists because one firing derives exactly one entity, and a task that answers with twelve
+// findings has eleven of them left as prose (docs/working/derive-residual.md, and now
+// docs/working/derive-each-plan.md). The invariant it must not break is the one the level
+// ordering rests on: a derive's content is fixed by its address, so a re-fire writes the same
+// bytes to the same place and dies as a no-op. A fan-out keeps that in the generalised form —
+// **content may carry state exactly when the address is a function of that same state** — which
+// is what `key` declares and why it is not optional.
+type eachSpec struct {
+	Over  entity.Payload // a single $reference to the collection to walk
+	Key   entity.Payload // a single $reference, rooted at $item — the address suffix
+	Value entity.Payload // the payload template, per element
+}
+
+// eachTag names the fan-out. Matched through semTags rather than against Node.Tag, because a
+// tag is a dot-separated CHAIN carrying layout the parser wrote: the same charter reads
+// `!each` in block style and `!bracket.each` in flow style, and comparing the string would
+// have quietly fanned out one of them and derived a payload with three odd fields from the
+// other.
+const eachTag = "!each"
+
+// eachFields is the closed keyspace under the tag. Closed on purpose: the residual worried
+// that reserved keys make a payload with a field called `over` unspellable, and a TAG answers
+// that — under it, the keys are the construct's and an unknown one is a typo rather than data.
+var eachFields = map[string]bool{"over": true, "key": true, "value": true}
+
+// isEach reports whether this derive target's value carries the fan-out tag.
+func isEach(n entity.Payload) bool {
+	if n == nil {
+		return false
+	}
+	for _, t := range semTags(n.Tag) {
+		if head, _, _ := ir.TagArgs(t); head == eachTag {
+			return true
+		}
+	}
+	return false
+}
+
+// readEach pulls the triple out of a tagged node. It reports what is missing rather than
+// filling in a default: every one of the three is load-bearing, and a fan-out with no `key`
+// is the shape whose address would stop being a function of its content.
+func readEach(n entity.Payload) (*eachSpec, error) {
+	if n.Type != ir.ObjectType {
+		return nil, fmt.Errorf("!each takes an object of over/key/value, got %v", n.Type)
+	}
+	spec := &eachSpec{}
+	seen := map[string]bool{}
+	for i, f := range n.Fields {
+		name := f.String
+		if !eachFields[name] {
+			return nil, fmt.Errorf("!each has no field %q — it takes over, key and value", name)
+		}
+		seen[name] = true
+		switch name {
+		case "over":
+			spec.Over = n.Values[i]
+		case "key":
+			spec.Key = n.Values[i]
+		case "value":
+			spec.Value = n.Values[i]
+		}
+	}
+	for _, want := range []string{"over", "key", "value"} {
+		if !seen[want] {
+			return nil, fmt.Errorf("!each is missing %q: it walks `over`, addresses each element "+
+				"by `key`, and writes `value`", want)
+		}
+	}
+	return spec, nil
+}
+
+// soleRef reports the reference a node consists ENTIRELY of. A reference embedded in text
+// interpolates and yields a string, which is right for a prompt and wrong for both of these
+// fields: `over` names a collection to walk and `key` names an identity, and neither has a
+// meaning as "some text with a value in it".
+func soleRef(n entity.Payload) (string, bool) {
+	if n == nil || n.Type != ir.StringType {
+		return "", false
+	}
+	s := n.String
+	if l := refAt(s); l == len(s) && l > 0 {
+		return s[1:], true
+	}
+	return "", false
+}
 
 // derives reads THIS action's derive block into its targets. The address is exactly two levels
 // of nesting and everything below is payload, so there is no boundary to find — which is what
@@ -667,11 +759,16 @@ func (a Action) derives() []deriveTarget {
 			continue // refused by validate; nothing to walk
 		}
 		for j, kindName := range sys.Fields {
-			out = append(out, deriveTarget{
-				System:  sysName.String,
-				Kind:    kindName.String,
-				Payload: sys.Values[j],
-			})
+			t := deriveTarget{System: sysName.String, Kind: kindName.String}
+			if v := sys.Values[j]; isEach(v) {
+				// A malformed one is refused at install (validateDerive), so anything reaching
+				// here parses; a reader that cannot is left as a target with neither half set,
+				// which the firing path refuses rather than treating as an empty payload.
+				t.Each, _ = readEach(v)
+			} else {
+				t.Payload = v
+			}
+			out = append(out, t)
 		}
 	}
 	return out
@@ -714,6 +811,12 @@ func (a Action) validateDerive() error {
 		}
 		for j, kindName := range sys.Fields {
 			payload := sys.Values[j]
+			if isEach(payload) {
+				if err := validateEach(payload); err != nil {
+					return fmt.Errorf("action.derive.%s.%s: %w", sysName.String, kindName.String, err)
+				}
+				continue
+			}
 			if payload == nil || payload.Type != ir.ObjectType {
 				// The engine writes the subject linkage into the derived entity, and there is
 				// nowhere to put it on a scalar. That linkage is what makes literal content
@@ -738,6 +841,75 @@ func (a Action) validateDerive() error {
 		}
 	}
 	return nil
+}
+
+// validateEach checks a fan-out at install: the triple is there, `over` and `key` are single
+// references, `key` is rooted at the element, and `value` is an object whose references reach
+// the element or the subject's identity and nothing else.
+//
+// This is where the plain form's rule is RELAXED, and it is worth being exact about what
+// replaces it. A plain derive may not carry state because its address is (rule, subject) and a
+// stateful payload at a fixed address would make a read of a higher level live. A fan-out's
+// address is (rule, subject, key) and `key` is read out of the element — so the same answer
+// yields the same addresses carrying the same payloads, which is the same no-op by a different
+// route. Content may carry state exactly when the address is a function of that same state.
+func validateEach(n entity.Payload) error {
+	spec, err := readEach(n)
+	if err != nil {
+		return err
+	}
+	if _, ok := soleRef(spec.Over); !ok {
+		return fmt.Errorf("!each `over` must be a single reference to the collection to walk " +
+			"(`over: $data.findings`), not text with one in it: a reference embedded in a string " +
+			"interpolates to text, and there is nothing to walk in that")
+	}
+	key, ok := soleRef(spec.Key)
+	if !ok {
+		return fmt.Errorf("!each `key` must be a single reference (`key: $item.symbol`)")
+	}
+	if key != refItem && !strings.HasPrefix(key, refItem+".") {
+		return fmt.Errorf("!each `key` is %q: an element's address must be read out of THE "+
+			"ELEMENT, so it is rooted at $%s. That is the whole of what makes a fan-out safe — "+
+			"the same answer yields the same addresses — and a key read from anywhere else would "+
+			"give every element the same one", "$"+key, refItem)
+	}
+	if spec.Value == nil || spec.Value.Type != ir.ObjectType {
+		// Same reason a plain derive's payload must be an object: the engine writes the subject
+		// linkage into it, and a scalar has nowhere to hold it.
+		return fmt.Errorf("!each `value` must be an object: the engine writes the subject this " +
+			"derivation is about into it, which a scalar has nowhere to hold")
+	}
+	if ref := firstBadEachRef(spec.Value); ref != "" {
+		return fmt.Errorf("!each `value` carries the reference %q: an element's payload may "+
+			"reference the ELEMENT ($%s) and the firing's identity ($%s and its parts), and "+
+			"nothing else. $%s.commit is refused here for the reason it is refused in a plain "+
+			"derive: it is a function of WHEN the firing happened rather than of what it is "+
+			"about, so a derive carrying one writes something new on every lap",
+			ref, refItem, refSubject, refSubject)
+	}
+	return nil
+}
+
+// refItem is the element binding inside a fan-out. `$item` rather than `$resultItem` because
+// the construct is meant to work over `$subject.value.something` too, and a name that hard-codes
+// where the collection came from would have to be renamed or duplicated the first time it does.
+const refItem = "item"
+
+// firstBadEachRef is firstBadRef with the element admitted.
+func firstBadEachRef(n entity.Payload) string {
+	bad := ""
+	eachRef(n, func(ref string) {
+		if bad != "" {
+			return
+		}
+		if ref == refItem || strings.HasPrefix(ref, refItem+".") {
+			return
+		}
+		if !deriveMayReference(ref) {
+			bad = ref
+		}
+	})
+	return bad
 }
 
 // A derive may reference its SUBJECT and nothing else — every part of it, including the
