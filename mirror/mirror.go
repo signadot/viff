@@ -9,6 +9,7 @@
 package mirror
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,47 @@ const InstanceKind = "instance"
 
 // Ref is the entity that mirrors task id.
 func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: InstanceKind, ID: id} }
+
+// RunKind is the kind ONE RUN lives under, as against the id's latest state.
+//
+// `task:instance:<id>` is a live view keyed by the work: an id names the chain and the
+// subject, deliberately, so a re-fire reuses it — and so a second run overwrites the first. A
+// record was found on staging reading `ended` fifty minutes BEFORE its `started`, carrying one
+// run's answer beside another's status, because that is what overwriting field-by-field
+// produces (git-issue gjv063rrh12ksvgnfsn0).
+//
+// So a run also writes itself down at an address only it has. The two are not redundant: the
+// instance answers "what is this work doing", the run answers "what happened that time", and
+// only the second survives the next attempt.
+const RunKind = "run"
+
+// RunRef addresses one run: the task's id and the revision that run is about.
+func RunRef(id string, occurrence int64) entity.Ref {
+	return entity.Ref{System: System, Kind: RunKind, ID: id + "@" + strconv.FormatInt(occurrence, 10)}
+}
+
+// writeRun records this run at its own address — at creation, so a run that never finishes
+// still leaves a trace, and at the terminal, so the outcome is what stands there afterwards.
+//
+// Twice per RUN rather than once per event: the instance record is the live view and pays the
+// per-narration cost already, and a run record that tracked every transition would double the
+// busiest writer in the system to say nothing the instance is not saying better.
+//
+// NOTHING PRUNES THESE, and that is a decision rather than an omission. Growth is one small
+// record per completed run — bounded by runs, not by events or by time — and both ways to
+// remove them already exist: `verse entity rm`, and a charter matching on age that writes
+// `verse.meta.vanishing` and acts on the edge. Choosing a retention count here would be
+// picking a number for how much history is worth keeping before anybody has felt the want of
+// it, in the one place a reader cannot override.
+//
+// An occurrence of 0 writes nothing: without it there is no address that distinguishes this
+// run from the next, and a second record at one address is the bug this is fixing.
+func writeRun(store entity.Store, id string, occurrence int64, st entity.Obj) {
+	if occurrence == 0 {
+		return
+	}
+	write(store, id, st, RunRef(id, occurrence))
+}
 
 // Meta is the provenance Reflect publishes alongside a task's own state: where it runs
 // and what it is about. Grouped rather than passed as four positional strings, which is
@@ -223,6 +265,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if rev := write(store, id, st); m.Occurrence == 0 && rev > 0 {
 		st["occurrence"] = rev
 	}
+	writeRun(store, id, occurrenceOf(st), st)
 	go func() {
 		// A stream ending is not the same fact as a task ending, and treating them as one
 		// is what let a mirror stop forever: the connection died, Reflect returned, and the
@@ -353,6 +396,8 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 							st["err"] = e
 						}
 						write(store, id, st)
+						// And the run's own record, which the next run does not overwrite.
+						writeRun(store, id, occurrenceOf(st), st)
 						// Whatever it was still asking, it will never hear the answer to.
 						// A brokered task ends with an EvStatus and no EvDecision, so
 						// nothing else would ever settle those questions and the docket
@@ -447,6 +492,14 @@ const (
 // task's own event goroutine with nobody to return to, and a task must not stall
 // because its index could not be updated. What it costs is that the entity can lag the
 // task it mirrors — the index is a projection, and the read plane remains the record.
+// occurrenceOf reads the revision a record is about, or 0 when it does not say.
+func occurrenceOf(st entity.Obj) int64 {
+	if v, ok := st["occurrence"].(int64); ok {
+		return v
+	}
+	return 0
+}
+
 // nowStamp is the one spelling of an instant on a task record. UTC, because a reader
 // comparing two tasks should not have to know where each runtime was standing.
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }

@@ -489,6 +489,14 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 func (s *Server) reconcileTasks() {
 	var resumed []resumedRun
 	for _, ent := range s.Store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+		if ent.Ref.Kind == mirror.RunKind {
+			// A record of a run that HAPPENED, not a task that is running. Named explicitly
+			// for the reason the claim below is: it carries a `status` like an instance does,
+			// so nothing later would catch it, and reconcile would try to resume history —
+			// dialling a runner about a run that ended, or stamping `orphaned` on the record
+			// of one that did not.
+			continue
+		}
 		if ent.Ref.Kind == mirror.ClaimKind {
 			// A run claim, not a task. It is cleared below rather than here, and it is
 			// named explicitly so it is not merely skipped by accident (a claim carries no
@@ -1496,7 +1504,9 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 // watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
 // stored beside it: a run's fine grain hangs off the spine, and which one you are reading is
 // a property of what you are watching rather than a flag that could disagree with it.
-func watchesARun(origin entity.Ref) bool { return origin.System == mirror.System }
+func watchesARun(origin entity.Ref) bool {
+	return origin.System == mirror.System && origin.Kind == mirror.InstanceKind
+}
 
 // resolverEvents hands a resolver the stream of the run it watches — the task's OWN read
 // plane, from `?since=`, not a projection of it.

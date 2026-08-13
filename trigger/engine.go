@@ -1746,6 +1746,10 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 // real and reconnectable, not orphans.
 func (e *Engine) ReconcileOrphans() int {
 	n := 0
+	// Every kind the task system holds, deliberately — instances AND run records (see
+	// mirror.RunKind). A run whose runtime died IS orphaned, and its record is the only place
+	// that fact can still be told; leaving it saying `running` forever would make the history
+	// less honest than the live view beside it. Claims carry no status and fall through.
 	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || task.TerminalStatus(status) {
