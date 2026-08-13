@@ -120,6 +120,14 @@ func subjectNode(subj entity.Ref, value entity.Payload, commit int64) *ir.Node {
 // than always supplied.
 type subjectWants struct{ value, commit bool }
 
+// or merges two sets of wants: what either half of a construct reaches for. A fan-out has
+// three documents — what to walk, how to address an element, what to write — and they are
+// resolved against roots built at different moments, so their wants are asked separately and
+// combined rather than computed once over a node nobody wrote.
+func (w subjectWants) or(o subjectWants) subjectWants {
+	return subjectWants{value: w.value || o.value, commit: w.commit || o.commit}
+}
+
 // wantsOf reports which costly parts a document references.
 func wantsOf(p entity.Payload) subjectWants {
 	var w subjectWants

@@ -26,6 +26,7 @@ package trigger
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"strings"
 
@@ -959,6 +960,65 @@ func firstBadRef(n entity.Payload) string {
 	return bad
 }
 
+// eachElements resolves a fan-out's `over` and yields the elements to derive from.
+//
+// `over` must name a LIST. That is narrower than it could be — a kpath can select across
+// structure, and the residual reached for ListKPath so an answer would not have to put its items
+// in one array at one depth — and the narrowness is the point at this size: `$data.findings` and
+// `$data.findings.*` would otherwise be two spellings, one yielding the list as a single element
+// whose `key` cannot resolve, and a fan-out that quietly derives one entity is the failure this
+// whole construct exists to stop being possible. A charter that wants a nested answer flattened
+// says so in its answer contract, where the shape is already declared.
+func (e *Engine) eachElements(spec *eachSpec, root entity.Payload) ([]entity.Payload, error) {
+	ref, _ := soleRef(spec.Over) // install-checked
+	node, err := deref(root, ref)
+	if err != nil {
+		return nil, fmt.Errorf("!each over $%s: %w", ref, err)
+	}
+	if node == nil || node.Type != ir.ArrayType {
+		got := "nothing"
+		if node != nil {
+			got = node.Type.String()
+		}
+		return nil, fmt.Errorf("!each over $%s is %s, and a fan-out walks a LIST: ask for one in "+
+			"the answer contract (`findings: !irtype []`) rather than deriving from a shape "+
+			"nobody declared", ref, got)
+	}
+	return node.Values, nil
+}
+
+// eachRootFor builds the root ONE element resolves against: the subject, and `$item`.
+//
+// The firing's own payload is deliberately not in it. Install already refuses a `value` that
+// references anything else, and this is the same rule said structurally — a derive reaches its
+// subject and its element, and a reader of this function does not have to trust a check
+// somewhere else to know that.
+func eachRootFor(subject *ir.Node, item entity.Payload) entity.Payload {
+	return ir.FromMap(map[string]*ir.Node{
+		refSubject: subject,
+		refItem:    item.DeepCopy(),
+	})
+}
+
+// eachID addresses one derived element: (rule, subject, key).
+//
+// The hash is not decoration. safeSeg flattens the characters an id may not hold, and the keys
+// this construct invites are exactly the ones that need flattening — `source/github.Reflect`
+// carries a slash, and Go's own spelling of a method carries more. Two DISTINCT keys that
+// flatten alike would otherwise share one entity, which is the fan-out silently losing a member:
+// the failure that is invisible because the ledger simply reads short. So a rewritten key takes
+// the hash of what it was, the same way a rewritten subject does in spawnID.
+func eachID(chain string, ref entity.Ref, key string) string {
+	base := spawnID(chain, ref)
+	safe := safeSeg(key)
+	if safe == key {
+		return base + ChainSep + safe
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(key))
+	return fmt.Sprintf("%s%s%s%s%08x", base, ChainSep, safe, hashSep, h.Sum32())
+}
+
 // deriveFromField is where the engine records what a derived entity is about, under the reserved
 // root: verse.meta.derivedFrom = {rule, subject}.
 //
@@ -987,6 +1047,46 @@ func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion
 		return nil, err
 	}
 	return deriveLinkage(expanded, chain, subj)
+}
+
+// eachContent resolves what ONE element derives: its `value` with `$item` and the subject
+// expanded, then the engine's linkage. deriveContent's twin, and it clears `commit` for the same
+// reason — a derive that writes something new on every lap wakes the level above, which wakes
+// the rule again.
+func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj entity.Ref, item entity.Payload) (entity.Payload, error) {
+	w := wantsOf(spec.Value)
+	w.commit = false
+	sn, err := e.subjectFor(oc, subj, w)
+	if err != nil {
+		return nil, err
+	}
+	expanded, err := expandPatch(spec.Value, eachRootFor(sn, item), e.readerFor(oc))
+	if err != nil {
+		return nil, err
+	}
+	return deriveLinkage(expanded, chain, subj)
+}
+
+// eachKey resolves one element's address suffix.
+//
+// An empty key FAILS THE FIRING, and this is the residual's open question answered: derive the
+// others and record the refusal, or refuse the lot. Refuse. A fan-out that drops a member
+// produces a ledger that is quietly short, and short is the one failure a reader cannot see —
+// where a refused firing is loud, is about the whole answer, and leaves the previous state
+// standing to be re-derived when the answer is fixed.
+func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
+	ref, _ := soleRef(spec.Key) // install-checked
+	n, err := deref(root, ref)
+	if err != nil {
+		return "", fmt.Errorf("!each key $%s on element %d: %w", ref, at, err)
+	}
+	s, ok := scalarText(n)
+	if !ok || s == "" {
+		return "", fmt.Errorf("!each key $%s is empty on element %d: every element must carry "+
+			"the field its address is read from, and one that does not cannot be told apart "+
+			"from the next", ref, at)
+	}
+	return s, nil
 }
 
 // deriveLinkage merges the engine's record of what this derivation is about into the content the

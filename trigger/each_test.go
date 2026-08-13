@@ -1,8 +1,12 @@
 package trigger
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/codec"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -216,10 +220,9 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
 	}
 }
 
-// And a firing that reaches one FAILS, loudly, rather than deriving nothing. A charter the
-// engine accepts and then silently ignores is indistinguishable from a condition that never
-// matched, which is the failure this step is shaped to avoid while step 3 is unwritten.
-func TestEachDoesNotFireYet(t *testing.T) {
+// A fan-out over the subject's own state derives one entity per element, addressed by the key
+// read out of that element.
+func TestEachDerivesOnePerElement(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
@@ -234,7 +237,120 @@ func TestEachDoesNotFireYet(t *testing.T) {
     subject: {system: git, kind: commit, value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: {drift: {finding: !each {over: $subject.value.f, key: $item.k, value: {a: $item.k}}}}
+    derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}}
+`
+	trigs, _, strata, ok := parseBlock(src)
+	if !ok {
+		t.Fatal("did not parse as a charter")
+	}
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	for _, s := range strata {
+		if err := eng.addStratum(s, false); err != nil {
+			t.Fatalf("stratum %q: %v", s.Name, err)
+		}
+	}
+	if err := eng.addTrigger(trigs[0], false); err != nil {
+		t.Fatalf("does not install: %v", err)
+	}
+
+	subj := entity.Ref{System: "git", Kind: "commit", ID: "verse/abc"}
+	fire := func(t *testing.T, findings string) error {
+		t.Helper()
+		payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: `+findings+`}`), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := store.Write(entity.Write{At: subj.At(), Value: payload}); err != nil {
+			t.Fatal(err)
+		}
+		oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}, ev: entity.Event{Ref: subj, To: payload}}
+		_, err = trigs[0].Action.applyOne("fan", oc, subj, eng, fromSubject)
+		return err
+	}
+	drift := func() []entity.Entity {
+		return store.List(func(r entity.Ref) bool { return r.System == "drift" })
+	}
+
+	// Twelve findings, twelve entities.
+	var elems []string
+	for i := 0; i < 12; i++ {
+		elems = append(elems, fmt.Sprintf(`{sym: "entity.f%d", was: stale}`, i))
+	}
+	if err := fire(t, "["+strings.Join(elems, " ")+"]"); err != nil {
+		t.Fatalf("firing failed: %v", err)
+	}
+	if got := drift(); len(got) != 12 {
+		t.Fatalf("derived %d entities, want 12", len(got))
+	}
+
+	// Each carries what the element said, and the engine's linkage.
+	for _, e := range drift() {
+		obj := entity.ToObj(e.Payload)
+		if obj["sym"] == nil || obj["was"] != "stale" {
+			t.Errorf("%s carries %v", e.Ref, obj)
+		}
+		if !strings.Contains(e.Ref.ID, "fan@git:commit:verse_abc") {
+			t.Errorf("id %q does not carry (rule, subject)", e.Ref.ID)
+		}
+	}
+
+	// THE INVARIANT the whole level ordering rests on: the same answer re-fired writes the same
+	// bytes to the same addresses, and the store ends it — the write happens (its CAS
+	// precondition is "still what I read", which an identical value satisfies) and raises NO
+	// CHANGE, so nothing downstream is woken and a rule may read a higher level without the
+	// read becoming a cycle. It is the whole reason `key` is declared rather than positional.
+	//
+	// Measured as changes rather than revisions, because a revision moves on any write and
+	// would report a no-op as a difference.
+	mark := store.Rev()
+	if err := fire(t, "["+strings.Join(elems, " ")+"]"); err != nil {
+		t.Fatalf("re-firing failed: %v", err)
+	}
+	if got := drift(); len(got) != 12 {
+		t.Errorf("re-firing the same answer derived %d entities, want the same 12", len(got))
+	}
+	commits, ok := store.Since(mark)
+	if !ok {
+		t.Fatal("the store could not answer what changed")
+	}
+	for _, c := range commits {
+		for _, ch := range c.Changes {
+			if ch.Ref.System == "drift" {
+				t.Errorf("re-deriving the same content changed %s — the no-op the ordering "+
+					"rests on did not hold", ch.Ref)
+			}
+		}
+	}
+
+	// A thirteenth adds one and touches none of the others.
+	if err := fire(t, "["+strings.Join(append(elems, `{sym: "entity.f12", was: stale}`), " ")+"]"); err != nil {
+		t.Fatalf("firing failed: %v", err)
+	}
+	if got := drift(); len(got) != 13 {
+		t.Errorf("derived %d entities, want 13", len(got))
+	}
+}
+
+// An element with no key fails the FIRING, naming which element. Deriving the others and
+// recording the refusal would leave a ledger that is quietly short, and short is the one
+// failure a reader cannot see.
+func TestEachRefusesAnElementWithNoKey(t *testing.T) {
+	src := `
+- name: reflected
+  level: 0
+  match: {system: git}
+- name: findings
+  level: 10
+  match: {system: drift}
+---
+- name: fan
+  stratum: reflected
+  condition:
+    subject: {system: git, kind: commit, value: {reviewed: pending}}
+  action:
+    patch: {reviewed: done}
+    derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}}
 `
 	trigs, _, strata, ok := parseBlock(src)
 	if !ok {
@@ -251,15 +367,134 @@ func TestEachDoesNotFireYet(t *testing.T) {
 		t.Fatalf("does not install: %v", err)
 	}
 	subj := entity.Ref{System: "git", Kind: "commit", ID: "verse/abc"}
-	_, err := trigs[0].Action.applyOne("fan", occasion{ev: entity.Event{Ref: subj}}, subj, eng, fromSubject)
+	payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: [{sym: "entity.a", was: x} {was: y} {sym: "entity.c", was: z}]}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Write(entity.Write{At: subj.At(), Value: payload}); err != nil {
+		t.Fatal(err)
+	}
+	oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}, ev: entity.Event{Ref: subj, To: payload}}
+	_, err = trigs[0].Action.applyOne("fan", oc, subj, eng, fromSubject)
 	if err == nil {
-		t.Fatal("the firing succeeded; an unimplemented fan-out must fail it")
+		t.Fatal("the firing succeeded; an element with no key must fail it")
 	}
-	if !strings.Contains(err.Error(), "not implemented") || !strings.Contains(err.Error(), "drift:finding") {
-		t.Errorf("failed with %q, want it to say what is unimplemented and where", err)
+	if !strings.Contains(err.Error(), "element 1") {
+		t.Errorf("failed with %q, want it to name which element", err)
 	}
-	// And nothing was derived — the refusal is before the write, not after it.
-	if es := store.List(func(r entity.Ref) bool { return r.System == "drift" }); len(es) != 0 {
-		t.Errorf("derived %d entities from a fan-out that does not fire", len(es))
+}
+
+// Two keys that FLATTEN alike must not share an address. safeSeg rewrites what an id may not
+// hold, and the keys this construct invites — package-qualified Go symbols — are full of it.
+// Losing one member of a fan-out to a collision is the failure that reads as a shorter ledger
+// and nothing else.
+func TestEachIDSeparatesKeysThatFlattenAlike(t *testing.T) {
+	subj := entity.Ref{System: "drift", Kind: "head", ID: "x"}
+	seen := map[string]string{}
+	for _, key := range []string{
+		"entity.nodeToPayload",
+		"source/github.Reflect",
+		"source_github.Reflect", // flattens to the same segment as the line above
+		"entity.(*LogdStore).Get",
+		"a b",
+		"a_b",
+	} {
+		id := eachID("fan", subj, key)
+		if prev, dup := seen[id]; dup {
+			t.Errorf("keys %q and %q share the address %q", prev, key, id)
+		}
+		seen[id] = key
+		if strings.ContainsAny(id, "/ \t") {
+			t.Errorf("id %q holds a character an id may not", id)
+		}
+	}
+	// And the chain half is still exact, which is what reads a task's position in its trigger.
+	if chain, _, ok := chainOf(eachID("fan", subj, "entity.f")); !ok || chain != "fan" {
+		t.Errorf("chain = %q (ok=%v), want fan", chain, ok)
+	}
+}
+
+// The motivating path: a completion hook fanning out over the TASK's answer.
+//
+// This is what the construct is for — an agent reports twelve findings and each becomes a fact
+// with an address — and it is a different root from the trigger case above: `over` reads the
+// finished task's payload ($data), while each element's `value` still resolves against the
+// subject and $item alone.
+func TestEachOverATaskAnswer(t *testing.T) {
+	src := `
+- name: reflected
+  level: 0
+  match: {system: git}
+- name: findings
+  level: 10
+  match: {system: drift}
+---
+- name: review
+  stratum: reflected
+  condition:
+    subject: {system: git, kind: commit, value: {reviewed: pending}}
+  action:
+    spawn: {driver: scripted, prompt: "review $sha"}
+    onDone:
+      patch: {reviewed: done}
+      derive:
+        drift:
+          finding: !each
+            over: $data.findings
+            key: $item.symbol
+            value:
+              symbol: $item.symbol
+              says: $item.says
+              about: $subject.id
+`
+	trigs, _, strata, ok := parseBlock(src)
+	if !ok {
+		t.Fatal("did not parse as a charter")
+	}
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	for _, s := range strata {
+		if err := eng.addStratum(s, false); err != nil {
+			t.Fatalf("stratum %q: %v", s.Name, err)
+		}
+	}
+	if err := eng.addTrigger(trigs[0], false); err != nil {
+		t.Fatalf("does not install: %v", err)
+	}
+
+	// What the engine synthesises when a task ends: status, result, and the parsed answer.
+	answer, err := codec.ParseNode([]byte(`{status: done, data: {findings: [`+
+		`{symbol: "entity.nodeToPayload", says: "logd's tombstones"} `+
+		`{symbol: "source/github.Reflect", says: "the log spells it"}]}}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subj := entity.Ref{System: "git", Kind: "commit", ID: "verse/abc"}
+	hook := trigs[0].Action.OnDone
+	if _, err := hook.applyOne("review.onDone", occasion{ev: entity.Event{Ref: subj, To: answer}}, subj, eng, fromCause); err != nil {
+		t.Fatalf("the hook failed: %v", err)
+	}
+
+	got := store.List(func(r entity.Ref) bool { return r.System == "drift" })
+	if len(got) != 2 {
+		t.Fatalf("derived %d entities from a two-finding answer", len(got))
+	}
+	for _, e := range got {
+		obj := entity.ToObj(e.Payload)
+		if obj["about"] != "verse/abc" {
+			t.Errorf("%s lost the subject it is about: %v", e.Ref, obj)
+		}
+		if obj["says"] == nil {
+			t.Errorf("%s lost what the element said: %v", e.Ref, obj)
+		}
+	}
+	// The key that needed flattening is still its own entity, and still legible.
+	var ids []string
+	for _, e := range got {
+		ids = append(ids, e.Ref.ID)
+	}
+	sort.Strings(ids)
+	if !strings.Contains(ids[1], "source_github.Reflect") {
+		t.Errorf("ids = %v, want the flattened symbol to survive in the address", ids)
 	}
 }

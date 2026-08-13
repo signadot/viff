@@ -605,16 +605,44 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// linkage — which subject this derivation is about — on the precedent the spawn below sets
 	// for its own subject.
 	for _, d := range a.derives() {
-		// A fan-out parses and validates (stratum.go) and does not fire yet. It fails the
-		// firing rather than deriving nothing: a shape the charter accepted and the engine
-		// silently ignores is the failure this project keeps finding elsewhere, and a rule
-		// that installs cleanly and writes nothing is indistinguishable from one whose
-		// condition never matched. See docs/working/derive-each-plan.md, step 2.
+		// A FAN-OUT: one derived entity per element of `over`, addressed by `key`.
+		//
+		// `over` resolves against the payload the action reads — the finished task's in a hook,
+		// which is where an answer with twelve findings arrives — while each element's `value`
+		// resolves against the subject and `$item` alone. Two roots, because they are two
+		// different questions: what to walk, and what one element writes.
 		if d.Each != nil {
-			err := fmt.Errorf("derive into %s: !each is not implemented yet — it parses and "+
-				"validates, and no firing may rely on it", d.addr())
-			e.tracef("trigger %s: %v; not spawning", chain, err)
-			return nil, err
+			// The subject parts `over` and `key` reach for: `over: $subject.value.findings` is
+			// the trigger-side spelling and it costs a read at the causing commit, which is
+			// exactly what wantsOf exists to ask for rather than always paying.
+			sn, err := e.subjectFor(oc, subj, wantsOf(d.Each.Over).or(wantsOf(d.Each.Key)))
+			if err != nil {
+				e.tracef("trigger %s: %v; not spawning", chain, err)
+				return nil, err
+			}
+			elems, err := e.eachElements(d.Each, refRoot(root, sn))
+			if err != nil {
+				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
+				return nil, err
+			}
+			for i, item := range elems {
+				key, err := eachKey(d.Each, eachRootFor(sn, item), i)
+				if err != nil {
+					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
+					return nil, err
+				}
+				ref := entity.Ref{System: d.System, Kind: d.Kind, ID: eachID(chainID(chain), subj, key)}
+				payload, err := e.eachContent(d.Each, chain, oc, subj, item)
+				if err != nil {
+					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
+					return nil, err
+				}
+				if err := e.patchEntity(chain, oc.parent, ref, payload); err != nil {
+					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
+					return nil, err
+				}
+			}
+			continue
 		}
 		ref := entity.Ref{System: d.System, Kind: d.Kind, ID: deriveID(chainID(chain), subj)}
 		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
