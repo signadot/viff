@@ -502,6 +502,12 @@ id is the engine's, a function of (rule, subject). It is only installable inside
 level ordering, where it must land strictly above the rule that writes it: see
 [strata](strata.md).
 
+One firing derives one entity — until it says `!each`, which fans out over a list and derives
+one per element, addressed by a key read out of the element. That is the same invariant with
+the key in the address rather than an exception to it, and it is where a task's twelve findings
+become twelve facts instead of eleven paragraphs: see
+[strata](strata.md#each--when-one-answer-holds-many-facts).
+
 `spawn` launches a task from a `launch.Spec` — or, instead of a fixed `driver`, a governed
 `provider` selection of the doer. The spawned task is tagged with the subject, which is
 what makes it part of that subject's flow.

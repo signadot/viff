@@ -51,7 +51,7 @@ The eight, and what each is a residual of:
 | [sources-residual.md](sources-residual.md) | [sources.md](../sources.md) | dial-in, and the levers a resync has not spent |
 | [gh-source-residual.md](gh-source-residual.md) | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own, and what the budget measured |
 | [goals-residual.md](goals-residual.md) | [reference/goals.md](../reference/goals.md) | the definition that no use case has earned |
-| [derive-residual.md](derive-residual.md) | [trigger-model.md](../trigger-model.md) | one firing derives one entity, and what a fan-out would cost the ordering |
+| [derive-residual.md](derive-residual.md) | [strata.md](../strata.md) | the fan-out landed; the sweep, the two neighbours, and what `!each` deliberately does not reach |
 | [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | never deployed, `principal: distinct` unreached, staged work never swept |
 
 [provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under

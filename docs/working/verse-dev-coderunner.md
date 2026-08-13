@@ -260,6 +260,10 @@ keeping rather than papering over with a string field.
 
 ### 8. A task can find N things, and verse cannot make them N facts
 
+*Answered.* `!each` fans a derive out over a task's answer — one entity per element, addressed
+by a key read out of it ([strata.md](../strata.md#each--when-one-answer-holds-many-facts)). The
+rest of this finding is what it was written from, and stands as the case that produced it.
+
 The task as written was **too big**: it conflated find, decide and do, and only the last needs a
 workspace at all. The symptom was that nothing was visible for ten minutes — a task with no
 intermediate artifact has no checkpoint, so working and stuck are indistinguishable. The shape

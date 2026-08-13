@@ -129,8 +129,10 @@ In a spawn's strings the identity parts work too (`prompt: "approve $subject.id"
 are published as flat bindings. `.value` is not: a payload has no text form, and the subject's own
 top-level fields are already flat there (`$stage`).
 
-**The identity is the engine's.** The derived entity's id is a function of (rule, subject), and
-the engine writes the subject linkage itself, at `verse.meta.derivedFrom`:
+**The identity is the engine's.** The derived entity's id is a function of (rule, subject) — of
+(rule, subject, key) for a [fan-out](#each--when-one-answer-holds-many-facts), which is the same
+sentence with the element's key in it — and the engine writes the subject linkage itself, at
+`verse.meta.derivedFrom`:
 
 ```
 $ verse entity get signadot:feature:urgent-label@gh:issue:1
@@ -160,6 +162,63 @@ charter and the id is injective in the subject, which retires
 
 It also forbids rollups: fifty features cannot feed one `do:approve`. The level above reads the
 *set* instead. That is the trade single-writer is bought with.
+
+## `!each` — when one answer holds many facts
+
+One firing derives one entity, which is right until a task answers with twelve findings and
+eleven of them are prose. `!each` is the fan-out:
+
+```tony
+action:
+  derive:
+    drift:
+      finding: !each
+        over:  $data.findings     # a LIST to walk; each element binds $item
+        key:   $item.symbol       # the address, read out of the element
+        value:
+          symbol: $item.symbol
+          says:   $item.says
+          about:  $subject.id
+```
+
+**It is the same invariant, generalised, not an exception to it.** A plain derive may carry no
+state because its address is (rule, subject): content fixed by the address is content that
+rewrites identically, which is the no-op that lets a rule read a higher level safely. A fan-out's
+address is **(rule, subject, key)** with the key read out of the element, so the same answer
+still yields the same addresses carrying the same bytes. The rule underneath both is:
+
+> **A derive may carry state exactly when its address is a function of that same state.**
+
+So `over`, `key` and `value` are checked at install, and each refusal is that sentence applied:
+`over` and `key` must each be a *single* reference (one embedded in text interpolates to a
+string, and there is nothing to walk or address in that); `key` must be rooted at `$item`, or
+every element shares one address; `value` may reference `$item` and the subject's *identity*,
+and `$subject.commit` stays refused for the reason it is refused in a plain derive. The keyspace
+under the tag is closed — `sweep: true` is a typo, not payload.
+
+Two runtime refusals, both loud on purpose. `over` must resolve to a **list**: a charter wanting
+a nested answer flattened says so in its answer contract, where the shape is already declared.
+And an element whose `key` is empty **fails the whole firing**, naming which element — deriving
+the others would lose a member into a ledger that reads short, and short is the one failure
+nobody can see.
+
+The address flattens what an id may not hold (`source/github.Reflect` → `source_github.Reflect`)
+and carries a hash of the original when it does, so two keys that flatten alike stay two
+entities. Put the readable key in the payload too; the address is for the engine.
+
+### It is append-only, and that is a decision
+
+A finding that stops appearing in an answer **leaves its entity standing**. Nothing sweeps.
+
+That is not an oversight to be fixed later, and the reason is the shape of what a fan-out is
+usually for. A ledger wants **resolution to be a fact somebody wrote** — resolved, at this
+commit, by this change — not an absence inferred from a model not mentioning something this
+time. A sweep would turn the second into the first silently, which is worse than leaving a stale
+entity a reader can see and delete.
+
+A derive that *removes* is also a different capability than a derive that loops, and re-opens
+the ordering argument from the other end: a delete is not idempotent the way a write is. It
+should not arrive smuggled inside a fan-out.
 
 ## Path reads inside a derive
 

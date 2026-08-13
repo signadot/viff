@@ -76,7 +76,7 @@ drive a local agent, a remote one, and a human.
 | | [A runner descriptor](working/runner-descriptor.md) — `GET /runner`: how control is applied, and isolation as ordered classes verse compares and does not interpret |
 | | [The coding runner: what is left](working/coding-runner-residual.md) — never deployed, three assumptions riding on that, and the rung nothing reaches |
 | | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; why entity writes having no author is the one defect underneath several |
-| | [Derive: what is left](working/derive-residual.md) — one firing derives one entity, and the invariant a fan-out would have to preserve |
+| | [Derive: what is left](working/derive-residual.md) — the fan-out landed; what it deliberately does not do, and why a sweep is not a longer loop |
 | | [verse-dev: a coding pipeline](working/verse-dev-coderunner.md) — the drive: the walls predicted before the first run, and what running it found |
 | | [Authority](roadmap/authority.md) · [expose](roadmap/expose.md) — where permission comes from, and what a task can see |
 

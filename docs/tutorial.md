@@ -518,7 +518,9 @@ hold both strata and rules — `verse trigger add` installs the ordering first.
 
 The derived entity's id is the *engine's*, a function of (rule, subject), so the rule name and
 the subject are both in it: no two rules can ever address the same derived entity, and a
-re-fire writes the same address rather than a second thing. The engine also records what it is
+re-fire writes the same address rather than a second thing. (A `!each` fan-out adds the
+element's key to that address and nothing else about this changes — see
+[strata](strata.md#each--when-one-answer-holds-many-facts).) The engine also records what it is
 about, at `verse.meta.derivedFrom`.
 
 Declaring nothing is a complete answer — every other shape here has no `stratum:` and is
