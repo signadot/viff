@@ -268,7 +268,12 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 		addStrings(p, "blocks", issue.Blocks)
 		addStrings(p, "blockedBy", issue.BlockedBy)
 		addStrings(p, "duplicates", issue.Duplicates)
-		if issue.ClosedBy != nil && *issue.ClosedBy != "" {
+		// closedBy only where it can be true. It comes from meta.tony, which KEEPS the last
+		// closure across a reopen, so an open issue that was once closed would otherwise read
+		// `status: open` beside the sha that closed it — a record disagreeing with itself,
+		// and the same fact reached two ways is exactly what made the duplicate-ref bug hard
+		// to see (the entities that were wrong were wrong in only one of their two fields).
+		if status == "closed" && issue.ClosedBy != nil && *issue.ClosedBy != "" {
 			p["closedBy"] = *issue.ClosedBy
 		}
 		if g.bodies && body != "" {
@@ -310,7 +315,28 @@ func addStrings(p entity.Obj, key string, v []string) {
 
 // ── git plumbing ─────────────────────────────────────────────────────────────
 
-// gitIssueRefs lists every issue ref in the repository, open and closed, sorted.
+// gitIssueRefs lists every issue ref in the repository, open and closed, sorted — one per
+// issue, which is the part that takes work.
+//
+// `git issue` MOVES a ref to change status: closing takes refs/issues/<id> to
+// refs/closed/<id>, reopening takes it back. In the repository somebody types in, an issue
+// therefore has exactly one ref and its namespace IS its status.
+//
+// A MIRROR is not that repository. `git issue push` writes the new ref and does not delete
+// the one it moved from, so a mirror accumulates both — 12 of 17 closed issues on the verse
+// tracker carry a stale refs/issues alongside their refs/closed. Read naively that is one
+// issue reflected twice, once open and once closed, with nothing deciding which lands: nine
+// closed issues were reading `status: open` on staging, and one entity could say `status:
+// open` while carrying the `closedBy` sha of the commit that closed it.
+//
+// Which of the two is current cannot be answered by the namespaces, because the ambiguity is
+// symmetric: a stale close and a live REOPEN look identical — both leave the id in both
+// namespaces. Preferring closed would fix today's nine and pin every reopened issue closed
+// forever.
+//
+// The refs answer it themselves. They are commits on one chain — create, then close, then
+// reopen, each built on the last — so the DESCENDANT is the current state, exactly, in either
+// direction and with no clock involved. That is what this picks.
 func gitIssueRefs(ctx context.Context, dir string) ([]string, error) {
 	out, err := gitCmd(ctx, dir, "for-each-ref", "--format=%(refname)",
 		"refs/issues/", "refs/closed/")
@@ -319,7 +345,77 @@ func gitIssueRefs(ctx context.Context, dir string) ([]string, error) {
 	}
 	refs := nonEmptyLines(out)
 	sort.Strings(refs)
-	return refs, nil
+	return currentRefs(ctx, dir, refs), nil
+}
+
+// currentRefs reduces the ref list to one ref per issue, keeping the descendant when an id
+// appears in both namespaces. Order is preserved, so the result is still sorted.
+//
+// A pair whose histories are UNRELATED keeps both — deliberately. It should not happen (they
+// share a create commit), and if it does, the two refs are describing different objects that
+// merely share an id; dropping one would be this function inventing an answer where it has
+// none. Reflected twice, the later Add wins and the situation is at least visible.
+func currentRefs(ctx context.Context, dir string, refs []string) []string {
+	byID := map[string][]string{}
+	for _, ref := range refs {
+		xidr, err := issuelib.XIDRFromRef(ref)
+		if err != nil {
+			continue
+		}
+		byID[xidr] = append(byID[xidr], ref)
+	}
+	drop := map[string]bool{}
+	for _, group := range byID {
+		if len(group) != 2 {
+			continue
+		}
+		a, b := group[0], group[1]
+		// Identical commits carry no ordering, and every commit is its own ancestor — so
+		// asking would answer "yes" both ways and the first test would win by accident.
+		// It means somebody COPIED a ref rather than moving it (a real close commits its
+		// metadata first, which is what makes the two differ), and nothing in the refs can
+		// say which namespace is meant. Both stand, and the duplicate stays visible.
+		if sameCommit(ctx, dir, a, b) {
+			continue
+		}
+		switch {
+		case isAncestor(ctx, dir, a, b):
+			drop[a] = true // a is what b was built on: b is current
+		case isAncestor(ctx, dir, b, a):
+			drop[b] = true
+		}
+	}
+	if len(drop) == 0 {
+		return refs
+	}
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if !drop[ref] {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+// sameCommit reports whether two refs name one commit. A git failure answers false, which
+// leaves the pair to the ancestry test below rather than deciding here.
+func sameCommit(ctx context.Context, dir, a, b string) bool {
+	x, err := gitCmd(ctx, dir, "rev-parse", a)
+	if err != nil {
+		return false
+	}
+	y, err := gitCmd(ctx, dir, "rev-parse", b)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(x)) == strings.TrimSpace(string(y))
+}
+
+// isAncestor reports whether a is an ancestor of b. A git failure answers false, which leaves
+// both refs standing rather than guessing — the same choice unrelated histories get.
+func isAncestor(ctx context.Context, dir, a, b string) bool {
+	_, err := gitCmd(ctx, dir, "merge-base", "--is-ancestor", a, b)
+	return err == nil
 }
 
 // gitCatFile reads several objects in ONE git invocation and answers spec→contents, leaving
