@@ -42,8 +42,9 @@ func TestBindCarriesEveryField(t *testing.T) {
 	// overwritten, and carrying it here would let it survive to be overwritten later, which
 	// is a longer way to the same place with a window in the middle.
 	engineOwned := map[string]string{
-		"Chain": "the kpath of the spawning action, which only the engine knows",
-		"Doer":  "who the selection picked, which is an answer and not a request",
+		"Chain":      "the kpath of the spawning action, which only the engine knows",
+		"Doer":       "who the selection picked, which is an answer and not a request",
+		"Occurrence": "the commit that caused this firing, which is a fact about the cause and not a request",
 	}
 
 	out := reflect.ValueOf(spec.Bind(Binding{}))

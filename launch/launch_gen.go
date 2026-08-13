@@ -98,6 +98,11 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["doer"] = ir.FromString(string(s.Doer))
 	}
 
+	// Field: Occurrence
+	if s.Occurrence != 0 {
+		irMap["occurrence"] = ir.FromInt(int64(s.Occurrence))
+	}
+
 	// Field: Provider (optional)
 	if s.Provider != nil {
 		node, err = s.Provider.ToTonyIR(opts...)
@@ -233,6 +238,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "doer", fieldNodeUnwrapped.Type)
 			}
 			s.Doer = string(fieldNodeUnwrapped.String)
+		case "occurrence":
+			// Field: Occurrence
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "occurrence", fieldNodeUnwrapped.Type)
+			}
+			s.Occurrence = int64(*fieldNodeUnwrapped.Int64)
 		case "provider":
 			// Field: Provider
 			s.Provider = &Provider{}

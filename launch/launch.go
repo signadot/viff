@@ -141,6 +141,27 @@ type Spec struct {
 	// Fragment exists to serve, so a task entity showing only the driver would report two
 	// quite different spawns as the same work by the same agent.
 	Doer string `tony:"field=doer,omitzero"`
+	// Occurrence is the store revision this run is ABOUT: the commit that woke the firing.
+	// Engine-owned like Subject, Chain and Doer — a charter that writes it is overwritten.
+	//
+	// A task id names the WORK, deliberately: it is derived from the chain and the subject so
+	// that a re-fire is idempotent, a completion hook is scoped to the run that raised it, and
+	// `verse flow demo:pr:1` has something to address. Nothing named the RUN, and one record
+	// per id meant a second run overwrote the first — a staging record read `ended` fifty
+	// minutes BEFORE its `started`, carrying the result of one run beside the status of
+	// another (git-issue gjv063rrh12ksvgnfsn0).
+	//
+	// A revision rather than a sequence number or a timestamp: an operator asking "which run"
+	// is holding a commit, not a count, and two runs a millisecond apart on one subject is
+	// exactly the case this exists for. Zero when nothing caused it — an ad-hoc `verse task
+	// run` stamps the store's own revision at spawn instead, since that is the same question
+	// asked where there is no firing.
+	//
+	// It rides to the RECORD and stops there. A derive that referenced its cause would
+	// reintroduce the cycle the strata exist to rule out (see deriveMayReference), so this is
+	// not a value a charter can read — it is what a reader of the record uses to tell one run
+	// from the next.
+	Occurrence int64 `tony:"field=occurrence,omitzero"`
 	// Provider, when set, makes the who-axis a GOVERNED SELECTION rather than a fixed
 	// authoring-time value: the engine selects among the eligible doers via the Select
 	// surface, reifies it as a motion, and overlays the winner's Fragment — driver, frame,

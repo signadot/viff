@@ -41,6 +41,14 @@ type Meta struct {
 	// so a completion trigger can advance that subject when the task finishes, and does
 	// not collide with the $subject binding (the matched ref).
 	Subject string
+	// Occurrence is the store revision this RUN is about — the commit that woke the firing,
+	// or the store's own revision when a person typed `verse task run`. Zero when neither is
+	// known.
+	//
+	// A task record is one entity per id, and an id names the work rather than the run, so
+	// without this a second run overwrites the first and the fields of two runs sit side by
+	// side with nothing to tell them apart (git-issue gjv063rrh12ksvgnfsn0).
+	Occurrence int64
 	// Runner is the task-control backend hosting it — "local", "broker", or a remote URL — so a
 	// restart can decide resume-or-orphan.
 	Runner string
@@ -149,6 +157,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.Subject != "" {
 		st["flow"] = m.Subject
 	}
+	if m.Occurrence > 0 {
+		st["occurrence"] = m.Occurrence
+	}
 	if m.Runner != "" { // which runner runs this — so a restart can resume-or-orphan
 		st["runner"] = m.Runner
 	}
@@ -200,7 +211,18 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 			st["dialURL"] = u
 		}
 	}
-	write(store, id, st)
+	// WHICH RUN this record is about. A firing knows — it is the commit that woke it, carried
+	// on Meta — and anything else learns it here, from the commit its own first write landed
+	// at: "the revision this run began at", the same question asked where there is no cause
+	// to point at. Free, because the write happens either way, and it costs the spawn path no
+	// round trip (Store.Rev() opens a watch when none is live; asking it there put a network
+	// call in front of the record and let a task's first gate question outrun it).
+	//
+	// It rides on st, so every later write carries it: the first record cannot hold it —
+	// nothing knows the commit until the write returns — and every one after does.
+	if rev := write(store, id, st); m.Occurrence == 0 && rev > 0 {
+		st["occurrence"] = rev
+	}
 	go func() {
 		// A stream ending is not the same fact as a task ending, and treating them as one
 		// is what let a mirror stop forever: the connection died, Reflect returned, and the
@@ -429,14 +451,17 @@ const (
 // comparing two tasks should not have to know where each runtime was standing.
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 
-func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
+// write puts the record and answers the commit it landed at, or 0 if it did not land.
+func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64 {
 	ref := Ref(id)
 	if len(at) == 1 {
 		ref = at[0]
 	}
-	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: st.Payload()}); err != nil {
-		return
+	_, rev, err := store.Write(entity.Write{At: ref.At(), Value: st.Payload()})
+	if err != nil {
+		return 0
 	}
+	return rev
 }
 
 // ParseResult is the structured face of a driver's final answer: the answer document

@@ -22,6 +22,7 @@ define:
   environment: .[string]
   frame: .[string]
   grant: .[string]
+  occurrence: .[int]
   prompt: .[string]
   provider: .[nullable(verse-launch-provider)]
   resolver: .[string]

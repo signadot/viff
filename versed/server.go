@@ -391,7 +391,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		// and the running path cannot disagree about what was attempted.
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
-			Chain: spec.Chain, Prompt: spec.Prompt,
+			Chain: spec.Chain, Prompt: spec.Prompt, Occurrence: spec.Occurrence,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
 			Resolver: spec.Resolver,
 		}
@@ -2298,6 +2298,11 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
 		Subject: body.Subject, Resolver: body.Resolver,
+		// No Occurrence: nothing caused this one, so there is no commit to name and the
+		// mirror stamps the revision its own first write landed at instead. Reading
+		// Store.Rev() here looked obvious and is a store ROUND TRIP — it opens a watch when
+		// none is live — which put a network call in front of the record write and let the
+		// task's first gate question arrive before the record it is about.
 	})
 	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
