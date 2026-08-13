@@ -1,110 +1,100 @@
-# The store session is a resource to reconcile, not a connection to establish
+# Every call on the store has a budget, or one of them takes everybody's
 
-Status: proposal, nothing here runs.
+Status: the verse-side work is built (`entity/logdstore.go`, `entity/reconnect_test.go`). The
+substrate half is filed upstream as tony-format `ps8kfs9dh12kr777fnn0`.
 
-verse's own law, turned on verse: **a hint is a hint, reconcile is the truth**
-([sources.md](../sources.md)). Every external system verse touches is treated that way, and a
-watch is level-triggered at its open for the same reason. The one connection verse does not
-treat that way is its own, to the store — and a deployment found it.
+**This note said something else first, and was wrong.** It claimed verse's write plane treated a
+dropped connection as terminal — that reads re-established and writes did not, and that what
+verse needed was a session that redials. The evidence was behavioural: versed wrote nothing for
+five and a half minutes and a restart cured it. The reasoning was that a store outage should not
+outlive the outage, which is right; the diagnosis was a guess, and the guess was wrong.
 
-## What happened
+Four tests killed it. `entity/reconnect_test.go` takes the connection away under a live store
+three ways — closed cleanly, gone dark, and peer replaced over the same volume — and the store
+recovers from all three unaided, in 4ms, 15s and 4ms. libctl redials, its heartbeat tears down a
+wedged connection, and `Since` survives the reconnect. **The session was never the problem.** Had
+the first version of this note been implemented, verse would have grown a retry layer over a
+session that already retried, and the outage would have happened again on schedule.
 
-`make deploy` rolls the stateful tier and the engine together. docd's new pod could not start
-until its volume detached from the old node (`FailedAttachVolume — Volume is already exclusively
-attached to one node`), so it began listening at 14:26:14; versed had started at ~14:25:50. From
-then on, every write versed made timed out:
+## What actually happened
 
-```
-verse: source sources:git:cluster: recording error: write sources:git:cluster.lastError: context deadline exceeded
-```
+Two things, and they compound. The first is not verse's at all.
 
-The pod sat at `0/1` for five and a half minutes and would have sat there indefinitely.
-`kubectl rollout restart deploy/versed` fixed it instantly, which is the tell: nothing was
-broken except a session, and nothing was going to fix it except a human.
+**The store got slow, monotonically, and could not stop.** logd never snapshots unless it is
+configured to, and `o sys up` — what the deployment runs — has no way to configure it. So the
+delta log grew from the first commit and every read replayed all of it, through an index build
+that re-parses each path it examines. Measured on staging: a 147 KB document, ~280 entities,
+15 MB of delta log, `logB` at 0 bytes because no snapshot had ever been taken. A match on a 5 KB
+slice took 12.5 seconds. Deleting `/data` and letting the sources refill it: 201ms empty, 659ms
+at 139 commits. Same code, same clients, same data. That is upstream, it is filed, and it is what
+took the engine down — twice in one day, unrecoverable by restarting anything, because the cost
+was on the volume.
 
-## The asymmetry, which is the actual bug
+**And verse turned "slow" into "stopped".** This is ours. Every call on the session had a budget
+except one, and the one without a budget is the one a watch makes when it re-establishes:
 
-One process, one session, two opposite beliefs about the same event.
+    entity/logdstore.go   ctx, cancel := context.WithCancel(s.ctx)   // no deadline
+                          s.sess.Watch(ctx, path, …)
+    libctl/watch.go       s.mu.Lock(); ensureConnected(ctx)
+    libctl/logd.go        connectLocked: dial, back off, retry — until ctx is done
 
-**The read plane recovers.** `LogdStore.WatchSubtree` says so in as many words: a dropped
-connection is *"NOT a terminal condition. We re-establish below rather than returning… every
-ending upstream defines is re-establishable, and re-watching is the whole response."*
+The store's context ends when the process does, so "until ctx is done" was "until versed exits".
+A watch re-establishing into a slow store held the session's one mutex for the duration, and
+every writer queued behind it. **A Go mutex takes no context**, so a writer with a ten-second
+budget did not spend it waiting for the store — it spent it waiting for the lock, got the lock
+after the outage, and only then discovered its deadline had passed. What every caller reported
+was `context deadline exceeded`, on writes that never reached the wire.
 
-**The write plane does not.** A write against a dead session returns a deadline, the caller
-logs it, and the next write does the same thing forever. There is no redial anywhere on that
-path.
+That error is why this looked like a network fault for a day. It names a timeout the caller never
+actually waited out, on an operation that never happened.
 
-**And readiness is right by accident.** `/status` reports `Store.Rev()`, which with no live root
-watch goes through `ensureSynced` and opens a watch — so the probe *is* a store round trip, and
-that is why the pod correctly refused to be ready. Nothing about `/status` says it means to be;
-a future refactor that made `Rev()` read a cached field would silently turn the readiness probe
-into a test that the HTTP server is listening, and this outage would have presented as a healthy
-verse writing nothing.
+## What was built
 
-## What to build
+**One budget, and every session interaction inside it.** `sessionBudget` (10s) is now the single
+number: reads, writes, and the attempt to establish a watch. `establish()` wraps the four watch
+opens that had no bound at all, and its comment carries the reason, because the distinction it
+draws is easy to undo — it bounds the ATTEMPT, not the watch. libctl uses that context for the
+connect and the handshake only and does not retain it, so a bounded attempt costs the watch
+nothing, and the patience that was inside the mutex moves out to the re-establish loop, which has
+backoff and holds nothing while it waits.
 
-Three pieces, and the point is that they are one thing: **the connection is reconciled, and
-readiness is a fact about it.**
+**And the bound a context cannot reach.** Bounding the attempt is not sufficient, which is worth
+knowing before someone simplifies it away: libctl's handshake read takes `wireTimeout`
+unconditionally — 30s by default — so a caller asking for ten seconds still waited thirty when a
+peer accepted a connection and then said nothing. Verse now sets `WireTimeout: sessionBudget` on
+the session it opens. Two bounds, because there are two unbounded things: `establish` bounds the
+retry LOOP, the wire timeout bounds each ATTEMPT, and either alone leaves a hold that outlasts
+every caller's deadline.
 
-**1. A session that redials.** An operation that fails because the store could not be reached
-re-establishes and retries; one that fails because the store *answered* — a CAS precondition, a
-refused replay, a malformed patch — does not. That distinction already exists in the errors and
-is the whole of the design: `task.ErrUnreachable` is the same cut on the runner side.
+`TestWatchReestablishDoesNotStarveWrites` is the proof and was the reproduction: a store with one
+subtree watch, a route that goes dark and heals 20 seconds later. Before, one write attempt in a
+20-second window, failing after connectivity was fine. Now it recovers 5s after the heal.
 
-The watches ride the same session and already know how to come back; what they need from a
-reconnect is a cursor that survives it, which is exactly what `Since` now answers after
-`88651aac` removed the per-instance watermark. A re-established watch replays `FromCommit` and
-the consumer cannot tell. That was not true a day ago, which is worth noticing: this proposal
-became implementable because a different bug got fixed.
+## What is still true from the first version
 
-**2. Readiness that means "the store answered, now".** Deliberately, with its own cheap round
-trip, rather than through whatever `Rev()` happens to do this month. Then kubernetes routes away
-from a verse that cannot serve and back when it can — which is what makes deploy ordering
-unnecessary rather than merely tolerable.
+**Readiness is right by accident.** `/status` reports `Store.Rev()`, which with no live root watch
+opens one — so the probe is a store round trip, and that is why the pod correctly refused traffic
+through both outages. Nothing about `/status` says it means to be. A refactor making `Rev()` read
+a cached field would turn readiness into "the HTTP server is listening", and the next outage of
+this kind would present as a healthy verse writing nothing.
 
-**3. Boot is the steady state's first iteration.** `cmd/verse/up.go` has a patient wait-for-docd
-loop with a deadline and its own log line. Delete it. An unreachable store at second zero is the
+**Boot should be the steady state's first iteration.** `cmd/verse/up.go` still has its own
+wait-for-docd loop, with its own deadline and log line. An unreachable store at second zero is the
 same condition as one that vanished at 14:26, and a system that handles the second needs no
-special case for the first. That is the "restarts included" part: node eviction, a docd rollout,
-a partition and a cold boot stop being four situations.
+special case for the first.
 
-## What is genuinely hard, and must be decided rather than discovered
-
-**Which writes may be retried.** A deadline is not a failure — it is an absence of an answer,
-and the write may have landed. Verse is well placed here and should say so explicitly rather
-than relying on it:
-
-- `Modify` and `CommitIf` carry a precondition, so a retry after an uncertain deadline either
-  applies once or fails its CAS and re-reads. Safe.
-- `ReplaceFrom`/`ReplaceAt` are the single-writer path with no precondition, and they write a
-  whole value. Re-writing the same value is inert. Safe.
-- A bare `Write` with a caller-supplied value is idempotent only if the caller says so. This is
-  the one that needs a decision: either every write in the tree is one of the two above (worth
-  checking; it nearly is), or the retry is opt-in per call.
-
-**What a redial owes a caller mid-flight.** A `Modify` retry loop that redials must not spin
-forever against a store that is down: bounded attempts with backoff, and then the error, which
-callers already handle. The engine's `patchEntity` logs "the firing's state transition was lost"
-— that message stays true and stays rare.
-
-## Why not deploy ordering
-
-It was the first thing I reached for: have `make ship` wait for docd's rollout before versed's.
-It fixes the case somebody foresaw and none of the others — docd restarting at 3am, a node
-eviction, a partition, an OOM — and it puts knowledge about the store's lifecycle into a
-Makefile, which is the wrong place for it and the place nobody looks when the pod is unready.
-
-The ordering question dissolves once the engine converges: versed may start first, be unready
-while docd is absent, and become ready when it arrives. That is what kubernetes' model expects
-of a component, and verse asks exactly this of everything it integrates with.
+Both are in [store-session-plan.md](store-session-plan.md), steps 2 and 4, unbuilt.
 
 ## The pattern worth naming
 
-This is the third time in one day that a property of the PROCESS leaked into behaviour that
-should have been about the store. `Since` refused any cursor below the revision this instance
-opened at, so every restart truncated readable history. A task record is one entity per task
-NAME, so a second run overwrites the first. And a session established once at boot makes an
-outage permanent.
+The first version of this note ended on a pattern — that a property of the PROCESS keeps leaking
+into behaviour that should be about the store — and gave three instances: `Since` refusing cursors
+below this instance's open revision, a task record keyed by name so a second run overwrote the
+first, and a session established once at boot. Two of those were real and are fixed. The third was
+a misreading, and it is the more interesting one now, because of what made it plausible.
 
-Each was locally reasonable and each is the same mistake: the store is a thing out there with
-its own life, and the adapter keeps treating this process's view of it as the fact.
+**An absent bound is invisible while everything is fast.** Every timeout in this system was
+chosen, written down, and defensible, except the one nobody wrote — and that one only ever
+mattered when something else went slow. It cost a day of looking at the wrong layer, and the
+error message pointed away from it the entire time. Where a call can wait on a shared resource,
+the question is not "how long should this take" but "whose deadline is it spending".

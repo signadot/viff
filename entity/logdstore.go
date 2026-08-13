@@ -55,6 +55,13 @@ var (
 	subtreeHealMax   = 5 * time.Minute
 )
 
+// sessionBudget is how long ONE call on the session may take: a read, a write, or an
+// attempt to establish a watch. There is a single number because there is a single reason —
+// the session serializes, so any call's patience is charged to every other caller — and
+// because the one call that had no budget at all is what made a store outage permanent (see
+// establish).
+const sessionBudget = 10 * time.Second
+
 // MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
 // disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
 //
@@ -193,6 +200,15 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 			Addr:     cfg.Addr,
 			ClientID: cfg.ClientID + suffix,
 			Scope:    cfg.Scope, // "" = baseline; non-empty = COW scope for every op
+			// The handshake and each request write get the same budget as everything
+			// else, rather than libctl's 30s default. It has to be said HERE, at the
+			// session, because it is the one bound a caller's context cannot reach: the
+			// hello read takes this deadline unconditionally, so a context asking for
+			// ten seconds still waits thirty when a peer accepts a connection and then
+			// says nothing — with the session's mutex held, which is what turns one
+			// stalled reconnect into every caller's timeout. Upstream:
+			// tony-format ps8kfs9dh12kr777fnn0, defect 4.
+			WireTimeout: sessionBudget,
 		})
 		cctx, ccancel := context.WithTimeout(ctx, connectTimeout)
 		defer ccancel()
@@ -641,7 +657,7 @@ func (s *LogdStore) ensureSynced() {
 	if watching {
 		return // the root watch is live: rev is already current
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, sessionBudget)
 	defer cancel()
 	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{})
 	if err != nil {
@@ -728,7 +744,7 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 		path += "." + seg(kind)
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
-	w, err := s.sess.Watch(ctx, path, &libctl.WatchOptions{})
+	w, err := s.establish(ctx, path, &libctl.WatchOptions{})
 	if err != nil {
 		cancel()
 		return nil, nil, err
@@ -900,7 +916,7 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 				// missed deltas one at a time into a stream that is already the bottleneck: a
 				// 2000-entity slice reached 894 of 2000 in three minutes. Re-initializing
 				// sends ONE State carrying net state, and the same slice completed in 32s.
-				nw, err := s.sess.Watch(ctx, path, &libctl.WatchOptions{})
+				nw, err := s.establish(ctx, path, &libctl.WatchOptions{})
 				if err == nil {
 					w = nw
 					backoff = 100 * time.Millisecond
@@ -1093,7 +1109,7 @@ func (s *LogdStore) Observe() (<-chan Commit, func()) {
 // rev is seeded asynchronously by the first State event (handleEvent).
 func (s *LogdStore) startRootWatchLocked() {
 	wctx, wcancel := context.WithCancel(s.ctx)
-	w, err := s.sess.Watch(wctx, s.root, &libctl.WatchOptions{})
+	w, err := s.establish(wctx, s.root, &libctl.WatchOptions{})
 	if err != nil {
 		wcancel()
 		return // no observers get events until a later Observe retries the open
@@ -1299,7 +1315,7 @@ func (s *LogdStore) runWatch(ctx context.Context, w *libctl.Watch) {
 		if s.isClosed() || ctx.Err() != nil {
 			return
 		}
-		nw, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{})
+		nw, err := s.establish(ctx, s.root, &libctl.WatchOptions{})
 		if err != nil {
 			continue // retry after the next backoff
 		}
@@ -1468,7 +1484,34 @@ func (s *LogdStore) Close() error {
 }
 
 func (s *LogdStore) reqCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(s.ctx, 10*time.Second)
+	return context.WithTimeout(s.ctx, sessionBudget)
+}
+
+// establish opens a watch, bounding the ATTEMPT without bounding the watch.
+//
+// The distinction is the whole of it. A watch lives until it is closed or its connection
+// drops, and that lifetime is the caller's ctx — but the CONNECTING is done inside the
+// session's mutex, and libctl retries the dial with backoff until the context it was given
+// says stop. Hand it a context that never says stop, as every watch here used to, and one
+// re-establishing watch owns the mutex for the entire length of an outage.
+//
+// What that does to everyone else is worse than it sounds, because a Go mutex takes no
+// context. A writer with a ten-second budget does not spend it waiting for the store — it
+// spends it queued on a lock, is handed the lock once the outage ends, and only then
+// discovers its deadline went by. Every caller reports `context deadline exceeded` on a
+// write that never reached the wire, and the store looks dead long after the store is fine.
+// That is a real deployment, five and a half minutes of it, cured by restarting the pod
+// (see TestWatchReestablishDoesNotStarveWrites, which is that outage in 45 seconds).
+//
+// So an attempt gets the same budget every other session call gets, and no more. Patience
+// belongs to the RETRY LOOP, which has backoff and holds nothing while it waits; a long
+// attempt is not patience, it is one caller's exclusive use of the connection everybody
+// shares. libctl uses this context for the connect and the watch handshake only — the Watch
+// it returns does not retain it — so bounding the attempt costs the watch nothing.
+func (s *LogdStore) establish(ctx context.Context, path string, opts *libctl.WatchOptions) (*libctl.Watch, error) {
+	cctx, cancel := context.WithTimeout(ctx, sessionBudget)
+	defer cancel()
+	return s.sess.Watch(cctx, path, opts)
 }
 
 // --- delta walking ---
