@@ -1,0 +1,120 @@
+# The git-issue Source, as a deployed program: `sourced git-issue`, mirroring a remote.
+#
+# It reflects the issues `git issue` keeps INSIDE the repository — `refs/issues/*`, which a
+# mirror clone carries for free (`+refs/*:refs/*`), so this needs no credential the git source
+# does not already need and no route the git source does not already have.
+#
+# It is a SECOND POD over the same remote rather than a second flag on the first, which is worth
+# a sentence because the alternative looks cheaper. The two sources answer different questions
+# about one directory — branch state, and a tracker — and they write disjoint slices (`git:*`
+# and `git-issue:*`), so an operator who wants one without the other says so by running one and
+# not the other. Their mirrors are separate copies of the same remote, which costs a clone and
+# buys the ability to restart, resize or remove either without touching the other.
+#
+# Install it once the pods are up. The name is free, as the git source's is: this one is polled
+# and posts no hints, so there is nothing for a baked-in url to have to match.
+#   verse source add git-issue:cluster http://git-issue-source:9801
+#
+# What it reflects is the drive's own notices: the `contract` issues contributing.md asks for
+# before a breaking push land in this slice, which is what makes `verse docket`'s neighbourhood
+# — a charter reacting to a notice — something that can be written at all.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-issue-source
+  labels:
+    app: verse
+    tier: source
+    source: git-issue
+spec:
+  replicas: 1
+  # Recreate, for the git source's reason: two pods would each hold a mirror, verse would dial
+  # whichever the Service picked, and a fetch's timing would decide which answer a pass got. A
+  # source is the single writer of its slice, and running two of it is what the install's
+  # disjointness check exists to prevent, arriving through the deployment instead.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: verse
+      tier: source
+      source: git-issue
+  template:
+    metadata:
+      labels:
+        app: verse
+        tier: source
+        source: git-issue
+    spec:
+      containers:
+      - name: git-issue-source
+        image: signadot/verse:latest
+        # The mirror spec comes from the build (`-e gitMirror=…`); see deploy/build.tony, where
+        # this shares the git source's knob because the ordinary case is both over one repo.
+        command:
+        - sourced
+        - git-issue
+        - -addr
+        - :9801
+        - -state
+        - /repos
+        - -mirror
+        - https://github.com/signadot/verse.git
+        ports:
+        - name: source
+          containerPort: 9801
+        # The same read-only credential helper the git source carries, and for the same reasons
+        # — the Secret is optional, so a public mirror needs nothing and a private one needs no
+        # change here. See deploy/git-source/git-source.yaml, which explains why this is a
+        # `get`-only helper rather than `store --file=…`.
+        env:
+        - name: GIT_CONFIG_COUNT
+          value: "1"
+        - name: GIT_CONFIG_KEY_0
+          value: credential.helper
+        - name: GIT_CONFIG_VALUE_0
+          value: '!f() { if [ "$1" = get ]; then cat /git-credentials/credential 2>/dev/null; fi; }; f'
+        volumeMounts:
+        - name: repos
+          mountPath: /repos
+        - name: git-credentials
+          mountPath: /git-credentials
+          readOnly: true
+        readinessProbe:
+          # GET /source is the contract's own "what are you", which is the question a readiness
+          # probe is asking. A source that cannot answer it is one verse's install probe would
+          # call unreachable.
+          httpGet:
+            path: /source
+            port: source
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      # An emptyDir: the mirror is a cache of a remote that is still the truth, and a restart
+      # re-clones it. An issue repository is small — refs/issues holds notes, not history — so
+      # this is cheaper here than it is for the git source.
+      - name: repos
+        emptyDir: {}
+      - name: git-credentials
+        secret:
+          secretName: verse-git
+          optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-issue-source
+  labels:
+    app: verse
+    tier: source
+    source: git-issue
+spec:
+  selector:
+    app: verse
+    tier: source
+    source: git-issue
+  ports:
+  - name: source
+    port: 9801
+    targetPort: source

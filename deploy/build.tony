@@ -123,6 +123,13 @@ build:
     gitSource: false
     gitMirror: "https://github.com/signadot/verse.git"
 
+    # The issues `git issue` keeps inside that same repository, reflected as `git-issue:*`. It
+    # shares gitMirror rather than taking a knob of its own: the two sources answer different
+    # questions about ONE directory, and an operator mirroring a different repository for
+    # issues than for branches is a shape nobody has wanted. Split the knob the day somebody
+    # does, not before.
+    gitIssueSource: false
+
     slackSource: false
     slackSourceName: "workspace"
     # "" takes the team name the bot token belongs to — the id prefix every slack:* entity
@@ -176,6 +183,8 @@ build:
     dir: hostpv
   - if: '.[gitSource]'
     dir: git-source
+  - if: '.[gitIssueSource]'
+    dir: git-issue-source
   - if: '.[slackSource]'
     dir: slack-source
   - if: '.[linearSource]'
@@ -630,6 +639,28 @@ build:
               command:
               - sourced
               - git
+              - -addr
+              - ":9801"
+              - -state
+              - /repos
+              - -mirror
+              - $[gitMirror]
+
+  - if: '.[gitIssueSource]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-issue-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: git-issue-source
+              image: $[image]
+              command:
+              - sourced
+              - git-issue
               - -addr
               - ":9801"
               - -state
