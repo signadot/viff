@@ -709,3 +709,41 @@ func TestAFinishedTaskIDRunsAgain(t *testing.T) {
 		})
 	}
 }
+
+// A push target may name the commit the work started from, because a task id alone is not
+// unique over time.
+//
+// A charter's task id is a function of (chain, subject), so a rule whose subject is one
+// long-lived entity — main's tip — mints the same id for every firing. Every fix then lands on
+// one ref, each overwriting the last: invisible while the overwritten branch was merged or
+// redundant, and lost work the first time it was not. Observed twice on the verse-dev drive
+// before it cost anything.
+//
+// Both sides must agree on the expansion: the parent pushes it, the child names it in the effect
+// its delivery gate matches on. So the sha travels in the child's config, and this asserts the
+// two agree rather than merely that each works.
+func TestPushTargetCarriesTheBaseSha(t *testing.T) {
+	repo := Repo{Name: "verse", Repo: "…", Base: "main", Push: "refs/heads/verse/auto/$sha/$task"}
+	parent := &Tree{Repo: repo, Head: "7281b71624be224b6f9b47530353077b1bb7f62a"}
+	branch := autoBranchPrefix + "comment-drift@x"
+
+	got := parent.PushTarget(branch)
+	want := "refs/heads/verse/auto/7281b716/comment-drift@x"
+	if got != want {
+		t.Fatalf("parent target = %q, want %q", got, want)
+	}
+
+	// The child rebuilds its trees from what the parent handed over; a target computed there
+	// must be the same string, or a gate matches a ref the push never wrote.
+	child := &Tree{Repo: repo, Head: map[string]string{"verse": parent.Head}["verse"]}
+	if child.PushTarget(branch) != got {
+		t.Errorf("child target = %q, parent %q — a gate would match a ref nobody pushes",
+			child.PushTarget(branch), got)
+	}
+
+	// And two reviews of two commits are two refs, which is the whole point.
+	other := &Tree{Repo: repo, Head: "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"}
+	if other.PushTarget(branch) == got {
+		t.Error("two commits share one ref; the second fix would overwrite the first")
+	}
+}

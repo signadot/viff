@@ -42,7 +42,7 @@ environments:
     # A LOCAL ref for the first generations. The branch lands in the same repository the task
     # read, where a person can diff it, and nothing reaches a remote until somebody has.
     # Phase 4 is the step that changes this, and it is gated for that reason.
-    push: "refs/heads/verse/auto/$task"
+    push: "refs/heads/verse/auto/$sha/$task"
   # The harness, not the agent binary. A foreign agent is opaque, so a vector has two
   # positions for it — invoke or do not — and neither the actions it takes nor its reasoning
   # reach the read plane. Every tool below is an action the vector sees, gates and narrates,

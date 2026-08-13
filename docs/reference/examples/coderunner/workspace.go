@@ -315,12 +315,15 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 // Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
 // what the runner prepared for it (see taskproc.go).
 //
-// Two absences are the design rather than an omission. There is no auth on these trees, because
-// nothing on that side of the process boundary may reach a remote; the credential stays in the
-// parent and delivery is the parent's act. And Head is empty, because the sha the work started
-// from is what a DIFF is taken against, which is also the parent's job — this side only needs to
-// know what the working tree currently says, which it reads from the working tree.
-func Reopen(root string, env Environment, branch string) (*Workspace, error) {
+// There is no auth on these trees, because nothing on that side of the process boundary may
+// reach a remote: the credential stays in the parent and delivery is the parent's act.
+//
+// Head is HANDED OVER rather than read here. This side does not need it to diff — that is the
+// parent's job — but it does need it to name the push target its delivery proposes, since a
+// `$sha` in that target has to expand to the same thing on both sides or a gate matches a ref
+// the push never wrote. Reading it from the checkout would agree today and stop agreeing the
+// moment a task committed.
+func Reopen(root string, env Environment, branch string, bases map[string]string) (*Workspace, error) {
 	w := &Workspace{Env: env, Root: root, Branch: branch}
 	for _, r := range env.Repos {
 		dir := filepath.Join(root, r.Name)
@@ -328,7 +331,7 @@ func Reopen(root string, env Environment, branch string) (*Workspace, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reopen %s in %s: %w", r.Name, root, err)
 		}
-		w.Trees = append(w.Trees, &Tree{Repo: r, Dir: dir, repo: repo})
+		w.Trees = append(w.Trees, &Tree{Repo: r, Dir: dir, repo: repo, Head: bases[r.Name]})
 	}
 	return w, nil
 }
@@ -415,12 +418,39 @@ func (t *Tree) changed() []string {
 	return files
 }
 
-// PushTarget is where this repository's branch goes, with $task expanded. Empty means nowhere.
+// PushTarget is where this repository's branch goes, with $task and $sha expanded. Empty means
+// nowhere.
+//
+// `$sha` is the commit the work started from, and it exists because `$task` alone is not unique
+// over time. A charter's task id is a function of (chain, subject), so a rule whose subject is
+// one long-lived entity — main's tip, a repository, a queue — mints the SAME id for every firing
+// and every fix lands on one ref, each overwriting the last. That is invisible while the
+// overwritten branch was merged or redundant, and it is lost work the first time it was not.
+//
+// With the base sha in it, two reviews of two commits are two branches and two reviews of ONE
+// commit are one, which is the right identity in both directions: a re-run of the same review
+// should land where the first one did.
+//
+// Both sides compute this — the parent to push, the child to declare the effect its delivery
+// gate matches on — so the sha travels in the child's config rather than being re-derived there.
+// Re-deriving it from the checkout would agree today, because a task in these environments has
+// no way to commit, and would diverge the moment one did: the gate would name a ref the push
+// never wrote.
 func (t *Tree) PushTarget(branch string) string {
 	if t.Repo.Push == "" {
 		return ""
 	}
-	return strings.ReplaceAll(t.Repo.Push, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
+	out := strings.ReplaceAll(t.Repo.Push, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
+	return strings.ReplaceAll(out, "$sha", shortSha(t.Head))
+}
+
+// shortSha is the branch-name form of a commit: enough to be unique in a repository this size
+// and short enough that a ref stays readable next to a task id that is already long.
+func shortSha(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
+	}
+	return sha
 }
 
 // commitWork commits whatever the task produced and reports whether there is anything to deliver.

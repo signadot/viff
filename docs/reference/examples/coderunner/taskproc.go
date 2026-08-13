@@ -68,9 +68,15 @@ const (
 // runner's own config: one environment rather than the catalogue, resolved credentials rather
 // than the names of environment variables to look them up in, and no git token.
 type childConfig struct {
-	ID          string             `tony:"field=id"`
-	Workspace   string             `tony:"field=workspace"`
-	Branch      string             `tony:"field=branch"`
+	ID        string `tony:"field=id"`
+	Workspace string `tony:"field=workspace"`
+	Branch    string `tony:"field=branch"`
+	// Bases is repository name → the sha its checkout started from. It travels rather than
+	// being read here so that a `$sha` in a push target expands identically on both sides of
+	// the process boundary: this side names the ref its delivery gate matches on, the parent
+	// writes it, and a gate matching a ref nobody pushed is the divergence worth spending a
+	// field to prevent.
+	Bases       map[string]string  `tony:"field=bases,omitzero"`
 	Brief       string             `tony:"field=brief,omitzero"`
 	Environment Environment        `tony:"field=environment"`
 	Agents      map[string]Command `tony:"field=agents,omitzero"`
@@ -107,7 +113,7 @@ func runTaskProcess() error {
 	// The checkout is the parent's work — it holds the mirrors and the credential. This side
 	// opens what is already there, which is also why its Trees carry no auth: nothing on this
 	// side of the boundary can reach a remote.
-	ws, err := Reopen(cc.Workspace, cc.Environment, cc.Branch)
+	ws, err := Reopen(cc.Workspace, cc.Environment, cc.Branch, cc.Bases)
 	if err != nil {
 		return fmt.Errorf("-task: %w", err)
 	}

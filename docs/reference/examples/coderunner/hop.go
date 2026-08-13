@@ -302,8 +302,12 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		box.Egress = eg.sock
 	}
 
+	bases := map[string]string{}
+	for _, t := range ws.Trees {
+		bases[t.Repo.Name] = t.Head
+	}
 	cfg := childConfig{
-		ID: id, Workspace: ws.Root, Branch: ws.Branch, Brief: ws.Brief(),
+		ID: id, Workspace: ws.Root, Branch: ws.Branch, Brief: ws.Brief(), Bases: bases,
 		Environment: env, Agents: r.cfg.Agents, Egress: eg.insideAs(r.conf),
 		LLM: LLMCreds{
 			BaseURL: r.cfg.LLM.BaseURL, Model: r.cfg.LLM.Model,

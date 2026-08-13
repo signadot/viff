@@ -43,7 +43,7 @@ data:
       - name: verse
         repo: "https://github.com/signadot/verse"
         base: main
-        push: "refs/heads/verse/auto/$task"
+        push: "refs/heads/verse/auto/$sha/$task"
       driver: llm
       tools: [read_file, list_dir, write_file]
       commands: [go, gofmt]
@@ -105,7 +105,7 @@ data:
         base: main
         # $task expands to the task id, so two runs never contend for a ref. A charter-spawned
         # id is `<chain>@<subject>`, which is not a legal ref name — the runner flattens it.
-        push: "refs/heads/verse/auto/$task"
+        push: "refs/heads/verse/auto/$sha/$task"
       driver: llm
       tools: [read_file, list_dir, write_file, run_bash, call_agent]
       commands: [git, go, gofmt]
