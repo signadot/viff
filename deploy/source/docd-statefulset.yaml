@@ -27,6 +27,25 @@ spec:
         # The stateful tier: logd+docd on the /data volume. `o sys up` runs just the
         # daemons (no engine). versed attaches over the client/mount faces.
         # o wants space-separated, single-dash flags (not --flag=value).
+        #
+        # NO SNAPSHOT POLICY IS NAMED HERE, and that is now deliberate rather than
+        # unexamined. It was unexamined once, and it cost this deployment two outages in a
+        # day: before go-tony v0.0.128 a logd given no config never snapshotted at all, and
+        # `o sys up` had no way to give it one — so the delta log grew from the first commit
+        # and every read replayed all of it. A 147KB store took 6.4s to read and its writes
+        # timed out; the engine sat unready and no restart helped, because the cost was on
+        # this volume. (tony-format ps8kfs9dh12kr777fnn0.)
+        #
+        # Since v0.0.128 a server with no config gets DefaultConfig(): a snapshot every 1000
+        # commits or 4 MiB of accumulated delta, whichever comes first. That is a guess, and
+        # upstream says so — the point is that the alternative to a guess is unbounded
+        # growth. Restating it here would freeze this deployment on today's guess for no
+        # reason, so we take theirs. A store that needs its own passes `-config <file>`, the
+        # same file `o system logd serve` takes.
+        #
+        # What to watch, if reads ever get slow again: `ls -l /data/logA /data/logB` — a
+        # logB of 0 bytes after real traffic means no snapshot has ever been taken, which is
+        # the shape of the outage above.
         command:
         - o
         - sys

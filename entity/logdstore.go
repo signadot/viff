@@ -200,14 +200,13 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 			Addr:     cfg.Addr,
 			ClientID: cfg.ClientID + suffix,
 			Scope:    cfg.Scope, // "" = baseline; non-empty = COW scope for every op
-			// The handshake and each request write get the same budget as everything
-			// else, rather than libctl's 30s default. It has to be said HERE, at the
-			// session, because it is the one bound a caller's context cannot reach: the
-			// hello read takes this deadline unconditionally, so a context asking for
-			// ten seconds still waits thirty when a peer accepts a connection and then
-			// says nothing — with the session's mutex held, which is what turns one
-			// stalled reconnect into every caller's timeout. Upstream:
-			// tony-format ps8kfs9dh12kr777fnn0, defect 4.
+			// One budget for every interaction with the store, including the ones
+			// libctl bounds by its own number rather than the caller's. Since go-tony
+			// v0.0.128 the handshake takes min(wireTimeout, the caller's deadline), so
+			// establish() already bounds a reconnect; what remains on this number is the
+			// request WRITE, which holds the wire while it runs and would otherwise
+			// overrun a ten-second caller by twenty. Verse writes entities, not blobs:
+			// ten seconds to put a few KB on a socket means the peer is gone.
 			WireTimeout: sessionBudget,
 		})
 		cctx, ccancel := context.WithTimeout(ctx, connectTimeout)
@@ -1490,18 +1489,23 @@ func (s *LogdStore) reqCtx() (context.Context, context.CancelFunc) {
 // establish opens a watch, bounding the ATTEMPT without bounding the watch.
 //
 // The distinction is the whole of it. A watch lives until it is closed or its connection
-// drops, and that lifetime is the caller's ctx — but the CONNECTING is done inside the
-// session's mutex, and libctl retries the dial with backoff until the context it was given
-// says stop. Hand it a context that never says stop, as every watch here used to, and one
-// re-establishing watch owns the mutex for the entire length of an outage.
+// drops, and that lifetime is the caller's ctx — but CONNECTING is exclusive, and libctl
+// retries the dial with backoff until the context it was given says stop, holding the
+// session's one connect slot throughout. Hand it a context that never says stop, as every
+// watch here used to, and one re-establishing watch owns that slot for the length of an
+// outage. Nobody else connects, so nobody else does anything.
 //
-// What that does to everyone else is worse than it sounds, because a Go mutex takes no
-// context. A writer with a ten-second budget does not spend it waiting for the store — it
-// spends it queued on a lock, is handed the lock once the outage ends, and only then
-// discovers its deadline went by. Every caller reports `context deadline exceeded` on a
-// write that never reached the wire, and the store looks dead long after the store is fine.
-// That is a real deployment, five and a half minutes of it, cured by restarting the pod
-// (see TestWatchReestablishDoesNotStarveWrites, which is that outage in 45 seconds).
+// go-tony v0.0.128 changed how the others fail, not whether. Before it the connect happened
+// under the mutex every request needed, and a Go mutex takes no context: a writer spent its
+// ten seconds queued on a lock rather than waiting for the store, was handed the lock after
+// the outage, and only then found its deadline gone — reporting `context deadline exceeded`
+// for a write that never reached the wire. That was a real deployment, five and a half
+// minutes of it, cured by restarting the pod. Since 128 the slot is ctx-aware and a waiter
+// fails on its OWN deadline, which is a far better error and the same outcome.
+//
+// Only the holder can end it, and the holder is here. The starvation test still fails
+// without this bound on 128, so this is the fix rather than a workaround for a version of
+// libctl that has moved on.
 //
 // So an attempt gets the same budget every other session call gets, and no more. Patience
 // belongs to the RETRY LOOP, which has backoff and holds nothing while it waits; a long
