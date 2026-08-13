@@ -262,7 +262,19 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	//
 	// It rides on st, so every later write carries it: the first record cannot hold it —
 	// nothing knows the commit until the write returns — and every one after does.
-	if rev := write(store, id, st); m.Occurrence == 0 && rev > 0 {
+	// The first write REPLACES what stands at this address; every one after it merges.
+	//
+	// An id names the work, so a new run writes to the record the last one left — and a write
+	// is a patch, so `started` and `status` from this run landed on top of `ended`, `err`,
+	// `result` and `lastOutput` from the one before. That is how a record comes to say it
+	// started at 20:42 and ended at 20:41: not a clock, not a race, just two runs merged into
+	// one document with nothing marking where one stopped. entity.Raw is named for exactly
+	// this — "a merge would leave fields of the version before it standing in the version
+	// after" — and a task record is the document it describes.
+	//
+	// Only the FIRST write: the rest are this run's own transitions, and each is meant to land
+	// on what it wrote a moment ago.
+	if rev := replace(store, id, st); m.Occurrence == 0 && rev > 0 {
 		st["occurrence"] = rev
 	}
 	writeRun(store, id, occurrenceOf(st), st)
@@ -503,6 +515,20 @@ func occurrenceOf(st entity.Obj) int64 {
 // nowStamp is the one spelling of an instant on a task record. UTC, because a reader
 // comparing two tasks should not have to know where each runtime was standing.
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
+
+// replace puts the record OVER whatever stands at its address, so nothing of a previous run
+// survives into this one. See Reflect for why the first write of a run must not merge.
+func replace(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64 {
+	ref := Ref(id)
+	if len(at) == 1 {
+		ref = at[0]
+	}
+	_, rev, err := store.Write(entity.Write{At: ref.At(), Value: entity.Raw(st.Payload())})
+	if err != nil {
+		return 0
+	}
+	return rev
+}
 
 // write puts the record and answers the commit it landed at, or 0 if it did not land.
 func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64 {

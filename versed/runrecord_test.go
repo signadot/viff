@@ -77,6 +77,22 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 		t.Fatalf("the successful run's record carries the failure: %v", b)
 	}
 
+	// And the instance describes ONE run, not two merged. This is the shape that started all
+	// of it: a record reading `ended` before `started`, because a write is a patch and the new
+	// run's fields landed on top of the old run's without displacing them. Somebody reading it
+	// cannot tell which half is about which run — and the earlier fix, which stamped the
+	// occurrence, made that detectable without making it stop.
+	inst := entity.ToObj(mustGet(t, store, mirror.Ref("run-1")))
+	if inst["err"] != nil {
+		t.Fatalf("the second run's record carries the first's failure: %v", inst)
+	}
+	if started, ended := inst["started"], inst["ended"]; started != nil && ended != nil {
+		if started.(string) > ended.(string) {
+			t.Fatalf("the record started (%v) after it ended (%v) — two runs in one document",
+				started, ended)
+		}
+	}
+
 	// And the instance is still the live view — the latest run, as every reader of it expects.
 	e, ok, err := store.Get(mirror.Ref("run-1"))
 	if err != nil || !ok {
@@ -124,4 +140,13 @@ func waitRunAfter(t *testing.T, store entity.Store, id string, prev int64) int64
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
+}
+
+func mustGet(t *testing.T, store entity.Store, ref entity.Ref) entity.Payload {
+	t.Helper()
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("get %s: ok=%v err=%v", ref, ok, err)
+	}
+	return e.Payload
 }
