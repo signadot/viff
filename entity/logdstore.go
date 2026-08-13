@@ -291,49 +291,54 @@ func payloadToNode(p Payload) *ir.Node {
 	return clone(p)
 }
 
-// nodeToPayload is the read face. A node is already a payload; the only work left is
-// dropping null-valued FIELDS of an object — VERSE's tombstones, not logd's — so callers
-// see only what is present. A scalar payload has no fields and passes through untouched; a
-// null one is an absent entity and reads as nil.
+// nodeToPayload is the read face: a node is already a payload, so the only work is putting its
+// fields in a canonical ORDER. Nothing is dropped.
 //
-// It recurses, because a tombstone can be at any depth now that a write can be: removing
-// `labels.urgent` leaves a null AT that key, and a reader shown `labels: {urgent: null}`
-// would say the label is still there, holding nothing. Arrays are left alone — a null in a
-// list is a position, not an absence.
+// It used to drop every untagged null field at any depth, because verse spelled "this field is
+// gone" by writing one — the read half of a matched pair with addRemovedNulls below. That
+// convention worked and cost the data model a legal value: a bare null could not be stored as
+// DATA anywhere, at any depth, including inside a charter's own `!raw` spec, where by read time
+// the escape is consumed and what is left is an ordinary object to walk into. So
+// `value: !not {reviewed: null}` — the absence latch trigger-model.md documents — came back as
+// `!not {}`, which is a perfectly good pattern meaning something else, and every rule written
+// that way silently selected nothing from its first restart onward. A store may choose how it
+// spells absence; it may not choose which values you are allowed to hold. Absence is `!delete`
+// now, which is what the substrate underneath always used: logd holds a bare null as an
+// ordinary value, through restart, log switch and compaction.
 //
-// A TAGGED null is not a tombstone but a value, and is kept. Absence is spelled by VERSE and
-// by nothing else: logd itself stores a bare null as an ordinary value, so a stray untagged
-// null would read back unchanged forever. The convention is this package's own, and this is
-// one half of a matched pair — addRemovedNulls (and Write with a nil value) write a bare
-// null to mean "this field is gone"; this function drops every untagged null it reads, at
-// any depth, so a caller never sees the marker. A null wearing a tag got there as data,
-// `patch: {tmp: !delete null}` in a stored rule being the case this exists for, and dropping
-// it takes an operation out of a charter that reads back otherwise intact. (A null a writer
-// meant as data and wrote bare is still indistinguishable from a tombstone; that was true
-// before and is unchanged.)
+// The ORDER survives that change and is the reason this function still exists. ir.FromMap
+// sorts, and a payload is compared against the last one to decide whether an entity changed —
+// so a canonical order is what keeps that answer about the value rather than about the order
+// two reads happened to return.
 //
-// An object is rebuilt without its dead fields, and KEEPS ITS OWN TAG. Rebuilding used to
-// drop it, which is invisible for the record-shaped payloads verse writes — they are untagged
-// objects — and total for one that holds a document: a goal whose `doneWhen: !fact {facts: …}`
-// went into the store intact came back an untagged object, and read as a match with an
-// unknown `facts` key. Field order is not preserved (ir.FromMap sorts), on purpose: a payload
-// is compared against the last one to decide whether an entity changed, and a canonical order
-// is what keeps that answer about the value rather than about the order two reads happened to
-// return.
+// An object KEEPS ITS OWN TAG. Rebuilding used to drop it, which is invisible for the
+// record-shaped payloads verse writes — they are untagged objects — and total for one that
+// holds a document: a goal whose `doneWhen: !fact {facts: …}` went into the store intact came
+// back an untagged object, and read as a match with an unknown `facts` key.
+//
+// A NULL NODE AT THE ROOT is still absence rather than a value, and that is the store's own
+// spelling rather than this convention's: Get reads it as "nothing stands here", which is what
+// a path holding nothing answers with.
 func nodeToPayload(node *ir.Node) Payload {
+	// A null AT THE ROOT is "nothing stands here" — the store's own answer for an empty path,
+	// and a different question from what a null FIELD means, which is null. Recursing through
+	// this check is what would confuse the two.
 	if node == nil || (node.Type == ir.NullType && node.Tag == "") {
 		return nil
 	}
-	if node.Type != ir.ObjectType {
-		return node
+	return canonicalFields(node)
+}
+
+// canonicalFields sorts an object's fields, at any depth, and changes nothing else.
+func canonicalFields(n *ir.Node) *ir.Node {
+	if n == nil || n.Type != ir.ObjectType {
+		return n
 	}
-	live := map[string]*ir.Node{}
-	for k, v := range ir.ToMap(node) {
-		if p := nodeToPayload(v); p != nil {
-			live[k] = p
-		}
+	fields := map[string]*ir.Node{}
+	for k, v := range ir.ToMap(n) {
+		fields[k] = canonicalFields(v)
 	}
-	return ir.FromMap(live).WithTag(node.Tag)
+	return ir.FromMap(fields).WithTag(n.Tag)
 }
 
 // addRemovedNulls makes a Patch replace rather than merge: for every field present
@@ -353,7 +358,7 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 		k := fieldName(f) // old came from Match: keys needing quoting arrive quoted
 		if _, ok := fields[k]; !ok {
 			node.Fields = append(node.Fields, ir.FromString(k))
-			node.Values = append(node.Values, ir.Null())
+			node.Values = append(node.Values, deleteOp())
 		}
 	}
 }
@@ -448,7 +453,7 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	path := s.writePath(w.At)
 	node := payloadToNode(w.Value)
 	if w.Value == nil {
-		node = ir.Null() // remove whatever stands there
+		node = deleteOp() // remove whatever stands there
 	}
 	if len(w.When) == 0 {
 		res, err := s.sess.Patch(ctx, path, node)

@@ -450,3 +450,75 @@ func waitTerminal(t *testing.T, s entity.Store, name, outcome string) {
 		}
 	}
 }
+
+// THE ABSENCE LATCH SURVIVES BEING WRITTEN DOWN.
+//
+// trigger-model.md names `value: !not {x: null}` as the latch for a rule whose written value it
+// cannot predict — "ask for the ABSENCE of what the action writes, which latches whatever value
+// lands" — and every spawning rule needs a latch. It could not be stored: verse spelled a
+// removed field with a bare null and hid every bare null it read, at any depth, `!raw` included,
+// so the subject came back as `!not {}`.
+//
+// Which is the part that made it silent. `!not {}` is not a broken pattern; `{}` matches any
+// OBJECT, so its negation matches every payload that is not a record — and since every entity in
+// a slice like this is a record, the rule installed cleanly, watched the right subtree, and
+// selected nothing. From the first restart onward, with no error anywhere.
+//
+// This test would have failed on every build verse has ever had.
+func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
+	store := entitytest.Store(t)
+	src := `
+- name: latched
+  condition:
+    subject:
+      system: drift
+      kind: head
+      value: !not
+        reviewed: null
+  action:
+    spawn: {driver: scripted, prompt: "review it"}
+    onDone: {patch: {reviewed: done}}
+`
+	trigs, _, _, ok := parseBlock(src)
+	if !ok || len(trigs) != 1 {
+		t.Fatalf("parse: ok=%v n=%d", ok, len(trigs))
+	}
+	written, _ := codec.Marshal(trigs[0].Condition.Subject, codec.Tony)
+
+	eng := New(store, task.AutoResolver{})
+	if err := eng.AddTrigger(trigs[0]); err != nil { // durable: this is the write under test
+		t.Fatalf("install: %v", err)
+	}
+
+	// What a restart does.
+	back := New(store, task.AutoResolver{})
+	if err := back.LoadCharter(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	loaded := back.Triggers()
+	if len(loaded) != 1 {
+		t.Fatalf("loaded %d rules", len(loaded))
+	}
+	restored, _ := codec.Marshal(loaded[0].Condition.Subject, codec.Tony)
+	if string(restored) != string(written) {
+		t.Fatalf("the subject did not survive the store:\n  written:  %s\n  restored: %s",
+			written, restored)
+	}
+
+	// And it still means what it said: absent selects, present does not.
+	m := loaded[0].Condition.Subject
+	absent := entity.Event{
+		Ref: entity.Ref{System: "drift", Kind: "head", ID: "verse"},
+		To:  entity.Obj{"sha": "abc"}.Payload(),
+	}
+	present := entity.Event{
+		Ref: absent.Ref,
+		To:  entity.Obj{"sha": "abc", "reviewed": "done"}.Payload(),
+	}
+	if !m.MatchEvent(absent) {
+		t.Error("a subject with no `reviewed` is not selected — the latch would never fire")
+	}
+	if m.MatchEvent(present) {
+		t.Error("a subject that HAS `reviewed` is still selected — the latch would never hold")
+	}
+}

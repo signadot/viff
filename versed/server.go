@@ -2012,7 +2012,7 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 				// would stay overdue against a deadline nobody set and move again on every
 				// read; without CLEARING it, one handed to a binding with no deadline would
 				// keep the last one's.
-				rec["escalatesAt"] = nil
+				rec["escalatesAt"] = entity.Removed()
 				if res, ok := resolver.Find(store, binding); ok && res.Deadline != nil {
 					if after, err := res.Deadline.After(); err == nil {
 						rec["escalatesAt"] = time.Now().Add(after).UTC().Format(time.RFC3339Nano)

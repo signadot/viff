@@ -75,6 +75,27 @@ type Require struct {
 // the exact complement of Absent, which asks about the value's type instead.
 func Present() Payload { return ir.Null() }
 
+// Removed is how a WRITE says a field is gone: `rec["delivered"] = entity.Removed()`.
+//
+// It is spelled rather than implied, and that is the whole lesson of the convention it
+// replaces. Absence used to be a bare null — `rec[k] = nil` — which read beautifully and cost
+// the data model a legal value at every depth, because a store that spells absence with a null
+// must then hide every null it reads. A `nil` in an Obj could not be given this meaning either,
+// however tempting: `{owners: {ENG: nil}}` in source/linear is a MATCH, where a bare null is
+// the presence wildcard, so one spelling would have had to mean two opposite things depending
+// on which side of a comparison it landed.
+func Removed() Payload { return deleteOp() }
+
+// deleteOp is how verse spells "this is gone" IN A WRITE: a null wearing `!delete`, which the
+// store executes as a removal.
+//
+// The tag is the whole of it. A BARE null is a value — logd stores one and hands it back — so
+// spelling absence with one meant hiding every bare null on read, and that made a legal value
+// unstorable at every depth (see nodeToPayload). The "!" is load-bearing too: mergeop.SplitChild
+// strips a tag's first byte before looking the operator up, so WithTag("delete") names "elete",
+// which is no operator at all and leaves an ordinary null behind.
+func deleteOp() Payload { return ir.Null().WithTag("!delete") }
+
 // Created requires that nothing stands at the write's own path — the create.
 func Created() Require { return Require{Pattern: Absent()} }
 
@@ -122,9 +143,18 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 		if exists {
 			when = Require{Pattern: AsData(cur.Payload)} // expect-unchanged: this is an update
 			next = fn(cur.Payload)
-			next = withRemovals(next, cur.Payload)
 		}
-		ok, _, err := s.Write(Write{At: ref.At(), Value: AsData(next), When: []Require{when}})
+		// The removals go on AFTER the escape, and the order is load-bearing. AsData makes a
+		// stored document inert — including a charter's own `patch: {tmp: !delete null}`, which
+		// is data — while these markers are verse's and must still execute. Adding them first
+		// and escaping afterwards would store the removal instead of performing it; exempting
+		// `!delete` inside AsData would make a stored one executable, and it lands in the
+		// PRECONDITION too, where a delete is not something a match can be evaluated with.
+		value := AsData(next)
+		if exists {
+			value = withRemovals(value, cur.Payload)
+		}
+		ok, _, err := s.Write(Write{At: ref.At(), Value: value, When: []Require{when}})
 		if err != nil {
 			return err
 		}
@@ -170,7 +200,7 @@ func ReplaceFrom(s Store, ref Ref, cur, next Payload) error { return ReplaceAt(s
 // makes that true is the install-time proof that their claims are disjoint (source/own.go), and
 // nothing here re-checks it.
 func ReplaceAt(s Store, at Path, cur, next Payload) error {
-	if _, _, err := s.Write(Write{At: at, Value: AsData(withRemovals(next, cur))}); err != nil {
+	if _, _, err := s.Write(Write{At: at, Value: withRemovals(AsData(next), cur)}); err != nil {
 		return fmt.Errorf("replace %s: %w", at, err)
 	}
 	return nil
@@ -202,9 +232,12 @@ func ModifyFrom(ctx context.Context, s Store, ref Ref, cur Payload, exists bool,
 	if exists {
 		when = Require{Pattern: AsData(cur)} // expect-unchanged: this is an update
 		next = fn(cur)
-		next = withRemovals(next, cur)
 	}
-	ok, _, err := s.Write(Write{At: ref.At(), Value: AsData(next), When: []Require{when}})
+	value := AsData(next)
+	if exists {
+		value = withRemovals(value, cur)
+	}
+	ok, _, err := s.Write(Write{At: ref.At(), Value: value, When: []Require{when}})
 	if err != nil {
 		return err
 	}
@@ -231,7 +264,7 @@ func withRemovals(next, old Payload) Payload {
 	for _, f := range old.Fields {
 		if !have[f.String] {
 			out.Fields = append(out.Fields, ir.FromString(f.String))
-			out.Values = append(out.Values, ir.Null())
+			out.Values = append(out.Values, deleteOp())
 		}
 	}
 	return out

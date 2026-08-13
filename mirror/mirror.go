@@ -297,7 +297,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if st["pending"] != nil {
 					AnswerQuestion(store, ev.ID, task.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
 				}
-				st["pending"] = nil
+				st["pending"] = entity.Removed()
 				st["lastAction"] = ev.Tool
 			case task.EvExec:
 				st["lastAction"] = ev.Tool

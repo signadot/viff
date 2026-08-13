@@ -61,10 +61,15 @@ func Raw(p Payload) Payload {
 // a merge for no reason.
 //
 // It is otherwise SELECTIVE, and has to be. Wrapping the whole payload would make its ordinary
-// fields replace rather than merge; it would store the explicit nulls a read-modify-write
-// writes to drop a field rather than executing them; and as a precondition it would demand
-// exact equality against a document which still holds logd's tombstones where the read that
-// produced the payload dropped them — a compare-and-swap nothing could satisfy.
+// fields replace rather than merge, and as a precondition it would demand exact equality
+// against a document rather than a merge-compatible one.
+//
+// It escapes EVERY tag, verse's own removal marker included, and the callers add that marker
+// afterwards for exactly that reason (write.go's withRemovals). Exempting it here would be the
+// obvious alternative and is wrong twice: a charter legitimately STORES `patch: {tmp: !delete
+// null}` as data, so the exemption would make a stored operator executable — and AsData also
+// builds the compare-and-swap PRECONDITION, where a delete is not something a match can be
+// evaluated with at all ("cannot match with delete operation").
 func AsData(p Payload) Payload {
 	if p == nil {
 		return nil

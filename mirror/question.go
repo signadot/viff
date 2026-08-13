@@ -134,9 +134,9 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 // would be the command entity the steering invariant forbids.
 func AnswerQuestion(store entity.Store, id string, res task.Resolution) {
 	rec := answerRecord(res)
-	// nil, not absent: a write MERGES, so an answer that was recorded as in-flight would
+	// REMOVED, not absent: a write MERGES, so an answer that was recorded as in-flight would
 	// stay in-flight forever unless this says otherwise. Delivery is the news here.
-	rec["delivered"] = nil
+	rec["delivered"] = entity.Removed()
 	writeAt(store, QuestionRef(id), rec)
 }
 
@@ -349,7 +349,7 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	}
 	for _, k := range []string{"verdict", "by", "why", "say", "answeredAt", "delivered",
 		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt"} {
-		rec[k] = nil
+		rec[k] = entity.Removed()
 	}
 	rec["askedAgain"] = true
 }

@@ -247,12 +247,13 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 			// each other forever: comparing whole payloads would make a change by OPS look like a
 			// change to ENG's answer, and each pass would write a value nobody asked to change.
 			//
-			// And against the payload AS THE STORE WILL HOLD IT: a read strips null fields (verse
-			// writes a bare null to mean a field is gone, and strips it back out on read — logd
-			// itself just holds the value), so comparing against the raw answer would make a
-			// source that writes one differ from itself on every pass.
+			// And against the answer AS IT STANDS. This compared against a stripped copy of it,
+			// because verse spelled a removed field with a bare null and hid every bare null on
+			// read — so a source that legitimately reported one differed from itself on every
+			// pass, forever. Absence is `!delete` now and a null is a null, so there is nothing
+			// to strip here and nothing to mimic.
 			curAt, nextAt := valueAt(cur, p.Field), valueAt(e.Payload, p.Field)
-			if exists && entity.Equal(curAt, asStored(nextAt)) {
+			if exists && entity.Equal(curAt, nextAt) {
 				continue
 			}
 			// An answer that carries nothing at its own slot is saying the slot is empty, which
@@ -433,23 +434,6 @@ func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) ([]
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out, nil
-}
-
-// asStored renders a payload the way a read of it will come back: an object's null fields are
-// how VERSE spells a tombstone, not the log's, so the store drops them (entity's nodeToPayload)
-// and a comparison against the unstripped answer would never hold.
-func asStored(p entity.Payload) entity.Payload {
-	if p == nil || p.Type != ir.ObjectType {
-		return p
-	}
-	live := map[string]*ir.Node{}
-	for k, v := range ir.ToMap(p) {
-		if v == nil || v.Type == ir.NullType {
-			continue
-		}
-		live[k] = asStored(v)
-	}
-	return ir.FromMap(live).WithTag(p.Tag)
 }
 
 // Hint schedules a targeted reconcile of each ref, and a full one if given none — the whole of

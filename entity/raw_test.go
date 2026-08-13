@@ -123,10 +123,19 @@ func TestModifyRetriesOverAStoredOperator(t *testing.T) {
 	}
 }
 
-// A tagged null is data, not one of logd's tombstones — `patch: {tmp: !delete null}` in a
-// stored rule is exactly that shape, and a read that drops it takes an operation out of a
-// charter which reads back otherwise intact.
-func TestTaggedNullIsNotATombstone(t *testing.T) {
+// BOTH kinds of null survive inside a stored spec, because both are data.
+//
+// The tagged one was always the point of `Raw`: `patch: {tmp: !delete null}` in a stored rule is
+// an OPERATION, and a read that drops it takes it out of a charter that reads back otherwise
+// intact.
+//
+// The bare one is the change. It used to be dropped — verse spelled "this field is gone" by
+// writing a bare null and hid every bare null it read — which made a legal value unstorable at
+// any depth, `!raw` included, since the escape is consumed by read time. The rule that paid for
+// it is the absence latch: `value: !not {reviewed: null}` came back as `!not {}`, a perfectly
+// good pattern meaning something else, and selected nothing from the first restart onward.
+// Absence is `!delete` on the way in now, and a null is a null.
+func TestBothKindsOfNullAreDataInAStoredSpec(t *testing.T) {
 	store := openStore(t)
 	ref := Ref{System: "trigger", Kind: "rule", ID: "hotfix"}
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{tmp: !delete null, gone: null, stage: open}`))}.Payload())
@@ -136,8 +145,13 @@ func TestTaggedNullIsNotATombstone(t *testing.T) {
 	if got := ir.Get(spec, "tmp"); got == nil {
 		t.Fatalf("spec = %v; the !delete was read as a tombstone and dropped", spec)
 	}
-	if got := ir.Get(spec, "gone"); got != nil {
-		t.Fatalf("spec = %v; a bare null is a tombstone and should not read back", spec)
+	if got := ir.Get(spec, "gone"); got == nil {
+		t.Fatalf("spec = %v; a bare null in stored DATA did not survive — this is the shape the "+
+			"absence latch is written in, and dropping it is what made a charter stop firing "+
+			"after a restart", spec)
+	}
+	if got := ir.Get(spec, "stage"); got == nil || got.String != "open" {
+		t.Fatalf("spec = %v; the ordinary field did not survive either", spec)
 	}
 }
 
