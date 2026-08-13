@@ -235,10 +235,11 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 			fmt.Fprintf(&b, "What the parser said about the closest thing to one: %v\n", f.ParseErr)
 		}
 		// The contract below is a MATCH PATTERN — a specification, not an example — and a
-		// model that has just written prose needs the one mechanical fact the pattern does not
-		// state. Observed twice in a row on one run: the first answer was a sentence, the
-		// second was a document whose `report:` held unquoted prose, which the parser reads as
-		// more keys and refuses at the first word that is not one.
+		// model that has just written prose needs the mechanical facts the pattern does not
+		// state. Three runs of one charter failed differently: the first answer was a
+		// sentence, the second was a document whose `report:` held unquoted prose, which the
+		// parser reads as more keys and refuses at the first word that is not one, and the
+		// third was a list written YAML-style with an indented `- ` under its key.
 		b.WriteString("Answer with a DOCUMENT and nothing else. The json below is the easiest " +
 			"shape to get right; if you write tony instead, quote every string value and do not " +
 			"indent a list under its key.\n")
