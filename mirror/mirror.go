@@ -274,7 +274,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	//
 	// Only the FIRST write: the rest are this run's own transitions, and each is meant to land
 	// on what it wrote a moment ago.
-	if rev := replace(store, id, st); m.Occurrence == 0 && rev > 0 {
+	if rev := write(store, id, st); m.Occurrence == 0 && rev > 0 {
 		st["occurrence"] = rev
 	}
 	writeRun(store, id, occurrenceOf(st), st)
@@ -338,7 +338,11 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// one that is about to close.
 				heard = true
 				if st["observed"] == false {
-					st["observed"] = nil // nil, not delete: a write MERGES
+					// Gone from the document, because the document is what gets stored. This
+					// said `nil, not delete: a write MERGES`, which was true when a bare null
+					// meant removal — since baa0c459 it is data, so it was writing
+					// `observed: null` where it meant to write nothing at all.
+					delete(st, "observed")
 					write(store, id, st)
 				}
 			}
@@ -374,7 +378,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if st["pending"] != nil {
 					AnswerQuestion(store, ev.ID, task.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
 				}
-				st["pending"] = entity.Removed()
+				delete(st, "pending") // see write: a replace stores st, so absence is absence
 				st["lastAction"] = ev.Tool
 			case task.EvExec:
 				st["lastAction"] = ev.Tool
@@ -516,27 +520,31 @@ func occurrenceOf(st entity.Obj) int64 {
 // comparing two tasks should not have to know where each runtime was standing.
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 
-// replace puts the record OVER whatever stands at its address, so nothing of a previous run
-// survives into this one. See Reflect for why the first write of a run must not merge.
-func replace(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64 {
-	ref := Ref(id)
-	if len(at) == 1 {
-		ref = at[0]
-	}
-	_, rev, err := store.Write(entity.Write{At: ref.At(), Value: entity.Raw(st.Payload())})
-	if err != nil {
-		return 0
-	}
-	return rev
-}
-
-// write puts the record and answers the commit it landed at, or 0 if it did not land.
+// write puts the record OVER whatever stands at its address — a REPLACE, not a merge — and
+// answers the commit it landed at, or 0 if it did not land.
+//
+// Replacing at every write rather than only at a run's first one, because st is the whole
+// document: the drain loop mutates it and writes it entire, so a merge was never adding
+// anything a replace does not carry. What it was adding was fields from BEFORE — an id names
+// the work, so a new run writes where the last one left off, and `started`/`status` landed on
+// top of `ended`/`err`/`result` without displacing them. That is a record saying it began at
+// 20:42 and ended at 20:41, which staging produced.
+//
+// Doing it at one write would have been a rule to remember; doing it at every write makes a
+// record that describes two runs UNCONSTRUCTIBLE, which is the difference between a fix and a
+// discipline. It also means the mirror owns this address outright: nothing else writes a live
+// task record (the engine's hook annotation lands after the terminal, and reconcile runs when
+// no mirror is draining), so there is nothing here for a merge to preserve.
+//
+// A field is removed by DELETING IT FROM st, never by writing entity.Removed(): under a
+// replace the whole document is stored as data, so a `!delete` marker would be kept as a value
+// rather than executed as an instruction.
 func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64 {
 	ref := Ref(id)
 	if len(at) == 1 {
 		ref = at[0]
 	}
-	_, rev, err := store.Write(entity.Write{At: ref.At(), Value: st.Payload()})
+	_, rev, err := store.Write(entity.Write{At: ref.At(), Value: entity.Raw(st.Payload())})
 	if err != nil {
 		return 0
 	}

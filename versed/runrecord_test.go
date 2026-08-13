@@ -142,6 +142,34 @@ func waitRunAfter(t *testing.T, store entity.Store, id string, prev int64) int64
 	}
 }
 
+// A field the mirror clears is ABSENT, not present-and-null.
+//
+// The mirror cleared `observed` by writing nil, with a comment saying "nil, not delete: a
+// write MERGES" — true while a bare null meant removal, and wrong since baa0c459 made a bare
+// null data. It was writing `observed: null` where it meant to write nothing, so a charter
+// asking `{observed: null}` — tony's present-with-any-value idiom — matched a task the mirror
+// had just told it was fine.
+func TestAClearedFieldIsAbsent(t *testing.T) {
+	store := entitytest.Store(t)
+	drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
+	}
+	srv := NewWithStore(drive, store)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	spawnScoped(t, ts, "run-1", "")
+	waitTerminal(t, store, "run-1")
+
+	rec := entity.ToObj(mustGet(t, store, mirror.Ref("run-1")))
+	for _, k := range []string{"observed", "pending"} {
+		if v, present := rec[k]; present && v == nil {
+			t.Fatalf("%q is present holding null; a cleared field must be absent: %v", k, rec)
+		}
+	}
+}
+
 func mustGet(t *testing.T, store entity.Store, ref entity.Ref) entity.Payload {
 	t.Helper()
 	e, ok, err := store.Get(ref)
