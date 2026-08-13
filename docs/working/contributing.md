@@ -204,6 +204,33 @@ Match on the *parsed* trailer, not `--grep='^Breaks:'`: `--grep` searches the wh
 so it also matches a body that merely talks about the convention — as this note's own landing
 commit does.
 
+**Which means a trailer that does not parse is a declaration nobody made.** Git reads exactly one
+place — the LAST paragraph — and takes it only if every line in it is a trailer:
+
+| | |
+|---|---|
+| body, blank line, `Tier:` … `Co-Authored-By:` | parses, all of them |
+| body, blank line, `Tier:` …, blank line, `Co-Authored-By:` | only `Co-Authored-By:` — the rest is now prose |
+| body, `Co-Authored-By:` with no blank line | nothing: the paragraph holds prose |
+| a wrapped value whose continuation is not indented | nothing, the whole block |
+
+So: **one final paragraph, blank line above it, nothing in it but trailers, and indent anything
+that wraps.** `Co-Authored-By:` lives inside that paragraph rather than below it, which is the
+one that catches people, because putting it last with a gap looks tidier and silently demotes
+everything above.
+
+All four fail silently and leave a message that reads exactly right. So check, on the commit
+rather than on the intention — it costs nothing:
+
+```sh
+git log -1 --format='%(trailers:key=Tier,valueonly)'    # empty = it did not parse
+```
+
+This is written down because it happened: a session's worth of `Tier:` lines and one
+`Breaks:` on a `contract` change were all invisible to the query above, and the commits looked
+correct in `git show`. A tag cut over that range would have reported no breaks and been
+believed.
+
 These describe the *diff*, not the author. Most commits here are co-authored by an agent and
 that changes nothing — except that an agent will happily write a confident body about work it
 did not run.
