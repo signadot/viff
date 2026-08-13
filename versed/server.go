@@ -2759,7 +2759,17 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
-	h := s.runner.Attach(id)
+	// WHEREVER IT RUNS, not wherever the default runner is. s.attach reads the task's own
+	// record to find the runner hosting it and falls back to the default; s.runner.Attach
+	// asks the default and nothing else. Every task a charter spawns onto a named pool
+	// therefore had no reachable control at all: `verse ps cancel <id>` answered 404 while
+	// the runner holding it cancelled the same task happily when asked directly.
+	//
+	// The events route learned this already — "wherever it runs, not wherever the default
+	// runner is" is its comment, added when attach 404'd on per-spawn runners — and control
+	// was left behind. Reading a stream and stopping the thing that produces it are the same
+	// question about where a task lives.
+	h := s.attach(id)
 	if h == nil {
 		http.NotFound(w, r)
 		return
