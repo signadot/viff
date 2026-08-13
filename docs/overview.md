@@ -124,6 +124,11 @@ entity: status, a `say` preview, last tool output, final `result`, the resume `c
 `runner`, and a broker's `dialURL`. It is one-way, and an index rather than a warehouse. This
 is the bridge that lets task completion drive the next trigger.
 
+An id names the work rather than the run — it is derived, so a re-fire reuses it — so that
+entity holds the LATEST run, and each run also writes `task:run:<id>@<occurrence>` of its own
+(see [tasks](reference/tasks.md)). Ask the instance what the work is doing; ask the runs what
+happened the other times.
+
 `runner` and `broker` are the two off-box task-control backends, described below.
 
 `versed` is the assembly and the HTTP surface. It also owns scopes — per-scope engines over a

@@ -118,6 +118,17 @@ type Launch struct {
 	// record is written. The launch is the one thing that exists before the task does.
 	Scope string
 
+	// Occurrence is the store revision this RUN is about — the commit that woke the firing,
+	// or the revision a hand-spawned run's record was created at. Zero when nothing knows.
+	//
+	// The runtime does nothing with it, and holds it for the reason it holds Scope: an id
+	// names the WORK, so one id runs many times, and something has to be able to say WHICH
+	// run a process is. Without it that answer lived only on the entity — asking whether a
+	// running process is the one a record describes meant reading
+	// `task:instance:<id>.occurrence` and comparing by hand, and `verse ps`, which reads the
+	// runtime rather than the store, could not answer it at all.
+	Occurrence int64
+
 	// Provenance is what the runner needs to make its own effects auditable: who is
 	// answerable for this launch, and what it is about.
 	//

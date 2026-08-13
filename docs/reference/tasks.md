@@ -139,6 +139,32 @@ It outlives the task: the result, the last `say`, the last tool output and the t
 `verse flow show` reads for history. The mirror is an index, not a warehouse — it publishes
 what an observer needs, not the transcript.
 
+### One id, many runs
+
+A task id names the WORK, not the run: it is derived from the spawning action and the subject,
+so a rule that fires twice about one subject spawns the same id twice — which is what makes a
+re-fire idempotent and what `verse flow demo:pr:1` addresses.
+
+`task:instance:<id>` is therefore the LATEST run, and each run has a record of its own:
+
+```sh
+verse entity get 'task:run:<id>@<occurrence>'
+verse entity --system task --kind run --if '{flow: "demo:pr:1"}'
+```
+
+`occurrence` is the store revision the run is about — the commit that woke the firing, or the
+revision the record was created at when a person spawned it by hand. It is on both records, and
+it is what tells one run from the next.
+
+Read the instance to ask what this work is doing now; read the runs to ask what happened the
+other times. A failed run followed by a successful one leaves both, which the instance alone
+cannot do — it holds whatever the newest run has written and nothing of the one before.
+
+Run records are written twice, at the run's start and at its end, so a run that never finishes
+still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by
+events, and removing them is `verse entity rm`, or a charter that marks the old ones
+[vanishing](../change-events.md) and acts on the edge.
+
 ## The question record
 
 A gate that stops for an answer is published as its own entity, `gate:question:<id>`, and the

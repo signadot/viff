@@ -83,6 +83,7 @@ define:
   ended: .[string]
   err: .[string]
   id: .[string]
+  occurrence: .[int]
   pending: .[array(verse-pending-gate)]
   prompt: .[string]
   result: .[string]

@@ -413,7 +413,8 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			s.reflect(st, id, h, meta)
 			return h
 		}
-		l.Scope = scope // where this task's records live, so its gates land there too
+		l.Scope = scope                // where this task's records live, so its gates land there too
+		l.Occurrence = spec.Occurrence // and which run it is, so the process can say so too
 		h := place.Spawn(l, content)
 		s.reflect(st, id, h, meta)
 		// Who is watching this run, if anybody was named. Minted beside the mirror because
@@ -2409,6 +2410,14 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		if named, _ := rec["runnerName"].(string); named != "" {
 			inst.RunnerName = named
 		}
+		// And WHICH RUN, for the same reason: the runtime may know it — a firing carries the
+		// commit that caused it — but only the record always does. An ad-hoc run's occurrence
+		// is the revision its own first record write landed at, which is decided after the
+		// process is already running, so a live snapshot of one would report nothing and the
+		// same task would start naming its run only once the runtime had let it go.
+		if occ, _ := rec["occurrence"].(int64); occ != 0 {
+			inst.Occurrence = occ
+		}
 		// WHEN is the record's too, and for the reason the two above are: a live snapshot
 		// knows it is hosting the task, and the mirror is what wrote down when that began. A
 		// row for a running task would otherwise carry no start at all, which is the one it
@@ -2429,11 +2438,19 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 // durable account rather than a live one, which is exactly what the mirror is for.
 func instanceFromRecord(id string, rec map[string]any) task.Instance {
 	str := func(k string) string { v, _ := rec[k].(string); return v }
+	num := func(k string) int64 { v, _ := rec[k].(int64); return v }
 	return task.Instance{
 		ID: id, Prompt: str("prompt"), Status: task.Status(str("status")),
 		Runner: str("runner"), RunnerName: str("runnerName"),
 		Result: str("result"), Err: str("err"),
 		Started: str("started"), Ended: str("ended"),
+		// WHICH RUN this is, read from the record rather than from the runtime, because the
+		// record has it either way: a firing's occurrence comes from the commit that caused
+		// it and is known before the task starts, while an ad-hoc run's is the revision its
+		// own first record write landed at — known only after. Reading it here is what makes
+		// `verse ps` able to answer "is this the run that record is about" without a second
+		// lookup and a comparison by hand.
+		Occurrence: num("occurrence"),
 	}
 }
 

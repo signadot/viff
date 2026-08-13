@@ -67,6 +67,9 @@ type hosted struct {
 	// snapshot has always reported it; a locally-run task did not, so an auto-selected
 	// doer was observable nowhere but a trace line.
 	driver string
+	// occurrence is which run this is (see task.Launch.Occurrence), retained so the snapshot
+	// can say so: the process, and not only the entity, knows which run it is.
+	occurrence int64
 
 	mu     sync.Mutex
 	status task.Status
@@ -88,7 +91,7 @@ func (h *hosted) snapshot() task.Instance {
 	}
 	return task.Instance{
 		ID: h.task.ID, Prompt: h.prompt, Driver: h.driver, Status: h.status,
-		Err: h.err, Result: h.result, Pending: pending,
+		Err: h.err, Result: h.result, Pending: pending, Occurrence: h.occurrence,
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
 	}
 }
@@ -176,7 +179,8 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	}
 	tk.SetRetain(l.Retain)    // how much of its read plane a resuming reader can still see
 	tk.SetBoundTo(l.Resolver) // who owns the questions it raises
-	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver, status: task.Running}
+	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver,
+		occurrence: l.Occurrence, status: task.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.

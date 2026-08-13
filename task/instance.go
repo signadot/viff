@@ -20,6 +20,11 @@ type Instance struct {
 	// runner that has since been removed — which is when an operator most wants it.
 	RunnerName string `tony:"field=runnerName,omitzero"`
 	Cursor     int64  `tony:"field=cursor,omitzero"` // resume the event stream with ?since=<cursor>
+	// Occurrence is which RUN this is: the store revision it is about. An id names the work
+	// and every run of it reuses the id, so this is what tells a live process apart from the
+	// record of a previous one — and what lets a reader of the runtime answer that without a
+	// second read against the store.
+	Occurrence int64 `tony:"field=occurrence,omitzero"`
 	// Started and Ended are RFC3339 instants, and they are the RECORD's to say rather than a
 	// runtime's: a task outlives the process that ran it, and "when did this start" is a
 	// question asked most often about one that is over. Empty while unknown — a runner that
