@@ -809,6 +809,16 @@ func (s *Instance) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["cursor"] = ir.FromInt(int64(s.Cursor))
 	}
 
+	// Field: Started
+	if s.Started != "" {
+		irMap["started"] = ir.FromString(string(s.Started))
+	}
+
+	// Field: Ended
+	if s.Ended != "" {
+		irMap["ended"] = ir.FromString(string(s.Ended))
+	}
+
 	// Field: Result
 	if s.Result != "" {
 		irMap["result"] = ir.FromString(string(s.Result))
@@ -913,6 +923,18 @@ func (s *Instance) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "cursor", fieldNodeUnwrapped.Type)
 			}
 			s.Cursor = int64(*fieldNodeUnwrapped.Int64)
+		case "started":
+			// Field: Started
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "started", fieldNodeUnwrapped.Type)
+			}
+			s.Started = string(fieldNodeUnwrapped.String)
+		case "ended":
+			// Field: Ended
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "ended", fieldNodeUnwrapped.Type)
+			}
+			s.Ended = string(fieldNodeUnwrapped.String)
 		case "result":
 			// Field: Result
 			if fieldNodeUnwrapped.Type != ir.StringType {

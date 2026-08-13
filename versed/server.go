@@ -2362,6 +2362,16 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		if named, _ := rec["runnerName"].(string); named != "" {
 			inst.RunnerName = named
 		}
+		// WHEN is the record's too, and for the reason the two above are: a live snapshot
+		// knows it is hosting the task, and the mirror is what wrote down when that began. A
+		// row for a running task would otherwise carry no start at all, which is the one it
+		// is most often asked for.
+		if started, _ := rec["started"].(string); started != "" && inst.Started == "" {
+			inst.Started = started
+		}
+		if ended, _ := rec["ended"].(string); ended != "" && inst.Ended == "" {
+			inst.Ended = ended
+		}
 		out = append(out, inst)
 	}
 	return out, nil
@@ -2376,6 +2386,7 @@ func instanceFromRecord(id string, rec map[string]any) task.Instance {
 		ID: id, Prompt: str("prompt"), Status: task.Status(str("status")),
 		Runner: str("runner"), RunnerName: str("runnerName"),
 		Result: str("result"), Err: str("err"),
+		Started: str("started"), Ended: str("ended"),
 	}
 }
 

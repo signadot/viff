@@ -80,6 +80,7 @@ define:
   cursor: .[int]
   dialURL: .[string]
   driver: .[string]
+  ended: .[string]
   err: .[string]
   id: .[string]
   pending: .[array(verse-pending-gate)]
@@ -87,6 +88,7 @@ define:
   result: .[string]
   runner: .[string]
   runnerName: .[string]
+  started: .[string]
   status: .[string]
 signature:
   name: verse-instance

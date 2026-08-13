@@ -319,3 +319,61 @@ func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 		}
 	}
 }
+
+// A task record carries WHEN, at both ends and nowhere in between.
+//
+// `verse ps` could say what a task is and where it ran and not when it happened, which is the
+// question asked most often about one that is over. Two instants, stamped once each — `started`
+// when the record appears, `ended` when it reaches a terminal status — because stamping every
+// update would make the entity change whenever a task narrates, waking every trigger watching
+// this slice for a fact nobody wrote.
+func TestReflectStampsWhenATaskStartedAndEnded(t *testing.T) {
+	store := entitytest.Store(t)
+	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	p := task.NewTask("when1", sup, &steps{n: 1}, noopExec{})
+	Reflect(store, p.ID, p, Meta{Runner: "local"})
+
+	ref := Ref("when1")
+	var started string
+	deadline := time.After(2 * time.Second)
+	for started == "" {
+		select {
+		case <-deadline:
+			t.Fatal("no `started` on the record")
+		default:
+		}
+		if e, ok, _ := store.Get(ref); ok {
+			started = entity.Str(e.Payload, "started")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := time.Parse(time.RFC3339, started); err != nil {
+		t.Fatalf("started = %q, not an RFC3339 instant: %v", started, err)
+	}
+	if e, _, _ := store.Get(ref); entity.Str(e.Payload, "ended") != "" {
+		t.Errorf("a task that has not finished is already ended")
+	}
+
+	go func() { p.Run(context.Background()) }()
+
+	var ended string
+	deadline = time.After(3 * time.Second)
+	for ended == "" {
+		select {
+		case <-deadline:
+			t.Fatal("no `ended` on a terminal record")
+		default:
+		}
+		if e, ok, _ := store.Get(ref); ok {
+			ended = entity.Str(e.Payload, "ended")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := time.Parse(time.RFC3339, ended); err != nil {
+		t.Fatalf("ended = %q, not an RFC3339 instant: %v", ended, err)
+	}
+	// Stamped ONCE: a start that moves is a start nobody can reason about.
+	if e, _, _ := store.Get(ref); entity.Str(e.Payload, "started") != started {
+		t.Errorf("started moved to %q", entity.Str(e.Payload, "started"))
+	}
+}

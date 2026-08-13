@@ -140,7 +140,12 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.Runner == "broker" {
 		initial = task.Unclaimed
 	}
-	st := entity.Obj{"status": string(initial)}
+	// WHEN, and only twice: `started` here, `ended` at the terminal status below. A record
+	// stamped on every update would be an entity that changes whenever anything narrates,
+	// which wakes every trigger watching this slice for no fact anybody wrote — and the two
+	// instants somebody actually asks about are the two ends. RFC3339, the same spelling
+	// `verse.meta.vanishing` and a source's `lastReflect` use.
+	st := entity.Obj{"status": string(initial), "started": nowStamp()}
 	if m.Subject != "" {
 		st["flow"] = m.Subject
 	}
@@ -315,6 +320,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				default:
 					st["status"] = ev.Text
 					if task.Status(ev.Text).Terminal() {
+						st["ended"] = nowStamp()
 						if r := h.Result(); r != "" { // keep the full final answer, durably
 							st["result"] = r
 							if d := ParseResult(r); d != nil {
@@ -419,6 +425,10 @@ const (
 // task's own event goroutine with nobody to return to, and a task must not stall
 // because its index could not be updated. What it costs is that the entity can lag the
 // task it mirrors — the index is a projection, and the read plane remains the record.
+// nowStamp is the one spelling of an instant on a task record. UTC, because a reader
+// comparing two tasks should not have to know where each runtime was standing.
+func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
+
 func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) {
 	ref := Ref(id)
 	if len(at) == 1 {
