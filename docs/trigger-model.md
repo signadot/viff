@@ -791,6 +791,21 @@ derefs in a `patch` and does not in a `spawn.prompt`. Unifying the two halves on
 resolver is the obvious next step and deliberately not taken here, because making a spawn
 fail on an unbound variable would change what already-installed charters do.
 
+A field holding a **document** renders as tony there, and that is the one place the two halves
+disagree on purpose. A patch refuses to give a composite a text form, because `"saw $result"`
+would make one charter mean different things depending on what a task returned. A prompt is text
+by nature — there is no whole-value form to reach for instead — so the question is only *which*
+text, and the answer used to be Go's formatting of a decoded map. A charter that puts a ledger in
+front of an agent now puts a document there:
+
+```tony
+prompt: "Outstanding findings:\n$findings\n\nThe diff:\n…"
+```
+
+Leaves are unchanged, which matters more than the feature: `$stage` and `$count` bind exactly the
+bytes they always did (`3`, never `"3"`). A null field is the single exception — it used to bind
+as `<nil>`, which was a zero value leaking rather than anything anybody chose, and is now empty.
+
 ### Completion hooks: one trigger, chaining visible
 
 An `Action` carries one hook per terminal status — `onDone` (status `done`), `onFailed`,

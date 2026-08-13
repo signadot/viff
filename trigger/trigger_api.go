@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
@@ -445,10 +446,52 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 	// Fields of an object payload only: a scalar payload (42, true) has no named parts to
 	// bind, so a template's $vars simply find nothing rather than binding the whole value
 	// to some invented name.
-	for k, v := range entity.ToObj(payload) {
-		b[k] = fmt.Sprint(v)
+	if !entity.IsObj(payload) {
+		return b
+	}
+	for k, v := range ir.ToMap(payload) {
+		if text, ok := bindText(v); ok {
+			b[k] = text
+		}
 	}
 	return b
+}
+
+// bindText renders one field for a spawn's flat substitution: a leaf as its own text, and a
+// COMPOSITE as tony.
+//
+// The composite half is the part with an argument. This read the field off `entity.ToObj` and
+// printed it with `fmt.Sprint`, which is Go's formatting of a decoded map — a charter putting a
+// document in a prompt got `map[logdstore.go:nodeToPayload:map[status:open was:…]]`. A model
+// reads that, which is why it stood so long. It is still three wrong things: not a format
+// anything documents, lossy where a value holds a bracket or a colon, and unpasteable back into
+// the verse it came from. Tony is the format the rest of this system already writes, so a prompt
+// carrying a ledger carries something a person and a parser can both read.
+//
+// The leaf half must not move, and that is why it goes through `scalarText` rather than a second
+// opinion about text form: every charter that interpolates `$stage` or `$count` today gets the
+// same bytes it got before — `3`, not `"3"`.
+//
+// One leaf DOES change: a null field bound as `<nil>`, which was Go's zero value leaking into a
+// prompt rather than anything anybody chose. It is `""` now, which is what scalarText has always
+// meant by it. A payload read from the store cannot carry one anyway (entity's nodeToPayload
+// drops them), so this is reachable only from a payload the engine synthesises.
+//
+// A field that cannot be rendered at all is left UNBOUND rather than bound to "": an unbound
+// `$var` is left in the prompt as written, which is the documented behaviour and is visible,
+// where an empty string is a silent hole in a sentence.
+func bindText(n entity.Payload) (string, bool) {
+	if n == nil {
+		return "", false
+	}
+	if s, ok := scalarText(n); ok {
+		return s, true
+	}
+	out, err := codec.Marshal(n, codec.Tony)
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimRight(string(out), "\n"), true
 }
 
 // bindingFor builds the template binding for an action: the fields of the payload its

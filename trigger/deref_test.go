@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
@@ -311,5 +312,53 @@ func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
 	waitStage(t, store, pr, "seen")
 	if e, _, _ := store.Get(pr); entity.Str(e.Payload, "noted") != "hotfix-9" {
 		t.Fatalf("noted = %q, want hotfix-9", entity.Str(e.Payload, "noted"))
+	}
+}
+
+// A composite payload field reaches a spawn's prompt as TONY, and parses back to what it came
+// from. Before this it went through `fmt.Sprint` over a decoded map, so a charter putting a
+// document in a prompt handed the model Go's map formatting —
+// `map[a:map[status:open]]` — which is not a format anything documents, is lossy where a value
+// holds a bracket or a colon, and cannot be pasted back into the verse it came from.
+//
+// The test round-trips rather than comparing text, because the promise is "a document a parser
+// can read", not any particular layout.
+func TestCompositeBindsAsTony(t *testing.T) {
+	src := `{sha: abc, findings: {"entity.nodeToPayload": {was: "logd's tombstones", status: open}}}`
+	payload, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := payloadBinding(payload)
+
+	got, err := codec.ParseNode([]byte(b["findings"]), codec.Tony)
+	if err != nil {
+		t.Fatalf("the binding does not parse as tony: %v\n%s", err, b["findings"])
+	}
+	want, _ := payload.GetKPath("findings")
+	if !entity.Equal(got, want) {
+		t.Errorf("round trip lost something:\n  bound:    %s\n  original: %v", b["findings"], want)
+	}
+}
+
+// …and every LEAF binds exactly as it did before, because an installed charter interpolating
+// `$stage` or `$count` must not notice this change. `3` and not `"3"`: a prompt is text, and a
+// quoted number in a sentence is a different sentence.
+//
+// The one leaf that moves is null, and it moves off a Go artifact: it bound as `<nil>`, which
+// nobody chose. A payload read from the store cannot carry one (entity's nodeToPayload drops
+// them), so it is reachable only from a payload the engine synthesises.
+func TestScalarBindingsAreUnchanged(t *testing.T) {
+	payload, err := codec.ParseNode([]byte(`{s: open, n: 3, f: 3.5, b: true, z: null}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := payloadBinding(payload)
+	for _, c := range []struct{ key, want string }{
+		{"s", "open"}, {"n", "3"}, {"f", "3.5"}, {"b", "true"}, {"z", ""},
+	} {
+		if got := b[c.key]; got != c.want {
+			t.Errorf("$%s bound %q, want %q", c.key, got, c.want)
+		}
 	}
 }
