@@ -304,6 +304,25 @@ func EncodeNodeColor(w io.Writer, n *ir.Node, f Format) error {
 	return encode.Encode(n, w, encode.EncodeFormat(f), encode.EncodeColors(encode.NewColors()))
 }
 
+// EncodeNodeWireColor is EncodeNodeWire with ANSI colour: compact and single-line, and
+// coloured for a terminal.
+//
+// It exists for STREAMS. A watcher wants one event per line — that is what makes a stream
+// readable as it scrolls, and what lets `grep` see a whole event — while every other reader
+// wants the block form. Colour is orthogonal to both, so the one combination that was missing
+// was the one a live stream needs. The caller still decides about the terminal (see
+// EncodeNodeColor); this only supplies the rendering.
+func EncodeNodeWireColor(w io.Writer, n *ir.Node, f Format) error {
+	if n == nil {
+		n = ir.Null()
+	}
+	if !Writable(f) {
+		return fmt.Errorf("%s", ErrNotWritable)
+	}
+	return encode.Encode(n, w, encode.EncodeFormat(f), encode.EncodeWire(true),
+		encode.EncodeColors(encode.NewColors()))
+}
+
 func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 	if n == nil {
 		n = ir.Null()

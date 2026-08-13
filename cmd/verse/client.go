@@ -287,16 +287,6 @@ func brokerInbox(base, id string, since, epoch int64) ([]api.InboxItem, int64, e
 	return box.Items, max, nil
 }
 
-// compactFrame re-renders one SSE frame in the requested format, on a single line so the
-// stream stays one-record-per-line. A frame it cannot parse passes through unchanged —
-// on a live stream, showing a surprising line beats swallowing it.
-func compactFrame(s string, in, out codec.Format) string {
-	if in == out {
-		return s // already what was asked for; re-rendering would only risk mangling it
-	}
-	return codec.Recompact(s, in, out)
-}
-
 // streamFmt reads the format an SSE stream declares its FRAMES are in. Content-Type is
 // spoken for by text/event-stream, so the server says it in a header of its own; a stream
 // that does not say is read as tony, which also reads the JSON frames verse sent before it
@@ -428,14 +418,53 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("watch: %s", msg)
 	}
 	in := streamFmt(resp)
+	color := colorize(cc.Out)
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for sc.Scan() {
-		if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-			fmt.Fprintln(cc.Out, compactFrame(data, in, out))
+		data, ok := strings.CutPrefix(sc.Text(), "data: ")
+		if !ok {
+			continue
 		}
+		fmt.Fprintln(cc.Out, renderFrame(data, in, out, color))
 	}
 	return nil
+}
+
+// renderFrame renders one streamed event the way every other command renders a document:
+// in the requested format, with the server's layout stripped when it is not the one asked
+// for, and coloured when the destination is a terminal.
+//
+// It used to short-circuit when the formats matched — passing the server's own bytes through
+// untouched, on the grounds that re-rendering could only mangle them. What that actually meant
+// is that `watch` was the one command where `-o` did half its job and `--color` did none:
+// a stream is where somebody is READING, so it is the last place to render worse than
+// everywhere else.
+//
+// Single-line per event stays, which is not the same question. A stream is read as it scrolls
+// and grepped afterwards; the block form belongs to `entity get`, where the document is the
+// whole answer rather than one of a thousand.
+//
+// A line it cannot parse is passed through as it arrived. On a live stream a surprising line
+// is better seen than swallowed.
+func renderFrame(s string, in, out codec.Format, color bool) string {
+	n, err := codec.ParseNodeOrNil([]byte(s), in)
+	if err != nil || n == nil {
+		return s
+	}
+	if in != out {
+		n = codec.StripLayout(n)
+	}
+	var b strings.Builder
+	if color {
+		err = codec.EncodeNodeWireColor(&b, n, out)
+	} else {
+		err = codec.EncodeNodeWire(&b, n, out)
+	}
+	if err != nil {
+		return s
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // ── gate ─────────────────────────────────────────────────────────────────────

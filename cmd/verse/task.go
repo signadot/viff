@@ -573,6 +573,7 @@ func streamEvents(cc *cli.Context, id, as string) error {
 		return err
 	}
 	in := streamFmt(resp)
+	color := colorize(cc.Out)
 	// Only offer to answer if there is a name to answer AS. A gate still shows either way —
 	// attaching is watching, and watching never required an identity.
 	interactive := isTTY() && as != ""
@@ -584,7 +585,7 @@ func streamEvents(cc *cli.Context, id, as string) error {
 		if !ok {
 			continue
 		}
-		fmt.Fprintln(cc.Out, compactFrame(data, in, out))
+		fmt.Fprintln(cc.Out, renderFrame(data, in, out, color))
 		// task.Frame, not a hand-copied subset of it: the six fields this loop reads
 		// were re-declared here with their tony tags, so a rename on the emitting side
 		// would have gone unnoticed and simply stopped populating them.
