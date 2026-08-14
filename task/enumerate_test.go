@@ -16,7 +16,26 @@ import (
 //
 // WHAT IT ESTABLISHES: safety over the bounded set (the four safety properties in
 // contract.go), and that the machine terminates on every path where the inputs it is waiting
-// for arrive.
+// for arrive. THE SET, stated rather than left to be inferred from the code below, because the
+// first version of this said "every ordering" over a set that quietly excluded most of the ways
+// a run goes wrong:
+//
+//   - arrivals: two children reporting, an operator intervening, a policy change — and in the
+//     second enumeration a cancel and a pause instead of the say.
+//   - replies: a driver proposing two delegations, an action that fails and one that works, a
+//     gate that refuses the second question it is asked, a contract that rejects one answer
+//     before accepting it, and a finisher that proposes a closing action.
+//   - faults: any ONE seam failing, at any point, on any path (see world.fault).
+//
+// WHAT IT DOES NOT: that an input ARRIVES. No enumeration of a bounded set can — liveness is a
+// claim about the world, and it is argued in contract.go and pinned in bounds_test.go. Nor
+// anything in the SHELL: goroutines, contexts, the pause chain, the read plane. Nor two
+// simultaneous faults. Nor — and this is the one worth saying out loud — whether the contract
+// in contract.go is the RIGHT contract. It checks the code against those five properties; a
+// property nobody wrote is not a property this can miss. A staging drive found that a single
+// `fail` token discards a run whose children have all reported, and no amount of interleaving
+// would have surfaced it: the machine is correct on that path, and the question is whether the
+// path should exist.
 //
 // WHAT IT DOES NOT: that an input ARRIVES. No enumeration of a bounded set can — liveness is a
 // claim about the world, and it is argued in contract.go and pinned in bounds_test.go. Nor
@@ -25,7 +44,12 @@ import (
 // assertion made about it is the weaker one that the machine could still name what it was
 // waiting for.
 
-var errBoom = errors.New("the action failed")
+var (
+	errBoom      = errors.New("the action failed")
+	errDriver    = errors.New("the agent declared failure")
+	errCancelled = errors.New("cancelled")
+	errContract  = errors.New("the answer contract cannot be used")
+)
 
 // world answers the machine's blocking effects deterministically. It is the enumeration's
 // stand-in for every seam at once — the driver, the resolver, the executor, the spawn factory,
@@ -36,6 +60,7 @@ type world struct {
 	spawned int
 	repairs int // contract rejections still to hand out
 	execs   int
+	faulted bool // a seam has already failed on this path (see fault)
 }
 
 // script is what the driver proposes, in order: two delegations, an action that fails, and one
@@ -93,6 +118,56 @@ func (w world) reply(e effect) (input, world) {
 }
 
 func kidID(n int) string { return fmt.Sprintf("kid%d", n) }
+
+// fault is the same effect answered by a seam that FAILED, and it is where this enumeration was
+// thinner than it claimed.
+//
+// The first version modelled exactly one failure — an executor error — out of six seams that
+// can produce one, and said "every ordering of a bounded input set" over it. The omission that
+// mattered most was inDriver{err}: that is what the `fail` tool IS (harness/llm.go returns the
+// model's reason as a driver error), so the single most likely way a real run ends badly was
+// not in the set at all. A staging drive ended exactly that way.
+//
+// AT MOST ONE per path, which is the usual depth for fault injection and the right one here:
+// what these properties can get wrong is a failure arriving while something else is pending —
+// a driver error with two children outstanding, a contract that cannot be used while an
+// operator is saying something — and that is a first-order interaction. A second simultaneous
+// fault multiplies the state space to test a case the first already covers the shape of.
+//
+// It returns false where a seam has no failure worth modelling separately.
+func (w world) fault(e effect) (input, world, bool) {
+	if w.faulted {
+		return nil, w, false
+	}
+	w.faulted = true
+	switch v := e.(type) {
+	case effHold:
+		// The hold broke: a cancel arrived while this task was held.
+		return inHeld{err: errCancelled, tok: v.tok}, w, true
+	case effAsk:
+		// The `fail` tool, or a model call that could not be made. Both reach the machine as a
+		// driver error, which is why one case covers them.
+		return inDriver{err: errDriver, tok: v.tok}, w, true
+	case effGate:
+		// The resolver's context ended under it — the question left the docket unanswered.
+		return inGate{err: errCancelled, tok: v.tok}, w, true
+	case effExecute:
+		return inExecuted{out: StepResult{Use: v.tu}, err: errBoom, tok: v.tok}, w, true
+	case effSpawn:
+		// The factory refused: no spawn configured, or a child scope exceeding the parent's.
+		// No child starts, so nothing is owed a completion.
+		return inSpawned{res: StepResult{Use: v.tu, Blocked: true, Note: "scope exceeds parent"},
+			tok: v.tok}, w, true
+	case effCheck:
+		// The contract itself is unusable, or the repair budget is spent. Either way the run
+		// fails rather than asking again.
+		return inChecked{err: errContract, tok: v.tok}, w, true
+	case effFinish:
+		// Not a failure so much as the other branch: nowhere to deliver, so nothing proposed.
+		return inFinish{ok: false, tok: v.tok}, w, true
+	}
+	return nil, w, false
+}
 
 // tokOf is the reply token a blocking effect will be answered with — the identity that keeps a
 // stale answer from being folded as this action's.
@@ -240,6 +315,10 @@ func (e *explorer) walk(s state, w world, pending, stale effect, used int, watch
 	if pending != nil {
 		in, w2 := w.reply(pending)
 		choices = append(choices, choice{fmt.Sprintf("reply:%T", pending), in, w2, used, true, false})
+		// …and the same effect answered by a seam that failed. At most one per path; see fault.
+		if bad, w3, ok := w.fault(pending); ok {
+			choices = append(choices, choice{fmt.Sprintf("fault:%T", pending), bad, w3, used, true, false})
+		}
 	}
 	if stale != nil {
 		// The abandoned call answers anyway. Folding it must change NOTHING — that is what the
