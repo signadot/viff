@@ -22,11 +22,13 @@ import (
 // What it is NOT is an escape from supervision. Every entry becomes an ordinary ToolUse, is
 // derived and gated like any other action, and the executor cannot tell which driver proposed
 // it. That is the property that makes this cheap: nothing downstream changes.
+//
+//tony:schemagen=verse-call,notag
 type Call struct {
-	Tool  string
-	Input map[string]any
+	Tool  string         `tony:"field=tool"`
+	Input map[string]any `tony:"field=input,omitzero"`
 
-	// Fatal names the outcomes of THIS call that end the list, out of the three below.
+	// Fatal names the outcomes of THIS call that end the list, out of the vocabulary below.
 	//
 	// It is per call because the rule `scripted` inherits — an Err ends the run, a Blocked
 	// does not — is right for two reasons that do not always agree. A refusal is a decision
@@ -35,11 +37,51 @@ type Call struct {
 	// push that follows it must not happen. Both are call lists, and only the author knows
 	// which.
 	//
-	// nil (absent) means ALL THREE: a list is ordered because its calls depend on each
-	// other, so stopping is the safe read, and the caller that wants otherwise says so.
-	// Empty-but-present (`fatal: []`) means none of them — a list that runs to the end
-	// whatever happens, which is a thing to be able to say and not the thing to default to.
-	Fatal []StepOutcome
+	// Absent means ALL THREE: a list is ordered because its calls depend on each other, so
+	// stopping is the safe read, and the caller that wants otherwise says so — with `[none]`,
+	// which is a list that runs to the end whatever happens.
+	//
+	// `none` is a word rather than an empty list, and that is not a taste call. An empty slice
+	// does not survive this field's own wire form (`omitzero` drops it), so `fatal: []` meant
+	// "nothing stops this list" on a local runner and "anything does" on a remote one — the
+	// same charter, two behaviours, decided by deployment. A vocabulary word crosses.
+	Fatal []StepOutcome `tony:"field=fatal,omitzero"`
+}
+
+// DriverCalls is the driver name a spawn writes to get a call list. It is a `task` word rather
+// than a runtime's because every runtime that builds one has to agree on it — and because a
+// spawn carrying `calls:` selects it without writing it, which only works if there is one name.
+const DriverCalls = "calls"
+
+// CheckCalls is what a call list has to satisfy before anything is built from it, and it is
+// exported because the engine checks it at FIRE TIME — before a spawn crosses to a runner —
+// alongside the answer contract and the named vector. A charter that wrote something it cannot
+// mean fails where its author can see it, rather than on a machine they do not have.
+//
+// What it cannot check is the tool NAMES: `push` belongs to a runner's vocabulary and not to
+// the engine's, so an unknown one is refused at the far end (harness.Calls) on the same
+// argument `driver:` and `environment:` already travel by.
+func CheckCalls(cs []Call) error {
+	if len(cs) == 0 {
+		return errors.New("no calls")
+	}
+	for i, c := range cs {
+		if strings.TrimSpace(c.Tool) == "" {
+			return fmt.Errorf("call %d of %d: no tool", i+1, len(cs))
+		}
+		for _, f := range c.Fatal {
+			if !f.valid() {
+				return fmt.Errorf("call %d of %d (%s): fatal %q is not one of %s, %s, %s, %s",
+					i+1, len(cs), c.Tool, f, FatalErr, FatalBlocked, FatalNonzero, FatalNone)
+			}
+			if f == FatalNone && len(c.Fatal) > 1 {
+				return fmt.Errorf("call %d of %d (%s): fatal %s must stand alone — "+
+					"a list of what ends this call cannot also say nothing does",
+					i+1, len(cs), c.Tool, FatalNone)
+			}
+		}
+	}
+	return nil
 }
 
 // StepOutcome is one way an executed call can turn out badly. Three, and the third is the
@@ -52,6 +94,11 @@ const (
 	// FatalBlocked is StepResult.Blocked: it was refused, by a gate or by the executor
 	// itself (a runtime tool declining, which is what push.go's refusal already is).
 	FatalBlocked StepOutcome = "blocked"
+	// FatalNone is the empty declaration: NOTHING this call does ends the list. It is the
+	// sweep's word — ten refs to delete, and a remote declining one is not a reason to keep
+	// the other nine. It must stand alone, since a list of outcomes that includes "no
+	// outcomes" says two things.
+	FatalNone StepOutcome = "none"
 	// FatalNonzero is a command that ran and exited non-zero.
 	//
 	// It is a member of this vocabulary because THE TWO EXECUTORS ALREADY DISAGREE about a
@@ -67,7 +114,7 @@ const (
 
 func (o StepOutcome) valid() bool {
 	switch o {
-	case FatalErr, FatalBlocked, FatalNonzero:
+	case FatalErr, FatalBlocked, FatalNonzero, FatalNone:
 		return true
 	}
 	return false
@@ -91,8 +138,11 @@ func outcomes(r StepResult) []StepOutcome {
 
 // fatalFor reports the first outcome of r this call declared fatal.
 func (c Call) fatalFor(r StepResult) (StepOutcome, bool) {
+	if len(c.Fatal) == 1 && c.Fatal[0] == FatalNone {
+		return "", false
+	}
 	for _, o := range outcomes(r) {
-		if c.Fatal == nil { // absent: all three
+		if len(c.Fatal) == 0 { // absent: all of them
 			return o, true
 		}
 		for _, f := range c.Fatal {
@@ -154,29 +204,32 @@ func (d *callsDriver) Next(_ context.Context, prev StepResult) (ToolUse, bool, e
 	return ToolUse{Name: c.Tool, Input: c.Input}, true, nil
 }
 
-// NewCallsTask builds a task that runs a call list carried in the launch's prompt.
+// NewCallsTask builds a task that runs the call list its launch CARRIES.
 //
-// It is the shared builder both runtimes call, and the two refusals below are why it exists as
-// a constructor rather than as a driver anyone can wire up:
+// The list is a field (Launch.Calls, launch.Spec.Calls) rather than a document inside the
+// prompt, and the difference is what a reader gets: the engine can check it at fire time, a
+// charter can be shown it, and a value with a quote in it is a value rather than something that
+// has to survive being spliced into text and parsed back out. See
+// docs/working/calls-driver-plan.md step 3.5.
 //
-//   - AN ANSWER CONTRACT FAILS THE SPAWN. There is no model to ask again, so a contract this
-//     task cannot possibly satisfy would be silently dropped — and a contract dropped is worse
-//     than none, since the charter downstream is written believing it holds. Launch.Answer says
-//     as much: a runtime whose driver cannot enforce a contract must fail the spawn.
-//   - A LIST THAT WILL NOT PARSE FAILS THE SPAWN, rather than running the prefix that did.
+// It is the shared builder both runtimes call, and the refusal below is why it exists as a
+// constructor rather than as a driver anyone can wire up: AN ANSWER CONTRACT FAILS THE SPAWN.
+// There is no model to ask again, so a contract this task cannot possibly satisfy would be
+// silently dropped — and a contract dropped is worse than none, since the charter downstream is
+// written believing it holds. Launch.Answer says as much: a runtime whose driver cannot enforce
+// a contract must fail the spawn.
 //
-// Both fail as a HOSTED task (NewFailed) rather than as a nil: the spawn errors where it can be
+// It fails as a HOSTED task (NewFailed) rather than as a nil: the spawn errors where it can be
 // read, with `task get` able to say why, while the engine keeps running.
 func NewCallsTask(l Launch, reg Resolver, exec Executor) *Task {
-	calls, err := ParseCalls(l.Prompt)
-	if err != nil {
+	if err := CheckCalls(l.Calls); err != nil {
 		return NewFailed(l.ID, reg, driverName(l)+": "+err.Error())
 	}
-	return NewCallsTaskFrom(l, calls, reg, exec)
+	return NewCallsTaskFrom(l, l.Calls, reg, exec)
 }
 
-// NewCallsTaskFrom is the same, for a caller that already has the list — the scripted driver,
-// whose one call is built from a shell command rather than read out of a document.
+// NewCallsTaskFrom is the same, for a caller whose list is not the launch's — the scripted
+// driver, whose one call is built from a shell command.
 //
 // THE VECTOR COMES FROM THE SPAWN, and a spawn that names none gets ASK. That is the whole of
 // what a call list is allowed to assume about its own authority: the charter that wrote the
@@ -215,13 +268,13 @@ func driverName(l Launch) string {
 //	  input: {destination: main}
 //	  fatal: [err]
 //
-// The whole source must be the document. A prompt with prose around a list is refused rather
-// than scavenged, because the failure mode of scavenging is a list that silently lost an entry.
+// The whole source must be the document. Prose around a list is refused rather than scavenged,
+// because the failure mode of scavenging is a list that silently lost an entry.
 //
-// This is where a call list lives until it is a field on the spawn — see
-// docs/working/calls-driver-plan.md, step 3.5, which is also where per-value `$subject`
-// expansion and a fire-time check come from. Until then the document is checked here, at the
-// spawn, which is late but is still before anything runs.
+// It is NOT how a list reaches a task — that is the `calls:` field, and there is deliberately
+// only one wire form. This is for a person with a list in a file or in their hands: `verse task
+// run --driver calls "$(cat merge.tony)"` parses here, client-side, and sends the field. So a
+// bad list is a message on the terminal of whoever typed it.
 func ParseCalls(src string) ([]Call, error) {
 	n, err := parse.Parse([]byte(src))
 	if err != nil {
@@ -275,15 +328,19 @@ func parseCall(e any) (Call, error) {
 		if !ok {
 			return Call{}, fmt.Errorf("%s: fatal must be a list", tool)
 		}
-		// Non-nil even when empty: `fatal: []` is a statement, and the difference between
-		// it and an absent field is the difference between "nothing stops this list" and
-		// "anything does".
+		if len(fs) == 0 {
+			// Refused rather than read as "nothing is fatal", because that reading does not
+			// survive the wire — see Call.Fatal. The word does.
+			return Call{}, fmt.Errorf("%s: fatal is empty — write [%s] to say nothing ends the list",
+				tool, FatalNone)
+		}
 		c.Fatal = []StepOutcome{}
 		for _, f := range fs {
 			s, _ := f.(string)
 			o := StepOutcome(s)
 			if !o.valid() {
-				return Call{}, fmt.Errorf("%s: fatal %q is not one of err, blocked, nonzero", tool, s)
+				return Call{}, fmt.Errorf("%s: fatal %q is not one of %s, %s, %s, %s",
+					tool, s, FatalErr, FatalBlocked, FatalNonzero, FatalNone)
 			}
 			c.Fatal = append(c.Fatal, o)
 		}

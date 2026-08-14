@@ -405,9 +405,21 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if vector == "" {
 		vector = scriptedVector(cfg.Driver)
 	}
+	// `--driver calls` takes the actions themselves, as a tony document. It is parsed HERE, so
+	// a list that will not read is a message on the terminal of whoever typed it rather than a
+	// task that failed somewhere else — and what goes over the wire is the field, which is the
+	// only form a call list travels in.
+	var calls []task.Call
+	if cfg.Driver == task.DriverCalls {
+		cs, err := task.ParseCalls(prompt)
+		if err != nil {
+			return fmt.Errorf("task run: %w", err)
+		}
+		calls, prompt = cs, ""
+	}
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
-		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector,
+		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Calls: calls,
 		Runner: cfg.Runner, Environment: cfg.Environment, Principal: cfg.As,
 		Answer: contract,
 	})

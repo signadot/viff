@@ -450,6 +450,32 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 // it can record why it was asked. Subject and Chain are what a firing knows about its own
 // cause, and verse has always kept them on its side of the wire — which left a remote runner
 // unable to attribute its own effects (docs/working/attribution.md).
+// callsOf types a charter's call list: the fatal vocabulary becomes task.StepOutcome, and
+// anything that is not one of the three is the charter's error rather than a stop condition
+// nothing will ever match. The wire form carries strings so the charter grammar stays
+// hand-writable; this is where they stop being strings.
+func callsOf(cs []launch.Call) ([]task.Call, error) {
+	out := make([]task.Call, 0, len(cs))
+	for _, c := range cs {
+		tc := task.Call{Tool: c.Tool, Input: c.Input}
+		// A charter CAN write `fatal: []` and the wire cannot carry it — `omitzero` drops an
+		// empty list, so it would mean "nothing stops this call" locally and "anything does"
+		// on a remote runner. Refused here, naming the word that crosses.
+		if c.Fatal != nil && len(c.Fatal) == 0 {
+			return nil, fmt.Errorf("call %s: fatal is empty — write [%s] to say nothing ends the list",
+				c.Tool, task.FatalNone)
+		}
+		for _, f := range c.Fatal {
+			tc.Fatal = append(tc.Fatal, task.StepOutcome(f))
+		}
+		out = append(out, tc)
+	}
+	if err := task.CheckCalls(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
@@ -466,6 +492,28 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 	if spec.Answer != nil {
 		if _, err := answer.Parse(spec.Answer); err != nil {
 			return task.Launch{}, fmt.Errorf("answer contract: %w", err)
+		}
+	}
+	// The call list, typed and checked here for the same reason: a charter that wrote
+	// `fatal: [sideways]` should fail its firing, not produce a task whose stop condition
+	// silently never matches. The tool NAMES cannot be checked here — `push` is a runner's
+	// word, not the engine's — so an unknown one is refused at the far end, the way an
+	// environment name is.
+	if len(spec.Calls) > 0 {
+		calls, err := callsOf(spec.Calls)
+		if err != nil {
+			return task.Launch{}, err
+		}
+		l.Calls = calls
+		// The field selects the driver, so a charter writing a list need not also name one.
+		// A spawn that names a DIFFERENT driver is refused rather than having one of the two
+		// quietly ignored: whichever we picked, half of what the charter said would be a lie.
+		switch spec.Driver {
+		case "", task.DriverCalls:
+			l.Driver = task.DriverCalls
+		default:
+			return task.Launch{}, fmt.Errorf(
+				"a spawn carrying calls: cannot also be driver %q — the calls ARE the driver", spec.Driver)
 		}
 	}
 	vec, err := task.NamedVector(spec.Vector)
@@ -2258,9 +2306,23 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.Prompt == "" {
-		http.Error(w, "prompt is required", http.StatusBadRequest)
+	// One or the other says what the work IS. A call list is the work, so a spawn carrying one
+	// needs no prompt — and a spawn with neither has not said anything to do.
+	if body.Prompt == "" && len(body.Calls) == 0 {
+		http.Error(w, "prompt is required (or calls, for a call list)", http.StatusBadRequest)
 		return
+	}
+	if len(body.Calls) > 0 {
+		if err := task.CheckCalls(body.Calls); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if body.Driver != "" && body.Driver != task.DriverCalls {
+			http.Error(w, fmt.Sprintf("a spawn carrying calls cannot also be driver %q — "+
+				"the calls ARE the driver", body.Driver), http.StatusBadRequest)
+			return
+		}
+		body.Driver = task.DriverCalls
 	}
 	id, err := spawnID(body)
 	if err != nil {
@@ -2305,7 +2367,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
-		Answer: body.Answer,
+		Answer: body.Answer, Calls: body.Calls,
 		// And the same scope the record above goes to, so this run's gates reach the
 		// docket of whoever asked for it rather than everybody's.
 		Scope: scope,

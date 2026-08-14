@@ -228,6 +228,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 		Frame  string       `tony:"field=frame"`
 		Tools  []string     `tony:"field=tools"`
 		Answer *ir.Node     `tony:"field=answer,omitzero"`
+		Calls  []task.Call  `tony:"field=calls,omitzero"`
 		Vector *task.Vector `tony:"field=vector,omitzero"`
 		Grant  *task.Grant  `tony:"field=grant,omitzero"`
 		// Environment names the workspace the runner should build; Provenance is what it
@@ -252,7 +253,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	// gives: the vocabulary lives at one end, so the two cannot drift apart.
 	h, created := d.spawnHosted(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
-		Answer: body.Answer, Vector: body.Vector, Grant: body.Grant,
+		Answer: body.Answer, Calls: body.Calls, Vector: body.Vector, Grant: body.Grant,
 		Environment: body.Environment,
 		Provenance: task.Provenance{
 			Principal: body.Provenance.Principal,

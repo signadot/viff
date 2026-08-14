@@ -141,6 +141,11 @@ type Spawn struct {
 	// sends `auto` on the caller's behalf, because a prompt somebody typed IS the command
 	// they authorized — nothing else gets that, a charter least of all.
 	Vector string `tony:"field=vector,omitzero"`
+	// Calls is a call list posted directly, for `verse task run --driver calls`: the actions
+	// themselves rather than a prompt for something to work them out. The CLI parses the tony
+	// document a person typed (task.ParseCalls) and sends this, so a list that will not read
+	// is a message on their terminal rather than a task that failed on a machine elsewhere.
+	Calls []task.Call `tony:"field=calls,omitzero"`
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
 	// spawn's `resolver:`, so `verse task run` and a firing can bind the same way.
 	Resolver string `tony:"field=resolver,omitzero"`

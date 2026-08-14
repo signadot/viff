@@ -301,15 +301,18 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 			LLMKey:        p.cfg.LLM.Key,
 			LLMVirtualKey: p.cfg.LLM.VirtualKey,
 		})
-	case harness.DriverCalls:
+	case task.DriverCalls:
 		// The same extras and the same closing act as the agent above, which is the point of
 		// step 3: the merge task is four git commands and a push, and the only thing an LLM was
 		// adding to it was the chance of doing something else. The credential still never
 		// reaches the task — `push` asks over the channel the llm driver already uses, and the
 		// runner decides.
-		calls, err := task.ParseCalls(l.Prompt)
-		if err != nil {
-			return task.NewFailed(l.ID, reg, harness.DriverCalls+": "+err.Error())
+		//
+		// The list arrives as the launch's own field, checked by the engine before it crossed.
+		// This side checks it again, because a task can be posted straight at a runner without
+		// passing through a charter at all.
+		if err := task.CheckCalls(l.Calls); err != nil {
+			return task.NewFailed(l.ID, reg, task.DriverCalls+": "+err.Error())
 		}
 		tools := l.Tools
 		if len(tools) == 0 {
@@ -321,7 +324,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 			Log:    os.Stderr,
 			Finish: p.fin,
 			Extra:  p.extra,
-		}, calls)
+		}, l.Calls)
 	default:
 		cmd, ok := p.cfg.Agents[l.Driver]
 		if !ok {

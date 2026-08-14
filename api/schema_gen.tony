@@ -148,8 +148,10 @@ signature:
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
+- task: github.com/signadot/verse/task
 define:
   answer: .[tony-base:ir]
+  calls: .[array(task:verse-call)]
   driver: .[string]
   environment: .[string]
   id: .[string]

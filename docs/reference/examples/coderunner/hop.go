@@ -22,7 +22,6 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
 )
 
 // The parent half of the hop. This process is not a runtime any more: it is a PROXY that
@@ -505,7 +504,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	if _, isAgent := r.cfg.Agents[driver]; !builtinDriver(driver) && !isAgent {
 		http.Error(w, fmt.Sprintf(
 			"this runner has no driver %q — it has %q, %q, and the agents it declares: %s",
-			driver, driverLLM, harness.DriverCalls,
+			driver, driverLLM, task.DriverCalls,
 			strings.Join(agentNames(r.cfg.Agents), ", ")), http.StatusBadRequest)
 		return
 	}

@@ -45,7 +45,7 @@ func Calls(cfg Config, calls []task.Call) *task.Task {
 				i+1, len(calls), c.Tool, strings.Join(toolNames(tools), ", ")))
 		}
 	}
-	l := task.Launch{ID: cfg.ID, Driver: DriverCalls, Vector: cfg.Vector, Answer: cfg.Answer}
+	l := task.Launch{ID: cfg.ID, Driver: task.DriverCalls, Vector: cfg.Vector, Answer: cfg.Answer}
 	p := task.NewCallsTaskFrom(l, calls, cfg.Resolver, &fsExec{
 		root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra,
 	})
@@ -56,7 +56,3 @@ func Calls(cfg Config, calls []task.Call) *task.Task {
 	}
 	return p
 }
-
-// DriverCalls is the driver name a spawn writes to get a call list. It is here rather than in a
-// runtime because the two runtimes that build one must agree on the word.
-const DriverCalls = "calls"

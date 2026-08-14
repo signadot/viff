@@ -63,6 +63,16 @@ type Launch struct {
 	// charter downstream is written believing it holds.
 	Answer *ir.Node
 
+	// Calls is the work itself, for a spawn that knows what it wants done: a list of actions
+	// to take in order, each saying which of its outcomes end the list. Empty for every other
+	// driver.
+	//
+	// It is the one field here that is not a reference to something the far end resolves, and
+	// it is where a `driver:` becomes almost redundant — a spawn carrying calls is a call
+	// list, because nothing else could run one. The engine still writes the driver name in,
+	// so what ran is readable rather than inferred.
+	Calls []Call
+
 	// Vector is the gate vector to launch under; nil = the runtime's own default. Grant is
 	// the hard envelope to install as the task's scope; nil = unbounded, which is what
 	// every task got before a spawn could say otherwise.

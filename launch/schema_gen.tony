@@ -2,6 +2,15 @@
 context:
 - tony-format/context
 define:
+  fatal: .[array(string)]
+  input: .[object(object)]
+  tool: .[string]
+signature:
+  name: verse-launch-call
+---
+context:
+- tony-format/context
+define:
   capability: .[string]
   eligible: .[array(string)]
   match: .[object(object)]
@@ -16,6 +25,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   answer: .[tony-base:ir]
+  calls: .[array(verse-launch-call)]
   chain: .[string]
   doer: .[string]
   driver: .[string]

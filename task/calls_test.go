@@ -46,25 +46,25 @@ type errString string
 func (e errString) Error() string { return string(e) }
 
 // callsTask builds a task over a call list with the given vector, so each test says only what
-// it is about.
-func callsTask(t *testing.T, doc string, vec *Vector, reg Resolver, e Executor) *Task {
+// it is about. The list is the launch's own field: there is no other way in.
+func callsTask(t *testing.T, calls []Call, vec *Vector, reg Resolver, e Executor) *Task {
 	t.Helper()
-	l := Launch{ID: "t", Prompt: doc, Vector: vec}
-	p := NewCallsTask(l, reg, e)
+	p := NewCallsTask(Launch{ID: "t", Calls: calls, Vector: vec}, reg, e)
 	p.SetLog(io.Discard)
 	return p
 }
 
+// call is a one-line entry for the tests that only care about order.
+func call(tool string, fatal ...StepOutcome) Call { return Call{Tool: tool, Fatal: fatal} }
+
 // The list runs in the order it was written, and the task completes.
 func TestACallListRunsInOrder(t *testing.T) {
 	e := &listExec{}
-	p := callsTask(t, `
-calls:
-- tool: first
-  input: {command: "echo one"}
-- tool: second
-- tool: third
-`, autoVec(), AutoResolver{}, e)
+	p := callsTask(t, []Call{
+		{Tool: "first", Input: map[string]any{"command": "echo one"}},
+		{Tool: "second"},
+		{Tool: "third"},
+	}, autoVec(), AutoResolver{}, e)
 
 	out, err := p.Run(context.Background())
 	if err != nil || out.Reason != "done" {
@@ -92,12 +92,7 @@ func TestACallListIsSupervisedPerAction(t *testing.T) {
 		mu.Unlock()
 		reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
 	})
-	p := callsTask(t, `
-calls:
-- tool: first
-- tool: second
-- tool: third
-`, askOn("second"), reg, e)
+	p := callsTask(t, []Call{call("first"), call("second"), call("third")}, askOn("second"), reg, e)
 
 	_, err := p.Run(context.Background())
 	if err == nil {
@@ -122,12 +117,13 @@ calls:
 func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		fatal string
+		fatal []StepOutcome
 		want  []string
 	}{
-		{"absent means anything stops it", "", nil},
-		{"blocked is not fatal here", "\n  fatal: [err]", []string{"second"}},
-		{"and it can be named explicitly", "\n  fatal: [err, blocked]", nil},
+		{"absent means anything stops it", nil, nil},
+		{"blocked is not fatal here", []StepOutcome{FatalErr}, []string{"second"}},
+		{"and it can be named explicitly", []StepOutcome{FatalErr, FatalBlocked}, nil},
+		{"or waived entirely", []StepOutcome{FatalNone}, []string{"second"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := &listExec{}
@@ -135,8 +131,7 @@ func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
 			reg.OnPost(func(pd Pending) {
 				reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
 			})
-			p := callsTask(t, "calls:\n- tool: first"+tc.fatal+"\n- tool: second\n",
-				askOn("first"), reg, e)
+			p := callsTask(t, []Call{call("first", tc.fatal...), call("second")}, askOn("first"), reg, e)
 
 			_, err := p.Run(context.Background())
 			if !reflect.DeepEqual(e.ran(), tc.want) {
@@ -158,17 +153,16 @@ func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
 func TestANonZeroExitCanEndTheList(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		fatal string
+		fatal []StepOutcome
 		want  []string
 	}{
-		{"absent means it stops", "", []string{"first"}},
-		{"named explicitly", "\n  fatal: [nonzero]", []string{"first"}},
-		{"and a list can carry on regardless", "\n  fatal: [err]", []string{"first", "second"}},
+		{"absent means it stops", nil, []string{"first"}},
+		{"named explicitly", []StepOutcome{FatalNonzero}, []string{"first"}},
+		{"and a list can carry on regardless", []StepOutcome{FatalErr}, []string{"first", "second"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := &listExec{exit: map[string]int{"first": 1}}
-			p := callsTask(t, "calls:\n- tool: first"+tc.fatal+"\n- tool: second\n",
-				autoVec(), AutoResolver{}, e)
+			p := callsTask(t, []Call{call("first", tc.fatal...), call("second")}, autoVec(), AutoResolver{}, e)
 
 			_, err := p.Run(context.Background())
 			if !reflect.DeepEqual(e.ran(), tc.want) {
@@ -191,7 +185,7 @@ func TestANonZeroExitCanEndTheList(t *testing.T) {
 // An Err ends the list under the default, and says whose words those were.
 func TestAFailedCallEndsTheList(t *testing.T) {
 	e := &listExec{fail: map[string]string{"first": "no such remote"}}
-	p := callsTask(t, "calls:\n- tool: first\n- tool: second\n", autoVec(), AutoResolver{}, e)
+	p := callsTask(t, []Call{call("first"), call("second")}, autoVec(), AutoResolver{}, e)
 
 	_, err := p.Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "no such remote") {
@@ -207,7 +201,7 @@ func TestAFailedCallEndsTheList(t *testing.T) {
 // downstream written against a promise nobody kept.
 func TestAnAnswerContractFailsTheSpawn(t *testing.T) {
 	e := &listExec{}
-	l := Launch{ID: "t", Prompt: "calls:\n- tool: first\n", Vector: autoVec(), Answer: ir.FromString("verdict")}
+	l := Launch{ID: "t", Calls: []Call{call("first")}, Vector: autoVec(), Answer: ir.FromString("verdict")}
 	p := NewCallsTask(l, AutoResolver{}, e)
 	p.SetLog(io.Discard)
 
@@ -220,10 +214,12 @@ func TestAnAnswerContractFailsTheSpawn(t *testing.T) {
 	}
 }
 
-// A list that will not parse fails the spawn too, rather than running the prefix that did.
-func TestAnUnparseableListFailsTheSpawn(t *testing.T) {
+// A list the engine would have refused fails the spawn here too. The engine checks at fire time
+// so a charter's author sees it, and this checks again because a task can be posted straight at
+// a runtime without passing through a charter at all.
+func TestAnUncheckableListFailsTheSpawn(t *testing.T) {
 	e := &listExec{}
-	p := callsTask(t, "calls:\n- tool: first\n  fatal: [sideways]\n", autoVec(), AutoResolver{}, e)
+	p := callsTask(t, []Call{call("first", "sideways")}, autoVec(), AutoResolver{}, e)
 
 	_, err := p.Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "sideways") {
@@ -231,6 +227,14 @@ func TestAnUnparseableListFailsTheSpawn(t *testing.T) {
 	}
 	if len(e.ran()) != 0 {
 		t.Fatalf("ran %v — a spawn that could not be read ran anyway", e.ran())
+	}
+}
+
+// `none` must stand alone: a list of what ends this call cannot also say nothing does.
+func TestFatalNoneMustStandAlone(t *testing.T) {
+	err := CheckCalls([]Call{call("first", FatalNone, FatalErr)})
+	if err == nil || !strings.Contains(err.Error(), "stand alone") {
+		t.Fatalf("CheckCalls: %v", err)
 	}
 }
 
@@ -243,7 +247,7 @@ calls:
   input: {destination: main}
   fatal: [err]
 - tool: note
-  fatal: []
+  fatal: [none]
 `)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -262,8 +266,8 @@ calls:
 	if !reflect.DeepEqual(calls[1].Fatal, []StepOutcome{FatalErr}) {
 		t.Fatalf("fatal = %v", calls[1].Fatal)
 	}
-	if calls[2].Fatal == nil || len(calls[2].Fatal) != 0 {
-		t.Fatalf("`fatal: []` parsed as %v, want empty and non-nil", calls[2].Fatal)
+	if !reflect.DeepEqual(calls[2].Fatal, []StepOutcome{FatalNone}) {
+		t.Fatalf("`fatal: [none]` parsed as %v", calls[2].Fatal)
 	}
 }
 
@@ -274,7 +278,8 @@ func TestParseCallsRefusals(t *testing.T) {
 		{"empty list", "calls: []\n", `"calls:" is empty`},
 		{"no tool", "calls:\n- input: {a: b}\n", `no "tool:"`},
 		{"input is not a map", "calls:\n- tool: t\n  input: hello\n", "input must be a map"},
-		{"unknown outcome", "calls:\n- tool: t\n  fatal: [sideways]\n", "not one of err, blocked, nonzero"},
+		{"unknown outcome", "calls:\n- tool: t\n  fatal: [sideways]\n", "not one of err, blocked, nonzero, none"},
+		{"an empty fatal", "calls:\n- tool: t\n  fatal: []\n", "write [none]"},
 		{"fatal is not a list", "calls:\n- tool: t\n  fatal: err\n", "fatal must be a list"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

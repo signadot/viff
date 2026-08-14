@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/task/harness"
+	"github.com/signadot/verse/task"
 )
 
 // knownTools is the llm driver's vocabulary, as harness.toolDefs offers it, plus the one this
@@ -24,14 +24,14 @@ import (
 // floor that lists a tool nothing will offer is a floor that means nothing.
 var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent", pushToolName}
 
-// driverLLM and harness.DriverCalls are the two drivers this runner implements itself: an
+// driverLLM and task.DriverCalls are the two drivers this runner implements itself: an
 // agent, and a list of calls the charter wrote. Every other driver name selects a program from
 // `agents:` — see Command.
 const driverLLM = "llm"
 
 // builtinDriver reports whether this runner builds the driver itself rather than looking for a
 // program under `agents:`.
-func builtinDriver(d string) bool { return d == driverLLM || d == harness.DriverCalls }
+func builtinDriver(d string) bool { return d == driverLLM || d == task.DriverCalls }
 
 func agentNames(m map[string]Command) []string {
 	out := make([]string, 0, len(m))
@@ -298,7 +298,7 @@ func LoadConfig(path string) (*Config, error) {
 			if _, ok := c.Agents[d]; !ok {
 				return nil, fmt.Errorf("coderunner: environment %q wants driver %q, which is "+
 					"neither %q nor %q nor an agent this runner declares (%s)",
-					e.Name, d, driverLLM, harness.DriverCalls, strings.Join(agentNames(c.Agents), ", "))
+					e.Name, d, driverLLM, task.DriverCalls, strings.Join(agentNames(c.Agents), ", "))
 			}
 		}
 		// A tool the harness does not have fails the spawn rather than shrinking the set in

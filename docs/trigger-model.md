@@ -568,6 +568,47 @@ single default is right for both. The charter is the party that knows which it i
 the runtime's own modest default applies; a longer window is paid for in memory per live
 task, which is why the author chooses it rather than inheriting it.
 
+### `calls` — when the charter knows the actions
+
+A spawn can carry the work itself instead of a prompt for something to work it out. A merge is
+four git commands; paying a model to rediscover them each firing buys nothing but the chance of
+doing something else.
+
+```tony
+spawn:
+  vector: auto
+  calls:
+  - tool: run_bash
+    input: {command: "git merge --ff-only origin/$branch"}
+  - tool: push
+    input: {destination: main}
+```
+
+Its presence **is** the driver — `driver: calls` may be written and must not contradict it — and
+each entry becomes an ordinary action: derived, gated, and narrated the same way, so a gate
+written for an agent's push holds this one. Values are expanded per argument, so a `$branch`
+containing a quote is an argument rather than something that has to survive being spliced into
+text.
+
+An entry may narrow what ends the list:
+
+```tony
+  - tool: push
+    input: {destination: retire}
+    fatal: [err]        # a remote declining ONE ref is not a reason to stop
+```
+
+out of `err` (the action failed), `blocked` (refused, by a gate or by the far side), `nonzero` (a
+command exited non-zero), and `none` (nothing ends the list). Absent means the first three — a
+list is ordered because its calls depend on each other — and `none` stands alone. A list with an
+unknown outcome, no tool, or a contradicting driver fails the FIRING, where its author can read
+why; a tool name it cannot check belongs to the runner and is refused there.
+
+What a call list does not get is what belongs to a model: no `answer` contract (there is nobody
+to repair one, so a spawn carrying both fails), no delegation, and no deciding what to do next
+from what the last result said. That last one is the trade: it is right for four git commands
+and wrong for anything that branches.
+
 ### Who answers a rule's own gates
 
 ```tony

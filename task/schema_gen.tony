@@ -2,6 +2,15 @@
 context:
 - tony-format/context
 define:
+  fatal: .[array(string)]
+  input: .[object(object)]
+  tool: .[string]
+signature:
+  name: verse-call
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   cursor: .[int]
   dropped: .[int]

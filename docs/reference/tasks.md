@@ -65,15 +65,18 @@ nothing decides anything at run time:
 
 ```tony
 spawn:
-  driver: calls
   vector: auto
-  prompt: |
-    calls:
-    - tool: run_bash
-      input: {command: "git merge --ff-only origin/$branch"}
-    - tool: push
-      input: {destination: main}
+  calls:
+  - tool: run_bash
+    input: {command: "git merge --ff-only origin/$branch"}
+  - tool: push
+    input: {destination: main}
 ```
+
+The list is a FIELD, so the engine checks it when the trigger fires, `verse charter` can show it,
+and each argument is expanded on its own — a `$branch` with a quote in it is an argument rather
+than text spliced into a document. Its presence selects the driver; `driver: calls` may be
+written and must not contradict it.
 
 Each entry is an ordinary action — derived, gated, narrated on the read plane — so a gate
 written for an agent's push holds a list's push, and nothing downstream can tell which driver
@@ -89,10 +92,15 @@ An entry may say which of its outcomes end the list:
   fatal: [err]        # a remote declining ONE ref is not a reason to stop
 ```
 
-out of `err` (the step failed), `blocked` (refused, by a gate or by the far side) and `nonzero`
-(a command exited non-zero). Absent means all three — a list is ordered because its calls depend
-on each other — and `fatal: []` means none. `scripted` is this driver with a one-command list
-built for it.
+out of `err` (the step failed), `blocked` (refused, by a gate or by the far side), `nonzero` (a
+command exited non-zero), and `none` (nothing ends the list). Absent means the first three — a
+list is ordered because its calls depend on each other — and `none` stands alone. It is a word
+rather than an empty list because an empty list does not survive the wire: `fatal: []` would have
+meant "nothing stops this" on a local runner and "anything does" on a remote one.
+
+`scripted` is this driver with a one-command list built for it. Typed by hand,
+`verse task run --driver calls "$(cat merge.tony)"` reads the same document the charter grammar
+does and sends the field, so a list that will not read is a message on your terminal.
 
 ## The dial
 

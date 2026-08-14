@@ -105,7 +105,25 @@ type Spec struct {
 	// It bounds memory, so it is a cost the author is choosing: a long window on a chatty
 	// task is paid for in bytes per live task, and the default is deliberately modest
 	// rather than generous.
-	Retain      int    `tony:"field=retain,omitzero"`
+	Retain int `tony:"field=retain,omitzero"`
+	// Calls is the work itself: a list of actions to take in order, for work with one right
+	// answer. A merge is four git commands, and a charter that knows them should not have to
+	// pay a model to rediscover them.
+	//
+	// It is the ONE field on this spec that is not a reference to something named elsewhere,
+	// and the exception earns itself: there is nothing to name. An action list is not a
+	// vocabulary a runtime holds — it is this spawn's own content, the way Prompt is, and
+	// carrying it as a name would mean installing every list somewhere first.
+	//
+	// Its PRESENCE selects the driver (`task.DriverCalls`), so a spawn writing calls need not
+	// also write `driver:` — and one that writes a contradicting driver is refused rather than
+	// silently having one of the two ignored.
+	//
+	// It supersedes the tony document that used to ride inside Prompt. A field can be checked
+	// when the trigger fires, shown by `verse charter`, and expanded per value — so a `$ref`
+	// with a quote in it is an argument rather than something that has to survive being
+	// spliced into text and parsed back out.
+	Calls       []Call `tony:"field=calls,omitzero"`
 	Vector      string `tony:"field=vector,omitzero"`
 	Resolver    string `tony:"field=resolver,omitzero"`
 	Grant       string `tony:"field=grant,omitzero"`
@@ -171,6 +189,25 @@ type Spec struct {
 	// A spawn that carries one must also declare Grant: a doer may bring its own, and that is
 	// only checkable against a ceiling the charter stated. See docs/provider-selection.md.
 	Provider *Provider `tony:"field=provider,omitzero"`
+}
+
+// Call is one action of a call list, as a charter writes it.
+//
+// It is the wire twin of task.Call, and the duplication is the one this package already lives
+// by: a spec is a template full of $vars, and the runtime form is the resolved value. The
+// difference here is just the fatal vocabulary — strings on this side, checked and typed when
+// the engine builds the launch, so a charter that wrote `fatal: [sideways]` fails its FIRING
+// rather than producing a task whose stop condition silently never matches.
+//
+//tony:schemagen=verse-launch-call,notag
+type Call struct {
+	Tool  string         `tony:"field=tool"`
+	Input map[string]any `tony:"field=input,omitzero"`
+	// Fatal names which outcomes of this call end the list: `err`, `blocked`, `nonzero`.
+	// Absent means all three — a list is ordered because its calls depend on each other —
+	// and `[none]` means the call ends nothing. See task.Call.Fatal for why it is per call,
+	// and why "nothing" is a word rather than an empty list.
+	Fatal []string `tony:"field=fatal,omitzero"`
 }
 
 // Provider declares the who-axis as a governed 1-of-N selection: the eligible doers (a
@@ -246,7 +283,61 @@ func (s Spec) Bind(b Binding) Spec {
 	// which tools an agent is handed is the widening-by-binding risk authority.md names.
 	// Copied rather than shared so a bound spec cannot alias the charter's slice.
 	out.Tools = append([]string(nil), s.Tools...)
+	out.Calls = bindCalls(s.Calls, b)
 	return out
+}
+
+// bindCalls expands the ARGUMENTS of each call, and nothing else.
+//
+// This is the whole practical difference between a list in a field and a list inside the
+// prompt. A prompt is expanded as one blob, so `$ref` reaching `git merge --ff-only $ref` has to
+// survive being substituted into text that is then parsed back as a document — and a branch name
+// containing a quote breaks the parse rather than the command. Here each value is expanded as a
+// value: it becomes an argument, whatever is in it.
+//
+// The tool name is NOT expanded, on exactly the argument Tools makes above: it names something
+// from a fixed vocabulary, so a $var in one could only name a tool that does not exist or one
+// chosen by whoever last wrote the entity being matched. Nor is `fatal`, which is vocabulary too.
+func bindCalls(cs []Call, b Binding) []Call {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]Call, 0, len(cs))
+	for _, c := range cs {
+		nc := Call{Tool: c.Tool, Fatal: append([]string(nil), c.Fatal...)}
+		if c.Input != nil {
+			nc.Input = make(map[string]any, len(c.Input))
+			for k, v := range c.Input {
+				nc.Input[k] = expandAny(v, b)
+			}
+		}
+		out = append(out, nc)
+	}
+	return out
+}
+
+// expandAny expands $vars in every string reachable from v, so a nested argument is bound like a
+// top-level one. A charter writing `input: {env: {REF: $ref}}` means the same thing by it either
+// way, and a rule that stopped at the first level would be a rule nobody could remember.
+func expandAny(v any, b Binding) any {
+	switch t := v.(type) {
+	case string:
+		return expand(t, b)
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = expandAny(e, b)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			out[k] = expandAny(e, b)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // Expand substitutes $vars in s from b — exported for callers building strings

@@ -1,8 +1,9 @@
 # A driver that proposes a list of calls: implementation plan
 
-Status: **steps 1–3 are built** (branch `calls-driver`); 3.5 and 4 are not. The driver, `fatal:`,
-`scripted` as its degenerate case, and the coding runner's extras are in the tree and documented
-in [reference/tasks.md](../reference/tasks.md#the-drivers). What is written below for those steps
+Status: **steps 1–3.5 are built** (branch `calls-driver`); step 4 is not. The driver, `fatal:`, `scripted`
+as its degenerate case, the coding runner's extras, and `calls:` as a charter field are in the
+tree and documented in [reference/tasks.md](../reference/tasks.md#the-drivers) and
+[trigger-model.md](../trigger-model.md#calls--when-the-charter-knows-the-actions). What is written below for those steps
 is kept as the reasoning they were built from, with what the building actually found noted under
 each. The design is the section *"The mechanical tasks want a script, and a script cannot push"*
 in [coding-runner-residual.md](coding-runner-residual.md) — why a shell is the wrong shape, why a
@@ -159,6 +160,14 @@ end, the same fork [expose.md](../roadmap/expose.md) names for `driver:` and `en
 Tests: a charter carrying `calls:` fires and the list arrives at the driver intact; `$subject`
 expands per input; a bad `fatal` member and a `calls:`+`driver: llm` spawn each fail the firing
 with the charter named.
+
+**Built, and what it found.** `fatal: []` — the plan's own spelling for "nothing ends this list"
+— DOES NOT SURVIVE THE WIRE. `omitzero` drops an empty slice, so the same charter meant "nothing
+stops this call" on a local runner and "anything does" on a remote one, decided by deployment.
+The distinction is real and had to be said in a word that crosses: `fatal: [none]`, with the
+empty list refused rather than reinterpreted. Nothing else moved: the CLI keeps
+`ParseCalls` for a document a person typed, but parses it client-side into the field, so there is
+one wire form and the error lands on the terminal of whoever wrote the list.
 
 Stop here if the rest is deferred. The merge is the expensive task and the one with a
 consequence; the sweep is housekeeping.

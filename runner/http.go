@@ -82,6 +82,11 @@ func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
 	if l.Answer != nil {
 		req["answer"] = l.Answer
 	}
+	// The work itself, for a call list. It rides as the field it is rather than as text in the
+	// prompt, so a remote runner gets the same structure the charter wrote — see task.Launch.Calls.
+	if len(l.Calls) > 0 {
+		req["calls"] = l.Calls
+	}
 	if l.Vector != nil {
 		req["vector"] = l.Vector
 	}

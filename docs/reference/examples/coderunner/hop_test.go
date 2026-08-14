@@ -17,7 +17,6 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
 )
 
 // TestMain is what makes the hop testable at all: `coderunner -task` is a mode of THIS program,
@@ -1073,7 +1072,7 @@ func TestACallListRunsInTheChildToo(t *testing.T) {
 		Default: "e",
 		Environments: []Environment{{
 			Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}},
-			Driver: harness.DriverCalls, Env: []string{"PATH"},
+			Driver: task.DriverCalls, Env: []string{"PATH"},
 		}},
 	})
 	srv := httptest.NewServer(r.Handler())
@@ -1081,7 +1080,8 @@ func TestACallListRunsInTheChildToo(t *testing.T) {
 
 	h := runner.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t-calls", Vector: &task.Vector{Default: task.Auto},
-		Prompt: "calls:\n- tool: run_bash\n  input: {command: \"echo listed > svc/ran.txt\"}\n",
+		Calls: []task.Call{{Tool: "run_bash",
+			Input: map[string]any{"command": "echo listed > svc/ran.txt"}}},
 	}, nil)
 	if st := awaitTerminal(t, h); st != task.Done {
 		t.Fatalf("a call list across the hop ended %s: %s", st, h.Err())
@@ -1091,17 +1091,17 @@ func TestACallListRunsInTheChildToo(t *testing.T) {
 	}
 }
 
-// A prompt that is not a call list fails the SPAWN rather than running whatever parsed. The
-// message names what was wrong with it, since the charter's author is the only one who can fix
-// it and they cannot see the child.
-func TestAnUnreadableCallListFailsAcrossTheHop(t *testing.T) {
+// A `calls` spawn carrying no calls fails the SPAWN rather than completing having done nothing.
+// The engine checks this before the spawn crosses; this is the far end checking too, because a
+// task can be posted straight at a runner without passing through a charter.
+func TestAnEmptyCallListFailsAcrossTheHop(t *testing.T) {
 	fastLifecycle(t)
 	origin := initRepo(t)
 	r := testRunner(t, &Config{
 		Default: "e",
 		Environments: []Environment{{
 			Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}},
-			Driver: harness.DriverCalls, Env: []string{"PATH"},
+			Driver: task.DriverCalls, Env: []string{"PATH"},
 		}},
 	})
 	srv := httptest.NewServer(r.Handler())
@@ -1112,7 +1112,7 @@ func TestAnUnreadableCallListFailsAcrossTheHop(t *testing.T) {
 		Vector: &task.Vector{Default: task.Auto},
 	}, nil)
 	if st := awaitTerminal(t, h); st != task.Failed {
-		t.Fatalf("a prompt that is not a call list ended %s", st)
+		t.Fatalf("a calls spawn with no calls ended %s", st)
 	}
 	if e := h.Err(); !strings.Contains(e, "calls") {
 		t.Errorf("the refusal does not say what it could not read: %q", e)
