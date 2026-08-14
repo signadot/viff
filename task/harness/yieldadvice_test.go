@@ -43,12 +43,12 @@ func TestTheWaitAdviceNamesAToolThatIsActuallyOffered(t *testing.T) {
 	if !ok {
 		t.Fatal("call_agent is not declared")
 	}
-	if _, ok := byName[waitTool]; !ok {
-		t.Fatalf("call_agent is offered and %q is not: the only way to wait is missing", waitTool)
+	if _, ok := byName[yieldTool]; !ok {
+		t.Fatalf("call_agent is offered and %q is not: the only way to wait is missing", yieldTool)
 	}
-	if !strings.Contains(desc, waitTool) {
+	if !strings.Contains(desc, yieldTool) {
 		t.Errorf("call_agent does not name %q, so a model that wants to wait must invent a wait "+
-			"again:\n%s", waitTool, desc)
+			"again:\n%s", yieldTool, desc)
 	}
 	// And it must not tell the model to do the thing that did not work. "End your turn" is a
 	// restraint; the model has a verb now.
@@ -58,27 +58,21 @@ func TestTheWaitAdviceNamesAToolThatIsActuallyOffered(t *testing.T) {
 	}
 }
 
-// `wait` rides with delegation and only with it: a spawn that cannot delegate has nothing to
-// wait for, and defaultFrame describes the tools actually offered — so an inert one on the menu
-// is advice about something that cannot happen.
-func TestWaitIsOfferedOnlyWhereThereIsSomethingToWaitFor(t *testing.T) {
-	with, err := selectTools([]string{"read_file", "call_agent"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasTool(with, waitTool) {
-		t.Errorf("a spawn that may delegate was not offered %q", waitTool)
-	}
-	without, err := selectTools([]string{"read_file"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasTool(without, waitTool) {
-		t.Errorf("a spawn that cannot delegate was offered %q, which can only end its work", waitTool)
-	}
-	// fail rides with everything, and still does.
-	if !hasTool(without, failTool) {
-		t.Errorf("%q is not optional", failTool)
+// yield is offered ALWAYS, and is the one tool that never was optional.
+//
+// It carries the only structural way to say "I could not", which everything downstream depends
+// on — a task that merely stops reads as success — and now also the only way to wait. A spawn
+// that withheld it would turn every failure into a completed task with an excuse, and every
+// wait into whatever the model could improvise.
+func TestYieldIsNotOptional(t *testing.T) {
+	for _, only := range [][]string{nil, {"read_file"}, {"read_file", "call_agent"}} {
+		tds, err := selectTools(only)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasTool(tds, yieldTool) {
+			t.Errorf("tools %v were offered without %q", only, yieldTool)
+		}
 	}
 }
 
@@ -103,9 +97,9 @@ func TestWaitEndsTheTurnAndCostsOneModelCallPerResult(t *testing.T) {
 		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{
 			mkTC("c1", "call_agent"), mkTC("c2", "call_agent")}}, finish: "tool_calls"},
 		// Turn 2: nothing to do until they report.
-		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{mkTC("c3", waitTool)}}, finish: "tool_calls"},
+		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{mkTC("c3", yieldTool)}}, finish: "tool_calls"},
 		// Turn 3: one has reported; still waiting on the other.
-		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{mkTC("c4", waitTool)}}, finish: "tool_calls"},
+		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{mkTC("c4", yieldTool)}}, finish: "tool_calls"},
 		// Turn 4: both in, answer.
 		{msg: chatMessage{Role: "assistant", Content: "both summarised"}, finish: "stop"},
 	}}
@@ -134,8 +128,8 @@ func TestWaitEndsTheTurnAndCostsOneModelCallPerResult(t *testing.T) {
 	// `wait` is not an action. It must never reach an executor, which would both do nothing
 	// and, being an action in flight, be the one moment a child's result CANNOT be folded in.
 	for _, ran := range ex.ran {
-		if ran == waitTool {
-			t.Fatalf("%q was dispatched to the executor: it is a turn ending, not a thing to do", waitTool)
+		if ran == yieldTool {
+			t.Fatalf("%q was dispatched to the executor: it is a turn ending, not a thing to do", yieldTool)
 		}
 	}
 	if len(ex.ran) != 0 {
@@ -151,13 +145,13 @@ func TestWaitEndsTheTurnAndCostsOneModelCallPerResult(t *testing.T) {
 	sent := fake.seen[len(fake.seen)-1]
 	var answered bool
 	for _, m := range sent {
-		if m.Role == "tool" && m.Name == waitTool {
+		if m.Role == "tool" && m.Name == yieldTool {
 			answered = true
 		}
 	}
 	if !answered {
 		t.Errorf("no tool result was recorded for %q — the next turn ships a tool_call nobody "+
-			"answered, which the API rejects", waitTool)
+			"answered, which the API rejects", yieldTool)
 	}
 }
 

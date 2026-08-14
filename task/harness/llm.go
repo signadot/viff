@@ -317,53 +317,8 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			// what it expects (see the deref in trigger/deref.go): an agent that failed
 			// cannot produce the value, so the firing fails whether or not it admitted
 			// anything.
-			if tc.Function.Name == failTool {
-				return task.ToolUse{}, false, errors.New(failReason(tc))
-			}
-			// `wait` is not an action either: it is the model ENDING ITS TURN, spelled as
-			// something it can call.
-			//
-			// The loop waits for a child exactly when the driver has nothing to propose, and
-			// the tool description used to say so — "END YOUR TURN: say what you are waiting
-			// for and stop, without calling a tool". A drive watched a model follow the letter
-			// of that and miss it entirely: it narrated "Still waiting for server_go_reviewer
-			// and test_go_reviewer" at every boundary, which is exactly what was asked, and
-			// attached a tool call anyway. Eleven junk sub-agents (`noop`, `noop2` … `noop10`)
-			// and a dozen `run_bash echo done` across twenty-nine boundaries, while both real
-			// reviewers had long since been dispatched.
-			//
-			// The advice was not ignored; it asked for something the model cannot commit to. A
-			// turn carries content AND tool calls, so "say it and stop" is two acts and the
-			// model only owes itself the first. Waiting was the one thing it wanted with no verb
-			// for it, so it kept inventing one out of whatever was to hand — first `sleep 120`,
-			// then a sub-agent called `noop`.
-			//
-			// So it gets the verb. `wait` costs one model call and then the loop blocks in Go
-			// until a child reports, which is what the polling was approximating at a round trip
-			// per attempt — and at two, since each `noop` was a whole sub-task with its own
-			// model calls.
-			//
-			// The tool result is recorded before returning, because unlike `fail` this turn has
-			// a successor: a tool_call with no tool response is a malformed conversation, and
-			// the model IS called again as soon as anything arrives.
-			if tc.Function.Name == waitTool {
-				d.messages = append(d.messages, chatMessage{
-					Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name,
-					Content: "Waiting. You will be called again as soon as a sub-agent reports, " +
-						"with its result.",
-				})
-				// Said on the read plane, because a wait is otherwise INVISIBLE there. The
-				// polling it replaces was at least legible — a watcher saw exec frames going
-				// past — and a boundary with nothing in it reads as a task that has stopped.
-				// That is the complaint the model-call notice exists to answer, arriving by a
-				// second route, and the fix is the same: a task that is deliberately quiet
-				// should say so rather than only look it.
-				const note = "waiting for sub-agents to report"
-				fmt.Fprintf(d.log, "   … %s\n", note)
-				if d.emit != nil {
-					d.emit(task.Frame{Kind: task.EvSay, Text: note})
-				}
-				return task.ToolUse{}, false, nil
+			if tc.Function.Name == yieldTool {
+				return d.yield(tc)
 			}
 			d.last = &tc
 			return toToolUse(tc), true, nil
@@ -468,7 +423,7 @@ func resultContent(prev task.StepResult) string {
 }
 
 // selectTools returns the tool definitions to offer: all of them when only is empty, else
-// exactly the ones named — plus failTool, always.
+// exactly the ones named — plus yieldTool, always.
 //
 // fail is not optional because the loop's contract depends on it. It is the only structural
 // way an agent can say "I could not": a driver that simply stops is read as SUCCESS by
@@ -500,15 +455,13 @@ func selectTools(only []string) ([]toolDef, error) {
 			out = append(out, td)
 		}
 	}
-	if !seen[failTool] {
-		out = append(out, byName[failTool])
-	}
-	// `wait` rides with delegation, and only with it. It is the verb for "my sub-agents are
-	// working", so a spawn that cannot delegate has nothing to wait for — and defaultFrame
-	// describes the tools actually offered, so an inert one on the menu would be advice about
-	// something that cannot happen.
-	if seen["call_agent"] && !seen[waitTool] {
-		out = append(out, byName[waitTool])
+	// yield is not optional, and is the one tool that never was. It carries the only
+	// structural way to say "I could not", which everything downstream depends on — a task that
+	// merely stops reads as success — and now also the only way to wait. A spawn that withheld
+	// it would turn every failure into a completed task with an excuse, and every wait into
+	// whatever the model could improvise.
+	if !seen[yieldTool] {
+		out = append(out, byName[yieldTool])
 	}
 	return out, nil
 }
@@ -564,54 +517,126 @@ func toolDefs() []toolDef {
 		// time.
 		mk("call_agent", "Delegate a self-contained subtask to a sub-agent that runs concurrently. "+
 			"Give a short agent name and a full prompt describing the task. Use for independent "+
-			"subtasks you can run in parallel. TO WAIT FOR THEIR RESULTS, CALL "+waitTool+" — that "+
-			"is what it is for, and it is free. Never poll: not with sleep, and not by delegating "+
-			"filler work. A turn that is still running is a turn whose sub-agents cannot report to "+
-			"you, so anything you do to pass the time delays the results rather than waiting for "+
-			"them.",
+			"subtasks you can run in parallel. TO WAIT FOR THEIR RESULTS, call "+yieldTool+" with "+
+			"reason \""+yieldWaiting+"\" — that is what it is for, and it is free. Never poll: not "+
+			"with sleep, and not by delegating filler work. A turn that is still running is a turn "+
+			"whose sub-agents cannot report to you, so anything you do to pass the time delays the "+
+			"results rather than waiting for them.",
 			map[string]any{"agent": s, "prompt": s}, []string{"agent", "prompt"}),
-		// No parameters. A wait is not ABOUT anything — it is the absence of a next action — and
-		// a field to fill in is a field a model reasons about instead of just calling.
-		mk(waitTool, "Wait for your running sub-agents. Call this, alone, when you have delegated "+
-			"work and have nothing to do until it comes back. It costs nothing and takes no time "+
-			"from the sub-agents: your turn ends, and you are called again the moment one of them "+
-			"reports, with its result. This is the ONLY way to wait. Do not sleep, do not re-run "+
-			"commands to pass the time, and do not delegate filler work — all of those keep your "+
-			"turn running, which is what stops a result from reaching you. Only meaningful while a "+
-			"sub-agent is running: with none, it ends your work.",
-			map[string]any{}, nil),
-		mk(failTool, "Declare that you could NOT complete the task, and stop. Call this instead of "+
-			"finishing with an explanation when the task could not be done — a file you needed was "+
-			"missing, a command failed, the request was impossible. Simply stopping is read as "+
-			"SUCCESS by everything downstream, so an explanation in your final message is not enough: "+
-			"it must be this call. Give the reason.",
-			map[string]any{"reason": s}, []string{"reason"}),
+		// ONE verb for every way a turn can end, because the model had none and kept building
+		// them out of whatever was to hand. The reason is enumerated rather than free text: it
+		// is the difference between failing and pausing, and a field a model can waffle into is
+		// how a terminal tool became a scratchpad.
+		mk(yieldTool, "Hand control back to the loop that is running you. This ENDS YOUR TURN — "+
+			"the only way to do that deliberately — and says why, which decides what happens next:\n"+
+			"  \""+yieldWaiting+"\": you have delegated work and have nothing to do until it comes "+
+			"back. Costs nothing and takes no time from your sub-agents; you are called again the "+
+			"moment one reports, with its result. This is the ONLY way to wait. Do not sleep, do "+
+			"not re-run commands to pass the time, and do not delegate filler work — all of those "+
+			"keep your turn running, which is what stops a result from reaching you.\n"+
+			"  \""+yieldDone+"\": the work is finished and your last message is the answer.\n"+
+			"  \""+yieldCannot+"\": you could NOT do it — a file you needed was missing, a command "+
+			"failed, the request was impossible. Say why in `note`. This is the only reason that "+
+			"fails the task, and it must be this call: simply stopping is read as SUCCESS by "+
+			"everything downstream, so an explanation in your final message is not enough.",
+			map[string]any{
+				"reason": map[string]any{"type": "string",
+					"enum":        []string{yieldWaiting, yieldDone, yieldCannot},
+					"description": "why control is being handed back"},
+				"note": map[string]any{"type": "string",
+					"description": "for " + yieldCannot + ", what went wrong"},
+			}, []string{"reason"}),
 	}
 }
 
-// failTool is the terminal tool by which a model declares failure. Named once because the
-// driver matches on it and the tool definition declares it, and a drift between the two
-// would silently turn the fail branch back off.
-const failTool = "fail"
+// yieldTool is the one thing a model could not previously say: HAND CONTROL BACK.
+//
+// It had exits and no verb for them. "I am done" was implicit — stop emitting tool calls — and
+// worked. "I could not" was `fail`. "I am waiting for my sub-agents" was nothing at all, and a
+// model with nothing to say and no way to say it reaches for whatever is to hand: first
+// `run_bash sleep 120`, then eleven sub-agents called `noop`, and once for `fail` itself, with
+// the reason "placeholder - not actually failing, retracting" — a terminal tool used as a
+// scratchpad, discarding a review whose children had both reported clean.
+//
+// Both are the same defect. Naming the mechanism rather than one of its uses is what stops the
+// model approximating it: yielding is a thing it can now DO, so it does not have to build one
+// out of a sleep, a sub-agent, or a failure.
+const yieldTool = "yield"
 
-// waitTool is how a model says it has nothing to propose until a sub-agent reports. Named once
-// beside failTool for the same reason: the driver matches on it and the tool definition
-// declares it, and a drift between the two turns the branch silently back off — which for this
-// one means the polling comes back.
-const waitTool = "wait"
+// Why a turn is being handed back. Only `cannot` fails the run — see yield for why the
+// unrecognised case deliberately does not.
+const (
+	yieldWaiting = "waiting"
+	yieldDone    = "done"
+	yieldCannot  = "cannot"
+)
 
-// failReason pulls the model's stated reason out of the fail call, falling back to a fixed
-// message: a fail with unparseable arguments is still a fail, and must not be swallowed into
-// a successful completion because the JSON was malformed.
-func failReason(tc toolCall) string {
+// yieldHint is how the answer contract's repair tells a model to give up honestly, rather than
+// inventing a value to satisfy a shape. It is a phrase rather than a bare tool name because the
+// tool needs its argument to mean anything.
+const yieldHint = yieldTool + ` with reason "` + yieldCannot + `"`
+
+// yield hands the turn back, and decides only one thing: whether that is a failure.
+//
+// `cannot` is the sole failing reason, and it must be said EXPLICITLY. The two ways to get this
+// wrong are opposite and both have been paid for: treat an unrecognised reason as failure and a
+// model experimenting discards finished work (the `fail`-as-scratchpad run); treat a failure as
+// an ordinary stop and a task that could not do its job reports `done` with an excuse in its
+// result, which is the floor `fail` was introduced to raise.
+//
+// So the reason is enumerated in the schema, `cannot` is the only failing value, and anything
+// unrecognised yields with the misunderstanding written into the tool result. The model gets
+// another turn either way: it can yield properly or produce its answer, and nothing is silently
+// discarded or silently declared a success. As `fail` always did, this raises the floor without
+// claiming to be a guarantee — a model can still simply stop.
+func (d *llmDriver) yield(tc toolCall) (task.ToolUse, bool, error) {
+	reason, note := yieldArgs(tc)
+	if reason == yieldCannot {
+		if note == "" {
+			note = "the agent yielded as unable to continue without giving a reason"
+		}
+		return task.ToolUse{}, false, errors.New(note)
+	}
+	said := "Control is back with the loop."
+	switch reason {
+	case yieldWaiting:
+		said += " You will be called again as soon as a sub-agent reports, with its result."
+	case yieldDone:
+		said += " Your last message stands as this task's answer."
+	default:
+		said += fmt.Sprintf(" (Reason %q is not one of %q, %q or %q. If you could not complete "+
+			"the task, say so with %s — stopping is otherwise read as success.)",
+			reason, yieldWaiting, yieldDone, yieldCannot, yieldHint)
+	}
+	d.messages = append(d.messages, chatMessage{
+		Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: said,
+	})
+	// Said on the read plane, because a yield is otherwise INVISIBLE there. The polling it
+	// replaces was at least legible — a watcher saw exec frames going past — and a boundary
+	// with nothing in it reads as a task that has stopped. That is the complaint the model-call
+	// notice exists to answer, arriving by a second route, and the fix is the same: a task that
+	// is deliberately quiet should say so rather than only look it.
+	note = strings.TrimSpace(note)
+	line := "yielded (" + reason + ")"
+	if note != "" {
+		line += ": " + note
+	}
+	fmt.Fprintf(d.log, "   … %s\n", line)
+	if d.emit != nil {
+		d.emit(task.Frame{Kind: task.EvSay, Text: line})
+	}
+	return task.ToolUse{}, false, nil
+}
+
+// yieldArgs reads the call's arguments, tolerating a model that sent none: an unparseable yield
+// is still a yield, and must not be swallowed into something else because the JSON was bad.
+func yieldArgs(tc toolCall) (reason, note string) {
 	var args struct {
 		Reason string `json:"reason"`
+		Note   string `json:"note"`
 	}
 	if tc.Function.Arguments != "" {
 		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
 	}
-	if strings.TrimSpace(args.Reason) == "" {
-		return "the agent declared failure without giving a reason"
-	}
-	return args.Reason
+	return strings.TrimSpace(args.Reason), strings.TrimSpace(args.Note)
 }

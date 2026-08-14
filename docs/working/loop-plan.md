@@ -244,9 +244,24 @@ call, and the loop then blocks in Go until a child reports.
 
 **Finding 2: `fail` was used as a scratchpad.** The run ended on
 `err: "placeholder - not actually failing, retracting"`, discarding a review whose children had
-both reported clean. Same shape as Finding 1, and worth stating as the rule it implies: **a
-failure result should not be the nearest thing to hand when a model wants to jot, retract or
-experiment.** No fix here yet, deliberately — see below.
+both reported clean. Same shape as Finding 1: **a failure result should not be the nearest thing
+to hand when a model wants to jot, retract or experiment.**
+
+Both are one defect, and naming it produced the fix for both. The model had EXITS and no verb
+for them. "I am done" was implicit — stop emitting tool calls — and worked. "I could not" was
+`fail`. "I am waiting for my sub-agents" was nothing at all. A model with a turn to end and no
+way to end it reaches for whatever is to hand, which is how a sleep, then eleven sub-agents
+called `noop`, then a terminal tool came to mean "pause". So there is one verb now, `yield`,
+which hands control back to the loop and says why — `waiting`, `done`, or `cannot`. It subsumes
+both `wait` and `fail`, and it is named for the mechanism rather than for one of its uses,
+which is the part that stops the model approximating it.
+
+The reason is enumerated in the schema and `cannot` is the only failing value, because the two
+ways to get that wrong are opposite and both have been paid for: treat an unrecognised reason as
+failure and an experimenting model discards finished work; treat a failure as an ordinary stop
+and a task that could not do its job reports `done` with an excuse in its result. Anything
+unrecognised hands back with the misunderstanding written into the tool result, where the model
+gets another turn to correct it.
 
 **And the process finding, which is the one that matters.** Fifteen minutes per iteration with a
 shared outage (`replicas=1, strategy=Recreate`) is a feedback loop that selects what gets
@@ -267,10 +282,12 @@ has one, and giving it a verb removes a class that advice asking for restraint c
 NOT established is that the class is common — one drive saw it, and six local attempts could not
 make it happen again. That is a much weaker claim than "fixed", and it is the claim.
 
-It is also why Finding 2 has no fix in this pass. The lesson of six failed reproductions is that
-hypotheses about model behaviour are cheap and usually wrong, and the last two attempts at this
-exact problem were both shipped on reasoning alone. A `note` or `scratch` verb is the obvious
-move by analogy with `wait`, and analogy is what has been failing. It wants a reproducer first.
+The same caution applies to `yield`'s `cannot` half, which replaces a tool that everything
+downstream depends on: a task that merely stops reads as success, so lowering that floor would
+show up as a task reporting `done` and no assertion about the loop would catch it. That one IS
+checked against a real model — `TestDriveAnImpossibleJobYieldsCannot` asks for a number from a
+file that does not exist and requires the run to fail with the reason — because it is the case
+where being wrong is silent.
 
 ## Verification, and what each part cannot show
 

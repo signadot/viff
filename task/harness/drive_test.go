@@ -126,7 +126,7 @@ func drive(t *testing.T, withVerb bool) driveResult {
 	if !withVerb {
 		var keep []toolDef
 		for _, td := range tds {
-			if td.Function.Name == waitTool {
+			if td.Function.Name == yieldTool {
 				continue
 			}
 			if td.Function.Name == "call_agent" {
@@ -156,7 +156,7 @@ func drive(t *testing.T, withVerb bool) driveResult {
 	d := &llmDriver{client: client, tools: tds, frame: frame, prompt: drivePrompt, log: os.Stderr}
 	p := task.NewTask("drive", sup, d, &fsExec{root: root, log: os.Stderr})
 	p.SetLog(os.Stderr)
-	p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: failTool})
+	p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: yieldHint})
 	d.emit = p.Emit
 	var kid int
 	p.SetSpawn(func(parent *task.Task, mode task.ChildMode, req *task.CallAgentRequest) (*task.Task, error) {
@@ -199,7 +199,7 @@ func drive(t *testing.T, withVerb bool) driveResult {
 					r.polling = append(r.polling, "exec:"+f.Tool)
 				}
 			case task.EvSay:
-				if strings.Contains(f.Text, "waiting for sub-agents") {
+				if strings.Contains(f.Text, "yielded (waiting)") {
 					r.waits++
 				}
 			}
@@ -224,6 +224,50 @@ func drive(t *testing.T, withVerb bool) driveResult {
 		t.Logf("    parent execs %v", r.execs)
 	}
 	return r
+}
+
+// AND THE OTHER HALF of the verb, against a real model: a job that cannot be done has to FAIL,
+// not complete with an excuse in its result.
+//
+// This is the floor `fail` was introduced to raise, and folding it into `yield` is exactly the
+// kind of change that could lower it again without anything noticing — the failure mode is a
+// task reporting `done`, which no assertion about the loop would catch. A charter dereferencing
+// $result is the caller that cannot afford it.
+func TestDriveAnImpossibleJobYieldsCannot(t *testing.T) {
+	requireDrive(t)
+	root := t.TempDir()
+	tds, err := selectTools([]string{"read_file", "list_dir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := os.Getenv("OPENAI_MODEL")
+	if model == "" {
+		model = "claude-sonnet-5"
+	}
+	client := clientFrom(os.Getenv("PORTKEY_BASE_URL"), os.Getenv("PORTKEY_API_KEY"),
+		os.Getenv("PORTKEY_VIRTUAL_KEY"), model)
+	vec := &task.Vector{Default: task.Auto}
+	sup := task.NewSupervisor(vec, task.AutoResolver{})
+	sup.SetDeriver(demoDeriver{})
+	d := &llmDriver{client: client, tools: tds, frame: defaultFrame(tds, vec), log: os.Stderr,
+		prompt: "Read the file `quarterly-revenue.csv` in your working directory and report the " +
+			"total revenue for Q3. Report the number and nothing else."}
+	p := task.NewTask("impossible", sup, d, &fsExec{root: root, log: os.Stderr})
+	p.SetLog(os.Stderr)
+	d.emit = p.Emit
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	out, err := p.Run(ctx)
+	t.Logf("outcome=%s err=%v result=%q", out.Reason, err, p.Result())
+	if out.Reason != string(task.Failed) {
+		t.Errorf("a task asked for a number from a file that does not exist reported %q. "+
+			"Stopping with an explanation is read as SUCCESS by everything downstream, which is "+
+			"the whole reason this verb exists.", out.Reason)
+	}
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "quarterly-revenue") {
+		t.Errorf("the failure does not carry what went wrong: %v", err)
+	}
 }
 
 func requireDrive(t *testing.T) {
@@ -286,7 +330,7 @@ func TestDriveTheVerbStopsThePolling(t *testing.T) {
 	}
 	if r.waits == 0 {
 		t.Errorf("%q was never called, so whatever the parent did between fanning out and "+
-			"answering, it was not the thing it was given", waitTool)
+			"answering, it was not the thing it was given", yieldTool)
 	}
 	if r.boundaries > 12 {
 		t.Errorf("%d boundaries for three files: polling by another name", r.boundaries)

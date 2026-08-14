@@ -42,7 +42,7 @@ func defaultFrame(tds []toolDef, vec *task.Vector) string {
 	var free, gated []string
 	for _, td := range tds {
 		name := td.Function.Name
-		if name == failTool {
+		if name == yieldTool {
 			continue // not an action; described on its own terms at the end
 		}
 		if gateModeFor(name, vec).Blocks() {
@@ -66,7 +66,7 @@ func defaultFrame(tds []toolDef, vec *task.Vector) string {
 			"denied: %s. Use them where the task requires it, not by preference.\n", strings.Join(gated, ", "))
 	}
 	fmt.Fprintf(&b, "A tool result that says DENIED is a decision, not a transient error: do not retry "+
-		"the same action — take another approach, or call %s.\n", failTool)
+		"the same action — take another approach, or hand control back with %s.\n", yieldHint)
 	b.WriteString("A result saying an action is outside your grant is final. Nobody present can " +
 		"approve it and no rephrasing makes it permitted.\n")
 	b.WriteString("Your final message IS this task's result. It is read by whatever asked for the " +
@@ -95,7 +95,7 @@ func contractClause(c *answer.Contract) string {
 	fmt.Fprintf(&b, "\nIt is checked the moment you stop. A mismatch comes back to you naming "+
 		"exactly what is wrong, and a run that never satisfies it FAILS. If a value is not "+
 		"something you were able to determine, call %s with the reason — do not invent one to "+
-		"fit the shape.", failTool)
+		"fit the shape.", yieldHint)
 	return b.String()
 }
 
@@ -257,7 +257,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 		p.SetFinisher(cfg.Finish)
 	}
 	if contract != nil {
-		p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: failTool})
+		p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: yieldHint})
 	}
 	driver.emit = p.Emit // narration onto this task's read plane
 

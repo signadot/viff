@@ -319,8 +319,9 @@ func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Enviro
 	t.SetLog(os.Stderr)
 	// Whatever the agent did, the runner's delivery is the last action of the task and is
 	// gated like one — installed on the loop, the same way the harness does it for the llm
-	// driver. The answer contract rides the same seam: "fail" is the harness's give-up tool
-	// and this driver has none, so the repair names the thing this program can actually do.
+	// driver. The answer contract rides the same seam: the harness's give-up is a tool call
+	// (`yield`) and this driver has no tools, so the repair names the thing this program can
+	// actually do.
 	if fin != nil {
 		t.SetFinisher(fin)
 	}

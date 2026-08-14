@@ -31,7 +31,7 @@ func TestDefaultFrameNeverRecommendsWhatTheVectorBlocks(t *testing.T) {
 		t.Error("the frame recommends call_agent while the vector gates it")
 	}
 	for _, name := range toolNames(tds) {
-		if name == failTool || !gateModeFor(name, vec).Blocks() {
+		if name == yieldTool || !gateModeFor(name, vec).Blocks() {
 			continue
 		}
 		// A gated tool must be described as gated. Being absent from the frame would also
@@ -59,7 +59,7 @@ func TestDefaultFrameDescribesAnUngatedVectorAsUngated(t *testing.T) {
 		t.Error("no tool is gated under an auto vector, so nothing should be described as stopping the loop")
 	}
 	for _, name := range toolNames(tds) {
-		if name != failTool && !strings.Contains(frame, name) {
+		if name != yieldTool && !strings.Contains(frame, name) {
 			t.Errorf("%s runs freely but is not named in the frame", name)
 		}
 	}
@@ -120,14 +120,14 @@ func TestSelectToolsAlwaysKeepsFail(t *testing.T) {
 	}
 	names := toolNames(tds)
 	if len(names) != 2 || names[0] != "read_file" {
-		t.Fatalf("tools = %v, want the requested one plus fail", names)
+		t.Fatalf("tools = %v, want the requested one plus yield", names)
 	}
 	var found bool
 	for _, n := range names {
-		found = found || n == failTool
+		found = found || n == yieldTool
 	}
 	if !found {
-		t.Errorf("tools = %v, missing %q", names, failTool)
+		t.Errorf("tools = %v, missing %q", names, yieldTool)
 	}
 }
 

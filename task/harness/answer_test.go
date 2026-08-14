@@ -38,7 +38,7 @@ func runWithContract(t *testing.T, c *answer.Contract, turns ...scriptedTurn) (*
 	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard}
 	p := task.NewTask("t", task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{}), d, &fsExec{root: t.TempDir()})
 	if c != nil {
-		p.SetAnswerCheck(&answer.Checker{C: c, FailHint: failTool})
+		p.SetAnswerCheck(&answer.Checker{C: c, FailHint: yieldHint})
 	}
 	out, err := p.Run(context.Background())
 	return fake, out, err
@@ -75,7 +75,7 @@ func TestNarrationIsRepairedIntoAnAnswer(t *testing.T) {
 	if last.Role != "user" {
 		t.Fatalf("repair arrived as role %q, want user", last.Role)
 	}
-	for _, want := range []string{"answer contract", "class", "!or", failTool} {
+	for _, want := range []string{"answer contract", "class", "!or", yieldTool} { // the repair names the honest exit
 		if !strings.Contains(last.Content, want) {
 			t.Errorf("repair message missing %q:\n%s", want, last.Content)
 		}
