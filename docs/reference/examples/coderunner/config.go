@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -315,6 +316,19 @@ func LoadConfig(path string) (*Config, error) {
 			if err := checkDests(e.Name, e.Credentials, r); err != nil {
 				return nil, err
 			}
+			// A LOCAL remote is made absolute, because the side that resolves it changed.
+			//
+			// The parent used to do every push, and it resolves a relative path against its own
+			// working directory, where whoever wrote the config was standing. The TASK pushes
+			// now, and it runs with its cwd set to the workspace — so `repo: ./scratch/x.git`
+			// resolves to two different places on the two sides, and only one of them exists.
+			//
+			// What it looks like is the whole flow working and the last step failing with
+			// `push refs/heads/main: repository not found`, on a repository the runner cloned
+			// from a moment earlier. Found by driving a merge against a local scratch remote.
+			if abs, ok := localRemote(r.Repo); ok {
+				c.Environments[i].Repos[j].Repo = abs
+			}
 			dirs[r.Name] = true
 		}
 		if err := checkDelivering(e); err != nil {
@@ -334,6 +348,26 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("coderunner: default environment %q is not declared", c.Default)
 	}
 	return &c, nil
+}
+
+// localRemote reports the absolute form of a remote that is a PATH, and false for one that is a
+// url or an scp-style ssh target.
+//
+// Deliberately conservative about what counts as a path: `://` is every url form go-git speaks,
+// and `user@host:path` is the scp form, which has a colon before any slash. Anything else is a
+// filesystem path, which is what the tests and the shipped `local` environment use.
+func localRemote(repo string) (string, bool) {
+	if strings.Contains(repo, "://") {
+		return "", false
+	}
+	if i := strings.IndexAny(repo, ":/"); i >= 0 && repo[i] == ':' {
+		return "", false // scp-style: the colon comes first
+	}
+	abs, err := filepath.Abs(repo)
+	if err != nil {
+		return "", false // leave it as written; the clone will say so in its own words
+	}
+	return abs, true
 }
 
 // checkDests is everything about one repository's destinations that cannot be discovered later.

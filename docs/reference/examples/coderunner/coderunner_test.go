@@ -1118,3 +1118,57 @@ func mustGetwd(t *testing.T) string {
 	}
 	return wd
 }
+
+// A local remote is made ABSOLUTE when the config is read, because the side that resolves it is
+// no longer the side that wrote it.
+//
+// The parent used to do every push and resolved a relative path against its own working
+// directory — where whoever wrote the config was standing. The task pushes now, with its cwd set
+// to the workspace, so the same string names two different places and only one of them exists.
+// What it looks like is the whole flow working and the last step failing with `push
+// refs/heads/main: repository not found`, against a repository the runner cloned from a moment
+// before. Found by driving a merge, not by reading.
+func TestALocalRemoteIsResolvedWhereItWasWritten(t *testing.T) {
+	dir := t.TempDir()
+	origin := initRepo(t)
+	rel, err := filepath.Rel(mustGetwd(t), origin)
+	if err != nil {
+		t.Skipf("no relative path from here to the temp origin: %v", err)
+	}
+	write := func(repo string) *Config {
+		t.Helper()
+		cfg := &Config{Environments: []Environment{{
+			Name:  "e",
+			Repos: []Repo{{Name: "svc", Repo: repo, Base: "main", Push: "refs/heads/x/$task"}},
+		}}}
+		blob, err := codec.Marshal(cfg, codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "c.tony")
+		if err := os.WriteFile(path, blob, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := LoadConfig(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	if got := write(rel).Environments[0].Repos[0].Repo; !filepath.IsAbs(got) {
+		t.Errorf("a relative local remote stayed relative (%q) — the task process resolves it "+
+			"from the workspace and will not find it", got)
+	}
+	// A url is left exactly as written: it has no working directory to be relative to, and
+	// rewriting one would be this runner editing the operator's remote.
+	for _, remote := range []string{
+		"https://github.com/signadot/verse",
+		"git@github.com:signadot/verse.git",
+		"ssh://git@github.com/signadot/verse",
+	} {
+		if got := write(remote).Environments[0].Repos[0].Repo; got != remote {
+			t.Errorf("remote %q was rewritten to %q", remote, got)
+		}
+	}
+}
