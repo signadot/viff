@@ -214,12 +214,59 @@ func docketCmd() *cli.Command {
 					line += "  closes=" + at
 				}
 				if s, ok := p["subject"].(string); ok {
+					// WHAT IS BEING DECIDED, ahead of the address of it. A docket line used to
+					// be `whether open` plus a ref, so the only way to learn what a vote meant
+					// was to fetch the subject, read a branch name and two shas out of it, and
+					// go find the diff elsewhere. A gate answered without knowing what it is
+					// about is answered by reflex, which is the failure the gate exists to
+					// prevent — so the subject gets to say, and this shows it.
+					if says := subjectSays(s); says != "" {
+						line += "  — " + says
+					}
 					line += "  subject=" + s
 				}
 				fmt.Fprintln(cc.Out, line)
 			}
 			return nil
 		})
+}
+
+// subjectSays is the one line a motion's subject offers about itself, or "" when it offers none.
+//
+// A CONVENTION rather than a schema: an entity that wants to be decidable puts a `says` on
+// itself, and a charter fills it from whatever produced the fact — merge-gate.tony carries the
+// review's own report onto the proposal it derives. Nothing requires it and nothing breaks
+// without it, which is why this is silent about every failure: a docket that refused to list a
+// motion because its subject was unreadable would be worse than one that lists it bare.
+//
+// One request per motion. A docket is short by construction — it is the things waiting on a
+// person — and the alternative is the engine denormalising a summary onto every motion it
+// writes, which is a schema decision that should be made by somebody who wants it.
+func subjectSays(ref string) string {
+	resp, err := httpGet("/entity", url.Values{"ref": {ref}})
+	if err != nil {
+		return ""
+	}
+	var ent struct {
+		Payload struct {
+			Says string `tony:"field=says,omitzero"`
+		} `tony:"field=payload"`
+	}
+	decodeClose(resp, &ent)
+	return firstLineOf(ent.Payload.Says, 100)
+}
+
+// firstLineOf keeps a docket line one line: the first sentence-worth, and an ellipsis when
+// there was more. A report is a paragraph and a terminal is not.
+func firstLineOf(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if len(s) > n {
+		return strings.TrimSpace(s[:n]) + "…"
+	}
+	return s
 }
 
 // optionLabels renders a motion's options as "id(need) …" (the threshold shown only when

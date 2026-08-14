@@ -206,6 +206,37 @@
         state: open
         err: !delete null
 ---
+# 1b. …and the proposal says what it is about, so the docket can ask a real question.
+#
+# WITHOUT THIS a person is asked `whether open` about
+# `merge:proposal:proposal-appeared@git:ref:verse_verse_auto_…` and nothing else. To answer they
+# must fetch the subject, read a branch name and two shas out of it, and go find the diff
+# somewhere else — which is a gate answered by reflex, and the gate is the load-bearing part of
+# this whole design. `verse docket` shows a subject's `says` when it has one, so putting the
+# review's own report there is the whole fix.
+#
+# A PATCH rather than part of rule 1's derive, and the engine is what taught me: a derive may
+# read at or below its own level and no higher, because reading upward lets a level above change
+# what a derive writes and a derive that writes something new every lap wakes that level again.
+# Rule 1 lives in `reflected` (0) because its subject is a git ref; the report lives in `drift`
+# (10). So the read happens HERE, in `merge` (30), where it is a read downward and a patch —
+# which the refusal itself points at: "A `patch` may read it".
+#
+# It needs no latch: patching the same value is a no-op the store ends, so this converges after
+# one lap. And it races rule 2 harmlessly — the docket reads the subject when it RENDERS, not
+# when the motion opens, so a `says` that lands a moment later is still there when somebody looks.
+- name: proposal-says
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value:
+        state: open
+  action:
+    patch:
+      says: !get-path { system: drift, kind: head, id: "head-moved@git:head:verse", path: result.report }
+---
 # 2b, 2c. …and the answer becomes a state, in the two rules a patch cannot be.
 #
 # A patch DEREFS and does not BRANCH, which is what `!when` above was reaching for and is not.
