@@ -7,6 +7,30 @@ is four rules that work with today's grammar. This is the part that does not, wr
 because a gap named in a file is a thing somebody can decide about and a gap left in a head is
 not.
 
+## The blocker: a task cannot reach a remote, and the fix is not in this charter
+
+Found by checking before installing rather than after. Rules 2 and 4 both spawn a task that runs
+`git push`, and the coderunner says twice and by design that this cannot work:
+
+> The checkout is the parent's work — it holds the mirrors and the credential. This side opens
+> what is already there, which is also why its Trees carry no auth: **nothing on this side of the
+> boundary can reach a remote.**
+
+The first fix I reached for was to add `merge` and `retire` ops beside `deliver`. That is wrong,
+and wrong in the same way the charter's `--ff-only`-in-a-prompt is wrong: it puts a policy in a
+mechanism and leaves the next flow needing a third op. The delivery channel's own comment already
+says what it should be — *"a capability the parent holds and the task may ask it to exercise"* —
+and what is implemented is one op with no target, which is a button.
+
+So the change belongs to the pushing, not to this charter:
+[push-as-a-capability.md](push-as-a-capability.md). The environment declares destinations, the
+task names one and never a ref, the vector gates the resolved ref, and `ffOnly` becomes a
+property of `main` enforced in Go rather than a sentence the model is trusted to honour.
+
+Until that lands, rules 1 and 2 up to the gate are the drivable part — the derive, the stratum,
+the `!get-path`, the gate formula, and whether anybody answers a docket question. Those are also
+the parts nothing has verified yet.
+
 ## The one that was asked for, and is not expressible
 
 **A branch is deleted; the question standing on it should disappear.**
@@ -62,11 +86,9 @@ and because with level-triggered gates the ordering stops mattering — delete t
 question goes.
 
 **A merge task is an LLM doing four git commands.** `driver: llm` for something mechanical is
-both unreliable and expensive; a `commandDriver` running a script is the right shape and needs an
-entry under the runner's `agents:` config, which is a runner change rather than a charter one.
-The prompt is written defensively (`--ff-only` is not optional and must not be worked around)
-because until then the model is the thing enforcing the design decision, which is the wrong
-party to trust with it.
+both unreliable and expensive. Subsumed by [push-as-a-capability.md](push-as-a-capability.md): if
+a merge is a destination the task asks for, there is nothing mechanical left for a model to get
+wrong, and `--ff-only` stops being a sentence it is trusted to honour.
 
 **`onFailed` conflates two runs.** Not this charter's, but found while reading the other one:
 comment-drift's `onFailed` clears `result` and leaves `reviewedSha`, so after a failed review the
