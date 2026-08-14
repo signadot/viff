@@ -25,9 +25,17 @@ func (d *steerDriver) Next(_ context.Context, _ StepResult) (ToolUse, bool, erro
 	return tu, true, nil
 }
 
+// Fold records WHAT was said, not how it was framed. `fold` puts the speaker and their standing
+// ahead of the words and the words last (see loop.go), so the last line is what somebody
+// actually said — which is what the ordering tests below are about, and lets them keep asserting
+// the payload rather than being rewritten every time the framing is.
 func (d *steerDriver) Fold(msgs []string) {
 	for _, m := range msgs {
-		d.events = append(d.events, "steer:"+m)
+		said := m
+		if i := strings.LastIndex(m, "\n\n"); i >= 0 {
+			said = m[i+2:]
+		}
+		d.events = append(d.events, "steer:"+said)
 	}
 }
 
@@ -93,6 +101,52 @@ func TestASayIsIgnoredByADriverThatHoldsNoConversation(t *testing.T) {
 	for _, l := range p.Journal() {
 		if strings.Contains(l, "[steer]") {
 			t.Fatalf("steer should have been ignored, journal=%v", p.Journal())
+		}
+	}
+}
+
+// An operator's words reach the driver with WHO said them and what standing they have.
+//
+// They used to arrive as bare text. A model has no way to tell a person's decision from a tool
+// result or its own earlier reasoning, so a steer is one more thing to weigh — and a run on
+// staging, told "stop verifying and produce your answer", weighed it and ran the same command
+// again. The loop knew who was speaking the whole time and dropped it on the floor.
+func TestAnOperatorsSteerArrivesWithItsStanding(t *testing.T) {
+	said := "hurry — produce your answer now"
+	got := fold(convMsg{text: said, by: "human:scott", kind: convSay})
+
+	if !strings.Contains(got, said) {
+		t.Fatalf("the operator's own words are gone: %q", got)
+	}
+	if !strings.Contains(got, "human:scott") {
+		t.Errorf("the speaker is not named, so a person and a service read alike: %q", got)
+	}
+	// The load-bearing claim: they can see what the model cannot. That is what makes it a
+	// decision rather than a suggestion, and it is the only thing here the model could not
+	// have worked out for itself.
+	for _, want := range []string{"see everything you", "decision"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the framing does not say %q, so it reads as one more message: %q", want, got)
+		}
+	}
+	// And it must not promise authority the loop will then refuse. An operator outranks the
+	// plan; they do not widen the grant or answer a gate.
+	for _, must := range []string{"grant", "approve", "authoris", "authoriz"} {
+		if strings.Contains(strings.ToLower(got), must) {
+			t.Errorf("the framing implies %q, which the loop does not honour: %q", must, got)
+		}
+	}
+}
+
+// The runtime's own repair speaks for itself, and a child's result is the task's own work
+// returning — neither is somebody talking to it.
+func TestOnlyAPersonsWordsAreFramed(t *testing.T) {
+	for name, m := range map[string]convMsg{
+		"an answer-contract repair": {text: "your answer did not match", kind: convRepair},
+		"a child returning":         {text: "kid completed", kind: convChild},
+	} {
+		if got := fold(m); got != m.text {
+			t.Errorf("%s was framed as somebody speaking: %q", name, got)
 		}
 	}
 }

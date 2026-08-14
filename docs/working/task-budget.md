@@ -44,7 +44,7 @@ had was advice:
 | lever | what it is |
 |---|---|
 | the prompt | advice, standing. Ignored in three separate clauses. |
-| an operator's `say` | advice, arriving mid-run. Landed and ignored. |
+| an operator's `say` | advice, arriving mid-run. Landed and ignored — though it arrived as bare text, which has since changed: see below. |
 | the vector | real, but it gates ACTIONS — and every action here was permitted. `auto` means proceed, and nothing about `run_bash` on the tenth identical grep is different from the first. |
 | cancel | real, and it is the only one. It throws the work away. |
 
@@ -96,3 +96,16 @@ told.
 - Whether ignoring a `say` deserves its own answer. An operator's word landing and doing nothing
   is the part of this that reads worst, and a budget does not address it: it bounds the run, it
   does not make the run listen.
+
+  **One thing was plainly wrong and is fixed.** The loop knew who was speaking — a convMsg
+  carries `by` and a kind — and handed the driver bare text, so a person's decision arrived in
+  the conversation looking like a tool result or the model's own earlier reasoning. It now
+  arrives named, and saying the one thing the model could not work out for itself: that the
+  speaker can see the run from outside, so this is a decision about what to do next rather than
+  input to weigh. Deliberately silent about authority — an operator outranks the plan, and does
+  not widen the grant or answer a gate.
+
+  Whether that is enough is unknown, and it is a claim about a model rather than about the loop.
+  If a framed steer is still ignored, the answer is not more words: it is that the only lever
+  which does not depend on the model's cooperation is the one that stops asking it for another
+  turn.

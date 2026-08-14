@@ -595,6 +595,50 @@ func (p *Task) next(ctx context.Context, s state, replies <-chan input) (input, 
 // converse delivers messages into the driver's conversation and narrates who was speaking.
 // One mechanism, four speakers: the read plane is where they stay distinguishable, because
 // that is where the distinction is actually read.
+// fold is how somebody else's words reach the driver, and it says WHO is speaking.
+//
+// The loop knows and used to throw it away: a convMsg carries `by` and a kind, and this handed
+// the driver bare text. So an operator's decision arrived in the model's conversation looking
+// exactly like a tool result or its own earlier reasoning — one more thing to weigh — and a run
+// told "stop verifying and produce your answer" read it, weighed it, and ran the same command
+// again. That was watched happening on staging.
+//
+// What is added is provenance and STANDING, not emphasis. A model has no way to know that the
+// thing which just appeared came from a person who can see the run from outside — why it was
+// started, what else is happening, what it looks like from where they sit — and that is exactly
+// what makes an instruction a decision rather than a suggestion. Saying so is the difference
+// between context it has and context it cannot have.
+//
+// It says nothing about AUTHORITY, deliberately. An operator's word outranks the plan the model
+// is following; it does not widen the grant or answer a gate, and a frame that implied otherwise
+// would be promising something the loop then refuses.
+//
+// The runtime's own repair speaks for itself and is left alone: it already names what is wrong
+// with the answer, and framing it as somebody talking would be a second voice for one machine.
+func fold(m convMsg) string {
+	switch m.kind {
+	case convSay:
+		return who(m.by, "An operator") + " is steering this run. They can see everything you " +
+			"can and more — the run from outside, why it was started, and what else is " +
+			"happening — so this is a decision about what you do NEXT rather than a suggestion " +
+			"to weigh: act on it now, not after you finish what you were doing.\n\n" + m.text
+	case convGate:
+		return who(m.by, "The person who answered a gate") + " said this about the decision, " +
+			"and they are looking at more of this run than you are:\n\n" + m.text
+	}
+	return m.text
+}
+
+// who names the speaker when there is one, and falls back to what they are when there is not.
+// `by` is an identity like `human:scott`, which is worth showing: a run steered by a person and
+// a run steered by a service are different things to be told.
+func who(by, fallback string) string {
+	if by == "" {
+		return fallback
+	}
+	return by
+}
+
 func (p *Task) converse(msgs []convMsg) {
 	d, ok := p.driver.(Conversation)
 	if !ok {
@@ -608,7 +652,7 @@ func (p *Task) converse(msgs []convMsg) {
 	texts := make([]string, len(msgs))
 	var says int
 	for i, m := range msgs {
-		texts[i] = m.text
+		texts[i] = fold(m)
 		if m.kind == convSay {
 			says++
 		}
