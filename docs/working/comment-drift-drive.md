@@ -1,4 +1,4 @@
-# comment-drift, and the merge gate: what the drive built and found
+# verse comment-drift, and the merge gate: what the drive built and found
 
 Status: it runs on staging. Two charters, one loop, first end-to-end merge on 2026-08-14.
 
@@ -32,5 +32,4 @@ A write carrying a match operator made the store unreadable — [refused at the 
 now](../../entity/raw.go). Nothing bounds a run ([task-budget.md](task-budget.md)); an
 operator's `say` landed and was ignored; a docket asked `whether open` and nothing more.
 
-Left: the sweep needs a delete no destination expresses, the deadline has never run out, and the
-review does its own reading instead of delegating.
+Left: the sweep needs a delete no destination expresses, the deadline has never run out.
