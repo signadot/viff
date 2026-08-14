@@ -18,16 +18,20 @@ vector gates the ref it resolves to, and approval is what releases the credentia
 merges `--ff-only` locally and asks for the destination `main`, in the environment `verse-merge`
 that exists to declare it.
 
-Rule 4 still cannot run, and now for a sharper reason: it DELETES a branch, and a destination
-resolves to a ref that a push writes. There is no spelling for a delete, so the sweep waits on a
-destination that permits one — a runner change, recorded in
-[coding-runner-residual.md](coding-runner-residual.md).
+Rule 4 still cannot run, and what stops it has moved twice since this was written. The delete it
+needs LANDED — a destination may declare `delete: true`, which derives `Verb: Delete` rather than
+`Verb: Push` so a charter can gate retiring separately from delivering, and `merge-gate.tony`'s
+sweep already names the `retire` destination. The task half is no longer an LLM either: since the
+[calls driver](calls-driver-plan.md), a sweep's actions are a list the charter writes, and a
+refusal it can survive is `fatal: []`.
 
-### …except most of what the sweep is for needs no delete, and no task
+What is left is DISCOVERY — which branches to retire — and that is not a git problem at all.
 
-Worth following, because it makes that unbuilt runner feature much less load-bearing. The sweep
-exists to stop stale proposals cluttering the docket AND to stop branches accumulating on origin,
-and only the second needs a delete.
+### …and most of what the sweep is for needs no git at all
+
+Worth following, because it is what turns the remaining ask from a feature into a sentence. The
+sweep exists to stop stale proposals cluttering the docket AND to stop branches accumulating on
+origin, and only the second touches a remote.
 
 The first needs no git at all, because **main moving IS the staleness test**. A proposal records
 `base`, the tip main had when the branch appeared. A branch cut from `B` is `B` plus its own
@@ -40,12 +44,47 @@ That collapses rule 4, for the purpose that matters, into a state change — and
 the task it replaces: no model call, nothing that can fail, and the docket closes the instant main
 moves rather than whenever a sweep next runs.
 
-**The one thing to check before writing it** is whether the grammar can fan a patch out over a
-SELECTION on an edge belonging to a different subject — *when `git:head:verse` moves, patch every
-`merge:proposal` with `state: open`*. A rule's action patches its own subject, and those proposals
-are not the subject of the head-moved edge. If that shape does not exist, then THAT is the ask,
-and it is a far better-shaped one than a delete destination: it is about the charter grammar
-rather than about git, and every fan-out-on-an-edge case wants it.
+**The ask this note used to state was the wrong one.** It asked whether the grammar could fan a
+patch out over a SELECTION on an edge belonging to a different subject — *when `git:head:verse`
+moves, patch every open `merge:proposal`* — reasoning that a rule's action patches its own
+subject and those proposals are not the subject of the head-moved edge. That fan-out already
+exists, and has since before this note: a selector `subject:` with a `when` or `on` naming
+another subtree is exactly it, one firing per member, each with its own gate and its own flow
+([trigger-model.md §Acting on a set](../trigger-model.md#acting-on-a-set)). The rule is
+
+	condition:
+	  subject: { system: merge, kind: proposal, value: { state: open } }
+	  when:    { system: git, kind: head, id: verse, … }
+	action:
+	  patch: { state: stale }
+
+and nothing about it is new. **What the grammar cannot say is the `…`**: a proposal is stale when
+its own `base` differs from the tip that entity holds, and a match compares a field against a
+literal or an operator — never against a value read from somewhere else.
+
+**`!let` is the shape that closes it, and it is already in the match vocabulary.** It binds names
+into a pattern and matches the body with them substituted, so the predicate is sayable the moment
+a binding can hold main's tip:
+
+	value: !let
+	  let: [{tip: <the tip>}]
+	  in:  {base: !not .[tip]}
+
+Verified against verse's own matcher: `!let {let: [{tip: abc123}], in: {base: .[tip]}}` matches
+`{base: abc123}`. (The negated form silently inverted — `!not` was dropped when `.[tip]` was
+substituted, so "differs" answered "equals" — filed as tony-format `cv90ehkvh12krm4sfxn0` and
+fixed upstream. Everything here assumes that fix.)
+
+So the WHOLE remaining ask is one sentence: **a condition must be able to resolve a value from
+another entity into a `!let` binding** — which is what `!get-path` already does, on the other side
+of the fence. `path.go` states the fence explicitly: *"A charter could already CONDITION on
+outside state — `when` and `on` both name other entities — but it could not COPY any of it."* A
+firing's path reads are answered from one snapshot taken at the causing commit, and a condition is
+evaluated against that same snapshot, so the value is already in hand at the moment it is needed.
+
+That is a far better-shaped ask than the fan-out it replaces: it is one substitution in one place,
+it is general (every "this field differs from that entity's field" rule wants it), and it makes no
+new concept — `!let` is tony's, `!get-path` is verse's, and both already run.
 
 (It cannot tell "stale" from "merged by hand", since both are `base != tip`. Tolerable in the
 direction it errs: a merged proposal marked stale is re-proposed by a review that then finds

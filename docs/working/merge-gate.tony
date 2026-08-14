@@ -37,9 +37,10 @@
 # main would have been every charter remembering to narrow its own `tools:`. Split, a charter
 # that has not been pointed at verse-merge cannot reach main however its vector is set.
 #
-# What did not: rule 4 deletes a branch, and a delete is not something a destination expresses —
-# there is no ref for it to resolve to. It stays unrunnable, and the shape it wants is a
-# destination that permits a delete, which is a runner change rather than a charter one.
+# What did not: rule 4's DISCOVERY. Its delete landed (a destination declaring `delete: true`,
+# which this rule names as `retire`) and its task need not be an LLM any more (a call list), but
+# nothing here can yet say WHICH proposals are stale: that is `base` differing from a value held
+# by another entity, and a match compares against literals. See merge-gate-residual.md.
 #
 # `--ff-only` stays a prompt-level instruction on purpose, backed by
 # `receive.denyNonFastForwards` at the receiving end: `where` scopes onto a credential and `how`

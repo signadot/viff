@@ -190,13 +190,18 @@ route, and spent eighteen boundaries hunting the filesystem for a credential tha
 
 The charter already knows which branches are stale — `merge:proposal` carries `base`, and main
 moving is itself the staleness test — so the calls should come from the charter and the task
-should do no git at all. That needs a fan-out this grammar may not have: *when
-`git:head:verse` moves, act on every open proposal*. A rule's action patches its own subject, and
-those proposals are not the subject of the head-moved edge. See
-[merge-gate-residual.md](merge-gate-residual.md), where that ask is stated on its own terms.
+should do no git at all.
 
-**Proves:** nothing until the fan-out exists, which is why it is last and why steps 1–3 do not
-wait for it.
+The fan-out that seemed to be missing is not: a selector `subject:` with a `when` naming another
+subtree fires once per open proposal already. What the grammar cannot say is the PREDICATE —
+`base` differs from a value held by a different entity — and the shape that closes it is `!let`,
+which is in the match vocabulary today, with the binding filled by the path read `!get-path`
+already performs on the action side. See
+[merge-gate-residual.md](merge-gate-residual.md), where the ask is now stated as the one
+substitution it is.
+
+**Proves:** nothing until a condition can resolve that binding, which is why it is last and why
+steps 1–3.5 do not wait for it.
 
 ## What this plan deliberately does not do
 
