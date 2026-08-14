@@ -70,10 +70,12 @@ a binding can hold main's tip:
 	  let: [{tip: <the tip>}]
 	  in:  {base: !not .[tip]}
 
-Verified against verse's own matcher: `!let {let: [{tip: abc123}], in: {base: .[tip]}}` matches
-`{base: abc123}`. (The negated form silently inverted — `!not` was dropped when `.[tip]` was
-substituted, so "differs" answered "equals" — filed as tony-format `cv90ehkvh12krm4sfxn0` and
-fixed upstream. Everything here assumes that fix.)
+Verified against verse's own matcher, and pinned there — `entity.TestLetBindsAValueIntoAMatch`
+covers equal, not-equal, and a `!glob` over the binding. The negated form is the one the sweep
+needs and was the one that silently inverted: `!not` was dropped when `.[tip]` was substituted, so
+"differs" answered "equals", with no error, in a rule whose action deletes branches. Filed as
+tony-format `cv90ehkvh12krm4sfxn0`, fixed in go-tony v0.0.133, which verse now requires. The test
+stays because a predicate that inverts in silence is worth a guard after its cause is gone.
 
 So the WHOLE remaining ask is one sentence: **a condition must be able to resolve a value from
 another entity into a `!let` binding** — which is what `!get-path` already does, on the other side
