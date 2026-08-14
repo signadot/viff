@@ -79,6 +79,7 @@ action:
     prompt:   "retrain the ranker on $subject"
     runner: runners:pool:gpu          # ← where it runs
     driver: scripted                  # ← what runs it
+    vector: auto                      # ← how much it may decide alone
     grant:  no-delegate               # ← what it may do
   onDone:
     patch: { stage: retrained }       # the latch: out of its own selection

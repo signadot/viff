@@ -143,14 +143,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 		switch driver {
 		case "scripted":
-			// A contract the driver cannot enforce fails the spawn. The scripted driver
-			// has no model to ask again, so honouring the field would mean dropping it,
-			// and a dropped contract is worse than none: the charter downstream was
-			// written believing the shape is guaranteed.
-			if l.Answer != nil {
-				return task.NewFailed(l.ID, reg, "the scripted driver cannot enforce an answer contract")
-			}
-			return versed.NewScriptedTask(l.ID, l.Prompt, root, reg)
+			// A contract the driver cannot enforce fails the spawn — there is no model to
+			// ask again, so honouring the field would mean dropping it, and a dropped
+			// contract is worse than none. The refusal lives in NewCallsTaskFrom now, so
+			// both runtimes state it once and neither can forget it.
+			return versed.NewScriptedTask(l, root, reg)
 		case "llm":
 			if !appCfg.LLM.Available() {
 				return task.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")

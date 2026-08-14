@@ -137,7 +137,9 @@ type Spawn struct {
 	Subject string `tony:"field=subject,omitzero"`
 	// Vector is the autonomy dial — `auto`, `ask` or `park` — the ad-hoc face of a spawn's
 	// `vector:`. Without it the runtime's own default stands, which for a scripted run is
-	// `auto`: it asks nothing, and a `resolver` bound to it would have nothing to answer.
+	// `ask`: every command it proposes is a question. `verse task run --driver scripted`
+	// sends `auto` on the caller's behalf, because a prompt somebody typed IS the command
+	// they authorized — nothing else gets that, a charter least of all.
 	Vector string `tony:"field=vector,omitzero"`
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
 	// spawn's `resolver:`, so `verse task run` and a firing can bind the same way.

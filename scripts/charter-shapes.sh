@@ -64,7 +64,7 @@ shape_tony() {
 			    subject: { system: demo, kind: latch, value: { stage: open } }
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { driver: scripted, prompt: "echo reviewing $subject; sleep 2" }
+			    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -77,7 +77,7 @@ shape_tony() {
 			  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { driver: scripted, prompt: "echo reviewing $subject; sleep 2" }
+			    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -88,8 +88,8 @@ shape_tony() {
 			    subject: { system: demo, kind: seq, value: { stage: ready } }
 			  action:
 			    seq:
-			    - spawn: { driver: scripted, prompt: "echo lint $subject" }
-			    - spawn:    { driver: scripted, prompt: "echo test $subject" }
+			    - spawn: { driver: scripted, vector: auto, prompt: "echo lint $subject" }
+			    - spawn:    { driver: scripted, vector: auto, prompt: "echo test $subject" }
 			      onFailed: { patch: { stage: broken } }
 			    onDone:
 			      patch: { stage: built }

@@ -164,7 +164,10 @@ no restart.
 The two drivers carry different vectors, and the difference is the whole point of a gate: it
 asks about what you have **not** already authorized.
 
-`scripted` runs ungated — its prompt *is* the shell command, so you authorized it by typing it.
+`verse task run --driver scripted` runs ungated — its prompt *is* the shell command, so you
+authorized it by typing it. That is an argument about **who addressed the request**, so it holds
+for what you type and nothing else: a charter spawning `driver: scripted` typed nothing, asks
+about the command it is about to run, and says `vector: auto` when it means to run unattended.
 `llm` asks before effects, because the agent *chose* them. Reads run freely; writing a file,
 running a command, and delegating to a sub-agent block:
 
@@ -321,7 +324,7 @@ to announce a state it has held all along, and a restart re-reaches the same ver
     subject: { system: demo, kind: latch, value: { stage: open } }
   action:
     patch:  { stage: reviewing }
-    spawn:  { driver: scripted, prompt: "echo reviewing $subject; sleep 2" }
+    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
     onDone: { patch: { stage: reviewed } }
 ```
 
@@ -391,8 +394,8 @@ answer that counts.
 ```tony
   action:
     seq:
-    - spawn: { driver: scripted, prompt: "echo lint $subject" }
-    - spawn:    { driver: scripted, prompt: "echo test $subject" }
+    - spawn: { driver: scripted, vector: auto, prompt: "echo lint $subject" }
+    - spawn:    { driver: scripted, vector: auto, prompt: "echo test $subject" }
       onFailed: { patch: { stage: broken } }
     onDone:
       patch: { stage: built }

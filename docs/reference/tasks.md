@@ -60,11 +60,23 @@ the writing can be writing.
 The two drivers carry different vectors, and the difference is the whole point of a gate: it
 asks about what you have **not** already authorized.
 
-`scripted` runs ungated: no gates, everything auto. Its prompt *is* the shell command, so you
-authorized it by typing it, and asking "run a shell command?" after
-`verse task run "go test ./..."` would be asking you to confirm the sentence you just
-wrote. Spawned from a trigger the same holds one level up, since the trigger's own gates
-already ran, per firing, before the action fired.
+`scripted` **as you type it** runs ungated: `verse task run --driver scripted` sends `auto` on
+your behalf, because the prompt *is* the shell command, and asking "run a shell command?" after
+`verse task run "go test ./..."` would be asking you to confirm the sentence you just wrote.
+
+That argument is about who addressed the request, so it stops where the typing does. **A charter
+that spawns `driver: scripted` is asked**, per command, like anything else — it typed nothing,
+and the reader of a charter is not the person who wrote it. A charter that means to run
+unattended says so, in the same line an `llm` spawn uses:
+
+```tony
+spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject" }
+```
+
+which is also how it says "the firing already decided this": a trigger's own `gates:` run per
+firing, before the action, and `vector: auto` is what stops the same decision being taken twice.
+It used to be impossible to say — the driver hardcoded `auto` and ignored the spawn's `vector:`,
+so a charter asking to be asked was disobeyed in silence.
 
 `llm` asks before effects, because the agent *chose* them. Its reads run freely; writing a
 file, running a shell command, and delegating to a sub-agent block until approved. Approving

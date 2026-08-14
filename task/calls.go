@@ -168,18 +168,42 @@ func (d *callsDriver) Next(_ context.Context, prev StepResult) (ToolUse, bool, e
 // Both fail as a HOSTED task (NewFailed) rather than as a nil: the spawn errors where it can be
 // read, with `task get` able to say why, while the engine keeps running.
 func NewCallsTask(l Launch, reg Resolver, exec Executor) *Task {
-	if l.Answer != nil {
-		return NewFailed(l.ID, reg, "calls: a call list cannot enforce an answer contract (no model to repair one)")
-	}
 	calls, err := ParseCalls(l.Prompt)
 	if err != nil {
-		return NewFailed(l.ID, reg, "calls: "+err.Error())
+		return NewFailed(l.ID, reg, driverName(l)+": "+err.Error())
+	}
+	return NewCallsTaskFrom(l, calls, reg, exec)
+}
+
+// NewCallsTaskFrom is the same, for a caller that already has the list — the scripted driver,
+// whose one call is built from a shell command rather than read out of a document.
+//
+// THE VECTOR COMES FROM THE SPAWN, and a spawn that names none gets ASK. That is the whole of
+// what a call list is allowed to assume about its own authority: the charter that wrote the
+// list is the party that knows whether it should run unattended, and a driver deciding for
+// itself is how `scripted` came to be exempt from a vector it was handed and ignored.
+//
+// Ask rather than auto because it is what an `llm` spawn already lives with — harness.Vector()
+// asks on write, shell and delegate — and a list of shell commands nobody vetted is not the
+// case for a weaker default than the one an agent gets.
+func NewCallsTaskFrom(l Launch, calls []Call, reg Resolver, exec Executor) *Task {
+	if l.Answer != nil {
+		return NewFailed(l.ID, reg, driverName(l)+": cannot enforce an answer contract (there is no model to repair one)")
 	}
 	vec := l.Vector
 	if vec == nil {
 		vec = &Vector{Default: Ask}
 	}
 	return NewTask(l.ID, NewSupervisor(vec, reg), NewCallsDriver(calls), exec)
+}
+
+// driverName is what to call this task in a refusal — the driver the spawn asked for, since
+// "calls" is a word the author of a `driver: scripted` charter never wrote.
+func driverName(l Launch) string {
+	if n := strings.TrimSpace(l.Driver); n != "" {
+		return n
+	}
+	return "calls"
 }
 
 // ParseCalls reads a call list from a tony document:

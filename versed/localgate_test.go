@@ -22,11 +22,14 @@ func askingServer(t *testing.T) *Server {
 }
 
 // askingBuilder is askingServer's half that is not the store, for a test that wraps one.
+//
+// It used to hand-build an Ask supervisor because ScriptedBuilder forced Auto and there was no
+// way to ask a scripted task for a question. There is now: a spawn that names no vector asks,
+// so this is the ordinary builder with a root to run in.
 func askingBuilder(t *testing.T) taskd.Builder {
 	t.Helper()
 	return func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
-		return task.NewTask(l.ID, sup, &scriptDriver{command: l.Prompt}, &shellExec{root: t.TempDir()})
+		return NewScriptedTask(l, t.TempDir(), reg)
 	}
 }
 

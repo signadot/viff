@@ -333,8 +333,8 @@ type taskRunConfig struct {
 	Name string `cli:"name=name desc='label for the run; the id is derived from it and printed'"`
 	// The two fields a spawn has carried all along with no way to type them.
 	Subject string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
-	// Without this a scripted run is `auto` and asks nothing, so a --resolver bound to it
-	// would have no question to answer.
+	// Without this a scripted run is `auto` and asks nothing (see scriptedVector), so a
+	// --resolver bound to it would have no question to answer.
 	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
 	// Who is running this — used twice, because it is one fact. A gate that arrives while
 	// attached is answered as this (watching needs no identity; answering has needed one
@@ -367,6 +367,23 @@ func taskRunCmd() *cli.Command {
 		WithRun(cfg.run)
 }
 
+// scriptedVector is the typed-it-yourself exemption, and the only place it holds: a scripted
+// prompt IS the shell command, so whoever typed `--driver scripted "rm -rf x"` has already
+// authorized the one action the task will take, and asking them again asks nothing they have
+// not just answered.
+//
+// It lives on the CLI path rather than in the driver because that is the whole of the
+// argument — it is about who addressed the request, not about what the driver is. The driver
+// used to carry it, so a charter that spawns `driver: scripted` inherited an exemption it
+// never typed anything to earn; see versed.NewScriptedTask. An explicit --vector still wins,
+// including `--vector ask`, and the llm driver is untouched: it has its own.
+func scriptedVector(driver string) string {
+	if driver == "scripted" {
+		return "auto"
+	}
+	return ""
+}
+
 func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
@@ -384,9 +401,13 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		}
 		contract = n
 	}
+	vector := cfg.Vector
+	if vector == "" {
+		vector = scriptedVector(cfg.Driver)
+	}
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
-		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: cfg.Vector,
+		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector,
 		Runner: cfg.Runner, Environment: cfg.Environment, Principal: cfg.As,
 		Answer: contract,
 	})

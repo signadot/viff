@@ -122,8 +122,10 @@ runs decides whether it can be trusted:
 Classify the request as *command* or *instruction*. A prompt that parses as a command the caller
 could have run themselves is a command execution: authorize that command, gate nothing for
 realizing it. This is the `--driver scripted` heuristic promoted from a flag the caller must
-remember to a property the runtime infers — and it already matches how the scripted driver is
-built (`Vector{Default: auto}`, no gates, because its prompt *is* the command).
+remember to a property the runtime infers — and it matches where that exemption now lives: on
+the CLI path (`scriptedVector` in `cmd/verse/task.go`), granted because somebody TYPED the
+command, not because of which driver runs it. The driver used to carry it and handed the same
+exemption to charters that typed nothing.
 
 ### Stage 2 — a derived envelope
 

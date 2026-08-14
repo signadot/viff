@@ -227,11 +227,12 @@ across tasks. Both can hold: one is where an environment is *built*, the other i
 *named and programmed*. What is not yet decided is whether a verse-side registry resolves down
 into the runner-side one, or whether they stay two vocabularies that happen to share a field.
 
-`Vector` is in the same state, and it is the more visible of the two: the spawned task's
-vector is whatever its driver hardcodes (`harness.Vector()` for llm, an empty `Default: auto` for
-scripted), so a trigger cannot say "spawn this one auto — I already gated the firing." That is
-why a trigger-spawned agent asks twice: once at the firing, through the trigger's own `gates`,
-and again per action, through a vector the trigger had no way to name. Both axes want the same
+`Vector` was in the same state and is half out of it: a spawn's `vector:` is now honoured
+(`auto`, `ask`, `park`), so a trigger CAN say "spawn this one auto — I already gated the
+firing", and a scripted spawn that says nothing is asked rather than exempt. What is still
+driver-shaped is everything past the three names: `harness.Vector()`'s per-verb gates are the
+llm driver's, nobody can name a vector with gates from a charter, and a named record resolved at
+spawn is what would let one be written once and referred to. Both axes want the same
 thing — a named record the runtime resolves at spawn — which is the shape `expose` is arriving at
 from the file-surface side. Where that spawn-time authority should come from is
 [authority](authority.md).

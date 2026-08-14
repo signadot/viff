@@ -292,7 +292,12 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 			},
 		},
 		Action: trigger.Action{
-			Spawn: &launch.Spec{Driver: cfg.Driver, Prompt: prompt},
+			// The same typed-it-yourself exemption `task run` gets, and for the same reason:
+			// a scripted validator's prompt IS the shell command, and the person who typed
+			// `connect --driver scripted --prompt …` authorized it for every file the trigger
+			// will fire on. A charter that spawns scripted has typed nothing and is asked;
+			// the llm driver keeps its own vector either way.
+			Spawn: &launch.Spec{Driver: cfg.Driver, Prompt: prompt, Vector: scriptedVector(cfg.Driver)},
 			// The latch, and it has to be a LITERAL. This wrote `validated: $hash` — the
 			// dir-status entity's own content hash, so the record would say which version
 			// was validated — and that reference is not reachable from here: a completion

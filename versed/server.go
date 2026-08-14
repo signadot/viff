@@ -899,42 +899,38 @@ func (s *Server) Handler() http.Handler {
 // the LLM harness.
 
 // ScriptedBuilder builds the credential-free task runtime driver: it runs the prompt as a real
-// shell command (`bash -lc`), confined to root and cancellable via the task context — a
-// governed shell command as a task. It is the dependency-free stand-in for an LLM agent, so
-// the runtime is exercisable and steerable (and can run real work like `sleep`) without model
-// credentials. The gate vector is Auto — a scripted command runs freely; the LLM harness is what
-// wires the effect-gating vector.
+// shell command, confined to root and cancellable via the task context — a governed shell
+// command as a task. It is the dependency-free stand-in for an LLM agent, so the runtime is
+// exercisable and steerable (and can run real work like `sleep`) without model credentials.
 // ScriptedBuilder is the taskd.Builder form (root = the task's cwd). `verse up` uses
 // NewScriptedTask directly to confine scripted commands to the agent root.
 func ScriptedBuilder(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
-	return NewScriptedTask(l.ID, l.Prompt, "", reg)
+	return NewScriptedTask(l, "", reg)
 }
 
-// NewScriptedTask builds a scripted task rooted at root.
-func NewScriptedTask(id, prompt, root string, reg *task.Registry) *task.Task {
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
-	return task.NewTask(id, sup, &scriptDriver{command: prompt}, &shellExec{root: root})
-}
-
-// scriptDriver runs its prompt as a single shell command, then completes.
-type scriptDriver struct {
-	command string
-	done    bool
-}
-
-func (d *scriptDriver) Next(_ context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
-	// A non-zero exit ends the task as FAILED. The llm driver can afford to read a
-	// failure as just another step result and re-plan around it; a scripted task has
-	// no one to do the re-planning, so a failure nothing reports is a failure that reads
-	// as success — and a trigger's onDone fires on a command that never worked.
-	if prev.Err != nil {
-		return task.ToolUse{}, false, prev.Err
+// NewScriptedTask builds a scripted task rooted at root — a call list of exactly one call,
+// which is what `scripted` always was.
+//
+// It used to be its own driver with its own vector, hardcoded to Auto. Both are gone. The
+// driver is task's, because one shell command is the degenerate case of a list of calls and
+// keeping a second implementation of "propose one action, then stop" bought nothing; the
+// vector is now the SPAWN's, because the old one was not a default but an override — it
+// ignored a `vector:` the charter had written, so a charter asking to be asked was disobeyed
+// in silence.
+//
+// The consequence is deliberate and is the reason this is a contract change: a `driver:
+// scripted` spawn that names no vector now ASKS, where it used to run unattended. The
+// exemption that justified auto — "you authorized it by typing it" — is true of `verse task
+// run --driver scripted` and of nothing else, so it lives on that path now (cmd/verse/task.go)
+// rather than travelling to charters that typed nothing.
+func NewScriptedTask(l task.Launch, root string, reg *task.Registry) *task.Task {
+	// An empty prompt is an empty list: the task completes having done nothing, which is
+	// what the old driver did with a blank command.
+	var calls []task.Call
+	if strings.TrimSpace(l.Prompt) != "" {
+		calls = []task.Call{{Tool: "run_bash", Input: map[string]any{"command": l.Prompt}}}
 	}
-	if d.done || strings.TrimSpace(d.command) == "" {
-		return task.ToolUse{}, false, nil
-	}
-	d.done = true
-	return task.ToolUse{Name: "run_bash", Input: map[string]any{"command": d.command}}, true, nil
+	return task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root})
 }
 
 // shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),

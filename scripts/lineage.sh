@@ -245,7 +245,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "the charter did not install"
       commits: !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: commit }
       authors: !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: author }
       titles:  !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: title }
-    spawn: { driver: scripted, prompt: "echo shipping $subject; sleep 30" }
+    spawn: { driver: scripted, vector: auto, prompt: "echo shipping $subject; sleep 30" }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"
 

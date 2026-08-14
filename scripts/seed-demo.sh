@@ -102,7 +102,7 @@ v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
   - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
     patch: { stage: reviewing }
-    spawn: { driver: scripted, prompt: "echo reviewing $subject; sleep 45" }
+    spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 45" }
     onDone:
       patch: { stage: reviewed }
 

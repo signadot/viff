@@ -59,7 +59,7 @@ Omitted, it is unconstrained, which is what every rule here means.
   # the consequence
   action:
     patch: { stage: reviewing }
-    spawn: { driver: scripted, prompt: "echo reviewing $subject" }
+    spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject" }
     onDone:
       patch: { stage: reviewed }
 ```
@@ -824,7 +824,7 @@ registry (keyed by task id), so there is no `flow` match and no separate trigger
 ```tony
 action:
   patch:  { stage: reviewing }
-  spawn:  { driver: scripted, prompt: "review $subject" }
+  spawn:  { driver: scripted, vector: auto, prompt: "review $subject" }
   onDone: { patch: { stage: reviewed } }
 ```
 
@@ -859,8 +859,8 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
   - { name: review, mode: ask }
   action:
     seq:
-    - spawn: { driver: scripted, prompt: "lint $subject" }
-    - spawn:    { driver: scripted, prompt: "review $subject" }
+    - spawn: { driver: scripted, vector: auto, prompt: "lint $subject" }
+    - spawn:    { driver: scripted, vector: auto, prompt: "review $subject" }
       onFailed: { patch: { stage: rejected } }
     - patch: { stage: reviewed }
     onDone:
@@ -1008,7 +1008,7 @@ layer, no new machinery.
 { "name": "review",
   "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
   "gates":     [ { "name": "approval", "mode": "ask" } ],
-  "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "prompt": "review $subject" } } }
+  "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "vector": "auto", "prompt": "review $subject" } } }
 { "name": "ship-green",
   "condition": { "on":      { "system": "ci",   "kind": "status", "value": { "state": "green" } },
                  "subject": { "system": "demo", "kind": "pr", "value": { "stage": "reviewed" } } },
