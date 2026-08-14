@@ -23,6 +23,17 @@
 # pass reads its own memory and looks at what changed. Re-running a review costs a minute;
 # rebasing an agent's work costs a second agent action and a second gate.
 #
+# THE MERGE AND THE SWEEP CANNOT RUN AS WRITTEN, and finding that out before installing is the
+# only reason this is a note rather than a post-mortem. Both spawn a task that runs `git push`,
+# and a task on the code runner cannot reach a remote at all, by design (taskproc.go: "nothing on
+# this side of the boundary can reach a remote"). That is the whole reason delivery is a REQUEST
+# the parent performs.
+#
+# The fix is not here. It is that the runner's one canned act should be a capability with
+# destinations — see push-as-a-capability.md, which is also where `--ff-only` stops being a
+# sentence in the prompt below and becomes a property of `main` enforced in Go. Rules 1 and 2 up
+# to the gate are unaffected and are what can be driven today.
+#
 # That decision buys two things worth noticing. The merge ATTEMPT is the staleness test — no
 # comparison operator is needed anywhere, because `git merge --ff-only` either works or does
 # not, and rule 2's `onFailed` is what "it went stale under us" means. And the sweep below needs
