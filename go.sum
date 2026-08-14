@@ -88,6 +88,8 @@ github.com/signadot/tony-format/go-tony v0.0.132 h1:gxp83+Ap6cn/cW6uE4Cnx/ke+8ye
 github.com/signadot/tony-format/go-tony v0.0.132/go.mod h1:e5euej3pJ4t2jISXcIA+PJ+Tsjzu9CUkh/V44XsWh+0=
 github.com/signadot/tony-format/go-tony v0.0.133 h1:GYaWjcydwdlIMG3bjzTh0TNf1cRJrDhfjF6A6tNmUOo=
 github.com/signadot/tony-format/go-tony v0.0.133/go.mod h1:e5euej3pJ4t2jISXcIA+PJ+Tsjzu9CUkh/V44XsWh+0=
+github.com/signadot/tony-format/go-tony v0.0.134 h1:kndwxAj6jDmGy9Smz6F6Fw7fL6WrEPsvu4fHJpreH/o=
+github.com/signadot/tony-format/go-tony v0.0.134/go.mod h1:e5euej3pJ4t2jISXcIA+PJ+Tsjzu9CUkh/V44XsWh+0=
 github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/skeema/knownhosts v1.3.1 h1:X2osQ+RAjK76shCbvhHHHVl3ZlgDm8apHEHFqRjnBY8=
 github.com/skeema/knownhosts v1.3.1/go.mod h1:r7KTdC8l4uxWRyK2TpQZ/1o5HaSzh06ePQNxPwTcfiY=
