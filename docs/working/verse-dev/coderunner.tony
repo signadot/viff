@@ -22,10 +22,16 @@ agents:
 # Where the llm driver's model credentials come from. NAMES of environment variables, not
 # values: this file is read and copied, and verse's own configured creds live in another
 # process where this runner cannot see them.
+#
+# The model is named here rather than left to `OPENAI_MODEL`, which is only the fallback for a
+# harness client built with nothing passed to it — this runner always passes, because it resolves
+# `llm:` on its own side and sends values to the task process. Kept the same as
+# deploy/coderunner/coderunner.yaml, so driving this locally and driving it on staging are not
+# quietly two different experiments.
 llm:
   apiKeyEnv: PORTKEY_API_KEY
   virtualKeyEnv: PORTKEY_VIRTUAL_KEY
-  model: claude-sonnet-4-6
+  model: claude-sonnet-5
 
 environments:
 
