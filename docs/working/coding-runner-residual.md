@@ -106,27 +106,26 @@ Worth noting which way round the two go: the leaf above makes the current arrang
 this makes it unnecessary. Doing the first is right anyway, because it turns an assumption into a
 stated requirement that this would then satisfy properly.
 
-## A destination cannot express a DELETE
+## A destination that retires — built, and where the weight actually sits
 
-A destination resolves to a ref and a push writes it, so retiring a branch has no spelling.
-Nothing in the config says "and this one may be deleted", and nothing in the protocol
-distinguishes the two. The shape it wants is a destination that permits one, plus the operational
-half: `receive.denyDeletes` must not be set on the ref pattern such a destination targets.
+Built after the sweep sat unrunnable: `delete: true` on a destination makes its `ref` a GLOB of
+what may be removed rather than the one place work goes, deriving stamps `Verb: Delete` rather
+than `Verb: Push`, and the refspec is `:<ref>` — a push with no source, unforced, so
+`receive.denyDeletes` at the far end still refuses it.
 
-**It is worth less than it looks, and [merge-gate.tony](merge-gate.tony)'s sweep is the evidence.**
-That rule spawns a task to delete stale branches, and the reason it wants to is stated as two
-things which are not the same size:
+It is the ONE request in this protocol where the task names something in the world. Every other
+destination is resolved from the environment alone, so a task can only pick a name; a sweep
+learns stale branch names by asking the remote, so it has to say which. The glob is what keeps
+"the task cannot name a ref" true in the sense that matters — the environment says which refs may
+ever be removed — and the ref is validated on BOTH sides, because the child is the side holding a
+model and the parent is the side holding the credential.
 
-- **the docket fills with proposals about branches that can no longer land** — which is what a
-  person suffers, and which needs no git at all (see the merge-gate residual: main moving is
-  itself the staleness test, so the state can be written without asking a remote anything);
-- **the branches accumulate on origin** — which is housekeeping, costs nothing but tidiness, and
-  is one `git push --delete` by a person or a cron.
-
-So a delete destination buys the second only. That is a real want and a small one, and it should
-not be reached for until something needs it that a person retiring a branch by hand would not
-serve just as well. Naming it here so the next reader weighs it that way rather than reading an
-unbuilt feature as a blocker.
+**What it did not buy is what the sweep was mostly for.** That rule wants two things and only one
+is about refs: keeping stale proposals off the docket, which needs no git at all (main moving is
+itself the staleness test, so the state can be written without asking a remote anything), and
+keeping branches from accumulating on origin, which is this. The second is housekeeping. Worth
+remembering before the next capability is added because a charter asked for it: the question is
+always whether the charter needed the RUNNER to grow, or needed to say the thing differently.
 
 ## The descriptor's contract half
 

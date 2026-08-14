@@ -1209,3 +1209,102 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 		t.Errorf("a prose result stopped being the subject: %q", got)
 	}
 }
+
+// A destination that RETIRES deletes a ref the environment permits, and refuses everything else.
+//
+// This is the one act here that destroys something, and it is also the one where the task names
+// something in the WORLD: a sweep learns stale branch names by asking the remote, so it cannot
+// be handed a ref the way every other destination is. The glob is what keeps both true — the
+// environment says which refs may ever be removed, the task picks inside that.
+func TestARetiringDestinationDeletesOnlyWhatItPermits(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	env := Environment{Name: "e", Repos: []Repo{{
+		Name: "svc", Repo: origin, Base: "main",
+		Destinations: []Destination{
+			{Name: autoDestination, Ref: "refs/heads/verse/auto/$task"},
+			{Name: "retire", Ref: "refs/heads/verse/auto/*/*", Delete: true},
+		},
+	}}}
+	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two branches on the remote: one a retiring destination covers, one it does not.
+	seed := commitAt(t, origin, "refs/heads/main")
+	_ = seed
+	head, err := git.PlainOpen(origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := head.Reference(plumbing.ReferenceName("refs/heads/main"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"refs/heads/verse/auto/abc123/task-1", "refs/heads/main"} {
+		if err := head.Storer.SetReference(plumbing.NewHashReference(plumbing.ReferenceName(name), ref.Hash())); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Inside the glob: resolved, and the ref is normalised to its full form.
+	tree, full := ws.Retirable("retire", "verse/auto/abc123/task-1")
+	if tree == nil || full != "refs/heads/verse/auto/abc123/task-1" {
+		t.Fatalf("a permitted ref did not resolve: %v %q", tree != nil, full)
+	}
+	// Outside it, in every direction that matters.
+	for name, bad := range map[string]string{
+		"a protected branch":        "main",
+		"one segment short":         "verse/auto/loose",
+		"another repository's area": "someone/else/branch",
+		"nothing at all":            "",
+	} {
+		if tr, got := ws.Retirable("retire", bad); tr != nil {
+			t.Errorf("%s: %q resolved to %q — the environment did not permit it", name, bad, got)
+		}
+	}
+	// A destination that does not delete never retires, whatever ref it is handed.
+	if tr, _ := ws.Retirable(autoDestination, "verse/auto/abc123/task-1"); tr != nil {
+		t.Error("a delivering destination was used to delete")
+	}
+
+	// And the delete really removes it, against a real remote.
+	if err := tree.deleteRef(context.Background(), full, nil); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := head.Reference(plumbing.ReferenceName(full), true); err == nil {
+		t.Error("the branch is still on the remote")
+	}
+	if _, err := head.Reference(plumbing.ReferenceName("refs/heads/main"), true); err != nil {
+		t.Errorf("main was disturbed by retiring another branch: %v", err)
+	}
+}
+
+// A retiring destination's ref is a pattern, and the two ways of writing it that would
+// silently do nothing are refused when the config is read.
+func TestARetiringDestinationsRefIsCheckedAtStartup(t *testing.T) {
+	dir := t.TempDir()
+	for name, ref := range map[string]string{
+		// `$task` expands to THIS task's ref, so a sweep would retire exactly one branch: its
+		// own. It would look like a sweep that found nothing.
+		"a template": "refs/heads/verse/auto/$sha/$task",
+		// One fixed ref is a switch, not a set — and a switch somebody pulls once by accident.
+		"a single ref": "refs/heads/main",
+	} {
+		cfg := &Config{Environments: []Environment{{Name: "e", Repos: []Repo{{
+			Name: "svc", Repo: ".", Base: "main",
+			Destinations: []Destination{{Name: "retire", Ref: ref, Delete: true}},
+		}}}}}
+		blob, err := codec.Marshal(cfg, codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, safeSeg(name)+".tony")
+		if err := os.WriteFile(path, blob, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadConfig(path); err == nil {
+			t.Errorf("%s (%q) loaded — it would retire nothing, or too much, and say neither", name, ref)
+		}
+	}
+}

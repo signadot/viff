@@ -202,6 +202,26 @@ type Destination struct {
 	// forge's own rules are for, and duplicating them would give two places to configure one
 	// invariant and two places for them to disagree.
 	Credential string `tony:"field=credential,omitzero"`
+	// Delete makes this destination a RETIREMENT rather than a delivery, and it changes what
+	// `ref` means: a GLOB of the refs a task may remove, rather than the one ref its work goes
+	// to.
+	//
+	// It has to, and that is the whole design problem. Every other destination names where THIS
+	// task's work lands, so the environment can resolve it alone. A retirement is about
+	// somebody else's branches — a sweep learns their names by asking the remote — so the task
+	// has to say which one, and "the task cannot name a ref" is the invariant the capability
+	// rests on.
+	//
+	// The glob is how both stay true: the ENVIRONMENT says which refs may ever be deleted, the
+	// task picks one inside that, and a name outside it is refused before anything is gated.
+	// `filepath.Match`, so `*` does not cross `/` — `refs/heads/verse/auto/*/*` is two segments
+	// and matches what the runner actually delivers, which is a lesson this drive paid for once
+	// already in a charter selector.
+	//
+	// Deriving stamps `Verb: Delete` rather than `Verb: Push`, so a charter gates retiring
+	// separately from delivering. That is not tidiness: a push to an auto branch is recoverable
+	// and a delete is the one act here that destroys something.
+	Delete bool `tony:"field=delete,omitzero"`
 }
 
 // Credential is a secret this environment can release to a task, named by the ENVIRONMENT
@@ -397,6 +417,20 @@ func checkDests(env string, creds []Credential, r Repo) error {
 			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q has no ref — "+
 				"a destination that names nowhere is a name a task can ask for and nothing can "+
 				"perform", env, r.Name, d.Name)
+		case d.Delete && strings.ContainsAny(d.Ref, "$"):
+			// A retirement's ref is a pattern matched against refs that already exist, so a
+			// `$task`/`$sha` in it would expand to THIS task's ref and match one branch: its
+			// own. Refused rather than expanded, because a sweep that silently retired only
+			// itself would look like a sweep that found nothing.
+			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q deletes, so "+
+				"its ref is a GLOB of what may be retired and cannot carry $task or $sha — those "+
+				"expand to this task's own ref, which is the one branch a sweep must not be "+
+				"limited to", env, r.Name, d.Name)
+		case d.Delete && !strings.Contains(d.Ref, "*"):
+			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q deletes a "+
+				"single fixed ref %q — a retirement names a set, and a destination that can "+
+				"only ever delete one ref is a switch somebody will pull once by accident",
+				env, r.Name, d.Name, d.Ref)
 		case d.Credential != "" && !hasCredential(creds, d.Credential):
 			// The gate approving a push is what releases the secret, so a destination naming a
 			// credential nobody declared is one whose approval releases nothing — a task told

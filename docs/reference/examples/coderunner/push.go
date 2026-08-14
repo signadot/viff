@@ -67,6 +67,11 @@ type pushRequest struct {
 	// what stops a mixed outcome from being a state anybody has to model: each action has its
 	// own gate, its own result and its own place in the record.
 	Repo string `tony:"field=repo,omitzero"`
+	// Ref is the one thing a task may say about the WORLD rather than about the environment,
+	// and it is meaningful only for a destination that retires. The parent re-checks it against
+	// the glob that destination declares — the child checked it too, and the child is the side
+	// that must not be trusted about which ref it is allowed to remove.
+	Ref string `tony:"field=ref,omitzero"`
 	// Destination is the NAME of a place the environment declared, never a ref. That is the
 	// whole of what a task may say about where work goes: a name this environment does not
 	// declare resolves to nothing, so a task that could name a ref — and thereby send this
@@ -185,37 +190,93 @@ func pushTool(p *taskProc, conn net.Conn) (harness.Tool, bool) {
 	return harness.Tool{
 		Name: pushToolName,
 		Description: "Send this task's committed work out of the sandbox, to one of the places " +
-			"this environment declares. You cannot name a ref: name a destination and the runner " +
-			"resolves where that is. The runner holds the credential and writes the provenance " +
-			"trailers; you never see either. The push may be refused — by a supervisor, or by the " +
-			"remote's own rules about its history — and a refusal is an answer, not an error to " +
-			"retry. Available destinations: " + strings.Join(names, ", ") + ".",
+			"this environment declares, or retire a ref at one that permits it. You cannot name " +
+			"where work GOES: name a destination and the runner resolves that. The runner holds " +
+			"the credential and writes the provenance trailers; you never see either. It may be " +
+			"refused — by a supervisor, or by the remote's own rules about its history — and a " +
+			"refusal is an answer, not an error to retry. Available destinations: " +
+			strings.Join(names, ", ") + ". `ref` applies ONLY to a destination that retires: give " +
+			"the ref to delete, and the environment decides which refs that destination may " +
+			"touch at all.",
 		Params: map[string]any{
 			"destination": map[string]any{"type": "string", "enum": names},
+			"ref":         map[string]any{"type": "string"},
 		},
 		Required: []string{"destination"},
 		Derive: func(tu *task.ToolUse) {
 			name, _ := tu.Input["destination"].(string)
+			if t, ref := ws.Retirable(name, argRef(tu.Input)); t != nil {
+				// DELETE rather than PUSH, so a charter gates retiring on its own. A push to an
+				// auto branch is recoverable and this is the one act here that destroys
+				// something, and `verbs: [delete]` is how somebody says that in a vector.
+				tu.Effects = append(tu.Effects, task.Effect{Verb: task.Delete, Resource: task.GitRef(ref)})
+				return
+			}
 			t, ref := ws.Destination(name)
 			if t == nil {
-				// No effect, deliberately. An action with no push effect matches no capability
-				// gate, so nobody is asked to approve a push that cannot happen — which is what
+				// No effect, deliberately. An action with no effect matches no capability gate,
+				// so nobody is asked to approve something that cannot happen — which is what
 				// "an undeclared destination is refused BEFORE the gate" comes to in a loop
-				// where classification runs first and the executor runs last.
+				// where classification runs first and the executor runs last. A ref outside what
+				// a retiring destination permits lands here too, and for the same reason.
 				return
 			}
 			tu.Effects = append(tu.Effects, task.Effect{Verb: task.Push, Resource: task.GitRef(ref)})
 		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
 			name, _ := tu.Input["destination"].(string)
+			asked := argRef(tu.Input)
+			if t, ref := ws.Retirable(name, asked); t != nil {
+				return retire(ctx, conn, t, name, ref)
+			}
 			t, ref := ws.Destination(name)
-			if t == nil {
+			switch {
+			case t == nil:
 				return fmt.Sprintf("there is no destination %q in this environment — it declares: %s",
 					name, strings.Join(names, ", ")), true, nil
+			case asked != "":
+				// Said rather than ignored: a model that supplied a ref believes it decided
+				// where this went, and letting it push somewhere else while quietly dropping
+				// the argument is the one outcome worse than refusing.
+				return fmt.Sprintf("destination %q does not retire refs, so `ref` means nothing "+
+					"to it — it sends this task's work to the one place the environment named. "+
+					"Drop `ref`, or name a destination that retires.", name), true, nil
 			}
 			return push(ctx, conn, t, ws.Branch, name, ref, p.launch(), "")
 		},
 	}, true
+}
+
+// argRef is the `ref` a retirement was asked to remove, or "" — the one argument this tool takes
+// that names something in the world rather than something the environment declared.
+func argRef(in map[string]any) string {
+	s, _ := in["ref"].(string)
+	return strings.TrimSpace(s)
+}
+
+// retire deletes a ref at a destination that permits it.
+//
+// There is nothing to commit and nothing to stage: a retirement removes something rather than
+// sending something, so the mirror has no copy to keep and the workspace holds nothing that
+// would be lost. That is the whole difference from push below, and it is why this asks for the
+// credential and does the git without the two hops.
+func retire(ctx context.Context, conn net.Conn, t *Tree, dest, ref string) (string, bool, error) {
+	rep, err := ask(conn, pushRequest{Op: "credential", Repo: t.Repo.Name, Destination: dest, Ref: ref})
+	switch {
+	case err != nil:
+		return "", false, fmt.Errorf("asking the runner for the credential for %q: %w", dest, err)
+	case rep.Error != "":
+		return "", false, fmt.Errorf("the runner would not release the credential for %q: %s", dest, rep.Error)
+	case rep.Ref == "":
+		return "", false, fmt.Errorf("the runner resolved no ref for destination %q", dest)
+	}
+	if err := t.deleteRef(ctx, rep.Ref, TokenAuth(rep.Token)(t.Repo.Repo)); err != nil {
+		if why := refusal(err); why != "" {
+			return "not retired — the remote refused it: " + why, true, nil
+		}
+		return "", false, err
+	}
+	return "retired " + rep.Ref, false, nil
 }
 
 // push is the whole of a push from this side: commit what is there, ask the runner for the
@@ -340,6 +401,33 @@ func (r *Runner) answer(c *child, raw []byte) pushReply {
 // pending ref settles itself: Reflect pushes it again on the next sweep, which is a no-op if the
 // world already has it, a retry if it did not land, and a move to `held` if the remote refuses.
 func (r *Runner) release(c *child, req pushRequest) pushReply {
+	// A RETIREMENT first, and re-checked here rather than taken from the request. The child
+	// validated the ref against the destination's glob too, and that check is for the agent's
+	// benefit — this one is the one that matters, because the child is the side holding a model
+	// and the request is whatever it chose to send. Nothing else in this protocol takes an
+	// argument that names something in the world, and this is why.
+	if t, ref := c.ws.Retirable(req.Destination, req.Ref); t != nil {
+		if req.Repo != "" && t.Repo.Name != req.Repo {
+			return pushReply{Error: fmt.Sprintf("destination %q is not on repository %q",
+				req.Destination, req.Repo)}
+		}
+		tok, err := r.credentialFor(c.ws.Env, t.Repo, req.Destination)
+		if err != nil {
+			return pushReply{Error: err.Error()}
+		}
+		// Nothing staged: a retirement removes something rather than sending something, so
+		// there is no copy for the mirror to hold and nothing that could be lost by it failing.
+		fmt.Fprintf(r.log, "coderunner: %s: releasing a credential to retire %s\n", c.id, ref)
+		return pushReply{OK: true, Ref: ref, Token: tok}
+	}
+	if req.Ref != "" {
+		// Asked to delete something no retiring destination permits. Refused loudly: this is the
+		// one request that can destroy, and a silent fallthrough to the delivery path below
+		// would push instead, which is not what was asked and not obviously worse to a reader.
+		return pushReply{Error: fmt.Sprintf("destination %q does not permit retiring %q — a "+
+			"destination that deletes declares which refs it may touch, and this is not one of "+
+			"them", req.Destination, req.Ref)}
+	}
 	t, ref := c.ws.Destination(req.Destination)
 	if t == nil || (req.Repo != "" && t.Repo.Name != req.Repo) {
 		// The two ends disagree about what this environment declares. It cannot happen through

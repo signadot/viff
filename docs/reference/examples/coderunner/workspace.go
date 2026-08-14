@@ -430,6 +430,38 @@ func (w *Workspace) Destination(name string) (*Tree, string) {
 	return nil, ""
 }
 
+// Retirable resolves a destination that DELETES: the repository that declares it, and the ref
+// the task asked to remove, once that ref has been checked against what the environment permits.
+//
+// The check is the whole of the safety, and it is done HERE and again in the parent, because the
+// task supplies the ref. Every other destination is resolved from the environment alone and a
+// task can only pick a name; this one takes an argument, so the argument is validated against
+// the glob the environment wrote rather than trusted.
+//
+// A ref outside the pattern, or a destination that does not delete, resolves to nothing — which
+// is the same answer an undeclared name gets, and refuses it before anything is gated.
+func (w *Workspace) Retirable(name, ref string) (*Tree, string) {
+	if ref == "" {
+		return nil, ""
+	}
+	for _, t := range w.Trees {
+		d, ok := t.Repo.Dest(name)
+		if !ok || !d.Delete {
+			continue
+		}
+		full := ref
+		if !strings.HasPrefix(full, "refs/") {
+			// A person and an agent both say `verse/auto/x/y`; the pattern and the refspec are
+			// both full refs. Normalised in one place so the glob is matched against one shape.
+			full = "refs/heads/" + full
+		}
+		if ok, err := filepath.Match(d.Ref, full); err == nil && ok {
+			return t, full
+		}
+	}
+	return nil, ""
+}
+
 // DestinationNames is every name a task here may ask for, in the order the environment wrote
 // them. It is what the push tool offers the model as an enumeration, so the vocabulary a runtime
 // will accept is the vocabulary the model can write rather than something it finds out by being
@@ -626,6 +658,26 @@ func refusal(err error) string {
 		}
 	}
 	return ""
+}
+
+// deleteRef removes a ref at the remote — a push with no source, which is how git spells a
+// delete and why this needs no commit, no branch and nothing staged.
+//
+// Not forced, and the difference matters here in a way it does not for a delivery. `+` on a
+// refspec overrides the receiving end's rules, and the rule this one would override is
+// `receive.denyDeletes` — the operator's own statement that a ref pattern is not to be removed.
+// A sweep that forced past it would be verse claiming an authority over somebody's repository
+// that the whole design says belongs to the receiving end.
+func (t *Tree) deleteRef(ctx context.Context, ref string, auth transport.AuthMethod) error {
+	remote := git.NewRemote(t.repo.Storer, &config.RemoteConfig{
+		Name: deliveryRemote, URLs: []string{t.Repo.Repo},
+	})
+	if err := remote.PushContext(ctx, &git.PushOptions{
+		RemoteName: deliveryRemote, RefSpecs: []config.RefSpec{config.RefSpec(":" + ref)}, Auth: auth,
+	}); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return fmt.Errorf("repo %s: delete %s: %w", t.Repo.Name, ref, err)
+	}
+	return nil
 }
 
 // deliveryRemote is the in-memory remote a push is made through. It is not a remote in any

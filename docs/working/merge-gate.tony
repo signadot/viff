@@ -300,7 +300,14 @@
 ---
 # 4. …and the branches that can no longer land are deleted.
 #
-# Ungated, deliberately, and it is the one call here worth arguing with. Deleting a
+# It RUNS now. It used to be the half of this charter that could not: a delete has no spelling
+# as a push, so the task had nothing to ask for and the prompt told it to run `git push --delete`
+# in a shell that holds no credential. The runner gained a destination that RETIRES — the
+# environment declares a glob of refs that may be removed, the task names one inside it, and
+# deriving stamps `Verb: Delete` rather than `Verb: Push` so a charter can gate destroying
+# separately from delivering.
+#
+# Ungated here, deliberately, and it is the one call here worth arguing with. Deleting a
 # `verse/auto/*` branch destroys nothing that cannot be remade: the work was proposed by a review
 # that is idempotent by construction, and a branch that cannot fast-forward is a proposal about a
 # main that no longer exists. Against that, a gate on every stale branch fills the docket with
@@ -338,9 +345,13 @@
         past the point it was cut from, or it has already been merged. Both mean the same thing
         here, and both mean the branch is done:
 
-            git -C verse push origin --delete <branch>
+        Call the `push` tool with destination `retire` and `ref` set to that branch. You
+        cannot run `git push --delete` yourself and must not try: you have no credential, and
+        the runner holds one. The environment decides which refs `retire` may touch at all, so a
+        ref outside `verse/auto/` is refused before anybody is asked about it — which means you
+        cannot delete the wrong thing by mistake, only by not being able to.
 
-        Delete nothing outside `verse/auto/`. Do not merge, rebase or force-push anything.
+        One call per branch. Do not merge, rebase or force-push anything.
 
         Answer with a JSON document and nothing else, listing what you removed — `[]` when
         every delivered branch can still land, which is the ordinary answer:

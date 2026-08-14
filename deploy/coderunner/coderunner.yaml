@@ -213,9 +213,27 @@ data:
         # `receive.denyNonFastForwards` on main at the far end.
         - name: main
           ref: "refs/heads/main"
+        # RETIRING, which is a different act and says so: `delete: true` makes `ref` a GLOB of
+        # what may be removed rather than the one place work goes, because a sweep learns stale
+        # branch names by asking the remote and cannot be handed them by this file. The
+        # environment still decides — the task picks inside this pattern and a ref outside it is
+        # refused before anything is gated.
+        #
+        # TWO segments after `verse/auto/`, because the delivered ref is
+        # `refs/heads/verse/auto/$sha/$task` and `*` does not cross `/`. A pattern one segment
+        # short matches nothing and reads as a sweep that never finds anything, which this drive
+        # has already paid for once in a charter selector.
+        #
+        # Deriving stamps `Verb: Delete`, so a charter that wants to gate destroying without
+        # gating delivery says `verbs: [delete]`. And `receive.denyDeletes` must NOT be set on
+        # this pattern at the far end, or the sweep is refused every time — the one rule in this
+        # file that has to be ABSENT rather than present.
+        - name: retire
+          ref: "refs/heads/verse/auto/*/*"
+          delete: true
       driver: llm
-      # A shell to run the merge, `push` to send it, and the read tools so a model that wants to
-      # look before it merges can. No `write_file`: a merge that hand-edits a file is not a
+      # A shell to run the merge, `push` to send it and to retire, and the read tools so a model
+      # that wants to look before it merges can. No `write_file`: a merge that hand-edits a file is not a
       # merge. No `call_agent`: there is nothing here to fan out over.
       tools: [read_file, list_dir, run_bash, push]
       commands: [git]
