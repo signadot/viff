@@ -459,6 +459,44 @@ func TestDestinationsAreCheckedWhenTheConfigIsRead(t *testing.T) {
 	}
 }
 
+// An environment that can be approved to push somewhere it has no route to is refused when the
+// config is read.
+//
+// This is the one half of the operational story a program can hold for itself. The TASK does the
+// pushing now, so the forge has to be on the egress allowlist — and without this check the
+// failure lands at the worst possible moment: after the work is done, after somebody approved
+// it, as a connection error from inside a sandbox. The other half (`receive.denyNonFastForwards`
+// and `receive.denyDeletes`) is the receiving end's, fails open, and cannot be checked from here
+// at all, which is why it is written into the shipped configs where somebody will read it.
+func TestAnEnvironmentWithNoRouteToItsForgeIsRefused(t *testing.T) {
+	env := Environment{
+		Name:   "e",
+		Repos:  []Repo{{Name: "svc", Repo: "https://github.com/signadot/verse", Base: "main"}},
+		Egress: []string{"api.portkey.ai", "proxy.golang.org"},
+	}
+	// No destinations: nothing leaves, so no route is owed.
+	if err := checkReachable(env); err != nil {
+		t.Fatalf("a read-only environment was refused a route it does not need: %v", err)
+	}
+	env.Repos[0].Push = "refs/heads/verse/auto/$task"
+	err := checkReachable(env)
+	if err == nil {
+		t.Fatal("an environment that may push to github.com with no route there loaded")
+	}
+	if !strings.Contains(err.Error(), "github.com") {
+		t.Errorf("the refusal does not name what is missing from the allowlist: %v", err)
+	}
+	env.Egress = append(env.Egress, "github.com")
+	if err := checkReachable(env); err != nil {
+		t.Fatalf("the forge is on the allowlist and it was still refused: %v", err)
+	}
+	// A local path is a route nobody needs, which is what every test in this file runs on.
+	env.Repos[0].Repo, env.Egress = t.TempDir(), []string{"api.portkey.ai"}
+	if err := checkReachable(env); err != nil {
+		t.Errorf("a local remote was asked for an egress rule: %v", err)
+	}
+}
+
 // An environment naming a workspace this runner does not have is refused with the names it
 // does have, because the alternative — running the work somewhere else — is the same class of
 // bug as a misspelled runner that runs in-process.

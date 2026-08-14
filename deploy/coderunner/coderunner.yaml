@@ -70,6 +70,29 @@ data:
       - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
+      # THE FORGE, and it is the one widening in this design worth reading twice.
+      #
+      # An environment with destinations needs a route to them, because the TASK does the
+      # pushing: the runner hands it a credential rather than performing an operation for it.
+      # The runner refuses at startup if this is missing, rather than letting a task be approved
+      # and then fail to reach github.com at the end of a run.
+      #
+      # What this admits is REACHABILITY, for everything in the network namespace — including
+      # the model's shell, since the allowlist is per namespace and the shell shares it. What it
+      # does not admit is AUTHORISATION: a credential is released only when a gate approves a
+      # destination, it goes to `coderunner -task` and not into `env:` above, so the shell can
+      # reach github.com and can do nothing there.
+      #
+      # Two rules at the RECEIVING end finish the job, and neither is verse's to hold — humans
+      # push to this repository too, and an invariant enforced by the receiver applies to all of
+      # them:
+      #   - `receive.denyNonFastForwards` (or the forge's branch-protection equivalent) is what
+      #     makes `--ff-only` more than an instruction in a prompt;
+      #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination
+      #     targets, or a sweep silently cannot do its job.
+      # Both fail OPEN — a missing rule does not error, it permits — so they are written here,
+      # where whoever configures this deployment will read them.
+      - github.com
 
     # The fixing environment: read the repository, correct what disagrees with the code, and
     # leave it on a branch somebody can diff.
@@ -114,6 +137,29 @@ data:
       - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
+      # THE FORGE, and it is the one widening in this design worth reading twice.
+      #
+      # An environment with destinations needs a route to them, because the TASK does the
+      # pushing: the runner hands it a credential rather than performing an operation for it.
+      # The runner refuses at startup if this is missing, rather than letting a task be approved
+      # and then fail to reach github.com at the end of a run.
+      #
+      # What this admits is REACHABILITY, for everything in the network namespace — including
+      # the model's shell, since the allowlist is per namespace and the shell shares it. What it
+      # does not admit is AUTHORISATION: a credential is released only when a gate approves a
+      # destination, it goes to `coderunner -task` and not into `env:` above, so the shell can
+      # reach github.com and can do nothing there.
+      #
+      # Two rules at the RECEIVING end finish the job, and neither is verse's to hold — humans
+      # push to this repository too, and an invariant enforced by the receiver applies to all of
+      # them:
+      #   - `receive.denyNonFastForwards` (or the forge's branch-protection equivalent) is what
+      #     makes `--ff-only` more than an instruction in a prompt;
+      #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination
+      #     targets, or a sweep silently cannot do its job.
+      # Both fail OPEN — a missing rule does not error, it permits — so they are written here,
+      # where whoever configures this deployment will read them.
+      - github.com
 ---
 apiVersion: apps/v1
 kind: Deployment

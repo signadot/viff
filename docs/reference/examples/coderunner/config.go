@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -15,7 +17,7 @@ import (
 // `call_agent` and `fail` are deliberately absent from what an environment would list, being the
 // loop's own rather than the work's.
 //
-// `push` is this runner's (deliver.go, pushTool) and is offered only where the environment
+// `push` is this runner's (push.go, pushTool) and is offered only where the environment
 // declares somewhere to push, which is why naming it without destinations is refused below: a
 // floor that lists a tool nothing will offer is a floor that means nothing.
 var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent", pushToolName}
@@ -446,6 +448,58 @@ func checkDelivering(e Environment) error {
 		return fmt.Errorf("coderunner: environment %q offers the %q tool and declares no "+
 			"destinations, so every use of it would be refused — declare where work may go, or "+
 			"do not offer it", e.Name, pushToolName)
+	}
+	return checkReachable(e)
+}
+
+// checkReachable refuses an environment that can be approved to push somewhere it has no route
+// to, which is the one half of the operational story a program can hold for itself.
+//
+// The task does the pushing now, so the forge has to be on the egress allowlist — and that
+// widening is worth reading twice, because it is the one place in this design where "reachable"
+// and "authorised" come apart. The allowlist is per network namespace and the model's SHELL
+// shares it, so admitting github.com admits it for the shell too. What the shell does not get is
+// a credential: that is on the other side of `buildEnv`, which is where the line actually is.
+//
+// Everything else in the operational half fails OPEN and cannot be checked from here —
+// `receive.denyNonFastForwards` is what makes `--ff-only` more than a prompt, and
+// `receive.denyDeletes` on a ref pattern a retiring destination targets stops a sweep silently.
+// Both are the receiving end's, deliberately: verse does not compete with git server
+// configuration, because humans push to these repositories too and an invariant enforced by the
+// receiver applies to all of them.
+func checkReachable(e Environment) error {
+	if len(e.Egress) == 0 {
+		return nil // no allowlist is no restriction: the containment is whatever else says
+	}
+	eg := &Egress{}
+	for _, entry := range e.Egress {
+		r, err := parseAllow(entry)
+		if err != nil {
+			return fmt.Errorf("coderunner: environment %q: %w", e.Name, err)
+		}
+		eg.rules = append(eg.rules, r)
+	}
+	for _, r := range e.Repos {
+		if len(r.Dests()) == 0 {
+			continue
+		}
+		u, err := url.Parse(r.Repo)
+		if err != nil || u.Host == "" {
+			continue // a local path, which needs no route at all
+		}
+		port := u.Port()
+		if port == "" {
+			port = "443"
+			if u.Scheme == "http" {
+				port = "80"
+			}
+		}
+		if err := eg.permits(net.JoinHostPort(u.Hostname(), port)); err != nil {
+			return fmt.Errorf("coderunner: environment %q may push %s to %s, and its egress "+
+				"allowlist has no route there (%w) — a task would be approved and then fail to "+
+				"reach the forge, at the end of a run",
+				e.Name, r.Name, u.Host, err)
+		}
 	}
 	return nil
 }

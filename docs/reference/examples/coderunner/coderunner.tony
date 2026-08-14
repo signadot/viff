@@ -104,3 +104,24 @@ environments:
   # A wildcard covers subdomains and NOT the bare domain, which are different names and often
   # different owners.
   - "*.githubusercontent.com"
+  # THE FORGE, and it is the one widening in this design worth reading twice.
+  #
+  # An environment with destinations needs a route to them, because the TASK does the pushing —
+  # the runner hands it a credential, not a performance. The runner refuses at startup if this
+  # is missing, rather than letting a task be approved and then fail to reach the forge at the
+  # end of a run.
+  #
+  # What it admits is REACHABILITY, for everything in this network namespace — which includes
+  # the model's shell, since the allowlist is per namespace and the shell shares it. What it
+  # does not admit is AUTHORISATION: the credential is on the other side of `env:` below, which
+  # is the allowlist a task's subprocesses inherit, so the shell can reach github.com and can do
+  # nothing there.
+  #
+  # Two rules at the RECEIVING end finish the job, and neither is verse's to hold — humans push
+  # to these repositories too, and an invariant enforced by the receiver applies to all of them:
+  #   - `receive.denyNonFastForwards` is what makes `--ff-only` more than a prompt;
+  #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination targets,
+  #     or a sweep silently cannot do its job.
+  # Both fail OPEN — a missing rule does not error, it permits — so they are written down here,
+  # where whoever configures this will read them.
+  - github.com
