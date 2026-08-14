@@ -151,6 +151,12 @@ func (c Condition) validate() error {
 	if err := c.Subject.Validate(); err != nil {
 		return fmt.Errorf("condition.subject: %w", err)
 	}
+	// A read inside the subject's predicate: its shape, and the one thing it may not address.
+	// Checked here so a rule that cannot mean what it says fails at install, where its author
+	// is, rather than at a firing they are not watching.
+	if err := checkConditionReads(c.Subject); err != nil {
+		return fmt.Errorf("condition.subject: %w", err)
+	}
 	if c.On != nil {
 		// The cause is `on`, and validateOn has already checked what the edge rule reads. A
 		// `when` beside it is the level guard, checked below like any other.

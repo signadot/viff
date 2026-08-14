@@ -237,16 +237,7 @@ func readTargets(n entity.Payload) ([]pathSpec, error) {
 // resolveRead answers one path read at fire time: expand the references in its address, then
 // read from the firing's snapshot.
 func (e *Engine) resolveRead(node *ir.Node, root entity.Payload, oc occasion) (entity.Payload, error) {
-	// The address is expanded FIRST — `id: $subject.value.head` is the point of the feature —
-	// and expanded with no reader of its own: an address is not a place for another read, and
-	// allowing one would make how many entities a firing touches a question only the store can
-	// answer.
-	kind := pathKind(node)
-	addr, err := expandPatch(untag(node), root, nil)
-	if err != nil {
-		return nil, err
-	}
-	spec, err := readSpec(retag(addr, kind))
+	spec, err := readAddress(node, root)
 	if err != nil {
 		return nil, err
 	}
@@ -254,10 +245,40 @@ func (e *Engine) resolveRead(node *ir.Node, root entity.Payload, oc occasion) (e
 	if err != nil {
 		return nil, fmt.Errorf("!%s %s: %w", spec.kind, spec.target(), err)
 	}
-	if spec.kind == GetPathTag {
-		return spec.get(snap)
+	return spec.answer(snap)
+}
+
+// resolveReadAt is the same against a snapshot the caller already holds. A CONDITION has one —
+// the reader its own predicates are evaluated against — so its reads are answered from the world
+// the condition is deciding about, with no second replay and no chance of the two disagreeing.
+func resolveReadAt(node *ir.Node, root entity.Payload, snap entity.Snapshot) (entity.Payload, error) {
+	spec, err := readAddress(node, root)
+	if err != nil {
+		return nil, err
 	}
-	return spec.list(snap)
+	return spec.answer(snap)
+}
+
+// readAddress expands a read's address and interprets it.
+//
+// The address is expanded FIRST — `id: $subject.value.head` is the point of the feature — and
+// expanded with no reader of its own: an address is not a place for another read, and allowing
+// one would make how many entities a firing touches a question only the store can answer.
+func readAddress(node *ir.Node, root entity.Payload) (pathSpec, error) {
+	kind := pathKind(node)
+	addr, err := expandPatch(untag(node), root, nil)
+	if err != nil {
+		return pathSpec{}, err
+	}
+	return readSpec(retag(addr, kind))
+}
+
+// answer reads whichever cardinality this spec is.
+func (p pathSpec) answer(snap entity.Snapshot) (entity.Payload, error) {
+	if p.kind == GetPathTag {
+		return p.get(snap)
+	}
+	return p.list(snap)
 }
 
 // get answers the one-node form.

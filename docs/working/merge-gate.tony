@@ -277,103 +277,61 @@
     patch:
       state: stale
 ---
-# 3. Main moved, so every open proposal's answer to "can this still land" may have changed.
+# 3. Main moved, so the proposals cut from where it used to be can no longer land — and each
+# one's branch is retired.
 #
-# This is the "periodic" check, and it is level-triggered instead — because the thing it would
-# poll for changes on an edge this verse already has. Width one: `git:head:verse` is ONE entity
-# carrying main's tip, which is the lesson comment-drift.tony's wall TWO paid for with 131
-# firings timing out inside the store.
+# TWO RULES COLLAPSED INTO THIS ONE. There used to be a `sweep-armed` rule whose whole job was to
+# re-arm a `merge:sweep` entity every time the sha moved, and a `sweep` task that fetched the
+# remote, ran `merge-base --is-ancestor` per branch and decided. Neither is needed: the charter
+# already knows, because a proposal records the `base` it was cut from and main moving IS the
+# staleness test. `base != <main's tip>` is the whole predicate — no ancestry walk, no remote
+# asked anything, no model.
 #
-# It spawns nothing, so it needs no latch, and `swept: pending` re-arms itself: a derive merges,
-# so writing it puts the fact back in rule 4's selection every time the sha moves.
-- name: sweep-armed
-  stratum: reflected
-  condition:
-    subject: git:head:verse
-  action:
-    derive:
-      merge:
-        sweep:
-          sha: $subject.value.sha
-          swept: pending
-          deleted: !delete null
-          err: !delete null
----
-# 4. …and the branches that can no longer land are deleted.
+# What made it sayable is a condition that can read another entity. `!get-path` reads main's tip
+# from the same snapshot this condition is evaluated against, `!let` binds it, and `!not` compares
+# the subject's own field against it. The read joins what this trigger READS, so main moving
+# re-evaluates the rule — which is the level-triggering the old rule 3 was hand-rolling with a
+# derive.
 #
-# It RUNS now. It used to be the half of this charter that could not: a delete has no spelling
-# as a push, so the task had nothing to ask for and the prompt told it to run `git push --delete`
-# in a shell that holds no credential. The runner gained a destination that RETIRES — the
-# environment declares a glob of refs that may be removed, the task names one inside it, and
-# deriving stamps `Verb: Delete` rather than `Verb: Push` so a charter can gate destroying
-# separately from delivering.
+# One firing per stale proposal, each with its own branch, so the retirement is one call and not
+# a task that has to discover anything. `driver: calls` is implied by `calls:` itself.
 #
-# Ungated here, deliberately, and it is the one call here worth arguing with. Deleting a
+# Ungated, deliberately, and it is the one call here worth arguing with. Deleting a
 # `verse/auto/*` branch destroys nothing that cannot be remade: the work was proposed by a review
 # that is idempotent by construction, and a branch that cannot fast-forward is a proposal about a
 # main that no longer exists. Against that, a gate on every stale branch fills the docket with
 # questions whose only honest answer is yes, and a docket nobody can keep up with is one nobody
 # reads — which is the failure the whole gate mechanism is for.
 #
-# What it must NOT do is delete a branch whose proposal is still open with a question standing on
-# it. It cannot see that today; see merge-gate-residual.md, which is the shape of the ask.
-- name: sweep
+# What it still cannot see is a question standing on the proposal it is retiring; see
+# merge-gate-residual.md.
+- name: proposal-outrun
   stratum: merge
   condition:
     subject:
       system: merge
-      kind: sweep
-      value:
-        swept: pending
+      kind: proposal
+      value: !let
+        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        in:
+          state: open
+          base: !not .[tip]
   action:
+    patch:
+      state: stale
     spawn:
       runner: runners:pool:code
       environment: verse-merge
-      driver: llm
       grant: no-delegate
       vector: auto
-      prompt: |
-        In ./verse, retire the delivered branches that can no longer land.
-
-            git -C verse fetch origin --prune
-
-        For each remote branch under `verse/auto/`:
-
-            git -C verse merge-base --is-ancestor origin/main <branch>
-
-        A branch where that SUCCEEDS is still mergeable — main is an ancestor of it — so leave it
-        alone. A branch where it FAILS cannot fast-forward onto main any more: main has moved
-        past the point it was cut from, or it has already been merged. Both mean the same thing
-        here, and both mean the branch is done:
-
-        Call the `push` tool with destination `retire` and `ref` set to that branch. You
-        cannot run `git push --delete` yourself and must not try: you have no credential, and
-        the runner holds one. The environment decides which refs `retire` may touch at all, so a
-        ref outside `verse/auto/` is refused before anybody is asked about it — which means you
-        cannot delete the wrong thing by mistake, only by not being able to.
-
-        One call per branch. Do not merge, rebase or force-push anything.
-
-        Answer with a JSON document and nothing else, listing what you removed — `[]` when
-        every delivered branch can still land, which is the ordinary answer:
-
-            {"deleted": ["verse/auto/some-task"], "kept": ["verse/auto/another"]}
-      # `!irtype` reads only the TYPE of what it is written with, so a list-of-string exemplar
-      # is how a list of strings is stated. NOT `!all !irtype "…"` — `!all` constrains every
-      # element against a PATTERN and does not distribute over a scalar tag, so that spelling
-      # parses, installs, and then rejects every well-formed answer with "expected !irtype
-      # verse/auto/x, found [verse/auto/x]". Checked against answer.ParseSource before landing,
-      # because a contract defect fails the FIRING after the work is done — one completed review
-      # was lost that way (comment-drift.tony's note on `!all`).
-      answer:
-        deleted: !irtype ["verse/auto/some-task"]
-        kept: !irtype ["verse/auto/another"]
-    onDone:
-      patch:
-        swept: done
-        deleted: $data.deleted
-        err: !delete null
+      calls:
+      - tool: push
+        input: {destination: retire, ref: $branch}
+      # No `answer:`, and that is the driver rather than an omission: a call list has no model
+      # to repair a contract with, so a spawn carrying one is refused. What used to be read out
+      # of the answer — which branches went — is the LIST ITSELF, and the ref is in the record
+      # before the task starts.
     onFailed:
       patch:
-        swept: failed
+        state: open
         err: $err

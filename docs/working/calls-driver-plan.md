@@ -1,6 +1,6 @@
 # A driver that proposes a list of calls: implementation plan
 
-Status: **steps 1–3.5 are built** (branch `calls-driver`); step 4 is not. The driver, `fatal:`, `scripted`
+Status: **all of it is built** (branch `calls-driver`). The driver, `fatal:`, `scripted`
 as its degenerate case, the coding runner's extras, and `calls:` as a charter field are in the
 tree and documented in [reference/tasks.md](../reference/tasks.md#the-drivers) and
 [trigger-model.md](../trigger-model.md#calls--when-the-charter-knows-the-actions). What is written below for those steps
@@ -200,8 +200,21 @@ already performs on the action side. See
 [merge-gate-residual.md](merge-gate-residual.md), where the ask is now stated as the one
 substitution it is.
 
-**Proves:** nothing until a condition can resolve that binding, which is why it is last and why
-steps 1–3.5 do not wait for it.
+**Proves:** nothing until a condition can resolve that binding, which is why it was last.
+
+**Built, and what it found.** The binding landed: a read in `condition.subject`'s predicate,
+answered from the snapshot the condition is evaluated against, and — the half that makes it mean
+anything — counted in what the trigger READS, so main moving re-evaluates the rule over proposals
+that did not change. Without that the commit is skipped as touching nothing, and the proposals
+sit open forever.
+
+The sweep is now one rule with no task to discover anything: it selects the proposals main has
+outrun and spawns one call per branch. Two rules went away — the `sweep-armed` re-arming derive
+and the `sweep` agent that fetched the remote to work out what the charter already knew.
+
+And the same tag-dropping defect turned up one layer down, in verse's own expander this time:
+`base: !not .[tip]` came back as `base: .[tip]`, silently inverting the predicate. Fixed and
+guarded.
 
 ## What this plan deliberately does not do
 

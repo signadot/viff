@@ -711,9 +711,42 @@ The string form stops at the entity, because an id may itself contain dots and
 **Read at the commit that caused the firing**, the same rule `$subject.value` follows and for the
 same gate reason.
 
-**They copy, and do not track.** Whatever is read is read once. If it changes afterwards nothing
-re-runs — this rule fires again only when its own subject changes, or when an `on`/`when` it
-carries covers the target. Add the `on` if you want to follow it.
+**They copy, and do not track — in an ACTION.** Whatever is read is read once. If it changes
+afterwards nothing re-runs; this rule fires again only when its own subject changes, or when an
+`on`/`when` it carries covers the target. Add the `on` if you want to follow it.
+
+### A condition may read too, and that one DOES track
+
+A read in `condition.subject`'s predicate is answered before the predicate is matched, so a rule
+can select on how its subject compares to another entity — the thing a match alone cannot say,
+since a match tests a field against a literal or an operator and never against a value read from
+elsewhere. `!let` binds the read, and the body compares:
+
+```tony
+- name: proposal-outrun
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value: !let
+        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        in:  {state: open, base: !not .[tip]}
+  action:
+    patch: { state: stale }
+```
+
+Every open proposal cut from a commit that is no longer the tip of main — "which of these can
+still land", with no ancestry walk and nothing to poll.
+
+**It joins what the rule reads**, which is the difference from an action's read and is not a
+detail: the rule above is re-evaluated when `git:head:verse` moves, over proposals that did not
+change. A trigger is skipped at a commit that touched nothing it reads, and a condition comparing
+against another entity reaches a different verdict the moment that entity moves — so the read
+counts, or the skip would be wrong.
+
+**It cannot name `$subject`.** In an action the subject is settled and addressing by its fields is
+the point; a condition is what CHOOSES the subject, so there is no one entity to read from yet.
+Refused at install, saying that rather than "unknown reference".
 
 **A missing `!get-path` target fails the firing**, as any unresolved reference does, so that
 "nothing is there" cannot launder into "something is there, and it is nothing". An empty

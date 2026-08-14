@@ -381,9 +381,18 @@ func expandInto(n entity.Payload, root entity.Payload, read readFn) error {
 		}
 		// CloneTo copies content but clears the destination's parent linkage, so restore it:
 		// the node stays where it is in the document, only its value changes.
-		parent, field, index := n.Parent, n.ParentField, n.ParentIndex
+		//
+		// AND ITS TAG SURVIVES. CloneTo copies the source's tag over the destination's, and an
+		// expanded string carries none — so walking `base: !not .[tip]` used to hand back
+		// `base: .[tip]`, silently turning a predicate into its opposite. The tag belongs to the
+		// node's place in the document, not to the value being substituted into it; a value that
+		// arrives carrying its OWN tag keeps that one, since then the tag is data.
+		parent, field, index, tag := n.Parent, n.ParentField, n.ParentIndex, n.Tag
 		v.CloneTo(n)
 		n.Parent, n.ParentField, n.ParentIndex = parent, field, index
+		if n.Tag == "" {
+			n.Tag = tag
+		}
 		return nil
 	}
 	return nil

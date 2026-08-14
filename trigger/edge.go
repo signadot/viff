@@ -74,7 +74,15 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 			return // the condition does not hold at this commit
 		}
 	}
-	subjects := t.Condition.Subject.Select(now)
+	// A condition that reads another entity is answered HERE, from the same snapshot the rest
+	// of the condition was evaluated against, so the selection and the guard are decisions about
+	// one world. Ordinary conditions carry no read and this costs a nil check. See condread.go.
+	subject, err := e.conditionMatch(t.Condition.Subject, now)
+	if err != nil {
+		e.tracef("%s: subject read failed (%v); not firing", t.Name, err)
+		return
+	}
+	subjects := subject.Select(now)
 	if len(subjects) == 0 {
 		return // nothing to act on at this commit
 	}
@@ -126,6 +134,12 @@ func (t Trigger) reads() [][2]string {
 	add(t.Condition.On.Subtrees())
 	add(t.Condition.When.Subtrees())
 	add(matchFormula(t.Condition.Subject).Subtrees())
+	// What the SUBJECT's own predicate reads, which is a read like any other for this purpose.
+	// `touches` skips a commit on the argument that a trigger whose reads did not change reaches
+	// the same verdict — and a condition comparing against another entity's field reaches a
+	// different one the moment that field moves. Leaving it out would make the skip a lie in
+	// exactly the case the feature exists for: main moving is what makes a proposal stale.
+	add(conditionReads(t.Condition.Subject))
 	return out
 }
 

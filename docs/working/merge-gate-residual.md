@@ -1,11 +1,11 @@
 # Merging an agent's branch: what the charter cannot say yet
 
-Status: residual. The charter is [merge-gate.tony](merge-gate.tony) — which belongs on
-`use/verse-dev` beside comment-drift.tony and is here only because that is where it was written —
-and it
-is four rules that work with today's grammar. This is the part that does not, written down
-because a gap named in a file is a thing somebody can decide about and a gap left in a head is
-not.
+Status: residual, and the blocker it was written about is GONE. The charter is
+[merge-gate.tony](merge-gate.tony) — which belongs on `use/verse-dev` beside comment-drift.tony
+and is here only because that is where it was written — and every rule in it now runs on today's
+grammar. What is kept below is the reasoning that got there, because the ask it named turned out
+to be the wrong one twice over and that is worth reading once; and what is still missing, which
+is smaller than it was.
 
 ## The blocker, and the wrong turn worth keeping
 
@@ -25,7 +25,9 @@ sweep already names the `retire` destination. The task half is no longer an LLM 
 [calls driver](calls-driver-plan.md), a sweep's actions are a list the charter writes, and a
 refusal it can survive is `fatal: []`.
 
-What is left is DISCOVERY — which branches to retire — and that is not a git problem at all.
+Discovery — which branches to retire — was the last of it, and it landed too: a condition can
+read another entity now, so the charter says which proposals main has outrun and spawns one call
+per branch. See below, and rule 3 in the charter.
 
 ### …and most of what the sweep is for needs no git at all
 
@@ -44,49 +46,45 @@ That collapses rule 4, for the purpose that matters, into a state change — and
 the task it replaces: no model call, nothing that can fail, and the docket closes the instant main
 moves rather than whenever a sweep next runs.
 
-**The ask this note used to state was the wrong one.** It asked whether the grammar could fan a
-patch out over a SELECTION on an edge belonging to a different subject — *when `git:head:verse`
-moves, patch every open `merge:proposal`* — reasoning that a rule's action patches its own
-subject and those proposals are not the subject of the head-moved edge. That fan-out already
-exists, and has since before this note: a selector `subject:` with a `when` or `on` naming
-another subtree is exactly it, one firing per member, each with its own gate and its own flow
-([trigger-model.md §Acting on a set](../trigger-model.md#acting-on-a-set)). The rule is
+**The ask this note used to state was the wrong one, and the right one is now BUILT.** It asked
+whether the grammar could fan a patch out over a SELECTION on an edge belonging to a different
+subject — *when `git:head:verse` moves, patch every open `merge:proposal`* — reasoning that a
+rule's action patches its own subject and those proposals are not the subject of the head-moved
+edge. That fan-out already existed and had since before this note: a selector `subject:` with a
+`when` or `on` naming another subtree is exactly it, one firing per member
+([trigger-model.md §Acting on a set](../trigger-model.md#acting-on-a-set)).
+
+What the grammar could not say was the PREDICATE — a proposal is stale when its own `base`
+differs from the tip another entity holds — and a match compares a field against a literal or an
+operator, never against a value read from somewhere else. That is what landed: a read in a
+condition's predicate, answered from the snapshot the condition is evaluated against, bound by
+`!let` and compared in its body. See
+[trigger-model.md §A condition may read too](../trigger-model.md#a-condition-may-read-too-and-that-one-does-track).
+So rule 4 is now
 
 	condition:
-	  subject: { system: merge, kind: proposal, value: { state: open } }
-	  when:    { system: git, kind: head, id: verse, … }
+	  subject:
+	    system: merge
+	    kind:   proposal
+	    value: !let
+	      let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+	      in:  {state: open, base: !not .[tip]}
 	action:
-	  patch: { state: stale }
+	  patch: {state: stale}
+	  spawn: {environment: verse-merge, calls: [{tool: push, input: {destination: retire, ref: $branch}}]}
 
-and nothing about it is new. **What the grammar cannot say is the `…`**: a proposal is stale when
-its own `base` differs from the tip that entity holds, and a match compares a field against a
-literal or an operator — never against a value read from somewhere else.
+and two rules went away with it: `sweep-armed`, whose whole job was to re-arm a `merge:sweep`
+entity whenever the sha moved, and the `sweep` task that fetched the remote and ran `merge-base`
+per branch to work out what the charter already knew.
 
-**`!let` is the shape that closes it, and it is already in the match vocabulary.** It binds names
-into a pattern and matches the body with them substituted, so the predicate is sayable the moment
-a binding can hold main's tip:
-
-	value: !let
-	  let: [{tip: <the tip>}]
-	  in:  {base: !not .[tip]}
-
-Verified against verse's own matcher, and pinned there — `entity.TestLetBindsAValueIntoAMatch`
-covers equal, not-equal, and a `!glob` over the binding. The negated form is the one the sweep
-needs and was the one that silently inverted: `!not` was dropped when `.[tip]` was substituted, so
-"differs" answered "equals", with no error, in a rule whose action deletes branches. Filed as
-tony-format `cv90ehkvh12krm4sfxn0`, fixed in go-tony v0.0.133, which verse now requires. The test
-stays because a predicate that inverts in silence is worth a guard after its cause is gone.
-
-So the WHOLE remaining ask is one sentence: **a condition must be able to resolve a value from
-another entity into a `!let` binding** — which is what `!get-path` already does, on the other side
-of the fence. `path.go` states the fence explicitly: *"A charter could already CONDITION on
-outside state — `when` and `on` both name other entities — but it could not COPY any of it."* A
-firing's path reads are answered from one snapshot taken at the causing commit, and a condition is
-evaluated against that same snapshot, so the value is already in hand at the moment it is needed.
-
-That is a far better-shaped ask than the fan-out it replaces: it is one substitution in one place,
-it is general (every "this field differs from that entity's field" rule wants it), and it makes no
-new concept — `!let` is tony's, `!get-path` is verse's, and both already run.
+**What the building found** was the same defect one layer down, in verse rather than in tony.
+`expandInto` rebuilds a string node after substituting references into it, and `CloneTo` copies
+the source's tag over the destination's — so `base: !not .[tip]` came back as `base: .[tip]`, no
+error, the exact inverse, in the rule that deletes branches. It is older than this feature and
+reaches an action's patch as well; fixed, with `TestExpansionKeepsATagOnAString` on it. That is
+twice in one afternoon that a tag over a substituted value was silently dropped — the other was
+[go-tony's](https://github.com/signadot/tony-format) `!let` expansion — which suggests the shape
+is worth suspecting wherever a value is spliced into a document that carries operators.
 
 (It cannot tell "stale" from "merged by hand", since both are `base != tip`. Tolerable in the
 direction it errs: a merged proposal marked stale is re-proposed by a review that then finds
