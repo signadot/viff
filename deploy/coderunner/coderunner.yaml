@@ -127,11 +127,43 @@ data:
       - name: verse
         repo: "https://github.com/signadot/verse"
         base: main
-        # $task expands to the task id, so two runs never contend for a ref. A charter-spawned
-        # id is `<chain>@<subject>`, which is not a legal ref name — the runner flattens it.
-        push: "refs/heads/verse/auto/$sha/$task"
+        destinations:
+        # Where a task's own work lands, and what `deliver` used to mean. $task expands to the
+        # task id, so two runs never contend for a ref; a charter-spawned id is
+        # `<chain>@<subject>`, which is not a legal ref name, and the runner flattens it.
+        - name: auto
+          ref: "refs/heads/verse/auto/$sha/$task"
+        # MAIN, and this is the widening, so it is worth being exact about what holds it.
+        #
+        # It is here for merge-gate.tony: a delivered branch becomes a proposal, somebody
+        # answers a docket question, and a yes spawns a task that merges `--ff-only` locally and
+        # asks for this destination. Nothing else in the drive needs it.
+        #
+        # WHAT DECIDES IT is the charter's gate — `!until [!quorum 1, !deadline "24h"]`, denying
+        # on the clock — and not the task's vector, which merge-gate sets to `auto` deliberately:
+        # the decision has been made by a person about the thing that matters, and making the
+        # task re-ask per action would be the same question in two vocabularies.
+        #
+        # THE CONSEQUENCE OF THAT, stated because it is not obvious: this environment is shared,
+        # and every charter using it now runs with a tool that can reach main. comment-drift
+        # spawns here with `vector: auto` too, so nothing in the loop would stop one of its fix
+        # tasks asking for this destination. A spawn NARROWS the tool floor below, so a charter
+        # that does not want that says `tools: [read_file, list_dir, write_file, run_bash,
+        # call_agent]` on its own spawn and cannot push anywhere but `auto`. If that turns out to
+        # be a thing to remember rather than a thing that holds, the answer is a second
+        # environment — `verse-merge`, one destination, one charter — and not a rule here.
+        #
+        # No `credential:`, deliberately: a PAT scopes per repository and not per ref, so a
+        # second credential for the same repository would buy nothing and imply something. The
+        # runner's own `-token-env` token is what is released, and what stops `--ff-only` being
+        # merely a prompt is `receive.denyNonFastForwards` on this branch at the far end.
+        - name: main
+          ref: "refs/heads/main"
       driver: llm
-      tools: [read_file, list_dir, write_file, run_bash, call_agent]
+      # `push` is the runner's own tool: it names a destination above and never a ref. Without it
+      # in this FLOOR the `main` destination is inert — the finisher only ever asks for `auto` —
+      # so the merge charter would install, run, and be unable to do the one thing it is for.
+      tools: [read_file, list_dir, write_file, run_bash, call_agent, push]
       commands: [git, go, gofmt]
       env: [PATH, HOME, USER, LANG]
       egress:

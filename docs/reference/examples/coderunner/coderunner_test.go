@@ -459,6 +459,64 @@ func TestDestinationsAreCheckedWhenTheConfigIsRead(t *testing.T) {
 	}
 }
 
+// The DEPLOYED config loads, and every check this runner makes at startup passes on it.
+//
+// It is a different file from the one beside this program and it is the one that matters: the
+// example is read, the deployment is run. Nothing checked it, and every check added here fails
+// the same way — the runner refuses to start rather than accepting work it cannot do, so a
+// config that does not load is a pod that crashloops and a drive that stops with no charter to
+// blame. Cheaper to find here.
+//
+// Read out of the ConfigMap by hand rather than through a yaml library, because the whole of
+// what is needed is "the block under this key, dedented", and adding a dependency to this
+// example to get it would be the larger change.
+func TestTheDeployedConfigLoads(t *testing.T) {
+	blob, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "deploy", "coderunner", "coderunner.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const key = "coderunner.tony: |"
+	i := strings.Index(string(blob), key)
+	if i < 0 {
+		t.Fatalf("no %q in the deployment — this test is looking in the wrong place", key)
+	}
+	body := string(blob)[i+strings.Index(string(blob)[i:], "\n")+1:]
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		if strings.TrimSpace(line) == "" {
+			out = append(out, "")
+			continue
+		}
+		if !strings.HasPrefix(line, "    ") {
+			break // the block ended: back at the ConfigMap's own indentation
+		}
+		out = append(out, strings.TrimPrefix(line, "    "))
+	}
+	path := filepath.Join(t.TempDir(), "deployed.tony")
+	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("the deployed config does not load: %v", err)
+	}
+	if _, err := c.Environment(""); err != nil {
+		t.Errorf("its default environment does not resolve: %v", err)
+	}
+	// The merge charter's prerequisite, which is the reason this environment differs from the
+	// docs one: somewhere with a consequence to send work, and the tool to ask for it.
+	fix, err := c.Environment("verse-fix")
+	if err != nil {
+		t.Fatalf("verse-fix: %v", err)
+	}
+	if _, ok := fix.Repos[0].Dest("main"); !ok {
+		t.Error("verse-fix declares no `main` destination, so merge-gate.tony cannot merge")
+	}
+	if !slices.Contains(fix.Tools, pushToolName) {
+		t.Errorf("verse-fix does not offer %q, so its destinations are inert", pushToolName)
+	}
+}
+
 // An environment that can be approved to push somewhere it has no route to is refused when the
 // config is read.
 //

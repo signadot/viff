@@ -30,9 +30,9 @@
 # What landed: an environment declares DESTINATIONS by name, a task names one and never a ref,
 # the vector gates the ref it resolves to, and approval is what releases the credential. So rule
 # 2 below merges LOCALLY and then calls the runner's `push` tool naming `main`. Its prerequisite
-# is operational rather than textual: `verse-fix` has to declare a `main` destination, which is a
-# deliberate widening of what that environment can do and is nobody's to add on somebody else's
-# behalf.
+# is in deploy/coderunner/coderunner.yaml, where `verse-fix` now declares that destination and
+# offers the tool — a deliberate widening, and the comment there says what holds it and what to
+# watch, since that environment is shared with comment-drift.
 #
 # What did not: rule 4 deletes a branch, and a delete is not something a destination expresses —
 # there is no ref for it to resolve to. It stays unrunnable, and the shape it wants is a
