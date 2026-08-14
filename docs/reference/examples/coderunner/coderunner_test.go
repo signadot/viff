@@ -1172,3 +1172,40 @@ func TestALocalRemoteIsResolvedWhereItWasWritten(t *testing.T) {
 		}
 	}
 }
+
+// A contract-shaped answer becomes the commit BODY, and the subject says what ran.
+//
+// `git log --oneline` on main carries one of these forever: a task with an `answer:` contract
+// returns a document, `firstLine` took it as the subject, and the result was
+// `{"files": 1, "fixed": 1, "findings": [{"symbol": …` cut at 72 characters. The rest of the
+// answer was dropped entirely — the body held nothing but trailers.
+func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
+	l := task.Launch{ID: "run-1", Environment: "verse-fix", Provenance: task.Provenance{
+		Chain: "comment-drift", Subject: "drift:head:head-moved@git:head:verse",
+	}}
+	answer := "{\"files\": 1, \"fixed\": 1, \"findings\": [{\"symbol\": \"main.shortSha\"}]}"
+	msg := commitMessage(l, answer)
+
+	subject, _, _ := strings.Cut(msg, "\n")
+	if strings.Contains(subject, "{") {
+		t.Errorf("the subject is the document: %q", subject)
+	}
+	if subject != "comment-drift on drift:head:head-moved@git:head:verse" {
+		t.Errorf("subject = %q, want what fired and about what", subject)
+	}
+	if !strings.Contains(msg, answer) {
+		t.Error("the answer is not in the message at all — it used to be dropped after line one")
+	}
+	// The trailers must still be the LAST paragraph or git parses none of them, which is the
+	// trap that makes putting a document in a message worth a test at all.
+	last := msg[strings.LastIndex(strings.TrimRight(msg, "\n"), "\n\n")+2:]
+	for _, line := range strings.Split(strings.TrimRight(last, "\n"), "\n") {
+		if !strings.HasPrefix(line, "Verse-") {
+			t.Errorf("the last paragraph holds %q, so git reads no trailers at all", line)
+		}
+	}
+	// Prose is still quoted as it always was.
+	if got, _, _ := strings.Cut(commitMessage(l, "fixed the flaky test\n\ndetails"), "\n"); got != "fixed the flaky test" {
+		t.Errorf("a prose result stopped being the subject: %q", got)
+	}
+}

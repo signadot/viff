@@ -636,13 +636,32 @@ const deliveryRemote = "verse-delivery"
 // commitMessage carries the provenance the runner was given. Every trailer is conditional: an
 // absent one means verse did not know, and writing it out empty would claim to have asked.
 func commitMessage(l task.Launch, result string) string {
-	subject := firstLine(result)
+	subject, body := firstLine(result), ""
+	if isDocument(result) {
+		// A CONTRACT-shaped answer is not a sentence, and a subject line is. A task with an
+		// `answer:` contract returns a document — the whole point of the field — so its first
+		// line is `{"files": 1, "fixed": 1, "findings": [{"symbol": …` truncated at 72
+		// characters, which is what `git log --oneline` then shows forever. One is on main.
+		//
+		// So the document becomes the BODY, where it is worth reading, and the subject is
+		// derived from what verse knows about the run. The alternative — digging a `report` or
+		// `summary` field out of the answer — would make this runner know a charter's answer
+		// shape, which is the one thing about a contract that is deliberately the charter's.
+		subject, body = describe(l), result
+	}
 	if subject == "" {
-		subject = "work by " + l.ID
+		subject = describe(l)
 	}
 	var b strings.Builder
 	b.WriteString(subject)
 	b.WriteString("\n\n")
+	if body != "" {
+		// Before the trailers and separated from them, because git reads trailers from the LAST
+		// paragraph and takes it only if every line in it is one. A document pasted after them
+		// would silently un-declare every Verse-* line below it.
+		b.WriteString(strings.TrimRight(body, "\n"))
+		b.WriteString("\n\n")
+	}
 	fmt.Fprintf(&b, "Verse-Task: %s\n", l.ID)
 	p := l.Provenance
 	if p.Principal != "" {
@@ -658,6 +677,32 @@ func commitMessage(l task.Launch, result string) string {
 		fmt.Fprintf(&b, "Verse-Environment: %s\n", l.Environment)
 	}
 	return b.String()
+}
+
+// isDocument reports whether a result is a structured answer rather than prose — the shape an
+// `answer:` contract asks for. JSON and tony both start a document the same way, and a sentence
+// does not start with either.
+//
+// Deliberately shallow: it decides where the text GOES and never what it means, so being wrong
+// costs a commit whose subject is derived rather than quoted, which is the safer of the two
+// mistakes. Parsing it to be sure would make this runner a reader of somebody's answer shape.
+func isDocument(result string) bool {
+	s := strings.TrimSpace(result)
+	return strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")
+}
+
+// describe is the subject line for work that did not come with a sentence: what fired, about
+// what. `comment-drift on drift:head:head-moved@git:head:verse` says more to somebody reading
+// `git log` than the task id does, and both are recorded in the trailers below anyway.
+func describe(l task.Launch) string {
+	p := l.Provenance
+	switch {
+	case p.Chain != "" && p.Subject != "":
+		return firstLine(p.Chain + " on " + p.Subject)
+	case p.Chain != "":
+		return firstLine(p.Chain)
+	}
+	return "work by " + l.ID
 }
 
 // Deliverable reports whether any repository here was supposed to send work somewhere. False

@@ -127,6 +127,61 @@ merged: false` → `stale`.
 the cheapest test in this file and costs a day of waiting, which the verse it was standing on did
 not have.
 
+## What a person is actually asked, and it is not enough
+
+The charter ran end to end on staging — a seeded stale comment, found, fixed, delivered as a
+branch, derived into a proposal, gated, approved, merged to `main`. This is the whole of what
+the person deciding it saw:
+
+```
+% verse docket
+849de98e  whether open    options=[proceed=approve deny]  closes=2026-08-15T17:30:11Z  subject=merge:proposal:proposal-appeared@git:ref:verse_verse_auto_68de19ad_comment-drift_drift_head_head-moved_git_head_verse-e26e2df0+02169f95
+
+% verse vote 849de98e approve --as human:scott
+human:scott voted approve on motion 849de98e
+```
+
+**"whether open" is the question.** Everything else on that line is an address. There is no way
+to know what is being voted on without going and fetching the subject — and doing that gives an
+entity, not an answer:
+
+```
+% verse entity get merge:proposal:proposal-appeared@git:ref:verse_verse_auto_68de19ad_…
+payload:
+  base: 68de19adb28602ec16d32b4c21f6ff7b11471a56
+  branch: verse/auto/68de19ad/comment-drift_drift_head_head-moved_git_head_verse-e26e2df0
+  merged: true
+  mergedSha: 133cbbcb7f6400d873e2db9c82c7cba46e8da7ed
+  reason: "already up to date: branch tip already matches main, nothing to push"
+  …
+```
+
+A branch name and two shas. To answer *"should this land on main"* a person still has to leave
+verse entirely and go read a diff, having first worked out from that ref which diff it is.
+
+That is not a rendering complaint. **The gate is the load-bearing part of this whole design** —
+it is what makes approval mean something and what releases the credential one layer down — and
+it is being asked in a vocabulary that says nothing about the decision. A docket nobody can act
+on from what it shows is a docket answered by reflex, which is the failure the mechanism exists
+to prevent.
+
+What it wants is a claim about the change, carried by the proposal and shown on the line: the
+symbol, what the comment got wrong, how many files. The review already produced exactly that —
+`findings[0].says` is *"claimed the first TWELVE characters; it returns eight"* — and rule 1
+derives from the git ref rather than from the review, so it never sees it. The fix is probably
+in the charter (derive the proposal from the FINDING, or carry the review's report onto it)
+rather than in the docket, which can only show what it is given.
+
+Two smaller things the same transcript says:
+
+- **`closes=` is the only fact on that line a person can act on** — it says the deadline is
+  real, and it is the one part of the gate that worked without anyone doing anything.
+- **`reason: "already up to date: branch tip already matches main, nothing to push"`** — the
+  merge task found the work already there, because the runner's own retry sweep had pushed the
+  pending ref before the task ran. The outcome is right and the record is honest, but "merged"
+  here means "the branch's content is on main", not "this task put it there". Worth knowing
+  before that reason is read as a no-op.
+
 ## The one that was asked for, and is not expressible
 
 **A branch is deleted; the question standing on it should disappear.**
