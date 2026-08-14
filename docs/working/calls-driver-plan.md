@@ -14,50 +14,91 @@ Every step below leaves a working tree and a runnable verse, and the first three
 even if the fourth is never built: they take the LLM out of the merge task, which is four git
 commands driven by a model today. The fourth needs something that does not exist yet and says so.
 
+**And step 2 clobbers.** `scripted`'s behaviour changes for every charter that uses it, with no
+opt-in and no "absent means the old thing" fallback. That is deliberate: the only users of this
+repo are the people writing it, a compatibility path is a second thing to maintain bought for
+nobody, and the charters that break are in the tree and get fixed in the same commit. The rule
+holds until there is a consumer outside the team, which is the same trigger
+[contributing.md](contributing.md) already names for versioning.
+
 ## Order of work
 
 ### 1. The driver, in `task/`, with a fixed list
 
-A driver whose `Next` walks a list of `{tool, input}` entries and returns each as a ToolUse. The
-list arrives as a tony document — in the prompt, so no charter grammar changes yet.
+A driver whose `Next` walks a list of `{tool, input, fatal}` entries and returns each as a
+ToolUse. The list arrives as a tony document — in the prompt, so no charter grammar changes yet.
 
 It lives in `task/` rather than `versed/` because both verse and the coding runner need it, and
 the whole point is the runner's mechanical tasks. `scriptDriver` is in `versed/server.go` today
 and could not be reused by a second program without moving.
 
-Two rules it does not get to choose, both inherited from `scripted`'s reasoning:
+One rule it does not get to choose: **an answer contract fails the spawn.** There is no model to
+ask again, and a dropped contract is worse than none.
 
-- **an answer contract fails the spawn** — there is no model to ask again, and a dropped contract
-  is worse than none;
-- **an `Err` ends the run, a `Blocked` does not.** Nobody is re-planning, so infrastructure
-  failure stops the list; a refusal is a decision about ONE call — the remote declining one ref —
-  and the rest still stand. This distinction is already built (push.go, StepResult.Blocked) and
-  this is its second caller.
+**What `fatal:` is for.** The rule `scripted` inherits — an `Err` ends the run, a `Blocked` does
+not — is right for two different reasons that do not always agree, so the list states it per call
+rather than the driver deciding for everyone. A refusal is a decision about ONE call: the sweep
+deleting ten refs where the remote declines one should delete the other nine. A merge is the
+opposite: if `git merge --ff-only` did not merge, the push that follows it must not happen. Both
+are call lists; only the author knows which.
 
-**Proves:** an action list is supervised per action. Test: two calls with a vector that ASKs on
-the second — the first executes, exactly one question is posed, and denying it leaves the first
-done and the third unrun. Plus the two rules above, each as its own test.
+So each entry names the outcomes that end the list, out of three:
 
-### 2. `scripted` becomes the degenerate case, additively
+- `err` — the step failed. `StepResult.Err`.
+- `blocked` — it was refused, by a gate or by the executor itself. `StepResult.Blocked`, built
+  for push.go and this is its second caller.
+- `nonzero` — a command ran and exited non-zero.
 
-`NewScriptedTask` builds a one-element list rather than its own driver. The auto vector moves OUT
-of the driver and onto the CLI path that justifies it (`verse task run --driver scripted`), where
-"you authorized it by typing it" is true.
+Absent means all three: a list is ordered because its calls depend on each other, so stopping is
+the safe read. The sweep is the one known caller that wants otherwise and writes `fatal: [err]`.
 
-**Additively is the whole of the risk.** A charter with `driver: scripted` and no vector is
-ungated today; it must stay ungated, or every such charter starts posing questions nobody
-expects. So a call list with no vector runs auto, exactly as now — what changes is that a spawn
-CAN say otherwise, which it could not before.
+`nonzero` is a member because **the two executors already disagree about it**, and this driver is
+the first thing that would notice. `versed`'s `shellExec` folds a non-zero exit into `Err`
+deliberately (*"a failure nothing reports is a failure that reads as success"*); the harness's
+`fsExec` reports the exit code as data, equally deliberately, because the agent reads it and
+decides. Neither is wrong for its own driver, and a call list must not have to know which one it
+is running on — so it names the outcome it cares about and both executors keep their reporting.
+
+**Proves:** an action list is supervised per action, and each call says what ends it. Tests: two
+calls with a vector that ASKs on the second — the first executes, exactly one question is posed,
+and denying it leaves the first done and the third unrun. Then two calls again with `fatal:`
+varied — a first call that is blocked stops the second under the default and does not under
+`fatal: [err]`. Plus the answer-contract refusal on its own.
+
+### 2. `scripted` becomes the degenerate case, and its exemption goes
+
+`NewScriptedTask` builds a one-element list rather than its own driver, and the hardcoded auto
+vector goes away with it. A spawn's `vector:` governs, exactly as it does for `llm` — including
+the case where a spawn names none.
+
+**This breaks charters, which is the point.** `NewScriptedTask` writes `&task.Vector{Default:
+Auto}` unconditionally today: it does not merely default to auto, it *ignores* `l.Vector`, so a
+charter that already says `vector: ask` on a scripted spawn is being silently disobeyed. Fixing
+that means every scripted spawn gets the vector it actually asked for, and the ones that asked
+for nothing get the default rather than a blanket exemption — so charters that ran ungated start
+posing questions. The repair in each is one line, `vector: auto`, which `NamedVector` has
+understood since it was written; the charters needing it are in `docs/tutorial.md`,
+`docs/trigger-model.md` and the runner examples, and they move in this commit.
+
+The exemption survives in exactly one place: `verse task run --driver scripted`, where "you
+authorized it by typing it" is true. That is not a compatibility shim — it is an argument about
+who addressed the request, and it was always the only ground the exemption had. It stops
+travelling to charters that never typed anything.
+
+Tier: `contract`, with `Breaks:` naming scripted spawns that carry no vector, and a `Notice:`
+saying what to add.
 
 **Proves:** the equivalence, and that the exemption stopped travelling further than its argument.
-Test: `scripted "echo hi"` runs one gated-by-nothing `run_bash` as it always did; the same spawn
-carrying `vector: {gates: [{verbs: [exec], mode: ask}]}` now poses a question.
+Test: `verse task run --driver scripted "echo hi"` runs one ungated `run_bash` as it always did;
+the same command as a charter spawn with no vector poses a question, and with `vector: auto` does
+not.
 
 ### 3. The coderunner offers its extras, so a call list can push
 
 `buildCommandTask` gets the finisher and not the runtime's extra tools, so `push` is offered to
 the `llm` driver alone. Give a call-list task the same extras, and the merge task stops being an
-LLM: `[{run_bash: git merge --ff-only …}, {push: {destination: main}}]`.
+LLM: `[{run_bash: git merge --ff-only …}, {push: {destination: main}}]` — the first entry taking
+the default `fatal`, which is what makes the second one safe.
 
 **Proves:** the thing this is all for. Test: a call list naming `push` resolves the destination,
 derives the same effect the llm driver's tool does, and is gated the same way — the runner cannot
@@ -91,15 +132,22 @@ wait for it.
   invariant is about the MODEL, and there is none — but it is a second way a secret reaches a
   task, and the argument rests on a property nothing enforces yet. Steps 1–3 need none of it: a
   call list asks over the channel the llm driver already uses.
-- **Anything about retries.** A call that fails ends the list. Whether the list should be
-  resumable is a question about the loop, not about this driver.
+- **Reconcile the two executors' reading of a non-zero exit.** Each is right for its own driver,
+  and `fatal: [nonzero]` spans both. Making them agree would change what a model sees in a
+  `run_bash` result, which is a much larger change than this one.
+- **Anything about retries.** A fatal call ends the list. Whether the list should be resumable is
+  a question about the loop, not about this driver.
 
 ## Risks worth watching
 
-- **Step 2 is where a charter's behaviour could move**, and the plan turns on it not doing so. If
-  "no vector means auto" is got wrong in either direction, either every scripted charter starts
-  asking questions or the vector on a call list silently means nothing.
 - **A call list is a plan made before the work starts.** The llm driver decides what to do next
   after seeing each result; this cannot. That is the right trade for four git commands and the
   wrong one for anything that branches — and the failure will look like a list whose later calls
   were pointless, not like an error.
+- **The break in step 2 lands when the binary does**, not when the charters are edited. The
+  charters needing `vector: auto` live in this repo and on `use/verse-dev`, and the second ships
+  on its own clock. Sequence it: charters first, binary after.
+- **`fatal:` is per call, so a list can now be wrong in a way `scripted` could not be.** A list
+  whose every entry says `fatal: [err]` because that is what the sweep did will push after a
+  merge that failed. The default is the protection, and it is only protection if nothing copies
+  a sweep list as a template.
