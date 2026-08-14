@@ -278,7 +278,11 @@ docket lists it either way, so the two are easy to confuse — and
 [reference/tasks.md](../reference/tasks.md) describing `verse gate` as "engine + task gates,
 unified" is at best true only of a gate with no formula.
 
-**A merge task is an LLM doing four git commands.** `driver: llm` for something mechanical is
+**A merge task is an LLM doing four git commands** — and the sweep is an LLM doing a `ls-remote`
+and some deletes, which is worse. Demonstrated rather than predicted now: see
+[coding-runner-residual.md](coding-runner-residual.md), where the blocker (a scripted task cannot
+push) and the reason the fix is interesting (the credential invariant is about the MODEL, and a
+scripted task has none) are written down. `driver: llm` for something mechanical is
 both unreliable and expensive, and a `commandDriver` running a script is the right shape — an
 entry under the runner's `agents:` config, which is a runner change rather than a charter one.
 It matters less than it looks now that `--ff-only` is enforced by the receiving end: a model

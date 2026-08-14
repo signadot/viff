@@ -127,6 +127,37 @@ keeping branches from accumulating on origin, which is this. The second is house
 remembering before the next capability is added because a charter asked for it: the question is
 always whether the charter needed the RUNNER to grow, or needed to say the thing differently.
 
+## The mechanical tasks want a script, and a script cannot push
+
+Watched twice now. The merge task is an LLM running four git commands. The sweep is an LLM
+enumerating branches and deleting them — and on its first real run it could not fetch (the mirror
+is the parent's and is not bound into the sandbox), so it spent eighteen boundaries on
+`GIT_CURL_VERBOSE`, `git config -l | grep cred` and `find / -iname "*credential*"`, hunting the
+filesystem for a credential that is not there by design. It found nothing, which is the
+containment holding, and it is the first time one has been watched trying.
+
+An LLM is the wrong tool for both: unreliable at something with one right answer, and paid for by
+the token. `agents:` already exists for exactly this — an external program driven through one
+subprocess path, no model anywhere.
+
+**What blocks it is that a scripted task cannot push.** `buildCommandTask` is handed the finisher
+and not the runtime's extra tools, so `push` — destinations, retiring, the credential on approval
+— is offered to the `llm` driver alone. A script gets the closing delivery and nothing it can ask
+for.
+
+**And the fix is more interesting than plumbing, because the invariant is about the MODEL.**
+Everything here keeps a secret out of `buildEnv`'s allowlist so it never reaches the shell the
+model drives; the process boundary was never the line (taskproc.go says so). A task with no model
+in it has no such boundary to maintain — the program is the operator's own, in the runner's own
+config, as trusted as `coderunner -task` itself. So a scripted task could be handed the
+credential directly, and "the model never sees it" stays exactly as true as it is today.
+
+That is worth doing carefully rather than quickly: it means a second way a credential reaches a
+task, and the argument for why it is safe rests entirely on there being no model in that task —
+so whatever builds it has to make that a property rather than a convention. The cheap version is
+narrower and probably first: give a command task the extras it can use, and let a script ask over
+the same channel the llm driver does.
+
 ## The descriptor's contract half
 
 `GET /runner` serves something real — drivers, the containment this deployment can build per leaf,
