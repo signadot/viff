@@ -106,6 +106,17 @@ type StepResult struct {
 	Err     error
 	Blocked bool
 	Note    string
+	// Exit is the exit code of a command this action ran, when it ran one — nil for
+	// everything else, including an action that never got as far as spawning a process.
+	//
+	// It is here because the two executors report a non-zero exit DIFFERENTLY and both are
+	// right to: versed's shellExec folds it into Err (nobody is re-planning, so a failure
+	// nothing reports reads as success), while the harness's fsExec puts the code in the
+	// output for the agent to read and decide about. Neither reading survives being handed
+	// to the other's driver, and until now the code existed only inside fsExec's own record
+	// and as text in a model's context — so a driver that is not a model could not ask.
+	// See Call.Fatal, which is the caller that has to.
+	Exit *int
 }
 
 // frame is a call-scoped defer stack — a stack activation record. Frames open at

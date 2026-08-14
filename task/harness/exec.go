@@ -249,7 +249,10 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 
 	e.echo(rec)
 	e.records = append(e.records, rec)
-	return task.StepResult{Use: tu, Output: rec.modelContent()}, nil, nil
+	// Exit rides the result as well as the text. This executor's reading of a non-zero exit
+	// does not change — it is data the agent decides about, not a failure — but a driver that
+	// is not a model cannot read it out of prose. See task.StepResult.Exit.
+	return task.StepResult{Use: tu, Output: rec.modelContent(), Exit: rec.Exit}, nil, nil
 }
 
 // orphanWaitDelay is how long a finished-or-killed command is given to let go of its output

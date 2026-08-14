@@ -948,6 +948,15 @@ func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResu
 	c.Dir = e.root
 	out, err := c.CombinedOutput()
 	res := strings.TrimSpace(string(out))
+	// The code, alongside the Err this executor folds it into. Both, because the fold is this
+	// executor's reading and a driver may want the fact underneath it — see
+	// task.StepResult.Exit. A spawn failure (no such binary) has no exit code and gets none.
+	var code *int
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		n := ee.ExitCode()
+		code = &n
+	}
 	if err != nil {
 		if res != "" {
 			res += "\n"
@@ -965,7 +974,7 @@ func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResu
 	if ctx.Err() != nil {
 		err = nil
 	}
-	return task.StepResult{Use: tu, Output: res, Err: err}, nil, nil
+	return task.StepResult{Use: tu, Output: res, Err: err, Exit: code}, nil, nil
 }
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }

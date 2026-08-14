@@ -1,0 +1,287 @@
+package task
+
+import (
+	"context"
+	"io"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+)
+
+// listExec records what ran and can hand back either kind of bad news: an Err, or a non-zero
+// exit with no error at all — which is the harness's reading and the one a call list cannot
+// see without StepResult.Exit.
+type listExec struct {
+	mu    sync.Mutex
+	order []string
+	fail  map[string]string // tool → error text
+	exit  map[string]int    // tool → exit code
+}
+
+func (e *listExec) Execute(_ context.Context, tu ToolUse) (StepResult, []ToolUse, error) {
+	e.mu.Lock()
+	e.order = append(e.order, tu.Name)
+	e.mu.Unlock()
+	res := StepResult{Use: tu, Output: "ok"}
+	if msg, ok := e.fail[tu.Name]; ok {
+		res.Err = errString(msg)
+	}
+	if code, ok := e.exit[tu.Name]; ok {
+		res.Exit = &code
+	}
+	return res, nil, nil
+}
+
+func (e *listExec) ran() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.order...)
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
+// callsTask builds a task over a call list with the given vector, so each test says only what
+// it is about.
+func callsTask(t *testing.T, doc string, vec *Vector, reg Resolver, e Executor) *Task {
+	t.Helper()
+	l := Launch{ID: "t", Prompt: doc, Vector: vec}
+	p := NewCallsTask(l, reg, e)
+	p.SetLog(io.Discard)
+	return p
+}
+
+// The list runs in the order it was written, and the task completes.
+func TestACallListRunsInOrder(t *testing.T) {
+	e := &listExec{}
+	p := callsTask(t, `
+calls:
+- tool: first
+  input: {command: "echo one"}
+- tool: second
+- tool: third
+`, autoVec(), AutoResolver{}, e)
+
+	out, err := p.Run(context.Background())
+	if err != nil || out.Reason != "done" {
+		t.Fatalf("run: reason=%q err=%v", out.Reason, err)
+	}
+	if want := []string{"first", "second", "third"}; !reflect.DeepEqual(e.ran(), want) {
+		t.Fatalf("ran %v, want %v", e.ran(), want)
+	}
+}
+
+// An action list is supervised PER ACTION: the vector sees each call on its own, the question
+// names the call it is about, and denying one leaves the calls after it unrun.
+//
+// This is the property the whole driver rests on. A shell script handed to `run_bash` is one
+// action, so a gate can only say yes or no to the whole of it; a list of three is three
+// decisions, and nothing downstream had to change for that to be true.
+func TestACallListIsSupervisedPerAction(t *testing.T) {
+	e := &listExec{}
+	reg := NewRegistry()
+	var asked []string
+	var mu sync.Mutex
+	reg.OnPost(func(pd Pending) {
+		mu.Lock()
+		asked = append(asked, pd.Question.ID)
+		mu.Unlock()
+		reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
+	})
+	p := callsTask(t, `
+calls:
+- tool: first
+- tool: second
+- tool: third
+`, askOn("second"), reg, e)
+
+	_, err := p.Run(context.Background())
+	if err == nil {
+		t.Fatal("a denied call ended the list as a success")
+	}
+	if !strings.Contains(err.Error(), "call 2 of 3 (second)") {
+		t.Fatalf("error does not name the call that stopped the list: %v", err)
+	}
+	if want := []string{"first"}; !reflect.DeepEqual(e.ran(), want) {
+		t.Fatalf("ran %v, want %v — the denial stopped exactly one call short", e.ran(), want)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 1 {
+		t.Fatalf("%d questions posed, want exactly 1 — one gate per call, not per list", len(asked))
+	}
+}
+
+// `fatal:` is what each call gets to say about its own bad outcomes. Same list, same refusal,
+// two different answers — which is the point: a sweep declining one ref should delete the rest,
+// and a push after a merge that did not merge should not happen.
+func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		fatal string
+		want  []string
+	}{
+		{"absent means anything stops it", "", nil},
+		{"blocked is not fatal here", "\n  fatal: [err]", []string{"second"}},
+		{"and it can be named explicitly", "\n  fatal: [err, blocked]", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &listExec{}
+			reg := NewRegistry()
+			reg.OnPost(func(pd Pending) {
+				reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
+			})
+			p := callsTask(t, "calls:\n- tool: first"+tc.fatal+"\n- tool: second\n",
+				askOn("first"), reg, e)
+
+			_, err := p.Run(context.Background())
+			if !reflect.DeepEqual(e.ran(), tc.want) {
+				t.Fatalf("ran %v, want %v", e.ran(), tc.want)
+			}
+			if tc.want == nil && err == nil {
+				t.Fatal("the list stopped and the run reported success")
+			}
+			if tc.want != nil && err != nil {
+				t.Fatalf("a refusal this call declared survivable failed the run: %v", err)
+			}
+		})
+	}
+}
+
+// A non-zero exit with no error is the harness's reading of a failed command, and a call list
+// running on it must be able to say that command failing ends the list. Nothing else in a
+// StepResult distinguishes `git merge --ff-only` refusing to fast-forward from it succeeding.
+func TestANonZeroExitCanEndTheList(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		fatal string
+		want  []string
+	}{
+		{"absent means it stops", "", []string{"first"}},
+		{"named explicitly", "\n  fatal: [nonzero]", []string{"first"}},
+		{"and a list can carry on regardless", "\n  fatal: [err]", []string{"first", "second"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &listExec{exit: map[string]int{"first": 1}}
+			p := callsTask(t, "calls:\n- tool: first"+tc.fatal+"\n- tool: second\n",
+				autoVec(), AutoResolver{}, e)
+
+			_, err := p.Run(context.Background())
+			if !reflect.DeepEqual(e.ran(), tc.want) {
+				t.Fatalf("ran %v, want %v", e.ran(), tc.want)
+			}
+			if len(tc.want) == 1 {
+				if err == nil {
+					t.Fatal("the command failed, the list stopped, and the run said done")
+				}
+				if !strings.Contains(err.Error(), "exited 1") {
+					t.Fatalf("error does not say what happened: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("an exit this call declared survivable failed the run: %v", err)
+			}
+		})
+	}
+}
+
+// An Err ends the list under the default, and says whose words those were.
+func TestAFailedCallEndsTheList(t *testing.T) {
+	e := &listExec{fail: map[string]string{"first": "no such remote"}}
+	p := callsTask(t, "calls:\n- tool: first\n- tool: second\n", autoVec(), AutoResolver{}, e)
+
+	_, err := p.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no such remote") {
+		t.Fatalf("run: %v — want the executor's own words", err)
+	}
+	if want := []string{"first"}; !reflect.DeepEqual(e.ran(), want) {
+		t.Fatalf("ran %v, want %v", e.ran(), want)
+	}
+}
+
+// A contract this driver cannot enforce fails the SPAWN. There is no model to repair an
+// answer, so running the list and silently returning nothing would leave the charter
+// downstream written against a promise nobody kept.
+func TestAnAnswerContractFailsTheSpawn(t *testing.T) {
+	e := &listExec{}
+	l := Launch{ID: "t", Prompt: "calls:\n- tool: first\n", Vector: autoVec(), Answer: ir.FromString("verdict")}
+	p := NewCallsTask(l, AutoResolver{}, e)
+	p.SetLog(io.Discard)
+
+	_, err := p.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "answer contract") {
+		t.Fatalf("run: %v — want the spawn refused for the contract", err)
+	}
+	if len(e.ran()) != 0 {
+		t.Fatalf("ran %v — a refused spawn ran part of its list", e.ran())
+	}
+}
+
+// A list that will not parse fails the spawn too, rather than running the prefix that did.
+func TestAnUnparseableListFailsTheSpawn(t *testing.T) {
+	e := &listExec{}
+	p := callsTask(t, "calls:\n- tool: first\n  fatal: [sideways]\n", autoVec(), AutoResolver{}, e)
+
+	_, err := p.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "sideways") {
+		t.Fatalf("run: %v — want the spawn refused, naming what it could not read", err)
+	}
+	if len(e.ran()) != 0 {
+		t.Fatalf("ran %v — a spawn that could not be read ran anyway", e.ran())
+	}
+}
+
+func TestParseCalls(t *testing.T) {
+	calls, err := ParseCalls(`
+calls:
+- tool: run_bash
+  input: {command: "git merge --ff-only origin/topic"}
+- tool: push
+  input: {destination: main}
+  fatal: [err]
+- tool: note
+  fatal: []
+`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("%d calls, want 3", len(calls))
+	}
+	if calls[0].Tool != "run_bash" || calls[0].Input["command"] != "git merge --ff-only origin/topic" {
+		t.Fatalf("first call = %+v", calls[0])
+	}
+	// Absent, narrowed, and emptied are three different statements, and the zero value has to
+	// keep them apart: nil means anything stops the list, and `fatal: []` means nothing does.
+	if calls[0].Fatal != nil {
+		t.Fatalf("an absent fatal parsed as %v, want nil", calls[0].Fatal)
+	}
+	if !reflect.DeepEqual(calls[1].Fatal, []StepOutcome{FatalErr}) {
+		t.Fatalf("fatal = %v", calls[1].Fatal)
+	}
+	if calls[2].Fatal == nil || len(calls[2].Fatal) != 0 {
+		t.Fatalf("`fatal: []` parsed as %v, want empty and non-nil", calls[2].Fatal)
+	}
+}
+
+func TestParseCallsRefusals(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"no list", "prompt: \"do the thing\"\n", `no "calls:" list`},
+		{"prose around it", "do the thing:\ncalls:\n- tool: t\n", "not a tony"},
+		{"empty list", "calls: []\n", `"calls:" is empty`},
+		{"no tool", "calls:\n- input: {a: b}\n", `no "tool:"`},
+		{"input is not a map", "calls:\n- tool: t\n  input: hello\n", "input must be a map"},
+		{"unknown outcome", "calls:\n- tool: t\n  fatal: [sideways]\n", "not one of err, blocked, nonzero"},
+		{"fatal is not a list", "calls:\n- tool: t\n  fatal: err\n", "fatal must be a list"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseCalls(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
