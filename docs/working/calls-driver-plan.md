@@ -10,9 +10,9 @@ supervised.**
 
 ## Why this lands in steps
 
-Every step below leaves a working tree and a runnable verse, and the first three are worth having
-even if the fourth is never built: they take the LLM out of the merge task, which is four git
-commands driven by a model today. The fourth needs something that does not exist yet and says so.
+Every step below leaves a working tree and a runnable verse, and everything up to 3.5 is worth
+having even if the last is never built: it takes the LLM out of the merge task, which is four git
+commands driven by a model today. Step 4 needs something that does not exist yet and says so.
 
 **And step 2 clobbers.** `scripted`'s behaviour changes for every charter that uses it, with no
 opt-in and no "absent means the old thing" fallback. That is deliberate: the only users of this
@@ -104,6 +104,34 @@ the default `fatal`, which is what makes the second one safe.
 derives the same effect the llm driver's tool does, and is gated the same way — the runner cannot
 tell which driver proposed it, which is the property that makes this cheap.
 
+### 3.5. The list becomes a field, and stops being prose
+
+`launch.Spec` gets `calls:` — a list of `{tool, input, fatal}` in the charter grammar — and the
+prompt-carried form from steps 1–3 goes away with it. Not both: two ways to write a call list is
+the thing this repo keeps deciding not to have.
+
+**Steps 1–3 are what earn it.** The reason to carry the list in the prompt first is that it needs
+no contract change and proves the driver; the reason not to leave it there is what step 3
+produces — a merge charter whose action is a tony document embedded in a text field, which the
+engine cannot check, `verse charter` cannot show, and a branch name containing a quote can
+break. A field is expanded per value (`launch.go`'s `expand`, the same one `vector:` gets), so
+`$ref` reaches `git merge --ff-only` as an argument rather than as text spliced into a document
+that must then re-parse.
+
+The field's presence IS the driver selection — `calls:` with `driver: llm` is a contradiction and
+fails the firing — which is the shape `provider:` already has (*"Absent = today's fixed Driver"*).
+
+**What the engine checks, and what it cannot.** Shape and the `fatal` vocabulary, at fire time,
+alongside `answer.Parse` and `NamedVector` in `versed/server.go`: a charter that wrote something
+it cannot mean fails now rather than after paying for a spawn. Tool NAMES it cannot check — `push`
+belongs to the runner's vocabulary, not the engine's — so an unknown one is refused at the far
+end, the same fork [expose.md](../roadmap/expose.md) names for `driver:` and `environment:`.
+
+**Proves:** a call list is something a charter writes rather than something a prompt smuggles.
+Tests: a charter carrying `calls:` fires and the list arrives at the driver intact; `$subject`
+expands per input; a bad `fatal` member and a `calls:`+`driver: llm` spawn each fail the firing
+with the charter named.
+
 Stop here if the rest is deferred. The merge is the expensive task and the one with a
 consequence; the sweep is housekeeping.
 
@@ -125,9 +153,6 @@ wait for it.
 
 ## What this plan deliberately does not do
 
-- **A `spawn.actions:` field.** The prompt already carries arbitrary text and a document parses
-  out of it. A field reads better and is a contract change to `launch.Spec`; it is worth it only
-  once something writes call lists routinely, which is exactly what steps 1–3 would tell us.
 - **Give a scripted task the credential directly.** The residual argues it would be safe — the
   invariant is about the MODEL, and there is none — but it is a second way a secret reaches a
   task, and the argument rests on a property nothing enforces yet. Steps 1–3 need none of it: a
