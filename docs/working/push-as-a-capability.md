@@ -176,27 +176,25 @@ store and a commit body — is on the other side of `buildEnv` from both.
 
 ### What that containment actually rests on
 
-The agent's shell is a DESCENDANT of taskproc and runs as the SAME uid (`--unshare-user` maps the
-caller to itself). So nothing about uids or namespaces stops it reading taskproc's memory. What
-stops it is yama: `ptrace_scope=1` permits a process to trace its descendants and not its
-ancestors, so a child cannot read its parent. On staging today:
+`confine.go` already has the leaf that says it, and it is being read as stronger than it is:
+`principal: {runner, distinct}`, with `bwrapProvides` capping at `runner`. **`principal: runner`
+means the task process and the agent's subprocesses are the same principal** — `--unshare-user`
+maps the caller to itself — so nothing about uids or namespaces separates a secret in taskproc
+from the model's shell.
 
-```
-ptrace_scope=1   uid=65532   (in a user namespace)
-```
+What separates them is yama: `ptrace_scope=1` permits tracing descendants and not ancestors, and
+the shell is a descendant. Staging reads `ptrace_scope=1`, `uid=65532`, so it holds today —
+but it is a host sysctl, outside the Point, and nothing checks it. A node at `0` removes the
+barrier and the launch proceeds, which is precisely what the network leaf is written to prevent
+(*"a confiner that cannot unshare the network REFUSES the launch rather than running the task
+with a proxy it is free to ignore"*).
 
-Two things follow, and both are worth stating rather than inheriting:
+It is also already load-bearing: the LLM credential sits behind the same assumption today. So the
+push proposal does not introduce this, it puts a second and more consequential secret behind it.
 
-- **It is a host sysctl, and nothing here checks it.** `confine.go` asserts namespaces and mounts
-  and says nothing about ptrace. A node that came up with `ptrace_scope=0` removes the barrier
-  silently, and the launch would proceed — unlike a confiner that cannot unshare the network,
-  which refuses.
-- **It is already load-bearing.** The LLM credential depends on exactly this today. Putting a
-  push credential beside it does not introduce the dependency; it raises the stakes on an
-  assumption nobody has written down.
-
-If that should not rest on a sysctl, the fix is not in this proposal: give the agent's
-subprocesses a different uid, so same-uid access does not arise whatever yama is set to.
+Both halves — a `Provides` check, and `principal: distinct` to make the question not arise — are
+in [push-as-a-capability-residual.md](push-as-a-capability-residual.md), and the first is worth
+doing whether or not this proposal ever lands.
 
 ## What must not break
 
