@@ -648,6 +648,9 @@ func (s *state) executed(v inExecuted) []effect {
 	if s.closing {
 		s.closing = false
 		if v.err != nil {
+			if s.cancelling {
+				return append(s.unknown(), s.exit(s.exitStatus)...)
+			}
 			// The closing action was the last thing this task does, and HOW it ends is the
 			// difference between a lost push and a reported one. A run whose work did not
 			// leave is not a run that succeeded.
@@ -659,7 +662,7 @@ func (s *state) executed(v inExecuted) []effect {
 	}
 	if v.err != nil {
 		if s.cancelling {
-			return s.exit(s.exitStatus)
+			return append(s.unknown(), s.exit(s.exitStatus)...)
 		}
 		s.prev = StepResult{Use: s.action, Err: v.err} // no defers registered on failure
 		return append([]effect{
@@ -671,6 +674,28 @@ func (s *state) executed(v inExecuted) []effect {
 	s.prev = v.out
 	return append([]effect{effEmit{Frame{Kind: EvExec, Tool: s.action.Name,
 		Text: evTrunc(v.out.Output)}}}, s.hinge()...)
+}
+
+// unknown is the record of an action that was in flight when the run was torn down.
+//
+// A cancel racing an action cannot be resolved and the record should stop implying it was. The
+// case that makes this concrete is a push: the loop tears down while the push may already have
+// landed, and no ordering tells the person who cancelled which won — at-most-once is not
+// something this side can offer across a boundary it does not control. What it CAN do is stop
+// pretending, and until now it did not even do that: this path exited without emitting anything,
+// so the attempt left no trace at all and the run read as one where nothing was tried.
+//
+// `unknown` rather than `failed`, because the error here is usually the teardown arriving rather
+// than the action being refused, and reporting it as a failure asserts something nobody checked.
+// Whoever cares can find out from the world: a ref is reflected level-triggered, so whether the
+// branch actually moved arrives on its own without anybody asking.
+func (s *state) unknown() []effect {
+	return []effect{
+		effLog{fmt.Sprintf("? %s: unknown — cancelled while it was in flight", s.action.Name)},
+		effEmit{Frame{Kind: EvExec, Tool: s.action.Name,
+			Err: "unknown: the run was cancelled while this action was in flight, so whether it " +
+				"took effect is not something this loop can say"}},
+	}
 }
 
 // checked folds the answer contract's verdict. The contract is a PREDICATE on the value the

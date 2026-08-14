@@ -139,3 +139,51 @@ func TestFailFastCancelsSiblings(t *testing.T) {
 		t.Fatalf("fail-fast did not cancel sibling B (its teardown never ran): %v", bExec.order)
 	}
 }
+
+// inFlightExec blocks in the middle of an action, then errors — the shape of a push that a
+// teardown arrives on top of.
+type inFlightExec struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (e *inFlightExec) Execute(_ context.Context, tu ToolUse) (StepResult, []ToolUse, error) {
+	close(e.started)
+	<-e.release
+	return StepResult{Use: tu}, nil, fmt.Errorf("torn down mid-action")
+}
+
+// An action that was IN FLIGHT when the run was cancelled leaves a record saying so.
+//
+// The case is a push and the honest answer is `unknown`: the loop tears down while the push may
+// already have landed, and no ordering tells the person who cancelled which won — at-most-once is
+// not on offer across a boundary this side does not control. What was wrong was not the
+// uncertainty, it was the silence. This path exited without emitting anything, so the attempt
+// left no trace at all and the run read as one where nothing had been tried.
+func TestAnActionCancelledInFlightIsRecordedAsUnknown(t *testing.T) {
+	e := &inFlightExec{started: make(chan struct{}), release: make(chan struct{})}
+	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), &scriptDriver{steps: []ToolUse{tool("push")}}, e)
+
+	frames, cancelSub := p.Subscribe()
+	defer cancelSub()
+	done := make(chan struct{})
+	go func() { _, _ = p.Run(context.Background()); close(done) }()
+
+	<-e.started
+	p.Cancel("operator changed their mind")
+	close(e.release)
+	<-done
+
+	var said string
+	for f := range frames {
+		if f.Kind == EvExec && f.Tool == "push" {
+			said = f.Err
+		}
+	}
+	if said == "" {
+		t.Fatal("an action cancelled in flight left no trace, so the record implies nothing was tried")
+	}
+	if !strings.Contains(said, "unknown") {
+		t.Errorf("the record says %q, which does not say the outcome is unknown", said)
+	}
+}
