@@ -234,8 +234,17 @@ func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string,
 // happens, so silence during a call reads as death rather than as thought.
 func (d *llmDriver) completeAloud(ctx context.Context) (chatMessage, string, error) {
 	done := make(chan struct{})
+	// The interval is read HERE rather than inside the goroutine, and that is not a style
+	// preference. Nothing waits for that goroutine — `close(done)` tells it to stop but
+	// establishes no ordering with anything it already did — so a read inside it is unordered
+	// against every later write to the package variable. The tests shorten these to run in
+	// milliseconds, so the detector sees one test's leftover ticker racing the next test's
+	// setup. Reading on the caller's goroutine puts the read in the call's own order, which is
+	// also what the value means: how often THIS call should announce itself, decided when it
+	// starts rather than whenever the goroutine happens to be scheduled.
+	every := modelWaitNotice
 	go func() {
-		t := time.NewTicker(modelWaitNotice)
+		t := time.NewTicker(every)
 		defer t.Stop()
 		started := time.Now()
 		for {
