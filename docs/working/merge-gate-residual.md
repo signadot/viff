@@ -9,6 +9,15 @@ not.
 
 ## The blocker: a task cannot reach a remote, and the fix is not in this charter
 
+**Resolved for the merge, still standing for the sweep.**
+[push-as-a-capability-plan.md](push-as-a-capability-plan.md) has landed: an environment declares
+destinations, a task names one, the vector gates the ref it resolves to, and approval releases
+the credential. So rule 2 merges locally and calls the runner's `push` tool naming `main`, and
+the charter's prompt says so. Rule 4 deletes a branch, and a delete is not something a
+destination expresses — there is no ref for it to resolve to — so it stays unrunnable and wants a
+destination that permits one, which is a runner change. What follows is the record of why, kept
+because the mistake in it is the one worth not repeating.
+
 Found by checking before installing rather than after. Rules 2 and 4 both spawn a task that runs
 `git push`, and the coderunner says twice and by design that this cannot work:
 

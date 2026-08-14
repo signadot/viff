@@ -23,19 +23,26 @@
 # pass reads its own memory and looks at what changed. Re-running a review costs a minute;
 # rebasing an agent's work costs a second agent action and a second gate.
 #
-# THE MERGE AND THE SWEEP CANNOT RUN AS WRITTEN, and finding that out before installing is the
-# only reason this is a note rather than a post-mortem. Both spawn a task that runs `git push`,
-# and a task on the code runner cannot reach a remote at all, by design (taskproc.go: "nothing on
-# this side of the boundary can reach a remote"). That is the whole reason delivery is a REQUEST
-# the parent performs.
+# THE MERGE RUNS NOW, AND THE SWEEP STILL DOES NOT. Both used to spawn a task that ran `git
+# push`, and a task on the code runner could not reach a remote at all — which is what
+# push-as-a-capability.md was written about and what has since landed.
 #
-# The fix is not here. It is that the runner's one canned act should be a capability with
-# destinations, where approval MINTS a scoped credential rather than triggering an operation the
-# parent performs — see push-as-a-capability.md. The `--ff-only` line in the prompt below stays a
-# prompt-level instruction on purpose, and is backed by `receive.denyNonFastForwards` at the
-# receiving end: `where` scopes onto a credential and `how` does not, so a model that ignores the
-# instruction gets refused rather than merging some other way. Rules 1 and 2 up to the gate are
-# unaffected and are what can be driven today.
+# What landed: an environment declares DESTINATIONS by name, a task names one and never a ref,
+# the vector gates the ref it resolves to, and approval is what releases the credential. So rule
+# 2 below merges LOCALLY and then calls the runner's `push` tool naming `main`. Its prerequisite
+# is operational rather than textual: `verse-fix` has to declare a `main` destination, which is a
+# deliberate widening of what that environment can do and is nobody's to add on somebody else's
+# behalf.
+#
+# What did not: rule 4 deletes a branch, and a delete is not something a destination expresses —
+# there is no ref for it to resolve to. It stays unrunnable, and the shape it wants is a
+# destination that permits a delete, which is a runner change rather than a charter one.
+#
+# `--ff-only` stays a prompt-level instruction on purpose, backed by
+# `receive.denyNonFastForwards` at the receiving end: `where` scopes onto a credential and `how`
+# does not, so a model that ignores the instruction gets refused by the remote rather than
+# merging some other way. That refusal is now an ANSWER rather than an error — the task completes
+# and says it could not, which is what rule 2's `onDone` branches on.
 #
 # That decision buys two things worth noticing. The merge ATTEMPT is the staleness test — no
 # comparison operator is needed anywhere, because `git merge --ff-only` either works or does
@@ -123,18 +130,24 @@
       grant: no-delegate
       vector: auto
       prompt: |
-        In ./verse, merge the branch $branch into main and push it, and do nothing else.
+        In ./verse, merge the branch $branch into your working branch and send it to main, and
+        do nothing else.
 
             git -C verse fetch origin
-            git -C verse checkout main
             git -C verse merge --ff-only origin/$branch
-            git -C verse push origin main
+
+        Then call the `push` tool with destination `main`. You cannot run `git push` yourself and
+        must not try: you have no credential, and the runner is what holds one. It pushes what
+        your branch is at, to the ref this environment declares as `main`, and it may be refused
+        — by a supervisor, or by the remote's own rules about its history.
 
         `--ff-only` is not optional and must not be worked around. If it refuses, main has moved
         since this branch was cut and the branch is STALE: do not rebase it, do not merge it any
         other way, and do not resolve a conflict. Say you could not do it and why — a stale
         proposal is withdrawn and re-proposed by the review that made it, which remembers what
         it found and will look again at whatever main now says.
+
+        A refused push means the same thing and gets the same answer.
 
         Answer with a JSON document and nothing else:
 
