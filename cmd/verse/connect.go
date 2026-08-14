@@ -37,7 +37,7 @@ import (
 type connectConfig struct {
 	*cli.Command
 	Interval string `cli:"name=interval default=2s desc='tree poll interval'"`
-	Driver   string `cli:"name=driver desc='validator driver: scripted | llm (default: the runtime default)'"`
+	Driver   string `cli:"name=driver desc='validator driver: scripted | calls | llm (default: the runtime default)'"`
 	// What the default prompt actually is, not what it once was: it reads the file at $path
 	// and reports, because "validate $subject" hands an agent a ref it cannot read.
 	Prompt string `cli:"name=prompt desc='per-file validator prompt (default: read the file at $path and report on it)'"`

@@ -69,7 +69,7 @@ verse
   trigger (triggers)                         the installed charter
           add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
   task (tasks, ps) [--runner <ref>]          every task, whatever runs it
-          run <prompt…> [--attach] [--wait] [--driver scripted|llm]  (honors the runner; mirrored)
+          run <prompt…> [--attach] [--wait] [--driver scripted|calls|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>

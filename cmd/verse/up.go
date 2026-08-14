@@ -168,8 +168,23 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 				LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
 			})
 			return p
+		case harness.DriverCalls:
+			// A list of calls the charter wrote, with the harness's own executor and NO model —
+			// which is why it is here rather than under the llm case: `calls` needs the four
+			// tools and none of the credentials, so a verse with no keys configured can still
+			// run the mechanical work. `scripted` above is the same driver with a
+			// one-shell-command list built for it.
+			calls, err := task.ParseCalls(l.Prompt)
+			if err != nil {
+				return task.NewFailed(l.ID, reg, harness.DriverCalls+": "+err.Error())
+			}
+			return harness.Calls(harness.Config{
+				ID: l.ID, Root: root, Resolver: reg, Log: cc.Err, Content: content,
+				Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
+			}, calls)
 		default:
-			return task.NewFailed(l.ID, reg, "unknown driver "+driver+" (want scripted or llm)")
+			return task.NewFailed(l.ID, reg,
+				"unknown driver "+driver+" (want scripted, calls or llm)")
 		}
 	}
 

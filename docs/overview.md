@@ -115,7 +115,7 @@ goes through the engine's `Spawner`, which hosts the task via task control and
 mirrors it back.
 
 `task` and `task/taskd` are the task runtime. A `Task` runs a driver
-(`Next() → ToolUse`, either `scripted` or `llm`) under a `Supervisor` governed by a `Vector`,
+(`Next() → ToolUse`: `scripted`, `calls` or `llm`) under a `Supervisor` governed by a `Vector`,
 the per-task autonomy defaults. It emits a cursored, ring-buffered, resumable event stream
 and posts gate decisions to a registry. `taskd` is the HTTP daemon face of that runtime.
 
@@ -251,7 +251,7 @@ generation is rejected — so a displaced or zombie worker cannot corrupt the lo
 
 Each seam is where you plug in without touching the core.
 
-- *Driver* — how a task thinks: `scripted`, `llm`, or your own `Next`.
+- *Driver* — how a task thinks: `scripted`, `calls`, `llm`, or your own `Next`.
 - *Task control* — where and how a task runs: a k8s Job, a lambda, a broker for humans.
 - *Store* — logd/docd, or anything implementing the `Store` interface.
 - *Source* — reflect an external system into an owned slice of the verse, as a program you

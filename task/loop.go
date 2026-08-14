@@ -232,6 +232,12 @@ func (p *Task) SetAnswerCheck(a AnswerCheck) { p.ansck = a }
 // Applied at spawn, before the loop runs.
 func (p *Task) SetBoundTo(ref string) { p.sup.SetBoundTo(ref) }
 
+// SetDeriver swaps the capability-classification step — what turns a self-reported action into
+// the typed effects a vector matches on. A runtime that installs its own (harness does, so its
+// extra tools derive effects the gates can see) needs it reachable from the task it built,
+// since a task built by a shared constructor never had the supervisor in hand.
+func (p *Task) SetDeriver(d Deriver) { p.sup.SetDeriver(d) }
+
 // SetVector swaps the gate vector on the running supervisor — the autonomy slide, applied at
 // the next EVALUATION with no restart. It emits an EvVector frame so the slide is observable
 // on the read plane (the new default mode; the operator who slid it rides By).

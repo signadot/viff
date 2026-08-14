@@ -249,10 +249,20 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 
 	e.echo(rec)
 	e.records = append(e.records, rec)
-	// Exit rides the result as well as the text. This executor's reading of a non-zero exit
-	// does not change — it is data the agent decides about, not a failure — but a driver that
-	// is not a model cannot read it out of prose. See task.StepResult.Exit.
-	return task.StepResult{Use: tu, Output: rec.modelContent(), Exit: rec.Exit}, nil, nil
+	// Exit and Err ride the result as well as the text, for the same reason: this executor used
+	// to say what went wrong only in prose, because its driver reads prose. A driver that is not
+	// a model cannot read "exec: bash: not found" out of a paragraph, and a call list whose
+	// command never started would otherwise run its remaining calls and report done.
+	//
+	// Neither changes what the AGENT sees materially — resultContent already renders an Err as
+	// "ERROR: …", and the record text still carries the detail — and neither changes the loop,
+	// which fails a task on the error an Executor RETURNS, not on the one its result carries.
+	// The two are different questions: this action failed, versus this executor is broken.
+	res := task.StepResult{Use: tu, Output: rec.modelContent(), Exit: rec.Exit}
+	if rec.Err != "" {
+		res.Err = errors.New(rec.Err)
+	}
+	return res, nil, nil
 }
 
 // orphanWaitDelay is how long a finished-or-killed command is given to let go of its output

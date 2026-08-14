@@ -1,9 +1,12 @@
 # A driver that proposes a list of calls: implementation plan
 
-Status: plan, nothing built. The design is the section *"The mechanical tasks want a script, and
-a script cannot push"* in [coding-runner-residual.md](coding-runner-residual.md) — why a shell is
-the wrong shape, why a call list needs no new machinery, and why `scripted` is its degenerate
-case. This file is the order of work.
+Status: **steps 1–3 are built** (branch `calls-driver`); 3.5 and 4 are not. The driver, `fatal:`,
+`scripted` as its degenerate case, and the coding runner's extras are in the tree and documented
+in [reference/tasks.md](../reference/tasks.md#the-drivers). What is written below for those steps
+is kept as the reasoning they were built from, with what the building actually found noted under
+each. The design is the section *"The mechanical tasks want a script, and a script cannot push"*
+in [coding-runner-residual.md](coding-runner-residual.md) — why a shell is the wrong shape, why a
+call list needs no new machinery, and why `scripted` is its degenerate case.
 
 The change in one line: **work with one right answer stops being an LLM, without stopping being
 supervised.**
@@ -65,6 +68,14 @@ and denying it leaves the first done and the third unrun. Then two calls again w
 varied — a first call that is blocked stops the second under the default and does not under
 `fatal: [err]`. Plus the answer-contract refusal on its own.
 
+**Built, and what it found.** `nonzero` was not OBSERVABLE. A StepResult carried `Err`, `Blocked`
+and `Note`; the harness's exit code lived in its own record and reached the model only as text in
+a prompt, so a driver that is not a model could not ask whether the merge had failed. It grew an
+`Exit *int`, set by both executors, neither of which changed its reading. The same gap swallowed
+a command that never STARTED — `bash` missing from a task's PATH was prose too — so fsExec now
+reports a failed action as `Err` as well as narrating it, which the llm driver already renders
+("ERROR: …") and had simply never been given.
+
 ### 2. `scripted` becomes the degenerate case, and its exemption goes
 
 `NewScriptedTask` builds a one-element list rather than its own driver, and the hardcoded auto
@@ -93,6 +104,14 @@ Test: `verse task run --driver scripted "echo hi"` runs one ungated `run_bash` a
 the same command as a charter spawn with no vector poses a question, and with `vector: auto` does
 not.
 
+**Built, and what it found.** The whole test suite passed the clobber unchanged, which was not
+reassurance: nothing in it spawned a scripted task from a charter, so the behaviour was untested
+either way. `versed/scripted_test.go` pins it now. Two things fell out — versed's `askingBuilder`
+existed only to hand-build an Ask supervisor around a driver that would not accept one, and a
+DENIED scripted command used to complete rather than fail, since the old driver read a refusal as
+"nothing more to do". `verse connect --driver scripted` needed the typed-it exemption too, on the
+same argument: one typed command authorizing a validator for every file.
+
 ### 3. The coderunner offers its extras, so a call list can push
 
 `buildCommandTask` gets the finisher and not the runtime's extra tools, so `push` is offered to
@@ -103,6 +122,15 @@ the default `fatal`, which is what makes the second one safe.
 **Proves:** the thing this is all for. Test: a call list naming `push` resolves the destination,
 derives the same effect the llm driver's tool does, and is gated the same way — the runner cannot
 tell which driver proposed it, which is the property that makes this cheap.
+
+**Built, and what it found.** The extras are shared by `harness.Calls`, which is the llm build
+minus everything belonging to a model. It also enforces the TOOL FLOOR against the list: the llm
+driver enforces one by not offering what a spawn narrowed away, and a list has nobody to withhold
+from, so a call naming a tool this spawn does not have fails the spawn rather than the fourth
+call. Two things the plan did not say: the runner's `Brief` must not be prepended to a call
+list's prompt (prose in front of a document does not make a document), and `verse up` learned the
+same driver — it needs the four tools and no credentials, so a verse with no keys can run
+mechanical work.
 
 ### 3.5. The list becomes a field, and stops being prose
 

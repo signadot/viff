@@ -269,15 +269,18 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 	p.launched = l
 	p.mu.Unlock()
 
-	// The workspace layout is the runner's convention, so the runner describes it. It rides the
-	// PROMPT rather than the frame because harness.Build derives a default frame from the tools
-	// and vector when a spawn writes none, and setting one here would silently replace advice
-	// that is more useful than this.
-	l.Prompt = p.cfg.Brief + l.Prompt
-
 	var t *task.Task
 	switch l.Driver {
 	case driverLLM, "":
+		// The workspace layout is the runner's convention, so the runner describes it. It rides
+		// the PROMPT rather than the frame because harness.Build derives a default frame from
+		// the tools and vector when a spawn writes none, and setting one here would silently
+		// replace advice that is more useful than this.
+		//
+		// Only for a driver that READS it. A call list's prompt is a document, and prepending
+		// prose to a document does not make it a document with prose in front — it makes it
+		// unparseable, which is a spawn refused for a reason its author cannot see.
+		l.Prompt = p.cfg.Brief + l.Prompt
 		// Tools: the spawn narrows, the environment floors. A spawn that names none gets the
 		// environment's set, and a tool absent from the environment is never offered whatever a
 		// spawn asks for — which is what makes withholding `run_bash` a floor rather than advice.
@@ -298,6 +301,27 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 			LLMKey:        p.cfg.LLM.Key,
 			LLMVirtualKey: p.cfg.LLM.VirtualKey,
 		})
+	case harness.DriverCalls:
+		// The same extras and the same closing act as the agent above, which is the point of
+		// step 3: the merge task is four git commands and a push, and the only thing an LLM was
+		// adding to it was the chance of doing something else. The credential still never
+		// reaches the task — `push` asks over the channel the llm driver already uses, and the
+		// runner decides.
+		calls, err := task.ParseCalls(l.Prompt)
+		if err != nil {
+			return task.NewFailed(l.ID, reg, harness.DriverCalls+": "+err.Error())
+		}
+		tools := l.Tools
+		if len(tools) == 0 {
+			tools = p.cfg.Environment.Tools
+		}
+		t = harness.Calls(harness.Config{
+			ID: l.ID, Root: p.ws.Root, Resolver: reg, Content: content,
+			Tools: tools, Answer: l.Answer, Vector: l.Vector,
+			Log:    os.Stderr,
+			Finish: p.fin,
+			Extra:  p.extra,
+		}, calls)
 	default:
 		cmd, ok := p.cfg.Agents[l.Driver]
 		if !ok {

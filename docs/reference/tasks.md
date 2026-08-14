@@ -55,9 +55,48 @@ tony, and the run fails for a reason that has nothing to do with the work. The p
 outside the governed document; `answer.Extract` lifts a fenced block out of the final message, so
 the writing can be writing.
 
+## The drivers
+
+Three, and the third is the one to reach for when the work has a right answer.
+
+`scripted` runs its prompt as a shell command. `llm` gives the prompt to a model that decides
+what to do a turn at a time. `calls` takes the actions themselves — the charter wrote them, and
+nothing decides anything at run time:
+
+```tony
+spawn:
+  driver: calls
+  vector: auto
+  prompt: |
+    calls:
+    - tool: run_bash
+      input: {command: "git merge --ff-only origin/$branch"}
+    - tool: push
+      input: {destination: main}
+```
+
+Each entry is an ordinary action — derived, gated, narrated on the read plane — so a gate
+written for an agent's push holds a list's push, and nothing downstream can tell which driver
+proposed it. What a list does not get is the half that belongs to a model: no answer contract
+(there is nobody to repair one, so a spawn carrying one fails), no delegation, and no re-planning
+after a result.
+
+An entry may say which of its outcomes end the list:
+
+```tony
+- tool: push
+  input: {destination: retire}
+  fatal: [err]        # a remote declining ONE ref is not a reason to stop
+```
+
+out of `err` (the step failed), `blocked` (refused, by a gate or by the far side) and `nonzero`
+(a command exited non-zero). Absent means all three — a list is ordered because its calls depend
+on each other — and `fatal: []` means none. `scripted` is this driver with a one-command list
+built for it.
+
 ## The dial
 
-The two drivers carry different vectors, and the difference is the whole point of a gate: it
+The drivers carry different vectors, and the difference is the whole point of a gate: it
 asks about what you have **not** already authorized.
 
 `scripted` **as you type it** runs ungated: `verse task run --driver scripted` sends `auto` on
@@ -137,8 +176,10 @@ which of the two things you meant by the prompt. So today you say it: pass `--dr
 when your prompt *is* a command — that is exactly what it is for — pass `--vector auto` to keep
 the agent and drop the asking, or slide the vector once it starts (`task vector <id> auto`).
 A trigger hits the same edge from the other side: its gates approve *the firing*, not the
-actions the spawned agent then chooses, and it has no way to say it already decided. Where the
-permission *should* come from is [authority](../roadmap/authority.md).
+actions the spawned agent then chooses. It can now SAY it already decided — `vector: auto` on
+the spawn — but that is a charter asserting the equivalence rather than the runtime deriving it,
+and it is all-or-nothing where the firing may have authorized one action and not another. Where
+the permission *should* come from is [authority](../roadmap/authority.md).
 
 ## The mirror
 

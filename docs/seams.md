@@ -336,8 +336,8 @@ Read the whole note as this table.
 
 ## What is not a seam
 
-Worth naming, so the map is not read as bigger than it is. The **driver** (`scripted`, `llm`,
-your own `Next`) is a Go interface and never a wire. A `--dir` **source** runs in task. The
+Worth naming, so the map is not read as bigger than it is. The **driver** (`scripted`, `calls`,
+`llm`, your own `Next`) is a Go interface and never a wire. A `--dir` **source** runs in task. The
 **local runner** is a Go call. The `Store` interface admits a memory implementation with no
 daemon behind it, which is what the tests run on.
 

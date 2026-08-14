@@ -323,7 +323,7 @@ type taskRunConfig struct {
 	*cli.Command
 	Wait   bool   `cli:"name=wait desc='block until the task completes, then print the result (composes with --attach)'"`
 	Attach bool   `cli:"name=attach desc='stream the live transcript (words, actions, gates) until it ends'"`
-	Driver string `cli:"name=driver desc='task driver: scripted | llm (default: the runtime default)'"`
+	Driver string `cli:"name=driver desc='task driver: scripted | calls | llm (default: the runtime default)'"`
 	// Name is a LABEL, not an address. The id is derived from it and returned, because a
 	// caller-chosen id is a caller-chosen prefix on every gate question the run raises
 	// (`<id>~d1`) — and answering one recovers the owner by cutting at the first `~`, so a
@@ -362,7 +362,7 @@ func taskRunCmd() *cli.Command {
 	return cli.NewCommandAt(&cfg.Command, "run").
 		WithSynopsis("run a task: run <prompt…> [--name <label>] [--subject <ref>] " +
 			"[--resolver <ref>] [--vector auto|ask|park] [--attach] [--wait] " +
-			"[--driver scripted|llm]").
+			"[--driver scripted|calls|llm]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/harness"
 )
 
 // TestMain is what makes the hop testable at all: `coderunner -task` is a mode of THIS program,
@@ -1056,5 +1057,64 @@ func TestADestinationGetsTheCredentialItNames(t *testing.T) {
 	}
 	if _, err := r.credentialFor(env, env.Repos[0], "release"); err == nil {
 		t.Error("a destination this repository does not declare was given a credential")
+	}
+}
+
+// A call list runs on the far side of the hop, with this runner's workspace under it.
+//
+// It is the whole of step 3 from the outside: the charter writes the actions, the child runs
+// them in the checkout, and the runner cannot tell that no model was involved. The command
+// writes a file so the assertion is about the WORKSPACE rather than about an exit code — a
+// driver that proposed nothing would also exit zero.
+func TestACallListRunsInTheChildToo(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	r := testRunner(t, &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}},
+			Driver: harness.DriverCalls, Env: []string{"PATH"},
+		}},
+	})
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "t-calls", Vector: &task.Vector{Default: task.Auto},
+		Prompt: "calls:\n- tool: run_bash\n  input: {command: \"echo listed > svc/ran.txt\"}\n",
+	}, nil)
+	if st := awaitTerminal(t, h); st != task.Done {
+		t.Fatalf("a call list across the hop ended %s: %s", st, h.Err())
+	}
+	if _, err := os.Stat(filepath.Join(r.workspaces, "t-calls", "svc", "ran.txt")); err != nil {
+		t.Fatalf("the call did not run in the workspace: %v", err)
+	}
+}
+
+// A prompt that is not a call list fails the SPAWN rather than running whatever parsed. The
+// message names what was wrong with it, since the charter's author is the only one who can fix
+// it and they cannot see the child.
+func TestAnUnreadableCallListFailsAcrossTheHop(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	r := testRunner(t, &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}},
+			Driver: harness.DriverCalls, Env: []string{"PATH"},
+		}},
+	})
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "t-nolist", Prompt: "please merge the branch and push it",
+		Vector: &task.Vector{Default: task.Auto},
+	}, nil)
+	if st := awaitTerminal(t, h); st != task.Failed {
+		t.Fatalf("a prompt that is not a call list ended %s", st)
+	}
+	if e := h.Err(); !strings.Contains(e, "calls") {
+		t.Errorf("the refusal does not say what it could not read: %q", e)
 	}
 }
