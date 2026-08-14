@@ -21,6 +21,7 @@ package entity
 // AsData, which is what Modify does for its callers.
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -127,4 +128,64 @@ func rawTag(tag string) string {
 		return "!" + rawName
 	}
 	return "!" + rawName + "." + strings.TrimPrefix(tag, "!")
+}
+
+// CheckPatchable refuses a value the store could accept and then never read back.
+//
+// This is the third time a match operator reached a write, and the first two cost a staging
+// deployment each. The shape never changes: a write is a tony PATCH, so a tag naming an
+// operation is EXECUTED — and `!irtype`, `!or`, `!glob` and their kind are MATCH operators,
+// whose Patch method can only ever return "cannot patch with X operation". The write itself
+// succeeds, because the store appends before it applies. Every later read replays the log,
+// hits that operator, and fails. From then on the store cannot be read and cannot be repaired,
+// while writes go on succeeding — which is a verse that looks alive and answers nothing.
+//
+// The two earlier fixes were at WRITERS: the mirror escapes an agent's answer (AsData), and a
+// charter is stored with Raw. Both were right and neither is enough, because the defect is not
+// that some caller forgot — it is that the store accepts a document it will choke on. A caller
+// that means its operators is ordinary (versed's write surface is one) and stays ordinary: a
+// merge operator patches, and that is the grammar. What is refused is the operator that CANNOT
+// patch, and no correct write has ever contained one.
+//
+// It is exact rather than a guess: mergeop.Symbol embeds Name, which answers IsPatch for the
+// operation the tag actually names — the same lookup a patch does, asked before rather than
+// after. `!raw` is patchable and stops the walk by construction, so escaped data is untouched
+// however many operators it holds, which is what makes AsData and Raw still the right thing at
+// the writers.
+func CheckPatchable(p Payload) error { return checkPatchable(p, "") }
+
+func checkPatchable(n *ir.Node, at string) error {
+	if n == nil {
+		return nil
+	}
+	if name := opIn(n.Tag); name != "" {
+		sym := mergeop.Lookup(name)
+		if sym != nil && !sym.IsPatch() {
+			where := at
+			if where == "" {
+				where = "the value itself"
+			}
+			return fmt.Errorf("%s: `!%s` is a MATCH operator and cannot be written — a write is "+
+				"a patch, so this would be executed rather than stored, fail on every later read, "+
+				"and leave the store unreadable. Escape it as data (entity.AsData / entity.Raw) "+
+				"if it is a pattern being stored rather than an operation being performed",
+				where, name)
+		}
+		if name == rawName {
+			return nil // escaped: everything beneath it is data, however it is tagged
+		}
+	}
+	for i, v := range n.Values {
+		field := at
+		if i < len(n.Fields) && n.Fields[i] != nil {
+			if field != "" {
+				field += "."
+			}
+			field += n.Fields[i].String
+		}
+		if err := checkPatchable(v, field); err != nil {
+			return err
+		}
+	}
+	return nil
 }

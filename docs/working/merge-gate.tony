@@ -56,8 +56,13 @@
 
 # Ours: one entity per delivered branch, and one for the sweep. Strictly above `reflected`,
 # because that is the only direction a derive may go.
+# LEVEL 30, not 10, and the number is the one thing here that is not free to choose. This
+# charter sits beside comment-drift.tony, which holds 0/10/20 (reflected, drift, ledger), and a
+# level is the ordering — two strata at one level do not say which comes first, so installing
+# them together is REFUSED until one moves. Found by installing it: `stratum "merge" wants level
+# 10, which "drift" already holds`.
 - name: merge
-  level: 10
+  level: 30
   match:
     system: merge
 ---
@@ -79,7 +84,12 @@
       system: git
       kind: ref
       value:
-        name: !glob "verse/auto/*"
+        # TWO segments, not one: the runner's push target is `refs/heads/verse/auto/$sha/$task`
+        # and `!glob` is filepath.Match, where `*` does NOT cross `/`. Written as
+        # `verse/auto/*` this matched nothing at all — the charter predates the `$sha` segment,
+        # and a selector that silently selects nothing is the failure this whole drive keeps
+        # finding. Verified against a real delivered branch.
+        name: !glob "verse/auto/*/*"
   action:
     derive:
       merge:

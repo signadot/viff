@@ -466,6 +466,13 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	path := s.writePath(w.At)
+	// REFUSED HERE, before the log can hold it. A match operator in a written value is a store
+	// that stops being readable — see entity.CheckPatchable, and the two staging deployments
+	// that were lost to it. This is the one place every write passes through, which is the only
+	// reason it can be a promise rather than a convention each caller keeps.
+	if err := CheckPatchable(w.Value); err != nil {
+		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
+	}
 	node := payloadToNode(w.Value)
 	if w.Value == nil {
 		node = deleteOp() // remove whatever stands there

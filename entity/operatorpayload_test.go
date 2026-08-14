@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -61,3 +62,70 @@ func TestAnOperatorTagInAPayloadDoesNotPoisonTheStore(t *testing.T) {
 			"replay its own log reports this as an empty list rather than an error", n)
 	}
 }
+
+// The STORE refuses a match operator, so no writer can make the store unreadable.
+//
+// Twice before, an `!irtype` reached a write and cost a staging deployment: the write succeeds
+// (the log appends before it applies), every later read replays the log and fails with "cannot
+// patch with irtype operation", and from then on nothing can be read while writes go on
+// succeeding. Both earlier fixes were at writers — the mirror escapes an agent's answer, a
+// charter is stored raw — and a third writer found its way in anyway, which is the argument for
+// putting the check where every write passes.
+func TestTheStoreRefusesAMatchOperatorInAWrittenValue(t *testing.T) {
+	for name, p := range map[string]Payload{
+		"at the top": ir.FromString("x").WithTag("!irtype"),
+		"in a field": ir.FromMap(map[string]*ir.Node{
+			"says": ir.FromString("a string").WithTag("!irtype"),
+		}),
+		"nested deeper": ir.FromMap(map[string]*ir.Node{
+			"answer": ir.FromMap(map[string]*ir.Node{
+				"merged": ir.FromString("true").WithTag("!irtype"),
+			}),
+		}),
+		"under a list": ir.FromMap(map[string]*ir.Node{
+			"findings": ir.FromSlice([]*ir.Node{ir.FromMap(map[string]*ir.Node{
+				"status": ir.FromSlice([]*ir.Node{
+					ir.FromString("open"), ir.FromString("resolved"),
+				}).WithTag("!or"),
+			})}),
+		}),
+	} {
+		err := CheckPatchable(p)
+		if err == nil {
+			t.Errorf("%s: accepted — this write makes the store unreadable", name)
+			continue
+		}
+		// The message has to say what to do, because the caller is usually holding a pattern it
+		// legitimately wants to STORE, and the answer is to escape it rather than drop it.
+		if !contains(err.Error(), "AsData") {
+			t.Errorf("%s: the refusal does not say how to store it as data: %v", name, err)
+		}
+	}
+}
+
+// …and it refuses nothing a correct write does. A merge operator IS the grammar, and escaped
+// data is data however many operators it holds — which is what keeps AsData and Raw the right
+// thing at the writers rather than a workaround for this check.
+func TestTheStoreStillAcceptsEveryLegitimateWrite(t *testing.T) {
+	pattern := ir.FromMap(map[string]*ir.Node{
+		"says": ir.FromString("x").WithTag("!irtype"),
+	})
+	for name, p := range map[string]Payload{
+		"ordinary data": ir.FromMap(map[string]*ir.Node{"state": ir.FromString("open")}),
+		"layout tags": ir.FromMap(map[string]*ir.Node{
+			"list": ir.FromSlice([]*ir.Node{ir.FromString("a")}).WithTag("!bracket"),
+		}),
+		"a pattern escaped as data": AsData(pattern),
+		"a whole document stored raw": Raw(ir.FromMap(map[string]*ir.Node{
+			"answer": ir.FromMap(map[string]*ir.Node{
+				"merged": ir.FromString("true").WithTag("!irtype"),
+			}),
+		})),
+	} {
+		if err := CheckPatchable(p); err != nil {
+			t.Errorf("%s: refused a legitimate write: %v", name, err)
+		}
+	}
+}
+
+func contains(s, sub string) bool { return len(s) >= len(sub) && strings.Contains(s, sub) }
