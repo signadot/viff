@@ -158,6 +158,45 @@ so whatever builds it has to make that a property rather than a convention. The 
 narrower and probably first: give a command task the extras it can use, and let a script ask over
 the same channel the llm driver does.
 
+### A list of calls, not a shell — and it subsumes `scripted`
+
+Two shapes were considered and one is wrong. **A shell with a `push` shim on PATH breaks the
+thing the loop is for:** a command task is opaque by construction — a vector has exactly two
+positions for it, invoke or do not — so one approval would cover twenty retirements inside the
+script. The gate seeing the resolved ref, the read plane naming it, a refusal being per-ref: all
+of it dies at the shell boundary.
+
+**A list of tool calls keeps the action as the unit of supervision.** Each entry is an ordinary
+ToolUse — derived, gated, executed, narrated — so only the PROPOSER changes and nothing
+downstream is touched. It is the shape this codebase reaches for twice already: `examples/runner`
+splits its prompt on semicolons and does each part, and the push plan says a second delivering
+repository wants `Finish` returning A SEQUENCE PROPOSED ONCE rather than a finisher consulted
+repeatedly.
+
+It also wants the list to come from the CHARTER, which is where staleness already lives — the
+sweep's real problem is discovery, not deleting, and `!each` over stale proposals produces the
+calls with no git in the task at all.
+
+**`scripted` is then the degenerate case, exactly.** `scriptDriver.Next` returns one
+`ToolUse{run_bash, {command: prompt}}` and completes, so `scripted "go test ./..."` IS
+`calls [{tool: run_bash, input: {command: "go test ./..."}}]`. Three things are attached to it
+and they do not all travel:
+
+- **The auto vector must NOT carry over.** `NewScriptedTask` hard-codes `Vector{Default: Auto}`
+  whatever the spawn said, justified by *"your prompt IS the command, so you authorized it by
+  typing it"*. True of a hand-typed `verse task run`; false of a list a charter derived from
+  entity state, which nobody typed. Scripted's ungatedness is a property of HOW THE TASK WAS
+  ADDRESSED rather than of the driver — [the rough edge in reference/tasks.md](../reference/tasks.md#who-you-addressed)
+  arriving as a concrete fork — so `calls` respects the spawn's vector and the exemption stays on
+  the CLI path where the argument holds.
+- **The answer-contract refusal should.** A scripted task fails a spawn carrying `answer:`
+  because it has no model to ask again, and *"a dropped contract is worse than none"*. Unchanged.
+- **And one question scripted never had to answer: does call 3 run if call 2 fails?** With one
+  call it cannot arise; for a sweep it decides everything. The distinction already exists from
+  the push work: a `Blocked` — the remote refused THIS ref, `denyDeletes` on one pattern — is a
+  decision, so carry on with the rest; an `Err` — the credential expired, the transport is gone —
+  is infrastructure, so stop, which is what scripted does today.
+
 ## The descriptor's contract half
 
 `GET /runner` serves something real — drivers, the containment this deployment can build per leaf,
