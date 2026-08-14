@@ -67,7 +67,7 @@ func TestSteerFoldsInAfterPendingDrains(t *testing.T) {
 		t.Fatalf("next1: name=%q more=%v err=%v", tu1.Name, more, err)
 	}
 	// inject a steer BETWEEN the two buffered tool calls
-	d.Steer([]string{"please also X"})
+	d.Fold([]string{"please also X"})
 
 	tu2, more, err := d.Next(ctx, task.StepResult{Use: tu1, Output: "r1"})
 	if err != nil || !more || tu2.Name != "t2" {

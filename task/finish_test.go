@@ -23,8 +23,8 @@ func (d *scripted) Next(_ context.Context, _ StepResult) (ToolUse, bool, error) 
 	d.i++
 	return ToolUse{Name: d.acts[d.i-1]}, true, nil
 }
-func (d *scripted) Result() string       { return d.result }
-func (d *scripted) Steer(instr []string) { d.steers = append(d.steers, instr...) }
+func (d *scripted) Result() string      { return d.result }
+func (d *scripted) Fold(instr []string) { d.steers = append(d.steers, instr...) }
 
 type recorder struct{ ran []string }
 
@@ -221,7 +221,7 @@ func (d *reopened) Next(context.Context, StepResult) (ToolUse, bool, error) {
 	return ToolUse{}, false, nil
 }
 
-func (d *reopened) Steer([]string) { d.said = true }
+func (d *reopened) Fold([]string)  { d.said = true }
 func (d *reopened) Result() string { return "the answer" }
 
 // `no-delegate` means what it says: the whole envelope minus delegation.

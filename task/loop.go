@@ -19,18 +19,26 @@ type Driver interface {
 	Next(ctx context.Context, prev StepResult) (tu ToolUse, more bool, err error)
 }
 
-// Steerable is an optional Driver capability: fold a message into the running conversation.
-// The loop delivers everything waiting at the boundary, before Next — so messages land
-// cooperatively, honored at the next model turn, never interrupting an in-flight action.
+// Conversation is an optional Driver capability: a driver that HOLDS one, into which the loop
+// can fold a message. It delivers everything waiting at the boundary, before Next — so messages
+// land cooperatively, honored at the next model turn, never interrupting an in-flight action.
 // Drivers that don't implement it simply ignore them.
 //
-// It is a MECHANISM and not a policy: an operator's say, a child's result, a resolver's
-// context and the runtime's request to repair an answer all arrive through it, and who was
-// speaking is carried on the read plane rather than by having four channels. The loop used to
-// have two (a mutex-guarded slice and a buffered channel) with no way to order them against
-// each other, which is why the precedence rule was unwritable.
-type Steerable interface {
-	Steer(instructions []string)
+// It was called `Steerable.Steer`, and the rename is the point rather than tidying. `Steer`
+// named two things one level apart: `Handle.Steer` is an OPERATOR saying something to a running
+// task, and this is the loop delivering ANY message into a driver's conversation — an
+// operator's say, yes, but also a child's result returning, a resolver's context attached to an
+// answer, and the runtime asking for an answer to be repaired. Three of those four are not
+// steering and nobody sent them. Calling the mechanism by the name of one of its callers is how
+// "a child's result is a steer" became sayable, and it is not true.
+//
+// So: one MECHANISM, four speakers, and who was speaking is carried on the read plane rather
+// than by having four channels — which the loop tried, with a mutex-guarded slice and a
+// buffered channel that could not be ordered against each other, and that is why the precedence
+// rule was unwritable. `Fold` is the codebase's own verb for this: a message folds in at the
+// hinge.
+type Conversation interface {
+	Fold(messages []string)
 }
 
 // Resulter is an optional Driver capability: report a completed run's result
@@ -280,7 +288,7 @@ func (p *Task) take() (input, bool) {
 // model turn — cooperative: it never interrupts an in-flight action, and it DOES
 // preempt a question standing at a gate, because a run that has been told something new may
 // be redirected into work that question no longer bears on.
-// Requires the Driver to implement Steerable; otherwise the steer is ignored.
+// Requires the Driver to hold a Conversation; otherwise the say is ignored.
 func (p *Task) Steer(instruction, by string) error {
 	p.post(inSay{msgs: []convMsg{{text: instruction, by: by, kind: convSay}}})
 	return nil
@@ -578,11 +586,11 @@ func (p *Task) next(ctx context.Context, s state, replies <-chan input) (input, 
 // One mechanism, four speakers: the read plane is where they stay distinguishable, because
 // that is where the distinction is actually read.
 func (p *Task) converse(msgs []convMsg) {
-	d, ok := p.driver.(Steerable)
+	d, ok := p.driver.(Conversation)
 	if !ok {
 		for _, m := range msgs {
 			if m.kind == convSay {
-				p.logf("⚠ say ignored: driver is not Steerable")
+				p.logf("⚠ say ignored: this driver holds no conversation")
 			}
 		}
 		return
@@ -595,7 +603,7 @@ func (p *Task) converse(msgs []convMsg) {
 			says++
 		}
 	}
-	d.Steer(texts)
+	d.Fold(texts)
 	if says > 0 {
 		p.appendJournal(fmt.Sprintf("[say] %d said-to at boundary %d", says, p.seq))
 		p.logf("↩ said-to: %d instruction(s)", says)

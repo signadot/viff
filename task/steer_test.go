@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// steerDriver records the interleaving of Steer and Next calls so a test can
+// steerDriver records the interleaving of Fold and Next calls so a test can
 // assert cooperative delivery order.
 type steerDriver struct {
 	steps  []ToolUse
@@ -25,7 +25,7 @@ func (d *steerDriver) Next(_ context.Context, _ StepResult) (ToolUse, bool, erro
 	return tu, true, nil
 }
 
-func (d *steerDriver) Steer(msgs []string) {
+func (d *steerDriver) Fold(msgs []string) {
 	for _, m := range msgs {
 		d.events = append(d.events, "steer:"+m)
 	}
@@ -77,9 +77,9 @@ func TestGateInjectsContext(t *testing.T) {
 	}
 }
 
-// A steer against a non-Steerable driver is ignored, not fatal, and leaves no
-// steer entry in the journal.
-func TestSteerIgnoredWhenNotSteerable(t *testing.T) {
+// A say to a driver that holds no conversation is ignored, not fatal, and leaves no entry in
+// the journal — there is nothing to record, because nothing was delivered.
+func TestASayIsIgnoredByADriverThatHoldsNoConversation(t *testing.T) {
 	d := &scriptDriver{steps: []ToolUse{tool("A")}}
 	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
 	p.onEnterBoundary = func(seq int) {

@@ -240,7 +240,7 @@ func (d *delegateThenAct) Next(context.Context, StepResult) (ToolUse, bool, erro
 	return ToolUse{}, false, nil
 }
 
-func (d *delegateThenAct) Steer(msgs []string) {
+func (d *delegateThenAct) Fold(msgs []string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.folded = append(d.folded, msgs...)

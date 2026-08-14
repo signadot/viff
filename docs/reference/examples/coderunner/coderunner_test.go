@@ -676,7 +676,7 @@ func TestDriveEnvironmentOffersNoShell(t *testing.T) {
 // steer (nowhere to put it) and cannot repair an answer (cannot ask again).
 func TestCommandWithoutResumeCannotBeSteered(t *testing.T) {
 	d := &commandDriver{name: "oneshot", cmd: Command{Argv: []string{"true"}}, started: true}
-	d.Steer([]string{"try the other thing"})
+	d.Fold([]string{"try the other thing"})
 	_, more, err := d.Next(context.Background(), task.StepResult{})
 	if more {
 		t.Fatal("a command with no resume asked for another turn it cannot take")
@@ -689,7 +689,7 @@ func TestCommandWithoutResumeCannotBeSteered(t *testing.T) {
 	d2 := &commandDriver{name: "agent", cmd: Command{
 		Argv: []string{"x"}, Resume: []string{"--resume", "$session"},
 	}, started: true}
-	d2.Steer([]string{"try the other thing"})
+	d2.Fold([]string{"try the other thing"})
 	tu, more, err := d2.Next(context.Background(), task.StepResult{})
 	if err != nil || !more {
 		t.Fatalf("a resumable command dropped a steer: more=%v err=%v", more, err)

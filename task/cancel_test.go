@@ -22,7 +22,7 @@ func (d *callN) Next(_ context.Context, _ StepResult) (ToolUse, bool, error) {
 	return ToolUse{}, false, nil
 }
 
-func (d *callN) Steer(_ []string) {}
+func (d *callN) Fold(_ []string) {}
 
 // blockThenErr blocks until released, then errors.
 type blockThenErr struct{ release chan struct{} }

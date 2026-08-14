@@ -130,6 +130,10 @@ So `Steer` currently names two things one level apart: `Handle.Steer(instruction
 operator saying something, and `Steerable.Steer([]string)` is the loop delivering *any* message
 into the conversation. Part two keeps the second as a mechanism and stops calling it steering.
 
+*Done: the second is now `task.Conversation.Fold(messages)` — a driver that HOLDS a conversation,
+into which the loop folds a message. `Handle.Steer` is unchanged, because an operator really is
+steering.*
+
 ## What a feeder can expect
 
 - A spawn returns a handle immediately; the task runs concurrently.

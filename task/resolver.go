@@ -24,7 +24,7 @@ type Resolution struct {
 	// at its next turn — a gate that *informs*, not just gates (e.g. an SCM
 	// meta-task injecting org conventions, or a human adding guidance). Delivered
 	// whether or not Proceed, so a denial can carry a "do this instead". Requires a
-	// Steerable driver; ignored otherwise.
+	// driver that holds a Conversation; ignored otherwise.
 	Steer []string
 }
 

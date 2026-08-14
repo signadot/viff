@@ -278,18 +278,18 @@ type completer interface {
 }
 
 type llmDriver struct {
-	client       completer
-	tools        []toolDef
-	messages     []chatMessage
-	pending      []toolCall
-	idx          int
-	last         *toolCall
-	started      bool
-	frame        string // system prompt; empty is legal (a driver built without one)
-	prompt       string
-	log          io.Writer
-	emit         func(task.Frame) // publish narration onto the task read plane; nil = log only
-	pendingSteer []chatMessage    // injected instructions, folded in before the next model turn
+	client   completer
+	tools    []toolDef
+	messages []chatMessage
+	pending  []toolCall
+	idx      int
+	last     *toolCall
+	started  bool
+	frame    string // system prompt; empty is legal (a driver built without one)
+	prompt   string
+	log      io.Writer
+	emit     func(task.Frame) // publish narration onto the task read plane; nil = log only
+	folding  []chatMessage    // messages waiting to land, folded in before the next model turn
 }
 
 func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
@@ -335,9 +335,9 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			}
 			d.messages = append(d.messages, chatMessage{Role: "user", Content: d.prompt})
 		}
-		if len(d.pendingSteer) > 0 { // re-prompt folds in here — pending drained, results already appended
-			d.messages = append(d.messages, d.pendingSteer...)
-			d.pendingSteer = nil
+		if len(d.folding) > 0 { // conversation lands here — tool calls drained, results already appended
+			d.messages = append(d.messages, d.folding...)
+			d.folding = nil
 		}
 		msg, finish, err := d.completeWithRetry(ctx)
 		if err != nil {
@@ -366,14 +366,16 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 	}
 }
 
-// Steer buffers injected instructions as user messages (implements
-// task.Steerable). They fold into the conversation at the next model turn,
-// after any in-flight tool calls and their results — so the message sequence
-// stays valid (never a user message between an assistant tool_calls and its
-// tool results).
-func (d *llmDriver) Steer(instructions []string) {
-	for _, m := range instructions {
-		d.pendingSteer = append(d.pendingSteer, chatMessage{Role: "user", Content: m})
+// Fold buffers messages as user turns (implements task.Conversation). They land at the next
+// model turn, after any in-flight tool calls and their results — so the message sequence stays
+// valid (never a user message between an assistant tool_calls and its tool results).
+//
+// Whose words these are is not this driver's business: an operator, a finished child, a
+// resolver, or the runtime asking for a repair all arrive here, and the read plane is where
+// they stay told apart.
+func (d *llmDriver) Fold(messages []string) {
+	for _, m := range messages {
+		d.folding = append(d.folding, chatMessage{Role: "user", Content: m})
 	}
 }
 

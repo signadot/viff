@@ -100,8 +100,8 @@ type commandDriver struct {
 	last    string // its last final message: this task's result
 	started bool
 
-	mu     sync.Mutex
-	steers []string
+	mu      sync.Mutex
+	folding []string // messages the loop handed over, for the next turn
 
 	emit func(task.Frame)
 }
@@ -170,22 +170,22 @@ func (d *commandDriver) turn(text string) task.ToolUse {
 	}
 }
 
-// Steer implements task.Steerable: the loop drains instructions at the boundary before Next, so
+// Fold implements task.Conversation: the loop drains messages at the boundary before Next, so
 // they land cooperatively — honoured at the next turn, never interrupting one in flight.
-func (d *commandDriver) Steer(instructions []string) {
+func (d *commandDriver) Fold(messages []string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.steers = append(d.steers, instructions...)
+	d.folding = append(d.folding, messages...)
 }
 
 func (d *commandDriver) drain() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if len(d.steers) == 0 {
+	if len(d.folding) == 0 {
 		return ""
 	}
-	s := strings.Join(d.steers, "\n")
-	d.steers = nil
+	s := strings.Join(d.folding, "\n")
+	d.folding = nil
 	return s
 }
 

@@ -21,7 +21,7 @@ func (d *callThenDone) Next(_ context.Context, _ StepResult) (ToolUse, bool, err
 	return ToolUse{}, false, nil
 }
 
-func (d *callThenDone) Steer(msgs []string) { d.folded = append(d.folded, msgs...) }
+func (d *callThenDone) Fold(msgs []string) { d.folded = append(d.folded, msgs...) }
 
 // A CallAgent spawns a detached child; the parent structurally joins it and folds
 // its completion back into the conversation before finishing.
