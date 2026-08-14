@@ -96,7 +96,8 @@ The five paths, and which is which:
 | protected-branch / ruleset rejection | the remote's rule refused it | same: a refusal by an authority outside verse is a DECISION, not a fault |
 | auth: bad or expired credential | infrastructure | the action errors; for a closing act the task fails, because work that did not leave did not succeed |
 | transient (5xx, DNS) | infrastructure | as above, after the client's own retry — nothing here adds one |
-| some repos pushed, others did not | needs a decision | see below |
+| some repos pushed, others did not | *cannot arise* | one action is one repository — see below |
+| cancelled while the push was in flight | unknowable | the record says `unknown`; the reflected ref says what happened |
 
 The first two want the loop's `Blocked` rather than `Err`. `StepResult.Blocked` exists to carry
 *"a gate/scope refusal so the driver can re-plan rather than treating it as an error"*, and a
@@ -110,15 +111,44 @@ The classifier lives with whoever ran git, which is the parent in this step and 
 step 4. Both have the git error; neither should be guessing from a string if the transport gives
 something better.
 
-**Partial success across repositories is the one with no obvious answer.** A workspace has several
-repos and `deliverFinisher` already builds one effect per destination. If one push lands and the
-next is refused, the task is neither done nor failed, and re-running it will re-push the first.
-This plan does not settle it, and says so rather than discovering it: the minimum is that the
-answer names which refs moved, so the record is true even when the outcome is mixed.
+**Partial success across repositories is dissolved rather than managed: ONE PUSH ACTION IS ONE
+REPOSITORY.** Today `deliverFinisher` builds a single action carrying one effect per tree, which
+is where a mixed outcome comes from. If the action names one repository and one destination, a
+multi-repo delivery is N actions, and "some landed and some were refused" stops being a new state
+— it is the loop's ordinary one, where each action has its own result and the driver re-plans
+from `prev`.
 
-**And a cancel mid-push is at-most-once that nobody can offer.** The loop tears down on cancel and
-the push may already have landed; a ff-only push of the same sha is at least idempotent, which is
-the only reason this is survivable rather than a correctness problem.
+It buys a second thing that is not about failure at all. One action with N effects gets ONE gate,
+evaluated at the most restrictive match across all of them, so a `main` push in one repository
+forces an ASK over the auto branches in the others. Split, a charter can gate per repository and
+per destination, which is what `GateMatch.Branches` and `Resources` were written to be able to
+say.
+
+*The knock-on, which is real and lands in the loop's contract.* `Finisher.Finish` returns one
+action, and `machine.go` latches `finished` when it is proposed — so a multi-repo delivery cannot
+be expressed after step 5, when delivery becomes an ordinary push. The shape that fits is **the
+finisher is consulted until it DECLINES**, once per quiescence, rather than consulted once. That
+is a restatement of contract property 4, not an abandonment of it: what the property is for is
+the latch that made a second delivery impossible ACROSS quiescences, and a reopened input still
+gets a fresh sequence. `contractWatch` currently flags a second `effFinish` in one quiescence and
+would need to count sequences rather than proposals. Worth doing in step 5, where it belongs,
+rather than smuggling into step 2.
+
+**A cancel racing a push cannot be resolved, and the record should stop implying it was.** Nothing
+here can offer at-most-once: the loop tears down while the push may already have landed, and no
+amount of ordering tells the person who cancelled which won. A ff-only push of the same sha is at
+least idempotent, so a re-run is safe; that is all the mechanism can give.
+
+What it can do is stop pretending. A cancelled push is `unknown`, not `not done`, and the record
+should say so — today a FAILED action during cancellation is not even narrated, because
+`executed()` exits without emitting its frame when it is already winding down, so the attempt
+leaves no trace at all.
+
+The reconciliation is then free, because **the remote is the authority and something already
+watches it**: `git:ref:<repo>/<name>` is reflected level-triggered, so whether the branch actually
+moved arrives on its own without anybody asking. The task record says the outcome is unknown; the
+ref says what happened; a charter that cares can compare them. That is a better answer than a
+protocol trying to be atomic across a boundary it does not control.
 
 ### 3. Say what containment is being relied on, and check it
 
