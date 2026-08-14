@@ -332,9 +332,19 @@ func (s *Call) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["input"] = ir.FromMap(mapNodes)
 	}
 
-	// Field: Fatal
-	if s.Fatal != "" {
-		irMap["fatal"] = ir.FromString(string(s.Fatal))
+	// Field: Fatal (optional)
+	if s.Fatal != nil {
+		if s.Fatal != nil {
+			var node *ir.Node
+			ns0 := make([]*ir.Node, len((*s.Fatal)))
+			for i0, e0 := range *s.Fatal {
+				var en0 *ir.Node
+				en0 = ir.FromString(string(e0))
+				ns0[i0] = en0
+			}
+			node = ir.FromSlice(ns0)
+			irMap["fatal"] = node
+		}
 	}
 
 	return ir.FromMap(irMap), nil
@@ -392,10 +402,26 @@ func (s *Call) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 		case "fatal":
 			// Field: Fatal
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "fatal", fieldNodeUnwrapped.Type)
+			if fieldNodeUnwrapped.Type != ir.NullType {
+				var d0 []string
+				if fieldNodeUnwrapped.Type == ir.ArrayType {
+					sl1 := make([]string, len(fieldNodeUnwrapped.Values))
+					for i1, v1 := range fieldNodeUnwrapped.Values {
+						var e1 string
+						var x2 string
+						if v1.Type != ir.StringType {
+							return fmt.Errorf("%s: expected string, got %v", fmt.Sprintf("%s: element %d", "field \"fatal\"", i1), v1.Type)
+						}
+						x2 = v1.String
+						e1 = string(x2)
+						sl1[i1] = e1
+					}
+					d0 = sl1
+				} else {
+					return fmt.Errorf("%s: expected array, got %v", "field \"fatal\"", fieldNodeUnwrapped.Type)
+				}
+				s.Fatal = &d0
 			}
-			s.Fatal = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Call", fieldName.String)

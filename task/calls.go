@@ -28,8 +28,7 @@ type Call struct {
 	Tool  string         `tony:"field=tool"`
 	Input map[string]any `tony:"field=input,omitzero"`
 
-	// Fatal names the outcomes of THIS call that end the list — `err`, `blocked`, `nonzero`,
-	// or `none` — comma-separated: `fatal: err`, `fatal: err,blocked`, `fatal: none`.
+	// Fatal names the outcomes of THIS call that end the list: `err`, `blocked`, `nonzero`.
 	//
 	// It is per call because the rule `scripted` inherits — an Err ends the run, a Blocked
 	// does not — is right for two reasons that do not always agree. A refusal is a decision
@@ -38,20 +37,20 @@ type Call struct {
 	// push that follows it must not happen. Both are call lists, and only the author knows
 	// which.
 	//
-	// Empty means ALL of them: a list is ordered because its calls depend on each other, so
-	// stopping is the safe read, and the caller that wants otherwise says `none`.
+	// A POINTER, because the field has three states and a plain slice has two:
 	//
-	// A STRING rather than a tony list, and the reason is failure modes rather than taste.
-	// The generated decoder fills a LIST field only when the node is an array and says nothing
-	// otherwise, so `fatal: none` — the spelling anybody would write — was silently ignored
-	// and the call got the default, which is its exact opposite. A STRING field refuses a
-	// wrong shape instead: `fatal: [err]` fails naming the field.
+	//	(absent)       all of them — a list is ordered because its calls depend on each
+	//	               other, so stopping is the safe read for a call that says nothing
+	//	fatal: []      none of them — this call ends nothing, whatever happens to it
+	//	fatal: [err]   these
 	//
-	// The empty case pushed the same way. With `omitzero` an empty list does not cross the
-	// wire at all; without it, nil and empty BOTH emit `[]`, so a call that said nothing comes
-	// back saying nothing is fatal. A pointer would carry the distinction — and would still
-	// swallow the scalar. `none` is a word for the same reason `err` is.
-	Fatal string `tony:"field=fatal,omitzero"`
+	// The empty case is a real thing to say — it is what a sweep says — and it is not the
+	// default, so the two must not collapse. A plain slice collapses them in whichever
+	// direction the tag picks: with `omitzero` an empty list never crosses the wire, and
+	// without it nil and empty both emit `[]`. Requires go-tony ≥ v0.0.131, where a pointer
+	// carries the distinction and a scalar written into it is an error rather than an
+	// invented empty.
+	Fatal *[]StepOutcome `tony:"field=fatal,omitzero"`
 }
 
 // DriverCalls is the driver name a spawn writes to get a call list. It is a `task` word rather
@@ -59,17 +58,14 @@ type Call struct {
 // spawn carrying `calls:` selects it without writing it, which only works if there is one name.
 const DriverCalls = "calls"
 
-// fatals is Fatal, split. Empty is empty: a call that named nothing gets the default, which
-// fatalFor reads as "all of them".
-func (c Call) fatals() []StepOutcome {
-	if strings.TrimSpace(c.Fatal) == "" {
-		return nil
+// Fatals is what a caller in Go writes for the field: `Fatals(FatalErr)` for one, `Fatals()`
+// for none, and a nil Fatal for the default. It exists so the three states are said in words
+// at a call site rather than by taking the address of a slice literal.
+func Fatals(os ...StepOutcome) *[]StepOutcome {
+	if os == nil {
+		os = []StepOutcome{}
 	}
-	var out []StepOutcome
-	for _, f := range strings.Split(c.Fatal, ",") {
-		out = append(out, StepOutcome(strings.TrimSpace(f)))
-	}
-	return out
+	return &os
 }
 
 // CheckCalls is what a call list has to satisfy before anything is built from it, and it is
@@ -88,16 +84,13 @@ func CheckCalls(cs []Call) error {
 		if strings.TrimSpace(c.Tool) == "" {
 			return fmt.Errorf("call %d of %d: no tool", i+1, len(cs))
 		}
-		fs := c.fatals()
-		for _, f := range fs {
+		if c.Fatal == nil {
+			continue
+		}
+		for _, f := range *c.Fatal {
 			if !f.valid() {
-				return fmt.Errorf("call %d of %d (%s): fatal %q is not one of %s, %s, %s, %s",
-					i+1, len(cs), c.Tool, f, FatalErr, FatalBlocked, FatalNonzero, FatalNone)
-			}
-			if f == FatalNone && len(fs) > 1 {
-				return fmt.Errorf("call %d of %d (%s): fatal %s must stand alone — "+
-					"a list of what ends this call cannot also say nothing does",
-					i+1, len(cs), c.Tool, FatalNone)
+				return fmt.Errorf("call %d of %d (%s): fatal %q is not one of %s, %s, %s",
+					i+1, len(cs), c.Tool, f, FatalErr, FatalBlocked, FatalNonzero)
 			}
 		}
 	}
@@ -114,11 +107,6 @@ const (
 	// FatalBlocked is StepResult.Blocked: it was refused, by a gate or by the executor
 	// itself (a runtime tool declining, which is what push.go's refusal already is).
 	FatalBlocked StepOutcome = "blocked"
-	// FatalNone is the empty declaration: NOTHING this call does ends the list. It is the
-	// sweep's word — ten refs to delete, and a remote declining one is not a reason to keep
-	// the other nine. It must stand alone, since a list of outcomes that includes "no
-	// outcomes" says two things.
-	FatalNone StepOutcome = "none"
 	// FatalNonzero is a command that ran and exited non-zero.
 	//
 	// It is a member of this vocabulary because THE TWO EXECUTORS ALREADY DISAGREE about a
@@ -134,7 +122,7 @@ const (
 
 func (o StepOutcome) valid() bool {
 	switch o {
-	case FatalErr, FatalBlocked, FatalNonzero, FatalNone:
+	case FatalErr, FatalBlocked, FatalNonzero:
 		return true
 	}
 	return false
@@ -158,15 +146,11 @@ func outcomes(r StepResult) []StepOutcome {
 
 // fatalFor reports the first outcome of r this call declared fatal.
 func (c Call) fatalFor(r StepResult) (StepOutcome, bool) {
-	fs := c.fatals()
-	if len(fs) == 1 && fs[0] == FatalNone {
-		return "", false
-	}
 	for _, o := range outcomes(r) {
-		if len(fs) == 0 { // absent: all of them
+		if c.Fatal == nil { // absent: all of them
 			return o, true
 		}
-		for _, f := range fs {
+		for _, f := range *c.Fatal {
 			if f == o {
 				return o, true
 			}
@@ -287,7 +271,7 @@ func driverName(l Launch) string {
 //	  input: {command: "git merge --ff-only origin/topic"}
 //	- tool: push
 //	  input: {destination: main}
-//	  fatal: err
+//	  fatal: [err]
 //
 // The whole source must be the document. Prose around a list is refused rather than scavenged,
 // because the failure mode of scavenging is a list that silently lost an entry.
@@ -345,12 +329,19 @@ func parseCall(e any) (Call, error) {
 		c.Input = im
 	}
 	if v, ok := m["fatal"]; ok {
-		f, ok := v.(string)
+		fs, ok := v.([]any)
 		if !ok {
-			return Call{}, fmt.Errorf("%s: fatal is a comma-separated word list "+
-				"(%s, %s, %s, %s), not a tony list", tool, FatalErr, FatalBlocked, FatalNonzero, FatalNone)
+			return Call{}, fmt.Errorf("%s: fatal is a list of %s, %s, %s (or [] for none)",
+				tool, FatalErr, FatalBlocked, FatalNonzero)
 		}
-		c.Fatal = f
+		// Non-nil even when empty: `fatal: []` is the statement that this call ends nothing,
+		// which is a different thing from not writing the field at all.
+		out := make([]StepOutcome, 0, len(fs))
+		for _, f := range fs {
+			s, _ := f.(string)
+			out = append(out, StepOutcome(s))
+		}
+		c.Fatal = &out
 	}
 	if err := CheckCalls([]Call{c}); err != nil {
 		// One call, so the "call 1 of 1" prefix says nothing; the rest is what went wrong.

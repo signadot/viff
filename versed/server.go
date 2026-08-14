@@ -456,7 +456,17 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 func callsOf(cs []launch.Call) ([]task.Call, error) {
 	out := make([]task.Call, 0, len(cs))
 	for _, c := range cs {
-		out = append(out, task.Call{Tool: c.Tool, Input: c.Input, Fatal: c.Fatal})
+		tc := task.Call{Tool: c.Tool, Input: c.Input}
+		// nil, empty and listed are three different statements — "anything ends this call",
+		// "nothing does", and "these do" — so the conversion preserves which it was.
+		if c.Fatal != nil {
+			fs := make([]task.StepOutcome, 0, len(*c.Fatal))
+			for _, f := range *c.Fatal {
+				fs = append(fs, task.StepOutcome(f))
+			}
+			tc.Fatal = &fs
+		}
+		out = append(out, tc)
 	}
 	if err := task.CheckCalls(out); err != nil {
 		return nil, err

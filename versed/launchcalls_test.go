@@ -13,7 +13,7 @@ import (
 func TestLaunchOfTypesACallList(t *testing.T) {
 	l, err := launchOf("merge-1", launch.Spec{Calls: []launch.Call{
 		{Tool: "run_bash", Input: map[string]any{"command": "git merge --ff-only x"}},
-		{Tool: "push", Input: map[string]any{"destination": "main"}, Fatal: "err"},
+		{Tool: "push", Input: map[string]any{"destination": "main"}, Fatal: &[]string{"err"}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -21,16 +21,16 @@ func TestLaunchOfTypesACallList(t *testing.T) {
 	if len(l.Calls) != 2 || l.Calls[0].Tool != "run_bash" {
 		t.Fatalf("calls did not reach the launch: %+v", l.Calls)
 	}
-	if l.Calls[1].Fatal != string(task.FatalErr) {
-		t.Errorf("fatal = %q", l.Calls[1].Fatal)
+	if l.Calls[1].Fatal == nil || (*l.Calls[1].Fatal)[0] != task.FatalErr {
+		t.Errorf("fatal = %v", l.Calls[1].Fatal)
 	}
 	// The field IS the driver: a charter writing a list need not also name one.
 	if l.Driver != task.DriverCalls {
 		t.Errorf("driver = %q, want %q — the calls select it", l.Driver, task.DriverCalls)
 	}
 	// And an absent fatal stays absent, because absent means "anything ends the list".
-	if l.Calls[0].Fatal != "" {
-		t.Errorf("an absent fatal became %q", l.Calls[0].Fatal)
+	if l.Calls[0].Fatal != nil {
+		t.Errorf("an absent fatal became %v", l.Calls[0].Fatal)
 	}
 }
 
@@ -44,10 +44,8 @@ func TestLaunchOfRefusals(t *testing.T) {
 		{"a contradicting driver", "cannot also be driver", launch.Spec{
 			Driver: "llm", Calls: []launch.Call{{Tool: "run_bash"}}}},
 		{"an outcome that is not one", "not one of", launch.Spec{
-			Calls: []launch.Call{{Tool: "push", Fatal: "sideways"}}}},
+			Calls: []launch.Call{{Tool: "push", Fatal: &[]string{"sideways"}}}}},
 
-		{"none alongside something else", "stand alone", launch.Spec{
-			Calls: []launch.Call{{Tool: "push", Fatal: "none,err"}}}},
 		{"a call with no tool", "no tool", launch.Spec{
 			Calls: []launch.Call{{Input: map[string]any{"command": "x"}}}}},
 	} {

@@ -89,18 +89,17 @@ An entry may say which of its outcomes end the list:
 ```tony
 - tool: push
   input: {destination: retire}
-  fatal: err          # a remote declining ONE ref is not a reason to stop
+  fatal: [err]        # a remote declining ONE ref is not a reason to stop
 ```
 
-out of `err` (the step failed), `blocked` (refused, by a gate or by the far side), `nonzero` (a
-command exited non-zero), and `none` (nothing ends the list). Absent means the first three — a
-list is ordered because its calls depend on each other — and `none` stands alone. Several are
-comma-separated, which tony wants quoted: `fatal: "err,blocked"`.
+out of `err` (the step failed), `blocked` (refused, by a gate or by the far side) and `nonzero`
+(a command exited non-zero). The field has three states, and the empty one is not the default:
 
-A word list in a string rather than a tony list, which is a decision about failure modes: a
-string field REFUSES a wrong shape (`fatal: [err]` fails naming the field), where a list field
-silently ignores a scalar — so `fatal: none`, the spelling anybody would write, would have meant
-its own opposite with nothing reported.
+| written | means |
+|---|---|
+| *(absent)* | all three end the list — a list is ordered because its calls depend on each other |
+| `fatal: []` | nothing ends it; the list runs to the end whatever happens to this call |
+| `fatal: [err]` | these |
 
 `scripted` is this driver with a one-command list built for it. Typed by hand,
 `verse task run --driver calls "$(cat merge.tony)"` reads the same document the charter grammar

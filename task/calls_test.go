@@ -55,7 +55,7 @@ func callsTask(t *testing.T, calls []Call, vec *Vector, reg Resolver, e Executor
 }
 
 // call is a one-line entry for the tests that only care about order.
-func call(tool, fatal string) Call { return Call{Tool: tool, Fatal: fatal} }
+func call(tool string, fatal *[]StepOutcome) Call { return Call{Tool: tool, Fatal: fatal} }
 
 // The list runs in the order it was written, and the task completes.
 func TestACallListRunsInOrder(t *testing.T) {
@@ -92,7 +92,7 @@ func TestACallListIsSupervisedPerAction(t *testing.T) {
 		mu.Unlock()
 		reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
 	})
-	p := callsTask(t, []Call{call("first", ""), call("second", ""), call("third", "")}, askOn("second"), reg, e)
+	p := callsTask(t, []Call{call("first", nil), call("second", nil), call("third", nil)}, askOn("second"), reg, e)
 
 	_, err := p.Run(context.Background())
 	if err == nil {
@@ -117,14 +117,13 @@ func TestACallListIsSupervisedPerAction(t *testing.T) {
 func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		fatal string
+		fatal *[]StepOutcome
 		want  []string
 	}{
-		{"absent means anything stops it", "", nil},
-		{"blocked is not fatal here", "err", []string{"second"}},
-		{"and it can be named explicitly", "err,blocked", nil},
-		{"and spacing is not a trap", "err, blocked", nil},
-		{"or waived entirely", "none", []string{"second"}},
+		{"absent means anything stops it", nil, nil},
+		{"blocked is not fatal here", Fatals(FatalErr), []string{"second"}},
+		{"and it can be named explicitly", Fatals(FatalErr, FatalBlocked), nil},
+		{"or waived entirely", Fatals(), []string{"second"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := &listExec{}
@@ -132,7 +131,7 @@ func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
 			reg.OnPost(func(pd Pending) {
 				reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
 			})
-			p := callsTask(t, []Call{call("first", tc.fatal), call("second", "")}, askOn("first"), reg, e)
+			p := callsTask(t, []Call{call("first", tc.fatal), call("second", nil)}, askOn("first"), reg, e)
 
 			_, err := p.Run(context.Background())
 			if !reflect.DeepEqual(e.ran(), tc.want) {
@@ -154,16 +153,16 @@ func TestFatalNarrowsWhatEndsTheList(t *testing.T) {
 func TestANonZeroExitCanEndTheList(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		fatal string
+		fatal *[]StepOutcome
 		want  []string
 	}{
-		{"absent means it stops", "", []string{"first"}},
-		{"named explicitly", "nonzero", []string{"first"}},
-		{"and a list can carry on regardless", "err", []string{"first", "second"}},
+		{"absent means it stops", nil, []string{"first"}},
+		{"named explicitly", Fatals(FatalNonzero), []string{"first"}},
+		{"and a list can carry on regardless", Fatals(FatalErr), []string{"first", "second"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := &listExec{exit: map[string]int{"first": 1}}
-			p := callsTask(t, []Call{call("first", tc.fatal), call("second", "")}, autoVec(), AutoResolver{}, e)
+			p := callsTask(t, []Call{call("first", tc.fatal), call("second", nil)}, autoVec(), AutoResolver{}, e)
 
 			_, err := p.Run(context.Background())
 			if !reflect.DeepEqual(e.ran(), tc.want) {
@@ -186,7 +185,7 @@ func TestANonZeroExitCanEndTheList(t *testing.T) {
 // An Err ends the list under the default, and says whose words those were.
 func TestAFailedCallEndsTheList(t *testing.T) {
 	e := &listExec{fail: map[string]string{"first": "no such remote"}}
-	p := callsTask(t, []Call{call("first", ""), call("second", "")}, autoVec(), AutoResolver{}, e)
+	p := callsTask(t, []Call{call("first", nil), call("second", nil)}, autoVec(), AutoResolver{}, e)
 
 	_, err := p.Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "no such remote") {
@@ -202,7 +201,7 @@ func TestAFailedCallEndsTheList(t *testing.T) {
 // downstream written against a promise nobody kept.
 func TestAnAnswerContractFailsTheSpawn(t *testing.T) {
 	e := &listExec{}
-	l := Launch{ID: "t", Calls: []Call{call("first", "")}, Vector: autoVec(), Answer: ir.FromString("verdict")}
+	l := Launch{ID: "t", Calls: []Call{call("first", nil)}, Vector: autoVec(), Answer: ir.FromString("verdict")}
 	p := NewCallsTask(l, AutoResolver{}, e)
 	p.SetLog(io.Discard)
 
@@ -220,7 +219,7 @@ func TestAnAnswerContractFailsTheSpawn(t *testing.T) {
 // a runtime without passing through a charter at all.
 func TestAnUncheckableListFailsTheSpawn(t *testing.T) {
 	e := &listExec{}
-	p := callsTask(t, []Call{call("first", "sideways")}, autoVec(), AutoResolver{}, e)
+	p := callsTask(t, []Call{call("first", Fatals("sideways"))}, autoVec(), AutoResolver{}, e)
 
 	_, err := p.Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "sideways") {
@@ -231,11 +230,13 @@ func TestAnUncheckableListFailsTheSpawn(t *testing.T) {
 	}
 }
 
-// `none` must stand alone: a list of what ends this call cannot also say nothing does.
-func TestFatalNoneMustStandAlone(t *testing.T) {
-	err := CheckCalls([]Call{call("first", "none,err")})
-	if err == nil || !strings.Contains(err.Error(), "stand alone") {
-		t.Fatalf("CheckCalls: %v", err)
+// The three states are three, and they stay three: absent is not empty.
+func TestFatalAbsentIsNotEmpty(t *testing.T) {
+	if c := (Call{Tool: "t"}); c.Fatal != nil {
+		t.Fatal("a call that said nothing has a non-nil Fatal")
+	}
+	if f := Fatals(); f == nil || len(*f) != 0 {
+		t.Fatalf("Fatals() = %v, want a pointer to an empty list", f)
 	}
 }
 
@@ -246,9 +247,9 @@ calls:
   input: {command: "git merge --ff-only origin/topic"}
 - tool: push
   input: {destination: main}
-  fatal: err
+  fatal: [err]
 - tool: note
-  fatal: none
+  fatal: []
 `)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -261,14 +262,15 @@ calls:
 	}
 	// Absent, narrowed, and emptied are three different statements, and the zero value has to
 	// keep them apart: nil means anything stops the list, and `fatal: []` means nothing does.
-	if calls[0].Fatal != "" {
-		t.Fatalf("an absent fatal parsed as %q", calls[0].Fatal)
+	if calls[0].Fatal != nil {
+		t.Fatalf("an absent fatal parsed as %v, want nil", calls[0].Fatal)
 	}
-	if calls[1].Fatal != "err" {
-		t.Fatalf("fatal = %q", calls[1].Fatal)
+	if !reflect.DeepEqual(calls[1].Fatal, Fatals(FatalErr)) {
+		t.Fatalf("fatal = %v", calls[1].Fatal)
 	}
-	if calls[2].Fatal != "none" {
-		t.Fatalf("`fatal: none` parsed as %q", calls[2].Fatal)
+	// `fatal: []` is a statement, and it is not the one an absent field makes.
+	if calls[2].Fatal == nil || len(*calls[2].Fatal) != 0 {
+		t.Fatalf("`fatal: []` parsed as %v, want a pointer to an empty list", calls[2].Fatal)
 	}
 }
 
@@ -279,10 +281,8 @@ func TestParseCallsRefusals(t *testing.T) {
 		{"empty list", "calls: []\n", `"calls:" is empty`},
 		{"no tool", "calls:\n- input: {a: b}\n", `no "tool:"`},
 		{"input is not a map", "calls:\n- tool: t\n  input: hello\n", "input must be a map"},
-		{"unknown outcome", "calls:\n- tool: t\n  fatal: sideways\n", "not one of err, blocked, nonzero, none"},
-		{"none alongside something", "calls:\n- tool: t\n  fatal: \"none,err\"\n", "stand alone"},
-		{"an unquoted comma, which tony refuses", "calls:\n- tool: t\n  fatal: err,blocked\n", "not a tony document"},
-		{"fatal as a tony list", "calls:\n- tool: t\n  fatal: [err]\n", "not a tony list"},
+		{"unknown outcome", "calls:\n- tool: t\n  fatal: [sideways]\n", "not one of err, blocked, nonzero"},
+		{"fatal as a bare word", "calls:\n- tool: t\n  fatal: err\n", "fatal is a list"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ParseCalls(tc.src)
