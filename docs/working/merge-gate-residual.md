@@ -24,8 +24,15 @@ and what is implemented is one op with no target, which is a button.
 
 So the change belongs to the pushing, not to this charter:
 [push-as-a-capability.md](push-as-a-capability.md). The environment declares destinations, the
-task names one and never a ref, the vector gates the resolved ref, and `ffOnly` becomes a
-property of `main` enforced in Go rather than a sentence the model is trusted to honour.
+task names one and never a ref, the vector gates the resolved ref, and approval is what MINTS a
+scoped credential — so the gate stays load-bearing without the parent having to understand every
+operation anyone will ever want.
+
+`--ff-only` does not move with it, and that is decided rather than left open: it stays an
+instruction in the prompt and becomes a rule at the receiving end
+(`receive.denyNonFastForwards`), because `where` scopes onto a credential and `how` does not
+scope at all. An invariant enforced by the receiver beats one enforced by the caller; the cost is
+that it lives outside verse and the docket cannot show it.
 
 Until that lands, rules 1 and 2 up to the gate are the drivable part — the derive, the stratum,
 the `!get-path`, the gate formula, and whether anybody answers a docket question. Those are also
@@ -86,9 +93,10 @@ and because with level-triggered gates the ordering stops mattering — delete t
 question goes.
 
 **A merge task is an LLM doing four git commands.** `driver: llm` for something mechanical is
-both unreliable and expensive. Subsumed by [push-as-a-capability.md](push-as-a-capability.md): if
-a merge is a destination the task asks for, there is nothing mechanical left for a model to get
-wrong, and `--ff-only` stops being a sentence it is trusted to honour.
+both unreliable and expensive, and a `commandDriver` running a script is the right shape — an
+entry under the runner's `agents:` config, which is a runner change rather than a charter one.
+It matters less than it looks now that `--ff-only` is enforced by the receiving end: a model
+that ignores the instruction gets its push refused rather than merging some other way.
 
 **`onFailed` conflates two runs.** Not this charter's, but found while reading the other one:
 comment-drift's `onFailed` clears `result` and leaves `reviewedSha`, so after a failed review the

@@ -30,9 +30,12 @@
 # the parent performs.
 #
 # The fix is not here. It is that the runner's one canned act should be a capability with
-# destinations — see push-as-a-capability.md, which is also where `--ff-only` stops being a
-# sentence in the prompt below and becomes a property of `main` enforced in Go. Rules 1 and 2 up
-# to the gate are unaffected and are what can be driven today.
+# destinations, where approval MINTS a scoped credential rather than triggering an operation the
+# parent performs — see push-as-a-capability.md. The `--ff-only` line in the prompt below stays a
+# prompt-level instruction on purpose, and is backed by `receive.denyNonFastForwards` at the
+# receiving end: `where` scopes onto a credential and `how` does not, so a model that ignores the
+# instruction gets refused rather than merging some other way. Rules 1 and 2 up to the gate are
+# unaffected and are what can be driven today.
 #
 # That decision buys two things worth noticing. The merge ATTEMPT is the staleness test — no
 # comparison operator is needed anywhere, because `git merge --ff-only` either works or does
