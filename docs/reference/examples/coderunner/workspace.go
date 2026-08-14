@@ -254,7 +254,21 @@ const autoBranchPrefix = "verse/auto/"
 // absent directory as "this code does not exist" rather than "I was short-changed".
 func (m *Mirrors) Open(ctx context.Context, id string, env Environment, worktrees string) (*Workspace, error) {
 	branch := autoBranchPrefix + safeSeg(id)
-	root := filepath.Join(worktrees, safeSeg(id))
+	// ABSOLUTE, and here rather than at the flag that supplied it, because this path CROSSES A
+	// PROCESS BOUNDARY into a different working directory. It travels to the task process in
+	// childConfig, and that process is started with its cwd set to the workspace itself — so a
+	// relative root resolves against the runner on this side and against the workspace on that
+	// one, and the two are not the same place.
+	//
+	// What it looks like is a child that exits immediately with `reopen verse in <path>:
+	// repository does not exist`, naming a path that is correct from where you are standing and
+	// wrong from where it ran. Found by starting the runner with `-data scratchpad/…`, which is
+	// the ordinary thing to type; every test passes a t.TempDir(), which is already absolute, so
+	// nothing here could have caught it.
+	root, err := filepath.Abs(filepath.Join(worktrees, safeSeg(id)))
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}

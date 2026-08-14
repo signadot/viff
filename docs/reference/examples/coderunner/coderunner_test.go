@@ -1075,3 +1075,46 @@ func TestThePtraceBarrierIsReadRatherThanAssumed(t *testing.T) {
 		}
 	}
 }
+
+// A workspace root is ABSOLUTE however the runner was told where to put it.
+//
+// It crosses a process boundary into a different working directory: the path travels to the task
+// process in childConfig, and that process is started with its cwd set to the workspace itself.
+// So a relative root resolves against the runner on one side and against the workspace on the
+// other, and the child dies with `repository does not exist` naming a path that is correct from
+// where you are reading it.
+//
+// Nothing here could have caught that, which is why the test says so: every other test passes a
+// `t.TempDir()`, and those are absolute already. It took starting the runner with
+// `-data scratchpad/…` — the ordinary thing to type — against a real verse.
+func TestAWorkspaceRootIsAbsoluteWhereverItWasToldToGo(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	env := Environment{Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}}}
+
+	// Relative, from a working directory that is not where the workspace will be read from.
+	rel, err := filepath.Rel(mustGetwd(t), t.TempDir())
+	if err != nil {
+		t.Skipf("no relative path from here to a temp dir: %v", err)
+	}
+	ws, err := m.Open(context.Background(), "p1", env, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(ws.Root) {
+		t.Fatalf("workspace root %q is relative — the task process reads it from somewhere else "+
+			"and will not find it", ws.Root)
+	}
+	if _, err := os.Stat(filepath.Join(ws.Root, "svc", "README")); err != nil {
+		t.Fatalf("the absolute root does not hold the checkout: %v", err)
+	}
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wd
+}
