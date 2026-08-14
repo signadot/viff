@@ -1,6 +1,8 @@
 # A push as a capability: implementation plan
 
-Status: plan, nothing built. The design is
+Status: STEPS 1, 2, 4, 5 AND 6 ARE BUILT; step 3 is deferred on the threat model below and its
+cheap half — the runner reading `ptrace_scope` and saying what it found — is done. Each step's
+commit says what moved and what it corrected in this file. The design is
 [push-as-a-capability.md](push-as-a-capability.md) — why one canned act is a button rather than a
 capability, and why the parent should hand out credentials instead of performing operations. The
 confinement half is [push-as-a-capability-residual.md](push-as-a-capability-residual.md). This

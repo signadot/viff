@@ -1,10 +1,14 @@
 # A push is a capability with destinations, not one canned act
 
-Status: proposal, nothing here runs. The order of work is
-[push-as-a-capability-plan.md](push-as-a-capability-plan.md); the confinement half is
-[push-as-a-capability-residual.md](push-as-a-capability-residual.md). Found while writing
-[merge-gate.tony](merge-gate.tony),
-whose rules cannot work as written — and the first fix reached for was wrong in a way worth
+Status: BUILT, except the confinement half. Steps 1, 2, 4, 5 and 6 of
+[push-as-a-capability-plan.md](push-as-a-capability-plan.md) have landed in the coding runner;
+step 3 is deferred on the threat model, with triggers, and
+[push-as-a-capability-residual.md](push-as-a-capability-residual.md) is the record of what that
+leaves resting on an assumption. This note stays because the argument is what a reader needs
+when they change the mechanism, and the plan stays because its step 3 is still owed.
+
+Found while writing [merge-gate.tony](merge-gate.tony),
+whose rules could not work as written — and the first fix reached for was wrong in a way worth
 recording, because it is the same mistake one layer out.
 
 ## What is there
@@ -212,13 +216,18 @@ doing whether or not this proposal ever lands.
   to use there.
 - the trailers stay the runner's to write.
 
-## Open, and worth settling before anyone builds it
+## Open, and not settled by building it
 
 - What a credential can actually be scoped to on the forge in use: per-repo is ordinary,
   per-ref-pattern is a repository ruleset rather than a token property, and rulesets apply to
-  everyone.
-- How short a TTL is workable. It bounds the window in which possession exceeds what was
-  approved, which is the whole residual risk of minting over parent-performs.
+  everyone. Built as though per-repo is the ceiling, which is the safe reading.
+- ~~How short a TTL is workable.~~ Moot: nothing is minted, so there is no TTL. What bounds
+  possession instead is that a released credential lives in one task process for the length of
+  one push, and the task process dies with the task.
+- **What a destination cannot express: a DELETE.** A destination resolves to a ref and a push
+  writes it, so retiring a branch — which [merge-gate.tony](merge-gate.tony)'s sweep needs — has
+  no spelling. It wants a destination that permits one, and `receive.denyDeletes` at the far end
+  is what would then have to be off for that ref pattern.
 
 ## What it unblocks
 
