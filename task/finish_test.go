@@ -36,9 +36,10 @@ func (r *recorder) Execute(_ context.Context, tu ToolUse) (StepResult, []ToolUse
 type finisher struct {
 	action  string
 	gotFrom string
-	ran     bool
+	ran     int
 	err     error
 	none    bool
+	onDo    func() // fires while the closing action is executing
 }
 
 func (f *finisher) Finish(result string) (ToolUse, bool) {
@@ -50,7 +51,10 @@ func (f *finisher) Finish(result string) (ToolUse, bool) {
 }
 
 func (f *finisher) Do(context.Context, ToolUse) (string, error) {
-	f.ran = true
+	f.ran++
+	if f.onDo != nil {
+		f.onDo()
+	}
 	return "delivered", f.err
 }
 
@@ -62,9 +66,8 @@ func TestFinisherRunsAfterTheDriverAndOnlyOnce(t *testing.T) {
 	d := &scripted{acts: []string{"a", "b"}, result: "the answer"}
 	f := &finisher{action: "deliver"}
 	rec := &recorder{}
-	drv, ex := WithFinisher(d, rec, f)
-
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), drv, ex)
+	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), d, rec)
+	p.SetFinisher(f)
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -73,8 +76,8 @@ func TestFinisherRunsAfterTheDriverAndOnlyOnce(t *testing.T) {
 	if strings.Join(rec.ran, ",") != "a,b" {
 		t.Errorf("actions reaching the driver's executor = %v, want [a b]", rec.ran)
 	}
-	if !f.ran {
-		t.Error("the closing action was proposed but never performed")
+	if f.ran != 1 {
+		t.Errorf("the closing action ran %d time(s), want exactly one", f.ran)
 	}
 	if f.gotFrom != "the answer" {
 		t.Errorf("the finisher saw result %q, not the driver's", f.gotFrom)
@@ -91,8 +94,8 @@ func TestFinisherRunsAfterTheDriverAndOnlyOnce(t *testing.T) {
 func TestFinisherMayDeclineToAct(t *testing.T) {
 	d := &scripted{acts: []string{"a"}}
 	rec := &recorder{}
-	drv, ex := WithFinisher(d, rec, &finisher{none: true})
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), drv, ex)
+	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), d, rec)
+	p.SetFinisher(&finisher{none: true})
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -106,8 +109,8 @@ func TestFinisherMayDeclineToAct(t *testing.T) {
 func TestAFailedClosingActFailsTheTask(t *testing.T) {
 	d := &scripted{acts: []string{"a"}}
 	f := &finisher{action: "deliver", err: errors.New("remote hung up")}
-	drv, ex := WithFinisher(d, &recorder{}, f)
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), drv, ex)
+	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), d, &recorder{})
+	p.SetFinisher(f)
 	out, err := p.Run(context.Background())
 	if err == nil {
 		t.Fatal("a failed delivery completed the task")
@@ -124,7 +127,6 @@ func TestAFailedClosingActFailsTheTask(t *testing.T) {
 func TestTheClosingActIsGated(t *testing.T) {
 	d := &scripted{acts: []string{"a"}}
 	f := &finisher{action: "deliver"}
-	drv, ex := WithFinisher(d, &recorder{}, f)
 	// Deny anything carrying a push effect.
 	vec := &Vector{Default: Auto, Gates: []Gate{
 		{Name: "delivery", Mode: Ask, Match: GateMatch{Verbs: []Verb{Push}}},
@@ -132,7 +134,8 @@ func TestTheClosingActIsGated(t *testing.T) {
 	reg := NewRegistry()
 	asked := make(chan Pending, 4)
 	reg.OnPost(func(pd Pending) { asked <- pd })
-	p := NewTask("t", NewSupervisor(vec, reg), drv, ex)
+	p := NewTask("t", NewSupervisor(vec, reg), d, &recorder{})
+	p.SetFinisher(f)
 	go func() {
 		pd := <-asked
 		reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
@@ -146,63 +149,80 @@ func TestTheClosingActIsGated(t *testing.T) {
 	if len(asked) != 0 {
 		t.Fatal("more questions than the one closing act")
 	}
-	if f.ran {
+	if f.ran != 0 {
 		t.Error("the closing act ran despite being denied — the gate is decoration")
 	}
 	// And the same task with the gate answering yes DOES deliver, so the test above is about the
 	// answer and not about the plumbing.
 	d2 := &scripted{acts: []string{"a"}}
 	f2 := &finisher{action: "deliver"}
-	drv2, ex2 := WithFinisher(d2, &recorder{}, f2)
 	reg2 := NewRegistry()
 	reg2.OnPost(func(pd Pending) { reg2.Answer(pd.Question.ID, Resolution{Proceed: true, By: "human:test"}) })
-	p2 := NewTask("t2", NewSupervisor(vec, reg2), drv2, ex2)
+	p2 := NewTask("t2", NewSupervisor(vec, reg2), d2, &recorder{})
+	p2.SetFinisher(f2)
 	if _, err := p2.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !f2.ran {
+	if f2.ran != 1 {
 		t.Error("an approved closing act did not run")
 	}
 }
 
-// The wrapper claims exactly the optional capabilities the inner driver had.
+// Delivery is per QUIESCENCE, not once ever — which is what the wrapper this replaced could
+// not do, and the reason it could not is the whole argument for moving the decision into the
+// loop.
 //
-// The loop TYPE-ASSERTS for Steerable and Resulter. A wrapper that always claimed them would
-// swallow steers for a driver that cannot take them; one that never claimed them would break
-// steering and empty every task's result. Both are silent.
-func TestTheWrapperKeepsTheDriversCapabilitiesAndInventsNone(t *testing.T) {
-	full := &scripted{result: "r"}
-	drv, _ := WithFinisher(full, &recorder{}, &finisher{action: "deliver"})
-	s, ok := drv.(Steerable)
-	if !ok {
-		t.Fatal("a steerable driver became unsteerable when wrapped")
+// `finishDriver` needed a `posted` latch, because it saw one boolean (`!more`) and had to
+// remember whether it had already acted on it. A latch is a fact about the past, and the
+// question is about the present: an operator who says something after a delivery has REOPENED
+// the input, so there is new work, so it must be delivered too. The wrapper made that
+// impossible; here it is a consequence of the state rather than a flag, so it needs no code of
+// its own to be true.
+func TestDeliveryIsPerQuiescence(t *testing.T) {
+	d := &reopened{}
+	f := &finisher{action: "deliver"}
+	rec := &recorder{}
+	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), d, rec)
+	p.SetFinisher(f)
+	// Said while the FIRST delivery is in flight, so it lands at the boundary after it — the
+	// exact shape the latch made unreachable.
+	f.onDo = func() {
+		if f.ran == 1 {
+			p.Steer("one more thing", "human:test")
+		}
 	}
-	s.Steer([]string{"go left"})
-	if len(full.steers) != 1 {
-		t.Error("the steer did not reach the driver it was for")
+	if _, err := p.Run(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
 	}
-	r, ok := drv.(Resulter)
-	if !ok || r.Result() != "r" {
-		t.Error("the wrapped driver does not report the inner driver's result")
+	if strings.Join(rec.ran, ",") != "a,b" {
+		t.Errorf("the driver's actions = %v, want [a b] — the run did not reopen", rec.ran)
 	}
-
-	// And a driver with neither must not appear to have them: the loop logs a warning when a
-	// steer reaches a driver that cannot take one, and that warning is the only sign.
-	bare := &bareDriver{}
-	drv2, _ := WithFinisher(bare, &recorder{}, &finisher{action: "deliver"})
-	if _, ok := drv2.(Steerable); ok {
-		t.Error("wrapping invented Steerable, so steers now vanish silently")
-	}
-	if _, ok := drv2.(Resulter); ok {
-		t.Error("wrapping invented Resulter, so Result() reports an empty string as an answer")
+	if f.ran != 2 {
+		t.Errorf("delivered %d time(s), want 2: the work that followed the say was never delivered", f.ran)
 	}
 }
 
-type bareDriver struct{}
+// reopened does one action and stops; told something, it does one more and stops again.
+type reopened struct {
+	said bool
+	acts int
+}
 
-func (bareDriver) Next(context.Context, StepResult) (ToolUse, bool, error) {
+func (d *reopened) Next(context.Context, StepResult) (ToolUse, bool, error) {
+	switch {
+	case d.acts == 0:
+		d.acts++
+		return ToolUse{Name: "a"}, true, nil
+	case d.said:
+		d.said = false
+		d.acts++
+		return ToolUse{Name: "b"}, true, nil
+	}
 	return ToolUse{}, false, nil
 }
+
+func (d *reopened) Steer([]string) { d.said = true }
+func (d *reopened) Result() string { return "the answer" }
 
 // `no-delegate` means what it says: the whole envelope minus delegation.
 //

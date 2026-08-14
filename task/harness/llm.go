@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/task"
 )
 
@@ -282,12 +281,6 @@ type llmDriver struct {
 	log          io.Writer
 	emit         func(task.Frame) // publish narration onto the task read plane; nil = log only
 	pendingSteer []chatMessage    // injected instructions, folded in before the next model turn
-
-	// contract is what this spawn declared its answer must be; nil = no contract, and the
-	// loop ends wherever the model stops, as it always did. repairs counts the re-asks
-	// already spent, so the budget is per-run rather than per-failure.
-	contract *answer.Contract
-	repairs  int
 }
 
 func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
@@ -349,23 +342,15 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			}
 		}
 		if finish != "tool_calls" || len(msg.ToolCalls) == 0 {
-			// The model has stopped talking, which is the only way it can stop. Whether
-			// that also means it has FINISHED is the question a contract answers: if this
-			// spawn declared what its answer must be, the run is not done until the final
-			// message satisfies it.
-			if repair, err := d.checkAnswer(); err != nil {
-				return task.ToolUse{}, false, err
-			} else if repair != "" {
-				// A repair is fed back like any other diagnosis the loop hands the model
-				// — appended here rather than through Steer, because Steer is the channel
-				// a PERSON injects on and the two must stay distinguishable on the read
-				// plane. The loop continues into another model turn.
-				d.messages = append(d.messages, chatMessage{Role: "user", Content: repair})
-				fmt.Fprintf(d.log, "\n📐 answer contract not satisfied; asking for a repair (%d/%d)\n",
-					d.repairs, d.contract.Repairs())
-				continue
-			}
-			return task.ToolUse{}, false, nil // model is done
+			// The model has stopped talking, which is the only way it can stop, and that is
+			// ALL this reports. Whether the TASK is finished is a different question, and it
+			// is not the driver's: with a child still working, "the model stopped" means "it
+			// is waiting". The answer contract used to be checked right here, which is why it
+			// could certify a draft written while a child was still editing the tree it
+			// described. The loop now asks when the input has actually gone quiet
+			// (task.AnswerCheck), and a repair comes back through the same channel every
+			// other message into this conversation does.
+			return task.ToolUse{}, false, nil
 		}
 		d.pending = msg.ToolCalls
 		d.idx = 0
@@ -399,43 +384,6 @@ func toToolUse(tc toolCall) task.ToolUse {
 		}
 	}
 	return tu
-}
-
-// checkAnswer validates the answer this run is about to return against the spawn's
-// contract. It returns the repair to send back (retry), or an error (the run fails), or
-// neither (the answer is good, or there is no contract).
-//
-// It validates Result() rather than the message just received, deliberately: Result() is
-// what gets published as the task's `result` and parsed into `data`, and validating
-// anything else would certify a document nobody downstream will ever see. (They differ when
-// a model's last turn is empty — then the answer on offer is the previous message.)
-//
-// The error path is what makes the contract worth having. A run that cannot produce its
-// declared shape FAILS, and failure is a branch every rule already declares (`onFailed`),
-// where "the charter could not deref the result" is a hook error nobody is watching, raised
-// after the work is done and the tokens are spent.
-func (d *llmDriver) checkAnswer() (string, error) {
-	if d.contract == nil {
-		return "", nil
-	}
-	_, err := d.contract.Check(d.Result())
-	if err == nil {
-		return "", nil
-	}
-	var f *answer.Failure
-	if !errors.As(err, &f) {
-		// Not something the model can fix — the contract itself is unusable. Failing on
-		// the spot is right: retrying would spend the budget on the spawn's own bug.
-		return "", err
-	}
-	if d.repairs >= d.contract.Repairs() {
-		// Bounded on purpose. If the model cannot produce the shape with the specific
-		// complaint in front of it, more turns will not teach it, and an unconvincible
-		// model failing loudly is the honest end.
-		return "", fmt.Errorf("answer contract not satisfied after %d repair attempt(s): %w", d.repairs, err)
-	}
-	d.repairs++
-	return f.Repair(d.contract, failTool), nil
 }
 
 // Result implements task.Resulter — the driver's final assistant message,

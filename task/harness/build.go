@@ -170,7 +170,7 @@ type Config struct {
 	// It is a Config field rather than something the caller wraps afterwards because Build
 	// returns a finished Task and exposes neither driver nor executor — so there was nothing to
 	// compose onto, and a runner that wanted its delivery gated had to reimplement the harness
-	// to get one. See task.WithFinisher for what it buys.
+	// to get one. See task.Finisher for what it buys.
 	//
 	// The agent is not told about it. It is not a tool, it is not in the frame, and it is
 	// proposed after the driver has stopped.
@@ -238,18 +238,20 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 	}
 
 	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Prompt,
-		log: cfg.Log, contract: contract}
+		log: cfg.Log}
 	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
-	// The runtime's closing act, if it has one. Composed here rather than left to the caller
-	// because the pieces are unexported: everything below wires this driver and this executor
-	// into one task, and a caller reaching in to add a step would have to rebuild all of it.
-	var d task.Driver = driver
-	var x task.Executor = ex
-	if cfg.Finish != nil {
-		d, x = task.WithFinisher(driver, ex, cfg.Finish)
-	}
-	p := task.NewTask(cfg.ID, sup, d, x)
+	p := task.NewTask(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
+	// The two things that decide when a task is OVER, installed on the loop rather than
+	// wrapped around the driver. Both used to sit inside the driver, where the only thing
+	// visible was "the model stopped talking" — which with a child outstanding means the
+	// opposite of finished. See task.Finisher and task.AnswerCheck.
+	if cfg.Finish != nil {
+		p.SetFinisher(cfg.Finish)
+	}
+	if contract != nil {
+		p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: failTool})
+	}
 	driver.emit = p.Emit // narration onto this task's read plane
 
 	var kid int

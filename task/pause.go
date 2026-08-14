@@ -73,18 +73,30 @@ func (g *pauseGate) hold(ctx context.Context) error {
 
 // Pause holds this task and its whole subtree at their next boundaries — a
 // subtree operation. Applied effects stay applied; the cursor just stops between
-// actions. Cancel outranks pause; steer buffers until resume. Idempotent.
+// actions. Cancel outranks pause; a say buffers until resume. Idempotent.
+//
+// The gate is the SUBTREE mechanism and the input is the INTERVENTION: the chain is what lets
+// a descendant observe an ancestor's pause at its own boundary, and the input is what lets the
+// machine treat this as an operator act — which it is, and which is why it withdraws a
+// question standing at a gate. The task is about to be suspended, so a question about an
+// action it will not reach is better withdrawn than left standing across the hold.
 func (p *Task) Pause() error {
 	p.pauseGate.pause()
 	p.logf("⏸ pause (subtree)")
 	p.emit(Frame{Kind: EvStatus, Text: "paused"})
+	p.post(inPause{})
 	return nil
 }
 
 // Resume lifts this task's pause; descendants held only by this gate proceed.
+//
+// It is posted as an input for symmetry and for the read plane, and the machine deliberately
+// does nothing with it — see machine.go's inResume, which is the one place this design's
+// precedence rule is not followed and says why.
 func (p *Task) Resume() error {
 	p.pauseGate.unpause()
 	p.logf("▶ resume (subtree)")
 	p.emit(Frame{Kind: EvStatus, Text: "resumed"})
+	p.post(inResume{})
 	return nil
 }

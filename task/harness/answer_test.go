@@ -27,15 +27,29 @@ func stop(content string) scriptedTurn {
 	return scriptedTurn{msg: chatMessage{Role: "assistant", Content: content}, finish: "stop"}
 }
 
+// runWithContract drives a REAL task over a scripted model, because that is now where the
+// check lives. It used to be a driver call: `d.Next(...)` returned the whole repair loop,
+// because the check ran inside the driver, on the model stopping. Its verdict was therefore
+// about a MOMENT rather than about the answer that stands — the bug it was moved out to fix —
+// so these tests go through the loop, which is what actually asks it now.
+func runWithContract(t *testing.T, c *answer.Contract, turns ...scriptedTurn) (*fakeCompleter, task.Outcome, error) {
+	t.Helper()
+	fake := &fakeCompleter{turns: turns}
+	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard}
+	p := task.NewTask("t", task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{}), d, &fsExec{root: t.TempDir()})
+	if c != nil {
+		p.SetAnswerCheck(&answer.Checker{C: c, FailHint: failTool})
+	}
+	out, err := p.Run(context.Background())
+	return fake, out, err
+}
+
 // An answer that satisfies the contract ends the run where it always did: one model turn,
 // no repair, nothing said back.
 func TestContractSatisfiedEndsTheRun(t *testing.T) {
-	fake := &fakeCompleter{turns: []scriptedTurn{stop(`{class: bug, severity: high}`)}}
-	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard, contract: contract(t)}
-
-	_, more, err := d.Next(context.Background(), task.StepResult{})
-	if err != nil || more {
-		t.Fatalf("more=%v err=%v, want done with no error", more, err)
+	fake, out, err := runWithContract(t, contract(t), stop(`{class: bug, severity: high}`))
+	if err != nil || out.Reason != string(task.Done) {
+		t.Fatalf("reason=%q err=%v, want done with no error", out.Reason, err)
 	}
 	if fake.i != 1 {
 		t.Fatalf("%d model calls, want 1", fake.i)
@@ -45,15 +59,11 @@ func TestContractSatisfiedEndsTheRun(t *testing.T) {
 // The failure this exists for: an agent that narrates instead of answering. It is told what
 // is wrong, it fixes it, and the run completes — the charter downstream never sees the prose.
 func TestNarrationIsRepairedIntoAnAnswer(t *testing.T) {
-	fake := &fakeCompleter{turns: []scriptedTurn{
+	fake, out, err := runWithContract(t, contract(t),
 		stop("I read the handler and both callers. It's a nil deref, and I'd call it high severity."),
-		stop("{class: bug, severity: high}"),
-	}}
-	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard, contract: contract(t)}
-
-	_, more, err := d.Next(context.Background(), task.StepResult{})
-	if err != nil || more {
-		t.Fatalf("more=%v err=%v, want done with no error", more, err)
+		stop("{class: bug, severity: high}"))
+	if err != nil || out.Reason != string(task.Done) {
+		t.Fatalf("reason=%q err=%v, want done with no error", out.Reason, err)
 	}
 	if fake.i != 2 {
 		t.Fatalf("%d model calls, want 2 (one repair)", fake.i)
@@ -70,21 +80,19 @@ func TestNarrationIsRepairedIntoAnAnswer(t *testing.T) {
 			t.Errorf("repair message missing %q:\n%s", want, last.Content)
 		}
 	}
-	if got := d.Result(); got != "{class: bug, severity: high}" {
-		t.Errorf("Result() = %q, want the repaired answer", got)
+	if got := fake.result(); got != "{class: bug, severity: high}" {
+		t.Errorf("the answer that stands = %q, want the repaired one", got)
 	}
 }
 
 // A wrong answer is repaired against the specific field that was wrong — the thing a bare
 // "does not match" cannot say.
 func TestWrongValueIsNamedInTheRepair(t *testing.T) {
-	fake := &fakeCompleter{turns: []scriptedTurn{
+	fake, _, err := runWithContract(t, contract(t),
 		stop("{class: catastrophe, severity: high}"),
-		stop("{class: bug, severity: high}"),
-	}}
-	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard, contract: contract(t)}
-	if _, _, err := d.Next(context.Background(), task.StepResult{}); err != nil {
-		t.Fatalf("Next: %v", err)
+		stop("{class: bug, severity: high}"))
+	if err != nil {
+		t.Fatalf("run: %v", err)
 	}
 	sent := fake.seen[1]
 	repair := sent[len(sent)-1].Content
@@ -98,19 +106,15 @@ func TestWrongValueIsNamedInTheRepair(t *testing.T) {
 // the error. (A fourth call would run off the end of the script and panic the test, which is
 // the assertion that the loop does not spin.)
 func TestUnrepairableAnswerFailsTheRun(t *testing.T) {
-	fake := &fakeCompleter{turns: []scriptedTurn{
+	fake, out, err := runWithContract(t, contract(t),
 		stop("still thinking out loud"),
 		stop("nope, prose again"),
-		stop("and once more"),
-	}}
-	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard, contract: contract(t)}
-
-	_, more, err := d.Next(context.Background(), task.StepResult{})
+		stop("and once more"))
 	if err == nil {
 		t.Fatal("run completed with an answer that never satisfied its contract")
 	}
-	if more {
-		t.Error("more=true after a terminal contract failure")
+	if out.Reason != string(task.Failed) {
+		t.Errorf("reason %q, want failed", out.Reason)
 	}
 	if fake.i != 3 {
 		t.Fatalf("%d model calls, want 3 (initial + %d repairs)", fake.i, answer.DefaultRepairs)
@@ -123,10 +127,9 @@ func TestUnrepairableAnswerFailsTheRun(t *testing.T) {
 // No contract, no check: a spawn that declares nothing keeps the old behaviour exactly,
 // including the freedom to answer in prose.
 func TestNoContractLeavesTheLoopAlone(t *testing.T) {
-	fake := &fakeCompleter{turns: []scriptedTurn{stop("I had a look and it seems fine.")}}
-	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard}
-	if _, more, err := d.Next(context.Background(), task.StepResult{}); err != nil || more {
-		t.Fatalf("more=%v err=%v", more, err)
+	fake, out, err := runWithContract(t, nil, stop("I had a look and it seems fine."))
+	if err != nil || out.Reason != string(task.Done) {
+		t.Fatalf("reason=%q err=%v", out.Reason, err)
 	}
 	if fake.i != 1 {
 		t.Fatalf("%d model calls, want 1", fake.i)

@@ -1,8 +1,14 @@
 # The loop as one machine: implementation plan
 
-Status: plan, nothing built. The design is [the-llm-loop.md](the-llm-loop.md) — what runs today,
-the contract, the precedence policy, and the argument that it must not hang. This file is the
-order of work.
+Status: **steps 1–8 built and landed; step 9 (the staging drive) is not done.** The design is
+[the-llm-loop.md](the-llm-loop.md) — what runs today, the contract, the precedence policy, and
+the argument that it must not hang. This file is the order of work, and below it is what the
+work found.
+
+Part one of the design — "what runs today" — describes the loop as it was BEFORE this landed
+and is now a record of the thing that was replaced, not of the code. It is left standing
+because the second half argues against the first, and deleting the first would leave an
+argument without its subject.
 
 The change in one line: **the loop becomes an explicit machine over a stream of inputs, and the
 two things that decide when a task is over stop being driver wrappers.**
@@ -136,9 +142,67 @@ up a behaviour a charter could depend on, in which case `contract` and a notice.
 
 ### 9. Drive it
 
-One comment-drift review on staging with a real fan-out, start to finish: boundary count against
-the twenty-five that were mostly sleeping, delivery firing once after the children folded, and
-the answer on the record being the one written last.
+**Not done.** One comment-drift review on staging with a real fan-out, start to finish: boundary
+count against the twenty-five that were mostly sleeping, delivery firing once after the children
+folded, and the answer on the record being the one written last.
+
+What stands in for it so far is the LOCAL end-to-end smoke (`./smoke.sh`, 44 checks), which
+exercises the surfaces this change rewrote — `task run`, `task say`, `task vector`, `task
+cancel`, gate ask/answer, and the connect/validate flow that spawns tasks per file — against a
+real server with a real store. That establishes the stack agrees with itself; it does not
+establish anything about a model in the loop, a real fan-out, or the boundary count, which is
+the whole point of the drive and is still owed.
+
+## What building it found
+
+Four things the plan did not know, recorded here rather than only in the code, because three of
+them are corrections to what this file asserted.
+
+**A reply needs an identity, not just a phase.** The machine waits on one blocking effect at a
+time, so "which wait am I in" looked like a single field. It is not: a WITHDRAWN gate's call is
+still running and still going to answer, and by the time it does the machine can be at a gate
+again about a different action. Matching the reply on phase alone folded that stale answer as
+this action's — an operator's say turned into a cancelled task, reproducibly. Every blocking
+effect now carries a token and only its own reply counts (`state.tok`). The enumeration models
+the abandoned call answering anyway and asserts it changes nothing, which is what makes this a
+property rather than a fix.
+
+**Resume does not withdraw a standing question, and the design says it should.** Step 5's
+policy lists all four interventions as preempting a gate. Three of them change what the task
+does next; a resume, in the only situation where it can meet a standing question, does not — a
+question can only be pending if the task was NOT held, so there is no hold to lift. Withdrawing
+one would destroy a question for nothing, which an operator can do by double-clicking resume.
+The implemented rule is the design's own justification rather than its enumeration: *an
+intervention withdraws a standing question when it changes what the task does next.*
+[the-llm-loop.md](the-llm-loop.md#precedence-decided) is wrong on that line and should be
+edited to match, or this should be changed back.
+
+**A gate's `Steer` must not reach the agent when the action is the CLOSING one.** A resolver
+refusing a delivery with a note ("not this branch") had that note folded into the agent's
+conversation — about an action the agent was never told about. It reopened a run that had
+nothing left to do, and for the coderunner's command driver, which cannot resume, it FAILED the
+task. Caught by that runner's existing test. Such a note now goes on the read plane, attributed,
+where the person who wrote it is talking to the people watching.
+
+**A panicking seam is a wait that can never be discharged.** Step 2 covers the child; running
+the seams off the Run goroutine (which is what lets an intervention preempt a gate) made the same
+hole at every other seam, since the machine is parked on a reply only that call can produce. A
+panic in the driver, the resolver or the executor is now that seam's failure rather than the
+process's death.
+
+**A boundary costs about eight times what it did, and that is left alone.** ~6.4µs against
+~0.8µs (`BenchmarkBoundary`), and a CPU profile says it is goroutine scheduling rather than
+`step`: the shell hands blocking seams off to goroutines, which is what lets an intervention
+preempt a standing question. Getting it back means running the driver and executor inline again,
+which reintroduces the ordering this change exists to fix — an operator's say arriving while an
+action runs must be folded BEFORE the reply that ends the turn is acted on, or a run that has
+just been given new work delivers without it. Against a boundary whose cheapest realistic
+content is a millisecond of executor, microseconds of handoff are not worth that. The benchmark
+is there to be watched, not beaten.
+
+Two things the plan predicted and got right: the enumeration is cheap enough to run every time
+(~2,300 transitions, milliseconds), and it does catch what it claims — removing the token guard,
+the child-outstanding check, or the quiescence reset each fails it.
 
 ## Verification, and what each part cannot show
 

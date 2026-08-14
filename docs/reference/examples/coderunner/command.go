@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 	"sync"
 
-	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/task"
 )
 
@@ -91,8 +89,11 @@ type commandDriver struct {
 	conf   Confiner
 	dir    string
 
-	contract *answer.Contract
-	repairs  int
+	// contractSrc is the shape the answer must have, for the OPENING turn only — the check
+	// itself is the loop's (task.AnswerCheck). Stated up front for the reason harness.Build
+	// states it: meeting the check for the first time as a rejection wastes a repair attempt
+	// learning what it could have been told at the start.
+	contractSrc string
 
 	session string // what the program called this conversation, for Resume
 	last    string // its last final message: this task's result
@@ -126,18 +127,12 @@ func (d *commandDriver) Next(_ context.Context, prev task.StepResult) (task.Tool
 		}
 		return d.turn(text), true, nil
 	}
-	// A steer that arrived during the turn is the next turn, and it comes before the contract
-	// check: an instruction from outside is new authorization and outranks a shape complaint
-	// the program has not seen yet.
+	// A steer that arrived during the turn is the next turn. A contract repair is one too —
+	// it arrives here the same way, because the loop hands both in through Steer — and the
+	// precedence between them is the loop's (machine.go: an instruction from outside is new
+	// authorization and outranks a shape complaint the program has not seen yet).
 	if s := d.drain(); s != "" {
-		return again(s, "a steer arrived")
-	}
-	repair, err := d.checkAnswer()
-	if err != nil {
-		return task.ToolUse{}, false, err
-	}
-	if repair != "" {
-		return again(repair, "the answer did not satisfy the contract")
+		return again(s, "there is more to say to the program")
 	}
 	return task.ToolUse{}, false, nil
 }
@@ -151,11 +146,8 @@ func (d *commandDriver) opening() string {
 		b.WriteString(d.frame)
 		b.WriteString("\n\n")
 	}
-	if d.contract != nil {
-		// Stated up front for the reason harness.Build states it: meeting the check for the
-		// first time as a rejection wastes a repair attempt learning what it could have been
-		// told at the start.
-		fmt.Fprintf(&b, "ANSWER CONTRACT. Your final message must satisfy:\n%s\n\n", d.contract.Source())
+	if d.contractSrc != "" {
+		fmt.Fprintf(&b, "ANSWER CONTRACT. Your final message must satisfy:\n%s\n\n", d.contractSrc)
 	}
 	b.WriteString(d.prompt)
 	return b.String()
@@ -199,33 +191,6 @@ func (d *commandDriver) drain() string {
 // Result implements task.Resulter: the program's last output is this task's result, which is
 // what a completed task's `result` carries and what a charter's `$result` derefs.
 func (d *commandDriver) Result() string { return d.last }
-
-// checkAnswer is harness.llmDriver.checkAnswer against a different back end, and the reasoning
-// transfers whole: a run that cannot produce its declared shape FAILS, because failure is a
-// branch every rule already declares, where "the charter could not deref the result" is a hook
-// error nobody is watching, raised after the work is done.
-func (d *commandDriver) checkAnswer() (string, error) {
-	if d.contract == nil {
-		return "", nil
-	}
-	if _, err := d.contract.Check(d.last); err == nil {
-		return "", nil
-	} else {
-		var f *answer.Failure
-		if !errors.As(err, &f) {
-			return "", err // the contract itself is unusable; retrying spends budget on a bug
-		}
-		if d.repairs >= d.contract.Repairs() {
-			return "", fmt.Errorf("answer contract not satisfied after %d repair attempt(s): %w",
-				d.repairs, err)
-		}
-		d.repairs++
-		// "fail" is the harness's give-up tool and this driver has none, so the repair text
-		// names it and the program simply will not have it. Saying so plainly beats offering
-		// a tool that does not exist.
-		return f.Repair(d.contract, "saying you cannot"), nil
-	}
-}
 
 // commandExec runs one turn. It is THE subprocess path of this runner: where containment is
 // applied and where the environment is BUILT rather than inherited.

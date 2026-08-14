@@ -281,7 +281,14 @@ goroutine merging its inputs — so the merge policy is a choice, and these are 
 **An intervention outranks everything; a policy change waits its turn.** The operator's inputs
 split on that line, and only the first half preempts:
 
-- **cancel, pause, resume and say interrupt a pending gate.** The question is abandoned. It can
+- **cancel, pause, resume and say interrupt a pending gate.** *Corrected in building it: RESUME
+  does not, and the code is the corrected version. A question can only be pending if the task
+  was not held, so a resume that meets one has no hold to lift and redirects nothing —
+  withdrawing it would destroy a question for nothing, which an operator can do by clicking
+  resume twice. The rule the code implements is this bullet's own justification rather than its
+  list: an intervention withdraws a standing question when it changes what the task does next.
+  See [loop-plan.md](loop-plan.md#what-building-it-found) and `machine.go`'s `inResume`.*
+  The question is abandoned. It can
   therefore DISAPPEAR without being answered, and whoever was asked learns that only by watching
   it go — accepted deliberately for now, with gates to be extended later so the transition is
   smoother than a vanishing. The justification is that all four are about this run: a cancel

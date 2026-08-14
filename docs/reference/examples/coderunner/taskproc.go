@@ -310,18 +310,23 @@ func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Enviro
 		// The point is already built, around this whole process. hostConfiner here sets the
 		// working directory and claims nothing, which is exactly right one level in.
 		point: hostProvides, conf: hostConfiner{},
-		dir: dir, contract: contract,
+		dir: dir,
 	}
-	// The same composition the harness does for the llm driver, applied here by hand because
-	// this driver is this program's own: whatever the agent did, the runner's delivery is the
-	// last action of the task and is gated like one.
-	var drv task.Driver = d
-	var ex task.Executor = &commandExec{d: d}
-	if fin != nil {
-		drv, ex = task.WithFinisher(drv, ex, fin)
+	if contract != nil {
+		d.contractSrc = contract.Source()
 	}
-	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), drv, ex)
+	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, &commandExec{d: d})
 	t.SetLog(os.Stderr)
+	// Whatever the agent did, the runner's delivery is the last action of the task and is
+	// gated like one — installed on the loop, the same way the harness does it for the llm
+	// driver. The answer contract rides the same seam: "fail" is the harness's give-up tool
+	// and this driver has none, so the repair names the thing this program can actually do.
+	if fin != nil {
+		t.SetFinisher(fin)
+	}
+	if contract != nil {
+		t.SetAnswerCheck(&answer.Checker{C: contract, FailHint: "saying you cannot"})
+	}
 	d.emit = t.Emit
 	return t, nil
 }

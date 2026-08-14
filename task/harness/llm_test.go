@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/task"
@@ -28,6 +29,17 @@ func (f *fakeCompleter) complete(_ context.Context, msgs []chatMessage, _ []tool
 	t := f.turns[f.i]
 	f.i++
 	return t.msg, t.finish, nil
+}
+
+// result is the last assistant message the script produced — the answer that stands, which
+// is what the loop hands the contract and what a completed task publishes.
+func (f *fakeCompleter) result() string {
+	for i := f.i - 1; i >= 0; i-- {
+		if c := strings.TrimSpace(f.turns[i].msg.Content); c != "" {
+			return c
+		}
+	}
+	return ""
 }
 
 func mkTC(id, name string) toolCall {

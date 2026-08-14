@@ -2,12 +2,12 @@ package task
 
 import "context"
 
-// A Finisher is the RUNTIME's own closing act — something the runtime does with the work once the
-// driver is done, composed onto the END of the loop rather than run after it.
+// A Finisher is the RUNTIME's own closing act — something the runtime does with the work once
+// the driver is done, composed onto the END of the loop rather than run after it.
 //
-// The case it exists for is a coding runner's push. The task edits a checkout, the runner delivers
-// it, and doing that after the loop returns costs three things at once, none of which is about
-// git:
+// The case it exists for is a coding runner's push. The task edits a checkout, the runner
+// delivers it, and doing that after the loop returns costs three things at once, none of which
+// is about git:
 //
 //   - it is UNGATED. The vector never sees it, so `GateMatch.OnPush` and `RepoContext.PushTarget`
 //     — fields that exist precisely to let a charter say "ask before anything touches a release
@@ -25,6 +25,20 @@ import "context"
 //
 // What it is NOT is a way to make the driver do something. The driver has finished; this is the
 // runtime's act, proposed on its own behalf, and the agent is never told about it.
+//
+// HOW IT IS CONSULTED, and why that changed. This used to be a DRIVER WRAPPER: `WithFinisher`
+// returned a driver that impersonated the real one, watched for `!more`, and injected the
+// closing action as though the agent had asked for it. The goal was right and survives; the
+// mechanism inverted the direction of knowledge. A wrapper sees one boolean, the loop holds the
+// whole pending list, and `!more` with a child outstanding means "I am waiting" — so the
+// wrapper delivered a half-written tree, and then needed a `posted` latch to avoid delivering
+// twice, and that latch made a SECOND delivery impossible even when an operator reopened the
+// run with something new to do.
+//
+// So the loop consults it directly, at the point where the input would go quiet, and runs what
+// it proposes through the same authority → gate → execute path. Every property the wrapper
+// existed to get, and no latch: being asked once per quiescence is a consequence of the state
+// rather than a flag. See SetFinisher and machine.go's quiesce.
 type Finisher interface {
 	// Finish returns the closing action, or false for none — an environment with nowhere to
 	// deliver has nothing to propose, and proposing a no-op action would put a gate in front of
@@ -34,116 +48,4 @@ type Finisher interface {
 	// error FAILS the task: a run whose work did not leave is not a run that succeeded, and the
 	// whole point of moving this inside the loop is that the failure stops being a log line.
 	Do(ctx context.Context, tu ToolUse) (string, error)
-}
-
-// WithFinisher composes f onto a driver and executor, returning the pair to hand to NewTask.
-//
-// The returned Driver implements exactly the optional capabilities the original did — Steerable,
-// Resulter, or neither. That is fiddlier than embedding and it is the point: the loop TYPE-ASSERTS
-// for both, so a wrapper that always claimed them would silently swallow steers for a driver that
-// cannot take them, and one that never claimed them would break steering and make every task's
-// result empty.
-func WithFinisher(d Driver, x Executor, f Finisher) (Driver, Executor) {
-	st := &finishState{fin: f, inner: d}
-	fd := &finishDriver{inner: d, st: st}
-	return withCapabilities(fd, d), &finishExec{inner: x, st: st}
-}
-
-// finishState is what the wrapped driver and the wrapped executor both need to know: whether the
-// closing action has been proposed and under what name, so the executor can tell it apart from a
-// tool of the driver's own. One task's loop is one goroutine, so this needs no lock.
-type finishState struct {
-	fin     Finisher
-	inner   Driver
-	name    string
-	pending bool
-}
-
-type finishDriver struct {
-	inner  Driver
-	st     *finishState
-	done   bool // the inner driver has finished
-	posted bool
-}
-
-func (d *finishDriver) Next(ctx context.Context, prev StepResult) (ToolUse, bool, error) {
-	if d.posted {
-		// The closing action was the last thing this task does, so the run ends here whatever
-		// came back — but HOW it ends is the difference between a lost push and a reported one.
-		//
-		// The loop hands an executor's error back as prev.Err and lets the driver decide, which
-		// is right for a driver that can re-plan and wrong for the end of the task: a run that
-		// swallowed it would report `done` for work that never left. So the error is returned,
-		// which fails the task.
-		//
-		// A refusal is not that. `Blocked` means a supervisor said no, and being told not to
-		// deliver is a decision the task complied with rather than a failure of it. The read
-		// plane already carries the denial, and the workspace is what preserves the work.
-		if prev.Err != nil {
-			return ToolUse{}, false, prev.Err
-		}
-		return ToolUse{}, false, nil
-	}
-	if !d.done {
-		tu, more, err := d.inner.Next(ctx, prev)
-		if err != nil || more {
-			return tu, more, err
-		}
-		d.done = true
-	}
-	var result string
-	if r, ok := d.inner.(Resulter); ok {
-		result = r.Result()
-	}
-	tu, ok := d.st.fin.Finish(result)
-	if !ok {
-		return ToolUse{}, false, nil
-	}
-	d.posted = true
-	d.st.name, d.st.pending = tu.Name, true
-	return tu, true, nil
-}
-
-type finishExec struct {
-	inner Executor
-	st    *finishState
-}
-
-func (x *finishExec) Execute(ctx context.Context, tu ToolUse) (StepResult, []ToolUse, error) {
-	if !x.st.pending || tu.Name != x.st.name {
-		return x.inner.Execute(ctx, tu)
-	}
-	x.st.pending = false
-	out, err := x.st.fin.Do(ctx, tu)
-	if err != nil {
-		return StepResult{Use: tu, Output: out}, nil, err
-	}
-	return StepResult{Use: tu, Output: out}, nil, nil
-}
-
-// withCapabilities re-exposes the optional Driver interfaces the inner driver had. The embedded
-// interface values are the INNER driver's, so a steer reaches the conversation it was meant for
-// and Result stays the driver's final message rather than the finisher's output.
-func withCapabilities(fd *finishDriver, inner Driver) Driver {
-	steer, canSteer := inner.(Steerable)
-	res, hasResult := inner.(Resulter)
-	switch {
-	case canSteer && hasResult:
-		return struct {
-			*finishDriver
-			Steerable
-			Resulter
-		}{fd, steer, res}
-	case canSteer:
-		return struct {
-			*finishDriver
-			Steerable
-		}{fd, steer}
-	case hasResult:
-		return struct {
-			*finishDriver
-			Resulter
-		}{fd, res}
-	}
-	return fd
 }
