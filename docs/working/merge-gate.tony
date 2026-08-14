@@ -1,0 +1,236 @@
+# verse-dev drive: an agent's branch is a PROPOSAL, and somebody decides it.
+#
+# PLACEMENT: this belongs beside comment-drift.tony on the `use/verse-dev` branch, which is
+# where a drive's charters live and what `origin` carries them for. It is here on main only
+# because that is the branch it was written on, and putting it under `docs/working/verse-dev/`
+# would create a directory that means one thing here and another there. Move it, do not copy.
+#
+# The coding runner delivers to `verse/auto/<task>` (coderunner/workspace.go: that prefix is
+# chosen so a developer who pulls and finds a commit nobody wrote can tell which system made it
+# from the first two segments). Today those branches accumulate and nothing consumes them —
+# three on this repository, all abandoned. This is the other half: the branch becomes a fact,
+# the fact carries a gate, and a yes merges it.
+#
+# TWO STRATA AND FOUR RULES, and the shape is borrowed wholesale from comment-drift.tony, which
+# paid for it. `reflected` is that charter's — install it first, or move this into it; a second
+# `verse stratum add reflected` is refused, which is the ordering saying the two share a floor.
+#
+# WHAT DECIDES THE DESIGN is staleness. A `verse/auto/*` branch is cut from whatever main was
+# when its task started, so by the time anybody answers, main may have moved — and then
+# `--ff-only` fails and something has to resolve a conflict nobody watched. The decision here is
+# to REFUSE rather than resolve, and it is cheap precisely because the review that produced the
+# branch is idempotent by construction: findings are facts, the ledger remembers, and a second
+# pass reads its own memory and looks at what changed. Re-running a review costs a minute;
+# rebasing an agent's work costs a second agent action and a second gate.
+#
+# That decision buys two things worth noticing. The merge ATTEMPT is the staleness test — no
+# comparison operator is needed anywhere, because `git merge --ff-only` either works or does
+# not, and rule 2's `onFailed` is what "it went stale under us" means. And the sweep below needs
+# no clock: a branch's mergeability changes exactly when main moves, and main moving is already
+# an event this verse reflects. A periodic check would be asking a question whose answer only
+# changes on an edge we already have.
+
+# Ours: one entity per delivered branch, and one for the sweep. Strictly above `reflected`,
+# because that is the only direction a derive may go.
+- name: merge
+  level: 10
+  match:
+    system: merge
+---
+# 1. A delivered branch becomes a proposal, with the tip it was cut against RECORDED.
+#
+# `base` is the whole design. `!get-path` copies and does not track — read once, at the commit
+# that caused the firing — which is exactly what is wanted here and would be a defect anywhere
+# else: it freezes what main was when this branch appeared, so the proposal carries its own
+# answer to "could this still fast-forward" without anything having to watch.
+#
+# It spawns nothing, so it needs no latch: a derive's address is a function of (rule, subject),
+# so a re-fire writes the same bytes to the same address and the store ends it as a no-op. A
+# force-push to the branch moves `sha`, re-fires this, and re-reads `base` — which is right, a
+# redelivered branch is a new proposal.
+- name: proposal-appeared
+  stratum: reflected
+  condition:
+    subject:
+      system: git
+      kind: ref
+      value:
+        name: !glob "verse/auto/*"
+  action:
+    derive:
+      merge:
+        proposal:
+          repo: $subject.value.repo
+          branch: $subject.value.name
+          sha: $subject.value.sha
+          base: !get-path { system: git, kind: head, id: verse, path: sha }
+          state: open
+---
+# 2. …and somebody decides it.
+#
+# The gate carries a formula rather than waiting on a person indefinitely, and that is not
+# ceremony: a question whose only discharge is somebody choosing to look is the wait
+# `task/contract.go` property 5 forbids one level down, and it does not become acceptable by
+# moving up a layer. `!until [!quorum 1, !deadline "24h"]` is the tutorial's documented shape and
+# it defaults to DENY when the clock runs out, which is the safe direction for the one action in
+# this repository with a consequence nobody can quietly undo.
+#
+# (A contract notice wants the INVERSE — carry on the clock, an objection interrupts — which is
+# verse-dev step 2's open question. A merge is the case the documented form was written for, so
+# it gets it, and the two genuinely differ rather than one being a bug.)
+#
+# `onDenied` is required by what a deny does: a refused firing writes nothing, so without this
+# the subject is left in the exact state that asked, and the next commit re-poses the same
+# question to somebody who already answered it.
+#
+# The task's own vector is `auto`. The decision has been made HERE, by a person, about the thing
+# that matters; making the task re-ask per action would be asking the same question twice in two
+# vocabularies.
+- name: merge-proposal
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value:
+        state: open
+  gates:
+  - name: merge-to-main
+    mode: ask
+    formula: !until [ !quorum 1, !deadline "24h" ]
+    onDenied:
+      patch:
+        state: declined
+  action:
+    spawn:
+      runner: runners:pool:code
+      environment: verse-fix
+      driver: llm
+      grant: no-delegate
+      vector: auto
+      prompt: |
+        In ./verse, merge the branch $branch into main and push it, and do nothing else.
+
+            git -C verse fetch origin
+            git -C verse checkout main
+            git -C verse merge --ff-only origin/$branch
+            git -C verse push origin main
+
+        `--ff-only` is not optional and must not be worked around. If it refuses, main has moved
+        since this branch was cut and the branch is STALE: do not rebase it, do not merge it any
+        other way, and do not resolve a conflict. Say you could not do it and why — a stale
+        proposal is withdrawn and re-proposed by the review that made it, which remembers what
+        it found and will look again at whatever main now says.
+
+        Answer with a JSON document and nothing else:
+
+            {"merged": true, "branch": "$branch", "sha": "<the sha now on main>"}
+      answer:
+        merged: !irtype true
+        branch: !irtype "verse/auto/example"
+        sha: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
+    onDone:
+      patch:
+        state: merged
+        mergedSha: $data.sha
+        err: !delete null
+    # A merge that could not fast-forward IS the staleness test, and this is the only place it
+    # is decided. The sweep below removes the branch; nothing here rebases anything.
+    onFailed:
+      patch:
+        state: stale
+        err: $err
+    onCancelled:
+      patch:
+        state: open
+        err: !delete null
+---
+# 3. Main moved, so every open proposal's answer to "can this still land" may have changed.
+#
+# This is the "periodic" check, and it is level-triggered instead — because the thing it would
+# poll for changes on an edge this verse already has. Width one: `git:head:verse` is ONE entity
+# carrying main's tip, which is the lesson comment-drift.tony's wall TWO paid for with 131
+# firings timing out inside the store.
+#
+# It spawns nothing, so it needs no latch, and `swept: pending` re-arms itself: a derive merges,
+# so writing it puts the fact back in rule 4's selection every time the sha moves.
+- name: sweep-armed
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+      merge:
+        sweep:
+          sha: $subject.value.sha
+          swept: pending
+          deleted: !delete null
+          err: !delete null
+---
+# 4. …and the branches that can no longer land are deleted.
+#
+# Ungated, deliberately, and it is the one call here worth arguing with. Deleting a
+# `verse/auto/*` branch destroys nothing that cannot be remade: the work was proposed by a review
+# that is idempotent by construction, and a branch that cannot fast-forward is a proposal about a
+# main that no longer exists. Against that, a gate on every stale branch fills the docket with
+# questions whose only honest answer is yes, and a docket nobody can keep up with is one nobody
+# reads — which is the failure the whole gate mechanism is for.
+#
+# What it must NOT do is delete a branch whose proposal is still open with a question standing on
+# it. It cannot see that today; see merge-gate-residual.md, which is the shape of the ask.
+- name: sweep
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: sweep
+      value:
+        swept: pending
+  action:
+    spawn:
+      runner: runners:pool:code
+      environment: verse-fix
+      driver: llm
+      grant: no-delegate
+      vector: auto
+      prompt: |
+        In ./verse, retire the delivered branches that can no longer land.
+
+            git -C verse fetch origin --prune
+
+        For each remote branch under `verse/auto/`:
+
+            git -C verse merge-base --is-ancestor origin/main <branch>
+
+        A branch where that SUCCEEDS is still mergeable — main is an ancestor of it — so leave it
+        alone. A branch where it FAILS cannot fast-forward onto main any more: main has moved
+        past the point it was cut from, or it has already been merged. Both mean the same thing
+        here, and both mean the branch is done:
+
+            git -C verse push origin --delete <branch>
+
+        Delete nothing outside `verse/auto/`. Do not merge, rebase or force-push anything.
+
+        Answer with a JSON document and nothing else, listing what you removed — `[]` when
+        every delivered branch can still land, which is the ordinary answer:
+
+            {"deleted": ["verse/auto/some-task"], "kept": ["verse/auto/another"]}
+      # `!irtype` reads only the TYPE of what it is written with, so a list-of-string exemplar
+      # is how a list of strings is stated. NOT `!all !irtype "…"` — `!all` constrains every
+      # element against a PATTERN and does not distribute over a scalar tag, so that spelling
+      # parses, installs, and then rejects every well-formed answer with "expected !irtype
+      # verse/auto/x, found [verse/auto/x]". Checked against answer.ParseSource before landing,
+      # because a contract defect fails the FIRING after the work is done — one completed review
+      # was lost that way (comment-drift.tony's note on `!all`).
+      answer:
+        deleted: !irtype ["verse/auto/some-task"]
+        kept: !irtype ["verse/auto/another"]
+    onDone:
+      patch:
+        swept: done
+        deleted: $data.deleted
+        err: !delete null
+    onFailed:
+      patch:
+        swept: failed
+        err: $err
