@@ -515,7 +515,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	// hold up a task that has nothing to do with it.
 	go func() {
 		for _, repo := range env.Repos {
-			r.reflect(context.Background(), repo)
+			r.reflect(context.Background(), env, repo)
 		}
 	}()
 	if err != nil {
@@ -566,7 +566,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	// The delivery channel is served for as long as the task process lives: it is how the task's
 	// own closing action reaches the credential this side holds.
 	go r.serveDeliver(c, l, c.svc)
-	go r.supervise(c, l)
+	go r.supervise(c, l, env)
 }
 
 // supervise watches one child to its end, records the last word about it, delivers what it
@@ -576,7 +576,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 // things: the stream carries the terminal status the task reached, and the process exiting says
 // only that it is gone. Both end this loop — a stream that closes because its peer died leaves
 // `terminal` false, which is precisely the case that needs a synthesized failure.
-func (r *Runner) supervise(c *child, l task.Launch) {
+func (r *Runner) supervise(c *child, l task.Launch, env Environment) {
 	h := c.rt.Attach(c.id)
 	frames, cancel := h.Subscribe()
 	var terminal task.Status
@@ -623,7 +623,13 @@ func (r *Runner) supervise(c *child, l task.Launch) {
 	// This covers three endings that used to be one ugly rule: a gate that refused the push, a
 	// task that failed before reaching its delivery step, and a process that died. In all three
 	// the runner has work and nobody said it could leave.
-	if !asked || (c.ws.Deliverable() && len(d.Pushed) == 0) {
+	//
+	// `asked` is now the whole test, and what it means has moved with the credential. It used to
+	// mean "this side pushed something"; it means "this side authorized something and staged it
+	// on the way", which is the strongest thing a process that no longer performs the push can
+	// truthfully assert. Whether it LANDED is the remote's to say — the pending ref settles
+	// itself on the next sweep, below.
+	if !asked || (c.ws.Deliverable() && len(d.Pushed)+len(d.Staged) == 0) {
 		held := c.ws.Salvage(ctx, l)
 		for _, ref := range held.Staged {
 			fmt.Fprintf(r.log, "coderunner: %s: the work did not leave; it is in this runner's "+
@@ -652,6 +658,15 @@ func (r *Runner) supervise(c *child, l task.Launch) {
 		if err := c.ws.Remove(ctx); err != nil {
 			fmt.Fprintf(r.log, "coderunner: %s: remove workspace: %v\n", c.id, err)
 		}
+	}
+	// And settle whatever this task was authorized to push. The task did the pushing, so this
+	// side does not know what became of it — the sweep asks the remote, which is the authority:
+	// a ref that landed is already-up-to-date and goes, one that did not is retried, and one the
+	// remote refuses moves to `held` so it is not retried forever (stage.go). Here rather than
+	// only on the next spawn, so `GET /runner` stops listing work the world already has within
+	// seconds of a task ending rather than whenever somebody next uses this repository.
+	for _, repo := range env.Repos {
+		r.reflect(ctx, env, repo)
 	}
 }
 

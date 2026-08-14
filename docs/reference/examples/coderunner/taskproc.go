@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/codec"
@@ -34,13 +35,22 @@ import (
 //   - control (cancel, pause, steer, resolve a gate, rebind a vector) and the read plane (SSE)
 //     are the same routes verse calls on the parent, so gating and narration survive the hop
 //     unchanged — they were never in-process, they were always a protocol.
-//   - the credential this runner pushes with does NOT cross it. Delivery stays in the parent,
-//     which is what makes "the task cannot reach the token" a property of the process boundary
-//     rather than of an env-var allowlist.
 //   - what the TASK needs — the model key for the `llm` driver — does cross, on stdin below,
 //     because a real coding agent needs secrets plumbed to it and pretending otherwise just
 //     moves the problem. What bounds a secret once it is inside is `network.egress: restricted`,
 //     which no confiner here builds yet: see docs/working/coding-runner-residual.md.
+//   - a PUSH CREDENTIAL crosses it too, and only ever after a gate said yes. It used to be that
+//     delivery stayed in the parent and this file said the token never came here, which was true
+//     and was buying less than it looked: the parent then had to implement every git operation
+//     anybody wanted through a channel that was supposed to be a capability, so the op count
+//     stayed at one while the operation count grew behind it. Now the parent releases a
+//     credential for a destination the vector approved and this side runs the git.
+//
+//     The line that matters is not this process boundary, it is `buildEnv`: the allowlist that
+//     decides what a task's SUBPROCESSES inherit. A credential here reaches `coderunner -task`,
+//     which is trusted Go, and never reaches the shell the model drives — the same terms the
+//     model key has always been on. The invariant is "no secret reaches the MODEL", which is the
+//     thing whose output is published to a read plane, an entity store and a commit body.
 //
 // The config arrives on STDIN rather than as a file or an environment. A file would have to be
 // bind-mounted into the sandbox, where the task could read it; an environment variable is
@@ -110,9 +120,9 @@ func runTaskProcess() error {
 	if err := codec.Unmarshal(blob, &cc, codec.Tony); err != nil {
 		return fmt.Errorf("-task: the config on stdin does not parse: %w", err)
 	}
-	// The checkout is the parent's work — it holds the mirrors and the credential. This side
-	// opens what is already there, which is also why its Trees carry no auth: nothing on this
-	// side of the boundary can reach a remote.
+	// The checkout is the parent's work — it holds the mirrors. This side opens what is already
+	// there, and its Trees carry NO auth: a credential arrives per operation, with the approval
+	// that released it, and is used where it arrived.
 	ws, err := Reopen(cc.Workspace, cc.Environment, cc.Branch, cc.Bases)
 	if err != nil {
 		return fmt.Errorf("-task: %w", err)
@@ -139,7 +149,7 @@ func runTaskProcess() error {
 	// this process is asking makes no difference to the runner holding it.
 	if conn, err := net.FileConn(os.NewFile(deliverFD, "deliver")); err == nil {
 		p.fin = &deliverFinisher{ws: ws, conn: conn}
-		if t, ok := pushTool(ws, conn); ok {
+		if t, ok := pushTool(p, conn); ok {
 			p.extra = append(p.extra, t)
 		}
 	}
@@ -227,6 +237,20 @@ type taskProc struct {
 	ws    *Workspace
 	fin   task.Finisher  // the runner's closing act: deliver (deliver.go)
 	extra []harness.Tool // what this runner adds to the agent's vocabulary: push (deliver.go)
+
+	// mu guards launched, which build writes and the push tool reads. One process is one task,
+	// so this is a handover rather than sharing — but the tool is built before any launch
+	// exists, and the provenance in the launch is what a commit's trailers carry.
+	mu       sync.Mutex
+	launched task.Launch
+}
+
+// launch is what this process was asked to do, for the trailers on anything it commits. Empty
+// until build has run, which is before any tool can be called.
+func (p *taskProc) launch() task.Launch {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.launched
 }
 
 // build is the taskd Builder on this side of the hop — the driver dispatch that used to happen
@@ -238,6 +262,13 @@ type taskProc struct {
 // own. That is why hostConfiner appears below — at this depth it means "just set the working
 // directory", which is now the honest whole of it.
 func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
+	// Kept for what a push commits with: the provenance trailers are the only externally
+	// checkable link back into the verse from a push made under a shared credential, and they
+	// are written on THIS side now that this side does the committing.
+	p.mu.Lock()
+	p.launched = l
+	p.mu.Unlock()
+
 	// The workspace layout is the runner's convention, so the runner describes it. It rides the
 	// PROMPT rather than the frame because harness.Build derives a default frame from the tools
 	// and vector when a spawn writes none, and setting one here would silently replace advice

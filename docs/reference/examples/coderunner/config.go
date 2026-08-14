@@ -136,6 +136,11 @@ type Environment struct {
 	// defaults. A profile this runner cannot build refuses the launch rather than running
 	// the work less contained than the environment said.
 	Isolation string `tony:"field=isolation,omitzero"`
+	// Credentials are the secrets a destination here may release, by name. They are NOT in
+	// `env:` and must never be: that list is the allowlist a task's subprocesses inherit, which
+	// is to say what the MODEL can read, and the whole arrangement is that a credential reaches
+	// the task process and not the shell it drives.
+	Credentials []Credential `tony:"field=credentials,omitzero"`
 }
 
 // Repo is one repository in a workspace.
@@ -184,6 +189,28 @@ type Destination struct {
 	// work started from — the same expansion `push:` has always had, and see Tree.PushTarget
 	// for why $sha is in it.
 	Ref string `tony:"field=ref"`
+	// Credential is the name of one this environment declares, and it is what APPROVAL
+	// RELEASES: the gate saying yes is what puts the secret in the task process, and nothing
+	// else does. Empty falls back to the runner's own `-token-env` token, which is what every
+	// environment used when the parent did the pushing.
+	//
+	// A PAT scopes per repository and not per ref, so `auto` and `main` in one repository
+	// cannot be told apart by the credential. That is not a hole to plug here: it is what the
+	// forge's own rules are for, and duplicating them would give two places to configure one
+	// invariant and two places for them to disagree.
+	Credential string `tony:"field=credential,omitzero"`
+}
+
+// Credential is a secret this environment can release to a task, named by the ENVIRONMENT
+// VARIABLE it is read from rather than by its value — the same choice the model key and the git
+// token already make, so a config file that is read, copied and committed carries no secret.
+//
+// Nothing here creates one. These are hand-made PATs, and a system that can mint credentials is
+// a system whose compromise mints credentials; see docs/working/push-as-a-capability.md, which
+// argues that as a design rather than as a placeholder.
+type Credential struct {
+	Name string `tony:"field=name"`
+	Env  string `tony:"field=env"`
 }
 
 // Dests is this repository's destinations, with `push:` read as the one named `auto`.
@@ -262,6 +289,9 @@ func LoadConfig(path string) (*Config, error) {
 				return nil, fmt.Errorf("coderunner: environment %q: %w", e.Name, err)
 			}
 		}
+		if err := checkCreds(e); err != nil {
+			return nil, err
+		}
 		dirs := map[string]bool{}
 		for j, r := range e.Repos {
 			switch {
@@ -280,7 +310,7 @@ func LoadConfig(path string) (*Config, error) {
 				return nil, fmt.Errorf("coderunner: environment %q, repo %q has no base — which "+
 					"ref work starts from is not a thing to guess", e.Name, r.Name)
 			}
-			if err := checkDests(e.Name, r); err != nil {
+			if err := checkDests(e.Name, e.Credentials, r); err != nil {
 				return nil, err
 			}
 			dirs[r.Name] = true
@@ -309,7 +339,7 @@ func LoadConfig(path string) (*Config, error) {
 // A destination is asked for BY NAME, so a name that is missing, doubled or attached to no ref
 // is a request that resolves to nothing at the moment a task tries to deliver — which is the
 // worst place to find out, because by then the work exists and the run is over.
-func checkDests(env string, r Repo) error {
+func checkDests(env string, creds []Credential, r Repo) error {
 	if r.Push != "" && len(r.Destinations) > 0 {
 		// Two spellings of one table, and Dests would silently prefer the list. Refused rather
 		// than merged: an operator who wrote both meant one of them, and which one is not a
@@ -331,8 +361,56 @@ func checkDests(env string, r Repo) error {
 			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q has no ref — "+
 				"a destination that names nowhere is a name a task can ask for and nothing can "+
 				"perform", env, r.Name, d.Name)
+		case d.Credential != "" && !hasCredential(creds, d.Credential):
+			// The gate approving a push is what releases the secret, so a destination naming a
+			// credential nobody declared is one whose approval releases nothing — a task told
+			// yes and then handed no way to act on it, at the end of a run.
+			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q wants "+
+				"credential %q, which this environment does not declare (it has: %s)",
+				env, r.Name, d.Name, d.Credential, strings.Join(credentialNames(creds), ", "))
 		}
 		seen[d.Name] = true
+	}
+	return nil
+}
+
+func hasCredential(creds []Credential, name string) bool {
+	for _, c := range creds {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func credentialNames(creds []Credential) []string {
+	if len(creds) == 0 {
+		return []string{"none"}
+	}
+	out := make([]string, 0, len(creds))
+	for _, c := range creds {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
+// checkCreds is the same rule the destinations follow, one level up: a name that resolves to
+// nothing is caught when the config is read rather than when somebody's push needs it.
+func checkCreds(e Environment) error {
+	seen := map[string]bool{}
+	for i, c := range e.Credentials {
+		switch {
+		case c.Name == "":
+			return fmt.Errorf("coderunner: environment %q, credential %d has no name — the name "+
+				"is what a destination asks for", e.Name, i)
+		case seen[c.Name]:
+			return fmt.Errorf("coderunner: environment %q has two credentials named %q", e.Name, c.Name)
+		case c.Env == "":
+			return fmt.Errorf("coderunner: environment %q, credential %q names no variable to "+
+				"read it from — the NAME of a variable, because this file is read and copied and "+
+				"must carry no secret", e.Name, c.Name)
+		}
+		seen[c.Name] = true
 	}
 	return nil
 }
@@ -370,6 +448,36 @@ func checkDelivering(e Environment) error {
 			"do not offer it", e.Name, pushToolName)
 	}
 	return nil
+}
+
+// CredentialEnv is the variable a destination's credential is read from, and "" when it names
+// none — in which case the caller falls back to the runner's own token, which is what every
+// environment relied on while the parent did the pushing.
+func (e Environment) CredentialEnv(d Destination) string {
+	for _, c := range e.Credentials {
+		if c.Name == d.Credential {
+			return c.Env
+		}
+	}
+	return ""
+}
+
+// UnsetCredentials names the credentials this environment declares whose variable is not set in
+// this process, for a line at startup.
+//
+// Said early for the reason MissingLLMCreds is: the alternative is a task that runs, works, is
+// approved, and then cannot push — at the end, with the work done, reported as somebody's
+// authentication error. It is a WARNING rather than a refusal because a spawn here need not push
+// at all, and refusing every task in an environment because one destination's PAT is missing
+// would be the tail wagging the dog.
+func (e Environment) UnsetCredentials() []string {
+	var out []string
+	for _, c := range e.Credentials {
+		if os.Getenv(c.Env) == "" {
+			out = append(out, fmt.Sprintf("%s ($%s)", c.Name, c.Env))
+		}
+	}
+	return out
 }
 
 // MissingLLMCreds reports why the `llm` driver cannot run here, or "" if it can.

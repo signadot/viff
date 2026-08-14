@@ -823,6 +823,23 @@ func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
 	waitFor(t, "the delivery to auto", func() bool {
 		return commitOn(origin, "refs/heads/verse/auto/g1") != ""
 	})
+	// The parent staged what the CHILD committed, and the sweep that follows a task settles it
+	// rather than undoing it.
+	//
+	// Both halves are load-bearing and neither is obvious. The task commits and pushes now, so
+	// the parent stages a commit made in another process a moment earlier — stage the wrong one
+	// and the mirror holds the BASE, which is the shape of a bug this file has caught before. And
+	// the sweep force-pushes every pending ref to its target, so a stale staged commit would not
+	// merely be useless, it would reset main to the base after the correct push had landed.
+	repo := r.cfg.Environments[0].Repos[0]
+	waitFor(t, "the staged copy to settle", func() bool {
+		work, err := r.mirrors.Staged(repo)
+		return err == nil && len(work) == 0
+	})
+	if !strings.Contains(commitOn(origin, "refs/heads/main"), "Verse-Task: g1") {
+		t.Fatal("the sweep after the task pushed something other than the work, so what the " +
+			"parent staged was not what the task committed")
+	}
 }
 
 // A destination the environment does not declare poses no question and pushes nothing.
@@ -938,4 +955,104 @@ func call(tool, args string) string {
 
 func say(text string) string {
 	return fmt.Sprintf(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":%q}}]}`, text)
+}
+
+// No approval, no credential — and the gate is the ONLY path to one.
+//
+// This is what makes the vector load-bearing rather than advisory. The task holds no git
+// credential at all: its trees are opened without one, and the secret arrives over the channel
+// the parent answers, in reply to a request the loop only makes after a gate has said yes about
+// that exact destination. A refusal is therefore not "the push was skipped", it is "the ability
+// to push never existed".
+func TestApprovalIsWhatReleasesTheCredential(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	before := commitOn(origin, "refs/heads/main")
+	model := fakeModel(t,
+		call("write_file", `{"path":"svc/merged.txt","content":"x\n"}`),
+		call(pushToolName, `{"destination":"main"}`),
+		say("I was not allowed to"))
+	r := testRunner(t, destinationsConfig(origin, model))
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "g3", Prompt: "merge it",
+		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
+			Name: "to-main", Mode: task.Ask,
+			Match: task.GateMatch{Resources: []task.ResourcePred{
+				{Kind: task.KindGitRef, Pattern: "refs/heads/main"},
+			}},
+		}}},
+	}, nil)
+	frames, cancel := h.Subscribe()
+	defer cancel()
+	res := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+
+	var terminal string
+	for f := range frames {
+		switch {
+		case f.Kind == task.EvPending && f.Tool == pushToolName:
+			if err := res.Resolve(f.ID, false, "not main, not today", "human:test"); err != nil {
+				t.Fatal(err)
+			}
+		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+			terminal = f.Text
+		}
+		if terminal != "" {
+			break
+		}
+	}
+	// A refusal is a decision the task complied with, not a failure of it.
+	if terminal != string(task.Done) {
+		t.Errorf("a refused push ended the task %s, want done", terminal)
+	}
+	if got := commitOn(origin, "refs/heads/main"); got != before {
+		t.Fatal("main moved despite the gate refusing the push")
+	}
+	// The closing delivery is ungated here, so the work still leaves — to the destination it has
+	// always used, and not to the one somebody declined.
+	waitFor(t, "the delivery to auto", func() bool {
+		return commitOn(origin, "refs/heads/verse/auto/g3") != ""
+	})
+}
+
+// A destination gets exactly the credential it names, and a missing one is refused rather than
+// released empty.
+//
+// The last part is not fussiness. An empty credential reaches the far side as an authentication
+// failure, so a runner that released one would have the task report the FORGE's opinion of this
+// runner's configuration — at the end of a run, after the work is done and the gate has already
+// approved it.
+func TestADestinationGetsTheCredentialItNames(t *testing.T) {
+	t.Setenv("GH_MAIN", "pat-for-main")
+	env := Environment{
+		Name:        "e",
+		Credentials: []Credential{{Name: "gh-main", Env: "GH_MAIN"}, {Name: "gh-gone", Env: "GH_GONE"}},
+		Repos: []Repo{{Name: "svc", Repo: ".", Base: "main", Destinations: []Destination{
+			{Name: autoDestination, Ref: "refs/heads/verse/auto/$task"},
+			{Name: "main", Ref: "refs/heads/main", Credential: "gh-main"},
+			{Name: "gone", Ref: "refs/heads/gone", Credential: "gh-gone"},
+		}}},
+	}
+	r := &Runner{token: "the-runners-own"}
+
+	if got, err := r.credentialFor(env, env.Repos[0], "main"); err != nil || got != "pat-for-main" {
+		t.Errorf("main got %q (%v), want the credential it names", got, err)
+	}
+	// Naming none falls back to the runner's own token, which is what every environment relied
+	// on while the parent did the pushing.
+	if got, err := r.credentialFor(env, env.Repos[0], autoDestination); err != nil || got != "the-runners-own" {
+		t.Errorf("auto got %q (%v), want the runner's own token", got, err)
+	}
+	if _, err := r.credentialFor(env, env.Repos[0], "gone"); err == nil {
+		t.Error("a credential whose variable is unset was released empty")
+	} else if !strings.Contains(err.Error(), "GH_GONE") {
+		t.Errorf("the refusal does not name the variable to set: %v", err)
+	}
+	if _, err := r.credentialFor(env, env.Repos[0], "release"); err == nil {
+		t.Error("a destination this repository does not declare was given a credential")
+	}
 }

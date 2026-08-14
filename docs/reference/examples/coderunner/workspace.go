@@ -315,8 +315,9 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 // Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
 // what the runner prepared for it (see taskproc.go).
 //
-// There is no auth on these trees, because nothing on that side of the process boundary may
-// reach a remote: the credential stays in the parent and delivery is the parent's act.
+// There is no auth on these trees, and that is not the same claim it used to be. A credential
+// does reach that side now — but only per operation, only after a gate approved the destination
+// it is for, and never as state a tree carries around. See pushAs.
 //
 // Head is HANDED OVER rather than read here. This side does not need it to diff — that is the
 // parent's job — but it does need it to name the push target its delivery proposes, since a
@@ -541,8 +542,17 @@ func (t *Tree) commitWork(l task.Launch, result string) (bool, error) {
 	return true, nil
 }
 
-// push sends this repository's task branch to the ref the environment named.
+// push sends this repository's task branch to the ref the environment named, under whatever
+// credential this tree was opened with. The parent's own delivery path is its only caller.
 func (t *Tree) push(ctx context.Context, branch, target string) error {
+	return t.pushAs(ctx, branch, target, t.auth)
+}
+
+// pushAs is the same push under a credential handed in for this ONE operation, which is how the
+// task process pushes: its trees are opened with no auth at all (Reopen), and the secret arrives
+// with the gate's approval and is used where it arrived. Nothing stores it, and no `.git/config`
+// or credential helper is consulted — the same argument TokenAuth exists for, one process over.
+func (t *Tree) pushAs(ctx context.Context, branch, target string, auth transport.AuthMethod) error {
 	// Force, and the reason is that the branch is namespaced by the TASK ID: this runner is its
 	// only writer by construction, so the only thing a force can overwrite is an earlier attempt
 	// of the same task, which is what a retried spawn means.
@@ -566,7 +576,7 @@ func (t *Tree) push(ctx context.Context, branch, target string) error {
 		Name: deliveryRemote, URLs: []string{t.Repo.Repo},
 	})
 	if err := remote.PushContext(ctx, &git.PushOptions{
-		RemoteName: deliveryRemote, RefSpecs: []config.RefSpec{spec}, Force: true, Auth: t.auth,
+		RemoteName: deliveryRemote, RefSpecs: []config.RefSpec{spec}, Force: true, Auth: auth,
 	}); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("repo %s: push %s: %w", t.Repo.Name, target, err)
 	}

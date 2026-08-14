@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/signadot/verse/task"
 )
@@ -131,6 +133,26 @@ func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result, repo, de
 // every repository that has anywhere to send it, not for one place somebody might have chosen.
 func (w *Workspace) Salvage(ctx context.Context, l task.Launch) Delivery {
 	return w.settle(ctx, l, "", "", "", stageHeld, false)
+}
+
+// Stage is the first hop on its own: put one repository's committed work in the mirror, under
+// the target it has just been approved for.
+//
+// It is the half of Deliver that survives the credential moving into the task process. The task
+// commits and the task pushes; what stays here is durability, because the mirror is this side's
+// and a checkout is a directory somebody deletes. There is no commit in it — the work is already
+// a commit by the time a credential is asked for, which is what makes this a thin pack rather
+// than a second opinion about what the task did.
+func (w *Workspace) Stage(ctx context.Context, taskID string, t *Tree, target string) Delivery {
+	var d Delivery
+	ref := stagedRef(stagePending, taskID, t.Repo.Name, target)
+	if err := w.mirrors.stage(ctx, t, w.Branch, ref); err != nil {
+		d.Err = err
+		d.Loose = append(d.Loose, t.Repo.Name)
+		return d
+	}
+	d.Staged = append(d.Staged, ref)
+	return d
 }
 
 func (w *Workspace) settle(ctx context.Context, l task.Launch, result, repo, dest, kind string, send bool) Delivery {
@@ -256,9 +278,21 @@ func (m *Mirrors) unstage(_ context.Context, repo, ref string) error {
 // namespaces: everything it touches has already been through a gate that said yes.
 //
 // Called after a mirror is fetched (so a spawn against a repository sweeps that repository's
-// backlog) and once at startup. No timer and no loop of its own: the work is bounded by what is
-// there, and a runner nobody is using has nothing to retry for.
-func (m *Mirrors) Reflect(ctx context.Context, r Repo) (int, error) {
+// backlog), once at startup, and once when a task ends. No timer and no loop of its own: the work
+// is bounded by what is there, and a runner nobody is using has nothing to retry for.
+//
+// It is also how a pending ref SETTLES now that the task does the pushing. This side stages the
+// work when it releases a credential and then never learns what became of it, which is the honest
+// position — the remote is the authority and this process is not it — so the three answers arrive
+// here instead: already-up-to-date means it landed and the ref goes, an error means it did not and
+// the ref stays, and a REFUSAL means no retry will ever change the answer and the ref moves to
+// `held`. Without that last one a protected branch would be re-attempted on every spawn, forever,
+// in the log.
+//
+// auth is the credential to retry under. It is handed in rather than taken from the mirror's own
+// because a destination may name one of its own, and a retry has to use the same authority the
+// approval released.
+func (m *Mirrors) Reflect(ctx context.Context, r Repo, auth transport.AuthMethod) (int, error) {
 	if len(r.Dests()) == 0 {
 		return 0, nil
 	}
@@ -275,15 +309,15 @@ func (m *Mirrors) Reflect(ctx context.Context, r Repo) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	type pending struct{ ref, target string }
+	type pending struct{ ref, task, target string }
 	var todo []pending
 	if err := refs.ForEach(func(ref *plumbing.Reference) error {
 		name := ref.Name().String()
-		_, repo, target, ok := splitStaged(stagePending, name)
+		taskID, repo, target, ok := splitStaged(stagePending, name)
 		if !ok || repo != safeSeg(r.Name) || target == "" {
 			return nil // another repository's staged work, or a shape nothing here wrote
 		}
-		todo = append(todo, pending{ref: name, target: target})
+		todo = append(todo, pending{ref: name, task: taskID, target: target})
 		return nil
 	}); err != nil {
 		return 0, err
@@ -298,9 +332,18 @@ func (m *Mirrors) Reflect(ctx context.Context, r Repo) (int, error) {
 		spec := config.RefSpec(fmt.Sprintf("+%s:%s", p.ref, p.target))
 		err := remote.PushContext(ctx, &git.PushOptions{
 			RemoteName: deliveryRemote, RefSpecs: []config.RefSpec{spec},
-			Force: true, Auth: m.auth(r.Repo),
+			Force: true, Auth: auth,
 		})
 		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			if why := refusal(err); why != "" {
+				if err := m.hold(mirror, p.ref, stagedRef(stageHeld, p.task, r.Name, "")); err != nil {
+					errs = append(errs, err)
+					continue
+				}
+				errs = append(errs, fmt.Errorf("%s was refused by the remote (%s), so it is held "+
+					"rather than retried", p.target, why))
+				continue
+			}
 			errs = append(errs, fmt.Errorf("reflect %s -> %s: %w", p.ref, p.target, err))
 			continue
 		}
@@ -311,6 +354,20 @@ func (m *Mirrors) Reflect(ctx context.Context, r Repo) (int, error) {
 		done++
 	}
 	return done, errors.Join(errs...)
+}
+
+// hold moves a staged ref out of the retry namespace, keeping the commit exactly where it is. A
+// local ref rename in a repository this process owns — no transport, and nothing copied.
+func (m *Mirrors) hold(mirror *git.Repository, from, to string) error {
+	ref, err := mirror.Reference(plumbing.ReferenceName(from), false)
+	if err != nil {
+		return err
+	}
+	if err := mirror.Storer.SetReference(
+		plumbing.NewHashReference(plumbing.ReferenceName(to), ref.Hash())); err != nil {
+		return err
+	}
+	return mirror.Storer.RemoveReference(plumbing.ReferenceName(from))
 }
 
 // stageRemote is the in-memory remote a stage push goes through, and like deliveryRemote it must
@@ -328,14 +385,27 @@ func (r *Runner) reflectAll(ctx context.Context) {
 				continue
 			}
 			seen[key] = true
-			r.reflect(ctx, repo)
+			r.reflect(ctx, env, repo)
 		}
 	}
 }
 
 // reflect retries one repository's approved-but-undelivered work and says so when it moves any.
-func (r *Runner) reflect(ctx context.Context, repo Repo) {
-	n, err := r.mirrors.Reflect(ctx, repo)
+//
+// The credential is the FIRST one any of this repository's destinations names, and the runner's
+// own token when none does. That is exact in every configuration there can be — a PAT scopes per
+// repository, and an environment may declare only one repository that delivers — and it is worth
+// saying rather than inferring, because the alternative is a retry that silently pushes with the
+// wrong authority.
+func (r *Runner) reflect(ctx context.Context, env Environment, repo Repo) {
+	tok := r.token
+	for _, d := range repo.Dests() {
+		if name := env.CredentialEnv(d); name != "" {
+			tok = os.Getenv(name)
+			break
+		}
+	}
+	n, err := r.mirrors.Reflect(ctx, repo, TokenAuth(tok)(repo.Repo))
 	if n > 0 {
 		fmt.Fprintf(r.log, "coderunner: reflected %d undelivered branch(es) of %s to %s\n",
 			n, repo.Name, repo.Repo)

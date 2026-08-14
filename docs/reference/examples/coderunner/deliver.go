@@ -71,6 +71,16 @@ type deliverRequest struct {
 type deliverReply struct {
 	OK   bool     `tony:"field=ok"`
 	Refs []string `tony:"field=refs,omitzero"`
+	// Ref and Token are what a `credential` request is answered with: where the approved push
+	// goes, and the secret that lets it. THE GATE SAYING YES IS WHAT PUTS THE SECRET IN THE TASK
+	// PROCESS — there is no other path to it — which is what makes the vector load-bearing
+	// rather than advisory.
+	//
+	// It never reaches `buildEnv`'s allowlist, so it never reaches the model's shell. That
+	// boundary, and not the sandbox wall, is what keeps a secret away from the thing whose
+	// output is published: `coderunner -task` already holds the model key on exactly these terms.
+	Ref   string `tony:"field=ref,omitzero"`
+	Token string `tony:"field=token,omitzero"`
 	// Refused is the far side declining, and it is a separate field from Error because it is a
 	// separate KIND of answer: a remote that will not fast-forward, a protected branch, a
 	// ruleset. The task did its job when it tried and was told no, so this ends the action as a
@@ -172,9 +182,17 @@ const pushToolName = "push"
 // runner will accept is the vocabulary the model can write rather than something it discovers by
 // being refused.
 //
+// The GIT is done here, in the task process, and that is the point of the arrangement rather
+// than an implementation detail. What crosses the boundary is a CREDENTIAL and never an
+// operation: the parent answers "you may push <repo> to <ref>, here is the secret", and what a
+// push, a merge or a retirement actually is stays on this side. The alternative — one op that
+// the parent performs — keeps the op count at one while the OPERATION count grows inside the
+// parent, which is the same multiplier wearing a different hat.
+//
 // false when this environment declares no destinations at all: offering a tool whose every use
 // is refused teaches an agent that the loop is broken.
-func pushTool(ws *Workspace, conn net.Conn) (harness.Tool, bool) {
+func pushTool(p *taskProc, conn net.Conn) (harness.Tool, bool) {
+	ws := p.ws
 	names := ws.DestinationNames()
 	if len(names) == 0 || conn == nil {
 		return harness.Tool{}, false
@@ -203,29 +221,59 @@ func pushTool(ws *Workspace, conn net.Conn) (harness.Tool, bool) {
 			}
 			tu.Effects = append(tu.Effects, task.Effect{Verb: task.Push, Resource: task.GitRef(ref)})
 		},
-		Do: func(_ context.Context, tu task.ToolUse) (string, bool, error) {
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
 			name, _ := tu.Input["destination"].(string)
 			t, ref := ws.Destination(name)
 			if t == nil {
 				return fmt.Sprintf("there is no destination %q in this environment — it declares: %s",
 					name, strings.Join(names, ", ")), true, nil
 			}
-			rep, err := ask(conn, deliverRequest{
-				Op: "push", Repo: t.Repo.Name, Destination: name,
-			})
-			switch {
-			case err != nil:
-				return "", false, fmt.Errorf("asking the runner to push: %w", err)
-			case rep.Refused != "":
-				return "the remote refused it: " + rep.Refused, true, nil
-			case !rep.OK:
-				return "", false, fmt.Errorf("push to %s failed: %s", ref, rep.Error)
-			case len(rep.Refs) == 0:
-				return "nothing to push: " + t.Repo.Name + " has no work that is not already there", false, nil
-			}
-			return "pushed " + strings.Join(rep.Refs, "; "), false, nil
+			return push(ctx, conn, t, ws.Branch, name, ref, p.launch(), "")
 		},
 	}, true
+}
+
+// push is the whole of a push from this side: commit what is there, ask the runner for the
+// credential that destination names, and do the git.
+//
+// The ORDER is the design. Committing first means the parent stages a commit rather than a
+// promise, so the two hops the mirror exists for are unchanged — work is in this runner's own
+// object store before anything is attempted over a network. Asking second means the credential
+// arrives only after the vector has approved this exact destination, which is what makes the
+// gate load-bearing rather than advisory. Pushing third means the parent never learns what git
+// operation this was, which is the point: a merge, a promotion and a retirement are all "a
+// credential for a destination" to the side that holds the secret.
+//
+// result is the commit body for a closing delivery and empty for an agent's own push, where
+// there is no final message yet — commitMessage falls back to naming the task.
+func push(ctx context.Context, conn net.Conn, t *Tree, branch, dest, ref string, l task.Launch, result string) (string, bool, error) {
+	work, err := t.commitWork(l, result)
+	if err != nil {
+		return "", false, fmt.Errorf("committing the work in %s: %w", t.Repo.Name, err)
+	}
+	if !work {
+		// "Nothing to push" is a RESULT and must not read as a successful push of nothing. It
+		// also asks for no credential, which is the right shape: no work, no secret.
+		return "nothing to push: " + t.Repo.Name + " has no work that is not already there", false, nil
+	}
+	rep, err := ask(conn, deliverRequest{Op: "credential", Repo: t.Repo.Name, Destination: dest})
+	switch {
+	case err != nil:
+		return "", false, fmt.Errorf("asking the runner for the credential for %q: %w", dest, err)
+	case rep.Error != "":
+		return "", false, fmt.Errorf("the runner would not release the credential for %q: %s", dest, rep.Error)
+	case rep.Ref == "":
+		// The two ends disagree about what this environment declares, which is worth failing
+		// loudly rather than pushing to a ref this side computed alone.
+		return "", false, fmt.Errorf("the runner resolved no ref for destination %q", dest)
+	}
+	if err := t.pushAs(ctx, branch, rep.Ref, TokenAuth(rep.Token)(t.Repo.Repo)); err != nil {
+		if why := refusal(err); why != "" {
+			return "not pushed — the remote refused it: " + why, true, nil
+		}
+		return "", false, err
+	}
+	return "pushed " + t.Repo.Name + " -> " + rep.Ref, false, nil
 }
 
 func ask(conn net.Conn, req deliverRequest) (deliverReply, error) {
@@ -278,22 +326,25 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 	if err := codec.Unmarshal(raw, &req, codec.Tony); err != nil {
 		return deliverReply{Error: "undecodable request: " + err.Error()}
 	}
-	// Two operations and no more, and the difference between them is the PROPOSER rather than
-	// the work: `deliver` is the runner's own closing act over every tree that declares `auto`,
-	// and `push` is the agent asking for one repository and one named destination. Step 5 of the
-	// plan retires the first, at which point delivery is a push like any other.
+	// Two operations, and only one of them is an operation.
 	//
-	// A channel that grows verbs quietly becomes a second control plane, and this one exists
-	// precisely because the first cannot cross the credential boundary.
-	var repo string
+	// `credential` is the whole design: the task names a destination, and what comes back is a
+	// SECRET rather than a performance. That is what stops the protocol growing — a merge, a
+	// promotion, a retirement are all this one request, because the side holding the credential
+	// does not need to know which of them is happening. An op per flow would keep the op count
+	// at one only by growing the OPERATION count inside the parent, which is the same multiplier
+	// wearing a different hat.
+	//
+	// `deliver` is the runner's own closing act, still performed here. Step 5 of the plan retires
+	// it, at which point delivery is a push like any other and this switch has one arm.
 	switch req.Op {
+	case "credential":
+		return r.release(c, req)
 	case "deliver":
-	case "push":
-		repo = req.Repo
 	default:
 		return deliverReply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
-	d := c.ws.Deliver(context.Background(), l, req.Result, repo, req.Destination)
+	d := c.ws.Deliver(context.Background(), l, req.Result, "", req.Destination)
 	c.recordDelivery(d)
 	for _, p := range d.Pushed {
 		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, p)
@@ -313,6 +364,74 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 		return deliverReply{Refs: d.Pushed, Error: d.Err.Error()}
 	}
 	return deliverReply{OK: true, Refs: d.Pushed}
+}
+
+// release answers a `credential` request: stage the work, then hand over the secret.
+//
+// STAGING FIRST is what keeps the mirror's promise across the move. The task pushes now, so this
+// side no longer sees the push — but the reason work goes into the mirror on its way out was
+// never that the parent was pushing it, it was that a checkout is a directory somebody deletes
+// and a failed push must not be the difference between a result and nothing. Putting it there at
+// the moment a push is authorized keeps exactly that, and it costs a thin pack against a
+// repository that already has every base object.
+//
+// Whether it LANDED is not this side's to know, and pretending otherwise would be the mistake
+// this design makes elsewhere on purpose (a cancelled push is `unknown`, not `not done`). The
+// pending ref settles itself: Reflect pushes it again on the next sweep, which is a no-op if the
+// world already has it, a retry if it did not land, and a move to `held` if the remote refuses.
+func (r *Runner) release(c *child, req deliverRequest) deliverReply {
+	t, ref := c.ws.Destination(req.Destination)
+	if t == nil || (req.Repo != "" && t.Repo.Name != req.Repo) {
+		// The two ends disagree about what this environment declares. It cannot happen through
+		// the tool, whose schema enumerates the names, so it means a task speaking the protocol
+		// directly — which is exactly the thing that must resolve to nothing.
+		return deliverReply{Error: fmt.Sprintf("no destination %q in environment %q",
+			req.Destination, c.ws.Env.Name)}
+	}
+	d := c.ws.Stage(context.Background(), c.id, t, ref)
+	c.recordDelivery(d)
+	for _, s := range d.Staged {
+		fmt.Fprintf(r.log, "coderunner: %s: staged in the mirror at %s, on its way to %s\n",
+			c.id, s, ref)
+	}
+	if d.Err != nil {
+		// Staging is the local hop, so this is the disk rather than the network — and the
+		// credential is NOT released, because the one copy of the work is a directory this
+		// runner is about to be asked to remove.
+		fmt.Fprintf(r.log, "coderunner: %s: staging before a push to %s: %v\n", c.id, ref, d.Err)
+		return deliverReply{Error: d.Err.Error()}
+	}
+	tok, err := r.credentialFor(c.ws.Env, t.Repo, req.Destination)
+	if err != nil {
+		return deliverReply{Error: err.Error()}
+	}
+	return deliverReply{OK: true, Ref: ref, Token: tok}
+}
+
+// credentialFor is the mapping the whole design turns on: a granted capability → the secret it
+// carries. Nothing here reads a ref, and nothing here knows what the secret is for — which is
+// what keeps this from being a git feature.
+//
+// A destination naming no credential falls back to the runner's own token, which is what every
+// environment relied on while the parent did the pushing, and what a local path (the tests) wants.
+func (r *Runner) credentialFor(env Environment, repo Repo, dest string) (string, error) {
+	d, ok := repo.Dest(dest)
+	if !ok {
+		return "", fmt.Errorf("no destination %q on repository %q", dest, repo.Name)
+	}
+	name := env.CredentialEnv(d)
+	if name == "" {
+		return r.token, nil
+	}
+	tok := os.Getenv(name)
+	if tok == "" {
+		// Refused rather than released empty, because an empty credential reaches the far side
+		// as somebody else's "authentication required" and the task then reports the forge's
+		// opinion of this runner's configuration.
+		return "", fmt.Errorf("destination %q wants credential %q, and $%s is not set in this "+
+			"runner's environment", dest, d.Credential, name)
+	}
+	return tok, nil
 }
 
 // ── framing ─────────────────────────────────────────────────────────────────────────────────

@@ -110,9 +110,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	token := os.Getenv(*tokenEnv)
 	r := &Runner{
 		cfg:        cfg,
-		mirrors:    NewMirrors(filepath.Join(root, "mirrors"), TokenAuth(os.Getenv(*tokenEnv))),
+		token:      token,
+		mirrors:    NewMirrors(filepath.Join(root, "mirrors"), TokenAuth(token)),
 		workspaces: filepath.Join(root, "workspaces"),
 		conf:       conf,
 		keep:       *keep,
@@ -153,8 +155,19 @@ func main() {
 	for _, e := range cfg.Environments {
 		log.Printf("  environment %s (driver %s):", e.Name, orDefault(e.Driver, "llm"))
 		for _, rp := range e.Repos {
+			var to []string
+			for _, d := range rp.Dests() {
+				to = append(to, d.Name+" → "+d.Ref)
+			}
 			log.Printf("    %s: %s at %s, pushes to %s",
-				rp.Name, rp.Repo, rp.Base, orDefault(rp.Push, "nowhere"))
+				rp.Name, rp.Repo, rp.Base, orDefault(strings.Join(to, ", "), "nowhere"))
+		}
+		// A destination whose credential is missing is a task that will be approved and then
+		// cannot act on it, reported at the end of a run as somebody else's auth error.
+		if missing := e.UnsetCredentials(); len(missing) > 0 {
+			log.Printf("    WARNING: %s is not set in this runner's environment, so a push to a "+
+				"destination naming it will fail after the gate has already approved it",
+				strings.Join(missing, ", "))
 		}
 	}
 	if err := http.ListenAndServe(*addr, r.Handler()); err != nil {
@@ -191,6 +204,11 @@ type Runner struct {
 	conf       Confiner
 	keep       bool
 	log        *os.File
+
+	// token is this runner's own git credential, and it is the FALLBACK a destination naming
+	// none gets — what every environment relied on while the parent did the pushing, and what a
+	// local path wants (none at all). A destination naming a credential gets that one instead.
+	token string
 
 	// self is the program to start for each task — this binary, with `-task`. A field rather
 	// than a call to os.Executable at each spawn so a test can point it at what it built.

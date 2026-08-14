@@ -94,7 +94,7 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 		t.Fatalf("a refused delivery did not go to held: %+v", held)
 	}
 
-	n, err := m.Reflect(context.Background(), repo)
+	n, err := m.Reflect(context.Background(), repo, nil)
 	if err != nil {
 		t.Fatalf("reflect: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 		t.Errorf("held work vanished: %v", err)
 	}
 	// And a second sweep has nothing to do.
-	if n, err := m.Reflect(context.Background(), repo); err != nil || n != 0 {
+	if n, err := m.Reflect(context.Background(), repo, nil); err != nil || n != 0 {
 		t.Errorf("a second sweep moved %d refs (%v) — refs/pending is not self-limiting", n, err)
 	}
 }
