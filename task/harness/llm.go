@@ -320,6 +320,51 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			if tc.Function.Name == failTool {
 				return task.ToolUse{}, false, errors.New(failReason(tc))
 			}
+			// `wait` is not an action either: it is the model ENDING ITS TURN, spelled as
+			// something it can call.
+			//
+			// The loop waits for a child exactly when the driver has nothing to propose, and
+			// the tool description used to say so — "END YOUR TURN: say what you are waiting
+			// for and stop, without calling a tool". A drive watched a model follow the letter
+			// of that and miss it entirely: it narrated "Still waiting for server_go_reviewer
+			// and test_go_reviewer" at every boundary, which is exactly what was asked, and
+			// attached a tool call anyway. Eleven junk sub-agents (`noop`, `noop2` … `noop10`)
+			// and a dozen `run_bash echo done` across twenty-nine boundaries, while both real
+			// reviewers had long since been dispatched.
+			//
+			// The advice was not ignored; it asked for something the model cannot commit to. A
+			// turn carries content AND tool calls, so "say it and stop" is two acts and the
+			// model only owes itself the first. Waiting was the one thing it wanted with no verb
+			// for it, so it kept inventing one out of whatever was to hand — first `sleep 120`,
+			// then a sub-agent called `noop`.
+			//
+			// So it gets the verb. `wait` costs one model call and then the loop blocks in Go
+			// until a child reports, which is what the polling was approximating at a round trip
+			// per attempt — and at two, since each `noop` was a whole sub-task with its own
+			// model calls.
+			//
+			// The tool result is recorded before returning, because unlike `fail` this turn has
+			// a successor: a tool_call with no tool response is a malformed conversation, and
+			// the model IS called again as soon as anything arrives.
+			if tc.Function.Name == waitTool {
+				d.messages = append(d.messages, chatMessage{
+					Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name,
+					Content: "Waiting. You will be called again as soon as a sub-agent reports, " +
+						"with its result.",
+				})
+				// Said on the read plane, because a wait is otherwise INVISIBLE there. The
+				// polling it replaces was at least legible — a watcher saw exec frames going
+				// past — and a boundary with nothing in it reads as a task that has stopped.
+				// That is the complaint the model-call notice exists to answer, arriving by a
+				// second route, and the fix is the same: a task that is deliberately quiet
+				// should say so rather than only look it.
+				const note = "waiting for sub-agents to report"
+				fmt.Fprintf(d.log, "   … %s\n", note)
+				if d.emit != nil {
+					d.emit(task.Frame{Kind: task.EvSay, Text: note})
+				}
+				return task.ToolUse{}, false, nil
+			}
 			d.last = &tc
 			return toToolUse(tc), true, nil
 		}
@@ -458,6 +503,13 @@ func selectTools(only []string) ([]toolDef, error) {
 	if !seen[failTool] {
 		out = append(out, byName[failTool])
 	}
+	// `wait` rides with delegation, and only with it. It is the verb for "my sub-agents are
+	// working", so a spawn that cannot delegate has nothing to wait for — and defaultFrame
+	// describes the tools actually offered, so an inert one on the menu would be advice about
+	// something that cannot happen.
+	if seen["call_agent"] && !seen[waitTool] {
+		out = append(out, byName[waitTool])
+	}
 	return out, nil
 }
 
@@ -490,22 +542,44 @@ func toolDefs() []toolDef {
 			map[string]any{"path": s, "content": s}, []string{"path", "content"}),
 		mk("run_bash", "Run a bash command in the working directory; returns combined stdout/stderr.",
 			map[string]any{"command": s}, []string{"command"}),
-		// HOW TO WAIT is half of this description, and leaving it out was expensive. The
-		// loop joins children only when a turn ENDS (loop.go: `!more` → awaitChild → fold →
-		// re-invoke), so ending the turn is both the correct way to wait and a free one: it
-		// blocks in Go, costs no tokens, and the model is called again the moment a child
-		// reports. Told only that a result "comes back when it finishes", a model reaches
-		// for the wait it can see — `run_bash {command: "sleep 120"}` — and pays a model
-		// round trip per poll to learn nothing. Observed on a review that spent eighteen
-		// minutes and twenty-five boundaries mostly asleep (git-issue 91r674qzh12ks35vfnn0).
+		// HOW TO WAIT is half of this description, and it has now been got wrong twice in
+		// opposite directions.
+		//
+		// The loop joins children only when a turn ENDS, so ending the turn is the correct way
+		// to wait and a free one: it blocks in Go, costs no tokens, and the model is called
+		// again the moment a child reports. Told only that a result "comes back when it
+		// finishes", a model reached for the wait it could see — `run_bash {command: "sleep
+		// 120"}` — and paid a round trip per poll to learn nothing (git-issue
+		// 91r674qzh12ks35vfnn0: eighteen minutes, twenty-five boundaries, mostly asleep).
+		//
+		// So this said "END YOUR TURN: say what you are waiting for and stop, without calling a
+		// tool", and a drive watched a model do the first half and not the second — narrating
+		// "Still waiting for server_go_reviewer and test_go_reviewer" at every boundary while
+		// spawning `noop`, `noop2` … `noop10` to fill them. A turn carries content AND tool
+		// calls, so "say it and stop" asks for a thing the model has no way to commit to, and
+		// waiting stayed the one thing it wanted with no verb for it.
+		//
+		// Hence `wait` below, and this description points at it rather than describing a
+		// discipline. Advice that has failed twice is not advice that needs stating a third
+		// time.
 		mk("call_agent", "Delegate a self-contained subtask to a sub-agent that runs concurrently. "+
 			"Give a short agent name and a full prompt describing the task. Use for independent "+
-			"subtasks you can run in parallel. TO WAIT FOR RESULTS, END YOUR TURN: say what you are "+
-			"waiting for and stop, without calling a tool. You will be called again as soon as a "+
-			"sub-agent finishes, with its result. Never sleep or poll for a sub-agent — sleeping "+
-			"delays the result rather than waiting for it, because a turn that is still running is "+
-			"a turn whose children cannot be folded in.",
+			"subtasks you can run in parallel. TO WAIT FOR THEIR RESULTS, CALL "+waitTool+" — that "+
+			"is what it is for, and it is free. Never poll: not with sleep, and not by delegating "+
+			"filler work. A turn that is still running is a turn whose sub-agents cannot report to "+
+			"you, so anything you do to pass the time delays the results rather than waiting for "+
+			"them.",
 			map[string]any{"agent": s, "prompt": s}, []string{"agent", "prompt"}),
+		// No parameters. A wait is not ABOUT anything — it is the absence of a next action — and
+		// a field to fill in is a field a model reasons about instead of just calling.
+		mk(waitTool, "Wait for your running sub-agents. Call this, alone, when you have delegated "+
+			"work and have nothing to do until it comes back. It costs nothing and takes no time "+
+			"from the sub-agents: your turn ends, and you are called again the moment one of them "+
+			"reports, with its result. This is the ONLY way to wait. Do not sleep, do not re-run "+
+			"commands to pass the time, and do not delegate filler work — all of those keep your "+
+			"turn running, which is what stops a result from reaching you. Only meaningful while a "+
+			"sub-agent is running: with none, it ends your work.",
+			map[string]any{}, nil),
 		mk(failTool, "Declare that you could NOT complete the task, and stop. Call this instead of "+
 			"finishing with an explanation when the task could not be done — a file you needed was "+
 			"missing, a command failed, the request was impossible. Simply stopping is read as "+
@@ -519,6 +593,12 @@ func toolDefs() []toolDef {
 // driver matches on it and the tool definition declares it, and a drift between the two
 // would silently turn the fail branch back off.
 const failTool = "fail"
+
+// waitTool is how a model says it has nothing to propose until a sub-agent reports. Named once
+// beside failTool for the same reason: the driver matches on it and the tool definition
+// declares it, and a drift between the two turns the branch silently back off — which for this
+// one means the polling comes back.
+const waitTool = "wait"
 
 // failReason pulls the model's stated reason out of the fail call, falling back to a fixed
 // message: a fail with unparseable arguments is still a fail, and must not be swallowed into

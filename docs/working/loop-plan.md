@@ -207,9 +207,70 @@ just been given new work delivers without it. Against a boundary whose cheapest 
 content is a millisecond of executor, microseconds of handoff are not worth that. The benchmark
 is there to be watched, not beaten.
 
+**The enumeration was thinner than the words around it.** It modelled ONE failure — an executor
+error — out of six seams that can produce one, while step 6 and the commit that landed it both
+said "every ordering of a bounded input set". The omission that mattered was `inDriver{err}`:
+that is what the `fail` tool IS, so the single most likely way a real run ends badly was not in
+the set. It now injects a fault at every seam, at most one per path, which is the depth that
+catches a failure arriving while something else is pending. Mutating the driver-error branch to
+tear down without joining its children is caught at exactly that point and was unreachable
+before.
+
+Worth separating from the finding that prompted it. A staging drive ended when the model called
+`fail` with "placeholder - not actually failing, retracting", discarding a review whose children
+had all reported clean. Wider enumeration would NOT have caught that: the machine is correct on
+that path — it joined all thirteen children, tore down, and recorded the reason. The question
+`fail` raises is whether a single token should be able to end a finished run, which is a claim
+about what the contract SHOULD say, and enumeration only checks code against a contract already
+written. What found it was the drive, which is the argument for making drives cheap.
+
 Two things the plan predicted and got right: the enumeration is cheap enough to run every time
-(~2,300 transitions, milliseconds), and it does catch what it claims — removing the token guard,
-the child-outstanding check, or the quiescence reset each fails it.
+(~3,700 transitions over ~700 paths, milliseconds), and it does catch what it claims — removing
+the token guard, the child-outstanding check, or the quiescence reset each fails it.
+
+## The drive, and what it cost to learn anything
+
+Step 9 ran on staging and produced two findings, neither of them a loop defect. It also produced
+the more useful result, which is about the process rather than the code.
+
+**Finding 1: the "end your turn" advice did not take, and the instrument changed.** A review
+narrated "Still waiting for server_go_reviewer and test_go_reviewer" at every boundary — exactly
+what the advice asks for — and attached a tool call anyway, spawning `noop`, `noop2` … `noop10`
+and a dozen `run_bash echo done` across twenty-nine boundaries. A turn carries content AND tool
+calls, so "say it and stop" asks for a restraint a model has no way to commit to. Waiting was
+the one thing it wanted with no verb for it, so it kept inventing one — first `sleep 120`, then
+a sub-agent called `noop`. Fixed by giving it the verb: `wait` ends the turn, costs one model
+call, and the loop then blocks in Go until a child reports.
+
+**Finding 2: `fail` was used as a scratchpad.** The run ended on
+`err: "placeholder - not actually failing, retracting"`, discarding a review whose children had
+both reported clean. Same shape as Finding 1, and worth stating as the rule it implies: **a
+failure result should not be the nearest thing to hand when a model wants to jot, retract or
+experiment.** No fix here yet, deliberately — see below.
+
+**And the process finding, which is the one that matters.** Fifteen minutes per iteration with a
+shared outage (`replicas=1, strategy=Recreate`) is a feedback loop that selects what gets
+validated: `229b9ccd`'s advice was written, shipped and never once watched, because watching it
+cost fifteen minutes. So the drive moved local — a real model, a real fan-out, three files in a
+temp directory, no repository, runner or cluster (`task/harness/drive_test.go`, ~20s a run).
+
+That immediately paid for itself by falsifying the fix's own evidence. The first local drive ran
+only the FIXED code, passed, and proved nothing: run against the previous code it passed
+identically. Six shapes were then tried to make the polling reproduce — fast children, slow
+children, a parent told to survey first so it arrives at the wait several tool calls deep, an
+answer contract so "end your turn" collides with "your final message IS the result", children
+forced to take forty seconds — and in every one the model fanned out, ended its turn and waited
+correctly.
+
+So the honest state of Finding 1's fix: the mechanism is proven, the model uses the verb when it
+has one, and giving it a verb removes a class that advice asking for restraint cannot. What is
+NOT established is that the class is common — one drive saw it, and six local attempts could not
+make it happen again. That is a much weaker claim than "fixed", and it is the claim.
+
+It is also why Finding 2 has no fix in this pass. The lesson of six failed reproductions is that
+hypotheses about model behaviour are cheap and usually wrong, and the last two attempts at this
+exact problem were both shipped on reasoning alone. A `note` or `scratch` verb is the obvious
+move by analogy with `wait`, and analogy is what has been failing. It wants a reproducer first.
 
 ## Verification, and what each part cannot show
 

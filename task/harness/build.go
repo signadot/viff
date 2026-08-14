@@ -176,8 +176,15 @@ type Config struct {
 	// proposed after the driver has stopped.
 	Finish task.Finisher
 
-	// LLM creds for the model client (resolved from verse config: file ← env). Any
-	// empty field falls back to its default (base URL, model) or the environment.
+	// LLM creds for the model client, RESOLVED BY THE CALLER — versed reads them from verse
+	// config (file ← env) and passes them here. Empty base URL and model take package
+	// defaults; an empty key or virtual key is sent as an empty header, which the gateway
+	// reports as "Invalid API Key" rather than as the missing configuration it is.
+	//
+	// It used to say these fell back to the environment. They do not: newLLMClient reads the
+	// environment and passes the values in, and clientFrom below defaults only the two fields
+	// that have a sensible default. A local caller that set LLMModel and left the keys empty
+	// spent a while being told its key was invalid.
 	LLMBaseURL    string
 	LLMKey        string
 	LLMVirtualKey string
