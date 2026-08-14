@@ -38,26 +38,40 @@ lives outside verse and the docket cannot show it.
 
 ### What poking at it by hand verified, and what it did not
 
-Installed into a local verse, with the subject rule 1 would have derived written by hand
-(`verse entity put merge:proposal:poke1 '{…, state: open}'`) so the git source and the delivered
-branch were not needed. That skips rules 1 and 3 and exercises everything after them.
+Installed into a local verse with comment-drift's `reflected` stratum beside it, and the two
+subjects a git source would have reflected written **by hand** — `git:head:verse` and one
+`git:ref:…` under `verse/auto/*`. No source, no runner, no delivered branch; everything else real.
 
-**Verified.** Rule 2 selects and fires. The gate poses as a motion with the deadline the formula
-asked for (`closes=` 24h out). `verse vote … approve` closes it `outcome=proceed tally=1` and the
-firing proceeds. The spawn is refused because no runner is installed, and `onFailed` does exactly
-what it says: `state: failed` with the refusal in `err`, legible enough to act on —
-*no runner "runners:pool:code" (none are installed) — a spawn naming a runner that is not
-installed is refused rather than run somewhere else*.
+**All four rules fire, and the chain closes.** Writing the ref fires rule 1, which derives
 
-**Not verified.** The `!when` on `onDone` PARSES, installs and round-trips through
-`verse trigger show` — which was this note's first question — but nothing has evaluated it,
-because that needs a task that completes with `$data`. Rules 1 and 3 have never run at all: they
-need a git source reflecting `verse/auto/*`, and they were also HELD rather than installed, since
-they name comment-drift's `reflected` stratum (see [strata](../strata.md), which now says what
-that looks like from the outside).
+```tony
+ref: merge:proposal:proposal-appeared@git:ref:verse_verse_auto_poke2+1f61cc97
+payload:
+  branch: verse/auto/poke2            # $subject.value.name
+  base:   7281b716…                   # !get-path {system: git, kind: head, id: verse, path: sha}
+  state:  open
+  verse: {meta: {derivedFrom: {rule: proposal-appeared, subject: git:ref:…}}}
+```
 
-The deadline-denies path is unexercised, and it is the one with a clock: nothing has watched
-`!until [!quorum 1, !deadline "24h"]` run out and write `state: declined`.
+— which is the piece this charter calls its whole design, and it works: `!get-path` read main's
+tip at the moment of the firing, the derive climbed from `reflected` (0) to `merge` (10), and the
+address is (rule, subject) with the subject flattened and disambiguated. Rule 2 then selects the
+derived proposal and poses its gate. Writing `git:head:verse` fires rule 3 the same way, and rule
+4 spawns **ungated**, which is the call the charter argues for and which reads correctly when you
+watch it: no question, straight to the work.
+
+`verse vote <motion> approve` closes a motion `outcome=proceed tally=1` and the firing proceeds.
+Both spawns are then refused for want of a runner, and `onFailed` does exactly what it says —
+`state: failed` / `swept: failed`, with a refusal legible enough to act on: *no runner
+"runners:pool:code" (none are installed) — a spawn naming a runner that is not installed is
+refused rather than run somewhere else*.
+
+**Three things remain unverified**, and one of them will verify itself. The `!when` on `onDone`
+parses, installs and round-trips through `verse trigger show` — this note's first question — but
+nothing has evaluated it, because that needs a task completing with `$data`; that and the merge
+itself want a runner. The **deadline** does not: a motion left standing runs its
+`!until [!quorum 1, !deadline "24h"]` out and should write `state: declined` through `onDenied`,
+so leaving one open is the cheapest test in this file and costs a day of waiting.
 
 ## The one that was asked for, and is not expressible
 
