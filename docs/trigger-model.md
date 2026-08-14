@@ -595,12 +595,13 @@ An entry may narrow what ends the list:
 ```tony
   - tool: push
     input: {destination: retire}
-    fatal: [err]        # a remote declining ONE ref is not a reason to stop
+    fatal: err          # a remote declining ONE ref is not a reason to stop
 ```
 
 out of `err` (the action failed), `blocked` (refused, by a gate or by the far side), `nonzero` (a
 command exited non-zero), and `none` (nothing ends the list). Absent means the first three — a
-list is ordered because its calls depend on each other — and `none` stands alone. A list with an
+list is ordered because its calls depend on each other — `none` stands alone, and several are
+comma-separated in a quoted string (`fatal: "err,blocked"`). A list with an
 unknown outcome, no tool, or a contradicting driver fails the FIRING, where its author can read
 why; a tool name it cannot check belongs to the runner and is refused there.
 

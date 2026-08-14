@@ -2,7 +2,7 @@
 context:
 - tony-format/context
 define:
-  fatal: .[array(string)]
+  fatal: .[string]
   input: .[object(object)]
   tool: .[string]
 signature:

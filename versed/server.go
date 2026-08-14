@@ -450,25 +450,13 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 // it can record why it was asked. Subject and Chain are what a firing knows about its own
 // cause, and verse has always kept them on its side of the wire — which left a remote runner
 // unable to attribute its own effects (docs/working/attribution.md).
-// callsOf types a charter's call list: the fatal vocabulary becomes task.StepOutcome, and
-// anything that is not one of the three is the charter's error rather than a stop condition
-// nothing will ever match. The wire form carries strings so the charter grammar stays
-// hand-writable; this is where they stop being strings.
+// callsOf carries a charter's call list across to the runtime form and CHECKS it, which is the
+// point: `fatal: sideways` is the charter's error, reported when the trigger fires, rather than
+// a stop condition nothing will ever match on a machine its author does not have.
 func callsOf(cs []launch.Call) ([]task.Call, error) {
 	out := make([]task.Call, 0, len(cs))
 	for _, c := range cs {
-		tc := task.Call{Tool: c.Tool, Input: c.Input}
-		// A charter CAN write `fatal: []` and the wire cannot carry it — `omitzero` drops an
-		// empty list, so it would mean "nothing stops this call" locally and "anything does"
-		// on a remote runner. Refused here, naming the word that crosses.
-		if c.Fatal != nil && len(c.Fatal) == 0 {
-			return nil, fmt.Errorf("call %s: fatal is empty — write [%s] to say nothing ends the list",
-				c.Tool, task.FatalNone)
-		}
-		for _, f := range c.Fatal {
-			tc.Fatal = append(tc.Fatal, task.StepOutcome(f))
-		}
-		out = append(out, tc)
+		out = append(out, task.Call{Tool: c.Tool, Input: c.Input, Fatal: c.Fatal})
 	}
 	if err := task.CheckCalls(out); err != nil {
 		return nil, err

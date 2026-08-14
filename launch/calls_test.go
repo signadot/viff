@@ -1,7 +1,6 @@
 package launch
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -19,7 +18,7 @@ func TestBindExpandsCallInputs(t *testing.T) {
 			"args":    []any{"--message", "about $subject"},
 			"timeout": 30,
 		},
-		Fatal: []string{"err"},
+		Fatal: "err",
 	}}}
 	got := s.Bind(Binding{"ref": `origin/it's-fine`, "subject": "demo:pr:1"})
 
@@ -48,12 +47,12 @@ func TestBindExpandsCallInputs(t *testing.T) {
 // fixed vocabulary, so a $var in one could only name a tool that does not exist — or one chosen
 // by whoever last wrote the entity being matched, which is authority arriving through a payload.
 func TestBindLeavesTheToolNameAlone(t *testing.T) {
-	s := Spec{Calls: []Call{{Tool: "$tool", Fatal: []string{"$outcome"}}}}
+	s := Spec{Calls: []Call{{Tool: "$tool", Fatal: "$outcome"}}}
 	got := s.Bind(Binding{"tool": "push", "outcome": "err"})
 	if got.Calls[0].Tool != "$tool" {
 		t.Errorf("tool = %q, want it left as written", got.Calls[0].Tool)
 	}
-	if !reflect.DeepEqual(got.Calls[0].Fatal, []string{"$outcome"}) {
-		t.Errorf("fatal = %v, want it left as written", got.Calls[0].Fatal)
+	if got.Calls[0].Fatal != "$outcome" {
+		t.Errorf("fatal = %q, want it left as written", got.Calls[0].Fatal)
 	}
 }

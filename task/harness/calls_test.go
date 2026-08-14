@@ -124,8 +124,8 @@ func TestARefusedToolCallCanBeSurvivable(t *testing.T) {
 		ID: "t", Root: t.TempDir(), Resolver: task.AutoResolver{}, Log: io.Discard,
 		Vector: &task.Vector{Default: task.Auto}, Extra: []Tool{rt.tool()},
 	}, []task.Call{
-		{Tool: "push", Input: map[string]any{"destination": "one"}, Fatal: []task.StepOutcome{task.FatalErr}},
-		{Tool: "push", Input: map[string]any{"destination": "two"}, Fatal: []task.StepOutcome{task.FatalErr}},
+		{Tool: "push", Input: map[string]any{"destination": "one"}, Fatal: string(task.FatalErr)},
+		{Tool: "push", Input: map[string]any{"destination": "two"}, Fatal: string(task.FatalErr)},
 	})
 
 	if out, err := p.Run(context.Background()); err != nil || out.Reason != "done" {

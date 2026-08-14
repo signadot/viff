@@ -203,11 +203,12 @@ type Spec struct {
 type Call struct {
 	Tool  string         `tony:"field=tool"`
 	Input map[string]any `tony:"field=input,omitzero"`
-	// Fatal names which outcomes of this call end the list: `err`, `blocked`, `nonzero`.
-	// Absent means all three — a list is ordered because its calls depend on each other —
-	// and `[none]` means the call ends nothing. See task.Call.Fatal for why it is per call,
-	// and why "nothing" is a word rather than an empty list.
-	Fatal []string `tony:"field=fatal,omitzero"`
+	// Fatal names which outcomes of this call end the list, comma-separated: `err`,
+	// `blocked`, `nonzero`, or `none`. Empty means all of them — a list is ordered because
+	// its calls depend on each other — and `none` means the call ends nothing. See
+	// task.Call.Fatal for why it is per call, and why it is a word list in a string rather
+	// than a tony list.
+	Fatal string `tony:"field=fatal,omitzero"`
 }
 
 // Provider declares the who-axis as a governed 1-of-N selection: the eligible doers (a
@@ -304,7 +305,7 @@ func bindCalls(cs []Call, b Binding) []Call {
 	}
 	out := make([]Call, 0, len(cs))
 	for _, c := range cs {
-		nc := Call{Tool: c.Tool, Fatal: append([]string(nil), c.Fatal...)}
+		nc := Call{Tool: c.Tool, Fatal: c.Fatal}
 		if c.Input != nil {
 			nc.Input = make(map[string]any, len(c.Input))
 			for k, v := range c.Input {

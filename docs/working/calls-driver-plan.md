@@ -161,13 +161,26 @@ Tests: a charter carrying `calls:` fires and the list arrives at the driver inta
 expands per input; a bad `fatal` member and a `calls:`+`driver: llm` spawn each fail the firing
 with the charter named.
 
-**Built, and what it found.** `fatal: []` — the plan's own spelling for "nothing ends this list"
-— DOES NOT SURVIVE THE WIRE. `omitzero` drops an empty slice, so the same charter meant "nothing
-stops this call" on a local runner and "anything does" on a remote one, decided by deployment.
-The distinction is real and had to be said in a word that crosses: `fatal: [none]`, with the
-empty list refused rather than reinterpreted. Nothing else moved: the CLI keeps
-`ParseCalls` for a document a person typed, but parses it client-side into the field, so there is
-one wire form and the error lands on the terminal of whoever wrote the list.
+**Built, and what it found.** `fatal:` STOPPED BEING A LIST, and the reason is a property of the
+generated decoder rather than of this field: it fills a list field only when the node is an
+array, and says nothing otherwise. So `fatal: none` — the spelling anybody writes — was silently
+ignored, and the call got the default, which is its exact opposite. A string field refuses a
+wrong shape instead (`fatal: [err]` fails naming the field), which is why the vocabulary is now
+comma-separated words: `fatal: err`, `fatal: "err,blocked"`, `fatal: none`.
+
+Two alternatives were measured before settling. Dropping `omitzero` is worse than the problem:
+nil and empty then BOTH emit `[]`, so every call that said nothing comes back saying nothing is
+fatal. A pointer (`*[]StepOutcome`) does carry absent/empty/present faithfully — and still
+swallows the scalar, which is the failure that started it.
+
+**And the silent drop is not ours.** Any wrongly-shaped list field in the charter grammar goes
+the same way: `tools: read_file` decodes to no tools at all, which means ALL tools, silently
+widening the one field that is a hard floor. Filed rather than fixed here — it belongs to
+codegen, not to this plan.
+
+Nothing else moved: the CLI keeps `ParseCalls` for a document a person typed, but parses it
+client-side into the field, so there is one wire form and the error lands on the terminal of
+whoever wrote the list.
 
 Stop here if the rest is deferred. The merge is the expensive task and the one with a
 consequence; the sweep is housekeeping.
