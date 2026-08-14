@@ -254,6 +254,18 @@ func (p *Task) emit(e Frame) {
 // same stream as the loop's own events.
 func (p *Task) Emit(e Frame) { p.emit(e) }
 
+// emitTerminal says how the task ended, unless it has already said. It is the panic path's
+// entry to the read plane: property 1 is that a terminal is reached at most once and nothing
+// follows it, and a panic can arrive after teardown has already emitted one.
+func (p *Task) emitTerminal(why Status) {
+	p.busMu.Lock()
+	already := p.ended
+	p.busMu.Unlock()
+	if !already {
+		p.emit(Frame{Kind: EvStatus, Text: string(why)})
+	}
+}
+
 func evTrunc(s string) string {
 	if len(s) <= 200 {
 		return s

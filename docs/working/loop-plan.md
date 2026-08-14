@@ -184,11 +184,18 @@ nothing left to do, and for the coderunner's command driver, which cannot resume
 task. Caught by that runner's existing test. Such a note now goes on the read plane, attributed,
 where the person who wrote it is talking to the people watching.
 
-**A panicking seam is a wait that can never be discharged.** Step 2 covers the child; running
-the seams off the Run goroutine (which is what lets an intervention preempt a gate) made the same
-hole at every other seam, since the machine is parked on a reply only that call can produce. A
-panic in the driver, the resolver or the executor is now that seam's failure rather than the
-process's death.
+**A panicking seam is a wait that can never be discharged, and it took three recovers rather
+than one.** Step 2 named the child. Running the seams off the Run goroutine — which is what lets
+an intervention preempt a gate — made the same hole at every other seam, since the machine is
+parked on a reply only that call can produce. And both of those leave the INLINE path: the answer
+contract, the finisher, the spawn factory, `emit`, and the executor calls that unwind frames at
+teardown all run on the Run goroutine itself. For a child, its parent catches that. For a ROOT
+there was nobody, and the failure mode was worse than a crash and quieter — no terminal frame at
+all, so every subscriber stays open on a task that has stopped speaking and the durable entity
+says `running` forever. So: `seam` guards the seams, `runChild` guards a child, and `Run` guards
+itself, ending as `failed` with a terminal on the plane. fail.go already made this argument for a
+spawn that cannot be honoured ("rather than a nil that vanishes or a panic that stops the loop");
+this is the same argument reaching the case it named.
 
 **A boundary costs about eight times what it did, and that is left alone.** ~6.4µs against
 ~0.8µs (`BenchmarkBoundary`), and a CPU profile says it is goroutine scheduling rather than

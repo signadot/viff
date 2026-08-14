@@ -308,12 +308,42 @@ func (p *Task) Cancel(reason string) error {
 // each with exactly one reply, so "which wait am I in" is a single field rather than a set of
 // flags. A reply that arrives for a phase the machine has moved past is discarded, which is
 // what lets an intervention preempt a standing gate without racing it.
-func (p *Task) Run(ctx context.Context) (Outcome, error) {
+func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	p.mu.Lock()
 	p.cancel = cancel
 	p.mu.Unlock()
 	defer cancel(nil)
+
+	// A panic anywhere in this goroutine becomes this task's FAILURE, not the process's death.
+	//
+	// The seams are guarded where they run (see seam) and a child is guarded by its parent (see
+	// runChild), which leaves this: the effects performed inline on the Run goroutine — the
+	// answer contract, the finisher, the spawn factory, emit, and the executor calls that unwind
+	// the frames at teardown. A panic in any of those used to leave the loop with no terminal
+	// frame at all, which is worse than a crash and quieter: every subscriber stays open on a
+	// task that has stopped speaking, and the durable entity says `running` forever, which is
+	// exactly the leak the terminal-frame handling exists to prevent.
+	//
+	// So it ends the way any other infrastructure failure ends. fail.go already makes this
+	// argument for a spawn that cannot be honoured — "that spawn errors while the engine keeps
+	// running, rather than a nil that vanishes or a panic that stops the loop" — and a hosted
+	// runtime carrying somebody else's driver has the same interest in one task's bug not taking
+	// the fleet with it.
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		p.logf("↯ the loop panicked: %v\n%s", r, debug.Stack())
+		err = fmt.Errorf("the task loop panicked: %v", r)
+		p.setErr(err)
+		// Only if nothing terminal has been said yet: property 1 is that a task reaches a
+		// terminal state at most once and nothing follows it, and a panic during teardown can
+		// arrive after the frame has already gone out.
+		p.emitTerminal(Failed)
+		oc = Outcome{Task: p.ID, Reason: string(Failed), Boundary: p.seq}
+	}()
 
 	s := state{
 		frames:         []*frame{{label: "root"}},

@@ -68,6 +68,91 @@ func TestAPanickingChildStillCompletesItsParent(t *testing.T) {
 	}
 }
 
+// boomCheck panics where the loop calls it INLINE, on the Run goroutine itself — not in a
+// seam, which has its own recover.
+type boomCheck struct{}
+
+func (boomCheck) Check(string) (string, error) { panic("the contract check fell over") }
+
+// The second layer, which the first test does not reach: a panic on the child's OWN goroutine,
+// off the seam path. The answer contract, the finisher, the spawn factory, emit and the
+// executor calls that unwind frames at teardown all run there.
+//
+// It matters because the two recovers cover different things and only one of them is reached
+// by a panicking driver. A child that fell over inside its own shell must still report an
+// outcome, or its parent waits on a subtree that has stopped existing — the original bug by
+// another route.
+func TestAPanicOnTheChildsOwnGoroutineStillCompletesItsParent(t *testing.T) {
+	d := &callThenDone{}
+	parent := NewTask("p", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	parent.SetLog(io.Discard)
+	parent.SetSpawn(func(pt *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
+		c, err := pt.NewChild("kid", mode, req, &scriptDriver{}, &recExec{})
+		if err == nil {
+			c.SetLog(io.Discard)
+			c.SetAnswerCheck(boomCheck{})
+		}
+		return c, err
+	})
+
+	done := make(chan Outcome, 1)
+	go func() { oc, _ := parent.Run(context.Background()); done <- oc }()
+	select {
+	case oc := <-done:
+		if oc.Reason != string(Done) {
+			t.Fatalf("parent ended %s, want done", oc.Reason)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the parent is waiting for a child that panicked off the seam path")
+	}
+	var told bool
+	for _, m := range d.folded {
+		if strings.Contains(m, "kid") && strings.Contains(m, "panicked") {
+			told = true
+		}
+	}
+	if !told {
+		t.Fatalf("the parent was released but never told what happened: %v", d.folded)
+	}
+}
+
+// And the root, which has no parent to be guarded by: a panic on its inline path ends the TASK
+// rather than the process, and — the part that is easy to miss — it still says so on the read
+// plane.
+//
+// A loop that dies without a terminal frame is worse than a crash and quieter: every subscriber
+// stays open on a task that has stopped speaking, and the durable entity says `running`
+// forever. That is the leak the terminal-frame handling exists to prevent, reachable by a
+// second route.
+func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
+	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), &scriptDriver{}, &recExec{})
+	p.SetLog(io.Discard)
+	p.SetAnswerCheck(boomCheck{})
+	ch, unsub := p.Subscribe()
+	defer unsub()
+
+	out, err := p.Run(context.Background())
+	if err == nil {
+		t.Fatal("a panicking loop reported success")
+	}
+	if out.Reason != string(Failed) {
+		t.Errorf("reason %q, want failed", out.Reason)
+	}
+	if !strings.Contains(p.Err(), "panicked") {
+		t.Errorf("the entity would carry no account of why: %q", p.Err())
+	}
+	var terminal bool
+	for f := range ch { // the stream ENDS after the terminal, so this drains and stops
+		if f.Kind == EvStatus && Status(f.Text).Terminal() {
+			terminal = true
+		}
+	}
+	if !terminal {
+		t.Fatal("the loop died without a terminal frame: every subscriber is left listening to " +
+			"a task that has stopped speaking")
+	}
+}
+
 // The same guarantee one level down: a seam that panics fails ITS task rather than the
 // process, because the machine is waiting on a reply only that call can produce. A panic
 // there is not just a crash — it is a wait that can never be discharged, at the one place the
