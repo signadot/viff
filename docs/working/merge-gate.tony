@@ -172,10 +172,16 @@
         sha: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
     onDone:
       patch:
-        # The branch on $data.merged is the shape this wants; the spelling is unverified against
-        # the grammar and is the first thing to check when this is installed. Two rules
-        # conditioned on the answer would say the same thing with no new operator.
-        state: !when [ $data.merged, merged, stale ]
+        # `!when` WAS THE WRONG GUESS, and installing this is what settled it. There is no such
+        # operator: the deref inside it runs — the store ended up holding
+        # `state: !when [true, merged, stale]`, with `$data.merged` resolved to `true` — and the
+        # tag itself is data, so the proposal sat in a state no rule selects and no reader can
+        # act on. A patch derefs; it does not branch.
+        #
+        # So the answer is recorded as the FACT it is, and the branching is two rules below,
+        # which is what this note said in the first place and should have done.
+        merged: $data.merged
+        state: decided
         mergedSha: $data.sha
         reason: $data.reason
         err: !delete null
@@ -189,6 +195,45 @@
       patch:
         state: open
         err: !delete null
+---
+# 2b, 2c. …and the answer becomes a state, in the two rules a patch cannot be.
+#
+# A patch DEREFS and does not BRANCH, which is what `!when` above was reaching for and is not.
+# Two rules say it with no new operator: each selects the answer it is about and writes the state
+# that follows, and neither re-fires, because writing the state takes the subject out of its own
+# selection.
+#
+# They spawn nothing, so they need no latch and no gate: the decision was made at rule 2's gate,
+# and this is bookkeeping about what came back. `decided` exists only between the task ending and
+# these firing, which is a boundary a reader will occasionally catch and should be able to read.
+- name: proposal-merged
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value:
+        state: decided
+        merged: true
+  action:
+    patch:
+      state: merged
+---
+# The ORDINARY outcome, and it is not a failure: main moved while somebody was answering, the
+# task tried `--ff-only`, and the remote said no. The review that produced the branch is
+# idempotent, so a stale proposal is withdrawn and re-proposed by a later pass.
+- name: proposal-stale
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value:
+        state: decided
+        merged: false
+  action:
+    patch:
+      state: stale
 ---
 # 3. Main moved, so every open proposal's answer to "can this still land" may have changed.
 #

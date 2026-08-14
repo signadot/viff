@@ -66,12 +66,38 @@ Both spawns are then refused for want of a runner, and `onFailed` does exactly w
 "runners:pool:code" (none are installed) — a spawn naming a runner that is not installed is
 refused rather than run somewhere else*.
 
-**Three things remain unverified**, and one of them will verify itself. The `!when` on `onDone`
-parses, installs and round-trips through `verse trigger show` — this note's first question — but
-nothing has evaluated it, because that needs a task completing with `$data`; that and the merge
-itself want a runner. The **deadline** does not: a motion left standing runs its
-`!until [!quorum 1, !deadline "24h"]` out and should write `state: declined` through `onDenied`,
-so leaving one open is the cheapest test in this file and costs a day of waiting.
+**Then with a runner: the whole thing.** A scratch coderunner over a throwaway origin, a
+`verse-merge` environment declaring `main`, and `pool:code` installed. A vote approved the
+proposal, the task fast-forwarded the branch, called `push {destination: main}`, the runner staged
+the work and released the credential, and **main moved**. Charter to remote, one path.
+
+### `!when` was the wrong guess, and this is what it cost
+
+This note's first question, answered by installing it: **there is no `!when` operator.** A patch
+DEREFS and does not BRANCH, so what the store ended up holding was
+
+```tony
+state: !when
+- true                 # $data.merged resolved — the deref inside it ran
+- merged
+- stale
+```
+
+— a tagged list, as data. The proposal sat in a state no rule selects and no reader can act on,
+while `mergedSha` and `reason` beside it were correct. That is the worst shape a wrong spelling
+can have: it parses, it installs, it round-trips through `verse trigger show`, the firing
+succeeds, and the only thing wrong is the value in the store.
+
+The fix is what this note already said and the charter did not do: record the answer as the FACT
+it is (`merged: $data.merged`, `state: decided`) and branch in **two rules**, each selecting the
+answer it is about. Neither re-fires, because writing the state takes the subject out of its own
+selection. Driven both ways on a live verse: `decided + merged: true` → `merged`, `decided +
+merged: false` → `stale`.
+
+**Still unverified: the deadline.** A motion left standing should run its
+`!until [!quorum 1, !deadline "24h"]` out and write `state: declined` through `onDenied`. It is
+the cheapest test in this file and costs a day of waiting, which the verse it was standing on did
+not have.
 
 ## The one that was asked for, and is not expressible
 
