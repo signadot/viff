@@ -53,11 +53,23 @@ The task proposes an action naming a destination. Deriving stamps `Verb: Push` w
 `{Op: "push", Destination: <name>}` and the parent does the work it does today.
 
 **Proves:** the part the whole design is for, and it proves it without moving a secret. A charter
-can say *"ask before anything touches main"* and have it mean something, because `OnPush` and
-`branches:` finally match the ref that will actually be touched rather than a fixed one. Test: a
-vector that ASKs on `branches: [main]` and AUTOs elsewhere poses a question for one destination
+can say *"ask before anything touches main"* and have it mean something, because the effect
+carries the ref that will actually be touched rather than a fixed one. Test: a
+vector that ASKs on that ref and AUTOs elsewhere poses a question for one destination
 and not the other; a destination the environment does not declare is refused before the gate,
 not after it.
+
+*Corrected while building it:* the predicate is `resources: [{kind: gitref, pattern: …}]`, not
+`branches:`. `GateMatch.Branches` globs `RepoContext.Branch` — the branch the WORK is on, which
+is the same for every action a task takes — so it cannot tell two destinations apart and never
+could. `OnPush` reads `ToolUse.isPush()`, which matches on the action's NAME as well as on the
+ref, so naming the action `push` is what makes `onPush: true` fire at all; today it does not
+fire on delivery, because the closing action is called `deliver` and the loop never stamped a
+repo context on it. Both halves land here.
+
+*And "refused before the gate" is precise about the mechanism rather than about ordering:* an
+undeclared name carries no push effect, so no capability gate matches it and no question is
+posed. The executor is what says so, in the names the agent could have used.
 
 This step is also where a merge becomes possible at all, so it is the one to stop at if the rest
 is deferred.
@@ -137,6 +149,12 @@ is per tree — and unexercised.
 So: do not build for N. **Refuse a delivering environment with more than one repository, at
 install, saying why.** That keeps the loop's contract exactly as it is, turns a latent gap into a
 stated one, and costs nothing anybody is using.
+
+*As built, the refusal is on more than one repository WITH DESTINATIONS rather than on more than
+one repository.* The two readings differ on the ordinary multi-repo workspace — one tree being
+changed beside one there to be read — which the literal wording would have refused while the
+argument above does not touch it: a reference tree has nowhere to send anything, so it cannot
+make the closing act ambiguous.
 
 If a second repository ever arrives, the shape is `Finish` returning a SEQUENCE proposed once —
 not the finisher being consulted repeatedly, which is what an earlier draft of this said and which

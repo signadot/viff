@@ -31,7 +31,7 @@ import (
 // A description naming a tool the request does not carry is the same failure as no advice at
 // all, and it is the one that would look correct in review.
 func TestTheWaitAdviceNamesAToolThatIsActuallyOffered(t *testing.T) {
-	tds, err := selectTools(nil)
+	tds, err := selectTools(nil, nil)
 	if err != nil {
 		t.Fatalf("selectTools: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestTheWaitAdviceNamesAToolThatIsActuallyOffered(t *testing.T) {
 // wait into whatever the model could improvise.
 func TestYieldIsNotOptional(t *testing.T) {
 	for _, only := range [][]string{nil, {"read_file"}, {"read_file", "call_agent"}} {
-		tds, err := selectTools(only)
+		tds, err := selectTools(only, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

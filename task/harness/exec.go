@@ -20,10 +20,21 @@ import (
 // demoDeriver maps the model's tool vocabulary onto typed capabilities so the
 // gate vector can match on them. This is the pluggable classification seam — the
 // place a foreign agent's tools become the platform's typed capabilities.
-type demoDeriver struct{}
+type demoDeriver struct {
+	// extra is the runtime's own vocabulary (see Tool). Classification is delegated to
+	// whoever added the tool, because the effect a runtime's action has is exactly the part
+	// this package cannot know — a push resolves to a ref only the runner's environment names.
+	extra map[string]Tool
+}
 
-func (demoDeriver) Derive(tu *task.ToolUse) {
+func (d demoDeriver) Derive(tu *task.ToolUse) {
 	if len(tu.Effects) > 0 {
+		return
+	}
+	if t, ok := d.extra[tu.Name]; ok {
+		if t.Derive != nil {
+			t.Derive(tu)
+		}
 		return
 	}
 	if tu.CallAgent != nil {
@@ -139,6 +150,7 @@ type fsExec struct {
 	root    string
 	log     io.Writer
 	content task.ContentReader
+	extra   map[string]Tool // the runtime's own tools (see Tool)
 	seq     int
 	records []ExecRecord
 }
@@ -206,7 +218,33 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 	case "run_bash":
 		e.runBash(ctx, str(tu.Input, "command"), &rec)
 	default:
-		rec.Err = fmt.Sprintf("unknown tool %q", tu.Name)
+		t, ok := e.extra[tu.Name]
+		if !ok || t.Do == nil {
+			rec.Err = fmt.Sprintf("unknown tool %q", tu.Name)
+			break
+		}
+		// The runtime's own action. Its ledger entry is the ordinary one — nothing on the read
+		// plane or in the record should be able to tell which side of this seam a tool came
+		// from — and the three outcomes go three ways on purpose:
+		//
+		//   err      the action FAILED. Propagated rather than folded into the record, because
+		//            that is what makes a closing act fail its task: a run whose work did not
+		//            leave is not a run that succeeded.
+		//   blocked  the far side REFUSED. The loop's own word for it, so the driver re-plans
+		//            rather than retrying something it has been told no about, and a closing
+		//            act ends `done` carrying the refusal.
+		//   neither  it happened.
+		out, blocked, err := t.Do(ctx, tu)
+		if err != nil {
+			rec.Err = err.Error()
+			e.echo(rec)
+			e.records = append(e.records, rec)
+			return task.StepResult{Use: tu}, nil, err
+		}
+		rec.Stdout = out
+		e.echo(rec)
+		e.records = append(e.records, rec)
+		return task.StepResult{Use: tu, Output: rec.modelContent(), Blocked: blocked, Note: out}, nil, nil
 	}
 
 	e.echo(rec)

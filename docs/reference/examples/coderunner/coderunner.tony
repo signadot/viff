@@ -34,11 +34,26 @@ environments:
 # change that spans them is ONE task rather than two that have to be coordinated.
 - name: verse-dev
   repos:
-  # The one being changed. $task expands to the task id, so two tasks never contend for a ref.
+  # The one being changed, with the places its work may go. A task names a DESTINATION and never
+  # a ref: `auto` is where its own branch lands, `main` is what a merge proposal asks for, and
+  # the ref each of those means is this file's to say. $task expands to the task id and $sha to
+  # the commit the work started from, so two tasks never contend for a ref.
+  #
+  # `push: "…"` is the shorthand for a table holding only `auto`, and is what almost every
+  # environment wants.
   - name: verse
     repo: "https://github.com/signadot/verse"
     base: main
-    push: "refs/heads/verse/auto/$sha/$task"
+    destinations:
+    - name: auto
+      ref: "refs/heads/verse/auto/$sha/$task"
+    # Somewhere with a consequence. Nothing here makes this safe on its own — what does is a
+    # charter that ASKs on it (`resources: [{kind: gitref, pattern: "refs/heads/main"}]`) and
+    # `receive.denyNonFastForwards` at the receiving end, which is the rule verse deliberately
+    # does not duplicate: humans push here too, and an invariant enforced by the receiver
+    # applies to all of them.
+    - name: main
+      ref: "refs/heads/main"
   # There to be read. No `push`, so nothing can go back to it — a reference repository that
   # could push is a blast radius nobody asked for.
   - name: tony-format

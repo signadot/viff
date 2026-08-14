@@ -100,7 +100,11 @@ type Delivery struct {
 	Pushed []string // "<repo> -> <target>": it reached the far side
 	Staged []string // mirror refs still holding work
 	Loose  []string // repos whose work is in NEITHER — do not remove this workspace
-	Err    error
+	// Refused is what the FAR SIDE said no to, and it is separate from Err because it is not a
+	// fault: a remote enforcing its own rules about its own history is an authority verse does
+	// not hold, exercising it. See refusal.
+	Refused []string
+	Err     error
 }
 
 // Deliver commits whatever the task produced, stages it in the mirror, pushes it to the ref the
@@ -111,9 +115,10 @@ type Delivery struct {
 //
 // The destination is asked for BY NAME — `auto` is what the finisher asks for and what `push:`
 // has always spelled — so a repository that does not declare it sends nothing, exactly as a
-// repository with no push target sends nothing.
-func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result, dest string) Delivery {
-	return w.settle(ctx, l, result, dest, stagePending, true)
+// repository with no push target sends nothing. An empty repo means every tree, which is what
+// the finisher's one delivery has always meant.
+func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result, repo, dest string) Delivery {
+	return w.settle(ctx, l, result, repo, dest, stagePending, true)
 }
 
 // Salvage is the same two hops minus the last one: commit what is there and put it in the mirror
@@ -125,13 +130,16 @@ func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result, dest str
 // It names no destination, and it must not: work that nobody authorized to leave is held for
 // every repository that has anywhere to send it, not for one place somebody might have chosen.
 func (w *Workspace) Salvage(ctx context.Context, l task.Launch) Delivery {
-	return w.settle(ctx, l, "", "", stageHeld, false)
+	return w.settle(ctx, l, "", "", "", stageHeld, false)
 }
 
-func (w *Workspace) settle(ctx context.Context, l task.Launch, result, dest, kind string, send bool) Delivery {
+func (w *Workspace) settle(ctx context.Context, l task.Launch, result, repo, dest, kind string, send bool) Delivery {
 	var d Delivery
 	var errs []error
 	for _, t := range w.Trees {
+		if repo != "" && t.Repo.Name != repo {
+			continue
+		}
 		// A repository with nowhere to push is a reference tree: nothing leaves and nothing is
 		// staged, because there is no target to hold work FOR. When a destination is named, a
 		// repository that does not declare THAT one is in the same position.
@@ -165,6 +173,25 @@ func (w *Workspace) settle(ctx context.Context, l task.Launch, result, dest, kin
 			continue
 		}
 		if err := t.push(ctx, w.Branch, target); err != nil {
+			if why := refusal(err); why != "" {
+				// The far side said no, which is a DECISION and not a fault. It moves to
+				// `held`, because `pending` means "a retry may complete this" and a retry
+				// cannot: whatever rule refused it will refuse it again on every spawn against
+				// this repository, forever, in the log. Held work is exactly work nobody with
+				// authority over where it goes has agreed to take.
+				held := stagedRef(stageHeld, l.ID, t.Repo.Name, "")
+				if err := w.mirrors.stage(ctx, t, w.Branch, held); err != nil {
+					errs = append(errs, err)
+					d.Loose = append(d.Loose, t.Repo.Name)
+					continue
+				}
+				if err := w.mirrors.unstage(ctx, t.Repo.Repo, ref); err != nil {
+					errs = append(errs, fmt.Errorf("dropping %s after a refusal: %w", ref, err))
+				}
+				d.Refused = append(d.Refused, t.Repo.Name+" -> "+target+": "+why)
+				d.Staged = append(d.Staged, held)
+				continue
+			}
 			// The work is safe: it went into the mirror a moment ago. Say where, because the
 			// operator's next question is exactly that.
 			errs = append(errs, fmt.Errorf("%w (the work is in this runner's mirror at %s)", err, ref))

@@ -411,7 +411,13 @@ func (d *llmDriver) Result() string {
 func resultContent(prev task.StepResult) string {
 	switch {
 	case prev.Blocked:
-		return "DENIED by supervisor gate: " + prev.Note +
+		// DENIED, and NOT "by supervisor gate". The gate is one thing that refuses an action
+		// and it stopped being the only one the moment a runtime's tool could reach an
+		// authority outside the verse — a remote enforcing its own rules about its own history
+		// refuses, and telling the model a supervisor did it names the wrong party and points
+		// its next attempt at the wrong repair. The reason says who; the word stays, because
+		// the frame is written against it.
+		return "DENIED: " + prev.Note +
 			". Do not retry this exact action; choose a different approach or explain why you cannot proceed."
 	case prev.Err != nil:
 		return "ERROR: " + prev.Err.Error()
@@ -434,8 +440,22 @@ func resultContent(prev task.StepResult) string {
 // An unknown name is an error rather than a skip. Quietly offering fewer tools than the
 // charter asked for is the failure mode this change exists to remove: a field that reads
 // back as written and does something else.
-func selectTools(only []string) ([]toolDef, error) {
+func selectTools(only []string, extra []Tool) ([]toolDef, error) {
 	all := toolDefs()
+	for _, t := range extra {
+		// A runtime's own tool is offered on exactly the terms the built-in ones are: it can be
+		// narrowed away by a spawn's `tools:`, it is described in the derived frame, and its
+		// name has to be one somebody can write. Appended rather than merged, so a runtime
+		// cannot quietly replace `run_bash` with something of its own.
+		var td toolDef
+		td.Type = "function"
+		td.Function.Name = t.Name
+		td.Function.Description = t.Description
+		td.Function.Parameters = map[string]any{
+			"type": "object", "properties": t.Params, "required": t.Required,
+		}
+		all = append(all, td)
+	}
 	if len(only) == 0 {
 		return all, nil
 	}

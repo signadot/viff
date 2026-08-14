@@ -399,6 +399,35 @@ func (w *Workspace) RepoContext() *task.RepoContext {
 	return rc
 }
 
+// Destination resolves a name a task asked for: which repository declares it, and the ref it
+// expands to. A nil tree means no repository here declares that name, which is the refusal — a
+// task names a destination and never a ref, so the set of names is the set of places work can go.
+//
+// One repository, because ONE PUSH ACTION IS ONE REPOSITORY, and an environment that could make
+// that ambiguous is refused when the config is read (checkDelivering).
+func (w *Workspace) Destination(name string) (*Tree, string) {
+	for _, t := range w.Trees {
+		if ref := t.DestRef(name, w.Branch); ref != "" {
+			return t, ref
+		}
+	}
+	return nil, ""
+}
+
+// DestinationNames is every name a task here may ask for, in the order the environment wrote
+// them. It is what the push tool offers the model as an enumeration, so the vocabulary a runtime
+// will accept is the vocabulary the model can write rather than something it finds out by being
+// refused.
+func (w *Workspace) DestinationNames() []string {
+	var out []string
+	for _, t := range w.Trees {
+		for _, d := range t.Repo.Dests() {
+			out = append(out, d.Name)
+		}
+	}
+	return out
+}
+
 // changed is this tree's dirty paths, relative to itself, sorted so two readers see one order
 // (go-git returns a map).
 func (t *Tree) changed() []string {
@@ -542,6 +571,39 @@ func (t *Tree) push(ctx context.Context, branch, target string) error {
 		return fmt.Errorf("repo %s: push %s: %w", t.Repo.Name, target, err)
 	}
 	return nil
+}
+
+// refusal reads a failed push and reports what the FAR SIDE said when it declined, or "" when
+// the failure was not a decision at all.
+//
+// The distinction is the whole of how a push is reported, and getting it backwards fills the
+// record with alarm about the thing working as intended. A remote that will not fast-forward, a
+// protected branch, a ruleset, a hook: those are an authority OUTSIDE verse exercising rules
+// about its own history — which is precisely the authority this design deliberately does not
+// take (docs/working/push-as-a-capability.md, "verse should not compete with git server
+// configuration"). The task tried, correctly, and the answer is no. A missing credential or an
+// unreachable host is not an answer at all.
+//
+// It is a string match, and that is what the transport gives: go-git renders receive-pack's `ng`
+// line as `command error on <ref>: <status>` and its own pre-flight check as `non-fast-forward
+// update: <ref>`, and neither is reachable as a typed error from PushContext. Auth is typed, so
+// auth is matched typed — and it is matched FIRST, because an authorization failure at the
+// transport is infrastructure however much the word looks like a refusal.
+func refusal(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, transport.ErrAuthenticationRequired) ||
+		errors.Is(err, transport.ErrAuthorizationFailed) {
+		return ""
+	}
+	msg := err.Error()
+	for _, mark := range []string{"non-fast-forward", "command error on "} {
+		if strings.Contains(msg, mark) {
+			return msg
+		}
+	}
+	return ""
 }
 
 // deliveryRemote is the in-memory remote a push is made through. It is not a remote in any

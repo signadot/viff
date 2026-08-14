@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -746,4 +748,194 @@ func TestPushTargetCarriesTheBaseSha(t *testing.T) {
 	if other.PushTarget(branch) == got {
 		t.Error("two commits share one ref; the second fix would overwrite the first")
 	}
+}
+
+// The AGENT can propose a push, to a destination it names and to no ref it chooses — and the
+// vector decides it per destination.
+//
+// This is what the delivery button could not do. `deliver` was one flow with no target, so
+// merging a proposal into main, moving a promotion ref or retiring a stale branch had no way to
+// be ASKED for; and the obvious repair, an operation per flow, puts a policy in a mechanism and
+// leaves the next flow needing another one. Here the environment declares where work may go, the
+// agent names one of those places, and the gate matches the ref that will actually be touched.
+//
+// The gate is written on `resources:` rather than on `branches:`. The plan says branches, and
+// that is wrong about the mechanism rather than about the intent: `GateMatch.Branches` globs
+// RepoContext.Branch — the branch the WORK is on, which is the same for every action this task
+// takes — while the thing that differs between two destinations is the ref, which is exactly
+// what a `gitref` resource predicate selects on.
+func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	model := fakeModel(t,
+		call("write_file", `{"path":"svc/merged.txt","content":"x\n"}`),
+		call(pushToolName, `{"destination":"main"}`),
+		say("pushed it"))
+	r := testRunner(t, destinationsConfig(origin, model))
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "g1", Prompt: "merge it",
+		// Ask about main; everything else — including the closing delivery to `auto` — runs.
+		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
+			Name: "to-main", Mode: task.Ask,
+			Match: task.GateMatch{Resources: []task.ResourcePred{
+				{Kind: task.KindGitRef, Pattern: "refs/heads/main"},
+			}},
+		}}},
+	}, nil)
+	frames, cancel := h.Subscribe()
+	defer cancel()
+	res := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+
+	var asked []string
+	var terminal string
+	for f := range frames {
+		switch {
+		case f.Kind == task.EvPending:
+			asked = append(asked, f.Tool)
+			if err := res.Resolve(f.ID, true, "", "human:test"); err != nil {
+				t.Fatalf("approving %s: %v", f.Tool, err)
+			}
+		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+			terminal = f.Text
+		}
+		if terminal != "" {
+			break
+		}
+	}
+	if terminal != string(task.Done) {
+		t.Fatalf("task ended %s (%s)", terminal, h.Err())
+	}
+	// Exactly one question, about the destination the charter named. The closing delivery to
+	// `auto` went through the same gate machinery and matched nothing — which is the
+	// discrimination that did not exist when every push was one untargeted `deliver`.
+	if len(asked) != 1 || asked[0] != pushToolName {
+		t.Fatalf("questions posed = %v, want exactly one about %q", asked, pushToolName)
+	}
+	waitFor(t, "the agent's push to land on main", func() bool {
+		return strings.Contains(commitOn(origin, "refs/heads/main"), "Verse-Task: g1")
+	})
+	// And the closing delivery still happened, ungated, to the destination it has always used.
+	waitFor(t, "the delivery to auto", func() bool {
+		return commitOn(origin, "refs/heads/verse/auto/g1") != ""
+	})
+}
+
+// A destination the environment does not declare poses no question and pushes nothing.
+//
+// "Refused before the gate" is what that comes to in a loop where classification runs first: a
+// name resolving to nowhere carries no push effect, so no capability gate can match it and
+// nobody is asked to approve something that was never going to happen. The executor then says so
+// in the agent's own vocabulary — the names it could have used instead.
+func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
+	fastLifecycle(t)
+	origin := initRepo(t)
+	// `release` is not a destination this environment has. The model asks for it anyway, which
+	// is what a model ignoring the enum in its own tool schema would do.
+	model := fakeModel(t, call(pushToolName, `{"destination":"release"}`), say("could not"))
+	r := testRunner(t, destinationsConfig(origin, model))
+	srv := httptest.NewServer(r.Handler())
+	defer srv.Close()
+
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "g2", Prompt: "push it somewhere",
+		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
+			Name: "any-push", Mode: task.Ask,
+			Match: task.GateMatch{Verbs: []task.Verb{task.Push}},
+		}}},
+	}, nil)
+	frames, cancel := h.Subscribe()
+	defer cancel()
+	res := h.(interface {
+		Resolve(decision string, proceed bool, say, by string) error
+	})
+
+	var asked []string
+	var refused, terminal string
+	for f := range frames {
+		switch {
+		case f.Kind == task.EvPending:
+			asked = append(asked, f.Tool)
+			_ = res.Resolve(f.ID, true, "", "human:test")
+		case f.Kind == task.EvExec && f.Tool == pushToolName:
+			refused = f.Text
+		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+			terminal = f.Text
+		}
+		if terminal != "" {
+			break
+		}
+	}
+	if terminal != string(task.Done) {
+		t.Fatalf("task ended %s (%s)", terminal, h.Err())
+	}
+	for _, tool := range asked {
+		if tool == pushToolName {
+			t.Fatal("somebody was asked to approve a push to a destination that does not exist")
+		}
+	}
+	if !strings.Contains(refused, "no destination") || !strings.Contains(refused, "main") {
+		t.Errorf("the refusal does not say what the agent could have asked for instead: %q", refused)
+	}
+	if commitOn(origin, "refs/heads/release") != "" {
+		t.Fatal("a ref the environment never declared was written")
+	}
+}
+
+// destinationsConfig is an environment with two places work may go: `auto`, which is what the
+// closing delivery means, and `main`, which is what a merge proposal wants.
+func destinationsConfig(origin, model string) *Config {
+	return &Config{
+		Default: "e",
+		Environments: []Environment{{
+			Name: "e",
+			Repos: []Repo{{Name: "svc", Repo: origin, Base: "main", Destinations: []Destination{
+				{Name: autoDestination, Ref: "refs/heads/verse/auto/$task"},
+				{Name: "main", Ref: "refs/heads/main"},
+			}}},
+			Driver: driverLLM,
+			Tools:  []string{"read_file", "write_file", pushToolName},
+			Env:    []string{"PATH"},
+		}},
+		LLM: LLM{BaseURL: model, Model: "fake", APIKeyEnv: "PATH"},
+	}
+}
+
+// fakeModel is a Chat Completions endpoint that replies with a scripted turn each time it is
+// called, and repeats the last one after that.
+//
+// A fake rather than a real model, because what is under test is this runner's half: that a tool
+// call becomes a derived, gated action, and what the runner does when one is approved. Nothing
+// here turns on a model's judgement, so borrowing one would add a round trip and a source of
+// flake and check nothing extra.
+func fakeModel(t *testing.T, turns ...string) string {
+	t.Helper()
+	var mu sync.Mutex
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		body := turns[min(n, len(turns)-1)]
+		n++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// call is a turn in which the model calls one tool; say is a turn in which it stops and speaks,
+// which is the only way it can stop.
+func call(tool, args string) string {
+	return fmt.Sprintf(`{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant",`+
+		`"tool_calls":[{"id":"c1","type":"function","function":{"name":%q,"arguments":%q}}]}}]}`,
+		tool, args)
+}
+
+func say(text string) string {
+	return fmt.Sprintf(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":%q}}]}`, text)
 }

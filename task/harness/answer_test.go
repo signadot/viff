@@ -139,7 +139,7 @@ func TestNoContractLeavesTheLoopAlone(t *testing.T) {
 // The contract is stated in the frame, so an agent meets it before it stops rather than as
 // a rejection — and it comes back OFF for a child, which runs no such check.
 func TestContractClauseGoesOnAndComesOff(t *testing.T) {
-	base := defaultFrame(toolDefs(), Vector())
+	base := defaultFrame(toolDefs(), Vector(), nil)
 	c := contract(t)
 	framed := strings.TrimRight(base, "\n") + "\n\n" + contractClause(c)
 	for _, line := range strings.Split(c.Source(), "\n") { // indented into the clause

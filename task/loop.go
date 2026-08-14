@@ -503,6 +503,16 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 		case effFinish:
 			tu, ok := p.fin.Finish(v.answer)
 			if ok {
+				// The repo context, exactly as a driver's action gets it. Leaving it off was
+				// the one thing that made the CLOSING action less gateable than an ordinary
+				// one: `GateMatch.OnPush` compares an effect's ref against RepoContext's push
+				// target and `Branches` globs RepoContext's branch, so with no context both
+				// fell through — and the closing action is the delivery push, which is the one
+				// action those two fields were written for. A charter saying `onPush: true`
+				// matched nothing.
+				if p.repo != nil {
+					tu.Repo = p.repo()
+				}
 				tu.ID = p.nextID()
 				p.sup.Derive(&tu)
 			}

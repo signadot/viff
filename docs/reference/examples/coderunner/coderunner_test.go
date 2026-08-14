@@ -75,7 +75,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	l := task.Launch{ID: "p1", Environment: "test", Provenance: task.Provenance{
 		Principal: "scott", Subject: "demo:pr:1", Chain: "review",
 	}}
-	d := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails", autoDestination)
+	d := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails", "", autoDestination)
 	if d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
@@ -159,7 +159,7 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 		}
 	}
 
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing", autoDestination)
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing", "", autoDestination)
 	if d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
@@ -220,7 +220,7 @@ func TestNoPushTargetDeliversNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "x"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done", autoDestination)
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done", "", autoDestination)
 	if d.Err != nil || len(d.Pushed) != 0 || len(d.Staged) != 0 {
 		t.Fatalf("Deliver = %+v — a read-only environment pushes nowhere and stages nothing", d)
 	}
@@ -262,7 +262,7 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", autoDestination); d.Err != nil {
+	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", "", autoDestination); d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
 	if commitAt(t, attacker, "refs/heads/verse/auto/p1") != "" {
@@ -383,15 +383,18 @@ func TestShippedConfigLoads(t *testing.T) {
 		t.Errorf("verse-dev has %d repo(s) — the sample exists to show the multi-repo shape",
 			len(multi.Repos))
 	}
-	// One being changed, one only read: the asymmetry the sample is meant to demonstrate.
-	var pushes int
+	// One being changed, one only read: the asymmetry the sample is meant to demonstrate, and
+	// the one checkDelivering enforces — a closing delivery is ONE action, so a second repo
+	// with somewhere to send work would be silently held.
+	var delivering int
 	for _, r := range multi.Repos {
-		if r.Push != "" {
-			pushes++
+		if len(r.Dests()) > 0 {
+			delivering++
 		}
 	}
-	if pushes != 1 {
-		t.Errorf("verse-dev has %d repos that push; the sample should show exactly one", pushes)
+	if delivering != 1 {
+		t.Errorf("verse-dev has %d repos with destinations; the sample should show exactly one",
+			delivering)
 	}
 }
 
@@ -650,7 +653,7 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	if err := os.RemoveAll(origin); err != nil {
 		t.Fatal(err)
 	}
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", autoDestination)
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", "", autoDestination)
 	if d.Err == nil {
 		t.Fatal("expected the push to fail once its remote was gone")
 	}

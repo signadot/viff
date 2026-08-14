@@ -133,8 +133,15 @@ func runTaskProcess() error {
 	// The runner's closing act, proposed inside this task's loop so the vector can gate it and
 	// the read plane can record it. The credential to perform it is on the other side of fd 5,
 	// which is the whole reason this is a request rather than a push (deliver.go).
+	//
+	// The same channel carries the agent's OWN pushes, and one connection is right for both:
+	// what fd 5 is is a capability this process may ask its runner to exercise, and who inside
+	// this process is asking makes no difference to the runner holding it.
 	if conn, err := net.FileConn(os.NewFile(deliverFD, "deliver")); err == nil {
 		p.fin = &deliverFinisher{ws: ws, conn: conn}
+		if t, ok := pushTool(ws, conn); ok {
+			p.extra = append(p.extra, t)
+		}
 	}
 	return http.Serve(ln, taskd.New(p.build).Handler())
 }
@@ -216,9 +223,10 @@ func dieWithParent() {
 }
 
 type taskProc struct {
-	cfg childConfig
-	ws  *Workspace
-	fin task.Finisher // the runner's closing act: deliver (deliver.go)
+	cfg   childConfig
+	ws    *Workspace
+	fin   task.Finisher  // the runner's closing act: deliver (deliver.go)
+	extra []harness.Tool // what this runner adds to the agent's vocabulary: push (deliver.go)
 }
 
 // build is the taskd Builder on this side of the hop — the driver dispatch that used to happen
@@ -251,6 +259,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
 			Log:    os.Stderr, // the parent copies this onto its own log, tagged with the task id
 			Finish: p.fin,     // the runner's own closing act, inside the loop
+			Extra:  p.extra,   // and what only this runner can do: push to a declared destination
 			// Resolved by the parent and sent on stdin. Nothing here reads an environment
 			// variable for a credential: that is the ambient-credential shape this design
 			// refuses everywhere else.

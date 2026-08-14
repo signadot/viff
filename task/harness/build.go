@@ -8,6 +8,7 @@
 package harness
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -38,14 +39,14 @@ import (
 // unattended trigger firing means park. Rewording the constant would not fix it, because
 // the vector is per-spawn and slidable while the constant is neither. Deriving the advice
 // from the vector does: below, each tool is described as it will actually behave.
-func defaultFrame(tds []toolDef, vec *task.Vector) string {
+func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string {
 	var free, gated []string
 	for _, td := range tds {
 		name := td.Function.Name
 		if name == yieldTool {
 			continue // not an action; described on its own terms at the end
 		}
-		if gateModeFor(name, vec).Blocks() {
+		if gateModeFor(name, vec, extra).Blocks() {
 			gated = append(gated, name)
 			continue
 		}
@@ -114,7 +115,7 @@ func withoutContract(frame string) string {
 // run_bash by its `command`, and an action with no derived effect matches no verb gate — so
 // probing with empty input would report every tool as ungated, quietly reintroducing the
 // exact disagreement this function exists to prevent.
-func gateModeFor(tool string, vec *task.Vector) task.Mode {
+func gateModeFor(tool string, vec *task.Vector, extra map[string]Tool) task.Mode {
 	if vec == nil {
 		return task.Auto
 	}
@@ -122,7 +123,7 @@ func gateModeFor(tool string, vec *task.Vector) task.Mode {
 	if tool == "call_agent" {
 		tu.CallAgent = &task.CallAgentRequest{Agent: "probe"}
 	}
-	demoDeriver{}.Derive(&tu)
+	demoDeriver{extra: extra}.Derive(&tu)
 	return vec.Evaluate(tu).Mode
 }
 
@@ -137,6 +138,58 @@ func Vector() *task.Vector {
 			{Name: "delegate", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.CallAgent}}},
 		},
 	}
+}
+
+// A Tool is one action a RUNTIME adds to the agent's vocabulary, beyond the four this package
+// implements. It is the same seam Finisher is, in the other direction: Finisher is the runtime
+// acting on its own behalf at the end, and this is the runtime offering the AGENT something only
+// the runtime knows how to do.
+//
+// The case it exists for is a coding runner's push. The runner holds the credential, the
+// destinations are its environment's to declare, and neither is anything this package can know
+// about — but the action has to be an ACTION, derived and gated and narrated like every other,
+// or it is a capability outside the vector. Wiring it as a fifth case in fsExec would put git in
+// a package that has no business knowing what git is; wiring it as a private channel would put
+// it outside the loop, which is exactly what the delivery push already was and what
+// task.Finisher exists to have fixed.
+//
+// It is offered to CHILDREN too, on the same argument the tool set is: a sub-agent should not be
+// handed a capability its parent's spawn withheld, and it should not lose one its parent had.
+type Tool struct {
+	Name        string
+	Description string
+	// Params are the arguments as JSON-schema properties, and Required names the ones that must
+	// be present. An argument whose values are enumerable should say so — `enum` is how the
+	// vocabulary a runtime will accept becomes the vocabulary the model can write, rather than
+	// something it discovers by being refused.
+	Params   map[string]any
+	Required []string
+	// Derive stamps the typed effects the vector matches on, exactly as the deriver does for
+	// this package's own tools. An action left with NO effect is one no capability gate can
+	// match, which is the right answer for a request that cannot be performed at all: nobody is
+	// asked to approve something that is about to be refused.
+	Derive func(tu *task.ToolUse)
+	// Do performs it once the gate has approved. out is what the model reads and what the read
+	// plane narrates.
+	//
+	// blocked is for a REFUSAL — the far side saying no — as against the action failing. The
+	// distinction is the loop's own (StepResult.Blocked: "a gate/scope refusal so the driver can
+	// re-plan rather than treating it as an error") and it matters most where a refusal is the
+	// ORDINARY outcome: a remote enforcing its own rules about its own history is exercising an
+	// authority verse deliberately does not hold, and routing that through err would fill the
+	// record with alarm about the thing working as intended.
+	Do func(ctx context.Context, tu task.ToolUse) (out string, blocked bool, err error)
+}
+
+func byName(extra []Tool) map[string]Tool {
+	if len(extra) == 0 {
+		return nil
+	}
+	out := make(map[string]Tool, len(extra))
+	for _, t := range extra {
+		out[t.Name] = t
+	}
+	return out
 }
 
 // Config parameterizes Build.
@@ -162,6 +215,10 @@ type Config struct {
 	// afterwards because the frame is derived from it, and a vector installed after Build
 	// would be described by a frame written against the wrong one.
 	Vector *task.Vector
+
+	// Extra are tools the RUNTIME adds to this agent's vocabulary, beyond the ones this
+	// package implements. See Tool.
+	Extra []Tool
 
 	// Finish is the RUNTIME's own closing act, composed onto the end of this task's loop: a
 	// coding runner's push, and anything else a runtime does with the work rather than to it.
@@ -202,7 +259,8 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 	if cfg.Log == nil {
 		cfg.Log = io.Discard
 	}
-	tools, err := selectTools(cfg.Tools)
+	extra := byName(cfg.Extra)
+	tools, err := selectTools(cfg.Tools, cfg.Extra)
 	if err != nil {
 		// A spawn that named a tool this build does not have gets a FAILED task, not a
 		// quietly smaller toolset. The charter asked for a specific set; running with a
@@ -226,13 +284,13 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 		vec = Vector()
 	}
 	sup := task.NewSupervisor(vec, cfg.Resolver)
-	sup.SetDeriver(demoDeriver{})
+	sup.SetDeriver(demoDeriver{extra: extra})
 
 	// The frame is derived from THIS task's tools and vector when the spawn did not
 	// write one, so what the agent is told matches what it will actually meet.
 	frame := cfg.Frame
 	if frame == "" {
-		frame = defaultFrame(tools, vec)
+		frame = defaultFrame(tools, vec, extra)
 	}
 	// The contract is stated in the frame even when the spawn wrote the frame itself, and
 	// appending to an author's text is otherwise not this function's business. It is
@@ -246,7 +304,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 
 	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Prompt,
 		log: cfg.Log}
-	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
+	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra}
 	p := task.NewTask(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
 	// The two things that decide when a task is OVER, installed on the loop rather than
@@ -283,7 +341,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 		// does not run, so it is trimmed rather than left to mislead.)
 		childDriver := &llmDriver{client: cfg.Client, tools: tools, frame: withoutContract(frame),
 			prompt: req.Prompt, log: cfg.Log}
-		childExec := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content}
+		childExec := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra}
 		child, err := parent.NewChild(childID, mode, req, childDriver, childExec)
 		if err == nil {
 			childDriver.emit = child.Emit // child narration onto the child's read plane

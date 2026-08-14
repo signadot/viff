@@ -10,10 +10,15 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
-// knownTools is the llm driver's vocabulary, as harness.toolDefs offers it. Named here so an
-// environment's floor can be checked at startup; `call_agent` and `fail` are deliberately
-// absent from what an environment would list, being the loop's own rather than the work's.
-var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent"}
+// knownTools is the llm driver's vocabulary, as harness.toolDefs offers it, plus the one this
+// runner adds itself. Named here so an environment's floor can be checked at startup;
+// `call_agent` and `fail` are deliberately absent from what an environment would list, being the
+// loop's own rather than the work's.
+//
+// `push` is this runner's (deliver.go, pushTool) and is offered only where the environment
+// declares somewhere to push, which is why naming it without destinations is refused below: a
+// floor that lists a tool nothing will offer is a floor that means nothing.
+var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent", pushToolName}
 
 // driverLLM is the one driver this runner implements itself. Every other driver name selects a
 // program from `agents:` — see Command.
@@ -280,6 +285,9 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			dirs[r.Name] = true
 		}
+		if err := checkDelivering(e); err != nil {
+			return nil, err
+		}
 		seen[e.Name] = true
 	}
 	for name, a := range c.Agents {
@@ -325,6 +333,41 @@ func checkDests(env string, r Repo) error {
 				"perform", env, r.Name, d.Name)
 		}
 		seen[d.Name] = true
+	}
+	return nil
+}
+
+// checkDelivering refuses an environment where more than one repository has somewhere to send
+// work, and refuses one that offers the push tool with nowhere to send it.
+//
+// ONE PUSH ACTION IS ONE REPOSITORY, which is what stops a mixed outcome from being a state
+// anybody has to model: each action has its own gate, its own result, and its own place in the
+// record. The cost lands on the CLOSING act, because `task.Finisher.Finish` returns one action
+// and a workspace with N delivering repositories would need N — so this is where that gap is
+// stated rather than left latent.
+//
+// It is refused rather than built for, on the evidence: every environment that exists declares
+// exactly one repository that pushes, beside however many are there to be read. If a second one
+// ever arrives the shape is `Finish` returning a SEQUENCE proposed once — one proposal, N
+// actions, still at most once per quiescence — and not a finisher consulted repeatedly, which
+// would make "finish" iterative and reword the loop's contract for nothing.
+func checkDelivering(e Environment) error {
+	var delivering []string
+	for _, r := range e.Repos {
+		if len(r.Dests()) > 0 {
+			delivering = append(delivering, r.Name)
+		}
+	}
+	if len(delivering) > 1 {
+		return fmt.Errorf("coderunner: environment %q has %d repositories with destinations (%s) "+
+			"— a task's closing delivery is ONE action, so it could deliver only the first and "+
+			"the rest would be silently held. Give one repository destinations; the others are "+
+			"there to be read", e.Name, len(delivering), strings.Join(delivering, ", "))
+	}
+	if len(delivering) == 0 && slices.Contains(e.Tools, pushToolName) {
+		return fmt.Errorf("coderunner: environment %q offers the %q tool and declares no "+
+			"destinations, so every use of it would be refused — declare where work may go, or "+
+			"do not offer it", e.Name, pushToolName)
 	}
 	return nil
 }

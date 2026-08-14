@@ -21,17 +21,17 @@ import (
 // cannot disagree: whatever the vector blocks is described as blocking.
 func TestDefaultFrameNeverRecommendsWhatTheVectorBlocks(t *testing.T) {
 	vec := Vector()
-	tds, err := selectTools(nil)
+	tds, err := selectTools(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, vec)
+	frame := defaultFrame(tds, vec, nil)
 
 	if strings.Contains(strings.ToLower(frame), "prefer call_agent") {
 		t.Error("the frame recommends call_agent while the vector gates it")
 	}
 	for _, name := range toolNames(tds) {
-		if name == yieldTool || !gateModeFor(name, vec).Blocks() {
+		if name == yieldTool || !gateModeFor(name, vec, nil).Blocks() {
 			continue
 		}
 		// A gated tool must be described as gated. Being absent from the frame would also
@@ -50,11 +50,11 @@ func TestDefaultFrameNeverRecommendsWhatTheVectorBlocks(t *testing.T) {
 // loop. Without this, a frame that called every tool gated would pass the test above while
 // being just as wrong in the other direction.
 func TestDefaultFrameDescribesAnUngatedVectorAsUngated(t *testing.T) {
-	tds, err := selectTools(nil)
+	tds, err := selectTools(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, &task.Vector{Default: task.Auto})
+	frame := defaultFrame(tds, &task.Vector{Default: task.Auto}, nil)
 	if strings.Contains(frame, "STOP the loop") {
 		t.Error("no tool is gated under an auto vector, so nothing should be described as stopping the loop")
 	}
@@ -71,8 +71,8 @@ func TestDefaultFrameDescribesAnUngatedVectorAsUngated(t *testing.T) {
 // back as prose. The default must not ask for a summary, and must say what the last
 // message is FOR, so a task that names a shape is not competing with the frame.
 func TestDefaultFrameDoesNotMandateAProseSummary(t *testing.T) {
-	tds, _ := selectTools(nil)
-	frame := defaultFrame(tds, Vector())
+	tds, _ := selectTools(nil, nil)
+	frame := defaultFrame(tds, Vector(), nil)
 	low := strings.ToLower(frame)
 
 	for _, banned := range []string{"one-paragraph summary", "paragraph summary", "summarize what you did"} {
@@ -92,11 +92,11 @@ func TestDefaultFrameDoesNotMandateAProseSummary(t *testing.T) {
 // fixed five, so narrowing the tool set would have left the agent reaching for tools that
 // were not in the request — the same class of defect as the vector disagreement.
 func TestDefaultFrameNamesOnlyTheToolsOnOffer(t *testing.T) {
-	tds, err := selectTools([]string{"read_file", "list_dir"})
+	tds, err := selectTools([]string{"read_file", "list_dir"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, Vector())
+	frame := defaultFrame(tds, Vector(), nil)
 	for _, withheld := range []string{"write_file", "run_bash", "call_agent"} {
 		if strings.Contains(frame, withheld) {
 			t.Errorf("the frame names %s, which this spawn does not offer", withheld)
@@ -114,7 +114,7 @@ func TestDefaultFrameNamesOnlyTheToolsOnOffer(t *testing.T) {
 // downstream — so a spawn that dropped it would convert every failure into a completed
 // task carrying an excuse where the charter expected a value.
 func TestSelectToolsAlwaysKeepsFail(t *testing.T) {
-	tds, err := selectTools([]string{"read_file"})
+	tds, err := selectTools([]string{"read_file"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestSelectToolsAlwaysKeepsFail(t *testing.T) {
 // charter asked for a specific set, and running with a different one while saying nothing
 // is precisely how `grant: read-only` came to mean nothing.
 func TestSelectToolsRejectsUnknownNames(t *testing.T) {
-	if _, err := selectTools([]string{"read_file", "rm_rf"}); err == nil {
+	if _, err := selectTools([]string{"read_file", "rm_rf"}, nil); err == nil {
 		t.Fatal("an unknown tool name must fail the selection")
 	}
 }

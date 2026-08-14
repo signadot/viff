@@ -13,6 +13,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/task/harness"
 )
 
 // Delivery, as an action of the task rather than something that happens to it afterwards.
@@ -52,6 +53,10 @@ const deliverFD = 5
 // would work until the first document that had one.
 type deliverRequest struct {
 	Op string `tony:"field=op"`
+	// Repo is which repository this is about, because ONE PUSH ACTION IS ONE REPOSITORY.
+	// Empty is the finisher's one delivery, which covers every tree that declares `auto` and
+	// is the shape `deliver` has always had. See checkDelivering for why that is at most one.
+	Repo string `tony:"field=repo,omitzero"`
 	// Destination is the NAME of a place the environment declared, never a ref. That is the
 	// whole of what a task may say about where work goes: a name this environment does not
 	// declare resolves to nothing and nothing is pushed, so a task that could name a ref — and
@@ -64,9 +69,15 @@ type deliverRequest struct {
 }
 
 type deliverReply struct {
-	OK    bool     `tony:"field=ok"`
-	Refs  []string `tony:"field=refs,omitzero"`
-	Error string   `tony:"field=error,omitzero"`
+	OK   bool     `tony:"field=ok"`
+	Refs []string `tony:"field=refs,omitzero"`
+	// Refused is the far side declining, and it is a separate field from Error because it is a
+	// separate KIND of answer: a remote that will not fast-forward, a protected branch, a
+	// ruleset. The task did its job when it tried and was told no, so this ends the action as a
+	// decision to re-plan around rather than as a failure — which matters most because it is
+	// the ORDINARY outcome of a merge proposal, main having moved while somebody answered.
+	Refused string `tony:"field=refused,omitzero"`
+	Error   string `tony:"field=error,omitzero"`
 }
 
 // ── the child's side ────────────────────────────────────────────────────────────────────────
@@ -123,6 +134,13 @@ func (d *deliverFinisher) Do(_ context.Context, _ task.ToolUse) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("asking the runner to deliver: %w", err)
 	}
+	if rep.Refused != "" {
+		// The far side declined, which is an ANSWER and not a failure. Returned as an ordinary
+		// output so the task ends `done` carrying it: the loop already treats a decision the
+		// task complied with that way, and failing here would report the receiving end's own
+		// rules as this runner breaking.
+		return "not delivered — the remote refused it: " + rep.Refused, nil
+	}
 	if !rep.OK {
 		return "", fmt.Errorf("delivery failed: %s", rep.Error)
 	}
@@ -135,6 +153,79 @@ func (d *deliverFinisher) Do(_ context.Context, _ task.ToolUse) (string, error) 
 		return "nothing to deliver: no repository with a push target was changed", nil
 	}
 	return "pushed " + strings.Join(rep.Refs, "; "), nil
+}
+
+// pushToolName is what the agent calls it, and the name is load-bearing rather than cosmetic:
+// task.ToolUse.isPush() reads it, so a `onPush: true` gate matches an action named this whatever
+// ref it carries. The effect below is what a `resources:` predicate discriminates on.
+const pushToolName = "push"
+
+// pushTool is the capability the agent exercises to send work OUT of the verse, and it exists
+// because a runner whose only outward act is its own closing delivery admits exactly one flow.
+// Merging a proposal into main, moving a promotion ref, retiring a branch that can no longer
+// land: each was unaskable, and answering that with a second operation and then a third puts a
+// policy in a mechanism and leaves the next flow needing a fourth.
+//
+// What the agent may say is a NAME the environment declared. It cannot say a ref, which is what
+// keeps "where the work goes is the environment's to say" true of a task that can now ask for
+// more than one thing — and the names are enumerated in the schema, so the vocabulary this
+// runner will accept is the vocabulary the model can write rather than something it discovers by
+// being refused.
+//
+// false when this environment declares no destinations at all: offering a tool whose every use
+// is refused teaches an agent that the loop is broken.
+func pushTool(ws *Workspace, conn net.Conn) (harness.Tool, bool) {
+	names := ws.DestinationNames()
+	if len(names) == 0 || conn == nil {
+		return harness.Tool{}, false
+	}
+	return harness.Tool{
+		Name: pushToolName,
+		Description: "Send this task's committed work out of the sandbox, to one of the places " +
+			"this environment declares. You cannot name a ref: name a destination and the runner " +
+			"resolves where that is. The runner holds the credential and writes the provenance " +
+			"trailers; you never see either. The push may be refused — by a supervisor, or by the " +
+			"remote's own rules about its history — and a refusal is an answer, not an error to " +
+			"retry. Available destinations: " + strings.Join(names, ", ") + ".",
+		Params: map[string]any{
+			"destination": map[string]any{"type": "string", "enum": names},
+		},
+		Required: []string{"destination"},
+		Derive: func(tu *task.ToolUse) {
+			name, _ := tu.Input["destination"].(string)
+			t, ref := ws.Destination(name)
+			if t == nil {
+				// No effect, deliberately. An action with no push effect matches no capability
+				// gate, so nobody is asked to approve a push that cannot happen — which is what
+				// "an undeclared destination is refused BEFORE the gate" comes to in a loop
+				// where classification runs first and the executor runs last.
+				return
+			}
+			tu.Effects = append(tu.Effects, task.Effect{Verb: task.Push, Resource: task.GitRef(ref)})
+		},
+		Do: func(_ context.Context, tu task.ToolUse) (string, bool, error) {
+			name, _ := tu.Input["destination"].(string)
+			t, ref := ws.Destination(name)
+			if t == nil {
+				return fmt.Sprintf("there is no destination %q in this environment — it declares: %s",
+					name, strings.Join(names, ", ")), true, nil
+			}
+			rep, err := ask(conn, deliverRequest{
+				Op: "push", Repo: t.Repo.Name, Destination: name,
+			})
+			switch {
+			case err != nil:
+				return "", false, fmt.Errorf("asking the runner to push: %w", err)
+			case rep.Refused != "":
+				return "the remote refused it: " + rep.Refused, true, nil
+			case !rep.OK:
+				return "", false, fmt.Errorf("push to %s failed: %s", ref, rep.Error)
+			case len(rep.Refs) == 0:
+				return "nothing to push: " + t.Repo.Name + " has no work that is not already there", false, nil
+			}
+			return "pushed " + strings.Join(rep.Refs, "; "), false, nil
+		},
+	}, true
 }
 
 func ask(conn net.Conn, req deliverRequest) (deliverReply, error) {
@@ -187,12 +278,22 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 	if err := codec.Unmarshal(raw, &req, codec.Tony); err != nil {
 		return deliverReply{Error: "undecodable request: " + err.Error()}
 	}
-	if req.Op != "deliver" {
-		// One operation. A channel that grows verbs quietly becomes a second control plane, and
-		// this one exists precisely because the first cannot cross the credential boundary.
+	// Two operations and no more, and the difference between them is the PROPOSER rather than
+	// the work: `deliver` is the runner's own closing act over every tree that declares `auto`,
+	// and `push` is the agent asking for one repository and one named destination. Step 5 of the
+	// plan retires the first, at which point delivery is a push like any other.
+	//
+	// A channel that grows verbs quietly becomes a second control plane, and this one exists
+	// precisely because the first cannot cross the credential boundary.
+	var repo string
+	switch req.Op {
+	case "deliver":
+	case "push":
+		repo = req.Repo
+	default:
 		return deliverReply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
-	d := c.ws.Deliver(context.Background(), l, req.Result, req.Destination)
+	d := c.ws.Deliver(context.Background(), l, req.Result, repo, req.Destination)
 	c.recordDelivery(d)
 	for _, p := range d.Pushed {
 		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, p)
@@ -200,8 +301,15 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 	for _, s := range d.Staged {
 		fmt.Fprintf(r.log, "coderunner: %s: staged in the mirror at %s\n", c.id, s)
 	}
+	if len(d.Refused) > 0 {
+		// Logged as an outcome rather than as an error, because it is one. The far side's rules
+		// about its own history are not this runner malfunctioning.
+		fmt.Fprintf(r.log, "coderunner: %s: refused by the remote: %s\n",
+			c.id, strings.Join(d.Refused, "; "))
+		return deliverReply{Refs: d.Pushed, Refused: strings.Join(d.Refused, "; ")}
+	}
 	if d.Err != nil {
-		fmt.Fprintf(r.log, "coderunner: %s: deliver: %v\n", c.id, d.Err)
+		fmt.Fprintf(r.log, "coderunner: %s: %s: %v\n", c.id, req.Op, d.Err)
 		return deliverReply{Refs: d.Pushed, Error: d.Err.Error()}
 	}
 	return deliverReply{OK: true, Refs: d.Pushed}
