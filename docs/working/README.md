@@ -60,3 +60,17 @@ that landing left, which is why [contributing.md](contributing.md) cites it as o
 
 Nothing above owes coherence to the *others* — a residual is a relation between one note and one
 landed thing, not a shared document.
+
+## One file this directory links to and does not have
+
+`verse-dev-comment-drift.md` — the drive's numbered findings — is on the `use/verse-dev` branch
+and not here, so four notes ([absence-plan](absence-plan.md),
+[derive-each-plan](derive-each-plan.md), [derive-residual](derive-residual.md),
+[occurrence-plan](occurrence-plan.md)) cite "finding 10", "finding 19" and link to nothing.
+
+Recorded rather than repaired, because both repairs are wrong on their own. Repointing them at
+[comment-drift-drive.md](comment-drift-drive.md) would be a lie — that is a summary and has no
+numbered findings. Copying the file over is the right move and belongs to a deliberate sync of
+that branch, not to whoever next notices a broken link. It is also the case
+[contributing.md](contributing.md) has in mind when it says the working note is the deliverable:
+a drive's findings that only exist on the drive's own branch are findings nobody else has.

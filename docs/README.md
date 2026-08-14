@@ -78,7 +78,7 @@ drive a local agent, a remote one, and a human.
 | | [comment-drift, and the merge gate](working/comment-drift-drive.md) — what the drive built, what it took, and what it found |
 | | [Nothing bounds a run](working/task-budget.md) — a review that concluded and would not stop, an operator's word ignored, and why the fix is not a prompt |
 | | [Config: a field that says where it reads itself from](working/config-secrets.md) — one question this repo answers twice, and why `!env` must not reach a charter |
-| | [The coding runner: what is left](working/coding-runner-residual.md) — never deployed, three assumptions riding on that, what `principal: runner` actually contains, and the delete no destination can express |
+| | [The coding runner: what is left](working/coding-runner-residual.md) — deployed now, so what `principal: runner` actually contains is the live gap, plus the delete no destination can express |
 | | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; why entity writes having no author is the one defect underneath several |
 | | [Derive: what is left](working/derive-residual.md) — the fan-out landed; what it deliberately does not do, and why a sweep is not a longer loop |
 | | [verse-dev: a coding pipeline](working/verse-dev-coderunner.md) — the drive: the walls predicted before the first run, and what running it found |

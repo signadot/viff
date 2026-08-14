@@ -6,40 +6,48 @@ program is [docs/reference/examples/coderunner](../reference/examples/coderunner
 [verse-dev-coderunner.md](verse-dev-coderunner.md) is the drive that exercised it. This is what the
 design note named and the landing did not build.
 
+It is DEPLOYED as of 2026-08-14, under bwrap, and has run real work — so several things here that
+were predictions are now observations, and are marked as such. What replaced them is a shorter
+list and a sharper one.
+
 It replaced a 900-line design note. The reasoning that survived the landing is in the program's own
 comments, where it is read by whoever changes the thing it is about; what is here is the part with
 nothing to attach to yet.
 
-## Never deployed, and three assumptions ride on it
+## Deployed, and the three assumptions held
 
-The image and the manifests (`deploy/coderunner/coderunner.yaml`, outside `docs/`) are
-built and read and have never touched a cluster. Three things are assumed and cannot be checked
-anywhere else:
+**It runs on staging** (`deploy/coderunner/coderunner.yaml`, under `-confine bwrap`), and the
+comment-drift drive has driven real tasks through it. Three things were assumed here and could
+not be checked anywhere else; all three are now exercised rather than argued:
 
-- **bwrap passes inherited descriptors** (3 the control listener, 4 the lifeline, 5 the delivery
-  channel) through to the program it execs. Expected — bwrap's own `--args FD` proves fds reach it
-  — but unverified. The diagnosis is in place: the child fails with *"fd 3 is not the listener this
-  process serves on"* and the parent reports it.
-- **bwrap brings `lo` up under `--unshare-net`.** The egress forwarder listens on the sandbox's own
-  loopback, and a fresh network namespace has `lo` DOWN until something raises it.
-- **the egress socket bind** lands where `EgressAt` says it does.
+- **bwrap passes inherited descriptors** (3 the control listener, 4 the lifeline, 5 the push
+  channel) through to the program it execs. Tasks serve their control plane and ask for
+  credentials, so all three arrive.
+- **bwrap brings `lo` up under `--unshare-net`.** The egress forwarder listens on the sandbox's
+  own loopback, and a fresh network namespace has `lo` DOWN until something raises it. Model
+  calls land, so it is up.
+- **the egress socket bind** lands where `EgressAt` says it does — same evidence.
 
-Any of them wrong is a failed spawn with a message, not an escape. That is the point of the
-refusals, but a message nobody has seen is still a message nobody has seen.
+One thing that was NOT assumed and is now known: `kernel.yama.ptrace_scope=1` on the node, which
+the runner reads and reports at startup. That is the barrier every secret in a task process rests
+on, and it holds — see below for why reading it is not the same as refusing on it.
 
-## `network.egress: restricted` is untestable on the machine it was written on
+## `network.egress: restricted` ran, and it bounds WHERE and never WHAT
 
-The proxy, the allowlist, the CONNECT tunnel and the loopback forwarder are all exercised against
-real servers. The **combination** that makes them a floor — an unshared network plus one bound
-socket — needs bwrap, so `hostConfiner` refuses it and the end-to-end path has never run.
+The combination that makes the allowlist a floor — an unshared network plus one socket bound
+back in — needed bwrap, so `hostConfiner` refused it and the end-to-end path went unexercised
+until the deployment. It has now run: every model call a staging task makes goes out through the
+proxy, and nothing else has a route.
 
-Refusing is correct: under a confiner that cannot unshare, the proxy works and is *advice*, because
-nothing stops the task opening its own connection. A floor that can be stepped around is not one.
-The cost is that the first real exercise of the rung will be a deployment.
+Refusing was the right call while it could not be built. Under a confiner that cannot unshare,
+the proxy works and is *advice*, because nothing stops the task opening its own connection, and a
+floor that can be stepped around is not one.
 
 What the allowlist does not do, and no amount of deploying will fix: it bounds **where**, never
-**what**. `api.anthropic.com` will accept anything you care to send it, so this bounds a secret
-against a task that wanders and not against one that is trying.
+**what**. `api.portkey.ai` will accept anything you care to send it, so this bounds a secret
+against a task that wanders and not against one that is trying. That is now the live limitation
+rather than a predicted one, and it is sharper since the runner began holding a push credential
+as well as a model key.
 
 ## `principal: runner` says the quiet part, and nothing refuses on it
 

@@ -78,7 +78,7 @@ rather than beside it: the one action with an effect outside the verse should no
 action nobody can gate.
 
 ```sh
-verse gate                                  # engine + task gates, unified
+verse gate                                  # task gates, and engine gates that ASK
 # - gate: write
 #   id: run-f3e31ed0390f~d1
 #   mode: ASK
@@ -88,6 +88,17 @@ verse gate                                  # engine + task gates, unified
 #   where: task
 verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-… run-…~d1
 ```
+
+**A charter gate carrying a `formula:` is not here.** It becomes a MOTION instead — a different
+entity (`motion:channel`), a different list (`verse docket`), a different verb (`verse vote`),
+settled by a tally rather than by an answer. So `verse gate` is not the whole of what is waiting
+on a person, and asking for one and looking in the other answers *404: no such question*.
+
+That split is a known defect rather than a design: the fork is on whether a formula is PRESENT,
+when the distinction it needs is whether the gate asks somebody or waits for something — so
+`!until [!fact green, !deadline "4h"]`, which asks nobody anything, lands on the docket with no
+ballot anyone can cast. See [attached-resolvers-residual.md §1](../working/attached-resolvers-residual.md),
+which is also why a resolver can own only the second kind.
 
 The `~` that separates the gate from its task needs no quoting and no escaping, in a shell
 or in a URL. On a terminal, `run --attach` prompts inline instead
