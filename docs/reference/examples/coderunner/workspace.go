@@ -496,9 +496,8 @@ func (t *Tree) DestRef(name, branch string) string {
 // never wrote.
 func (t *Tree) PushTarget(branch string) string { return t.DestRef(autoDestination, branch) }
 
-// shortSha is the branch-name form of a commit: the first TWELVE characters, which is enough to
-// be unique in a repository this size and short enough that a ref stays readable next to a task
-// id that is already long.
+// shortSha is the branch-name form of a commit: enough to be unique in a repository this size
+// and short enough that a ref stays readable next to a task id that is already long.
 func shortSha(sha string) string {
 	if len(sha) > 8 {
 		return sha[:8]
