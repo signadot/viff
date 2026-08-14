@@ -82,6 +82,23 @@ its question is standing.
 I would take the second. It is a rule verse already believes at one layer, it reuses the
 withdrawal path built this week, and it does not wait on a store repair.
 
+## The unhappy path is the ordinary path
+
+Recorded here because it was got wrong first and the mistake is easy to repeat: main moves while
+a question stands, so **"could not fast-forward" is the common outcome of this gate**, not its
+error branch. The charter routed it through `onFailed`, which turns the feature working as
+intended into an alarm on the record and loses the difference between "main moved" and "the
+credential expired".
+
+It is a semantic outcome, not an infrastructure failure — the task tried, correctly, and the
+answer is no. So the task completes and says so, and the charter branches on the answer. The
+plan's step 2 has the full table of what fails how, including the two that are genuinely
+infrastructure and the one nobody has settled: a multi-repo workspace where one push lands and
+the next is refused.
+
+Still open in the charter itself: the `!when` spelling on `onDone` is unverified against the
+grammar, and two rules conditioned on the answer would say the same thing with no new operator.
+
 ## Smaller things the charter works around
 
 **The sweep cannot see the docket.** It must not delete a branch whose question is still standing

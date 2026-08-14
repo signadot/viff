@@ -139,20 +139,35 @@
         Answer with a JSON document and nothing else:
 
             {"merged": true, "branch": "$branch", "sha": "<the sha now on main>"}
+      # `merged` is a RESULT and not a success flag, which is the difference this got wrong once.
+      # Main moves constantly here, so a proposal is usually stale by the time anybody answers —
+      # "could not fast-forward" is the ORDINARY outcome of this gate, not its error branch. The
+      # task did its job when it tried and was refused, so it completes and SAYS so; failing it
+      # would route the expected case through the branch meant for the unexpected one and lose
+      # the difference between "main moved" and "the credential expired".
+      #
+      # task.Err draws the same line from the other side: "Err is infrastructure failure;
+      # semantic failure is the charter's to check by naming what it expects". This is the
+      # charter naming it.
       answer:
         merged: !irtype true
+        reason: !irtype "not a fast-forward: main has moved since this branch was cut"
         branch: !irtype "verse/auto/example"
         sha: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
     onDone:
       patch:
-        state: merged
+        # The branch on $data.merged is the shape this wants; the spelling is unverified against
+        # the grammar and is the first thing to check when this is installed. Two rules
+        # conditioned on the answer would say the same thing with no new operator.
+        state: !when [ $data.merged, merged, stale ]
         mergedSha: $data.sha
+        reason: $data.reason
         err: !delete null
-    # A merge that could not fast-forward IS the staleness test, and this is the only place it
-    # is decided. The sweep below removes the branch; nothing here rebases anything.
+    # Reserved for what it is for: the credential expired, the remote was unreachable, the task
+    # broke. A refusal is not a failure and does not arrive here.
     onFailed:
       patch:
-        state: stale
+        state: failed
         err: $err
     onCancelled:
       patch:

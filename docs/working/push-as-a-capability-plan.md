@@ -62,6 +62,64 @@ not after it.
 This step is also where a merge becomes possible at all, so it is the one to stop at if the rest
 is deferred.
 
+#### The push failing is the ORDINARY case, and the design has it in the wrong place
+
+Main moves constantly here, so a merge proposal is usually stale by the time anybody answers the
+gate. "Could not fast-forward" is not the error branch of this feature; it is the common outcome,
+and a design that routes it through failure will fill the record with alarm about the thing
+working as intended.
+
+**A non-fast-forward is a SEMANTIC outcome, not an infrastructure failure.** The task did its job:
+it tried, correctly, and the answer is no. `task.Err`'s own doc draws that line — *"Err is
+infrastructure failure; semantic failure is the charter's to check by naming what it expects"* —
+so the merge task should complete `done` with an answer that says what happened, and the charter
+should branch on the answer:
+
+```tony
+answer:
+  merged: !irtype true
+  reason: !irtype "not a fast-forward: main has moved since this branch was cut"
+onDone:
+  patch:
+    state: !when [ $data.merged, merged, stale ]     # spelling to be checked against the grammar
+```
+
+That is a correction to [merge-gate.tony](merge-gate.tony), which currently writes `state: stale`
+from `onFailed` — routing the expected outcome through the branch meant for the unexpected one,
+and losing the distinction between "main moved" and "the credential expired".
+
+The five paths, and which is which:
+
+| what happened | shape | what the task does |
+|---|---|---|
+| not a fast-forward | the remote's rule refused it | complete, `merged: false`, reason on the record |
+| protected-branch / ruleset rejection | the remote's rule refused it | same: a refusal by an authority outside verse is a DECISION, not a fault |
+| auth: bad or expired credential | infrastructure | the action errors; for a closing act the task fails, because work that did not leave did not succeed |
+| transient (5xx, DNS) | infrastructure | as above, after the client's own retry — nothing here adds one |
+| some repos pushed, others did not | needs a decision | see below |
+
+The first two want the loop's `Blocked` rather than `Err`. `StepResult.Blocked` exists to carry
+*"a gate/scope refusal so the driver can re-plan rather than treating it as an error"*, and a
+remote enforcing its own rules is exactly that: the authority [the design
+note](push-as-a-capability.md) deliberately handed to the receiving end, exercising it. Modelling
+it as `Blocked` also gets the closing-act case right for free — `machine.go` already treats a
+denied closing action as *"a decision the task complied with"* and ends `done`, while an errored
+one fails the task.
+
+The classifier lives with whoever ran git, which is the parent in this step and taskproc after
+step 4. Both have the git error; neither should be guessing from a string if the transport gives
+something better.
+
+**Partial success across repositories is the one with no obvious answer.** A workspace has several
+repos and `deliverFinisher` already builds one effect per destination. If one push lands and the
+next is refused, the task is neither done nor failed, and re-running it will re-push the first.
+This plan does not settle it, and says so rather than discovering it: the minimum is that the
+answer names which refs moved, so the record is true even when the outcome is mixed.
+
+**And a cancel mid-push is at-most-once that nobody can offer.** The loop tears down on cancel and
+the push may already have landed; a ff-only push of the same sha is at least idempotent, which is
+the only reason this is survivable rather than a correctness problem.
+
 ### 3. Say what containment is being relied on, and check it
 
 [The residual](push-as-a-capability-residual.md), item 1, and it comes BEFORE the credential
@@ -75,9 +133,29 @@ refuses with.
 
 **Proves:** that step 4 is putting the credential somewhere with a stated property rather than a
 hoped-for one. Test: a Point asking for it against a fake sysctl at `0` refuses the launch, at
-`1` proceeds. It is worth doing on its own account either way — the LLM credential is behind the
-same assumption today, which is the argument for this step existing whether or not step 4 ever
-happens.
+`1` proceeds.
+
+#### Deferred, on the threat model, with a trigger
+
+**Not doing this yet.** The deployment is behind a VPN, open to a handful of people, none of whom
+are expecting bulletproof security — and the limitation is already being swallowed for the LLM
+credential, which sits behind the same assumption today. Adding a repository-scoped PAT beside it
+does not change the shape of the exposure, only its content, and the people who could exploit it
+are the people who already have the repository.
+
+Deferring it means step 4 proceeds on an assumption rather than a stated property, and the
+[residual](push-as-a-capability-residual.md) is the record of that. Following
+[contributing.md](contributing.md)'s discipline for what it is deliberately not doing yet, the
+trigger matters more than the decision — naming it is what stops "not yet" becoming "never":
+
+- the deployment stops being VPN-only, or task spawning reaches anybody outside that handful;
+- a credential lands in taskproc that is scoped wider than one repository, or whose compromise
+  costs more than a `git revert` — a registry, a cloud account, anything with spend;
+- `ptrace_scope` is found at `0` on a node, which today nothing would report.
+
+The last one is the cheap half and could be taken on its own: not a Point leaf and not a refusal,
+just the runner logging what it read at startup. That turns the assumption from unverified into
+merely accepted, which is a different thing, and it costs one file read.
 
 ### 4. Approval releases the credential; taskproc performs
 
@@ -141,6 +219,8 @@ protection is that somebody wrote them down where they are configured.
 
 ## Not in this plan
 
+- **The confinement check itself.** Step 3 is deferred on the threat model above; the residual
+  stays as the record and the triggers say when it stops being a reasonable trade.
 - **`principal: distinct`.** Residual item 2. It would make step 3 unnecessary rather than
   satisfied, and it costs a checkout owned by one uid and read by another — a change to the
   workspace and delivery path rather than a flag.
