@@ -131,39 +131,19 @@ data:
         # Where a task's own work lands, and what `deliver` used to mean. $task expands to the
         # task id, so two runs never contend for a ref; a charter-spawned id is
         # `<chain>@<subject>`, which is not a legal ref name, and the runner flattens it.
+        #
+        # ONE destination, and `main` is deliberately not here. A fixing task's work is a
+        # PROPOSAL — that is the whole shape of the deliverable — and somewhere with a
+        # consequence is `verse-merge` below, which exists so that reaching it is a different
+        # environment rather than a rule somebody has to remember.
         - name: auto
           ref: "refs/heads/verse/auto/$sha/$task"
-        # MAIN, and this is the widening, so it is worth being exact about what holds it.
-        #
-        # It is here for merge-gate.tony: a delivered branch becomes a proposal, somebody
-        # answers a docket question, and a yes spawns a task that merges `--ff-only` locally and
-        # asks for this destination. Nothing else in the drive needs it.
-        #
-        # WHAT DECIDES IT is the charter's gate — `!until [!quorum 1, !deadline "24h"]`, denying
-        # on the clock — and not the task's vector, which merge-gate sets to `auto` deliberately:
-        # the decision has been made by a person about the thing that matters, and making the
-        # task re-ask per action would be the same question in two vocabularies.
-        #
-        # THE CONSEQUENCE OF THAT, stated because it is not obvious: this environment is shared,
-        # and every charter using it now runs with a tool that can reach main. comment-drift
-        # spawns here with `vector: auto` too, so nothing in the loop would stop one of its fix
-        # tasks asking for this destination. A spawn NARROWS the tool floor below, so a charter
-        # that does not want that says `tools: [read_file, list_dir, write_file, run_bash,
-        # call_agent]` on its own spawn and cannot push anywhere but `auto`. If that turns out to
-        # be a thing to remember rather than a thing that holds, the answer is a second
-        # environment — `verse-merge`, one destination, one charter — and not a rule here.
-        #
-        # No `credential:`, deliberately: a PAT scopes per repository and not per ref, so a
-        # second credential for the same repository would buy nothing and imply something. The
-        # runner's own `-token-env` token is what is released, and what stops `--ff-only` being
-        # merely a prompt is `receive.denyNonFastForwards` on this branch at the far end.
-        - name: main
-          ref: "refs/heads/main"
       driver: llm
-      # `push` is the runner's own tool: it names a destination above and never a ref. Without it
-      # in this FLOOR the `main` destination is inert — the finisher only ever asks for `auto` —
-      # so the merge charter would install, run, and be unable to do the one thing it is for.
-      tools: [read_file, list_dir, write_file, run_bash, call_agent, push]
+      # No `push`. The FLOOR is what a tool can ever be, so a task here cannot ask for a
+      # destination at all — the closing delivery to `auto` is the finisher's and is not a tool.
+      # That is what makes "a fix proposes and does not land" a property of the environment
+      # rather than of every charter that uses it remembering to narrow its own spawn.
+      tools: [read_file, list_dir, write_file, run_bash, call_agent]
       commands: [git, go, gofmt]
       env: [PATH, HOME, USER, LANG]
       egress:
@@ -192,6 +172,55 @@ data:
       #     targets, or a sweep silently cannot do its job.
       # Both fail OPEN — a missing rule does not error, it permits — so they are written here,
       # where whoever configures this deployment will read them.
+      - github.com
+
+    # The merging environment: take a branch somebody already approved and put it on main.
+    #
+    # IT IS A SEPARATE ENVIRONMENT AND THAT IS THE WHOLE POINT. Everything here could have been
+    # two more lines on `verse-fix` — one destination, one tool — and the cost of that would have
+    # been paid somewhere else: that environment is shared, comment-drift spawns into it with
+    # `vector: auto`, and nothing in the loop would then stop a fix task asking for `main`. The
+    # containment would have been "every charter that uses this remembers to narrow its own
+    # spawn", which is a rule somebody forgets rather than a property anything holds.
+    #
+    # Split, the reasoning is structural: what a task may reach is what its environment declares,
+    # and a charter that has not been pointed here cannot reach main however its vector is set.
+    # An environment is the unit this runner already has for that; using it is cheaper than
+    # inventing a second answer.
+    - name: verse-merge
+      repos:
+      - name: verse
+        repo: "https://github.com/signadot/verse"
+        base: main
+        destinations:
+        # ONE destination, and it is the consequential one. No `auto`: a merge task's work IS the
+        # merge, so there is nothing to propose separately — and with no `auto` declared the
+        # closing delivery proposes nothing at all rather than leaving a junk branch behind every
+        # time somebody approves a merge.
+        #
+        # WHAT DECIDES IT is the charter's gate — merge-gate.tony's `!until [!quorum 1, !deadline
+        # "24h"]`, which denies on the clock — and not the task's vector, which that charter sets
+        # to `auto` deliberately: the decision has been made by a person about the thing that
+        # matters, and making the task re-ask per action would be the same question in two
+        # vocabularies. The environment is what makes that safe to say: the only task that can be
+        # here is one somebody pointed here.
+        #
+        # No `credential:`, deliberately: a PAT scopes per repository and not per ref, so a
+        # second one for the same repository would buy nothing and imply something. The runner's
+        # own `-token-env` token is released, and what stops `--ff-only` being merely a prompt is
+        # `receive.denyNonFastForwards` on main at the far end.
+        - name: main
+          ref: "refs/heads/main"
+      driver: llm
+      # A shell to run the merge, `push` to send it, and the read tools so a model that wants to
+      # look before it merges can. No `write_file`: a merge that hand-edits a file is not a
+      # merge. No `call_agent`: there is nothing here to fan out over.
+      tools: [read_file, list_dir, run_bash, push]
+      commands: [git]
+      env: [PATH, HOME, USER, LANG]
+      # No module proxy: a merge does not build. The model call and the forge, and nothing else.
+      egress:
+      - api.portkey.ai
       - github.com
 ---
 apiVersion: apps/v1

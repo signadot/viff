@@ -503,17 +503,38 @@ func TestTheDeployedConfigLoads(t *testing.T) {
 	if _, err := c.Environment(""); err != nil {
 		t.Errorf("its default environment does not resolve: %v", err)
 	}
-	// The merge charter's prerequisite, which is the reason this environment differs from the
-	// docs one: somewhere with a consequence to send work, and the tool to ask for it.
+	// The merge charter's prerequisite: somewhere with a consequence to send work, and the tool
+	// to ask for it.
+	merge, err := c.Environment("verse-merge")
+	if err != nil {
+		t.Fatalf("verse-merge: %v", err)
+	}
+	if _, ok := merge.Repos[0].Dest("main"); !ok {
+		t.Error("verse-merge declares no `main` destination, so merge-gate.tony cannot merge")
+	}
+	if !slices.Contains(merge.Tools, pushToolName) {
+		t.Errorf("verse-merge does not offer %q, so its destinations are inert", pushToolName)
+	}
+
+	// And the other half of the split, which is the half that erodes. `main` and `push` could
+	// have been two more lines on the FIXING environment, and the cost would have been paid
+	// somewhere else: it is shared, its charters spawn with `vector: auto`, and the containment
+	// would then be "every charter remembers to narrow its own spawn" rather than anything the
+	// runner holds. What holds it is that a task in verse-fix cannot ask for a destination at
+	// all, and there is no consequential one there to ask for.
 	fix, err := c.Environment("verse-fix")
 	if err != nil {
 		t.Fatalf("verse-fix: %v", err)
 	}
-	if _, ok := fix.Repos[0].Dest("main"); !ok {
-		t.Error("verse-fix declares no `main` destination, so merge-gate.tony cannot merge")
+	if slices.Contains(fix.Tools, pushToolName) {
+		t.Errorf("verse-fix offers %q, so a fix task can reach whatever it declares — the split "+
+			"is what stops that, and this is where it comes undone", pushToolName)
 	}
-	if !slices.Contains(fix.Tools, pushToolName) {
-		t.Errorf("verse-fix does not offer %q, so its destinations are inert", pushToolName)
+	for _, d := range fix.Repos[0].Dests() {
+		if d.Name != autoDestination {
+			t.Errorf("verse-fix declares destination %q — a fix is a PROPOSAL, and somewhere with "+
+				"a consequence is a different environment", d.Name)
+		}
 	}
 }
 

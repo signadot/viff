@@ -30,9 +30,12 @@
 # What landed: an environment declares DESTINATIONS by name, a task names one and never a ref,
 # the vector gates the ref it resolves to, and approval is what releases the credential. So rule
 # 2 below merges LOCALLY and then calls the runner's `push` tool naming `main`. Its prerequisite
-# is in deploy/coderunner/coderunner.yaml, where `verse-fix` now declares that destination and
-# offers the tool — a deliberate widening, and the comment there says what holds it and what to
-# watch, since that environment is shared with comment-drift.
+# is in deploy/coderunner/coderunner.yaml, and it is a SEPARATE ENVIRONMENT rather than two more
+# lines on `verse-fix`: `verse-merge` declares `main` and nothing else, offers `push`, and both
+# rules below spawn into it. That matters because verse-fix is shared with comment-drift, which
+# spawns with `vector: auto` — so had the destination gone there, what stopped a fix task pushing
+# main would have been every charter remembering to narrow its own `tools:`. Split, a charter
+# that has not been pointed at verse-merge cannot reach main however its vector is set.
 #
 # What did not: rule 4 deletes a branch, and a delete is not something a destination expresses —
 # there is no ref for it to resolve to. It stays unrunnable, and the shape it wants is a
@@ -125,7 +128,7 @@
   action:
     spawn:
       runner: runners:pool:code
-      environment: verse-fix
+      environment: verse-merge
       driver: llm
       grant: no-delegate
       vector: auto
@@ -231,7 +234,7 @@
   action:
     spawn:
       runner: runners:pool:code
-      environment: verse-fix
+      environment: verse-merge
       driver: llm
       grant: no-delegate
       vector: auto
