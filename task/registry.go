@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -15,8 +16,8 @@ import (
 type Registry struct {
 	mu      sync.Mutex
 	pending map[string]*pendingQuestion
-	onPost  func(Pending)      // optional: notify a watcher when a question is posted
-	onDrop  func(GateQuestion) // optional: notify a watcher when one leaves unanswered
+	onPost  func(Pending)              // optional: notify a watcher when a question is posted
+	onDrop  func(GateQuestion, string) // optional: notify a watcher when one leaves unanswered
 }
 
 // pendingQuestion is one question standing on the docket, and everyone waiting on it. The
@@ -57,16 +58,22 @@ func NewRegistry() *Registry {
 func (r *Registry) OnPost(f func(Pending)) { r.onPost = f }
 
 // OnDrop registers the counterpart: a question leaving the docket WITHOUT an answer, because
-// the last caller waiting on it was cancelled.
+// the last caller waiting on it stopped waiting.
 //
 // It exists because OnPost had none. A publisher was told about every question that arrived
 // and about none that left, so a question the registry silently discarded stayed published as
 // `pending` — offered on a docket, answerable-looking, and undeliverable — until something
 // else happened to notice.
 //
+// WHY it left comes with it, because there is now more than one reason and they read very
+// differently to whoever was going to answer. The asker dying and an operator saying something
+// that made the question moot both retire a question undecided; only the second means somebody
+// is still there and chose this. The reason is the waiter's context CAUSE, which is how a
+// caller says what it meant by giving up (see task.Task's withdrawal of a standing question).
+//
 // Only Answer's counterpart is missing here by design: an answered question is announced by
 // the answer itself, which the answerer already has.
-func (r *Registry) OnDrop(f func(GateQuestion)) { r.onDrop = f }
+func (r *Registry) OnDrop(f func(GateQuestion, string)) { r.onDrop = f }
 
 // Resolve (the Resolver interface) posts the question and blocks until it is answered by ID
 // or the context is cancelled.
@@ -115,9 +122,23 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 		// giving up while others still wait has taken nothing off the docket, and saying
 		// otherwise would retire a question three people are still blocked on.
 		if dropped && onDrop != nil {
-			onDrop(q)
+			onDrop(q, dropReason(ctx))
 		}
 		return Resolution{Proceed: false, By: "cancelled", Question: q}, ctx.Err()
+	}
+}
+
+// dropReason renders why a waiter stopped waiting, from its context's cause. A cancel carrying
+// no cause of its own is the plain case and gets the plain words; anything else said what it
+// meant, and that is the sentence somebody reading the docket needs.
+func dropReason(ctx context.Context) string {
+	switch c := context.Cause(ctx); {
+	case c == nil, errors.Is(c, context.Canceled):
+		return "the asker stopped waiting for an answer"
+	case errors.Is(c, context.DeadlineExceeded):
+		return "the asker's deadline passed before this was answered"
+	default:
+		return c.Error()
 	}
 }
 

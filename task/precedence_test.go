@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestASayWithdrawsAStandingQuestion(t *testing.T) {
 	reg := NewRegistry()
 
 	dropped := make(chan string, 4)
-	reg.OnDrop(func(q GateQuestion) { dropped <- q.ID })
+	reg.OnDrop(func(_ GateQuestion, why string) { dropped <- why })
 
 	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, ex)
 	p.SetLog(io.Discard)
@@ -47,9 +48,14 @@ func TestASayWithdrawsAStandingQuestion(t *testing.T) {
 		t.Fatalf("reason=%q err=%v, want done", out.Reason, err)
 	}
 	// The registry announces the drop from the goroutine that was blocked on the question, so
-	// it can land just after Run returns.
+	// it can land just after Run returns — and it says WHY, because a docket entry that reads
+	// "the asker is gone" for a run that is alive and was redirected is a wrong answer to the
+	// only question its answerer has.
 	select {
-	case <-dropped:
+	case why := <-dropped:
+		if !strings.Contains(why, "operator") {
+			t.Errorf("the docket was told %q, which does not say an operator withdrew it", why)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the question never left the docket: a withdrawn question the docket was not " +
 			"told about is one nobody can see is gone")
@@ -100,7 +106,7 @@ func TestAPauseWithdrawsAStandingQuestionAndAResumeDoesNot(t *testing.T) {
 			d := &scriptDriver{steps: []ToolUse{tool("A")}}
 			reg := NewRegistry()
 			dropped := make(chan string, 4)
-			reg.OnDrop(func(q GateQuestion) { dropped <- q.ID })
+			reg.OnDrop(func(q GateQuestion, _ string) { dropped <- q.ID })
 
 			p := NewTask("t", NewSupervisor(askOn("A"), reg), d, &recExec{})
 			p.SetLog(io.Discard)
@@ -147,7 +153,7 @@ func TestAPolicyChangeLeavesAStandingQuestionStanding(t *testing.T) {
 
 	var mu sync.Mutex
 	var dropped int
-	reg.OnDrop(func(GateQuestion) { mu.Lock(); dropped++; mu.Unlock() })
+	reg.OnDrop(func(GateQuestion, string) { mu.Lock(); dropped++; mu.Unlock() })
 
 	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, &recExec{})
 	p.SetLog(io.Discard)

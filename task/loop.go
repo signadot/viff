@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"runtime/debug"
@@ -131,9 +132,9 @@ type Task struct {
 
 	// touched only by the Run goroutine:
 	idc        int
-	seq        int                // the boundary the machine last reached (for attribution)
-	gateCancel context.CancelFunc // withdraws the standing question, if any
-	cancelSeen bool               // ctx.Done has already been turned into an input
+	seq        int                     // the boundary the machine last reached (for attribution)
+	gateCancel context.CancelCauseFunc // withdraws the standing question, saying why
+	cancelSeen bool                    // ctx.Done has already been turned into an input
 	// written on the Run goroutine, read via Journal() from others — under p.mu:
 	journal []string
 
@@ -442,7 +443,11 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			// that context is what tells the docket (Registry.OnDrop → mirror.DropQuestion)
 			// rather than leaving somebody staring at a question about an action this task
 			// will now never take.
-			gctx, gcancel := context.WithCancel(ctx)
+			// WithCancelCause, so a withdrawal can say WHY. The registry reads the cause and
+			// hands it to whoever publishes the docket, which is the difference between a
+			// question that reads as "the task died" and one that reads as "an operator
+			// redirected this run" — the same settling, and not the same news.
+			gctx, gcancel := context.WithCancelCause(ctx)
 			p.gateCancel = gcancel
 			tu, tok := v.tu, v.tok
 			p.seam("the gate", replies,
@@ -455,7 +460,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 		case effDropGate:
 			if p.gateCancel != nil {
 				p.logf("↯ withdrawing the standing question: %s", v.why)
-				p.gateCancel()
+				p.gateCancel(errors.New(v.why))
 				p.gateCancel = nil
 			}
 

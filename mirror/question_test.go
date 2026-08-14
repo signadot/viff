@@ -174,3 +174,64 @@ func TestAFirstPosingIsNotMarked(t *testing.T) {
 		t.Fatalf("a first posing was marked as a repeat: %+v", got)
 	}
 }
+
+// A withdrawn question says WHY it was withdrawn, and does not overwrite what was asked.
+//
+// `orphaned` used to have one cause — the asker died — and now has two: a task's loop withdraws
+// a standing question when an operator intervenes, and there the asker is alive and somebody
+// chose this. Same settling, and to whoever was about to answer, entirely different news. The
+// status alone cannot tell them apart, so `why` does.
+//
+// It goes in `why` rather than `reason` because `reason` is the gate's own account of why it
+// MATCHED, written when the question was posed. Overwriting it would trade what was being asked
+// for why nobody answered, and the docket needs both.
+func TestAWithdrawnQuestionSaysWhyAndKeepsWhatWasAsked(t *testing.T) {
+	store := entitytest.Store(t)
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: "run-1~d1", Origin: "run-1", Gate: "write",
+			Reason: "tool write_file"},
+		Tool: "write_file",
+	}, "run-1")
+
+	DropQuestion(store, "run-1~d1", "an operator said something while this was being asked about")
+
+	e, ok, err := store.Get(QuestionRef("run-1~d1"))
+	if err != nil || !ok {
+		t.Fatalf("get: %v %v", ok, err)
+	}
+	got := entity.ToObj(e.Payload)
+	if got["status"] != QuestionOrphaned {
+		t.Errorf("status = %v, want %s", got["status"], QuestionOrphaned)
+	}
+	why, _ := got["why"].(string)
+	if !strings.Contains(why, "operator") {
+		t.Errorf("why = %q — a docket that says only `orphaned` reads as \"the task died\"", why)
+	}
+	if got["reason"] != "tool write_file" {
+		t.Errorf("reason = %v, want the gate's own account of what was asked", got["reason"])
+	}
+	if got["orphanedAt"] == nil {
+		t.Error("no orphanedAt: the settling has no time on it")
+	}
+}
+
+// An answer still wins over a withdrawal that crosses it: DropQuestion touches only a question
+// that is still pending, because what was DECIDED is the fact worth keeping.
+func TestAWithdrawalDoesNotOverwriteAnAnswer(t *testing.T) {
+	store := entitytest.Store(t)
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: "run-1~d1", Gate: "write"},
+	}, "run-1")
+	AnswerQuestion(store, "run-1~d1", task.Resolution{Proceed: true, By: "human:scott"})
+
+	DropQuestion(store, "run-1~d1", "an operator said something while this was being asked about")
+
+	e, _, _ := store.Get(QuestionRef("run-1~d1"))
+	got := entity.ToObj(e.Payload)
+	if got["status"] != QuestionAnswered {
+		t.Fatalf("status = %v, want the answer to survive the crossing withdrawal", got["status"])
+	}
+	if got["by"] != "human:scott" {
+		t.Errorf("by = %v — the decision lost its author", got["by"])
+	}
+}

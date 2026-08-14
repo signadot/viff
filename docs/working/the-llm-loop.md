@@ -325,6 +325,15 @@ holding a question that will never be answered, and `mirror.DropQuestion` is the
 for saying so. Whether the resolver is told "withdrawn" or merely watches the record vanish is
 part of the gate extension, not of this loop.
 
+*Settled while building it, because withdrawal stopped being hypothetical.* The record does not
+vanish — `DropQuestion` settles it to `orphaned` with a timestamp, and that already worked. What
+was missing is WHY: `orphaned` was documented as "the asker is gone", which is now false in the
+common case, where the asker is alive and an operator redirected it. The waiter's context CAUSE
+carries the reason from the loop through `Registry.OnDrop` to the record's `why`, so a docket
+reader can tell "the task died" from "you were overruled". A distinct `withdrawn` STATUS is the
+alternative and is deliberately not taken: a status value is something a charter can match on,
+so it is a wire change, and nothing yet needs to filter on the distinction — only to read it.
+
 ## It must not hang, and why it cannot
 
 The properties, stated as requirements rather than hopes. The first four are safety (nothing bad

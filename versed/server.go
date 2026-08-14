@@ -229,10 +229,12 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		mirror.PostQuestion(store, p, "")
 		arm(store, p.Question)
 	})
-	// And the counterpart. A question whose last waiter was cancelled leaves the registry
+	// And the counterpart. A question whose last waiter stopped waiting leaves the registry
 	// silently; without this the record it published stays `pending` on the docket, offering
-	// a decision nothing is left to receive.
-	reg.OnDrop(func(q task.GateQuestion) { mirror.DropQuestion(store, q.ID) })
+	// a decision nothing is left to receive. The reason comes with it, because "the task died"
+	// and "an operator redirected the run" retire a question the same way and read to an
+	// answerer completely differently.
+	reg.OnDrop(func(q task.GateQuestion, why string) { mirror.DropQuestion(store, q.ID, why) })
 	taskd.OnQuestion(func(taskID, scope string, p task.Pending) {
 		// WHERE this question goes is the task's to say, not this closure's. taskd is one
 		// runtime under baseline and every scoped engine, so a publisher registered once
@@ -586,6 +588,7 @@ func (s *Server) reconcileQuestions() {
 		}
 		s.write(ent.Ref.At("status"), entity.Val(mirror.QuestionOrphaned))
 		s.write(ent.Ref.At("orphanedAt"), entity.Val(time.Now().UTC().Format(time.RFC3339)))
+		s.write(ent.Ref.At("why"), entity.Val("the runtime that raised it did not survive a restart"))
 	}
 }
 

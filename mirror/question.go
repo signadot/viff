@@ -33,10 +33,21 @@ func QuestionRef(id string) entity.Ref {
 const (
 	QuestionPending  = "pending"
 	QuestionAnswered = "answered"
-	// QuestionOrphaned is a question whose asker is gone: the task that raised it died
-	// with a previous verse, so nothing is waiting on the answer and nothing will read one.
-	// It settles rather than being deleted, for the reason an answered one does — what was
-	// asked, and why it was never decided, is the trail.
+	// QuestionOrphaned is a question that SETTLED WITHOUT A DECISION: nothing is waiting on
+	// the answer any more, so nothing will read one. It settles rather than being deleted, for
+	// the reason an answered one does — what was asked, and why it was never decided, is the
+	// trail.
+	//
+	// The name says "the asker is gone" and that was once the only way to get here: a task
+	// that died with a previous verse. It is no longer, and the difference matters to whoever
+	// was going to answer. A task's loop now WITHDRAWS a standing question when an operator
+	// intervenes — a say that redirects the run, a pause about to suspend it — and there the
+	// asker is alive and somebody chose this. Same settling; not the same news.
+	//
+	// So `why` carries which it was, and a reader who needs to tell them apart reads that
+	// rather than the status. A separate `withdrawn` status would be the alternative and is
+	// deliberately not taken: it is a value a charter could match on, so it is a wire change,
+	// and nothing yet needs to FILTER on the distinction — only to read it.
 	QuestionOrphaned = "orphaned"
 )
 
@@ -212,16 +223,20 @@ func OrphanQuestions(store entity.Store, taskID string) {
 		writeAt(store, ent.Ref, entity.Obj{
 			"status":     QuestionOrphaned,
 			"orphanedAt": time.Now().UTC().Format(time.RFC3339),
+			"why":        "the task that raised it ended without it being answered",
 		})
 	}
 }
 
-// DropQuestion settles one question whose asker gave up on it — the waiter was cancelled, so
-// there is nobody left to receive an answer.
+// DropQuestion settles one question whose asker stopped waiting for it, with `why` saying what
+// stopping meant — the task ended, or its loop withdrew the question because an operator
+// intervened. Either way there is nobody left to receive an answer.
 //
 // Same status as a task that ended holding open gates, because it is the same fact from a
-// smaller scope: the party who could have acted on the answer is gone.
-func DropQuestion(store entity.Store, id string) {
+// smaller scope: nothing will act on an answer to this. `why` is what separates the two for a
+// reader, and it is the reason this takes one — a docket that says only `orphaned` reads as
+// "the task died" for a run that is alive and was redirected.
+func DropQuestion(store entity.Store, id, why string) {
 	e, ok, err := store.Get(QuestionRef(id))
 	if err != nil || !ok {
 		return
@@ -232,10 +247,18 @@ func DropQuestion(store entity.Store, id string) {
 	if entity.ToObj(e.Payload)["status"] != QuestionPending {
 		return
 	}
-	writeAt(store, QuestionRef(id), entity.Obj{
+	rec := entity.Obj{
 		"status":     QuestionOrphaned,
 		"orphanedAt": time.Now().UTC().Format(time.RFC3339),
-	})
+	}
+	if why != "" {
+		// `why` and not `reason`: reason is the gate's own account of why it MATCHED, written
+		// when the question was posed, and overwriting it would lose what was being asked in
+		// favour of why nobody answered. `why` is where a settling's account already goes —
+		// see answerRecord, which puts an answerer's note there.
+		rec["why"] = why
+	}
+	writeAt(store, QuestionRef(id), rec)
 }
 
 // SettledBy reports who answered a question, and whether it is settled at all. It is the
