@@ -41,12 +41,72 @@ What the allowlist does not do, and no amount of deploying will fix: it bounds *
 **what**. `api.anthropic.com` will accept anything you care to send it, so this bounds a secret
 against a task that wanders and not against one that is trying.
 
-## `principal: distinct` is the rung nothing reaches
+## `principal: runner` says the quiet part, and nothing refuses on it
+
+**This is the one that carries a secret, and it is the largest thing here.**
+
+`principal: runner` is the strongest rung any confiner reaches, and it is being read as stronger
+than it is. It means the task process and the AGENT'S SUBPROCESSES are the same principal:
+`--unshare-user` maps the caller to itself, so the model's shell runs as the same uid as
+`coderunner -task`. Nothing about uids or namespaces separates a credential in the one from the
+other.
+
+What separates them is yama. `ptrace_scope >= 1` permits tracing descendants and not ancestors,
+and the shell is a descendant; at `0`, or with no yama at all, any process of that uid may attach
+to any other and read what it holds. That is a **host sysctl, outside the Point**, and it is
+already load-bearing — the model key has always been in the task process — with a push credential
+now behind the same assumption.
+
+Half of it is done, and it is the cheap half: the runner **reads** the sysctl at startup and says
+what it found, in a sentence that names what is at stake rather than reporting a kernel setting.
+That turns the assumption from unverified into merely accepted, which is a different thing, and it
+costs one file read.
+
+What is not done is the refusal, and the awkward part is what it should refuse *against*. Nothing
+declares "I hold a secret this process must contain", so a bare check either refuses launches that
+never needed it or refuses nothing. The honest shape is a leaf — something like
+`process.peek: {allowed, denied}` — that an environment holding credentials asks for and bwrap
+answers by reading the sysctl, in the same voice the network leaf refuses with: *a confiner that
+cannot deliver what was asked for REFUSES the launch rather than running the task with a barrier
+it cannot see.*
+
+It is deferred on the threat model rather than forgotten, and the trigger matters more than the
+decision. The deployment is behind a VPN, open to a handful of people, and the limitation is
+already being swallowed for the model key; a repository-scoped token beside it changes the content
+of the exposure and not its shape, and the people who could exploit it are the people who already
+have the repository. What would change the answer:
+
+- the deployment stops being VPN-only, or task spawning reaches anybody outside that handful;
+- a credential lands in the task process scoped wider than one repository, or whose compromise
+  costs more than a `git revert` — a registry, a cloud account, anything with spend;
+- `ptrace_scope` is found at `0` on a node, which the startup line would now say.
+
+## `principal: distinct` is the rung nothing reaches, and it is the fix for the above
 
 A per-task uid from a pool, and orthogonal to everything else: bwrap and rootless runc both reach a
 private filesystem with the caller mapped to itself, so the task runs as the runner however
 contained it is. Every other leaf has an implementation and this one has none, which makes it the
 honest test of whether the tree's leaves really are independent.
+
+It is also what makes the yama question not arise: a different uid for the agent's subprocesses
+means same-uid ptrace is not available whatever the sysctl says. bwrap can map a uid, so it is not
+out of reach in principle; what it costs is that the workspace, the mirrors and every file the
+agent writes are owned by one uid and read by another, which is a change to the checkout and
+delivery path rather than a flag.
+
+Worth noting which way round the two go: the leaf above makes the current arrangement honest, and
+this makes it unnecessary. Doing the first is right anyway, because it turns an assumption into a
+stated requirement that this would then satisfy properly.
+
+## A destination cannot express a DELETE
+
+A destination resolves to a ref and a push writes it, so retiring a branch — which
+[merge-gate.tony](merge-gate.tony)'s sweep needs — has no spelling. Nothing in the config says "and
+this one may be deleted", and nothing in the protocol distinguishes the two.
+
+The shape it wants is a destination that permits one, and the operational half that goes with it:
+`receive.denyDeletes` must not be set on the ref pattern such a destination targets, or the sweep
+silently cannot do its job. Until then a stale `verse/auto/*` branch is retired by hand.
 
 ## The descriptor's contract half
 
@@ -65,14 +125,17 @@ reason and `Provides` stays the authority.
 
 ## Staged work is append-only
 
-`refs/pending/<task>/<repo>` is self-limiting: the ref is dropped when the far side has the commit,
-so what remains is what has not landed, and it is retried. `refs/held/<task>/<repo>` — work a gate
-refused, or a task that died — is **never swept**. Nothing deletes it, nothing ages it out, and the
-only reason that is tolerable is that it is small and `GET /runner` lists it.
+`refs/pending/<task>/<repo>/<target>` is self-limiting: the sweep pushes it again, which is a no-op
+if the far side already has the commit, and the ref is dropped. `refs/held/<task>/<repo>` — work a
+gate refused, a remote refused, or a task that died before asking — is **never swept**. Nothing
+deletes it, nothing ages it out, and the only reason that is tolerable is that it is small and
+`GET /runner` lists it.
 
-The two namespaces exist so a retry cannot push work somebody declined. A sweep for `held` needs a
-policy nobody has stated: how long a refusal stays reviewable, and whether deleting it is an
-operator's act or a runner's.
+The two namespaces exist so a retry cannot push work somebody declined, and `held` gained a second
+population when the remote became able to refuse: a push that will never be accepted moves there
+rather than being retried on every spawn forever. That makes the missing sweep slightly more
+pressing than it was, and it still needs a policy nobody has stated: how long a refusal stays
+reviewable, and whether deleting it is an operator's act or a runner's.
 
 Same shape one level up: nothing cleans workspaces left by a runner that predates staging.
 
@@ -110,7 +173,7 @@ so the missing thing looked like it was the harness's to offer.
 - **Credential form.** A token in the runner's environment, a credential helper, or an SSH agent
   socket, differing in what a compromised runner leaks. It stopped being identical from the task's
   side when approval started releasing one
-  ([push-as-a-capability.md](push-as-a-capability.md)): a token is a value that can travel over
+  (see the doc this is a residual of): a token is a value that can travel over
   the channel, and a helper or an agent socket is not, so choosing either of those is choosing to
   put the push back in the parent.
 - **Whether workspaces should be pooled.** The measured case is the build cache rather than the

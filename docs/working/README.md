@@ -52,7 +52,7 @@ The eight, and what each is a residual of:
 | [gh-source-residual.md](gh-source-residual.md) | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own, and what the budget measured |
 | [goals-residual.md](goals-residual.md) | [reference/goals.md](../reference/goals.md) | the definition that no use case has earned |
 | [derive-residual.md](derive-residual.md) | [strata.md](../strata.md) | the fan-out landed; the sweep, the two neighbours, and what `!each` deliberately does not reach |
-| [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | never deployed, `principal: distinct` unreached, staged work never swept |
+| [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | never deployed, what `principal: runner` actually contains and the refusal nothing makes, the delete no destination expresses, staged work never swept |
 
 [provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under
 an older name: it reads against [provider selection](../provider-selection.md) and carries what

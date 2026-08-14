@@ -226,6 +226,15 @@ anything saying "work here may only do this" — is expressible and deliberately
 same narrowing a doer answers, and answering it in two places without deciding how they compose
 is how a ceiling comes to mean two things.
 
+Which is not to say the narrowing has nowhere to live. It lives *at the runner*, declared by
+whoever deployed it, and the [coding runner](reference/examples/README.md#running-the-coderunner)
+is the worked example: an environment there names which repositories exist, which tools a task
+has at all, what it may reach over the network, and where its work may be pushed — and a spawn
+names that environment and can only narrow it. So a charter says where work runs and the
+deployment says what running there permits, which is the composition verse declined to invent a
+second vocabulary for. What crosses back is an ordinary action with a typed effect, gated by the
+vector like anything else, so nothing about the arrangement is private to the runner.
+
 **Running work cannot be moved.** Named because the entity model invites the assumption: entities
 are level truth, so writing a different runner onto a `task:instance` looks like it should move
 the task. It does not. That field is a record of where the work went, not an instruction about

@@ -152,7 +152,7 @@ func main() {
 	}
 	// And what the containment of every secret in a task process actually rests on, read rather
 	// than assumed. Not a refusal — see ptraceScope for why that wants a leaf an environment can
-	// ask for, and docs/working/push-as-a-capability-residual.md for the rest.
+	// ask for, and docs/working/coding-runner-residual.md for the rest.
 	log.Printf("coderunner: %s", ptraceScope())
 	for _, e := range cfg.Environments {
 		log.Printf("  environment %s (driver %s):", e.Name, orDefault(e.Driver, "llm"))

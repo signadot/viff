@@ -69,13 +69,13 @@ drive a local agent, a remote one, and a human.
 | | [Runners](runners.md) — where work runs: installing one, naming it on a spawn, and what removing one does to the work on it |
 | | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a task records |
 | | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
-| | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, a contained PROCESS per task, and delivery as a gated action of the task rather than something that happens after it |
+| | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, a contained PROCESS per task, and a push as a capability the gate releases a credential for rather than one canned act |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | | [External tasks](external-tasks.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
 | | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |
 | | [A runner descriptor](working/runner-descriptor.md) — `GET /runner`: how control is applied, and isolation as ordered classes verse compares and does not interpret |
-| | [The coding runner: what is left](working/coding-runner-residual.md) — never deployed, three assumptions riding on that, and the rung nothing reaches |
+| | [The coding runner: what is left](working/coding-runner-residual.md) — never deployed, three assumptions riding on that, what `principal: runner` actually contains, and the delete no destination can express |
 | | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; why entity writes having no author is the one defect underneath several |
 | | [Derive: what is left](working/derive-residual.md) — the fan-out landed; what it deliberately does not do, and why a sweep is not a longer loop |
 | | [verse-dev: a coding pipeline](working/verse-dev-coderunner.md) — the drive: the walls predicted before the first run, and what running it found |

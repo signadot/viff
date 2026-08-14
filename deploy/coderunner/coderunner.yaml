@@ -87,7 +87,8 @@ data:
       # push to this repository too, and an invariant enforced by the receiver applies to all of
       # them:
       #   - `receive.denyNonFastForwards` (or the forge's branch-protection equivalent) is what
-      #     makes `--ff-only` more than an instruction in a prompt;
+      #     makes `--ff-only` more than an instruction in a prompt — SET on this repository's
+      #     `main`, and nothing here checks it or could;
       #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination
       #     targets, or a sweep silently cannot do its job.
       # Both fail OPEN — a missing rule does not error, it permits — so they are written here,
@@ -167,7 +168,8 @@ data:
       # push to this repository too, and an invariant enforced by the receiver applies to all of
       # them:
       #   - `receive.denyNonFastForwards` (or the forge's branch-protection equivalent) is what
-      #     makes `--ff-only` more than an instruction in a prompt;
+      #     makes `--ff-only` more than an instruction in a prompt — SET on this repository's
+      #     `main`, and nothing here checks it or could;
       #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination
       #     targets, or a sweep silently cannot do its job.
       # Both fail OPEN — a missing rule does not error, it permits — so they are written here,

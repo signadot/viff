@@ -174,7 +174,7 @@ type Repo struct {
 	// anything else — merge this branch into main, move a promotion ref, retire a branch that
 	// can no longer land — had no way to be asked for, and the obvious repair (a second
 	// operation, then a third) puts a policy in a mechanism and leaves the next flow needing a
-	// fourth. See docs/working/push-as-a-capability.md.
+	// fourth. See docs/reference/examples/README.md.
 	Destinations []Destination `tony:"field=destinations,omitzero"`
 }
 
@@ -208,8 +208,8 @@ type Destination struct {
 // token already make, so a config file that is read, copied and committed carries no secret.
 //
 // Nothing here creates one. These are hand-made PATs, and a system that can mint credentials is
-// a system whose compromise mints credentials; see docs/working/push-as-a-capability.md, which
-// argues that as a design rather than as a placeholder.
+// a system whose compromise mints credentials. That is the design rather than a placeholder: if
+// minting ever becomes cheap on the forge in use it narrows the window and changes nothing else.
 type Credential struct {
 	Name string `tony:"field=name"`
 	Env  string `tony:"field=env"`

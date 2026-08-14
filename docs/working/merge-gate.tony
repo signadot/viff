@@ -25,7 +25,7 @@
 #
 # THE MERGE RUNS NOW, AND THE SWEEP STILL DOES NOT. Both used to spawn a task that ran `git
 # push`, and a task on the code runner could not reach a remote at all — which is what
-# push-as-a-capability.md was written about and what has since landed.
+# reference/examples/README.md now documents as landed.
 #
 # What landed: an environment declares DESTINATIONS by name, a task names one and never a ref,
 # the vector gates the ref it resolves to, and approval is what releases the credential. So rule

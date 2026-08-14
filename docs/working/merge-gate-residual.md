@@ -7,45 +7,37 @@ is four rules that work with today's grammar. This is the part that does not, wr
 because a gap named in a file is a thing somebody can decide about and a gap left in a head is
 not.
 
-## The blocker: a task cannot reach a remote, and the fix is not in this charter
+## The blocker, and the wrong turn worth keeping
 
-**Resolved for the merge, still standing for the sweep.**
-[push-as-a-capability-plan.md](push-as-a-capability-plan.md) has landed: an environment declares
-destinations, a task names one, the vector gates the ref it resolves to, and approval releases
-the credential. So rule 2 merges locally and calls the runner's `push` tool naming `main`, and
-the charter's prompt says so. Rule 4 deletes a branch, and a delete is not something a
-destination expresses — there is no ref for it to resolve to — so it stays unrunnable and wants a
-destination that permits one, which is a runner change. What follows is the record of why, kept
-because the mistake in it is the one worth not repeating.
+**The merge runs; the sweep does not.** Both rules used to spawn a task that ran `git push`, and a
+task on the coding runner could reach no remote at all. That is fixed and the fix was not in this
+charter: a push is now
+[a capability with named destinations](../reference/examples/README.md#a-push-is-a-capability-with-named-destinations)
+— the environment declares where work may go, the task names one of those and never a ref, the
+vector gates the ref it resolves to, and approval is what releases the credential. So rule 2
+merges `--ff-only` locally and asks for the destination `main`, in the environment `verse-merge`
+that exists to declare it.
 
-Found by checking before installing rather than after. Rules 2 and 4 both spawn a task that runs
-`git push`, and the coderunner says twice and by design that this cannot work:
+Rule 4 still cannot run, and now for a sharper reason: it DELETES a branch, and a destination
+resolves to a ref that a push writes. There is no spelling for a delete, so the sweep waits on a
+destination that permits one — a runner change, recorded in
+[coding-runner-residual.md](coding-runner-residual.md).
 
-> The checkout is the parent's work — it holds the mirrors and the credential. This side opens
-> what is already there, which is also why its Trees carry no auth: **nothing on this side of the
-> boundary can reach a remote.**
+**The wrong turn is worth keeping because it is the same mistake one layer out.** The first fix
+reached for was to add `merge` and `retire` ops beside `deliver`. That puts a policy in a
+mechanism and leaves the next flow needing a third op — each one a new parser, a new authorization
+decision, a new thing to audit — and it is exactly what the charter's `--ff-only`-in-a-prompt
+would be if verse tried to enforce it. What the channel should hand over is a credential, at which
+point it stops needing to know what git operation is being done.
 
-The first fix I reached for was to add `merge` and `retire` ops beside `deliver`. That is wrong,
-and wrong in the same way the charter's `--ff-only`-in-a-prompt is wrong: it puts a policy in a
-mechanism and leaves the next flow needing a third op. The delivery channel's own comment already
-says what it should be — *"a capability the parent holds and the task may ask it to exercise"* —
-and what is implemented is one op with no target, which is a button.
+`--ff-only` did not move with the rest, and that was decided rather than left open: it stays an
+instruction in the prompt and a rule at the receiving end (`receive.denyNonFastForwards`, set on
+this repository's `main`), because `where` scopes onto a credential and `how` does not scope at
+all. An invariant enforced by the receiver beats one enforced by the caller; the cost is that it
+lives outside verse and the docket cannot show it.
 
-So the change belongs to the pushing, not to this charter:
-[push-as-a-capability.md](push-as-a-capability.md). The environment declares destinations, the
-task names one and never a ref, the vector gates the resolved ref, and approval is what MINTS a
-scoped credential — so the gate stays load-bearing without the parent having to understand every
-operation anyone will ever want.
-
-`--ff-only` does not move with it, and that is decided rather than left open: it stays an
-instruction in the prompt and becomes a rule at the receiving end
-(`receive.denyNonFastForwards`), because `where` scopes onto a credential and `how` does not
-scope at all. An invariant enforced by the receiver beats one enforced by the caller; the cost is
-that it lives outside verse and the docket cannot show it.
-
-Until that lands, rules 1 and 2 up to the gate are the drivable part — the derive, the stratum,
-the `!get-path`, the gate formula, and whether anybody answers a docket question. Those are also
-the parts nothing has verified yet.
+What nothing has verified yet is the charter itself: the derive, the stratum, the `!get-path`, the
+gate formula, and whether anybody answers a docket question.
 
 ## The one that was asked for, and is not expressible
 
@@ -101,9 +93,12 @@ credential expired".
 
 It is a semantic outcome, not an infrastructure failure — the task tried, correctly, and the
 answer is no. So the task completes and says so, and the charter branches on the answer. The
-plan's step 2 has the full table of what fails how, including the two that are genuinely
-infrastructure and the one nobody has settled: a multi-repo workspace where one push lands and
-the next is refused.
+runner draws that line for itself now: a remote's refusal comes back as the loop's `Blocked` and a
+bad credential as an error, which is
+[who enforces what](../reference/examples/README.md#who-enforces-what) landing in the one place it
+has to. The mixed outcome nobody had settled — one repository pushed, the next refused — was
+dissolved rather than managed: one push action is one repository, and an environment that could
+make that ambiguous is refused when the config is read.
 
 Still open in the charter itself: the `!when` spelling on `onDone` is unverified against the
 grammar, and two rules conditioned on the answer would say the same thing with no new operator.

@@ -588,8 +588,8 @@ func (t *Tree) pushAs(ctx context.Context, branch, target string, auth transport
 // record with alarm about the thing working as intended. A remote that will not fast-forward, a
 // protected branch, a ruleset, a hook: those are an authority OUTSIDE verse exercising rules
 // about its own history — which is precisely the authority this design deliberately does not
-// take (docs/working/push-as-a-capability.md, "verse should not compete with git server
-// configuration"). The task tried, correctly, and the answer is no. A missing credential or an
+// take — docs/reference/examples/README.md is blunt that verse should not compete with git
+// server configuration. The task tried, correctly, and the answer is no. A missing credential or an
 // unreachable host is not an answer at all.
 //
 // It is a string match, and that is what the transport gives: go-git renders receive-pack's `ng`

@@ -70,6 +70,13 @@ already ran, per firing, before the action fired.
 file, running a shell command, and delegating to a sub-agent block until approved. Approving
 a command the agent thought up is a real decision.
 
+The set is not fixed at four. A **runtime may add an action of its own** — the coding runner adds
+`push`, which sends work to a destination its environment declares — and what arrives at the gate
+is an ordinary action with an ordinary typed effect, so a vector decides it the same way and
+`verse gate` shows it the same way. That is what keeps a runtime's own capability inside the dial
+rather than beside it: the one action with an effect outside the verse should not be the one
+action nobody can gate.
+
 ```sh
 verse gate                                  # engine + task gates, unified
 # - gate: write

@@ -352,7 +352,7 @@ const ptraceScopePath = "/proc/sys/kernel/yama/ptrace_scope"
 // ptraceScope reads it and says what it means, for a log line at startup.
 //
 // This is the cheap half of a residual, taken on its own and deliberately not made into a
-// refusal (docs/working/push-as-a-capability-residual.md). `principal: runner` — the strongest
+// refusal (docs/working/coding-runner-residual.md). `principal: runner` — the strongest
 // rung any confiner here reaches — means the task process and the AGENT'S SHELL are the same
 // principal: `--unshare-user` maps the caller to itself, so nothing about uids or namespaces
 // separates a credential in `coderunner -task` from a shell the model drives.
