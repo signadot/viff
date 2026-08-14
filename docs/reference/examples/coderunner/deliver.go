@@ -52,6 +52,11 @@ const deliverFD = 5
 // would work until the first document that had one.
 type deliverRequest struct {
 	Op string `tony:"field=op"`
+	// Destination is the NAME of a place the environment declared, never a ref. That is the
+	// whole of what a task may say about where work goes: a name this environment does not
+	// declare resolves to nothing and nothing is pushed, so a task that could name a ref — and
+	// thereby send this runner's credential wherever it liked — does not exist.
+	Destination string `tony:"field=destination"`
 	// Result is the driver's final message, which becomes the commit body. It travels with the
 	// request rather than being read from the task's snapshot because at this moment the task
 	// has not finished — that is the whole point of delivering inside the loop.
@@ -80,7 +85,9 @@ func (d *deliverFinisher) Finish(result string) (task.ToolUse, bool) {
 	var targets []string
 	var effects []task.Effect
 	for _, t := range d.ws.Trees {
-		target := t.PushTarget(d.ws.Branch)
+		// `auto` BY NAME, which is the whole of step 1: the finisher asks for a destination
+		// like anything else asking for one, and `push:` is the spelling that declares it.
+		target := t.DestRef(autoDestination, d.ws.Branch)
 		if target == "" {
 			continue
 		}
@@ -112,7 +119,7 @@ func (d *deliverFinisher) Do(_ context.Context, _ task.ToolUse) (string, error) 
 	if d.conn == nil {
 		return "", fmt.Errorf("this task process was given no way to ask its runner to deliver")
 	}
-	rep, err := ask(d.conn, deliverRequest{Op: "deliver", Result: d.result})
+	rep, err := ask(d.conn, deliverRequest{Op: "deliver", Destination: autoDestination, Result: d.result})
 	if err != nil {
 		return "", fmt.Errorf("asking the runner to deliver: %w", err)
 	}
@@ -185,7 +192,7 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 		// this one exists precisely because the first cannot cross the credential boundary.
 		return deliverReply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
-	d := c.ws.Deliver(context.Background(), l, req.Result)
+	d := c.ws.Deliver(context.Background(), l, req.Result, req.Destination)
 	c.recordDelivery(d)
 	for _, p := range d.Pushed {
 		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, p)

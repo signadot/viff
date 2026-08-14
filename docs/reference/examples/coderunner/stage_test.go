@@ -86,7 +86,7 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := m.stage(context.Background(), approved.Trees[0], approved.Branch,
-		stagedRef(stagePending, "ok1", "svc")); err != nil {
+		stagedRef(stagePending, "ok1", "svc", "refs/heads/verse/auto/ok1")); err != nil {
 		t.Fatal(err)
 	}
 	held := refused.Salvage(context.Background(), task.Launch{ID: "no1"})
@@ -110,7 +110,7 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 	}
 	// The pending ref is dropped once it lands; the held one stays where it is.
 	mirror, _ := git.PlainOpen(m.dirFor(origin))
-	if _, err := mirror.Reference(plumbing.ReferenceName(stagedRef(stagePending, "ok1", "svc")), true); err == nil {
+	if _, err := mirror.Reference(plumbing.ReferenceName(stagedRef(stagePending, "ok1", "svc", "refs/heads/verse/auto/ok1")), true); err == nil {
 		t.Error("a delivered ref is still pending, so it will be pushed again forever")
 	}
 	if _, err := mirror.Reference(plumbing.ReferenceName(held.Staged[0]), true); err != nil {
@@ -145,7 +145,7 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 	}
 	// Only the repository with somewhere to go is held: a reference tree's edits were never
 	// going to leave, and staging them would imply they might.
-	want := stagedRef(stageHeld, "s1", "svc")
+	want := stagedRef(stageHeld, "s1", "svc", "")
 	if len(d.Staged) != 1 || d.Staged[0] != want {
 		t.Fatalf("Staged = %v, want [%s]", d.Staged, want)
 	}
@@ -192,7 +192,7 @@ func TestUndeliveredWorkIsListedWithHowToGetItBack(t *testing.T) {
 		t.Fatalf("staged = %+v, want one entry", got)
 	}
 	w := got[0]
-	if w.Task != "s9" || w.Repo != "svc" || w.Ref != stagedRef(stageHeld, "s9", "svc") {
+	if w.Task != "s9" || w.Repo != "svc" || w.Ref != stagedRef(stageHeld, "s9", "svc", "") {
 		t.Errorf("entry does not identify the work: %+v", w)
 	}
 	if !strings.Contains(w.Why, "authorized") {

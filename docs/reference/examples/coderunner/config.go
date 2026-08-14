@@ -146,11 +146,67 @@ type Repo struct {
 	// Base is the ref a worktree starts from — a branch, a tag, a sha. Empty is refused
 	// rather than defaulted to HEAD: which ref work starts from must not be guessed.
 	Base string `tony:"field=base"`
-	// Push is the ref this repository's branch goes to, with $task expanded to the task id.
+	// Push is the shorthand for a destination named `auto` — the one place work went when
+	// there was only one. It is still what almost every environment writes, and it is a
+	// spelling rather than a second mechanism: see Dests.
+	//
 	// EMPTY MEANS NOTHING LEAVES, and it is per repository on purpose: the ordinary workspace
 	// is one repository being changed beside one or more that are there to be read, and a
 	// reference repository that could push back is a blast radius nobody asked for.
 	Push string `tony:"field=push,omitzero"`
+	// Destinations are the named places this repository's work may go, and they are the
+	// vocabulary a task pushes in: it asks for a NAME and never for a ref, so "where the work
+	// goes is the environment's to say" survives a task that can ask for more than one thing.
+	//
+	// A table rather than a field is the whole change. `push:` admitted exactly one flow, so
+	// anything else — merge this branch into main, move a promotion ref, retire a branch that
+	// can no longer land — had no way to be asked for, and the obvious repair (a second
+	// operation, then a third) puts a policy in a mechanism and leaves the next flow needing a
+	// fourth. See docs/working/push-as-a-capability.md.
+	Destinations []Destination `tony:"field=destinations,omitzero"`
+}
+
+// autoDestination is what `deliver` has always meant: the branch a task's own work lands on.
+// It is a name like any other now, and the finisher asks for it by that name.
+const autoDestination = "auto"
+
+// Destination is one named place a repository's work may go.
+type Destination struct {
+	// Name is what a task asks for, and it is the whole of what a task may say about where
+	// work goes. A name this environment does not declare is refused; a ref is never named.
+	Name string `tony:"field=name"`
+	// Ref is where it goes, with $task expanded to the task id and $sha to the commit the
+	// work started from — the same expansion `push:` has always had, and see Tree.PushTarget
+	// for why $sha is in it.
+	Ref string `tony:"field=ref"`
+}
+
+// Dests is this repository's destinations, with `push:` read as the one named `auto`.
+//
+// The shorthand is normalised HERE rather than in LoadConfig because a Repo is also built
+// without ever passing through it — by a test, and by the task process, which is handed the
+// environment the parent resolved rather than the file it came from. A normalisation that only
+// happens on the config-reading path is one the other paths quietly disagree with, and the two
+// sides disagreeing about which ref a destination names is exactly what childConfig.Bases
+// exists to prevent one level down.
+func (r Repo) Dests() []Destination {
+	if len(r.Destinations) > 0 {
+		return r.Destinations
+	}
+	if r.Push != "" {
+		return []Destination{{Name: autoDestination, Ref: r.Push}}
+	}
+	return nil
+}
+
+// Dest looks one up by the name a task asked for.
+func (r Repo) Dest(name string) (Destination, bool) {
+	for _, d := range r.Dests() {
+		if d.Name == name {
+			return d, true
+		}
+	}
+	return Destination{}, false
 }
 
 // LoadConfig reads and checks the runner's config. Every check here is about something that
@@ -219,6 +275,9 @@ func LoadConfig(path string) (*Config, error) {
 				return nil, fmt.Errorf("coderunner: environment %q, repo %q has no base — which "+
 					"ref work starts from is not a thing to guess", e.Name, r.Name)
 			}
+			if err := checkDests(e.Name, r); err != nil {
+				return nil, err
+			}
 			dirs[r.Name] = true
 		}
 		seen[e.Name] = true
@@ -235,6 +294,39 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("coderunner: default environment %q is not declared", c.Default)
 	}
 	return &c, nil
+}
+
+// checkDests is everything about one repository's destinations that cannot be discovered later.
+//
+// A destination is asked for BY NAME, so a name that is missing, doubled or attached to no ref
+// is a request that resolves to nothing at the moment a task tries to deliver — which is the
+// worst place to find out, because by then the work exists and the run is over.
+func checkDests(env string, r Repo) error {
+	if r.Push != "" && len(r.Destinations) > 0 {
+		// Two spellings of one table, and Dests would silently prefer the list. Refused rather
+		// than merged: an operator who wrote both meant one of them, and which one is not a
+		// thing to guess about the place work leaves through.
+		return fmt.Errorf("coderunner: environment %q, repo %q declares both `push:` and "+
+			"`destinations:` — `push:` IS the destination named %q, so write it once",
+			env, r.Name, autoDestination)
+	}
+	seen := map[string]bool{}
+	for i, d := range r.Destinations {
+		switch {
+		case d.Name == "":
+			return fmt.Errorf("coderunner: environment %q, repo %q, destination %d has no name — "+
+				"the name is the whole of what a task may say about where work goes", env, r.Name, i)
+		case seen[d.Name]:
+			return fmt.Errorf("coderunner: environment %q, repo %q has two destinations named %q — "+
+				"a task asking for it would get whichever was read first", env, r.Name, d.Name)
+		case d.Ref == "":
+			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q has no ref — "+
+				"a destination that names nowhere is a name a task can ask for and nothing can "+
+				"perform", env, r.Name, d.Name)
+		}
+		seen[d.Name] = true
+	}
+	return nil
 }
 
 // MissingLLMCreds reports why the `llm` driver cannot run here, or "" if it can.

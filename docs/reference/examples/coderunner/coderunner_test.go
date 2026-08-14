@@ -15,6 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/task"
 )
 
@@ -74,7 +75,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	l := task.Launch{ID: "p1", Environment: "test", Provenance: task.Provenance{
 		Principal: "scott", Subject: "demo:pr:1", Chain: "review",
 	}}
-	d := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails")
+	d := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails", autoDestination)
 	if d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
@@ -158,7 +159,7 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 		}
 	}
 
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing")
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing", autoDestination)
 	if d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
@@ -219,7 +220,7 @@ func TestNoPushTargetDeliversNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "x"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done")
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done", autoDestination)
 	if d.Err != nil || len(d.Pushed) != 0 || len(d.Staged) != 0 {
 		t.Fatalf("Deliver = %+v — a read-only environment pushes nowhere and stages nothing", d)
 	}
@@ -261,7 +262,7 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work"); d.Err != nil {
+	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", autoDestination); d.Err != nil {
 		t.Fatalf("deliver: %v", d.Err)
 	}
 	if commitAt(t, attacker, "refs/heads/verse/auto/p1") != "" {
@@ -391,6 +392,72 @@ func TestShippedConfigLoads(t *testing.T) {
 	}
 	if pushes != 1 {
 		t.Errorf("verse-dev has %d repos that push; the sample should show exactly one", pushes)
+	}
+}
+
+// `push:` and a destination named `auto` are one thing spelled two ways, and the ref they
+// resolve to is the SAME STRING.
+//
+// That is the whole of the first step, and byte-identity is the assertion because the ref is
+// computed on both sides of a process boundary: the child names the ref its delivery gate
+// matches on and the parent writes it, so a resolution that differed by anything at all would
+// leave a gate matching a ref nobody pushes. See childConfig.Bases.
+func TestADestinationNamedAutoIsWhatPushAlwaysMeant(t *testing.T) {
+	const ref = "refs/heads/verse/auto/$sha/$task"
+	head := "7281b71624be224b6f9b47530353077b1bb7f62a"
+	branch := autoBranchPrefix + "comment-drift@x"
+
+	short := &Tree{Repo: Repo{Name: "verse", Repo: "…", Base: "main", Push: ref}, Head: head}
+	long := &Tree{Head: head, Repo: Repo{Name: "verse", Repo: "…", Base: "main",
+		Destinations: []Destination{{Name: autoDestination, Ref: ref}}}}
+
+	want := "refs/heads/verse/auto/7281b716/comment-drift@x"
+	for what, tree := range map[string]*Tree{"push:": short, "destinations:": long} {
+		if got := tree.PushTarget(branch); got != want {
+			t.Errorf("%s resolves to %q, want %q", what, got, want)
+		}
+		if got := tree.DestRef(autoDestination, branch); got != want {
+			t.Errorf("%s by name resolves to %q, want %q", what, got, want)
+		}
+		// A name the environment did not declare is nowhere, which is what refuses it before
+		// anything is gated and before any credential is near it.
+		if got := tree.DestRef("main", branch); got != "" {
+			t.Errorf("%s resolved an undeclared destination to %q", what, got)
+		}
+	}
+}
+
+// Every check about destinations is at STARTUP, because each of them is a request that would
+// otherwise resolve to nothing at the moment a task tries to deliver — after the work exists
+// and with the run already over.
+func TestDestinationsAreCheckedWhenTheConfigIsRead(t *testing.T) {
+	base := Repo{Name: "svc", Repo: ".", Base: "main"}
+	with := func(r Repo) *Config {
+		return &Config{Environments: []Environment{{Name: "e", Repos: []Repo{r}}}}
+	}
+	dir := t.TempDir()
+	for name, cfg := range map[string]*Config{
+		"both spellings at once": with(Repo{Name: base.Name, Repo: base.Repo, Base: base.Base,
+			Push:         "refs/heads/a",
+			Destinations: []Destination{{Name: autoDestination, Ref: "refs/heads/b"}}}),
+		"a destination with no name": with(Repo{Name: base.Name, Repo: base.Repo, Base: base.Base,
+			Destinations: []Destination{{Ref: "refs/heads/a"}}}),
+		"a destination with no ref": with(Repo{Name: base.Name, Repo: base.Repo, Base: base.Base,
+			Destinations: []Destination{{Name: "main"}}}),
+		"two destinations with one name": with(Repo{Name: base.Name, Repo: base.Repo, Base: base.Base,
+			Destinations: []Destination{{Name: "main", Ref: "refs/heads/a"}, {Name: "main", Ref: "refs/heads/b"}}}),
+	} {
+		path := filepath.Join(dir, safeSeg(name)+".tony")
+		blob, err := codec.Marshal(cfg, codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, blob, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadConfig(path); err == nil {
+			t.Errorf("%s loaded — it would fail at the first delivery instead", name)
+		}
 	}
 }
 
@@ -583,14 +650,14 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	if err := os.RemoveAll(origin); err != nil {
 		t.Fatal(err)
 	}
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work")
+	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", autoDestination)
 	if d.Err == nil {
 		t.Fatal("expected the push to fail once its remote was gone")
 	}
 	if len(d.Pushed) != 0 {
 		t.Fatalf("delivered %v despite the failure", d.Pushed)
 	}
-	want := stagedRef(stagePending, "p1", "svc")
+	want := stagedRef(stagePending, "p1", "svc", "refs/heads/verse/auto/p1")
 	if len(d.Staged) != 1 || d.Staged[0] != want {
 		t.Fatalf("Staged = %v, want [%s] — the work has nowhere to wait", d.Staged, want)
 	}

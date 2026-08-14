@@ -357,7 +357,7 @@ func (w *Workspace) Brief() string {
 	}
 	for _, t := range w.Trees {
 		fmt.Fprintf(&b, "  %s/ — %s at %s", t.Repo.Name, t.Repo.Repo, t.Repo.Base)
-		if t.Repo.Push == "" {
+		if len(t.Repo.Dests()) == 0 {
 			// Saying so matters: an agent that edits a reference tree has done work that will
 			// be thrown away, and nothing downstream would report that it was.
 			b.WriteString(" (reference only — changes here are not delivered anywhere)")
@@ -418,8 +418,21 @@ func (t *Tree) changed() []string {
 	return files
 }
 
-// PushTarget is where this repository's branch goes, with $task and $sha expanded. Empty means
-// nowhere.
+// DestRef is where a NAMED destination of this repository goes, with $task and $sha expanded.
+// Empty means this repository declares no such destination — which is how a name the
+// environment never wrote is refused, before anything is gated and before any credential is
+// anywhere near it.
+func (t *Tree) DestRef(name, branch string) string {
+	d, ok := t.Repo.Dest(name)
+	if !ok {
+		return ""
+	}
+	out := strings.ReplaceAll(d.Ref, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
+	return strings.ReplaceAll(out, "$sha", shortSha(t.Head))
+}
+
+// PushTarget is where this repository's own work goes: the destination named `auto`, which is
+// what `push:` has always meant. Empty means nowhere.
 //
 // `$sha` is the commit the work started from, and it exists because `$task` alone is not unique
 // over time. A charter's task id is a function of (chain, subject), so a rule whose subject is
@@ -436,13 +449,7 @@ func (t *Tree) changed() []string {
 // Re-deriving it from the checkout would agree today, because a task in these environments has
 // no way to commit, and would diverge the moment one did: the gate would name a ref the push
 // never wrote.
-func (t *Tree) PushTarget(branch string) string {
-	if t.Repo.Push == "" {
-		return ""
-	}
-	out := strings.ReplaceAll(t.Repo.Push, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
-	return strings.ReplaceAll(out, "$sha", shortSha(t.Head))
-}
+func (t *Tree) PushTarget(branch string) string { return t.DestRef(autoDestination, branch) }
 
 // shortSha is the branch-name form of a commit: enough to be unique in a repository this size
 // and short enough that a ref stays readable next to a task id that is already long.
@@ -574,7 +581,7 @@ func commitMessage(l task.Launch, result string) string {
 // where removing it after delivering nothing is not destroying something.
 func (w *Workspace) Deliverable() bool {
 	for _, t := range w.Trees {
-		if t.Repo.Push != "" {
+		if len(t.Repo.Dests()) > 0 {
 			return true
 		}
 	}

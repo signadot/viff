@@ -59,8 +59,38 @@ const (
 )
 
 // stagedRef is where one repository's work waits in the mirror.
-func stagedRef(kind, taskID, repo string) string {
-	return fmt.Sprintf("refs/%s/%s/%s", kind, safeSeg(taskID), safeSeg(repo))
+//
+// A PENDING ref carries the target it was approved for as the tail of its own name, and a HELD
+// one does not — which is the same distinction the two namespaces already make, written into
+// the shape: pending work is going somewhere specific and held work was never told where.
+//
+// Carrying it beats re-deriving it, and the re-derivation was not merely fragile, it was already
+// wrong. Reflect rebuilt the target from the environment's push target by expanding `$task` into
+// it, and every real environment writes `refs/heads/verse/auto/$sha/$task` — where `$sha` is the
+// commit the work started from, which the mirror does not know and cannot recover. A retry would
+// have pushed to a ref with a dollar sign in its name. It also cannot say WHICH destination the
+// work was approved for now that a repository may declare several.
+func stagedRef(kind, taskID, repo, target string) string {
+	ref := fmt.Sprintf("refs/%s/%s/%s", kind, safeSeg(taskID), safeSeg(repo))
+	if target == "" {
+		return ref
+	}
+	return ref + "/" + target
+}
+
+// splitStaged reads a staged ref back: the task it belongs to, the repository directory it came
+// from, and the target it was approved for (empty for held work).
+func splitStaged(kind, ref string) (taskID, repo, target string, ok bool) {
+	rest, ok := strings.CutPrefix(ref, "refs/"+kind+"/")
+	if !ok {
+		return "", "", "", false
+	}
+	taskID, rest, ok = strings.Cut(rest, "/")
+	if !ok {
+		return "", "", "", false
+	}
+	repo, target, _ = strings.Cut(rest, "/")
+	return taskID, repo, target, repo != ""
 }
 
 // Delivery is what became of one workspace's work. The three lists are exhaustive over the
@@ -78,8 +108,12 @@ type Delivery struct {
 //
 // Dropping it on success is the retention rule, and it needs no TTL: what is left under
 // refs/pending is exactly the work this runner holds that the world does not.
-func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result string) Delivery {
-	return w.settle(ctx, l, result, stagePending, true)
+//
+// The destination is asked for BY NAME — `auto` is what the finisher asks for and what `push:`
+// has always spelled — so a repository that does not declare it sends nothing, exactly as a
+// repository with no push target sends nothing.
+func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result, dest string) Delivery {
+	return w.settle(ctx, l, result, dest, stagePending, true)
 }
 
 // Salvage is the same two hops minus the last one: commit what is there and put it in the mirror
@@ -88,17 +122,25 @@ func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result string) D
 // It exists so that "the task did not deliver" stops meaning "the work is in a directory somebody
 // has to know to look in". A refused push is a decision about where work goes, not a decision to
 // destroy it.
+// It names no destination, and it must not: work that nobody authorized to leave is held for
+// every repository that has anywhere to send it, not for one place somebody might have chosen.
 func (w *Workspace) Salvage(ctx context.Context, l task.Launch) Delivery {
-	return w.settle(ctx, l, "", stageHeld, false)
+	return w.settle(ctx, l, "", "", stageHeld, false)
 }
 
-func (w *Workspace) settle(ctx context.Context, l task.Launch, result, kind string, send bool) Delivery {
+func (w *Workspace) settle(ctx context.Context, l task.Launch, result, dest, kind string, send bool) Delivery {
 	var d Delivery
 	var errs []error
 	for _, t := range w.Trees {
 		// A repository with nowhere to push is a reference tree: nothing leaves and nothing is
-		// staged, because there is no target to hold work FOR.
-		if t.PushTarget(w.Branch) == "" {
+		// staged, because there is no target to hold work FOR. When a destination is named, a
+		// repository that does not declare THAT one is in the same position.
+		var target string
+		if send {
+			if target = t.DestRef(dest, w.Branch); target == "" {
+				continue
+			}
+		} else if len(t.Repo.Dests()) == 0 {
 			continue
 		}
 		work, err := t.commitWork(l, result)
@@ -110,7 +152,7 @@ func (w *Workspace) settle(ctx context.Context, l task.Launch, result, kind stri
 		if !work {
 			continue // genuinely untouched
 		}
-		ref := stagedRef(kind, l.ID, t.Repo.Name)
+		ref := stagedRef(kind, l.ID, t.Repo.Name, target)
 		if err := w.mirrors.stage(ctx, t, w.Branch, ref); err != nil {
 			// Staging is the local hop, so this failing means the disk or the git binary, not
 			// the network. The workspace is the only copy and must be kept.
@@ -122,7 +164,6 @@ func (w *Workspace) settle(ctx context.Context, l task.Launch, result, kind stri
 			d.Staged = append(d.Staged, ref)
 			continue
 		}
-		target := t.PushTarget(w.Branch)
 		if err := t.push(ctx, w.Branch, target); err != nil {
 			// The work is safe: it went into the mirror a moment ago. Say where, because the
 			// operator's next question is exactly that.
@@ -191,7 +232,7 @@ func (m *Mirrors) unstage(_ context.Context, repo, ref string) error {
 // backlog) and once at startup. No timer and no loop of its own: the work is bounded by what is
 // there, and a runner nobody is using has nothing to retry for.
 func (m *Mirrors) Reflect(ctx context.Context, r Repo) (int, error) {
-	if r.Push == "" {
+	if len(r.Dests()) == 0 {
 		return 0, nil
 	}
 	dir := m.dirFor(r.Repo)
@@ -209,18 +250,13 @@ func (m *Mirrors) Reflect(ctx context.Context, r Repo) (int, error) {
 	}
 	type pending struct{ ref, target string }
 	var todo []pending
-	prefix := "refs/" + stagePending + "/"
 	if err := refs.ForEach(func(ref *plumbing.Reference) error {
 		name := ref.Name().String()
-		rest, ok := strings.CutPrefix(name, prefix)
-		if !ok {
-			return nil
-		}
-		taskID, repo, ok := strings.Cut(rest, "/")
-		if !ok || repo != safeSeg(r.Name) {
+		_, repo, target, ok := splitStaged(stagePending, name)
+		if !ok || repo != safeSeg(r.Name) || target == "" {
 			return nil // another repository's staged work, or a shape nothing here wrote
 		}
-		todo = append(todo, pending{ref: name, target: strings.ReplaceAll(r.Push, "$task", taskID)})
+		todo = append(todo, pending{ref: name, target: target})
 		return nil
 	}); err != nil {
 		return 0, err
@@ -260,8 +296,8 @@ func (r *Runner) reflectAll(ctx context.Context) {
 	seen := map[string]bool{}
 	for _, env := range r.cfg.Environments {
 		for _, repo := range env.Repos {
-			key := repo.Repo + "\x00" + repo.Name + "\x00" + repo.Push
-			if repo.Push == "" || seen[key] {
+			key := repo.Repo + "\x00" + repo.Name
+			if len(repo.Dests()) == 0 || seen[key] {
 				continue
 			}
 			seen[key] = true
@@ -290,10 +326,13 @@ func (r *Runner) reflect(ctx context.Context, repo Repo) {
 // next question is always "which one, and how do I read it", and the answer involves knowing that
 // this runner hashes remotes at all.
 type StagedWork struct {
-	Task  string `tony:"field=task"`
-	Repo  string `tony:"field=repo"`
-	Why   string `tony:"field=why"` // pending: approved, not landed. held: nobody authorized it to leave.
-	Ref   string `tony:"field=ref"`
+	Task string `tony:"field=task"`
+	Repo string `tony:"field=repo"`
+	Why  string `tony:"field=why"` // pending: approved, not landed. held: nobody authorized it to leave.
+	Ref  string `tony:"field=ref"`
+	// To is the ref this was approved to go to, and it is empty for held work — which is the
+	// honest rendering of the difference, since nobody ever said where held work should land.
+	To    string `tony:"field=to,omitzero"`
 	Fetch string `tony:"field=fetch"` // paste this to get the commit into a checkout
 }
 
@@ -320,16 +359,12 @@ func (m *Mirrors) Staged(r Repo) ([]StagedWork, error) {
 	err = refs.ForEach(func(ref *plumbing.Reference) error {
 		name := ref.Name().String()
 		for _, kind := range []string{stagePending, stageHeld} {
-			rest, ok := strings.CutPrefix(name, "refs/"+kind+"/")
-			if !ok {
-				continue
-			}
-			taskID, repo, ok := strings.Cut(rest, "/")
+			taskID, repo, target, ok := splitStaged(kind, name)
 			if !ok || repo != safeSeg(r.Name) {
 				continue
 			}
 			out = append(out, StagedWork{
-				Task: taskID, Repo: r.Name, Why: whyStaged(kind), Ref: name,
+				Task: taskID, Repo: r.Name, Why: whyStaged(kind), Ref: name, To: target,
 				Fetch: fmt.Sprintf("git fetch %s %s:refs/heads/recovered/%s-%s", dir, name, taskID, repo),
 			})
 		}
@@ -353,7 +388,7 @@ func (r *Runner) staged() []StagedWork {
 	for _, env := range r.cfg.Environments {
 		for _, repo := range env.Repos {
 			key := repo.Repo + "\x00" + repo.Name
-			if repo.Push == "" || seen[key] {
+			if len(repo.Dests()) == 0 || seen[key] {
 				continue
 			}
 			seen[key] = true
