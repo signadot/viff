@@ -75,6 +75,7 @@ drive a local agent, a remote one, and a human.
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
 | | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |
 | | [A runner descriptor](working/runner-descriptor.md) — `GET /runner`: how control is applied, and isolation as ordered classes verse compares and does not interpret |
+| | [Nothing bounds a run](working/task-budget.md) — a review that concluded and would not stop, an operator's word ignored, and why the fix is not a prompt |
 | | [Config: a field that says where it reads itself from](working/config-secrets.md) — one question this repo answers twice, and why `!env` must not reach a charter |
 | | [The coding runner: what is left](working/coding-runner-residual.md) — never deployed, three assumptions riding on that, what `principal: runner` actually contains, and the delete no destination can express |
 | | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; why entity writes having no author is the one defect underneath several |
