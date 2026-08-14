@@ -108,6 +108,8 @@ func (s *PutEntity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Field = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"field\"", fieldNodeUnwrapped.Type)
 			}
 		case "payload":
 			if gomap.GetUnmapComments(opts...) {
@@ -127,6 +129,8 @@ func (s *PutEntity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.When = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"when\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -250,6 +254,8 @@ func (s *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Field = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"field\"", fieldNodeUnwrapped.Type)
 			}
 		case "exists":
 			// Field: Exists
@@ -397,6 +403,8 @@ func (s *Resolve) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Say = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"say\"", fieldNodeUnwrapped.Type)
 			}
 		case "override":
 			// Field: Override
@@ -607,6 +615,8 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Calls = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"calls\"", fieldNodeUnwrapped.Type)
 			}
 		case "resolver":
 			// Field: Resolver
@@ -845,6 +855,8 @@ func (s *Verdict) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Say = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"say\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -1571,6 +1583,8 @@ func (s *Routes) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Routes = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"routes\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {

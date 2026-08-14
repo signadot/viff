@@ -83,6 +83,8 @@ func (s *Grant) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Allow = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"allow\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -207,6 +209,8 @@ func (s *Call) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					m[k] = val
 				}
 				s.Input = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"input\"", fieldNodeUnwrapped.Type)
 			}
 		case "fatal":
 			// Field: Fatal
@@ -709,6 +713,8 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Tools = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"tools\"", fieldNodeUnwrapped.Type)
 			}
 		case "verbs":
 			// Field: Verbs
@@ -724,6 +730,8 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = Verb(elem)
 				}
 				s.Verbs = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"verbs\"", fieldNodeUnwrapped.Type)
 			}
 		case "resources":
 			// Field: Resources
@@ -737,6 +745,8 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Resources = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"resources\"", fieldNodeUnwrapped.Type)
 			}
 		case "paths":
 			// Field: Paths
@@ -750,6 +760,8 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Paths = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"paths\"", fieldNodeUnwrapped.Type)
 			}
 		case "branches":
 			// Field: Branches
@@ -765,6 +777,8 @@ func (s *GateMatch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Branches = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"branches\"", fieldNodeUnwrapped.Type)
 			}
 		case "onPush":
 			// Field: OnPush
@@ -1122,6 +1136,8 @@ func (s *Instance) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Pending = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"pending\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -1465,6 +1481,8 @@ func (s *Vector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Gates = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
 			}
 		case "default":
 			if fieldNodeUnwrapped.Type != ir.StringType {

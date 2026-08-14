@@ -156,6 +156,8 @@ func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Children = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"children\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -269,6 +271,8 @@ func (s *FlowTree) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Roots = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"roots\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -419,6 +423,8 @@ func (s *GoalDef) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Triggers = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"triggers\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -571,6 +577,8 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Gates = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
 			}
 		case "gating":
 			// Field: Gating
@@ -697,6 +705,8 @@ func (s *Gating) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Gates = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -1004,6 +1014,8 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Seq = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"seq\"", fieldNodeUnwrapped.Type)
 			}
 		case "onDone":
 			// Field: OnDone

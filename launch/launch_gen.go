@@ -190,6 +190,8 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Tools = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"tools\"", fieldNodeUnwrapped.Type)
 			}
 		case "answer":
 			if gomap.GetUnmapComments(opts...) {
@@ -215,6 +217,8 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = elem
 				}
 				s.Calls = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"calls\"", fieldNodeUnwrapped.Type)
 			}
 		case "vector":
 			// Field: Vector
@@ -399,6 +403,8 @@ func (s *Call) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					m[k] = val
 				}
 				s.Input = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"input\"", fieldNodeUnwrapped.Type)
 			}
 		case "fatal":
 			// Field: Fatal
@@ -551,6 +557,8 @@ func (s *Provider) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Eligible = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"eligible\"", fieldNodeUnwrapped.Type)
 			}
 		case "capability":
 			// Field: Capability
@@ -571,6 +579,8 @@ func (s *Provider) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					m[k] = val
 				}
 				s.Match = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"match\"", fieldNodeUnwrapped.Type)
 			}
 		case "select":
 			// Field: Select

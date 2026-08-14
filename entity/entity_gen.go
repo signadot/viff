@@ -374,6 +374,8 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.At = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"at\"", fieldNodeUnwrapped.Type)
 			}
 		case "slot":
 			// Field: Slot
@@ -389,6 +391,8 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 					slice[i] = string(elem)
 				}
 				s.Slot = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"slot\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
