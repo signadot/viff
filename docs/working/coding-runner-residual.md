@@ -108,8 +108,11 @@ so the missing thing looked like it was the harness's to offer.
   `$result.branch` is what a charter wants to deref, which argues for a contract the runner
   *imposes* — and a runner imposing a contract on the work is a new kind of thing.
 - **Credential form.** A token in the runner's environment, a credential helper, or an SSH agent
-  socket, differing in what a compromised runner leaks and identical from the task's side, which
-  reaches none of them.
+  socket, differing in what a compromised runner leaks. It stopped being identical from the task's
+  side when approval started releasing one
+  ([push-as-a-capability.md](push-as-a-capability.md)): a token is a value that can travel over
+  the channel, and a helper or an agent socket is not, so choosing either of those is choosing to
+  put the push back in the parent.
 - **Whether workspaces should be pooled.** The measured case is the build cache rather than the
   checkout — which is also what makes it a cross-task channel rather than a cache.
 - **When a clone should become alternates.** The trigger is repository size and the switch is one

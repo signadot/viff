@@ -22,10 +22,10 @@ ARG TARGETARCH
 # runner REFUSES the containment rather than running work without it, so a wrong assumption
 # here surfaces as a failed spawn naming the missing rung rather than as an escape.
 #
-# git is NOT here for the tasks. This runner speaks git through go-git, in its own process, and
-# the whole delivery model rests on a task being unable to reach the credential — so `git` is
-# absent from the task's PATH on purpose. It is installed only because parts of a toolchain
-# shell out to it (go, for module fetches).
+# git is NOT here for the tasks. This runner speaks git through go-git — in the task process now,
+# under a credential released per approved push — so `git` is absent from a task's PATH on
+# purpose: the shell the model drives has no credential and no reason to run it. It is installed
+# only because parts of a toolchain shell out to it (go, for module fetches).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bubblewrap ca-certificates git curl \

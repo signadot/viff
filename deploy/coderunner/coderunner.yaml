@@ -103,17 +103,18 @@ data:
     #
     # It PUSHES, which is the whole shape of the deliverable: a stale comment is cheap to read
     # as a diff and expensive to read as prose about a diff, and a branch is droppable in a way
-    # a report on an entity is not. Delivery is the runner's act — the token lives in this
-    # process, outside the sandbox — and the task only proposes it, at the end, carrying a push
-    # effect the vector sees. A run that changed nothing proposes nothing, so a commit with no
-    # stale comment in it leaves no branch.
+    # a report on an entity is not. The push is an ACTION of the task, carrying the ref it will
+    # touch, and approval is what releases the credential for it — so a charter can decline it
+    # and a decline means the ability never existed. A run that changed nothing proposes nothing,
+    # so a commit with no stale comment in it leaves no branch.
     #
     # A SHELL, and `git` on the PATH — which the image's own Dockerfile keeps OFF a task's PATH
-    # on purpose, and it is worth saying exactly why that is not being undone here. Its reason
-    # is delivery: the whole model rests on a task being unable to reach the push credential.
-    # That credential is not in `env:` below, it lives in the runner's process outside the
-    # sandbox, and `egress:` has no route to github.com — so `git` in here can read this clone
-    # and can reach nothing. What it buys is the one question a charter cannot answer for
+    # on purpose, and it is worth saying exactly why that is not being undone here. The shell can
+    # now REACH github.com, because a push needs a route and the allowlist is per network
+    # namespace. What it cannot do is authenticate: the credential is not in `env:` below, which
+    # is the allowlist a subprocess inherits, and it never will be — it goes to the task process
+    # and is used there. So `git` in here can read this clone and can push nothing. What a shell
+    # buys is the one question a charter cannot answer for
     # itself: which files a commit changed. `git:commit:*` carries the sha, the message and the
     # trailers, and not the paths, so without a shell the task cannot find out what it is
     # reviewing. The day that list is a field on the commit entity, this environment goes back
