@@ -905,3 +905,24 @@ func TestConfinerNamed(t *testing.T) {
 		t.Errorf("-confine bwrap resolved to %T", c)
 	}
 }
+
+// What the containment of a secret in a task process rests on is READ, not assumed.
+//
+// `principal: runner` — the strongest rung any confiner here reaches — puts the task process
+// and the agent's shell under one uid, so what separates a credential in the first from the
+// second is yama and nothing else. This does not enforce it, deliberately (see ptraceScope);
+// what it must do is SAY something true on every host, including the ones where the answer is
+// "there is no barrier here".
+func TestThePtraceBarrierIsReadRatherThanAssumed(t *testing.T) {
+	got := ptraceScope()
+	if got == "" {
+		t.Fatal("the runner says nothing about the setting every secret in a task process depends on")
+	}
+	// Whatever the host, the sentence has to name the thing at risk. A log line that reads as a
+	// kernel trivium is one nobody acts on.
+	for _, want := range []string{"secret", "task process"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("ptraceScope() = %q, which does not say what is at stake (%q)", got, want)
+		}
+	}
+}

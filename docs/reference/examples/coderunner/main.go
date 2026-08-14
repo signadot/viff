@@ -146,6 +146,10 @@ func main() {
 	if why := cfg.MissingLLMCreds(); why != "" {
 		log.Printf("coderunner: WARNING: %s. Environments using it will refuse their spawns.", why)
 	}
+	// And what the containment of every secret in a task process actually rests on, read rather
+	// than assumed. Not a refusal — see ptraceScope for why that wants a leaf an environment can
+	// ask for, and docs/working/push-as-a-capability-residual.md for the rest.
+	log.Printf("coderunner: %s", ptraceScope())
 	for _, e := range cfg.Environments {
 		log.Printf("  environment %s (driver %s):", e.Name, orDefault(e.Driver, "llm"))
 		for _, rp := range e.Repos {

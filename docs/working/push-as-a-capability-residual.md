@@ -54,6 +54,12 @@ something like `process.peek: {allowed, denied}` — that an environment holding
 for and bwrap answers by reading the sysctl. Then the refusal is about a stated requirement
 rather than about a global opinion.
 
+**Half of it is done, and it is the half that costs one file read.** The runner now READS the
+sysctl at startup and says what it found, in a sentence that names what is at stake rather than
+reporting a kernel setting (`coderunner/confine.go`, `ptraceScope`). That does not enforce
+anything and is not meant to: it turns the assumption from unverified into merely accepted,
+which is a different thing. The refusal is still owed, and still wants the leaf above.
+
 ### 2. `principal: distinct` is the thing that removes the question
 
 A different uid for the agent's subprocesses makes same-uid ptrace not arise, whatever yama is
