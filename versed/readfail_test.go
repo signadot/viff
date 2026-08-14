@@ -133,3 +133,43 @@ func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
 		}
 	}
 }
+
+// A task id that does not exist is answered in verse's own voice, naming the id and the id
+// SPACE — because the CLI hands you the wrong one and this is where that gets caught.
+//
+// `verse flows` lists SUBJECTS (`drift:head:head-moved@git:head:verse`) while a trigger names its
+// task `<chain>@<subject>`. Both carry `@` and `:`, so nothing about their shape tells them
+// apart, and the obvious copy-paste used to answer `404 page not found` — Go's default, about a
+// URL, naming neither what was missing nor where to look. It cost a real minute of staring.
+func TestAnUnknownTaskIDSaysWhichIDSpaceItWanted(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	const subject = "drift:head:head-moved@git:head:verse" // what `verse flows` prints
+	for _, path := range []string{"/tasks/" + subject, "/tasks/" + subject + "/events"} {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatalf("get %s: %v", path, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, resp.StatusCode)
+		}
+		said := string(body)
+		if strings.Contains(said, "page not found") {
+			t.Errorf("%s: answered Go's default 404, which says nothing: %q", path, said)
+		}
+		if !strings.Contains(said, subject) {
+			t.Errorf("%s: the answer does not name the id: %q", path, said)
+		}
+		// The part that would have saved the reader: which space the id came from.
+		for _, want := range []string{"flows", "flow show"} {
+			if !strings.Contains(said, want) {
+				t.Errorf("%s: the answer does not mention %q, so it does not say where to look "+
+					"instead: %q", path, want, said)
+			}
+		}
+	}
+}

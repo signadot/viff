@@ -2647,7 +2647,26 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.NotFound(w, r)
+	noSuchTask(w, r, id)
+}
+
+// noSuchTask is the 404 every task route ends at, and it says which id space it is about.
+//
+// It used to be `http.NotFound`, which answers `404 page not found` — Go's default, about a URL,
+// in nobody's voice, naming neither the id nor what was looked in. The routes above go to real
+// trouble NOT to 404 wrongly (a runner that did not answer is not a runner without the task) and
+// then threw that reasoning away at the last line.
+//
+// The clause about flows is there because the CLI hands you the wrong id and then rejects it.
+// `verse flows` lists SUBJECTS — `drift:head:head-moved@git:head:verse` — while a task is named
+// `<chain>@<subject>`, so the obvious copy-paste is a 404 that says nothing. Both ids carry `@`
+// and `:`, so nothing about their shape tells them apart, which is exactly why the answer has to.
+func noSuchTask(w http.ResponseWriter, r *http.Request, id string) {
+	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
+		"no task %q — not in this verse's runtime, not on its runner, and no record of one. "+
+			"If that came from `verse flows`, it is a SUBJECT rather than a task id: a trigger "+
+			"names its task `<chain>@<subject>`. `verse ps` lists task ids; "+
+			"`verse flow show %s` reads the flow.", id, id))
 }
 
 // inboxReader is a runner (a broker) that can surface a task's queued worker control for
@@ -2696,7 +2715,7 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string)
 	// this same stream — did every attempt to supervise it.
 	h := s.attach(id)
 	if h == nil {
-		http.NotFound(w, r)
+		noSuchTask(w, r, id)
 		return
 	}
 	sse, err := codec.NewSSE(w, r)
@@ -2774,7 +2793,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	// question about where a task lives.
 	h := s.attach(id)
 	if h == nil {
-		http.NotFound(w, r)
+		noSuchTask(w, r, id)
 		return
 	}
 	switch op {
