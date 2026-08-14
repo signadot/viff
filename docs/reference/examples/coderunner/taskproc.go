@@ -147,8 +147,8 @@ func runTaskProcess() error {
 	// The same channel carries the agent's OWN pushes, and one connection is right for both:
 	// what fd 5 is is a capability this process may ask its runner to exercise, and who inside
 	// this process is asking makes no difference to the runner holding it.
-	if conn, err := net.FileConn(os.NewFile(deliverFD, "deliver")); err == nil {
-		p.fin = &deliverFinisher{ws: ws, conn: conn}
+	if conn, err := net.FileConn(os.NewFile(pushFD, "deliver")); err == nil {
+		p.fin = &pushFinisher{p: p, conn: conn}
 		if t, ok := pushTool(p, conn); ok {
 			p.extra = append(p.extra, t)
 		}

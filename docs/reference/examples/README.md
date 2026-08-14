@@ -6,7 +6,7 @@ example in a fenced block goes stale the first time a signature moves and nobody
 | | |
 |---|---|
 | [runner/](runner/main.go) | a verse runner: the smallest thing that serves the task-control contract, with the two functions a drive changes marked |
-| [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, a contained process per task, and delivery as a gated action of the task that the runner performs |
+| [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, a contained process per task, and a push as a gated capability the runner hands a credential for |
 | [source/](source/main.go) | a verse source: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
 
 The two runners are a ladder rather than one program trying to be both: `runner/` is the
@@ -53,8 +53,8 @@ Each task gets its own working directory holding **every repository the environm
 cloned off a shared bare mirror, all on the same `verse/auto/<task>` branch:
 
 ```
-<workspace>/verse/         ← being changed;  push: refs/heads/verse/auto/$task
-<workspace>/tony-format/   ← there to be read; no push declared
+<workspace>/verse/         ← being changed;  destinations: auto → refs/heads/verse/auto/$task
+<workspace>/tony-format/   ← there to be read; no destinations declared
 ```
 
 That is a list rather than one repo because the work usually is: a change to a service and the
@@ -78,21 +78,41 @@ allowlist.
 The child is reached over a socket it inherits as a descriptor rather than by path, because a
 control plane the agent can dial is an agent that can answer its own gates.
 
-### Delivery is an action of the task
+### A push is a capability with named destinations
 
-Where a repository declares a `push`, the work leaves as the **last action of the task's own loop**
-— gated by its vector, narrated on its read plane, and done before the terminal status:
+A repository declares **destinations** — a name and a ref — and a task names one of them, never a
+ref. `auto` is where a task's own work lands and is what `push:` spells; anything else is a flow
+the environment chose to allow:
+
+```tony
+repos:
+- name: verse
+  repo: "https://github.com/signadot/verse"
+  base: main
+  destinations:
+  - {name: auto, ref: "refs/heads/verse/auto/$sha/$task"}
+  - {name: main, ref: "refs/heads/main", credential: gh-verse}
+```
+
+The closing delivery is one of those pushes — the **last action of the task's own loop**, gated by
+its vector, narrated on its read plane, done before the terminal status — and the agent can propose
+others with the `push` tool. Both are ordinary actions, so a charter decides them the same way:
 
 ```tony
 vector:
   default: auto
   gates:
+  # anything leaving at all
   - {name: delivery, mode: ask, match: {verbs: [push]}}
+  # or just the one that matters, by the ref it will actually touch
+  - {name: to-main, mode: ask, match: {resources: [{kind: gitref, pattern: "refs/heads/main"}]}}
 ```
 
-The **runner** performs it, because the task cannot reach the credential; the task asks over a
-channel that carries one operation and no argument that changes where anything goes. A refused gate
-means nothing is pushed. A failed push fails the task.
+**Approval is what releases the credential**, and there is no other path to one: the task holds no
+git credential until a gate says yes about a particular destination, and then it holds the one that
+destination names and no other. A refused gate means the ability to push never existed. A push the
+REMOTE refuses — not a fast-forward, a protected branch, a ruleset — is an answer rather than a
+failure, because that is an authority verse deliberately does not hold, exercising it.
 
 The commit carries what verse told the runner:
 
@@ -109,10 +129,11 @@ bot identity.
 ### Work waits in the mirror
 
 Before any push is attempted the commit is staged in the runner's own mirror, under
-`refs/pending/<task>/<repo>` when its delivery was approved and `refs/held/<task>/<repo>` when it
-was refused or the task never got that far. The staged copy is dropped once the far side has it, so
-what remains is exactly the work this runner holds that the world does not — and `pending` is
-retried on the next spawn against that repository, while `held` never is.
+`refs/pending/<task>/<repo>/<target>` when a push was approved and `refs/held/<task>/<repo>` when
+it was refused or the task never got that far. The task does the pushing, so whether it landed is
+the remote's to say: the sweep asks it — when the task ends, at startup, and on the next spawn
+against that repository — and a ref that landed is dropped, one that did not is retried, and one
+the remote refuses moves to `held`, which is never retried.
 
 That is what makes the workspace disposable: it is removed unless something could not be staged.
 `GET /runner` lists what is waiting, with the command to fetch it:

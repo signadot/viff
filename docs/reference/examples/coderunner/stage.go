@@ -95,50 +95,65 @@ func splitStaged(kind, ref string) (taskID, repo, target string, ok bool) {
 	return taskID, repo, target, repo != ""
 }
 
-// Delivery is what became of one workspace's work. The three lists are exhaustive over the
+// Delivery is what became of one workspace's work. The two lists are exhaustive over the
 // repositories that had any, which is what makes the workspace decision a lookup rather than a
 // guess: Loose is non-empty exactly when the checkout is still the only copy of something.
+//
+// There is no `Pushed`, and its absence is the shape of the change. This side no longer pushes —
+// it releases a credential and the task pushes — so a field here claiming work reached the far
+// side would be this process asserting something only the remote knows. What it can assert is
+// what it holds, which is what these two say.
 type Delivery struct {
-	Pushed []string // "<repo> -> <target>": it reached the far side
 	Staged []string // mirror refs still holding work
 	Loose  []string // repos whose work is in NEITHER — do not remove this workspace
-	// Refused is what the FAR SIDE said no to, and it is separate from Err because it is not a
-	// fault: a remote enforcing its own rules about its own history is an authority verse does
-	// not hold, exercising it. See refusal.
-	Refused []string
-	Err     error
+	Err    error
 }
 
-// Deliver commits whatever the task produced, stages it in the mirror, pushes it to the ref the
-// environment named, and drops the staged copy once the far side has it.
-//
-// Dropping it on success is the retention rule, and it needs no TTL: what is left under
-// refs/pending is exactly the work this runner holds that the world does not.
-//
-// The destination is asked for BY NAME — `auto` is what the finisher asks for and what `push:`
-// has always spelled — so a repository that does not declare it sends nothing, exactly as a
-// repository with no push target sends nothing. An empty repo means every tree, which is what
-// the finisher's one delivery has always meant.
-func (w *Workspace) Deliver(ctx context.Context, l task.Launch, result, repo, dest string) Delivery {
-	return w.settle(ctx, l, result, repo, dest, stagePending, true)
-}
-
-// Salvage is the same two hops minus the last one: commit what is there and put it in the mirror
-// under `held`, for work that was refused at the gate or whose task never got that far.
+// Salvage commits what is there and puts it in the mirror under `held`, for work that was refused
+// at the gate or whose task never got that far.
 //
 // It exists so that "the task did not deliver" stops meaning "the work is in a directory somebody
 // has to know to look in". A refused push is a decision about where work goes, not a decision to
 // destroy it.
+//
 // It names no destination, and it must not: work that nobody authorized to leave is held for
 // every repository that has anywhere to send it, not for one place somebody might have chosen.
 func (w *Workspace) Salvage(ctx context.Context, l task.Launch) Delivery {
-	return w.settle(ctx, l, "", "", "", stageHeld, false)
+	var d Delivery
+	var errs []error
+	for _, t := range w.Trees {
+		// A repository with nowhere to push is a reference tree: nothing leaves and nothing is
+		// staged, because there is no target to hold work FOR.
+		if len(t.Repo.Dests()) == 0 {
+			continue
+		}
+		work, err := t.commitWork(l, "")
+		if err != nil {
+			errs = append(errs, err)
+			d.Loose = append(d.Loose, t.Repo.Name)
+			continue
+		}
+		if !work {
+			continue // genuinely untouched
+		}
+		ref := stagedRef(stageHeld, l.ID, t.Repo.Name, "")
+		if err := w.mirrors.stage(ctx, t, w.Branch, ref); err != nil {
+			// Staging is the local hop, so this failing means the disk or the git binary, not
+			// the network. The workspace is the only copy and must be kept.
+			errs = append(errs, err)
+			d.Loose = append(d.Loose, t.Repo.Name)
+			continue
+		}
+		d.Staged = append(d.Staged, ref)
+	}
+	d.Err = errors.Join(errs...)
+	return d
 }
 
-// Stage is the first hop on its own: put one repository's committed work in the mirror, under
-// the target it has just been approved for.
+// Stage is the other half: put one repository's already-committed work in the mirror, under the
+// target it has just been approved for.
 //
-// It is the half of Deliver that survives the credential moving into the task process. The task
+// It is what survives of Deliver now that the credential lives in the task process. The task
 // commits and the task pushes; what stays here is durability, because the mirror is this side's
 // and a checkout is a directory somebody deletes. There is no commit in it — the work is already
 // a commit by the time a credential is asked for, which is what makes this a thin pack rather
@@ -152,82 +167,6 @@ func (w *Workspace) Stage(ctx context.Context, taskID string, t *Tree, target st
 		return d
 	}
 	d.Staged = append(d.Staged, ref)
-	return d
-}
-
-func (w *Workspace) settle(ctx context.Context, l task.Launch, result, repo, dest, kind string, send bool) Delivery {
-	var d Delivery
-	var errs []error
-	for _, t := range w.Trees {
-		if repo != "" && t.Repo.Name != repo {
-			continue
-		}
-		// A repository with nowhere to push is a reference tree: nothing leaves and nothing is
-		// staged, because there is no target to hold work FOR. When a destination is named, a
-		// repository that does not declare THAT one is in the same position.
-		var target string
-		if send {
-			if target = t.DestRef(dest, w.Branch); target == "" {
-				continue
-			}
-		} else if len(t.Repo.Dests()) == 0 {
-			continue
-		}
-		work, err := t.commitWork(l, result)
-		if err != nil {
-			errs = append(errs, err)
-			d.Loose = append(d.Loose, t.Repo.Name)
-			continue
-		}
-		if !work {
-			continue // genuinely untouched
-		}
-		ref := stagedRef(kind, l.ID, t.Repo.Name, target)
-		if err := w.mirrors.stage(ctx, t, w.Branch, ref); err != nil {
-			// Staging is the local hop, so this failing means the disk or the git binary, not
-			// the network. The workspace is the only copy and must be kept.
-			errs = append(errs, err)
-			d.Loose = append(d.Loose, t.Repo.Name)
-			continue
-		}
-		if !send {
-			d.Staged = append(d.Staged, ref)
-			continue
-		}
-		if err := t.push(ctx, w.Branch, target); err != nil {
-			if why := refusal(err); why != "" {
-				// The far side said no, which is a DECISION and not a fault. It moves to
-				// `held`, because `pending` means "a retry may complete this" and a retry
-				// cannot: whatever rule refused it will refuse it again on every spawn against
-				// this repository, forever, in the log. Held work is exactly work nobody with
-				// authority over where it goes has agreed to take.
-				held := stagedRef(stageHeld, l.ID, t.Repo.Name, "")
-				if err := w.mirrors.stage(ctx, t, w.Branch, held); err != nil {
-					errs = append(errs, err)
-					d.Loose = append(d.Loose, t.Repo.Name)
-					continue
-				}
-				if err := w.mirrors.unstage(ctx, t.Repo.Repo, ref); err != nil {
-					errs = append(errs, fmt.Errorf("dropping %s after a refusal: %w", ref, err))
-				}
-				d.Refused = append(d.Refused, t.Repo.Name+" -> "+target+": "+why)
-				d.Staged = append(d.Staged, held)
-				continue
-			}
-			// The work is safe: it went into the mirror a moment ago. Say where, because the
-			// operator's next question is exactly that.
-			errs = append(errs, fmt.Errorf("%w (the work is in this runner's mirror at %s)", err, ref))
-			d.Staged = append(d.Staged, ref)
-			continue
-		}
-		if err := w.mirrors.unstage(ctx, t.Repo.Repo, ref); err != nil {
-			// Not a delivery failure — the work is at the far side. A stale pending ref will be
-			// retried later and push nothing, which is harmless and noisy rather than wrong.
-			errs = append(errs, fmt.Errorf("dropping %s after delivery: %w", ref, err))
-		}
-		d.Pushed = append(d.Pushed, t.Repo.Name+" -> "+target)
-	}
-	d.Err = errors.Join(errs...)
 	return d
 }
 

@@ -80,8 +80,9 @@ type Tree struct {
 	Dir  string // Root/<repo name>
 	Head string // the sha it started from, so a diff has something to be against
 
+	// repo is the checkout. There is no credential beside it, on either side of the process
+	// boundary: a push carries one handed in for that operation alone (pushAs).
 	repo *git.Repository
-	auth transport.AuthMethod
 }
 
 // Primary is the repository a singular question is about — the first one the environment
@@ -309,7 +310,7 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 	}); err != nil {
 		return nil, fmt.Errorf("repo %s at %s: %w", r.Name, r.Base, err)
 	}
-	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo, auth: m.auth(r.Repo)}, nil
+	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo}, nil
 }
 
 // Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
@@ -542,16 +543,13 @@ func (t *Tree) commitWork(l task.Launch, result string) (bool, error) {
 	return true, nil
 }
 
-// push sends this repository's task branch to the ref the environment named, under whatever
-// credential this tree was opened with. The parent's own delivery path is its only caller.
-func (t *Tree) push(ctx context.Context, branch, target string) error {
-	return t.pushAs(ctx, branch, target, t.auth)
-}
-
-// pushAs is the same push under a credential handed in for this ONE operation, which is how the
-// task process pushes: its trees are opened with no auth at all (Reopen), and the secret arrives
-// with the gate's approval and is used where it arrived. Nothing stores it, and no `.git/config`
-// or credential helper is consulted — the same argument TokenAuth exists for, one process over.
+// pushAs sends this repository's task branch to a ref, under a credential handed in FOR THIS ONE
+// OPERATION.
+//
+// Per-operation is the whole of it, and it is why no Tree carries a credential any more. The
+// secret arrives with the gate's approval that released it, is used where it arrived, and is
+// stored nowhere — and no `.git/config`, credential helper or ssh agent is consulted, which is
+// the same argument TokenAuth exists for, one process over.
 func (t *Tree) pushAs(ctx context.Context, branch, target string, auth transport.AuthMethod) error {
 	// Force, and the reason is that the branch is namespaced by the TASK ID: this runner is its
 	// only writer by construction, so the only thing a force can overwrite is an earlier attempt

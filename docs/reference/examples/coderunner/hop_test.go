@@ -498,12 +498,12 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 	var gate, exec, terminal string
 	for f := range frames {
 		switch {
-		case f.Kind == task.EvPending && f.Tool == "deliver":
+		case f.Kind == task.EvPending && f.Tool == pushToolName:
 			gate = f.Gate
 			if err := res.Resolve(f.ID, true, "", "human:test"); err != nil {
 				t.Fatalf("approving the delivery: %v", err)
 			}
-		case f.Kind == task.EvExec && f.Tool == "deliver":
+		case f.Kind == task.EvExec && f.Tool == pushToolName:
 			exec = f.Text
 		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
 			terminal = f.Text
@@ -558,7 +558,7 @@ func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
 	})
 	var terminal string
 	for f := range frames {
-		if f.Kind == task.EvPending && f.Tool == "deliver" {
+		if f.Kind == task.EvPending && f.Tool == pushToolName {
 			if err := res.Resolve(f.ID, false, "not this branch", "human:test"); err != nil {
 				t.Fatal(err)
 			}
@@ -625,7 +625,7 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 	defer cancel()
 	var deliver, terminal string
 	for f := range frames {
-		if f.Kind == task.EvExec && f.Tool == "deliver" {
+		if f.Kind == task.EvExec && f.Tool == pushToolName {
 			deliver = f.Text
 		}
 		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
@@ -639,7 +639,7 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 	if strings.HasPrefix(deliver, "pushed ") {
 		t.Errorf("a task that changed nothing reported a push: %q", deliver)
 	}
-	if !strings.Contains(deliver, "nothing to deliver") {
+	if !strings.Contains(deliver, "nothing to push") {
 		t.Errorf("the read plane does not say nothing was delivered: %q", deliver)
 	}
 	if commitOn(origin, "refs/heads/verse/auto/n1") != "" {
@@ -871,15 +871,19 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 		Resolve(decision string, proceed bool, say, by string) error
 	})
 
-	var asked []string
+	// The closing delivery to `auto` IS a push and is gated by this vector, so counting
+	// questions would not say anything. What says it is the ORDER: the refusal of the
+	// undeclared name arrives with nothing having been asked before it.
+	var asked int
 	var refused, terminal string
+	askedFirst := false
 	for f := range frames {
 		switch {
 		case f.Kind == task.EvPending:
-			asked = append(asked, f.Tool)
+			asked++
 			_ = res.Resolve(f.ID, true, "", "human:test")
-		case f.Kind == task.EvExec && f.Tool == pushToolName:
-			refused = f.Text
+		case f.Kind == task.EvExec && f.Tool == pushToolName && refused == "":
+			refused, askedFirst = f.Text, asked > 0
 		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
 			terminal = f.Text
 		}
@@ -890,10 +894,8 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 	if terminal != string(task.Done) {
 		t.Fatalf("task ended %s (%s)", terminal, h.Err())
 	}
-	for _, tool := range asked {
-		if tool == pushToolName {
-			t.Fatal("somebody was asked to approve a push to a destination that does not exist")
-		}
+	if askedFirst {
+		t.Fatal("somebody was asked to approve a push to a destination that does not exist")
 	}
 	if !strings.Contains(refused, "no destination") || !strings.Contains(refused, "main") {
 		t.Errorf("the refusal does not say what the agent could have asked for instead: %q", refused)

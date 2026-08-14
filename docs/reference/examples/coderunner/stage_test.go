@@ -149,7 +149,7 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 	if len(d.Staged) != 1 || d.Staged[0] != want {
 		t.Fatalf("Staged = %v, want [%s]", d.Staged, want)
 	}
-	if len(d.Pushed) != 0 {
+	if commitAt(t, origin, "refs/heads/verse/auto/s1") != "" {
 		t.Fatal("salvage pushed something to a remote")
 	}
 	if len(d.Loose) != 0 {

@@ -27,10 +27,11 @@
 //   - A PROCESS per task, inside the containment, serving the same task-control contract this
 //     runner serves to verse — so this process is a proxy and the sandbox is drawn once, around
 //     everything the task does. See hop.go (this side) and taskproc.go (the other).
-//   - Delivery, by the runner and not by the agent. The task never runs `git push`: it cannot
-//     reach the credential, so the push is the runner's act and carries provenance trailers. It
-//     is also an ACTION of the task — gated, narrated, and before terminal — and the work is
-//     staged in the mirror on its way out, so a push that fails loses nothing. See stage.go.
+//   - A push as a CAPABILITY rather than a canned act. An environment declares destinations by
+//     name; a task names one and never a ref; the vector gates the ref it resolves to; and
+//     approval is what releases the credential that destination carries — the only path to one.
+//     The closing delivery is a push to `auto` like any other. Work is staged in the runner's
+//     mirror on its way out, so a push that fails loses nothing. See push.go and stage.go.
 //   - Two drivers. `llm` is harness.Build rooted at the workspace, every action gated and
 //     narrated; anything else names a program under `agents:`, run through ONE subprocess path.
 //     A program that declares how to resume gets steering and answer-contract repair; one that
@@ -73,7 +74,8 @@ func main() {
 	data := flag.String("data", "", "directory for mirrors and workspaces (default: a temp dir)")
 	keep := flag.Bool("keep", false, "keep workspaces after a task ends, for debugging")
 	tokenEnv := flag.String("token-env", "CODERUNNER_GIT_TOKEN",
-		"environment variable holding the git token this runner pushes with")
+		"environment variable holding the git token this runner fetches with, and releases to a "+
+			"destination that names no credential of its own")
 	confine := flag.String("confine", "host",
 		"how to build a containment point: host (claims almost nothing) | bwrap")
 	flag.Parse()
@@ -194,9 +196,12 @@ func (r *Runner) Handler() http.Handler {
 	return mux
 }
 
-// Runner holds what every task needs and nothing a task owns — and, since the hop, nothing a
-// task may REACH: the mirrors, the push credential inside them, and the control sockets all live
-// on this side of a process boundary the task cannot cross.
+// Runner holds what every task needs and nothing a task owns: the mirrors, the credentials, and
+// the control sockets all live on this side of a process boundary the task cannot cross.
+//
+// A credential does REACH a task, one at a time and only when a gate has approved the destination
+// it is for (push.go). What a task never gets is the catalogue — which credentials exist, what
+// else they open, or any way to ask for one it was not granted.
 type Runner struct {
 	cfg        *Config
 	mirrors    *Mirrors

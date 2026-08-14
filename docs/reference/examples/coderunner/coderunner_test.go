@@ -75,17 +75,13 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	l := task.Launch{ID: "p1", Environment: "test", Provenance: task.Provenance{
 		Principal: "scott", Subject: "demo:pr:1", Chain: "review",
 	}}
-	d := ws.Deliver(context.Background(), l, "fixed the flaky test\n\ndetails", "", autoDestination)
-	if d.Err != nil {
-		t.Fatalf("deliver: %v", d.Err)
-	}
-	if len(d.Pushed) != 1 || !strings.Contains(d.Pushed[0], "refs/heads/verse/auto/p1") {
-		t.Fatalf("delivered %v", d.Pushed)
+	if _, err := deliver(t, ws, l, "fixed the flaky test\n\ndetails", autoDestination); err != nil {
+		t.Fatalf("deliver: %v", err)
 	}
 	// Staged on the way out and dropped once the far side had it: what is left under
 	// refs/pending is exactly the work this runner holds that the world does not.
-	if len(d.Staged) != 0 {
-		t.Errorf("work is still staged after a successful delivery: %v", d.Staged)
+	if held, err := m.Staged(env.Repos[0]); err != nil || len(held) != 0 {
+		t.Errorf("work is still staged after a successful delivery: %v (%v)", held, err)
 	}
 	// The push landed on the origin, under the ref the environment named.
 	if out := commitAt(t, origin, "refs/heads/verse/auto/p1"); out == "" {
@@ -159,12 +155,11 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 		}
 	}
 
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "did the thing", "", autoDestination)
-	if d.Err != nil {
-		t.Fatalf("deliver: %v", d.Err)
+	if _, err := deliver(t, ws, task.Launch{ID: "p1"}, "did the thing", autoDestination); err != nil {
+		t.Fatalf("deliver: %v", err)
 	}
-	if len(d.Pushed) != 1 || !strings.HasPrefix(d.Pushed[0], "svc ") {
-		t.Fatalf("delivered %v — only the repository with a push target should leave", d.Pushed)
+	if commitAt(t, svcOrigin, "refs/heads/verse/auto/p1") == "" {
+		t.Fatal("the repository with a destination did not deliver")
 	}
 	if commitAt(t, libOrigin, "refs/heads/verse/auto/p1") != "" {
 		t.Error("the reference repository received a push it never declared a target for")
@@ -220,9 +215,9 @@ func TestNoPushTargetDeliversNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "x"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "done", "", autoDestination)
-	if d.Err != nil || len(d.Pushed) != 0 || len(d.Staged) != 0 {
-		t.Fatalf("Deliver = %+v — a read-only environment pushes nowhere and stages nothing", d)
+	d, err := deliver(t, ws, task.Launch{ID: "p1"}, "done", autoDestination)
+	if err != nil || len(d.Staged) != 0 || len(d.Loose) != 0 {
+		t.Fatalf("delivery = %+v (%v) — a read-only environment pushes nowhere and stages nothing", d, err)
 	}
 }
 
@@ -262,8 +257,8 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", "", autoDestination); d.Err != nil {
-		t.Fatalf("deliver: %v", d.Err)
+	if _, err := deliver(t, ws, task.Launch{ID: "p1"}, "work", autoDestination); err != nil {
+		t.Fatalf("deliver: %v", err)
 	}
 	if commitAt(t, attacker, "refs/heads/verse/auto/p1") != "" {
 		t.Fatal("the task redirected its own push by editing .git/config — the runner's " +
@@ -481,6 +476,43 @@ func TestUnknownEnvironmentIsRefused(t *testing.T) {
 	}
 }
 
+// deliver drives the three steps a push is, in one process — commit, stage, push — and returns
+// what the runner's half did and what the push said.
+//
+// The production path runs those three across a process boundary: the TASK commits (push.go's
+// push), the RUNNER stages when it releases the credential (Workspace.Stage), and the task
+// pushes with what it was given. This helper is the same three calls with the boundary taken out,
+// which is what lets a test drive git against real repositories without a child process. It is
+// deliberately not a function the runner has: a single `Deliver` that did all three is exactly
+// what step 4 of the plan took apart, and reintroducing one here for the tests' convenience would
+// leave a second answer to "what happens when work leaves".
+func deliver(t *testing.T, ws *Workspace, l task.Launch, result, dest string) (Delivery, error) {
+	t.Helper()
+	tree, target := ws.Destination(dest)
+	if tree == nil {
+		return Delivery{}, nil
+	}
+	work, err := tree.commitWork(l, result)
+	if err != nil {
+		return Delivery{Err: err, Loose: []string{tree.Repo.Name}}, err
+	}
+	if !work {
+		return Delivery{}, nil
+	}
+	d := ws.Stage(context.Background(), l.ID, tree, target)
+	if d.Err != nil {
+		return d, d.Err
+	}
+	if err := tree.pushAs(context.Background(), ws.Branch, target, nil); err != nil {
+		return d, err
+	}
+	// What the runner does after a task ends: the sweep asks the remote and drops what landed.
+	if _, err := ws.mirrors.Reflect(context.Background(), tree.Repo, nil); err != nil {
+		return d, err
+	}
+	return Delivery{}, nil
+}
+
 // initRepo makes a bare repository with one commit on `main`, ready to be cloned from and
 // pushed to. Pure go-git, like the code under test: a test that shelled out would be checking
 // that the git binary agrees with go-git rather than that this program works.
@@ -653,12 +685,12 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	if err := os.RemoveAll(origin); err != nil {
 		t.Fatal(err)
 	}
-	d := ws.Deliver(context.Background(), task.Launch{ID: "p1"}, "work", "", autoDestination)
-	if d.Err == nil {
+	d, perr := deliver(t, ws, task.Launch{ID: "p1"}, "work", autoDestination)
+	if perr == nil {
 		t.Fatal("expected the push to fail once its remote was gone")
 	}
-	if len(d.Pushed) != 0 {
-		t.Fatalf("delivered %v despite the failure", d.Pushed)
+	if d.Err != nil {
+		t.Fatalf("staging failed too, so this proves nothing about the mirror: %v", d.Err)
 	}
 	want := stagedRef(stagePending, "p1", "svc", "refs/heads/verse/auto/p1")
 	if len(d.Staged) != 1 || d.Staged[0] != want {

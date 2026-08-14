@@ -16,153 +16,138 @@ import (
 	"github.com/signadot/verse/task/harness"
 )
 
-// Delivery, as an action of the task rather than something that happens to it afterwards.
+// A push is a CAPABILITY the parent holds and the task may ask it to exercise, and the whole of
+// what it hands over is a credential.
 //
 // The push used to be the last thing supervise did, after the loop returned, and that cost three
 // things at once: the vector never saw it, the read plane never named the branch, and nothing
-// downstream could chain off it. task.Finisher is the seam that fixes all three by making it an
+// downstream could chain off it. task.Finisher is the seam that fixed all three by making it an
 // action — see the comment there for why an action beats a completion hook.
 //
-// The awkward part is that this runner's task runs in ANOTHER PROCESS, and the credential
-// deliberately does not. So the action is proposed and gated on one side of the boundary and
-// performed on the other:
+// What it was NOT was a capability. The channel carried one op with no target, which is a button:
+// a task could ask to deliver its own branch to its own ref and could ask for nothing else, so
+// merging a proposal, moving a promotion ref or retiring a stale branch had no way to be asked
+// for at all. The obvious repair is a second op and then a third, and that repair is the actual
+// defect — each op is a new parser, a new authorization decision and a new thing to audit, and a
+// protocol that grows one op per flow is a complexity multiplier, which at that growth rate is a
+// bigger hazard than the thing the button was protecting against.
 //
-//	child   the finisher proposes `deliver`, carrying a push effect per target
+// So: the environment declares destinations, the task names one and never a ref, deriving stamps
+// the ref it resolves to, the vector gates THAT, and approval releases the credential that
+// destination carries. The task runs the git. A new flow is a line of config and costs the
+// protocol nothing.
+//
+//	child   the finisher, or the agent's own `push` tool, proposes an action naming a destination
 //	        the supervisor gates it — this is where a charter's `verbs: [push]` lands
-//	        approved: the executor asks the parent, over an inherited socket
-//	parent  commits, pushes with provenance trailers, answers with the refs
-//	child   the refs are the action's output: on the read plane, before terminal
+//	        approved: the executor commits, asks for the credential, and pushes
+//	parent  stages the work in its mirror and answers with the ref and the secret
+//	child   what happened is the action's output: on the read plane, before terminal
 //
-// That channel is NOT the task-control contract and does not pretend to be. It is a capability
-// the parent holds and the task may ask it to exercise — the same shape as the egress proxy, and
-// with the same reasoning about what makes it safe: the task can ask, and asking cannot redirect
-// anything. Where the work goes is the environment's to say, the trailers are the runner's to
-// write, and the token is never on this side.
+// The channel is NOT the task-control contract and does not pretend to be. The task can ask, and
+// asking cannot redirect anything: where the work goes is the environment's to say, and the
+// trailers are the runner's to write.
 //
 // Unlike the egress socket it is an INHERITED CONNECTION rather than a path, because unlike the
 // egress socket nothing needs to reach it except this process. A path in the sandbox would be one
-// the agent's shell could also write to, and a task that can call `deliver` directly is a task
-// that delivers without passing the gate.
+// the agent's shell could also write to, and a task that can ask for a credential directly is a
+// task that pushes without passing the gate.
 
-// deliverFD is the connected socket the parent hands the task process, after the control listener
+// pushFD is the connected socket the parent hands the task process, after the control listener
 // (3) and the lifeline (4).
-const deliverFD = 5
+const pushFD = 5
 
-// deliverRequest / deliverReply are the whole protocol. Length-prefixed frames rather than
-// newline-delimited ones because tony is a multi-line format: framing a document by newlines
-// would work until the first document that had one.
-type deliverRequest struct {
+// pushRequest / pushReply are the whole protocol, and ONE op is the whole of it. Length-prefixed
+// frames rather than newline-delimited ones because tony is a multi-line format: framing a
+// document by newlines would work until the first document that had one.
+type pushRequest struct {
+	// Op is `credential` and nothing else. It is still a field because a protocol with one verb
+	// and no name for it is one that grows a second verb by accident.
 	Op string `tony:"field=op"`
-	// Repo is which repository this is about, because ONE PUSH ACTION IS ONE REPOSITORY.
-	// Empty is the finisher's one delivery, which covers every tree that declares `auto` and
-	// is the shape `deliver` has always had. See checkDelivering for why that is at most one.
+	// Repo is which repository this is about, because ONE PUSH ACTION IS ONE REPOSITORY. That is
+	// what stops a mixed outcome from being a state anybody has to model: each action has its
+	// own gate, its own result and its own place in the record.
 	Repo string `tony:"field=repo,omitzero"`
 	// Destination is the NAME of a place the environment declared, never a ref. That is the
 	// whole of what a task may say about where work goes: a name this environment does not
-	// declare resolves to nothing and nothing is pushed, so a task that could name a ref — and
-	// thereby send this runner's credential wherever it liked — does not exist.
+	// declare resolves to nothing, so a task that could name a ref — and thereby send this
+	// runner's credential wherever it liked — does not exist.
 	Destination string `tony:"field=destination"`
-	// Result is the driver's final message, which becomes the commit body. It travels with the
-	// request rather than being read from the task's snapshot because at this moment the task
-	// has not finished — that is the whole point of delivering inside the loop.
-	Result string `tony:"field=result,omitzero"`
 }
 
-type deliverReply struct {
-	OK   bool     `tony:"field=ok"`
-	Refs []string `tony:"field=refs,omitzero"`
-	// Ref and Token are what a `credential` request is answered with: where the approved push
-	// goes, and the secret that lets it. THE GATE SAYING YES IS WHAT PUTS THE SECRET IN THE TASK
-	// PROCESS — there is no other path to it — which is what makes the vector load-bearing
-	// rather than advisory.
+type pushReply struct {
+	OK bool `tony:"field=ok"`
+	// Ref and Token are the answer: where the approved push goes, and the secret that lets it.
+	// THE GATE SAYING YES IS WHAT PUTS THE SECRET IN THE TASK PROCESS — there is no other path
+	// to it — which is what makes the vector load-bearing rather than advisory.
 	//
 	// It never reaches `buildEnv`'s allowlist, so it never reaches the model's shell. That
 	// boundary, and not the sandbox wall, is what keeps a secret away from the thing whose
 	// output is published: `coderunner -task` already holds the model key on exactly these terms.
 	Ref   string `tony:"field=ref,omitzero"`
 	Token string `tony:"field=token,omitzero"`
-	// Refused is the far side declining, and it is a separate field from Error because it is a
-	// separate KIND of answer: a remote that will not fast-forward, a protected branch, a
-	// ruleset. The task did its job when it tried and was told no, so this ends the action as a
-	// decision to re-plan around rather than as a failure — which matters most because it is
-	// the ORDINARY outcome of a merge proposal, main having moved while somebody answered.
-	Refused string `tony:"field=refused,omitzero"`
-	Error   string `tony:"field=error,omitzero"`
+	Error string `tony:"field=error,omitzero"`
 }
 
 // ── the child's side ────────────────────────────────────────────────────────────────────────
 
-// deliverFinisher proposes the closing action and asks the parent to perform it.
-type deliverFinisher struct {
-	ws     *Workspace
+// pushFinisher is the runner's closing act: a push to `auto`, proposed like anything else.
+//
+// `deliver` is gone, and what it turns out to have been is one destination all along. Nothing
+// observable moved when it went — the same ref, from the same task, at the same point in the
+// loop — because the argument for delivery being an action inside the loop was always about the
+// ACTION and never about the transport underneath it.
+type pushFinisher struct {
+	p      *taskProc
 	conn   net.Conn
 	result string
 }
 
-// Finish is the action, or nothing. An environment where no repository declares a push target has
+// Finish is the action, or nothing. An environment where no repository declares a destination has
 // nowhere to deliver, and proposing a no-op would put a gate in front of nothing — which is worse
 // than useless, since a charter that gates pushes would then stop on tasks that never push.
-func (d *deliverFinisher) Finish(result string) (task.ToolUse, bool) {
-	var targets []string
-	var effects []task.Effect
-	for _, t := range d.ws.Trees {
-		// `auto` BY NAME, which is the whole of step 1: the finisher asks for a destination
-		// like anything else asking for one, and `push:` is the spelling that declares it.
-		target := t.DestRef(autoDestination, d.ws.Branch)
-		if target == "" {
-			continue
-		}
-		targets = append(targets, t.Repo.Name+" → "+target)
-		// One effect per destination, so a gate matching a particular ref matches when that ref
-		// is among them rather than only when it is the first. GateMatch.OnPush compares against
-		// RepoContext.PushTarget, which is the PRIMARY repository's — so the primary's effect is
-		// what makes `onPush: true` fire, and the rest are what make the action legible.
-		effects = append(effects, task.Effect{
-			Verb: task.Push, Resource: task.Resource{Kind: task.KindGitRef, Ref: target},
-		})
-	}
-	if len(targets) == 0 {
+//
+// ONE action, for ONE repository, and checkDelivering is what makes that complete rather than
+// merely true today: an environment where a second repository could deliver is refused when the
+// config is read, because `Finish` returns one action and the second delivery would be silently
+// held. If a second one ever arrives the shape is this returning a SEQUENCE proposed once.
+func (d *pushFinisher) Finish(result string) (task.ToolUse, bool) {
+	t, target := d.p.ws.Destination(autoDestination)
+	if t == nil {
 		return task.ToolUse{}, false
 	}
 	d.result = result
 	return task.ToolUse{
-		Name: "deliver",
-		// Input is what a person reads on the read plane and what a gate question quotes. It
-		// says where the work is going, which is the only question worth asking about a push.
-		Input:   map[string]any{"branch": d.ws.Branch, "to": strings.Join(targets, ", ")},
-		Effects: effects,
+		// The same name the agent's own tool has, and deliberately: `ToolUse.isPush` reads it, so
+		// this is what finally makes `onPush: true` match the one action it was written for. A
+		// reader of the plane sees a push, which is what it is.
+		Name: pushToolName,
+		// Input is what a person reads on the read plane and what a gate question quotes. It says
+		// where the work is going, which is the only question worth asking about a push.
+		Input: map[string]any{
+			"destination": autoDestination, "repo": t.Repo.Name,
+			"branch": d.p.ws.Branch, "to": target,
+		},
+		Effects: []task.Effect{{Verb: task.Push, Resource: task.GitRef(target)}},
 	}, true
 }
 
-// Do asks the parent to deliver and reports what it did. An error here fails the task, which is
-// the reading task.Finisher documents: a run whose work did not leave is not one that succeeded.
-func (d *deliverFinisher) Do(_ context.Context, _ task.ToolUse) (string, error) {
+// Do commits, asks for the credential, and pushes — the same three steps the agent's own tool
+// takes, through the same function. An error here fails the task, which is the reading
+// task.Finisher documents: a run whose work did not leave is not one that succeeded.
+func (d *pushFinisher) Do(ctx context.Context, _ task.ToolUse) (string, error) {
 	if d.conn == nil {
 		return "", fmt.Errorf("this task process was given no way to ask its runner to deliver")
 	}
-	rep, err := ask(d.conn, deliverRequest{Op: "deliver", Destination: autoDestination, Result: d.result})
-	if err != nil {
-		return "", fmt.Errorf("asking the runner to deliver: %w", err)
+	t, target := d.p.ws.Destination(autoDestination)
+	if t == nil {
+		return "", fmt.Errorf("no destination %q in this environment", autoDestination)
 	}
-	if rep.Refused != "" {
-		// The far side declined, which is an ANSWER and not a failure. Returned as an ordinary
-		// output so the task ends `done` carrying it: the loop already treats a decision the
-		// task complied with that way, and failing here would report the receiving end's own
-		// rules as this runner breaking.
-		return "not delivered — the remote refused it: " + rep.Refused, nil
-	}
-	if !rep.OK {
-		return "", fmt.Errorf("delivery failed: %s", rep.Error)
-	}
-	if len(rep.Refs) == 0 {
-		// "Nothing to deliver" is a RESULT, and it must not render as a successful push with an
-		// empty list. It did: the read plane carried `exec deliver: "pushed "` for a task that
-		// changed nothing, which is finding 10 in a new place — nothing-to-do and
-		// something-went-wrong reading identically, on the one frame that says where the work
-		// went. A drive caught it on the first clean run.
-		return "nothing to deliver: no repository with a push target was changed", nil
-	}
-	return "pushed " + strings.Join(rep.Refs, "; "), nil
+	// A refusal comes back as an ordinary output rather than as an error, so the task ends `done`
+	// carrying it: being told no by the receiving end is a decision the task complied with, and
+	// failing here would report somebody else's rules about their own repository as this runner
+	// breaking.
+	out, _, err := push(ctx, d.conn, t, d.p.ws.Branch, autoDestination, target, d.p.launch(), d.result)
+	return out, err
 }
 
 // pushToolName is what the agent calls it, and the name is load-bearing rather than cosmetic:
@@ -256,7 +241,7 @@ func push(ctx context.Context, conn net.Conn, t *Tree, branch, dest, ref string,
 		// also asks for no credential, which is the right shape: no work, no secret.
 		return "nothing to push: " + t.Repo.Name + " has no work that is not already there", false, nil
 	}
-	rep, err := ask(conn, deliverRequest{Op: "credential", Repo: t.Repo.Name, Destination: dest})
+	rep, err := ask(conn, pushRequest{Op: "credential", Repo: t.Repo.Name, Destination: dest})
 	switch {
 	case err != nil:
 		return "", false, fmt.Errorf("asking the runner for the credential for %q: %w", dest, err)
@@ -276,33 +261,34 @@ func push(ctx context.Context, conn net.Conn, t *Tree, branch, dest, ref string,
 	return "pushed " + t.Repo.Name + " -> " + rep.Ref, false, nil
 }
 
-func ask(conn net.Conn, req deliverRequest) (deliverReply, error) {
+func ask(conn net.Conn, req pushRequest) (pushReply, error) {
 	body, err := codec.Marshal(req, codec.Tony)
 	if err != nil {
-		return deliverReply{}, err
+		return pushReply{}, err
 	}
 	if err := writeFrame(conn, body); err != nil {
-		return deliverReply{}, err
+		return pushReply{}, err
 	}
 	raw, err := readFrame(bufio.NewReader(conn))
 	if err != nil {
-		return deliverReply{}, err
+		return pushReply{}, err
 	}
-	var rep deliverReply
+	var rep pushReply
 	if err := codec.Unmarshal(raw, &rep, codec.Tony); err != nil {
-		return deliverReply{}, err
+		return pushReply{}, err
 	}
 	return rep, nil
 }
 
 // ── the parent's side ───────────────────────────────────────────────────────────────────────
 
-// serveDeliver answers delivery requests for one task, for as long as its process lives.
+// servePush answers one task's credential requests, for as long as its process lives.
 //
-// Sequential by construction — one connection, one request at a time — which is what a task's
-// closing act is. A task that asked twice would deliver twice, and that is the right behaviour
-// rather than something to guard: the second push updates the same branch to the same content.
-func (r *Runner) serveDeliver(c *child, l task.Launch, conn net.Conn) {
+// Sequential by construction — one connection, one request at a time. A task that asked twice
+// gets two credentials for two approved destinations, which is what a task with more than one
+// thing to push is; the closing act is still at most once per quiescence, because that is the
+// loop's rule rather than this channel's.
+func (r *Runner) servePush(c *child, conn net.Conn) {
 	defer conn.Close()
 	br := bufio.NewReader(conn)
 	for {
@@ -310,7 +296,7 @@ func (r *Runner) serveDeliver(c *child, l task.Launch, conn net.Conn) {
 		if err != nil {
 			return // the task process is gone, which is the ordinary end
 		}
-		rep := r.deliverOnce(c, l, raw)
+		rep := r.answer(c, raw)
 		body, err := codec.Marshal(rep, codec.Tony)
 		if err != nil {
 			return
@@ -321,49 +307,23 @@ func (r *Runner) serveDeliver(c *child, l task.Launch, conn net.Conn) {
 	}
 }
 
-func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
-	var req deliverRequest
+// answer is ONE operation, and it is not an operation at all: the task names a destination and
+// what comes back is a SECRET rather than a performance.
+//
+// That is what stops the protocol growing. A merge, a promotion and a retirement are all this
+// one request, because the side holding the credential does not need to know which of them is
+// happening. An op per flow would keep the op count at one only by growing the OPERATION count
+// behind it, which is the same multiplier wearing a different hat — and it is why `deliver` is
+// gone rather than kept beside this: it was one destination all along.
+func (r *Runner) answer(c *child, raw []byte) pushReply {
+	var req pushRequest
 	if err := codec.Unmarshal(raw, &req, codec.Tony); err != nil {
-		return deliverReply{Error: "undecodable request: " + err.Error()}
+		return pushReply{Error: "undecodable request: " + err.Error()}
 	}
-	// Two operations, and only one of them is an operation.
-	//
-	// `credential` is the whole design: the task names a destination, and what comes back is a
-	// SECRET rather than a performance. That is what stops the protocol growing — a merge, a
-	// promotion, a retirement are all this one request, because the side holding the credential
-	// does not need to know which of them is happening. An op per flow would keep the op count
-	// at one only by growing the OPERATION count inside the parent, which is the same multiplier
-	// wearing a different hat.
-	//
-	// `deliver` is the runner's own closing act, still performed here. Step 5 of the plan retires
-	// it, at which point delivery is a push like any other and this switch has one arm.
-	switch req.Op {
-	case "credential":
-		return r.release(c, req)
-	case "deliver":
-	default:
-		return deliverReply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
+	if req.Op != "credential" {
+		return pushReply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
-	d := c.ws.Deliver(context.Background(), l, req.Result, "", req.Destination)
-	c.recordDelivery(d)
-	for _, p := range d.Pushed {
-		fmt.Fprintf(r.log, "coderunner: %s: pushed %s: %s\n", c.id, c.ws.Branch, p)
-	}
-	for _, s := range d.Staged {
-		fmt.Fprintf(r.log, "coderunner: %s: staged in the mirror at %s\n", c.id, s)
-	}
-	if len(d.Refused) > 0 {
-		// Logged as an outcome rather than as an error, because it is one. The far side's rules
-		// about its own history are not this runner malfunctioning.
-		fmt.Fprintf(r.log, "coderunner: %s: refused by the remote: %s\n",
-			c.id, strings.Join(d.Refused, "; "))
-		return deliverReply{Refs: d.Pushed, Refused: strings.Join(d.Refused, "; ")}
-	}
-	if d.Err != nil {
-		fmt.Fprintf(r.log, "coderunner: %s: %s: %v\n", c.id, req.Op, d.Err)
-		return deliverReply{Refs: d.Pushed, Error: d.Err.Error()}
-	}
-	return deliverReply{OK: true, Refs: d.Pushed}
+	return r.release(c, req)
 }
 
 // release answers a `credential` request: stage the work, then hand over the secret.
@@ -379,13 +339,13 @@ func (r *Runner) deliverOnce(c *child, l task.Launch, raw []byte) deliverReply {
 // this design makes elsewhere on purpose (a cancelled push is `unknown`, not `not done`). The
 // pending ref settles itself: Reflect pushes it again on the next sweep, which is a no-op if the
 // world already has it, a retry if it did not land, and a move to `held` if the remote refuses.
-func (r *Runner) release(c *child, req deliverRequest) deliverReply {
+func (r *Runner) release(c *child, req pushRequest) pushReply {
 	t, ref := c.ws.Destination(req.Destination)
 	if t == nil || (req.Repo != "" && t.Repo.Name != req.Repo) {
 		// The two ends disagree about what this environment declares. It cannot happen through
 		// the tool, whose schema enumerates the names, so it means a task speaking the protocol
 		// directly — which is exactly the thing that must resolve to nothing.
-		return deliverReply{Error: fmt.Sprintf("no destination %q in environment %q",
+		return pushReply{Error: fmt.Sprintf("no destination %q in environment %q",
 			req.Destination, c.ws.Env.Name)}
 	}
 	d := c.ws.Stage(context.Background(), c.id, t, ref)
@@ -399,13 +359,13 @@ func (r *Runner) release(c *child, req deliverRequest) deliverReply {
 		// credential is NOT released, because the one copy of the work is a directory this
 		// runner is about to be asked to remove.
 		fmt.Fprintf(r.log, "coderunner: %s: staging before a push to %s: %v\n", c.id, ref, d.Err)
-		return deliverReply{Error: d.Err.Error()}
+		return pushReply{Error: d.Err.Error()}
 	}
 	tok, err := r.credentialFor(c.ws.Env, t.Repo, req.Destination)
 	if err != nil {
-		return deliverReply{Error: err.Error()}
+		return pushReply{Error: err.Error()}
 	}
-	return deliverReply{OK: true, Ref: ref, Token: tok}
+	return pushReply{OK: true, Ref: ref, Token: tok}
 }
 
 // credentialFor is the mapping the whole design turns on: a granted capability → the secret it

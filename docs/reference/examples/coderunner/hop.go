@@ -565,7 +565,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	}
 	// The delivery channel is served for as long as the task process lives: it is how the task's
 	// own closing action reaches the credential this side holds.
-	go r.serveDeliver(c, l, c.svc)
+	go r.servePush(c, c.svc)
 	go r.supervise(c, l, env)
 }
 
@@ -629,7 +629,7 @@ func (r *Runner) supervise(c *child, l task.Launch, env Environment) {
 	// on the way", which is the strongest thing a process that no longer performs the push can
 	// truthfully assert. Whether it LANDED is the remote's to say — the pending ref settles
 	// itself on the next sweep, below.
-	if !asked || (c.ws.Deliverable() && len(d.Pushed)+len(d.Staged) == 0) {
+	if !asked || (c.ws.Deliverable() && len(d.Staged) == 0) {
 		held := c.ws.Salvage(ctx, l)
 		for _, ref := range held.Staged {
 			fmt.Fprintf(r.log, "coderunner: %s: the work did not leave; it is in this runner's "+
