@@ -96,7 +96,7 @@ The five paths, and which is which:
 | protected-branch / ruleset rejection | the remote's rule refused it | same: a refusal by an authority outside verse is a DECISION, not a fault |
 | auth: bad or expired credential | infrastructure | the action errors; for a closing act the task fails, because work that did not leave did not succeed |
 | transient (5xx, DNS) | infrastructure | as above, after the client's own retry — nothing here adds one |
-| some repos pushed, others did not | *cannot arise* | one action is one repository — see below |
+| some repos pushed, others did not | *cannot arise* | one action is one repository, and a delivering environment may declare only one |
 | cancelled while the push was in flight | unknowable | the record says `unknown`; the reflected ref says what happened |
 
 The first two want the loop's `Blocked` rather than `Err`. `StepResult.Blocked` exists to carry
@@ -124,15 +124,25 @@ forces an ASK over the auto branches in the others. Split, a charter can gate pe
 per destination, which is what `GateMatch.Branches` and `Resources` were written to be able to
 say.
 
-*The knock-on, which is real and lands in the loop's contract.* `Finisher.Finish` returns one
-action, and `machine.go` latches `finished` when it is proposed — so a multi-repo delivery cannot
-be expressed after step 5, when delivery becomes an ordinary push. The shape that fits is **the
-finisher is consulted until it DECLINES**, once per quiescence, rather than consulted once. That
-is a restatement of contract property 4, not an abandonment of it: what the property is for is
-the latch that made a second delivery impossible ACROSS quiescences, and a reopened input still
-gets a fresh sequence. `contractWatch` currently flags a second `effFinish` in one quiescence and
-would need to count sequences rather than proposals. Worth doing in step 5, where it belongs,
-rather than smuggling into step 2.
+*The knock-on, and it is smaller than it first looked.* Today one delivery covers every repository
+in the workspace: `deliverFinisher` proposes a single action carrying an effect per tree, and the
+parent pushes them all. Make a push action one repository and a workspace with N of them needs N
+pushes at the end — but `Finisher.Finish` returns ONE action, so after step 5, when delivery is an
+ordinary push, there is no way to say the other N-1.
+
+**N is 1 in every environment that exists.** `verse-docs` and `verse-fix` each declare exactly one
+repository. Multi-repo workspaces are designed for — `Workspace.Trees` is plural and `PushTarget`
+is per tree — and unexercised.
+
+So: do not build for N. **Refuse a delivering environment with more than one repository, at
+install, saying why.** That keeps the loop's contract exactly as it is, turns a latent gap into a
+stated one, and costs nothing anybody is using.
+
+If a second repository ever arrives, the shape is `Finish` returning a SEQUENCE proposed once —
+not the finisher being consulted repeatedly, which is what an earlier draft of this said and which
+is wrong twice over: it makes "finish" sound iterative, and it would force contract property 4 to
+be reworded when a sequence needs no rewording at all. One proposal, N actions, still at most once
+per quiescence.
 
 **A cancel racing a push cannot be resolved, and the record should stop implying it was.** Nothing
 here can offer at-most-once: the loop tears down while the push may already have landed, and no
