@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/task"
@@ -213,10 +214,30 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 	return task.StepResult{Use: tu, Output: rec.modelContent()}, nil, nil
 }
 
+// orphanWaitDelay is how long a finished-or-killed command is given to let go of its output
+// before this gives up on it. It is what makes `Execute` honour its context, which the
+// task.Executor interface states as an obligation and which this executor did NOT meet.
+//
+// The trap is that exec.CommandContext LOOKS like it meets it. Cancelling the context kills
+// bash — but stdout here is a buffer rather than a file, so os/exec puts a pipe in between and
+// copies on a goroutine, and Wait waits for that COPY rather than for the process. Anything the
+// command backgrounded inherits the pipe and holds it open, so Wait never returns:
+// `run_bash {command: "sleep 300 & echo started"}` was a task that could not be cancelled, ever.
+// Not a corner case — `npm run dev &` and every other detached server is this shape.
+//
+// Two seconds, and the number is doing less than it looks. It applies ONLY when something still
+// holds the pipe after the process is gone, which means an orphan: an ordinary command's pipes
+// close at exit and never wait at all. So it is "how long to wait for an orphan to flush",
+// where too short truncates a straggler and too long stalls a task that deliberately detached
+// something. It is not a command timeout — a command nobody cancels still runs as long as it
+// likes, which is a policy question for whoever installs the executor.
+const orphanWaitDelay = 2 * time.Second
+
 // runBash executes a command with stdout and stderr captured into SEPARATE
 // buffers and the real exit code recorded.
 func (e *fsExec) runBash(ctx context.Context, command string, rec *ExecRecord) {
 	c := exec.CommandContext(ctx, "bash", "-lc", command)
+	c.WaitDelay = orphanWaitDelay
 	c.Dir = e.root
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
@@ -225,10 +246,19 @@ func (e *fsExec) runBash(ctx context.Context, command string, rec *ExecRecord) {
 	code := 0
 	if err != nil {
 		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		switch {
+		case errors.As(err, &ee):
 			code = ee.ExitCode()
-		} else {
-			rec.Err = err.Error() // spawn / cancellation failure, not a task exit
+		case errors.Is(err, exec.ErrWaitDelay):
+			// The COMMAND succeeded; something it left running still holds the pipe. Reporting
+			// that as an executor failure would tell the agent its command broke when it did
+			// not, so it is an ordinary exit-zero result with the caveat attached — the agent
+			// needs to know the output may be short, and it needs to know why.
+			rec.Stderr = strings.TrimRight(rec.Stderr, "\n") +
+				"\n(the command exited but left something running that still holds its output; " +
+				"anything printed after this was not captured)"
+		default:
+			rec.Err = err.Error() // spawn failure, not a task exit
 			return
 		}
 	}

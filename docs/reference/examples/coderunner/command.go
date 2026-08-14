@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signadot/verse/task"
 )
@@ -204,6 +205,14 @@ func (e *commandExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepRe
 		return task.StepResult{Use: tu}, nil, fmt.Errorf("%s: empty argv", d.name)
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// What makes this Execute honour its context, which task.Executor states as an obligation.
+	// CommandContext kills the program when the task is cancelled, but stdout below is a buffer
+	// rather than a file, so os/exec copies through a pipe and Wait waits for the COPY. Anything
+	// the agent left running — a dev server, a watcher, a `&` in a script it wrote — inherits
+	// that pipe and holds it open, and the task becomes uncancellable. An agent binary is far
+	// more likely to leave something running than a one-line run_bash, so this seam needs it more
+	// than the one it is borrowed from (harness.orphanWaitDelay, which explains the number).
+	cmd.WaitDelay = 2 * time.Second
 	// The environment is the allowlist and nothing else. os.Environ() is deliberately not
 	// consulted: a passthrough list is a floor, and "everything except what we remembered to
 	// strip" is not.
