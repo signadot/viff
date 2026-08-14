@@ -1,6 +1,9 @@
 # A push is a capability with destinations, not one canned act
 
-Status: proposal, nothing here runs. Found while writing [merge-gate.tony](merge-gate.tony),
+Status: proposal, nothing here runs. The order of work is
+[push-as-a-capability-plan.md](push-as-a-capability-plan.md); the confinement half is
+[push-as-a-capability-residual.md](push-as-a-capability-residual.md). Found while writing
+[merge-gate.tony](merge-gate.tony),
 whose rules cannot work as written — and the first fix reached for was wrong in a way worth
 recording, because it is the same mistake one layer out.
 
