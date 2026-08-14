@@ -100,13 +100,25 @@ stated requirement that this would then satisfy properly.
 
 ## A destination cannot express a DELETE
 
-A destination resolves to a ref and a push writes it, so retiring a branch — which
-[merge-gate.tony](merge-gate.tony)'s sweep needs — has no spelling. Nothing in the config says "and
-this one may be deleted", and nothing in the protocol distinguishes the two.
+A destination resolves to a ref and a push writes it, so retiring a branch has no spelling.
+Nothing in the config says "and this one may be deleted", and nothing in the protocol
+distinguishes the two. The shape it wants is a destination that permits one, plus the operational
+half: `receive.denyDeletes` must not be set on the ref pattern such a destination targets.
 
-The shape it wants is a destination that permits one, and the operational half that goes with it:
-`receive.denyDeletes` must not be set on the ref pattern such a destination targets, or the sweep
-silently cannot do its job. Until then a stale `verse/auto/*` branch is retired by hand.
+**It is worth less than it looks, and [merge-gate.tony](merge-gate.tony)'s sweep is the evidence.**
+That rule spawns a task to delete stale branches, and the reason it wants to is stated as two
+things which are not the same size:
+
+- **the docket fills with proposals about branches that can no longer land** — which is what a
+  person suffers, and which needs no git at all (see the merge-gate residual: main moving is
+  itself the staleness test, so the state can be written without asking a remote anything);
+- **the branches accumulate on origin** — which is housekeeping, costs nothing but tidiness, and
+  is one `git push --delete` by a person or a cron.
+
+So a delete destination buys the second only. That is a real want and a small one, and it should
+not be reached for until something needs it that a person retiring a branch by hand would not
+serve just as well. Naming it here so the next reader weighs it that way rather than reading an
+unbuilt feature as a blocker.
 
 ## The descriptor's contract half
 

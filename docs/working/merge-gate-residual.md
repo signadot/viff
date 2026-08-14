@@ -23,6 +23,34 @@ resolves to a ref that a push writes. There is no spelling for a delete, so the 
 destination that permits one — a runner change, recorded in
 [coding-runner-residual.md](coding-runner-residual.md).
 
+### …except most of what the sweep is for needs no delete, and no task
+
+Worth following, because it makes that unbuilt runner feature much less load-bearing. The sweep
+exists to stop stale proposals cluttering the docket AND to stop branches accumulating on origin,
+and only the second needs a delete.
+
+The first needs no git at all, because **main moving IS the staleness test**. A proposal records
+`base`, the tip main had when the branch appeared. A branch cut from `B` is `B` plus its own
+commits, so it fast-forwards onto main exactly while main is still at `B` — the moment main is at
+any other commit, `--ff-only` cannot work. No ancestry walk, no merge attempt, no remote asked
+anything: `base != <main's tip>` is the whole predicate, and this charter already reads main's tip
+and already fires a rule when it moves.
+
+That collapses rule 4, for the purpose that matters, into a state change — and it is better than
+the task it replaces: no model call, nothing that can fail, and the docket closes the instant main
+moves rather than whenever a sweep next runs.
+
+**The one thing to check before writing it** is whether the grammar can fan a patch out over a
+SELECTION on an edge belonging to a different subject — *when `git:head:verse` moves, patch every
+`merge:proposal` with `state: open`*. A rule's action patches its own subject, and those proposals
+are not the subject of the head-moved edge. If that shape does not exist, then THAT is the ask,
+and it is a far better-shaped one than a delete destination: it is about the charter grammar
+rather than about git, and every fan-out-on-an-edge case wants it.
+
+(It cannot tell "stale" from "merged by hand", since both are `base != tip`. Tolerable in the
+direction it errs: a merged proposal marked stale is re-proposed by a review that then finds
+nothing to do, which is the idempotence this charter is built on.)
+
 **The wrong turn is worth keeping because it is the same mistake one layer out.** The first fix
 reached for was to add `merge` and `retire` ops beside `deliver`. That puts a policy in a
 mechanism and leaves the next flow needing a third op — each one a new parser, a new authorization
