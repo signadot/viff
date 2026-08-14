@@ -36,8 +36,28 @@ this repository's `main`), because `where` scopes onto a credential and `how` do
 all. An invariant enforced by the receiver beats one enforced by the caller; the cost is that it
 lives outside verse and the docket cannot show it.
 
-What nothing has verified yet is the charter itself: the derive, the stratum, the `!get-path`, the
-gate formula, and whether anybody answers a docket question.
+### What poking at it by hand verified, and what it did not
+
+Installed into a local verse, with the subject rule 1 would have derived written by hand
+(`verse entity put merge:proposal:poke1 '{…, state: open}'`) so the git source and the delivered
+branch were not needed. That skips rules 1 and 3 and exercises everything after them.
+
+**Verified.** Rule 2 selects and fires. The gate poses as a motion with the deadline the formula
+asked for (`closes=` 24h out). `verse vote … approve` closes it `outcome=proceed tally=1` and the
+firing proceeds. The spawn is refused because no runner is installed, and `onFailed` does exactly
+what it says: `state: failed` with the refusal in `err`, legible enough to act on —
+*no runner "runners:pool:code" (none are installed) — a spawn naming a runner that is not
+installed is refused rather than run somewhere else*.
+
+**Not verified.** The `!when` on `onDone` PARSES, installs and round-trips through
+`verse trigger show` — which was this note's first question — but nothing has evaluated it,
+because that needs a task that completes with `$data`. Rules 1 and 3 have never run at all: they
+need a git source reflecting `verse/auto/*`, and they were also HELD rather than installed, since
+they name comment-drift's `reflected` stratum (see [strata](../strata.md), which now says what
+that looks like from the outside).
+
+The deadline-denies path is unexercised, and it is the one with a clock: nothing has watched
+`!until [!quorum 1, !deadline "24h"]` run out and write `state: declined`.
 
 ## The one that was asked for, and is not expressible
 
@@ -106,12 +126,34 @@ grammar, and two rules conditioned on the answer would say the same thing with n
 ## Smaller things the charter works around
 
 **The sweep cannot see the docket.** It must not delete a branch whose question is still standing
-— today it would, and the operator answers into a void. It is *nearly* expressible: questions are
-entities (`gate:question:*` with `status: pending`), so `!list-paths {system: gate, kind:
-question, value: {status: pending}}` would hand the sweep task the standing questions to avoid.
+— today it would, and the operator answers into a void. It is *nearly* expressible, and closer
+than this note first said: a gate carrying a formula becomes a **motion**, and a motion is an
+entity. Checked by installing the charter and poking a proposal at it by hand:
+
+```tony
+ref: motion:channel:f846a045
+payload:
+  axis: whether          # status: open | closed
+  gate: merge-to-main    # trigger: merge-proposal
+  subject: merge:proposal:poke1
+  deadline_at: "2026-08-15T16:02:26+02:00"
+```
+
+So the spelling is `!list-paths {system: motion, kind: channel, value: {status: open}, path:
+subject}` — NOT `gate:question:*` with `status: pending`, which is what this note guessed and is
+wrong in all three of system, kind and field. And it is better than guessed: the motion carries
+its `subject`, so what the sweep needs to avoid is a field away rather than something it has to
+join for.
+
 Left out of the first version because it makes the prompt do bookkeeping the charter should do,
 and because with level-triggered gates the ordering stops mattering — delete the branch, the
 question goes.
+
+**`verse gate approve <id>` does not answer one.** It 404s with *no such question*: `verse gate`
+is the task-gate view, and a motion is answered by `verse vote <motion> approve --as <who>`. The
+docket lists it either way, so the two are easy to confuse — and
+[reference/tasks.md](../reference/tasks.md) describing `verse gate` as "engine + task gates,
+unified" is at best true only of a gate with no formula.
 
 **A merge task is an LLM doing four git commands.** `driver: llm` for something mechanical is
 both unreliable and expensive, and a `commandDriver` running a script is the right shape — an

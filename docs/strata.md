@@ -290,8 +290,25 @@ and a charter giving it twice has not said which comes first — and that is ref
 Because they are separate entities, either can arrive first. **A rule naming a stratum that is
 not installed yet is held, not refused**: written down, not firing, and installed the moment its
 stratum arrives. It has already passed every other check, so what holding defers is the ordering
-question and nothing else. A file never produces one, since `verse trigger add` sends the strata
-first.
+question and nothing else.
+
+**A file produces held rules whenever it names a stratum it does not itself define**, which a
+charter written to sit beside another one does. `verse trigger add` sends a file's own strata
+first, so a self-contained charter never holds; one whose rules name a neighbour's stratum holds
+exactly those rules until the neighbour is installed.
+
+That is the intended behaviour and it is **invisible**, which is the corner worth knowing before
+it costs you an afternoon. A held rule is not in `verse trigger`, `verse trigger show <name>`
+answers *no such trigger*, and `verse status` counts what fires — so a four-rule charter installs
+into a verse that reports two rules and explains nothing. The held ones are there:
+
+```sh
+verse entity --system trigger        # the whole charter, held rules included
+verse stratum                        # what they are waiting for
+```
+
+Read together those two say it, and nothing says it for you. What is missing is a state on the
+rule itself — held, and waiting for what — since the engine already models exactly that.
 
 **Removing a stratum is refused while rules still name it.** Those rules were checked against a
 pattern that would no longer exist, and nothing re-runs a check — they would go on firing,
