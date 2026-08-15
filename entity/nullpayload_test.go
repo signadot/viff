@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/parse"
 )
 
 // A null payload round-trips: it is written, read back as null, and listed.
@@ -307,6 +308,64 @@ func awaitEvent(t *testing.T, commits <-chan Commit, ref Ref) Event {
 			}
 		case <-deadline:
 			t.Fatalf("timed out waiting for a change to %s", ref)
+		}
+	}
+}
+
+// A payload somebody else wrote WITH COMMENTS is still a payload verse can read.
+//
+// The store keeps comments now (logd's NextState: "comments go in and come back"), and a head
+// comment WRAPS the value it precedes — so a payload standing behind one is not an object as
+// far as anything that asks. The failure is the bad kind: tony.Match sees through a comment, so
+// a rule still SELECTS the entity, and then every field read of it comes back empty.
+//
+// Verse does not write comments, so this is about what somebody else wrote: a store is not
+// verse's alone, and a document put there by `o` or by hand is one verse still has to read.
+func TestACommentedPayloadIsStillReadable(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	p, err := parse.Parse([]byte("# what this is about\nstage: open # still open\nlabels:\n  # the deep one\n  urgent: true\n"),
+		parse.ParseTony(), parse.ParseComments(true))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if ok, _, err := s.Write(Write{At: ref.At(), Value: p}); err != nil || !ok {
+		t.Fatalf("write: committed=%v err=%v", ok, err)
+	}
+
+	e, ok, err := s.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("get: ok=%v err=%v", ok, err)
+	}
+	if !IsObj(e.Payload) {
+		t.Fatalf("payload reads as %v, not an object — the comment wrapper is still on it", e.Payload.Type)
+	}
+	if got := Str(e.Payload, "stage"); got != "open" {
+		t.Fatalf("stage = %q, want open — a field read fell through the comment", got)
+	}
+	if got := Str(Get(e.Payload, "labels"), "urgent"); got != "" && got != "true" {
+		t.Fatalf("labels.urgent = %q — a comment deeper in the document broke the descent", got)
+	}
+
+	// The read face reaches into it, which is the surface that fails loudest: a path into a
+	// commented payload used to refuse the field outright.
+	d, err := Nest(s.List(nil), at(t, "demo.pr.1.stage"))
+	if err != nil {
+		t.Fatalf("state demo.pr.1.stage: %v", err)
+	}
+	if d.Node == nil || d.Node.String != "open" {
+		t.Fatalf("state demo.pr.1.stage = %v, want open", d.Node)
+	}
+
+	// And a selection binds what it selected on, rather than selecting and then reading blank.
+	pat := Pattern{System: "demo", Kind: "pr", Predicate: Obj{"stage": "open"}.Payload()}
+	if !pat.MatchEntity(e) {
+		t.Fatal("the pattern stopped matching")
+	}
+	for _, sel := range pat.Select(s) {
+		got, _, _ := s.Get(sel)
+		if Str(got.Payload, "stage") != "open" {
+			t.Fatalf("%s was selected and then read blank — the worst of both", sel)
 		}
 	}
 }
