@@ -127,11 +127,11 @@ if $clean; then
 	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
 	# the address the engine chose, not by one this script invented.
 	for sys in lineage lintag; do
-		for e in $(v entity --system "$sys" -o tony 2>/dev/null | sed -n 's|^[[:space:]]*ref:[[:space:]]*||p'); do
-			v entity rm "$e" >/dev/null 2>&1 || true
+		for e in $(v state --paths "$sys" 2>/dev/null); do
+			v state rm "$e" >/dev/null 2>&1 || true
 		done
 	done
-	for e in "${ENTITIES[@]}"; do v entity rm "$e" >/dev/null 2>&1 || true; done
+	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the entities — derived ones, and every release a run cut"
 	for s in "${STRATA[@]}"; do v stratum remove "$s" >/dev/null 2>&1 || true; done
 	ok "removed the ordering"
@@ -258,15 +258,15 @@ step "two systems, two id schemes, no coordination"
 # `github:pr:<org>/<repo>#<n>` with `merged`/`headSha`/`base`/`title`. Both spellings are
 # copied from what those sources produce, so a charter written against this demo is a charter
 # that works — which is the whole reason not to invent a vocabulary here.
-v entity put "git:commit:widget/$A" "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
-v entity put "git:commit:widget/$B" "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
-v entity put "git:commit:widget/$C" "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
+v state put "git:commit:widget/$A" "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
+v state put "git:commit:widget/$B" "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
+v state put "git:commit:widget/$C" "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
 ok "three commits — git ids them <repo>/<sha>, because a sha alone is not a cross-repo key"
 
-v entity put "$PR" "{merged: true,  headSha: $A, base: main, title: \"token TTL\",       number: 42, repo: acme/widget, state: closed}" >/dev/null
-v entity put "github:pr:acme/widget#45" "{merged: true,  headSha: $C, base: main, title: \"gate vector\",     number: 45, repo: acme/widget, state: closed}" >/dev/null
-v entity put "github:pr:acme/widget#43" "{merged: true,  headSha: $B, base: next, title: \"docket label\",    number: 43, repo: acme/widget, state: closed}" >/dev/null
-v entity put "github:pr:acme/widget#44" "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
+v state put "$PR" "{merged: true,  headSha: $A, base: main, title: \"token TTL\",       number: 42, repo: acme/widget, state: closed}" >/dev/null
+v state put "github:pr:acme/widget#45" "{merged: true,  headSha: $C, base: main, title: \"gate vector\",     number: 45, repo: acme/widget, state: closed}" >/dev/null
+v state put "github:pr:acme/widget#43" "{merged: true,  headSha: $B, base: next, title: \"docket label\",    number: 43, repo: acme/widget, state: closed}" >/dev/null
+v state put "github:pr:acme/widget#44" "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
 ok "four PRs — GitHub ids them <org>/<repo>#<n>; :42 and :45 onto main, :43 onto next, :44 unmerged"
 note "a pull request carries a BARE headSha, and the commit's id has a repo in front of it"
 
@@ -283,9 +283,8 @@ step "the link verse writes, and the id it gives it"
 # address from its subject; the engine writes the linkage at `verse.meta.derivedFrom`.
 tref=
 for _ in $(seq 1 100); do
-	for t in $(v entity --system lineage -o tony 2>/dev/null |
-		sed -n 's|^[[:space:]]*ref:[[:space:]]*||p' | tr -d '"'); do
-		if v entity get "$t" -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
+	for t in $(v state --paths lineage 2>/dev/null); do
+		if v state get "$t" -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
 			tref=$t
 			break 2
 		fi
@@ -295,7 +294,7 @@ done
 [ -n "$tref" ] ||
 	die "no trace about $PR — is the engine running, and did lin-pr-lineage install?"
 ok "$tref"
-v entity get "$tref"
+v state get "$tref"
 printf '\n'
 ok "one entity names a GitHub number and a git sha, each still in its own system's spelling"
 note "the message and author came from git by a PREDICATE on sha, not by naming an id: the"
@@ -304,7 +303,7 @@ note "the trace's id is f(rule, subject) — re-merging #42 rewrites THIS addres
 
 # #44 is the control. It shares a headSha with #42, so a rule keyed on the commit would have
 # correlated it; the subject predicate is what says only merged PRs have lineage.
-v entity --system lineage -o tony | grep -qF 'github:pr:acme/widget#44' &&
+v state lineage -o tony | grep -qF 'github:pr:acme/widget#44' &&
 	die "an unmerged PR was correlated — the subject predicate is not selecting"
 ok "#44 is unmerged, so nothing was derived about it (it shares its headSha with #42)"
 
@@ -335,10 +334,10 @@ step "the release: three ids reassembled without a fourth"
 rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -d '"')
 [ -n "$rev" ] || die "could not read storeRev — is this verse answering \`$BIN status\`?"
 REL="lintag:release:v1.4.$rev"
-v entity put "$REL" '{stage: cut, target: main}' >/dev/null
+v state put "$REL" '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \
-	bash -c "$BIN ${scope[*]} entity get '$REL' 2>/dev/null | grep -q shipped"
-v entity get "$REL"
+	bash -c "$BIN ${scope[*]} state get '$REL' 2>/dev/null | grep -q shipped"
+v state get "$REL"
 printf '\n'
 ok "the release carries the PRs and the commits, each still in its own system's id scheme"
 # Look at `authors` against `commits`: one nests and the other does not, and the difference is
@@ -351,7 +350,7 @@ note "authors nests and commits does not: the join answers with a list, and the 
 # The predicate did the narrowing: #43 is merged and traced, and is not in this release
 # because its base was `next`. That is a different exclusion from #44's, which is not traced
 # at all — one is the read's predicate, the other is the rule's subject.
-v entity get "$REL" | grep -qF 'github:pr:acme/widget#43' &&
+v state get "$REL" | grep -qF 'github:pr:acme/widget#43' &&
 	die "a trace onto next is in a release cut from main — the read's predicate did not narrow"
 ok "#43 is traced but absent: it went onto next, and this release asked for its own branch"
 
@@ -361,7 +360,7 @@ ok "#43 is traced but absent: it went onto next, and this release asked for its 
 step "the flow, which is keyed by exactly one of them"
 # If this is what fails, the release is a subject the engine already had a task for — see the
 # loop above, which exists to make that impossible.
-until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse entity get task:instance:lin-release-manifest@$REL)" \
+until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse state get task:instance:lin-release-manifest@$REL)" \
 	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL'"
 v flow
 ok "the flow's subject is $REL — one id, not a merged one"
@@ -396,9 +395,9 @@ EDGES
 
 step "poke at it"
 cat <<EOF
-  $BIN entities --system lineage           every correlation verse has written
-  $BIN entity get $tref
-  $BIN entity get $REL    the reassembled chain
+  $BIN state lineage                       every correlation verse has written
+  $BIN state get $tref
+  $BIN state get $REL    the reassembled chain
   $BIN flows                               the flow, keyed by one id
   ./scripts/lineage.sh --clean             put it all back
 EOF

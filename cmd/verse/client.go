@@ -14,9 +14,11 @@ import (
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 )
 
 // ── HTTP helpers (all client commands connect to g.Addr) ─────────────────────
@@ -368,8 +370,6 @@ func filterBy(q url.Values, pattern, at string) error {
 
 type watchConfig struct {
 	*cli.Command
-	System string `cli:"name=system desc='filter by entity system'"`
-	Kind   string `cli:"name=kind desc='filter by entity kind'"`
 	// default= in the tag rather than a struct literal, so `verse watch --help` SAYS where
 	// the stream starts. A literal sets the same value and tells the reader nothing.
 	Since string `cli:"name=since default=0 desc='start from store revision (cursor); 0 = from the beginning'"`
@@ -388,20 +388,18 @@ func watchCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "watch").
-		WithSynopsis("watch — stream store changes (cursored)").
+		WithSynopsis("watch — stream store changes (cursored): watch [<path>] [--if <pattern>]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
 
 // query renders the filters as the watch route's parameters. The cursor is watch's own; the
-// rest is the selector every read-plane route takes.
-func (cfg *watchConfig) query() (url.Values, error) {
+// rest is the selector every read-plane route takes, path included — `verse watch demo.pr` and
+// `verse state demo.pr` name the same entities and differ only in when they answer.
+func (cfg *watchConfig) query(at string) (url.Values, error) {
 	q := url.Values{"since": {cfg.Since}}
-	if cfg.System != "" {
-		q.Set("system", cfg.System)
-	}
-	if cfg.Kind != "" {
-		q.Set("kind", cfg.Kind)
+	if at != "" {
+		q.Set("at", at)
 	}
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
 		return nil, err
@@ -410,10 +408,21 @@ func (cfg *watchConfig) query() (url.Values, error) {
 }
 
 func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
-	if _, err := cfg.Parse(cc, args); err != nil {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
 		return err
 	}
-	q, err := cfg.query()
+	if len(args) > 1 {
+		return fmt.Errorf("%w: watch takes one path", cli.ErrUsage)
+	}
+	at := ""
+	if len(args) == 1 {
+		at = args[0]
+	}
+	if _, err := entity.ParseAt(at); err != nil {
+		return fmt.Errorf("watch: %w", err)
+	}
+	q, err := cfg.query(at)
 	if err != nil {
 		return fmt.Errorf("watch: %w", err)
 	}
@@ -727,37 +736,48 @@ func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
 	return nil
 }
 
-// entity is the one collection with filters of its own, so it does not go through
+// state is the one collection with filters of its own, so it does not go through
 // collection() — the shape is the same, the query is not.
-type entitiesConfig struct {
+type stateConfig struct {
 	*cli.Command
-	System string `cli:"name=system desc='filter by entity system'"`
-	Kind   string `cli:"name=kind desc='filter by entity kind'"`
-	// The same pair `watch` takes, meaning the same thing (filterBy) — the listing and the
-	// stream are one selector asked at two times.
+	// The same pair `watch` takes, meaning the same thing (filterBy) — the read and the stream
+	// are one selector asked at two times.
 	//
-	// `entity put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
-	// flags at its first positional, so `entity put <ref> <payload> --if <pattern>` hands
-	// the flag to `put`, where it is a precondition rather than a filter. Pinned by
-	// TestEntitiesPutKeepsItsOwnIf.
-	If   string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
-	IfAt string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
+	// `state put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
+	// flags at its first positional, so `state put <ref> <payload> --if <pattern>` hands the
+	// flag to `put`, where it is a precondition rather than a filter. Pinned by
+	// TestStatePutKeepsItsOwnIf.
+	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
+	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
+	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
 }
 
-func entityCmd() *cli.Command {
-	cfg := &entitiesConfig{}
+// stateCmd is `verse state`: the verse's state at a path.
+//
+// It replaces `verse entity`, and the noun went with the answer. The old command listed rows of
+// a table that the store does not hold — `[{ref, payload}, …]`, flattened out of the document it
+// does hold — and addressed them in three vocabularies: `--system`/`--kind` to narrow a listing,
+// `system:kind:id` to name one, `--at` to reach inside it. They are one kinded path asked at
+// different depths, so that is what this takes: `verse state`, `verse state demo`,
+// `verse state demo.pr`, `verse state demo.pr.1`, `verse state demo.pr.1.labels.urgent`,
+// `verse state 'demo.pr.*.stage'`.
+//
+// A ref is that same path with `:` for a delimiter, which is why get/put/rm still take one and
+// why nothing about identity moved (see entity/doc.go).
+func stateCmd() *cli.Command {
+	cfg := &stateConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "entity").WithAliases("entities", "e").
-		WithSynopsis("entity — the store [--system <s>] [--kind <k>] [--if <pattern>]; get|put|rm one by <ref>").
+	return cli.NewCommandAt(&cfg.Command, "state").WithAliases("s").
+		WithSynopsis("state — the verse at a path: state [--if <pattern>] [--paths] [<path>]; get|put|rm one by <ref>").
 		WithOpts(opts...).
 		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd()).
 		WithRun(cfg.run)
 }
 
-func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
+func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
@@ -765,22 +785,105 @@ func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
 	if handled, err := dispatch(cfg.Command, cc, args); handled {
 		return err
 	}
-	if err := noArgs(cfg.Command, "entity", args); err != nil {
-		return err
+	// FLAGS COME FIRST, and the error says so rather than leaving it to be discovered. A
+	// command that HAS subcommands stops parsing flags at its first positional (cli's
+	// Command.Parse passes all=true only for a leaf), so `state demo.pr --paths` hands
+	// `--paths` through as a second positional. That rule is what routes
+	// `state put <ref> <payload> --if <pattern>` to put's own --if, so it is not one to bend
+	// here; it is one to name when somebody trips over it.
+	if len(args) > 1 {
+		if strings.HasPrefix(args[1], "-") {
+			return fmt.Errorf("%w: flags come before the path — `verse state %s %s`",
+				cli.ErrUsage, strings.Join(args[1:], " "), args[0])
+		}
+		return fmt.Errorf("%w: state takes one path, got %d", cli.ErrUsage, len(args))
+	}
+	at := ""
+	if len(args) == 1 {
+		at = args[0]
+	}
+	// Parsed HERE as well as at the server, so a malformed path is a usage error against the
+	// command the operator typed rather than a 400 from a route they did not.
+	kp, err := entity.ParseAt(at)
+	if err != nil {
+		return fmt.Errorf("state: %w", err)
 	}
 	q := url.Values{}
-	if cfg.System != "" {
-		q.Set("system", cfg.System)
-	}
-	if cfg.Kind != "" {
-		q.Set("kind", cfg.Kind)
+	if at != "" {
+		q.Set("at", at)
 	}
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
-		return fmt.Errorf("entity: %w", err)
+		return fmt.Errorf("state: %w", err)
 	}
-	resp, err := httpGet("/entities", q)
+	resp, err := httpGet("/state", q)
 	if err != nil {
-		return fmt.Errorf("entity: %w", err)
+		return fmt.Errorf("state: %w", err)
+	}
+	if cfg.Paths {
+		return printPaths(cc, resp, kp)
 	}
 	return printBody(cc, resp)
+}
+
+// stateAt reads the verse at a path and hands back the entities standing there.
+//
+// It is what a command that wants ENTITIES uses, and the reason it can: the addresses are in
+// the answer, as keys, so a caller reads them out of the document it already has rather than
+// recovering them from a rendered ref and making a second request. Every consumer in this
+// package used to do the latter — `strings.TrimPrefix(e.Ref, "provider:")` and a SplitN to get
+// the capability back — which is exactly the map the store had thrown away being rebuilt by
+// hand at each caller.
+func stateAt(at string) ([]entity.Entity, error) {
+	kp, err := entity.ParseAt(at)
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	if at != "" {
+		q.Set("at", at)
+	}
+	resp, err := httpGet("/state", q)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return nil, errors.New(msg)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return nil, fmt.Errorf("decoding the state: %w", err)
+	}
+	return (entity.Doc{Node: node}).Entities(kp), nil
+}
+
+// printPaths prints one address per line, derived from the document the read answered with.
+//
+// Client-side, because the addresses are already IN the answer: an id is a key now rather than a
+// token inside a rendered ref, so the server would only be sending back what the document
+// already says. It is the `ls -1` of a read — what a script uses instead of grepping `ref:` out
+// of a listing, which is what scripts had to do while the answer was a table.
+func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return errors.New(msg)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return fmt.Errorf("state --paths: decoding the response: %w", err)
+	}
+	for _, p := range (entity.Doc{Node: node}).Paths(at) {
+		fmt.Fprintln(cc.Out, p)
+	}
+	return nil
 }

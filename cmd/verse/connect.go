@@ -395,16 +395,12 @@ func disconnectCmd() *cli.Command {
 
 // removeLocalEntities deletes every local:* entity in the current (scope) view.
 func removeLocalEntities(cc *cli.Context) error {
-	resp, err := httpGet("/entities", url.Values{"system": {source.FederationSystem}})
+	ents, err := stateAt(source.FederationSystem)
 	if err != nil {
 		return fmt.Errorf("disconnect: %w", err)
 	}
-	var ents []struct {
-		Ref string `tony:"field=ref"`
-	}
-	decodeClose(resp, &ents)
 	for _, e := range ents {
-		if r, err := httpDelete("/entity", url.Values{"ref": {e.Ref}}); err == nil {
+		if r, err := httpDelete("/entity", url.Values{"ref": {e.Ref.String()}}); err == nil {
 			r.Body.Close()
 		}
 	}

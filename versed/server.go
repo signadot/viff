@@ -23,6 +23,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
@@ -826,7 +829,7 @@ func (s *Server) Handler() http.Handler {
 	// what the root schema is derived from — see rootSignature.
 	rt.handle("GET /status", s.status, "", one("verse-status"))
 	rt.handle("GET /watch", s.watch, "", stream("verse-event"))
-	rt.handle("GET /entities", s.listEntities, "", list("verse-entity"))
+	rt.handle("GET /state", s.state, "", one("verse-state"))
 	rt.handle("GET /entity", s.getEntity, "", one("verse-entity"))
 	rt.handle("GET /gates", s.listGates, "", nothing)
 	// The distinct subjects with live work — addresses, so a list of plain strings rather
@@ -1070,14 +1073,13 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 	return s.Store
 }
 
-// queryPattern reads the selector a read-plane route was given: ?system/?kind name the
-// entities, ?if is a tony match over the payload, rooted at the field path in ?if-at (one
-// parameter per segment, so a field name is never re-split here).
+// queryPattern reads the PAYLOAD half of the selector a read-plane route was given: ?if is a
+// tony match over the payload, rooted at the field path in ?if-at (one parameter per segment,
+// so a field name is never re-split here).
 //
-// It is one function because the streaming face and the listing face must name the SAME set —
-// `verse watch --if X` and `verse entity --if X` differ in when they answer, not in what
-// they pick. And what they build is an entity.Pattern, which is what a charter's `when` also
-// becomes, so an operator can list or watch exactly what a rule would fire on.
+// It no longer reads ?system/?kind, and nothing sends them: which entities a read is about is
+// the positional PATH now (?at), which says the same thing at any depth instead of only at two
+// — see querySelector, which pairs the two halves.
 //
 // ?if arrives as TONY whatever the operator typed, because a GET carries no Content-Type to
 // declare a dialect in; the client parses in --ifmt and re-renders (see payloadFilter.apply).
@@ -1086,12 +1088,47 @@ func queryPattern(q url.Values) (entity.Pattern, error) {
 	if err != nil {
 		return entity.Pattern{}, fmt.Errorf("?if: %w", err)
 	}
-	return entity.Pattern{
-		System:    q.Get("system"),
-		Kind:      q.Get("kind"),
-		Predicate: pred,
-		At:        q["if-at"],
-	}, nil
+	return entity.Pattern{Predicate: pred, At: q["if-at"]}, nil
+}
+
+// selector is what a read-plane route was asked for: a path naming the entities, and a
+// predicate over the payloads standing at it.
+//
+// It is ONE type because the streaming face and the listing face must name the SAME set —
+// `verse watch --if X demo.pr` and `verse state --if X demo.pr` differ in when they answer, not
+// in what they pick. That was true of the pattern alone before the path existed; it has to stay
+// true now that the narrowing lives in two places, and it is no longer visible by eye, so
+// TestStateAndWatchNameTheSameSet says it instead.
+type selector struct {
+	at  *kpath.KPath
+	pat entity.Pattern
+}
+
+// querySelector reads both halves.
+func querySelector(q url.Values) (selector, error) {
+	pat, err := queryPattern(q)
+	if err != nil {
+		return selector{}, err
+	}
+	at, err := entity.ParseAt(q.Get("at"))
+	if err != nil {
+		return selector{}, fmt.Errorf("?at: %w", err)
+	}
+	return selector{at: at, pat: pat}, nil
+}
+
+// matchRef is the prefilter a store can apply for itself: the address dimensions, which is
+// everything the path says down to the id.
+func (s selector) matchRef(ref entity.Ref) bool { return entity.MatchesAt(ref, s.at) }
+
+// matchEntity is the whole question about a stored entity, and matchEvent the whole question
+// about a change.
+func (s selector) matchEntity(e entity.Entity) bool {
+	return s.matchRef(e.Ref) && s.pat.MatchEntity(e)
+}
+
+func (s selector) matchEvent(ev entity.Event) bool {
+	return s.matchRef(ev.Ref) && s.pat.MatchEvent(ev)
 }
 
 // watch streams store changes as SSE, catching up from ?since=<rev> first, then
@@ -1101,13 +1138,13 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	// Before NewSSE, which commits the response: a malformed predicate has to reach the
 	// client as a 400 it can report, not as a header'd stream that then says nothing.
-	pat, err := queryPattern(q)
+	sel, err := querySelector(q)
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
-	match := pat.MatchEvent
+	match := sel.matchEvent
 
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
 	// captured live rather than lost in the gap. The catch-up and the live stream
@@ -1192,28 +1229,53 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// listEntities answers the store as it stands, narrowed by queryPattern's selector — the same
-// one /watch streams, so a listing and a stream never disagree about what a filter names.
+// state answers the verse AT A PATH: the subtree standing there, which is what the store holds
+// rather than a shape assembled for the wire. It is narrowed by the same selector /watch
+// streams, so a read and a stream never disagree about what a filter names.
 //
-// The ref dimensions go to the store as List's prefilter, which is where they belong: they
+// The address dimensions go to the store as List's prefilter, which is where they belong: they
 // are the ones a store can apply for itself. The payload predicate is answered here, because
-// answering it needs the payload — so the split is what the store can do, not a second
-// opinion about the selector.
-func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
-	pat, err := queryPattern(r.URL.Query())
+// answering it needs the payload — so the split is what the store can do, not a second opinion
+// about the selector.
+//
+// `--if` narrows WHICH ENTITIES remain, per entity, before the nesting. It never prunes inside
+// a payload: the document's leaves are whole payloads, and a filter that reached into one would
+// answer with entities that do not hold what they say they hold. (`--if-at` says where the
+// predicate is evaluated, which is a different question again.)
+//
+// A path naming nothing is `{}` with 200 at collection depth and 404 below it. The cut is where
+// a path stops describing a SLICE and starts naming a THING: `demo.nosuch` asks which prs a
+// system that is not there has, and "none" is a true answer to it; `demo.pr.nosuch` names one
+// entity, and answering `{}` would say it is there and empty. The empty answer is `{}` rather
+// than an absent one for the same reason inverted — at collection depth the slice is the answer,
+// and it is empty.
+func (s *Server) state(w http.ResponseWriter, r *http.Request) {
+	sel, err := querySelector(r.URL.Query())
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
-	ents := s.scopedStore(r).List(pat.MatchRef)
-	out := make([]map[string]any, 0, len(ents))
+	ents := s.scopedStore(r).List(sel.matchRef)
+	kept := make([]entity.Entity, 0, len(ents))
 	for _, e := range ents {
-		if !pat.MatchEntity(e) {
-			continue
+		if sel.matchEntity(e) {
+			kept = append(kept, e)
 		}
-		out = append(out, map[string]any{"ref": e.Ref.String(), "payload": e.Payload})
 	}
-	writeOut(w, r, http.StatusOK, out)
+	doc, err := entity.Nest(kept, sel.at)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+	if doc.Node == nil {
+		if entity.AtDepth(sel.at) >= 3 {
+			codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
+				"nothing stands at %s", r.URL.Query().Get("at")))
+			return
+		}
+		doc.Node = ir.FromMap(map[string]*ir.Node{})
+	}
+	writeOut(w, r, http.StatusOK, doc)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {

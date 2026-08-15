@@ -46,8 +46,8 @@ In a third (using the scope `connect` printed):
 ```sh
 verse task                                           # a validator per file
 verse task get <id>                                  # the agent's read-and-validated report
-verse entity --system local --scope <scope>          # your files, as dir-status entities
-verse entity get local:dir-content-<scope>:README.md # a file's bytes, served on demand
+verse state local --scope <scope>                   # your files, as dir-status entities
+verse state get local:dir-content-<scope>:README.md # a file's bytes, served on demand
 ```
 
 Touch or add a file and its validator fires, reading the file through the verse. Ctrl-c
@@ -71,8 +71,8 @@ the scope without touching baseline, so your local changes and flows stay isolat
 ```sh
 verse connect . --scope me
 verse watch --scope me
-verse entity put demo:x:1 '{k: v}' --scope me      # in the scope only
-verse entity get demo:x:1                          # baseline: not there
+verse state put demo:x:1 '{k: v}' --scope me      # in the scope only
+verse state get demo:x:1                          # baseline: not there
 verse disconnect --scope me                        # drop the whole overlay
 ```
 

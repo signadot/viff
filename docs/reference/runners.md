@@ -31,7 +31,7 @@ verse runner add <kind>:<name> <url>       install one, probing the url first
 ```
 
 A `<ref>` is `runners:pool:gpu` or `pool:gpu` — the prefix is optional everywhere, so an
-operator reading `verse entity` and one typing `verse runner show` need not know two spellings.
+operator reading `verse state` and one typing `verse runner show` need not know two spellings.
 
 On the task side:
 

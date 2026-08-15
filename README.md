@@ -43,7 +43,7 @@ else installed into `~/.verse/bin`; see [the reference](docs/reference/up.md#the
 
 `scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
 reaction that has already happened and one gate waiting for you — then prints what to type
-next. Or do it by hand: `verse trigger add …`, `verse entity put …`, `verse gate`,
+next. Or do it by hand: `verse trigger add …`, `verse state put …`, `verse gate`,
 `verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
 `scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
 shapes a rule comes in, one command each). The tutorial walks the lot in five sections —

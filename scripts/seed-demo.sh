@@ -81,7 +81,7 @@ if $clean; then
 	step "clean"
 	for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
-	for e in "${ENTITIES[@]}"; do v entity rm "$e" >/dev/null 2>&1 || true; done
+	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
 	printf '\nseeded state is gone. Live tasks and answered gates are not touched.\n'
 	exit 0
@@ -116,17 +116,17 @@ ok "demo-review (ask: a human approves) + demo-escalate (auto)"
 
 # ── the world the charter is about ───────────────────────────────────────────
 step "entities"
-v entity put demo:pr:1 '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
-v entity put demo:pr:2 '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
+v state put demo:pr:1 '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
+v state put demo:pr:2 '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
 ok "demo:pr:1 (open — demo-review fires on it), demo:pr:2 (draft — it does not)"
-v entity put demo:task:hotfix-1 '{priority: high, title: "expiring cert"}' >/dev/null
-v entity put demo:task:cleanup-1 '{priority: low, title: "tidy the fixtures"}' >/dev/null
+v state put demo:task:hotfix-1 '{priority: high, title: "expiring cert"}' >/dev/null
+v state put demo:task:cleanup-1 '{priority: low, title: "tidy the fixtures"}' >/dev/null
 ok "demo:task:hotfix-1 (high — demo-escalate fires), demo:task:cleanup-1 (low — it does not)"
 
 # Providers are ordinary entities, which is the point: `verse provider` is a view of the
 # store, and a spawn that SELECTS its doer picks from these by capability and attributes.
-v entity put provider:review:claude '{driver: llm, tier: premium}' >/dev/null
-v entity put provider:review:cheapo '{driver: scripted, tier: basic}' >/dev/null
+v state put provider:review:claude '{driver: llm, tier: premium}' >/dev/null
+v state put provider:review:cheapo '{driver: scripted, tier: basic}' >/dev/null
 ok "two review providers (premium + basic) in the registry"
 
 # ── what the seed produced ───────────────────────────────────────────────────
@@ -135,14 +135,14 @@ ok "two review providers (premium + basic) in the registry"
 step "the engine reacts"
 escalated=
 for _ in $(seq 1 50); do
-	if v entity get demo:task:hotfix-1 2>/dev/null | grep -q escalated; then
+	if v state get demo:task:hotfix-1 2>/dev/null | grep -q escalated; then
 		escalated=1
 		break
 	fi
 	sleep 0.2
 done
 [ -n "$escalated" ] && ok "demo-escalate advanced demo:task:hotfix-1 → escalated (auto: nobody was asked)" ||
-	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse entity get demo:task:hotfix-1`\n'
+	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse state get demo:task:hotfix-1`\n'
 
 GID=
 for _ in $(seq 1 50); do
@@ -159,7 +159,7 @@ cat <<EOF
 
 seeded. What to type next:
 
-  $BIN$scope_note entities                     what is there (also: entities --system demo)
+  $BIN$scope_note state                        what is there (also: state demo)
   $BIN$scope_note triggers                     the charter you just installed
   $BIN$scope_note gates                        the decision demo-review is holding
   $BIN$scope_note gate approve ${GID:-<id>} --as you

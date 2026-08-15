@@ -46,17 +46,21 @@ verse
                                              A name prints just that one definition
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
-  watch  [--system --kind --since <rev>]     stream store changes (cursored)
+  watch  [--if <pat>] [--if-at <path>]       stream store changes (cursored)
+         [--since <rev>] [<path>]           … the same path a read takes
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
   acts on one member: `verse gate` shows the pending decisions, `verse gate approve <id>`
-  answers one. The plural is an alias of that same command — `verse gates`, `verse entities`
+  answers one. The plural is an alias of that same command — `verse gates`, `verse tasks`
   — so both spellings do the same thing. `verse gate list` is an error: bare it lists.
 
-  entity (entities, e)                       the store
-          [--system <s>] [--kind <k>]        … only that system, or that kind within it
-          [--if <pat>] [--if-at <path>]      … only those whose payload matches (see below)
+  `state` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
+  so there is no plural to alias and its positional is an address rather than a verb.
+
+  state   [--if <pat>] [--if-at <path>]      the verse at a path — flags BEFORE the path
+          [--paths]                          … one address per line instead of the document
+          [<path>]                           demo · demo.pr · demo.pr.1 · demo.pr.1.labels
           get <ref> · put <ref> <payload> · rm <ref>
           put/rm [--at <field.path>]         write or remove INSIDE the payload, not the whole entity
           put [--create|--update]            only if nothing is there yet · only if something is
@@ -118,15 +122,15 @@ Flags may appear before or after positionals (`gate approve <id> --as you --say 
 
 ## Selecting by what an entity says
 
-`--system` and `--kind` narrow by where an entity lives. `--if` narrows by what it says: a
-tony match against the payload, which is the same predicate a charter carries in `value` — in
-its `subject`, its `on` or its `when`. So `verse entity --if X` lists exactly what
+The PATH narrows by where an entity lives. `--if` narrows by what it says: a tony match
+against the payload, which is the same predicate a charter carries in `value` — in its
+`subject`, its `on` or its `when`. So `verse state --if X` names exactly what
 `verse watch --if X` streams, and both name what a rule with that predicate would select.
 
 ```sh
-verse entity --if '{stage: !or [open, merged]}'   # an operator, not just equality
-verse entity --if '{urgent: true}' --if-at labels # rooted inside the payload
-verse watch --system demo --if '{stage: open}'    # the same selector, as it happens
+verse state --if '{stage: !or [open, merged]}'   # an operator, not just equality
+verse state --if '{urgent: true}' --if-at labels # rooted inside the payload
+verse watch --if '{stage: open}' demo            # the same selector, as it happens
 ```
 
 `--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a

@@ -146,26 +146,20 @@ func choices(v any) []string {
 func providerCmd() *cli.Command {
 	return leaf("provider", "provider — the provider registry (provider:<capability>:<id>)",
 		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/entities", url.Values{"system": {"provider"}})
+			// The capability is the KIND, read out of the document rather than sliced back off
+			// the front of a rendered ref.
+			ents, err := stateAt("provider")
 			if err != nil {
 				return fmt.Errorf("provider: %w", err)
 			}
-			var ents []struct {
-				Ref     string         `tony:"field=ref"`
-				Payload map[string]any `tony:"field=payload"`
-			}
-			decodeClose(resp, &ents)
 			if len(ents) == 0 {
 				fmt.Fprintln(cc.Out, "no providers")
 				return nil
 			}
 			for _, e := range ents {
-				capability, id := "", strings.TrimPrefix(e.Ref, "provider:")
-				if parts := strings.SplitN(id, ":", 2); len(parts) == 2 {
-					capability, id = parts[0], parts[1]
-				}
-				line := fmt.Sprintf("%-10s %-14s driver=%v", capability, id, e.Payload["driver"])
-				for k, v := range e.Payload {
+				payload := entity.ToObj(e.Payload)
+				line := fmt.Sprintf("%-10s %-14s driver=%v", e.Ref.Kind, e.Ref.ID, payload["driver"])
+				for k, v := range payload {
 					if k != "driver" {
 						line += fmt.Sprintf(" %s=%v", k, v)
 					}
@@ -182,15 +176,10 @@ func providerCmd() *cli.Command {
 func docketCmd() *cli.Command {
 	return leaf("docket", "docket — list open motions (votes/selects and their outcomes)",
 		func(cc *cli.Context, args []string) error {
-			resp, err := httpGet("/entities", url.Values{"system": {"motion"}, "kind": {"channel"}})
+			ents, err := stateAt("motion.channel")
 			if err != nil {
 				return fmt.Errorf("docket: %w", err)
 			}
-			var ents []struct {
-				Ref     string         `tony:"field=ref"`
-				Payload map[string]any `tony:"field=payload"`
-			}
-			decodeClose(resp, &ents)
 			if len(ents) == 0 {
 				fmt.Fprintln(cc.Out, "nothing on the docket")
 				return nil
@@ -202,8 +191,8 @@ func docketCmd() *cli.Command {
 			says := make([]string, len(ents))
 			var wg sync.WaitGroup
 			for i, e := range ents {
-				ref, ok := e.Payload["subject"].(string)
-				if !ok {
+				ref := entity.Str(e.Payload, "subject")
+				if ref == "" {
 					continue
 				}
 				wg.Add(1)
@@ -224,8 +213,9 @@ func docketCmd() *cli.Command {
 			// reflex, which is the failure the gate exists to prevent.
 			out := make([]map[string]any, 0, len(ents))
 			for i, e := range ents {
-				m := map[string]any{"id": strings.TrimPrefix(e.Ref, "motion:channel:")}
-				for k, v := range e.Payload {
+				// The id is a KEY in the document, so it is read rather than trimmed off a ref.
+				m := map[string]any{"id": e.Ref.ID}
+				for k, v := range entity.ToObj(e.Payload) {
 					m[k] = v
 				}
 				if says[i] != "" {

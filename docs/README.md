@@ -49,7 +49,7 @@ core of the model, and almost everything else is something a rule can reach.
 | | [Strata](strata.md) — a declared level ordering, `derive`, the write that is not the subject, and where a path read inside one may reach |
 | | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
 | | [reference/goals.md](reference/goals.md) — a target over the reactive substrate (being redesigned) |
-| ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse entity rm` should mean |
+| ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse state rm` should mean |
 | | [Goals: what is left](working/goals-residual.md) — every use case fell short of the current definition, and three shapes a better one might take |
 | | [Dynamic charter](roadmap/dynamic-charter.md) — where goals are headed |
 

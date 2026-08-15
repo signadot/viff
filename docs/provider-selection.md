@@ -19,7 +19,7 @@ A doer is an entity: `provider:<capability>:<id>`. The capability is what it can
 which one it is.
 
 ```sh
-verse entity put provider:treat:fixer '{
+verse state put provider:treat:fixer '{
   driver: llm, risk: low,
   tools: [read_file, list_dir, write_file, run_bash],
   grant: no-delegate,
@@ -190,7 +190,7 @@ this whole feature serves, so a task showing only `llm` would report quite diffe
 as the same agent.
 
 ```sh
-verse entity get task:instance:<id>
+verse state get task:instance:<id>
 # doer: provider:treat:fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 
