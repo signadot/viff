@@ -28,8 +28,8 @@ environment, so a charter not pointed at it cannot reach main however its vector
 
 ## What it found
 
-A write carrying a match operator made the store unreadable — [refused at the store
-now](../../entity/raw.go). Nothing bounds a run ([task-budget.md](task-budget.md)); an
+A write carrying a match operator made the store unreadable — refused at the store now
+(`entity/raw.go`). Nothing bounds a run ([task-budget.md](task-budget.md)); an
 operator's `say` landed and was ignored; a docket asked `whether open` and nothing more.
 
 Left: the sweep needs a delete no destination expresses, the deadline has never run out.

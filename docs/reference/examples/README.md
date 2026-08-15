@@ -161,7 +161,7 @@ rule each charter remembers. Two environments over one repository, from the depl
 
 | | `verse-fix` | `verse-merge` |
 |---|---|---|
-| destinations | `auto` | `main` |
+| destinations | `auto` | `main`, `retire` (a delete) |
 | `push` in `tools:` | no | yes |
 
 `tools:` is a FLOOR — a spawn narrows it and cannot widen it — so a task in `verse-fix` cannot ask
@@ -172,6 +172,28 @@ main however its vector is set.
 Both could have been one environment with two destinations and one more tool. The cost would have
 been paid elsewhere: charters that share an environment would each have had to narrow their own
 `tools:`, which is a rule somebody forgets rather than a property anything holds.
+
+**A task here need not be an agent.** This runner builds `driver: calls` as well as `llm` and the
+programs under `agents:`, and a call list gets the same extras — the same `push`, the same
+finisher, the same deriver — so a charter that knows the actions writes them and pays for no model
+at all:
+
+```tony
+spawn:
+  environment: verse-merge
+  vector: auto
+  calls:
+  - tool: run_bash
+    input: {command: "git -C verse fetch origin $branch && git -C verse merge --ff-only FETCH_HEAD"}
+  - tool: push
+    input: {destination: main}
+```
+
+Nothing downstream can tell which driver proposed the push: it derives the same effect, meets the
+same gate, and is narrated the same way. That is what makes it cheap — see
+[tasks.md](../tasks.md#the-drivers) for the driver itself, and `docs/working/merge-gate.tony` for
+the charter this example is taken from, where it replaced an agent that spent five minutes
+searching the filesystem when its branch was deleted underneath it.
 
 The egress allowlist is the one place **reachable** and **authorised** come apart. An environment
 with destinations needs a route to the forge — the task does the pushing — and the allowlist is

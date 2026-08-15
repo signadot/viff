@@ -33,7 +33,7 @@ in. Each clause names something that run actually did. Worth stating what was NO
 it was the first instinct: *"you have one minute, and anything you cannot finish is fine to
 report as no findings"*. Both halves are wrong. A model cannot measure a minute — asking it to
 is asking for a verb it does not have, which is the same shape as the `wait` story it was
-reviewing when it hung ([llm.go](../../task/harness/llm.go): *"say it and stop asks for a thing
+reviewing when it hung (`task/harness/llm.go`: *"say it and stop asks for a thing
 the model has no way to commit to"*). And "report no findings" would write a **false fact** into
 a ledger whose premise is that findings are facts the next run reads back — an unexamined symbol
 recorded as clean is one that never gets examined.

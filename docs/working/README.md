@@ -62,16 +62,16 @@ that landing left, which is why [contributing.md](contributing.md) cites it as o
 Nothing above owes coherence to the *others* — a residual is a relation between one note and one
 landed thing, not a shared document.
 
-## One file this directory links to and does not have
+## The file that used to be missing
 
-`verse-dev-comment-drift.md` — the drive's numbered findings — is on the `use/verse-dev` branch
-and not here, so four notes ([absence-plan](absence-plan.md),
-[derive-each-plan](derive-each-plan.md), [derive-residual](derive-residual.md),
-[occurrence-plan](occurrence-plan.md)) cite "finding 10", "finding 19" and link to nothing.
+`verse-dev-comment-drift.md` — the drive's numbered findings — lived only on `use/verse-dev`,
+so four notes ([absence-plan](absence-plan.md), [derive-each-plan](derive-each-plan.md),
+[derive-residual](derive-residual.md), [occurrence-plan](occurrence-plan.md)) cited "finding 10"
+and "finding 19" and linked to nothing. It has been copied across, which is the move this section
+used to say was right and belonged to a deliberate sync rather than to whoever next noticed a
+broken link.
 
-Recorded rather than repaired, because both repairs are wrong on their own. Repointing them at
-[comment-drift-drive.md](comment-drift-drive.md) would be a lie — that is a summary and has no
-numbered findings. Copying the file over is the right move and belongs to a deliberate sync of
-that branch, not to whoever next notices a broken link. It is also the case
-[contributing.md](contributing.md) has in mind when it says the working note is the deliverable:
-a drive's findings that only exist on the drive's own branch are findings nobody else has.
+It is a COPY, and the branch keeps its own. That is the honest arrangement for a drive's
+scratch: the drive goes on writing there, and what is here is what the notes citing it were
+written against. When it drifts far enough to matter, copy it again — the alternative is a
+pointer that resolves differently depending on which checkout a reader has.

@@ -70,3 +70,15 @@ author has to know:
   standing in the verse, and a restart re-reaches the same verdicts rather than depending on
   what this engine happened to observe. Which is why a rule wants a *latch* rather than an
   edge; see [convergence](../convergence.md).
+- **A write is a PATCH, so a match operator cannot be written as data.** `!irtype`, `!or`,
+  `!glob`, `!let` and the rest of the match vocabulary are operations, and a payload carrying one
+  is executed by the store rather than stored by it — which does not fail at the write, it fails
+  every later READ, leaving the store unreadable rather than the entity wrong. Such a write is
+  refused now, naming the operator and the field.
+
+  What to do instead is say the subtree is DATA: `entity.Raw` (`!raw`) on the way in, which is
+  what a charter rule already rides on — a rule is dense with operators and is stored verbatim
+  under that escape. `entity.AsData` is the same thing for a record being read, edited and put
+  back, which `entity.Modify` does for its callers. Read [the trigger
+  model](../trigger-model.md#the-charter-is-durable) for the longer version, since a charter is
+  the payload that needed it first.

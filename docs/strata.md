@@ -240,6 +240,11 @@ no stratum is refused too: no level, so "at or below" has no answer.
 In a plain `patch` none of this applies, because nothing downstream depends on a patch being
 reproducible. A rule may read any level it likes and write it to its own subject.
 
+Nor in a CONDITION, for the same reason one level further back: a read there decides which
+entities a rule is about and writes nothing, so there is nothing for a level above to influence.
+It is unconstrained, and it is the one read that counts toward what the trigger READS — see
+[the trigger model](trigger-model.md#a-condition-may-read-too-and-that-one-does-track).
+
 ## What this earns, and what it does not
 
 **A cascade crosses at most (number of strata − 1) levels.** Each derive strictly increases

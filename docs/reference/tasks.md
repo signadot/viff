@@ -11,6 +11,7 @@ verse task run "echo summarizing; sleep 2"       # prints a run-… id
 verse task run --wait "echo done"                # …and block for the final output
 verse task run --attach 'Write a file hello.txt containing "hi".'   # …and stream it
 verse task run --driver scripted "go test ./..."
+verse task run --driver calls "$(cat merge.tony)"   # the actions themselves, no model
 verse task run --answer shape.tony "…"   # …and declare the shape its answer must have
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
