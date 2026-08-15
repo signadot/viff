@@ -376,7 +376,12 @@ fi
 # the whole command tree, which says nothing about why. The trap is a STALE `./verse` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
 # keeps using it long after `go install` refreshed the real one.
-if ! "$BIN" 2>&1 | grep -qE '^ *state '; then
+# `|| true` into a variable, NOT a pipe from "$BIN": bare `verse` exits 1 (it just printed
+# usage), and these scripts run under `set -o pipefail`, which hands that 1 to the whole
+# pipeline however well the grep matched — so the pipe spelling fired this guard on every
+# binary, current ones included.
+_verse_cmds=$("$BIN" 2>&1 || true)
+if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
 	die "$BIN does not have \`verse state\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
