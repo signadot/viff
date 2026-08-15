@@ -408,15 +408,22 @@ type Status struct {
 	Fired    int   `tony:"field=fired"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
-	// these two are things somebody put here, and a verse that has lost them looks healthy by
+	// these three are things somebody put here, and a verse that has lost them looks healthy by
 	// every other line — which is exactly the state a wiped store comes back in.
 	//
 	// Strata are NAMES IN LEVEL ORDER, low to high: the order is the fact, and `verse stratum`
 	// carries the numbers. Runners are the refs a spawn may name (`runners:pool:code`), which is
 	// a different question from `runner` below — that one is how THIS verse runs a task when a
-	// spawn names nobody.
+	// spawn names nobody. Sources are the refs of what WRITES into this verse
+	// (`sources:git:main`) — the one line here that says anything is arriving at all, since a
+	// verse whose sources are gone goes on reporting a fine store rev and an idle charter.
+	//
+	// All three are refs rather than records: status is an orientation, and `verse stratum`,
+	// `verse runners` and `verse sources` are the surfaces that answer what one IS. A source's
+	// health — when its last pass completed, whether it is failing — is on `verse sources`.
 	Strata  []string `tony:"field=strata,omitzero"`
 	Runners []string `tony:"field=runners,omitzero"`
+	Sources []string `tony:"field=sources,omitzero"`
 
 	Runner *RunnerStatus `tony:"field=runner,omitzero"`
 	Docd   *Docd         `tony:"field=docd,omitzero"`

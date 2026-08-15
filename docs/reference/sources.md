@@ -90,6 +90,11 @@ verse source add <system>:<name> <url>       install one, probing the url first
 
 A `<ref>` is `sources:git:laptop` or `git:laptop` — the prefix is optional everywhere.
 
+`verse status` names the installed sources — refs only, health left to `verse source`. It is
+there because it is the one line of a status that says anything is *arriving*: every counter
+beside it moves on what verse was already given, so a verse whose last source was removed reads
+exactly like a healthy quiet one until that list is empty.
+
 Every command takes the global `--scope`, and a scoped source is installed, listed, and removed
 in the scope it reflects into.
 

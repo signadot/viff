@@ -184,6 +184,7 @@ define:
   llm: .[nullable(verse-llm)]
   runner: .[nullable(verse-runner-status)]
   runners: .[array(string)]
+  sources: .[array(string)]
   storeRev: .[int]
   strata: .[array(string)]
   tasks: .[int]

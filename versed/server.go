@@ -2253,6 +2253,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Fired:    s.Eng.Fired(),
 		Strata:   strataNames(s.Eng.Strata()),
 		Runners:  runnerRefs(s.scopedStore(r)),
+		Sources:  sourceRefs(s.scopedStore(r)),
 		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
 		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
@@ -2285,6 +2286,20 @@ func runnerRefs(store entity.Store) []string {
 	out := make([]string, 0, len(es))
 	for _, e := range es {
 		out = append(out, runner.Ref(e.Kind, e.Name).String())
+	}
+	return out
+}
+
+// sourceRefs is what writes into this verse. Refs rather than records, for runnerRefs' reason —
+// but it earns its line here for one of its own: every other counter measures what verse is
+// doing with what it was given, and none of them can tell "nothing is happening" from "nothing
+// is arriving". A verse whose only source was dropped reports a steady store rev and an idle
+// charter, which is what a healthy quiet one reports too. `verse sources` carries the health.
+func sourceRefs(store entity.Store) []string {
+	es := source.List(store)
+	out := make([]string, 0, len(es))
+	for _, e := range es {
+		out = append(out, source.Ref(e.System, e.Name).String())
 	}
 	return out
 }

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -58,5 +59,45 @@ func TestStatus(t *testing.T) {
 	}
 	if rev, _ := codec.AsInt64(m["storeRev"]); rev < 1 {
 		t.Fatalf("storeRev = %v, want >= 1 after a Put", rev)
+	}
+}
+
+// Status names the installed sources. This is the one line that says anything is ARRIVING:
+// every counter above it moves on what verse was already given, so a verse whose source was
+// dropped reads exactly like a healthy quiet one until this list is empty.
+func TestStatusSources(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	sources := func() []string {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/status")
+		if err != nil {
+			t.Fatalf("status: %v", err)
+		}
+		defer resp.Body.Close()
+		var out api.Status
+		decodeResp(t, resp, &out)
+		return out.Sources
+	}
+
+	if got := sources(); len(got) != 0 {
+		t.Fatalf("sources = %v, want none on a fresh verse", got)
+	}
+
+	// Installed through the real route, so status reports what an operator actually put here.
+	// No probe: what is asserted is that the REGISTRATION shows up, and reaching the far side is
+	// `verse sources`' question — see the type doc on api.Status.
+	resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
+		"system": "git", "name": "laptop", "url": "http://127.0.0.1:1/",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add = %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	resp.Body.Close()
+
+	if got := sources(); len(got) != 1 || got[0] != "sources:git:laptop" {
+		t.Fatalf("sources = %v, want [sources:git:laptop]", got)
 	}
 }
