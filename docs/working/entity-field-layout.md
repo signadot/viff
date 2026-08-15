@@ -113,15 +113,27 @@ selection itself:
 | `git-issue:repo.status.issues` | counting another |
 | `motion:channel.status.tally` | the quorum/select discipline, which is engine logic |
 
-All three are pure functions of the store at a revision, which is what keeps them honest: a
-virtual field computes at any revision, so `AsOf` answers the same thing a live read does, a
-replay agrees with what it replays, and a `subject` could match on one without the edge rule
-`¬on(C-1) ∧ on(C)` losing its meaning.
+All three happen to be pure functions of the store at a revision — but that is a fact about
+those three, not about virtual fields, and the difference is the whole of what has to be
+declared. A virtual field is arbitrary Go. Nothing stops one answering the current eclipse
+fraction of the sun over Grenoble, and nothing in verse could tell that it had.
 
-**Time is deliberately not in that list.** An elapsed or overdue field wants a clock, and the
-clock is not designed — so it does not get to constrain this. Whatever it turns into should fit
-the layout rather than the layout bending around it now; the note is here only so a reader knows
-it was set aside rather than missed.
+So **purity is declared per field, and assumed absent otherwise**, because the two answer
+differently to the two questions the store already asks:
+
+- **Pure of the store at a revision** — a count, a tally. `AsOf(rev)` answers what a live read
+  at that revision answered, a replay agrees with what it replays, and a `subject` may match on
+  it without the edge rule `¬on(C-1) ∧ on(C)` losing its meaning.
+- **Anything else** — the eclipse, a clock, a network call. Read-only decoration. It must not
+  enter a match, and `AsOf` cannot answer it faithfully at a past revision at all: a snapshot
+  promises that no later write is visible to any read of it, and a field that never reads the
+  store is not bound by that promise. Either the snapshot refuses such a field or it admits it
+  is answering as of now — and which of those it is belongs in this note before anything is
+  built.
+
+**Time is one instance of the second kind, not the category.** The clock is not designed, so it
+does not get to constrain this; it will land in whichever bucket it lands in, and the buckets
+are here for the eclipse anyway.
 
 So a virtual field is Go, registered against a `(system, kind)`, answering at read. That weakens
 the case for a kind-level ENTITY rather than making it: code needs no place in the store to be
@@ -157,6 +169,9 @@ The migration is a rewrite of every payload, so it wants the same wipe-and-resee
   rule as installed" is clearer than "the rule's value" is the benefit.
 - What happens to `verse.charter.<rule>`, which is keyed by rule name and grows differently from
   everything else in `status`? `status.charter.<rule>` keeps the shape and moves the root.
+- Does a snapshot refuse an impure virtual field, or answer it as of now and say so? `AsOf`'s
+  promise is that no later write is visible to any read of it, and a field that does not read
+  the store cannot keep that promise either way.
 - Should a virtual field be visible as such? A reader who cannot tell a held count from a
   computed one is the goal at the read, and the opposite of it when they are deciding whether
   writing to it will stick. `status` being verse-owned means nobody should be writing there at
