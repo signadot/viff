@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/scott-cotton/cli"
 
@@ -194,40 +195,45 @@ func docketCmd() *cli.Command {
 				fmt.Fprintln(cc.Out, "nothing on the docket")
 				return nil
 			}
-			for _, e := range ents {
-				id := strings.TrimPrefix(e.Ref, "motion:channel:")
-				p := e.Payload
-				axis, _ := p["axis"].(string)
-				if axis == "" {
-					axis = "motion"
+			// EVERY SUBJECT AT ONCE, before anything is written. Each `says` is its own
+			// request, which is nothing against a verse on localhost and a visible stutter
+			// against one across a network: the docket printed a line, waited a round trip,
+			// printed the next. Concurrent, so the wall clock is one round trip rather than N.
+			says := make([]string, len(ents))
+			var wg sync.WaitGroup
+			for i, e := range ents {
+				ref, ok := e.Payload["subject"].(string)
+				if !ok {
+					continue
 				}
-				line := fmt.Sprintf("%s  %-7s %-6v", id, axis, p["status"])
-				if names := optionLabels(p["options"]); names != "" {
-					line += "  options=[" + names + "]"
-				}
-				if o, ok := p["outcome"].(string); ok {
-					line += "  outcome=" + o
-					if tally, ok := p["tally"]; ok {
-						line += fmt.Sprintf(" tally=%v", tally)
-					}
-				} else if at, ok := p["deadline_at"].(string); ok {
-					line += "  closes=" + at
-				}
-				if s, ok := p["subject"].(string); ok {
-					// WHAT IS BEING DECIDED, ahead of the address of it. A docket line used to
-					// be `whether open` plus a ref, so the only way to learn what a vote meant
-					// was to fetch the subject, read a branch name and two shas out of it, and
-					// go find the diff elsewhere. A gate answered without knowing what it is
-					// about is answered by reflex, which is the failure the gate exists to
-					// prevent — so the subject gets to say, and this shows it.
-					if says := subjectSays(s); says != "" {
-						line += "  — " + says
-					}
-					line += "  subject=" + s
-				}
-				fmt.Fprintln(cc.Out, line)
+				wg.Add(1)
+				go func(i int, ref string) { defer wg.Done(); says[i] = subjectSays(ref) }(i, ref)
 			}
-			return nil
+			wg.Wait()
+
+			// TONY, like every other collection this CLI prints, rather than a line format of
+			// its own. A docket entry is a motion plus the one thing a motion cannot say about
+			// itself, and both are data: `verse docket -o yaml`, `| o get "[0].subject"`, and a
+			// diff against the docket a minute ago all work, where a bespoke line meant
+			// re-parsing prose to ask anything of it at all.
+			//
+			// WHAT IS BEING DECIDED travels beside the address of it. A docket entry used to be
+			// a status and a ref, so the only way to learn what a vote meant was to fetch the
+			// subject, read a branch name and two shas out of it, and go find the diff
+			// elsewhere. A gate answered without knowing what it is about is answered by
+			// reflex, which is the failure the gate exists to prevent.
+			out := make([]map[string]any, 0, len(ents))
+			for i, e := range ents {
+				m := map[string]any{"id": strings.TrimPrefix(e.Ref, "motion:channel:")}
+				for k, v := range e.Payload {
+					m[k] = v
+				}
+				if says[i] != "" {
+					m["says"] = says[i]
+				}
+				out = append(out, m)
+			}
+			return printNode(cc, out)
 		})
 }
 
@@ -239,9 +245,11 @@ func docketCmd() *cli.Command {
 // without it, which is why this is silent about every failure: a docket that refused to list a
 // motion because its subject was unreadable would be worse than one that lists it bare.
 //
-// One request per motion. A docket is short by construction — it is the things waiting on a
-// person — and the alternative is the engine denormalising a summary onto every motion it
-// writes, which is a schema decision that should be made by somebody who wants it.
+// One request per motion, issued CONCURRENTLY by the caller. A docket is short by construction —
+// it is the things waiting on a person — but short is a count, not a duration: serial requests to
+// a verse across a network printed one line per round trip, which reads as the command hanging
+// between items. The alternative to asking at all is the engine denormalising a summary onto
+// every motion it writes, which is a schema decision that should be made by somebody who wants it.
 func subjectSays(ref string) string {
 	resp, err := httpGet("/entity", url.Values{"ref": {ref}})
 	if err != nil {
@@ -253,20 +261,12 @@ func subjectSays(ref string) string {
 		} `tony:"field=payload"`
 	}
 	decodeClose(resp, &ent)
-	return firstLineOf(ent.Payload.Says, 100)
-}
-
-// firstLineOf keeps a docket line one line: the first sentence-worth, and an ellipsis when
-// there was more. A report is a paragraph and a terminal is not.
-func firstLineOf(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = strings.TrimSpace(s[:i])
-	}
-	if len(s) > n {
-		return strings.TrimSpace(s[:n]) + "…"
-	}
-	return s
+	// WHOLE, not clipped. This used to return one line of at most a hundred characters,
+	// because it was being pasted into a terminal line — but the docket is data now, and a
+	// summary with an ellipsis in it is a value nothing downstream can use: not a diff, not a
+	// match, not a reader piping it somewhere narrower. Truncating is the renderer's job, and
+	// the renderer is whoever is looking.
+	return strings.TrimSpace(ent.Payload.Says)
 }
 
 // optionLabels renders a motion's options as "id(need) …" (the threshold shown only when

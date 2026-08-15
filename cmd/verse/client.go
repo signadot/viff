@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"io"
 	"net/http"
 	"net/url"
@@ -169,6 +170,25 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		return err
 	}
 	return nil
+}
+
+// printNode writes a value this CLI COMPUTED, under the same rules a passed-through response
+// gets: the configured output format (`-o`, then VERSE_FORMAT/config), and colour when the
+// terminal takes it. printBody is for a body the server wrote; this is for one we assembled —
+// the docket, which is a list of motions with each subject's own summary folded in.
+func printNode(cc *cli.Context, v any) error {
+	out, err := outFmt()
+	if err != nil {
+		return err
+	}
+	node, err := gomap.ToTonyIR(v)
+	if err != nil {
+		return fmt.Errorf("encoding: %w", err)
+	}
+	if colorize(cc.Out) {
+		return codec.EncodeNodeColor(cc.Out, node, out)
+	}
+	return codec.EncodeNode(cc.Out, node, out)
 }
 
 // respFmt reads the format a response declares — a fact about the server, not a

@@ -81,33 +81,3 @@ func TestProvidersListsTheEnvelope(t *testing.T) {
 		}
 	}
 }
-
-// A docket line is one line, so a subject's `says` is trimmed to fit — and a paragraph is what
-// a review actually produces.
-//
-// The line used to be `whether open` plus a ref, which told a voter nothing about what they
-// were approving: they had to fetch the subject, read a branch name and two shas, and go find
-// the diff elsewhere. A gate answered without knowing what it is about is answered by reflex.
-func TestASubjectsSaysIsTrimmedToALine(t *testing.T) {
-	for name, tc := range map[string]struct{ in, want string }{
-		"a short claim": {
-			in:   "claimed the first TWELVE characters; it returns eight",
-			want: "claimed the first TWELVE characters; it returns eight",
-		},
-		"only the first line of a paragraph": {
-			in:   "fixed one comment on main.shortSha\n\nand here is a great deal more prose",
-			want: "fixed one comment on main.shortSha",
-		},
-		"nothing at all":    {in: "", want: ""},
-		"surrounding space": {in: "   trimmed   ", want: "trimmed"},
-	} {
-		if got := firstLineOf(tc.in, 100); got != tc.want {
-			t.Errorf("%s: got %q, want %q", name, got, tc.want)
-		}
-	}
-	long := strings.Repeat("x", 140)
-	got := firstLineOf(long, 100)
-	if len([]rune(got)) > 101 || !strings.HasSuffix(got, "…") {
-		t.Errorf("a long claim was not cut to fit a line: %d chars, %q", len([]rune(got)), got[:20])
-	}
-}

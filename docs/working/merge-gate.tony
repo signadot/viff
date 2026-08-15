@@ -211,27 +211,6 @@
       patch:
         state: failed
         err: $err
-    onDone:
-      patch:
-        # `!when` WAS THE WRONG GUESS, and installing this is what settled it. There is no such
-        # operator: the deref inside it runs — the store ended up holding
-        # `state: !when [true, merged, stale]`, with `$data.merged` resolved to `true` — and the
-        # tag itself is data, so the proposal sat in a state no rule selects and no reader can
-        # act on. A patch derefs; it does not branch.
-        #
-        # So the answer is recorded as the FACT it is, and the branching is two rules below,
-        # which is what this note said in the first place and should have done.
-        merged: $data.merged
-        state: decided
-        mergedSha: $data.sha
-        reason: $data.reason
-        err: !delete null
-    # Reserved for what it is for: the credential expired, the remote was unreachable, the task
-    # broke. A refusal is not a failure and does not arrive here.
-    onFailed:
-      patch:
-        state: failed
-        err: $err
     # A cancel decided NOTHING, so the proposal goes back to undecided — which is now the
     # absence of the field, and `!delete` is what unwrites one. This is the case that earns the
     # operator: somebody stopped the run, so the gate should be asked again, where a FAILED run
