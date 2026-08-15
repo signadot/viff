@@ -13,7 +13,7 @@ package trigger
 // It is one entity per rule rather than one charter document, because that is what the
 // operations already are: installing writes one entity, removing deletes one, and neither
 // needs to read the others (no read-modify-write, so two installs cannot lose each other).
-// It also makes a rule addressable — `verse entity get trigger:rule:review` — and a charter
+// It also makes a rule addressable — `verse state get trigger:rule:review` — and a charter
 // change an ordinary observable fact.
 
 import (
@@ -47,7 +47,7 @@ func CharterRef(name string) entity.Ref {
 // is what forced the text form here, and `!raw` is the escape that lifts it — the subtree is
 // stored verbatim, tags intact, interpreting nothing at any depth.
 //
-// Structure rather than text because the record is then the rule itself: `verse entity get
+// Structure rather than text because the record is then the rule itself: `verse state get
 // trigger:rule:review` shows a document a person can read field by field, a charter change is
 // an ordinary observable fact about a shape rather than about a string, and nothing has to
 // re-parse to ask a question about it. Raw also REPLACES, so re-installing a rule cannot

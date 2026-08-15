@@ -38,7 +38,7 @@ func sourceCmd() *cli.Command {
 }
 
 // sourcePath turns the ref an operator types into the route's two segments, accepting it with
-// or without the `sources:` prefix — an operator reading `verse entity` and one typing
+// or without the `sources:` prefix — an operator reading `verse state` and one typing
 // `verse source show` should not have to know two spellings of one thing.
 func sourcePath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "sources:"), ":", 2)

@@ -370,6 +370,17 @@ BIN="${VERSE:-}"
 if [ -z "$BIN" ]; then
 	if [ -x ./verse ]; then BIN=./verse; else BIN=verse; fi
 fi
+
+# THE BINARY HAS TO SPEAK `state`. These scripts read the verse as one document at a kinded
+# path, and a CLI from before that has `entity` instead — whose failure is a usage error and
+# the whole command tree, which says nothing about why. The trap is a STALE `./verse` in the
+# working directory: it is preferred over $PATH above, so a checkout that built one months ago
+# keeps using it long after `go install` refreshed the real one.
+if ! "$BIN" 2>&1 | grep -qE '^ *state '; then
+	die "$BIN does not have \`verse state\` — it predates the one-document read.
+     Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
+     or point VERSE=<path> at a current one."
+fi
 scope=()
 args=()
 while [ $# -gt 0 ]; do

@@ -46,7 +46,7 @@ In a third (using the scope `connect` printed):
 ```sh
 verse task                                           # a validator per file
 verse task get <id>                                  # the agent's read-and-validated report
-verse state local --scope <scope>                   # your files, as dir-status entities
+verse --scope <scope> state local                   # your files, as dir-status entities
 verse state get local:dir-content-<scope>:README.md # a file's bytes, served on demand
 ```
 

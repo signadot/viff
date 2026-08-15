@@ -1271,7 +1271,7 @@ func (e *Engine) whyNoEligible(spawn launch.Spec) string {
 	}))
 	if registered == 0 {
 		return fmt.Sprintf("no provider:%s:* is registered (register one, e.g. "+
-			"`verse entity put provider:%s:<id> '{driver: llm}'`)", p.Capability, p.Capability)
+			"`verse state put provider:%s:<id> '{driver: llm}'`)", p.Capability, p.Capability)
 	}
 	return fmt.Sprintf("all %d registered provider:%s:* were excluded by match %s",
 		registered, p.Capability, matchText(p.Match))
