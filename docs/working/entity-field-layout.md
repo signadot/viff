@@ -65,10 +65,15 @@ the whole point of the payload widening was that it is expressible.
 
 ## The layout
 
+TWO reserved containers, and every other reserved name a sibling of them:
+
 ```tony
-value:    # what a writer said — ANY tony value: a record, 42, "open", [a, b], null
-status:   # what verse derived ABOUT it — open, verse-owned, never authored
-meta:     # facts about the ENTITY rather than about its content
+value:        # what a writer said — ANY tony value: a record, 42, "open", [a, b], null
+status:       # what verse derived ABOUT it — open, verse-owned, never authored
+
+vanishing:    # …and the named facts, each one thing, at the top level
+derivedFrom:  # {rule, subject}
+source:       # the registration that owns this slice
 ```
 
 **`value`, not `spec`, and the reason is the grammar we already have.** A charter's subject
@@ -85,13 +90,34 @@ makes it useful is the one k8s has: a writer of `value` never writes `status`, a
 writes `value`. That is what lets a re-registration stop worrying about clobbering a timestamp,
 and `stillInstalled` go away.
 
-**`meta` is about existence, not content.** Provenance (`derivedFrom: {rule, subject}`, and the
-source that owns the slice), lifecycle intent (`vanishing`), and the timestamps of the record
-itself. Lifecycle sits here rather than in `status` because it is an INTENT somebody wrote, not
-something verse observed — the same reason k8s puts `deletionTimestamp` in metadata.
+**There is no `meta`, and the rule is what a name has to hold.** A container earns its place by
+holding a set nobody can enumerate — `value` is any document, `status` grows per kind, and
+`charter` grows a key per rule, so it folds under `status` as `status.charter.<rule>`. A single
+fact with one meaning does not: `vanishing` is an instant, `derivedFrom` is a pair, `source` is
+a ref. Grouping those under `meta` is a k8s import that buys a level of nesting and answers no
+question — `verse state demo.pr.1.vanishing` is the address, and `.meta.` in the middle of it is
+a word nobody needed to type.
 
-Nothing is mandatory. An entity nobody authored has no `value`; one verse has never touched has
-no `status`; most have no `meta`. The envelope is a reservation, not a schema.
+It is also what the tree already found out the hard way and half-applied. Today's reserved
+namespace is `verse.meta.*` beside `verse.charter.*`, and `entity/lifecycle.go` split those two
+because "`charter` grows a key per rule, `meta` grows a field per lifecycle concern" — the same
+distinction, one level down and with a `verse.` prefix that only existed because the author's
+document was at the root. The envelope removes the reason for the prefix; the rule above removes
+the reason for `meta`.
+
+**Nothing collides, because the top level is verse's.** A writer never addresses it: `verse
+state put demo:pr:1 '{stage: open}'` means the VALUE, and the write surface envelopes it. That is
+what makes a new reserved sibling a cheap addition later rather than a break — there is nothing
+of the author's up there to collide with.
+
+Nothing is mandatory either. An entity nobody authored has no `value`; one verse has never
+touched has no `status`; most have neither `vanishing` nor `derivedFrom`. The envelope is a
+reservation, not a schema.
+
+**What it costs**, since it is a real loss and not free: there is no longer one path that
+answers "everything verse knows *about* this entity". `demo.pr.1.meta` would have been that, and
+a kpath cannot say "everything except `value`". Whether that question gets asked often enough to
+be worth a level on every address is the trade, and I do not think it does.
 
 ## Virtual fields
 
@@ -148,8 +174,10 @@ depth), it has to be decided before this is offered rather than after.
 
 ## What breaks
 
-Everything reads one level deeper. `verse state demo.pr.1` answers `{value: …, status: …}`
-rather than the payload; `verse state demo.pr.1.value.stage` is the field. A charter's
+Everything reads one level deeper — but exactly one, which is the point of collapsing `meta`.
+`verse state demo.pr.1` answers `{value: …, status: …}` rather than the payload;
+`verse state demo.pr.1.value.stage` is the field, and `demo.pr.1.vanishing` is the marker that
+is three levels deep today (`verse.meta.vanishing`) and one after this. A charter's
 `value: {…}` predicate keeps working by construction — that is why the name was chosen — but
 `--if '{stage: open}'` roots at the payload today and would need to root at `value`, which is a
 default to change in one place (`Pattern.At`).
@@ -159,16 +187,18 @@ The migration is a rewrite of every payload, so it wants the same wipe-and-resee
 
 ## Open questions
 
-- Does `meta` earn a place separate from `status`, or is provenance just derived state? The
-  argument for splitting is that `vanishing` is written by an author and everything in `status`
-  is not.
-- Reflected entities: is the mirrored truth `value`, with `meta.source` naming the owner? That
-  reads right, and it makes "who is the single writer of this slice" a fact on the record rather
-  than a convention held in `source/own.go`.
+- Is `vanishing` really a sibling rather than `status`? The argument for the top level is that
+  it is an INTENT somebody wrote, not something verse observed — the reason k8s keeps
+  `deletionTimestamp` out of status too. The argument against is that it makes the top level
+  hold one authored thing when its whole justification is that it is verse's.
+- Reflected entities: is the mirrored truth `value`, with `source` naming the owner? That reads
+  right, and it makes "who is the single writer of this slice" a fact on the record rather than
+  a convention held in `source/own.go`.
 - Do declarations keep `spec`, or fold into `value`? Two words for one idea is the cost; "the
   rule as installed" is clearer than "the rule's value" is the benefit.
-- What happens to `verse.charter.<rule>`, which is keyed by rule name and grows differently from
-  everything else in `status`? `status.charter.<rule>` keeps the shape and moves the root.
+- Is `status.charter.<rule>` the right name once it is inside `status`? `charter` named the
+  thing it came from; `status.rules.<name>` names what it holds. A rename is free while nothing
+  reads it under the new layout.
 - Does a snapshot refuse an impure virtual field, or answer it as of now and say so? `AsOf`'s
   promise is that no later write is visible to any read of it, and a field that does not read
   the store cannot keep that promise either way.
