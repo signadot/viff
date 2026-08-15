@@ -1,7 +1,9 @@
 # `verse state`: one document, one kinded path
 
-Status: **nothing built** (branch `verse-state`). This is the plan the reasoning below arrives
-at; each commit leaves a working tree and a runnable verse.
+Status: **built** (branch `verse-state`), in the three commits below. What the plan got wrong,
+and what building it settled, is recorded in "What landed" at the foot of this note — the plan
+itself is left as it was written, because the argument is what makes the diff readable and a
+plan rewritten to match its outcome teaches nobody anything.
 
 The change in one line: **the CLI stops presenting a table of entities and starts presenting the
 document the store already holds, addressed by the same kinded path the store writes into.**
@@ -279,3 +281,46 @@ document keyed by system/kind/id, not an array of `{ref, payload}`; `--system`/`
 positional path; `--refs` is `--paths`. **2**: `get`/`put`/`rm` take a whole path and `--at` is
 gone. Each needs a `Notice:` filed before the push, per
 [contributing.md](contributing.md).
+
+## What landed
+
+Three commits, as planned. Five things came out differently, and each was a question the plan
+asked rather than an answer it got wrong.
+
+**The Check First resolved to "small".** logd EXECUTES a `!delete` by removing the key, so a
+deleted ref reads back not_found — verified against a real logd before anything was written.
+`absentPath`'s tombstone branch had never fired, and `List`'s `ch.deleted` skip was dead on a
+materialized read. Both went.
+
+**Absence had to move off the value channel entirely, which the plan half-anticipated.**
+`Absent()` was `!irtype null`, and that is a real tony operator meaning *the value here has type
+null* — true of an entity holding one. It is `Require.Absent`, a field, now. That freed
+`!irtype null` to mean what it says, which turned out to be needed: `entity.Unchanged(cur)`
+spells expect-unchanged, because a bare null pattern is the presence test and comparing a null
+payload against itself that way asked nothing at all.
+
+**One read answer does not settle itself, and the plan did not see it.** logd reports a missing
+key as not_found only where it can resolve a proper ancestor; under a root that has never been
+written it answers a bare null instead — the same answer an entity holding null gives. `Get`
+asks the parent for the one key when it sees a null (`keyStands`). Without it a fresh verse
+claimed an entity at every address anyone asked after, which took a refused update's
+precondition and Modify's create loop with it.
+
+**The delimiter needed no upstream change.** The plan named the kpath delimiter option as its
+one real dependency. It is not needed: WHICHEVER DELIMITER COMES FIRST is the one the address is
+written in. `demo:pr:a.b` is a ref, so the dots belong to the id; `git.ref.x@git:ref:y` is a
+kinded path, so the colons belong to the id. An id with a dot that you want to continue past is
+quoted — `demo.pr."a.b".labels` — which is the plan's own "`.` plus quoting covers every real
+id", arrived at from the other side.
+
+**`!key` does not survive an ordinary write.** The plan said to annotate payloads that hold
+arrays worth addressing. `!key` is a registered merge operator, so a write EXECUTES it: logd
+merges the array by key and stores it untagged. `(key)` reach works against a payload written as
+DATA (`entity.Raw`), which is what the engine's own writers do, and `verse state put` cannot
+leave one. Said in [reference/entities.md](../reference/entities.md) and in the refusal itself.
+
+Two smaller ones. **Flags come before the path** (`verse state --paths demo.pr`): a command with
+subcommands stops parsing flags at its first positional, and that rule is what routes
+`state put <ref> <payload> --if` to the write's precondition — so it is named in the error rather
+than bent. And **`--paths` prints refs**, since a ref is the same address with `:` for a
+delimiter and that is what `get`/`put`/`rm` take.

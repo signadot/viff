@@ -247,3 +247,33 @@ func flatten(t *testing.T, n *ir.Node) string {
 	}
 	return strings.TrimSpace(string(b))
 }
+
+// `(key)` reaches a stored array, against a real store — the end of the claim the unit test
+// above makes about the walk.
+//
+// The annotation has to be STORED, and that is the whole subtlety: `!key` is a registered merge
+// operator, so an ordinary write EXECUTES it — logd merges the array by key and keeps the
+// result without the tag, and the array that comes back is not keyed. Raw is what says "this
+// tag is data", so the payload lands carrying its own annotation and a read can follow it.
+func TestKeyedReachAgainstTheStore(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "merge", Kind: "proposal", ID: "X"}
+	votes := ir.FromSlice([]*ir.Node{
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
+	}).WithTag("!key(voter)")
+	if ok, _, err := s.Write(Write{
+		At:    ref.At(),
+		Value: Raw(ir.FromMap(map[string]*ir.Node{"votes": votes})),
+	}); err != nil || !ok {
+		t.Fatalf("write: committed=%v err=%v", ok, err)
+	}
+
+	d, err := Nest(s.List(nil), at(t, "merge.proposal.X.votes(scott)"))
+	if err != nil {
+		t.Fatalf("nest: %v", err)
+	}
+	if got := Str(d.Node, "choice"); got != "yes" {
+		t.Fatalf("votes(scott).choice = %q, want yes — the stored array did not keep its key", got)
+	}
+}

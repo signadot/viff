@@ -78,6 +78,25 @@ can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match
 `--if-at` roots the predicate at a dot-separated field path. See
 [Selecting by what an entity says](README.md#selecting-by-what-an-entity-says).
 
+### Reaching into an array
+
+`(key)` addresses an array element by identity, and `[0]` by position:
+
+```sh
+verse state get 'merge.proposal.X.votes(scott)'
+verse state get 'merge.proposal.X.votes[0].choice'
+```
+
+`(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been STORED.
+That is not automatic: `!key` is a tony merge operator, so an ordinary write EXECUTES it — the
+array is merged by key and kept without the tag — which means an array put through
+`verse state put` is not keyed afterwards. A payload meant to stay addressable this way is
+written as data (`entity.Raw`), which is what the engine's own writers do.
+
+Writing into an array is a different matter and is not offered: the store patches at a kpath of
+object fields, so `state put` refuses `[0]` and `(scott)` rather than rendering a path the
+substrate will reject. Address the field that holds the array.
+
 ### What the document does not cover
 
 Mount-owned slices are not in it. `verse connect`'s content slice (`local:dir-content-*`) is

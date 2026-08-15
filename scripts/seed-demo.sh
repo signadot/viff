@@ -170,7 +170,7 @@ seeded. What to type next:
 
 Watch it move (another terminal, before approving):
 
-  $BIN$scope_note watch --system demo
+  $BIN$scope_note watch demo
 
 Then drive it yourself — a put is how you speak to the verse:
 

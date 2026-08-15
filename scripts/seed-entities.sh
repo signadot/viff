@@ -124,7 +124,7 @@ seeded. Now select over it:
 
 And watch it move (another terminal), then write to it:
 
-  $BIN$scope_note watch --system demo --if '{stage: open}'
+  $BIN$scope_note watch --if '{stage: open}' demo
   $BIN$scope_note state put demo:pr:2 '{stage: open}'
 
 Undo it all with: $0 --clean

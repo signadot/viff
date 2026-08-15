@@ -182,9 +182,17 @@ func step(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
 		}
 		// The array says what it is keyed BY (`!key(voter)`); without the annotation there is
 		// no key to look one up by, and every element answers no.
+		//
+		// The annotation has to have been STORED, which is the part worth saying out loud: `!key`
+		// is a registered merge operator, so an ordinary write EXECUTES it — the array is merged
+		// by key and kept without the tag. A payload meant to stay addressable this way is
+		// written as data (entity.Raw / AsData), which is what the engine's own writers do.
 		field, keyed := node.KeyField()
 		if !keyed {
-			return nil, fmt.Errorf("(%s): the array is not keyed — annotate it `!key(<field>)`", *kp.Key)
+			return nil, fmt.Errorf("(%s): the array is not keyed. It carries no `!key(<field>)`, "+
+				"and an ordinary write does not leave one — `!key` is a merge operator, so a write "+
+				"executes it and stores the merged array untagged. The payload has to be written "+
+				"as data for the annotation to stand", *kp.Key)
 		}
 		for _, el := range node.Values {
 			if k, ok := ir.ElemKey(el, field); ok && k == *kp.Key {

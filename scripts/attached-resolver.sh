@@ -205,7 +205,7 @@ state() {
 	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
 	v state resolvers.instance
-	printf '\n  the address is `<name>@<origin>`, so one `--system resolvers` shows both what is\n'
+	printf '\n  the address is `<name>@<origin>`, so one `verse state resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
 	q=$(question_id)
