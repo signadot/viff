@@ -103,33 +103,25 @@ ballot. Nothing else in the verse would disagree if either were computed when so
 **They are computed by Go here, not by a tony operation, and the vocabulary is the proof.** The
 whole operator set is `addtag all and arraydiff at comment delete dive embed field glob has-path
 if insert irtype json-patch key let not nullify or pass pipe quote raw rename replace retag rmtag
-strdiff subtree tag unquote` — there is no count, no length, and no clock. `!list-paths` selects
-entities; it cannot answer `10`. So a declared derivation covers the one case that is pure
-selection and none of the cases actually worth having:
+strdiff subtree tag unquote` — there is no count and no length. `!list-paths` selects entities;
+it cannot answer `10`. Every case worth having is an aggregation over a selection rather than the
+selection itself:
 
-| wanted | needs | expressible as a match? |
-|---|---|---|
-| `git-issue:repo.status.open` | counting a selection | no — nothing counts |
-| `task:instance.status.elapsed` | a clock | no, and see below |
-| `gate:question.status.overdue` | a clock, against a stored `escalatesAt` | no |
-| `motion:channel.status.tally` | the quorum/select discipline | no — that is engine logic |
+| wanted | needs |
+|---|---|
+| `git-issue:repo.status.open` | counting a selection |
+| `git-issue:repo.status.issues` | counting another |
+| `motion:channel.status.tally` | the quorum/select discipline, which is engine logic |
 
-**A clock cannot be a MATCH operator, and that is not an omission.** A match is evaluated at a
-REVISION — `AsOf`, and the edge rule `¬on(C-1) ∧ on(C)` — so it has to be a pure function of
-store state, or a replayed commit reaches a different verdict than the live one did.
+All three are pure functions of the store at a revision, which is what keeps them honest: a
+virtual field computes at any revision, so `AsOf` answers the same thing a live read does, a
+replay agrees with what it replays, and a `subject` could match on one without the edge rule
+`¬on(C-1) ∧ on(C)` losing its meaning.
 
-Verse already puts time exactly where it survives that: a formula is temporal and a `deadline`
-leaf reads the system clock (`formula.go` — "a time derivation, not a store fact", with no
-subtree to watch). So the split this needs is the split the trigger model already made, one
-layer down.
-
-Which draws the line the layout needs, and it is per field rather than per mechanism:
-
-- **Pure of the store at a revision** — a count, an aggregate, a tally. Computable at any
-  revision, so a `subject` may match on it and a replay agrees.
-- **Not pure** — anything reading a clock. It may be rendered, and it may be a formula's
-  business (that is what `deadline` is), but it must never enter a match, or the edge model
-  quietly stops being replayable.
+**Time is deliberately not in that list.** An elapsed or overdue field wants a clock, and the
+clock is not designed — so it does not get to constrain this. Whatever it turns into should fit
+the layout rather than the layout bending around it now; the note is here only so a reader knows
+it was set aside rather than missed.
 
 So a virtual field is Go, registered against a `(system, kind)`, answering at read. That weakens
 the case for a kind-level ENTITY rather than making it: code needs no place in the store to be
