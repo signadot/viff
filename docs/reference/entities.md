@@ -95,8 +95,8 @@ one entity do not clobber each other.
 ```sh
 verse state put demo:pr:1 '{stage: open}'
 verse state put demo:pr:1 '{owner: ana}'              # adds an owner, keeps the stage
-verse state put --at labels.urgent demo:pr:1 true     # write INSIDE the payload
-verse state rm  --at labels.urgent demo:pr:1          # remove one field
+verse state put demo.pr.1.labels.urgent true         # write INSIDE the payload
+verse state rm  demo.pr.1.labels.urgent              # remove one field
 verse state rm demo:pr:1                              # the whole entity
 ```
 

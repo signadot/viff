@@ -91,8 +91,8 @@ entity as it now stands rather than an echo of what you sent:
 
 ```sh
 verse state put demo:pr:1 '{owner: dee}'              # changes the owner, keeps the stage
-verse state put --at labels.urgent demo:pr:1 true     # one field, deep
-verse state rm  --at labels.urgent demo:pr:1          # and gone again
+verse state put demo.pr.1.labels.urgent true         # one field, deep
+verse state rm  demo.pr.1.labels.urgent              # and gone again
 verse state rm demo:scratch:1                         # the whole entity
 ```
 

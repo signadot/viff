@@ -104,8 +104,9 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 		t.Fatalf("merge did not preserve the rest: %+v", got)
 	}
 
-	// --at writes inside the payload.
-	if _, err := runCLI(t, "state", "put", "--at", "labels.urgent", "demo:pr:1", "true"); err != nil {
+	// ONE ADDRESS, all the way down: the path writes inside the payload, which is what
+	// `--at labels.urgent` used to spell.
+	if _, err := runCLI(t, "state", "put", "demo.pr.1.labels.urgent", "true"); err != nil {
 		t.Fatalf("deep put: %v", err)
 	}
 	labels, _ := payloadOf(t, store, pr1)["labels"].(map[string]any)
@@ -113,8 +114,8 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 		t.Fatalf("deep put did not land: %+v", payloadOf(t, store, pr1))
 	}
 
-	// and rm --at takes one field away, leaving the entity.
-	if _, err := runCLI(t, "state", "rm", "--at", "labels.urgent", "demo:pr:1"); err != nil {
+	// and a path takes one field away, leaving the entity.
+	if _, err := runCLI(t, "state", "rm", "demo.pr.1.labels.urgent"); err != nil {
 		t.Fatalf("rm field: %v", err)
 	}
 	got := payloadOf(t, store, pr1)
@@ -126,7 +127,8 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 		t.Fatalf("removing a field disturbed the entity: %+v", got)
 	}
 
-	// rm without --at removes the entity itself.
+	// A path that stops at the entity removes the entity itself — and the ref spelling is that
+	// same address, which is why it still works.
 	if _, err := runCLI(t, "state", "rm", "demo:pr:1"); err != nil {
 		t.Fatalf("rm: %v", err)
 	}

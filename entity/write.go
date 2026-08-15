@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
 // Path addresses a place in the verse. A Ref names an entity; Field goes further, naming
@@ -25,13 +26,100 @@ type Path struct {
 // At returns the path to a place inside this entity — with no arguments, the entity itself.
 func (r Ref) At(field ...string) Path { return Path{Ref: r, Field: field} }
 
-// String spells the path as its ref followed by the field path, e.g.
-// demo:pr:1.labels.urgent — the form the CLI accepts.
+// String spells the path, and ParsePath is its inverse — which it was not before, and the
+// reason is the delimiter.
+//
+// An ENTITY is spelled as its ref, `demo:pr:1`, because that is the ref's own spelling and
+// nothing about identity changes here. A path that continues INTO a payload is spelled as a
+// kinded path, `demo.pr.1.labels.urgent`, with each segment quoted as kpath needs it.
+//
+// The two cannot be one spelling until kpath takes a delimiter option, and the reason is an id
+// with a dot in it: `demo:pr:a.b` is an entity whose id is `a.b`, and `demo:pr:a.b.labels` can
+// be read as that entity's `labels` or as an entity named `a.b.labels`. The colon spelling has
+// no way to say which. The dot spelling does — `demo.pr."a.b".labels` — so that is the one that
+// carries a field path. This used to claim it emitted "the form the CLI accepts"; the CLI's
+// ParseRef never implemented it, and this is what implementing it turned out to require.
 func (p Path) String() string {
 	if len(p.Field) == 0 {
 		return p.Ref.String()
 	}
-	return p.Ref.String() + "." + strings.Join(p.Field, ".")
+	return p.KPath()
+}
+
+// KPath spells the path as a kinded path at EVERY depth, the ref included:
+// `demo.pr.1`, `demo.pr.1.labels.urgent`, `demo.pr."a.b"`. It is what a read route takes,
+// which is why it exists beside String — String picks the spelling a reader expects for the
+// depth, and this one picks the grammar the wire takes.
+func (p Path) KPath() string {
+	out := seg(p.System) + "." + seg(p.Kind) + "." + seg(p.ID)
+	for _, f := range p.Field {
+		out += "." + seg(f)
+	}
+	return out
+}
+
+// ParsePath parses the one address a command takes: an entity, or a place inside one.
+//
+//	demo:pr:1                    an entity, by ref — dots and all belong to the id
+//	demo.pr.1                    the same entity, as a kinded path
+//	demo.pr.1.labels.urgent      a place inside its payload
+//	demo.pr."a.b".labels         …an id with a dot in it, which is why quoting exists
+//
+// WHICHEVER DELIMITER COMES FIRST is the one the address is written in, and that single rule
+// is what keeps both spellings unambiguous:
+//
+//	demo:pr:a.b            `:` first — a ref, so the dots belong to the id
+//	git.ref.x@git:ref:y    `.` first — a kinded path, so the colons belong to the id
+//
+// Trying a ref first instead does not work, and the second line is why: SplitN on ":" happily
+// reads `git.ref.x@git:ref:y` as the system `git.ref.x@git`, which is not a thing anybody
+// wrote. Nor does trying a kpath first, which reads `demo:pr:1.labels` as a system called
+// `demo:pr:1`. Each spelling has to be recognized before it is parsed.
+//
+// So every address that ever worked still names what it named — a ref is a ref — and the dot
+// spelling is what carries a field path.
+//
+// The field path is object fields only. `[0]` and `(scott)` address into an ARRAY, which a
+// write cannot reach — the store patches at a kpath of object fields (LogdStore.writePath) —
+// so they are refused here, where the message can say so, rather than rendered into a path the
+// substrate will reject. Reading one is a different matter and `verse state` does it.
+func ParsePath(s string) (Path, error) {
+	if colonFirst(s) {
+		ref, err := ParseRef(s)
+		if err != nil {
+			return Path{}, fmt.Errorf("path %q: %w", s, err)
+		}
+		return Path{Ref: ref}, nil
+	}
+	kp, err := kpath.Parse(s)
+	if err != nil {
+		return Path{}, fmt.Errorf("path %q: %w", s, err)
+	}
+	var segs []string
+	for p := kp; p != nil; p = p.Next {
+		switch {
+		case p.Field != nil:
+			segs = append(segs, *p.Field)
+		case p.FieldAll, p.IndexAll, p.SparseIndexAll:
+			return Path{}, fmt.Errorf("path %q: a wildcard names several places, and this names one", s)
+		default:
+			return Path{}, fmt.Errorf("path %q: an array element is not writable — the store "+
+				"patches at object fields, so address the field that holds the array", s)
+		}
+	}
+	if len(segs) < 3 {
+		return Path{}, fmt.Errorf("path %q: an address starts with system.kind.id (or the ref "+
+			"system:kind:id), and this names %d of the 3", s, len(segs))
+	}
+	return Path{Ref: Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, Field: segs[3:]}, nil
+}
+
+// colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.
+// An address with neither is neither, and reads as a kinded path so that the message about it
+// names the three segments it is missing.
+func colonFirst(s string) bool {
+	c, d := strings.IndexByte(s, ':'), strings.IndexByte(s, '.')
+	return c >= 0 && (d < 0 || c < d)
 }
 
 // IsEntity reports whether the path addresses a whole entity rather than a place inside one.

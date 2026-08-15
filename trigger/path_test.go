@@ -554,3 +554,56 @@ func TestListPathsPredicateExpandsAReference(t *testing.T) {
 		t.Fatalf("picked = %v, want [pr:1 pr:3] — the two on main, the reference having expanded", vals)
 	}
 }
+
+// ONE ADDRESS, all the way down: the string form carries the payload path now, so what took
+// four keys of an object takes one kinded path.
+//
+// The delimiter is what made that possible. A ref names an entity WHOLE — dots and all belong
+// to the id — and the dot spelling carries the path, quoting an id that needs it. Both are
+// asked here, including the dotted id that is the whole reason the two spellings exist.
+func TestGetPathTakesOneAddress(t *testing.T) {
+	eng, store := newEng(t)
+	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+		entity.Obj{"branch": "main", "meta": entity.Obj{"tags": []any{"v1", "v2"}}}.Payload())
+	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "a.b"},
+		entity.Obj{"branch": "dotted"}.Payload())
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "oneaddress",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: Action{Patch: entity.Obj{
+			"stage":  "read",
+			"whole":  get("git:repo:abc"),              // a ref: the entity, whole
+			"branch": get("git.repo.abc.branch"),       // …continued into the payload
+			"second": get("git.repo.abc.meta.tags[1]"), // …and into an array
+			"dotted": get(`git.repo."a.b".branch`),     // an id with a dot in it
+			"asref":  get("git:repo:a.b"),              // the same entity, by ref
+		}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
+	waitStage(t, store, ref, "read")
+
+	got, _, _ := store.Get(ref)
+	obj := entity.ToObj(got.Payload)
+	if whole, _ := obj["whole"].(map[string]any); whole["branch"] != "main" {
+		t.Errorf("whole = %v, want the entity's payload", obj["whole"])
+	}
+	for _, tc := range []struct{ key, want string }{
+		{"branch", "main"},
+		{"second", "v2"},
+		{"dotted", "dotted"},
+	} {
+		if obj[tc.key] != tc.want {
+			t.Errorf("%s = %v, want %q", tc.key, obj[tc.key], tc.want)
+		}
+	}
+	if asref, _ := obj["asref"].(map[string]any); asref["branch"] != "dotted" {
+		t.Errorf("asref = %v, want the dotted-id entity — a ref names it whole", obj["asref"])
+	}
+}

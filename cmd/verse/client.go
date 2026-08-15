@@ -358,12 +358,26 @@ func filterBy(q url.Values, pattern, at string) error {
 		return fmt.Errorf("--if: %w", err)
 	}
 	q.Set("if", string(b))
-	// Segment per parameter, as `entity rm --at` sends its path: the wire takes the address
-	// as a list, so a field name is never re-split at the far end.
+	// Segment per parameter, as a write's field path travels: the wire takes the address as a
+	// list, so a field name is never re-split at the far end.
 	for _, f := range fieldPath(at) {
 		q.Add("if-at", f)
 	}
 	return nil
+}
+
+// fieldPath splits a dot-separated --if-at into the segments the wire takes.
+//
+// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.ParsePath), which quotes a
+// field name carrying a dot, while this stays the flat split because `--if-at` says where to
+// root a predicate inside one payload rather than naming a place in the verse. The wire takes
+// the segments as a list either way, so nothing but this spelling is in the way if a dotted
+// field name ever needs rooting.
+func fieldPath(at string) []string {
+	if at == "" {
+		return nil
+	}
+	return strings.Split(at, ".")
 }
 
 // ── watch ────────────────────────────────────────────────────────────────────
@@ -586,28 +600,60 @@ type entityGetConfig struct{ *cli.Command }
 func entityGetCmd() *cli.Command {
 	cfg := &entityGetConfig{}
 	return cli.NewCommandAt(&cfg.Command, "get").
-		WithSynopsis("get an entity: get <ref>").
+		WithSynopsis("get one place: get <path> (demo:pr:1 · demo.pr.1.labels · merge.proposal.X.votes(scott))").
 		WithRun(cfg.run)
 }
 
+// get names ONE place and answers what stands there, at whatever depth the path reaches. It
+// goes through /state, which is the read that takes a whole path — so `--at` is gone, and a
+// keyed array element (`votes(scott)`) is reachable, which no verse address could do at all
+// before. Nothing stands there is a 404, because a path this deep names a thing.
 func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: entity get wants a ref (system:kind:id)", cli.ErrUsage)
+		return fmt.Errorf("%w: state get wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
 	}
-	resp, err := httpGet("/entity", url.Values{"ref": {args[0]}})
+	at, kp, err := readAt(args[0])
 	if err != nil {
-		return fmt.Errorf("entity get: %w", err)
+		return fmt.Errorf("%w: state get: %s", cli.ErrUsage, err)
+	}
+	// get names ONE place, so it wants a path that reaches one. A shorter path describes a
+	// slice, and the bare read is what answers those.
+	if entity.AtDepth(kp) < 3 {
+		return fmt.Errorf("%w: state get names one place — %q names a slice, so ask `verse state %s`",
+			cli.ErrUsage, args[0], at)
+	}
+	resp, err := httpGet("/state", url.Values{"at": {at}})
+	if err != nil {
+		return fmt.Errorf("state get: %w", err)
 	}
 	return printBody(cc, resp)
 }
 
+// readAt renders a command-line address as the kinded path a read takes.
+//
+// A ref is the same grammar with `:` for a delimiter, so it is normalized here — the one place
+// that has to know the two spellings were ever two. Anything else is already a kinded path and
+// passes through whole, array reach included: a read can follow `votes(scott)` where a write
+// cannot, so this is deliberately more permissive than entity.ParsePath.
+func readAt(s string) (string, *kpath.KPath, error) {
+	if ref, err := entity.ParseRef(s); err == nil {
+		at := ref.At().KPath()
+		kp, err := entity.ParseAt(at)
+		return at, kp, err
+	}
+	kp, err := entity.ParseAt(s)
+	if err != nil {
+		return "", nil, err
+	}
+	return s, kp, nil
+}
+
 type entityPutConfig struct {
 	*cli.Command
-	At     string `cli:"name=at desc='write INSIDE the payload, at this dot-separated field path (e.g. labels.urgent)'"`
 	Create bool   `cli:"name=create desc='only if nothing is there yet — the write loses a race rather than clobbering'"`
 	Update bool   `cli:"name=update desc='only if something is already there'"`
 	If     string `cli:"name=if desc='only if what is there matches this tony pattern'"`
@@ -620,7 +666,7 @@ func entityPutCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "put").
-		WithSynopsis("put an entity: put <ref> <payload> [--at <field.path>] [--create|--update] [--if <pattern>]").
+		WithSynopsis("put at a path: put <path> <payload> [--create|--update] [--if <pattern>]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -647,23 +693,21 @@ func (cfg *entityPutConfig) conditions() ([]api.Condition, error) {
 	return out, nil
 }
 
-// fieldPath splits a dot-separated --at into the segments the wire takes. A field name
-// containing a dot is not addressable this way; the wire takes the segments as a list, so
-// nothing but this spelling is in the way if one ever needs to be.
-func fieldPath(at string) []string {
-	if at == "" {
-		return nil
-	}
-	return strings.Split(at, ".")
-}
-
 func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("%w: entity put wants a ref and a payload", cli.ErrUsage)
+		return fmt.Errorf("%w: state put wants a path and a payload", cli.ErrUsage)
+	}
+	// ONE ADDRESS, all the way down: `state put demo.pr.1.labels.urgent true` is what
+	// `--at labels.urgent` used to spell. The wire keeps {ref, field[]} — it has no reason to
+	// re-parse what the CLI has already split, and the structured form is what the store's
+	// writePath consumes — so this is the one parser, and Path.String is its inverse.
+	at, err := entity.ParsePath(args[0])
+	if err != nil {
+		return fmt.Errorf("%w: state put: %s", cli.ErrUsage, err)
 	}
 	// A payload typed on the command line names no format of its own, so it is read as
 	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
@@ -674,38 +718,30 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	// though the store and the wire both accept them.
 	payload, err := codec.ParseNode([]byte(args[1]), inFmt())
 	if err != nil {
-		return fmt.Errorf("entity put: payload: %w", err)
+		return fmt.Errorf("state put: payload: %w", err)
 	}
 	when, err := cfg.conditions()
 	if err != nil {
-		return fmt.Errorf("entity put: %w", err)
+		return fmt.Errorf("state put: %w", err)
 	}
 	resp, err := httpPost("/entity", api.PutEntity{
-		Ref:     args[0],
-		Field:   fieldPath(cfg.At),
+		Ref:     at.Ref.String(),
+		Field:   at.Field,
 		Payload: payload,
 		When:    when,
 	})
 	if err != nil {
-		return fmt.Errorf("entity put: %w", err)
+		return fmt.Errorf("state put: %w", err)
 	}
 	return printBody(cc, resp)
 }
 
-type entityRmConfig struct {
-	*cli.Command
-	At string `cli:"name=at desc='remove one field INSIDE the payload, at this dot-separated path'"`
-}
+type entityRmConfig struct{ *cli.Command }
 
 func entityRmCmd() *cli.Command {
 	cfg := &entityRmConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
 	return cli.NewCommandAt(&cfg.Command, "rm").
-		WithSynopsis("rm — remove an entity, or one field of it: rm <ref> [--at <field.path>]").
-		WithOpts(opts...).
+		WithSynopsis("rm — remove what stands at a path: rm <path> (an entity, or one field of one)").
 		WithRun(cfg.run)
 }
 
@@ -715,24 +751,24 @@ func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: entity rm wants a ref (system:kind:id)", cli.ErrUsage)
+		return fmt.Errorf("%w: state rm wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
 	}
-	q := url.Values{"ref": {args[0]}}
-	for _, f := range fieldPath(cfg.At) {
+	at, err := entity.ParsePath(args[0])
+	if err != nil {
+		return fmt.Errorf("%w: state rm: %s", cli.ErrUsage, err)
+	}
+	q := url.Values{"ref": {at.Ref.String()}}
+	for _, f := range at.Field {
 		q.Add("field", f)
 	}
 	resp, err := httpDelete("/entity", q)
 	if err != nil {
-		return fmt.Errorf("entity rm: %w", err)
+		return fmt.Errorf("state rm: %w", err)
 	}
 	defer resp.Body.Close()
-	// Nothing stands there now — which is all there is to say, and is equally true of a ref
+	// Nothing stands there now — which is all there is to say, and is equally true of a path
 	// that held nothing to begin with.
-	what := args[0]
-	if cfg.At != "" {
-		what += " " + cfg.At
-	}
-	fmt.Fprintf(cc.Out, "removed %s\n", what)
+	fmt.Fprintf(cc.Out, "removed %s\n", at)
 	return nil
 }
 

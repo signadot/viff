@@ -119,6 +119,16 @@ has "$(v state demo.pr)" '"1":' || die "state demo.pr did not key by id"
 # (`|` then the line). The value is verse's answer; the framing is the encoder's.
 has "$(v state demo.pr.1.stage)" open || die "a path into the payload did not answer"
 ok "one path, four depths: demo / demo.pr / demo.pr.1 / demo.pr.1.stage"
+# ONE ADDRESS on the verbs too: the path reaches inside the payload, which `--at` used to.
+v state put demo.pr.1.labels.urgent true >/dev/null || die "a deep put by path failed"
+has "$(v state demo.pr.1.labels)" urgent || die "the deep put did not land"
+v state rm demo.pr.1.labels.urgent >/dev/null || die "a deep rm by path failed"
+case "$(v state get demo:pr:1)" in *urgent*) die "the deep rm did not take the field" ;; esac
+# …and the two spellings are one grammar: a ref and its kinded path name the same place.
+haskv "$(v state get demo.pr.1)" stage open || die "the kinded path did not reach the entity"
+haskv "$(v state get demo:pr:1)" stage open || die "the ref spelling did not reach the entity"
+has "$(v state get demo.pr.1.stage)" open || die "a path into the payload did not reach the field"
+ok "one address: put/get/rm reach inside a payload, by ref or by path"
 
 # ── the representation: verse READS three dialects and WRITES two ────────────
 # The asymmetry is the design (see package codec): JSON input is parsed as tony, because

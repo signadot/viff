@@ -527,7 +527,10 @@ func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 	if len(got) != 1 || got[0].Ref != shared || got[0].IsEntity() {
 		t.Fatalf("reflectedBy = %v, want the ENG slot of %v and not the entity", got, shared)
 	}
-	if want := "linear:project:p1.owners.ENG"; got[0].String() != want {
+	// The kinded-path spelling, because the address continues INTO the payload: a ref spells an
+	// entity, and `linear:project:p1.owners.ENG` cannot say whether `owners` is a field or part
+	// of an id. See entity.Path.String.
+	if want := "linear.project.p1.owners.ENG"; got[0].String() != want {
 		t.Fatalf("the place is %s, want %s", got[0], want)
 	}
 	// And the removal writes there: the slot goes, the entity and the other owner stand.

@@ -62,11 +62,11 @@ verse
           [--paths]                          … one address per line instead of the document
           [<path>]                           demo · demo.pr · demo.pr.1 · demo.pr.1.labels
           get <ref> · put <ref> <payload> · rm <ref>
-          put/rm [--at <field.path>]         write or remove INSIDE the payload, not the whole entity
+          put/rm <path>                      the path reaches inside a payload: demo.pr.1.labels.urgent
           put [--create|--update]            only if nothing is there yet · only if something is
           put [--if <pattern>]               only if what is there matches
                                              (a put MERGES: fields it does not name are left alone,
-                                              and `rm --at` is how one goes away)
+                                              and `rm <path>` is how one goes away)
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
