@@ -79,6 +79,9 @@ func readerAt(snap entity.Snapshot) readFn {
 // conditionRoot is what a condition's read may address by reference: nothing. It is an empty
 // record rather than the subject's, so `$subject` in a condition fails as an unknown reference —
 // see checkConditionReads, which says why in the rule's own terms at install.
+//
+// The record it returns carries the subject's own fields, so a read addressed by `$branch`
+// resolves against the entity being selected.
 func conditionRoot() entity.Payload { return ir.FromMap(map[string]*ir.Node{}) }
 
 // conditionReads is the subtrees a condition's own reads touch, for Trigger.reads.
