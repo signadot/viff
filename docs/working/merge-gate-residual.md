@@ -296,6 +296,114 @@ grammar, and two rules conditioned on the answer would say the same thing with n
 
 ## Smaller things the charter works around
 
+## A derive owns facts, and state has to live where it cannot reach
+
+**The defect, observed.** After the first live merge, the proposal read:
+
+```tony
+merged: true
+mergedSha: 9c6ce790…
+reason: "fast-forward merge succeeded and push to main was accepted"
+state: stale            # ← and the branch was retired
+```
+
+Both are true records of what happened, in order: the merge landed and wrote `state: merged`;
+the push moved main; the git source re-reflected the ref; **rule 1 re-derived the proposal**,
+merging its literal `state: open` back over `merged`; rule 3 then saw an open proposal whose base
+was behind and retired it. Nothing was racing that should not have been — the derive simply
+restated a field it had no business owning.
+
+The same mechanism was rewriting `base` to main's CURRENT tip on every re-derive. `base` is the
+commit the branch was cut from, and the whole staleness test is `base != tip` — so the predicate
+was being fed a value that converges on the tip it is compared against. `proposal-outrun` fired
+correctly in the drive by winning a race, not by being right.
+
+**Why this is not a bug in `derive`.** A derive MERGES its literal fields every time it runs, and
+that is load-bearing elsewhere in this very charter: `swept: pending` re-armed itself exactly
+that way. The rule to draw is not "make derive latch" but **a derive owns only what its subject
+says, and anything else lives in fields the derive never names.**
+
+**The shape, expressible today.** One entity still — two would need a join, and a join needs a
+read addressed by `$subject`, which is the wall this note already names.
+
+1. **Rule 1 derives facts alone**: `branch`, `sha`, `repo`. It does NOT name `state` and does not
+   name `base`. Re-deriving is then idempotent, because every field it writes is a function of
+   the ref it is about.
+
+2. **`base` is written once, by a latching patch.** It is time-dependent — it reads main's tip —
+   so it cannot come from a derive that re-runs:
+
+   ```tony
+   - name: proposal-based
+     stratum: merge
+     condition:
+       subject:
+         system: merge
+         kind: proposal
+         value: !not.has-path base          # absent: nobody has pinned it yet
+     action:
+       patch:
+         base: !get-path {system: git, kind: head, id: verse, path: sha}
+   ```
+
+   It fires once per proposal and then selects nothing, because writing `base` takes the subject
+   out of its own selection — the same latching the rest of this charter runs on. The derive
+   cannot undo it, since the derive does not name the field.
+
+3. **Absence is the initial state.** `state` unwritten means "nobody has decided", and only the
+   workflow writes it: `merged` on a landing, `declined` at a denied gate, `stale` when main has
+   passed it, `failed` with `err` when the task could not run. There is no `open` literal to be
+   restated, because open is the absence.
+
+   ```tony
+   # merge-proposal, undecided AND still fast-forwardable
+   value: !and
+   - !not.has-path state
+   - !let {let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}], in: {base: .[tip]}}
+
+   # proposal-outrun, undecided AND passed by
+   value: !and
+   - !not.has-path state
+   - !let {let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}], in: {base: !not .[tip]}}
+   ```
+
+   **On spelling absence.** Two forms hold, and the difference is legibility rather than
+   meaning:
+
+   | | absent | present | present-and-null |
+   |---|---|---|---|
+   | `!not.has-path state` | ✓ | | |
+   | `!not {state: null}` | ✓ | | |
+   | `!has-path state` | | ✓ | ✓ |
+   | `!not !has-path state` | | ✓ | ✓ |
+
+   `!not.has-path state` is the one to write. `!not {state: null}` is the documented idiom and
+   means the same thing, but it reads to anybody who has not memorised the table as "state is
+   not null" — which is its opposite — and a charter is read far more often than it is written.
+
+   THE LAST ROW IS NOT LEGAL TONY. Operators compose with a DOT (`!not.at(a.b)`); two tags
+   separated by a space is not a spelling of anything. It earns a row anyway because the parser
+   ACCEPTS it and answers with `tag: "!has-path"` — the `!not` is not rejected, it is discarded,
+   so the pattern means its own opposite and nothing says so. An illegal form should be refused
+   at the parse, which is where the author is; that is a report for go-tony rather than
+   something this charter can guard.
+
+   Every predicate above was run against verse's own matcher before being proposed.
+
+**What it fixes**: a merged proposal cannot be dragged back to undecided, `base` stays pinned to
+the commit the branch was cut from, and the two fields that used to fight — a derive's literal
+and a workflow's patch — no longer name the same place.
+
+**What it does not**: the docket race below, which is about ordering rather than ownership. Nor
+does it retire the branch of a proposal that merged cleanly; that branch is redundant the moment
+main carries it, and the rule for it is the same predicate with `{state: merged}` in place of the
+absence. Worth adding, worth not conflating.
+
+**The leftovers say the same thing.** That payload still carries `merged`, `mergedSha` and
+`reason` — fields the LLM merge's answer contract wrote, read by two rules that no longer exist.
+A record carrying two generations of a design at once is what this looks like from the outside,
+and is the cheapest way to notice it.
+
 **The sweep cannot see the docket, and it cost a piece of work.** It was written here as a thing
 to watch. It happened: on the first live drive of the new rules, a proposal was approved, its
 merge task started, and rule 3 retired the branch out from under it — within the same second,
