@@ -92,14 +92,42 @@
         # finding. Verified against a real delivered branch.
         name: !glob "verse/auto/*/*"
   action:
+    # FACTS ONLY, and that is the whole of the rule this got wrong. A derive MERGES its literal
+    # fields every time it runs — which this charter relies on elsewhere — so any field named
+    # here is restated on every re-derive. `state: open` dragged a merged proposal back to
+    # undecided and `base` tracked main's current tip, which is the left side of the staleness
+    # test comparing itself against the thing it is compared to.
+    #
+    # What is left is a function of the subject alone, so re-deriving cannot change an answer.
+    # `base` is pinned once by proposal-based below; `state` is written only by the rules that
+    # decide, and its ABSENCE is what undecided means.
     derive:
       merge:
         proposal:
           repo: $subject.value.repo
           branch: $subject.value.name
           sha: $subject.value.sha
-          base: !get-path { system: git, kind: head, id: verse, path: sha }
-          state: open
+---
+# 1b. …and the commit it was cut from is pinned, once.
+#
+# `base` reads main's tip, so it is time-dependent and cannot come from a derive that re-runs.
+# This is the latch the rest of the charter runs on, applied to a field: it selects the proposals
+# nobody has pinned, and writing one takes that proposal out of its own selection. The derive
+# above never names `base`, so nothing restates it afterwards.
+#
+# A proposal is briefly baseless — between the derive and this — which is why every rule that
+# compares against `base` asks for it by comparing, and a comparison against an absent field does
+# not match.
+- name: proposal-based
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value: !not.has-path base
+  action:
+    patch:
+      base: !get-path { system: git, kind: head, id: verse, path: sha }
 ---
 # 2. …and somebody decides it.
 #
@@ -137,11 +165,11 @@
       # between that and a credential expiring. A call list has no answer to say it with. So
       # the charter asks the question instead, and what is left for the task to fail at is
       # infrastructure — which is what failure should mean.
-      value: !let
+      value: !and
+      - !not.has-path state
+      - !let
         let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
-        in:
-          state: open
-          base: .[tip]
+        in: {base: .[tip]}
   gates:
   - name: merge-to-main
     mode: ask
@@ -172,13 +200,16 @@
       patch:
         state: merged
         err: !delete null
-    # What is left to fail is infrastructure, or main moving between this firing and the push
-    # — which the remote refuses with `denyNonFastForwards` rather than accepting quietly. Back
-    # to `open` either way: rule 3 retires it if main has genuinely passed it by, and a later
-    # review re-proposes what it found.
+    # What is left to fail is infrastructure, or main moving between this firing and the push —
+    # which the remote refuses with `denyNonFastForwards` rather than accepting quietly.
+    #
+    # It lands on `failed` and STAYS there. Undecided is the absence of this field, and a patch
+    # cannot unwrite one — `!delete` would, and using it here would put the proposal back in
+    # front of the same gate on the next commit, asking a person to answer again for a run that
+    # broke rather than for a decision that changed. A failure is a fact somebody looks at.
     onFailed:
       patch:
-        state: open
+        state: failed
         err: $err
     onDone:
       patch:
@@ -201,9 +232,13 @@
       patch:
         state: failed
         err: $err
+    # A cancel decided NOTHING, so the proposal goes back to undecided — which is now the
+    # absence of the field, and `!delete` is what unwrites one. This is the case that earns the
+    # operator: somebody stopped the run, so the gate should be asked again, where a FAILED run
+    # should not re-ask anybody anything.
     onCancelled:
       patch:
-        state: open
+        state: !delete null
         err: !delete null
 ---
 # 1b. …and the proposal says what it is about, so the docket can ask a real question.
@@ -231,8 +266,7 @@
     subject:
       system: merge
       kind: proposal
-      value:
-        state: open
+      value: !not.has-path state
   action:
     patch:
       says: !get-path { system: drift, kind: head, id: "head-moved@git:head:verse", path: result.report }
@@ -279,11 +313,11 @@
     subject:
       system: merge
       kind: proposal
-      value: !let
+      value: !and
+      - !not.has-path state
+      - !let
         let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
-        in:
-          state: open
-          base: !not .[tip]
+        in: {base: !not .[tip]}
   action:
     patch:
       state: stale
@@ -299,7 +333,10 @@
       # to repair a contract with, so a spawn carrying one is refused. What used to be read out
       # of the answer — which branches went — is the LIST ITSELF, and the ref is in the record
       # before the task starts.
+    #
+    # The patch above already wrote `stale`, so a failed retirement lands on `stale` with an
+    # `err` beside it: the proposal IS stale whether or not its branch could be removed, and the
+    # branch outliving it is a ref nobody reads rather than a decision anybody is waiting on.
     onFailed:
       patch:
-        state: open
         err: $err
