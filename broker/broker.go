@@ -646,13 +646,16 @@ func (h *handle) SetVector(v *task.Vector, by string) error {
 }
 
 // Resolve answers a gate the worker raised (via do gate). It relays the outcome to the
-// worker's inbox (a resolve item it pulls to unblock) and records the decision on the log,
-// so verse observes the resolution and the entity's pending clears — the return leg of the
-// gate loop. Governance (who may resolve) is versed's concern, upstream of this.
-// Resolve answers a gate the worker raised. It reports whether the decision was a
-// genuine open gate: an unknown id (typo, wrong task) or one already answered finds
-// nothing in pending and returns false, so verse can surface a 404 rather than silently
-// enqueueing a resolve for a decision the worker will never recognize.
+// worker's inbox (a resolve item it pulls to unblock); the decision is recorded on the log
+// only once the worker's inbox poll acknowledges having taken that item (see the in-body
+// note below) — the return leg of the gate loop. Governance (who may resolve) is versed's
+// concern, upstream of this.
+//
+// It reports whether the decision was a genuine open gate: an unknown id (typo, wrong task)
+// or one already answered finds nothing in pending and returns ErrNoSuchDecision or
+// ErrAlreadyAnswered (ErrTaskEnded if the task went terminal with gates still open), so
+// verse can surface a 404 rather than silently enqueueing a resolve for a decision the
+// worker will never recognize.
 func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
