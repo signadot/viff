@@ -63,7 +63,7 @@ verse
                                              'demo.pr.*.stage' · (none) = the whole verse
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
           [--paths]                          … one address per line instead of the document
-                                             FLAGS COME BEFORE THE PATH: state --paths demo.pr
+                                             flags go on either side of the path
           get <path>                         one place, at any depth — and a read may reach into
                                              an array: merge.proposal.X.votes(scott)
           put <path> <payload>               a write reaches object fields, not array elements

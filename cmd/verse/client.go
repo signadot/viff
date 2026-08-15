@@ -821,22 +821,26 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	if handled, err := dispatch(cfg.Command, cc, args); handled {
 		return err
 	}
-	// FLAGS COME FIRST, and the error says so rather than leaving it to be discovered. A
-	// command that HAS subcommands stops parsing flags at its first positional (cli's
-	// Command.Parse passes all=true only for a leaf), so `state demo.pr --paths` hands
-	// `--paths` through as a second positional. That rule is what routes
-	// `state put <ref> <payload> --if <pattern>` to put's own --if, so it is not one to bend
-	// here; it is one to name when somebody trips over it.
-	if len(args) > 1 {
-		if strings.HasPrefix(args[1], "-") {
-			return fmt.Errorf("%w: flags come before the path — `verse state %s %s`",
-				cli.ErrUsage, strings.Join(args[1:], " "), args[0])
-		}
-		return fmt.Errorf("%w: state takes one path, got %d", cli.ErrUsage, len(args))
-	}
+	// FLAGS MAY FOLLOW THE PATH, which takes a second Parse to pick up.
+	//
+	// A command with subcommands stops parsing at its first positional, and has to: that is
+	// what hands `state put <ref> <payload> --if <pattern>` to put's own --if — a precondition
+	// on the write — rather than eating it as this command's filter. dispatch above is where
+	// that case leaves.
+	//
+	// What is left here is the read, whose positional is an ADDRESS rather than a verb, so
+	// nothing after it belongs to anyone else. Parsing the tail is the whole fix, and it runs
+	// up the command tree exactly as the first pass did — `verse state lineage --scope m` picks
+	// up a root option as readily as one of ours.
 	at := ""
-	if len(args) == 1 {
-		at = args[0]
+	if len(args) > 0 {
+		at, args = args[0], args[1:]
+		if args, err = cfg.Parse(cc, args); err != nil {
+			return err
+		}
+	}
+	if len(args) > 0 {
+		return fmt.Errorf("%w: state takes one path, and %q is a second", cli.ErrUsage, args[0])
 	}
 	// Parsed HERE as well as at the server, so a malformed path is a usage error against the
 	// command the operator typed rather than a 400 from a route they did not.
