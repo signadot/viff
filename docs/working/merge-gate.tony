@@ -191,9 +191,19 @@
       # is wanted. If the merge does not fast-forward the push must not happen, and the whole
       # reason it might is now selected against above.
       calls:
+      # THE MIRROR, not origin, and no fetch at all. The task's clone is made FROM the runner's
+      # local mirror (`RemoteName: "mirror"`), which the runner refreshes when it opens the
+      # workspace — so every delivered branch is already here as a remote-tracking ref, and
+      # `origin` is a config entry pointing at a forge this sandbox has no route to fetch from.
+      #
+      # `fetch origin` is what the PROMPT said when this was an agent, and the agent quietly
+      # adapted: it read the failure and used what was there. A call list cannot, which is the
+      # trade — it does exactly what it is told, so what it is told has to be true. This one cost
+      # a `exited 128` and is the clearest argument in the charter for why the list is worth it:
+      # the instruction was wrong for as long as a model was papering over it.
       - tool: run_bash
         input:
-          command: "git -C verse fetch origin $branch && git -C verse merge --ff-only FETCH_HEAD"
+          command: "git -C verse merge --ff-only refs/remotes/mirror/$branch"
       - tool: push
         input: {destination: main}
     onDone:
