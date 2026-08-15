@@ -62,9 +62,11 @@ func TestStatus(t *testing.T) {
 	}
 }
 
-// Status names the installed sources. This is the one line that says anything is ARRIVING:
+// Status names the installed sources. This is the one line that says a source is REGISTERED:
 // every counter above it moves on what verse was already given, so a verse whose source was
-// dropped reads exactly like a healthy quiet one until this list is empty.
+// dropped reads exactly like a healthy quiet one until this list is empty. Reaching the far
+// side is a separate question, not asserted by this list — see the inline note below and the
+// type doc on api.Status.
 func TestStatusSources(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
