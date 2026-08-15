@@ -53,11 +53,6 @@ it. The cut is where a path stops describing a slice and starts naming a thing: 
 a system that is not there have" has `none` as a true answer; `demo.pr.nosuch` names one
 entity, and `{}` would say it is there and empty.
 
-**Flags come before the path** — `verse state --paths demo.pr`. A command that has subcommands
-stops parsing flags at its first positional, which is the rule that lets
-`verse state put <ref> <payload> --if <pattern>` mean the write's precondition rather than the
-read's filter.
-
 A ref is that same path with `:` for a delimiter, which is why `get`/`put`/`rm` still take one
 and why nothing about identity changed: `demo:pr:1` and `demo.pr.1` are one grammar spelled two
 ways.

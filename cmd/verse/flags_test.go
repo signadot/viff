@@ -242,20 +242,35 @@ func TestStateTakesAPath(t *testing.T) {
 	}
 }
 
-// Flags come BEFORE the path, and saying so is the whole of this test.
+// A flag may follow the path, which takes a second Parse to pick up: a command with
+// subcommands stops at its first positional, and `state`'s positional is an address rather than
+// a verb, so nothing after it belongs to anyone else.
 //
-// A command that has subcommands stops parsing flags at its first positional — cli's
-// Command.Parse passes all=true only for a leaf — which is the rule that routes
-// `state put <ref> <payload> --if <pattern>` to put's own --if rather than to the read's
-// filter. The cost is that `state demo.pr --paths` reads --paths as a second path, and the
-// error has to name the cause or it looks like the path was rejected.
-func TestStateNamesTheFlagOrder(t *testing.T) {
+// It is asked of a ROOT option as well as one of state's own, because that is the case that
+// prompted it — `verse state lineage --scope m` — and the second Parse runs up the command tree
+// exactly as the first did.
+func TestStateTakesFlagsAfterThePath(t *testing.T) {
+	// The flags under test are GLOBAL ones, so parsing them writes to g — restored here, or
+	// every test after this one runs in scope "m" rendering yaml.
+	defer func(addr, scope string) { g.Addr, g.Scope = addr, scope }(g.Addr, g.Scope)
+	defer func(f string) { g.OFmt = f }(g.OFmt)
+
 	cmd := rootCmd().FindSub(cli.DefaultContext(), "state")
-	err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "--paths"})
-	if !errors.Is(err, cli.ErrUsage) {
-		t.Fatalf("state demo.pr --paths gave %v, want a usage error", err)
+	for _, args := range [][]string{
+		{"demo.pr", "--paths"},
+		{"--paths", "demo.pr"},
+		{"demo.pr", "--if", "{stage: open}"},
+		{"demo.pr", "--scope", "m"},
+		{"demo.pr", "-o", "yaml"},
+	} {
+		// No server is running, so reaching the dial is proof the parse got that far: a usage
+		// error would mean it did not.
+		if err := cmd.Hooks.Run(cli.DefaultContext(), args); errors.Is(err, cli.ErrUsage) {
+			t.Errorf("verse state %v: %v — the flag did not parse", args, err)
+		}
 	}
-	if !strings.Contains(err.Error(), "verse state --paths demo.pr") {
-		t.Errorf("the error does not say what to type instead: %v", err)
+	// A second POSITIONAL is still an error: one path is what it takes.
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "demo.other"}); !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("two paths gave %v, want a usage error", err)
 	}
 }

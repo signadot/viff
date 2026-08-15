@@ -70,9 +70,8 @@ path, so the same address works at every depth and the answer is the subtree sta
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
 for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take one.
 
-Flags come before the path (`verse state --paths demo.pr`): a command with subcommands stops
-parsing flags at its first positional, and that rule is what keeps
-`verse state put <ref> <payload> --if <pattern>` meaning the write's precondition.
+Flags go on either side of the path — `verse state --paths demo.pr` and
+`verse state demo.pr --paths` are the same command.
 
 `--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a
 subtree need not restate the shape above it: `--if-at labels --if '{urgent: true}'` is
