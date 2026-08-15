@@ -148,6 +148,10 @@ func fold(src []byte, aliases map[string]*ir.Node, isCurated bool) error {
 		return fmt.Errorf("parse schema: %w", err)
 	}
 	for _, d := range docs {
+		// A signature document may OPEN with a comment — every file here does — and a head
+		// comment wraps the document it precedes. Unwrapped, the whole document folds in under
+		// no name and vanishes silently.
+		d = ir.Uncomment(d)
 		name := signatureName(d)
 		if name == "" {
 			continue // a document with no signature name folds in under nothing
@@ -228,6 +232,7 @@ func dissolve(n *ir.Node, strip []string) {
 
 // signatureName reads `signature.name` from a signature document.
 func signatureName(d *ir.Node) string {
+	d = ir.Uncomment(d)
 	if d == nil || d.Type != ir.ObjectType {
 		return ""
 	}

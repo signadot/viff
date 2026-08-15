@@ -363,22 +363,42 @@ func nodeToPayload(node *ir.Node) Payload {
 	if node == nil {
 		return nil
 	}
-	// On a CLONE: StripComments edits in place, and this walks documents verse keeps — the
-	// watched subtree a delta is applied to, a snapshot's own tree — where quietly rewriting
-	// what the store handed back is how two readers of one document stop agreeing.
-	return canonicalFields(ir.StripComments(clone(node)))
+	return canonicalFields(node)
 }
 
 // canonicalFields sorts an object's fields, at any depth, and changes nothing else.
+// A COMMENT WRAPPER IS SORTED INSIDE AND KEPT. A head comment wraps the value it precedes, so
+// the object to canonicalize is under the wrapper — and rebuilding from the wrapper would drop
+// it, which is how a store comes to keep line comments and lose head ones. Half a document's
+// comments is worse than none, because it looks like it worked (logd's own NextState makes the
+// same argument about the same hazard).
 func canonicalFields(n *ir.Node) *ir.Node {
-	if n == nil || n.Type != ir.ObjectType {
+	if n == nil {
+		return n
+	}
+	obj := ir.Uncomment(n)
+	if obj == nil || obj.Type != ir.ObjectType {
 		return n
 	}
 	fields := map[string]*ir.Node{}
-	for k, v := range ir.ToMap(n) {
+	for k, v := range ir.ToMap(obj) {
 		fields[k] = canonicalFields(v)
 	}
-	return ir.FromMap(fields).WithTag(n.Tag)
+	sorted := ir.FromMap(fields).WithTag(obj.Tag)
+	sorted.Comment = obj.Comment
+	return rewrap(n, sorted)
+}
+
+// rewrap puts sorted back inside whatever comment wrappers stood around orig, outermost last,
+// so the head comments a document was written with survive being canonicalized.
+func rewrap(orig, sorted *ir.Node) *ir.Node {
+	if orig == nil || orig.Type != ir.CommentType || len(orig.Values) != 1 {
+		return sorted
+	}
+	inner := rewrap(orig.Values[0], sorted)
+	out := &ir.Node{Type: ir.CommentType, Values: []*ir.Node{inner}, Lines: orig.Lines, Comment: orig.Comment}
+	inner.Parent = out
+	return out
 }
 
 // addRemovedNulls makes a Patch replace rather than merge: for every field present
@@ -1086,6 +1106,7 @@ func walkLeaves(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 			fn(segs, n)
 			return
 		}
+		n = ir.Uncomment(n) // a comment is not a container
 		if n == nil || n.Type != ir.ObjectType {
 			return
 		}
@@ -1614,6 +1635,7 @@ type entityChange struct {
 
 // childByKey returns the value node under key in an object node, or nil.
 func childByKey(node *ir.Node, key string) *ir.Node {
+	node = ir.Uncomment(node) // a comment wraps the value it precedes; a walk is about structure
 	if node == nil || node.Type != ir.ObjectType {
 		return nil
 	}

@@ -104,6 +104,9 @@ func narrow(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
 	if kp == nil {
 		return node, nil
 	}
+	// A comment WRAPS the value it precedes, and a path is about structure: `demo.pr.1.stage`
+	// means the same thing whether or not somebody wrote a note above the payload.
+	node = ir.Uncomment(node)
 	if node == nil {
 		return nil, nil
 	}
@@ -243,7 +246,7 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 			out = append(out, Entity{Ref: ref, Payload: n})
 			return
 		}
-		if n == nil || n.Type != ir.ObjectType {
+		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
 			return
 		}
 		for i, f := range n.Fields {
