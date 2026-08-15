@@ -25,7 +25,15 @@ when a controller reaches docd by another address than verse does. See
 ## The mapping
 
 The store maps each entity to a kinded path `verse.<system>.<kind>.<id>`, reads and writes via
-Match/Patch, and drives the change stream and revision cursor from a single logd watch.
+Match/Patch, and drives the change stream and revision cursor from a single logd watch. That
+mapping is the whole of what `verse state` publishes: the document it answers with IS this one,
+addressed by the same path ([entities.md](entities.md#reading)).
+
+**Absence is a missing key, not a null.** A removal is `!delete`, which logd executes by taking
+the key out — so a deleted ref reads back not_found, and a null is a payload like any other. The
+two walks say the same thing at different times: a MATERIALIZED subtree (`walkEntityDoc`, what a
+read and a snapshot see) has no removals in it to find, while a DELTA (`walkEntityChanges`) has
+no absence to observe and spells a removal with the `!delete` tag.
 
 `Since` is served natively by a `FromCommit` replay watch, so a long hold costs a cursor
 rather than a buffer. Commit numbers are monotonic but **sparse**, so the engine treats a
@@ -38,7 +46,7 @@ identical to update, since logd delivers the writer's applied patch verbatim.
 This one is subtle, and it is the load-bearing assumption worth naming.
 
 A single docd commit can atomically patch many entities, but the store normalises each commit
-into **one change event per entity** — `walkEntities`, at path-depth `system/kind/id` — all
+into **one change event per entity** — `walkEntityChanges`, at path-depth `system/kind/id` — all
 sharing that commit's revision. That normalisation is exactly what guarantees a trigger's
 subject is always one entity: dispatch is per-entity-edge, so `$subject`, and the flow or goal
 keyed on it, is never ambiguous even under a broad match, since a broad pattern just fans out

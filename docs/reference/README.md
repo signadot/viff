@@ -46,8 +46,8 @@ verse
                                              A name prints just that one definition
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
-  watch  [--if <pat>] [--if-at <path>]       stream store changes (cursored)
-         [--since <rev>] [<path>]           … the same path a read takes
+  watch  [--since <rev>] [<path>]            stream store changes (cursored) — the same path
+                                             a read takes, naming the same entities
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
@@ -58,15 +58,23 @@ verse
   `state` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
   so there is no plural to alias and its positional is an address rather than a verb.
 
-  state   [--if <pat>] [--if-at <path>]      the verse at a path — flags BEFORE the path
+  state   [<path>]                           the verse at a path: the subtree standing there
+                                             demo · demo.pr · demo.pr.1 · demo.pr.1.labels.urgent
+                                             'demo.pr.*.stage' · (none) = the whole verse
+          [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
           [--paths]                          … one address per line instead of the document
-          [<path>]                           demo · demo.pr · demo.pr.1 · demo.pr.1.labels
-          get <ref> · put <ref> <payload> · rm <ref>
-          put/rm <path>                      the path reaches inside a payload: demo.pr.1.labels.urgent
+                                             FLAGS COME BEFORE THE PATH: state --paths demo.pr
+          get <path>                         one place, at any depth — and a read may reach into
+                                             an array: merge.proposal.X.votes(scott)
+          put <path> <payload>               a write reaches object fields, not array elements
+          rm  <path>                         an entity, or one field of one
           put [--create|--update]            only if nothing is there yet · only if something is
           put [--if <pattern>]               only if what is there matches
                                              (a put MERGES: fields it does not name are left alone,
                                               and `rm <path>` is how one goes away)
+          An address is one grammar in two delimiters: `demo:pr:1` is a ref and names the
+          entity whole; `demo.pr.1.labels` continues into the payload. Whichever delimiter
+          comes first is the one in use, so an id may hold either.
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s

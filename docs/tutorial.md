@@ -68,7 +68,7 @@ verse state get demo:pr:1                           # …or by ref, which is the
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse state` answers it at a
 path, so the same address works at every depth and the answer is the subtree standing there.
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
-for. A ref is that path with `:` for a delimiter, which is why `get` still takes one.
+for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take one.
 
 Flags come before the path (`verse state --paths demo.pr`): a command with subcommands stops
 parsing flags at its first positional, and that rule is what keeps

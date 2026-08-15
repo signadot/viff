@@ -138,7 +138,7 @@ func choices(v any) []string {
 
 // providerCmd lists the provider registry — the attribute-rich doers a select gate draws
 // from (provider:<capability>:<id>). Providers are registered as entities (e.g.
-// `verse entity put provider:review:claude '{"driver":"llm","tier":"premium"}'`).
+// `verse state put provider:review:claude '{"driver":"llm","tier":"premium"}'`).
 //
 // Singular with a plural alias, like every other collection, even though it has no verbs to
 // act through: the rule an operator learns is "the command is the singular", and one listing

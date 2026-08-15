@@ -37,7 +37,7 @@ func runnerCmd() *cli.Command {
 }
 
 // runnerPath turns the ref an operator types into the route's two segments, accepting it with
-// or without the `runners:` prefix — an operator reading `verse entity` and one typing
+// or without the `runners:` prefix — an operator reading `verse state` and one typing
 // `verse runner show` should not have to know two spellings of one thing.
 func runnerPath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "runners:"), ":", 2)

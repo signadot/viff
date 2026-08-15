@@ -61,8 +61,15 @@ Two facts settle the design:
 So the watch is already an edge stream (one event per commit = one transition),
 and the delta *is* the edge. We don't have to choose level-triggering and lose
 transients — logd hands us edges. And a delta carries exactly two recoverable facts,
-both without prior state: a tombstone (null leaf) → `Delete`, any value →
-`Set`. That is the whole of `Op`.
+both without prior state: a removal → `Delete`, any value → `Set`. That is the whole
+of `Op`.
+
+A removal is the **`!delete` tag**, not a null. A delta is where a removal has to be
+spelled, because there is no absence to observe in a patch — and the tag is what verse
+writes (`entity.Removed`) and what `tony.Diff` emits for a key that went away. A bare
+null in a delta is an ordinary value being set: `payload: null` is a legal payload, and
+reading it as a removal is what made it one no entity could hold (`entity/logdstore.go`,
+`walkEntityChanges`).
 
 ## The decision
 
@@ -156,7 +163,7 @@ as changed after any resync, so re-establishing a watch re-emits the whole slice
 trigger over it fires again for nothing. This is
 what `LogdStore.WatchSubtree` does — and also what the root watch and the `Since`
 replay do, to level their payloads (`applyDelta`). The residual: those two still take the
-*set of changed refs* from the delta's structure (`walkEntities`) rather than from a diff of
+*set of changed refs* from the delta's structure (`walkEntityChanges`) rather than from a diff of
 the reconstructed document, which is safe only because a baseline delta is always a verbatim
 merge, never a scope-computed `!replace`. A root watch over a scope would need the diff.
 
@@ -230,7 +237,7 @@ answers it — match a field the action advances — and a re-write to the same 
 
 A logd commit is a single, atomic transaction that can patch many branches at once —
 several `verse.<system>.<kind>.<id>` paths, across systems and kinds. But an
-`entity.Event` names exactly one `Ref`, so the store normalises: `walkEntities` recurses
+`entity.Event` names exactly one `Ref`, so the store normalises: `walkEntityChanges` recurses
 the commit's delta and, at path-depth 3 (`system/kind/id`), emits one `Event` per
 entity — all sharing that commit's number as their `Rev` (`LogdStore.eventsFromDelta`).
 Patch five branches in one tx → five per-entity events; patch a whole kind subtree, or

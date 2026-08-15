@@ -90,7 +90,7 @@ func TestCollectionsAreOneSingularCommand(t *testing.T) {
 		if s.Name != singular {
 			t.Errorf("verse %s resolves to %q — the command is the singular", singular, s.Name)
 		}
-		// A group with no Run of its own answers `verse entity` with "no command provided".
+		// A group with no Run of its own answers `verse gate` with "no command provided".
 		if s.Hooks.Run == nil {
 			t.Errorf("verse %s: no listing — bare it must list", singular)
 		}

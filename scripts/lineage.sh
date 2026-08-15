@@ -83,6 +83,17 @@ if [ -z "$BIN" ]; then
 		die "no verse binary — build one (go build -o verse ./cmd/verse) or set VERSE=<path>"
 	fi
 fi
+
+# THE BINARY HAS TO SPEAK `state`. These scripts read the verse as one document at a kinded
+# path, and a CLI from before that has `entity` instead — whose failure is a usage error and
+# the whole command tree, which says nothing about why. The trap is a STALE `./verse` in the
+# working directory: it is preferred over $PATH above, so a checkout that built one months ago
+# keeps using it long after `go install` refreshed the real one.
+if ! "$BIN" 2>&1 | grep -qE '^ *state '; then
+	die "$BIN does not have \`verse state\` — it predates the one-document read.
+     Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
+     or point VERSE=<path> at a current one."
+fi
 v() { "$BIN" "${scope[@]}" "$@"; }
 
 v status >/dev/null 2>&1 ||
@@ -303,7 +314,7 @@ note "the trace's id is f(rule, subject) — re-merging #42 rewrites THIS addres
 
 # #44 is the control. It shares a headSha with #42, so a rule keyed on the commit would have
 # correlated it; the subject predicate is what says only merged PRs have lineage.
-v state lineage -o tony | grep -qF 'github:pr:acme/widget#44' &&
+v -o tony state lineage | grep -qF 'github:pr:acme/widget#44' &&
 	die "an unmerged PR was correlated — the subject predicate is not selecting"
 ok "#44 is unmerged, so nothing was derived about it (it shares its headSha with #42)"
 

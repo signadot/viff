@@ -17,7 +17,7 @@ import (
 // instead.
 
 // Valid JSON is valid tony. This is why a JSON document can be read by the tony parser
-// without knowing it is JSON, and why `entity put demo:pr:1 '{"stage":"open"}'` keeps
+// without knowing it is JSON, and why `state put demo:pr:1 '{"stage":"open"}'` keeps
 // working after tony becomes the default input format.
 //
 // It does NOT license sniffing: the converse is false (a tony document is not valid JSON),

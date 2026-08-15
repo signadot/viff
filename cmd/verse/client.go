@@ -485,7 +485,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 // everywhere else.
 //
 // Single-line per event stays, which is not the same question. A stream is read as it scrolls
-// and grepped afterwards; the block form belongs to `entity get`, where the document is the
+// and grepped afterwards; the block form belongs to `state get`, where the document is the
 // whole answer rather than one of a thousand.
 //
 // A line it cannot parse is passed through as it arrived. On a live stream a surprising line
