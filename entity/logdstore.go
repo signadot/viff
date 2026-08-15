@@ -343,13 +343,30 @@ func payloadToNode(p Payload) *ir.Node {
 // `!delete` executes, so an absent entity has no node to read and Match answers not_found.
 // There is nothing left for a null to disambiguate.
 //
-// Nothing is dropped here at all now: a nil node in, a nil payload out, and every node that
-// exists is the value that stands there.
+// COMMENTS ARE STRIPPED, and that is the one thing this does drop — because the store keeps
+// them and verse is a caller that wants values. logd's own contract says so in those terms:
+// "comments go in and come back. A caller that does not want them strips them, which is one
+// call" (system/logd/api's NextState), and SameState counts them, so a comment-only edit is a
+// commit every watch sees.
+//
+// It has to happen HERE, at the one boundary every payload verse hands out is made at, because
+// a head comment WRAPS the value it precedes in a CommentType node. A payload standing behind
+// one is not an object as far as anything that asks: Get, Str, Fields and IsObj all answer
+// empty, `verse state demo.pr.1.stage` refuses the field, and a `$stage` binding comes back
+// blank. Worse, tony.Match sees through comments, so a trigger SELECTS the entity and then
+// reads nothing out of it — a rule that fires on the right subject and acts on nothing.
+//
+// Verse does not write comments (its parse does not ask for them), so this is about what
+// somebody else wrote: a store is not verse's alone, and a document put there by `o` or by
+// hand is one verse still has to be able to read.
 func nodeToPayload(node *ir.Node) Payload {
 	if node == nil {
 		return nil
 	}
-	return canonicalFields(node)
+	// On a CLONE: StripComments edits in place, and this walks documents verse keeps — the
+	// watched subtree a delta is applied to, a snapshot's own tree — where quietly rewriting
+	// what the store handed back is how two readers of one document stop agreeing.
+	return canonicalFields(ir.StripComments(clone(node)))
 }
 
 // canonicalFields sorts an object's fields, at any depth, and changes nothing else.
