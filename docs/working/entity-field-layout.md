@@ -114,6 +114,24 @@ Nothing is mandatory either. An entity nobody authored has no `value`; one verse
 touched has no `status`; most have neither `vanishing` nor `derivedFrom`. The envelope is a
 reservation, not a schema.
 
+**Why not comments or tags instead of an envelope?** They are the obvious alternative, since
+both attach to a node without being a field of it — which is exactly what a scalar payload
+needs, and exactly what the envelope is for. Both are the AUTHOR's channels, and that is what
+rules them out:
+
+- A comment is prose somebody wrote, and the store now counts it: `SameState` compares with
+  comments, so verse writing one is a commit and a change event. Machine facts do not belong in
+  a channel where a human's note is the ordinary content.
+- A tag is worse, because tags COMPOSE. A payload's own tag is already meaningful — a goal's
+  `doneWhen: !fact {…}` is stored tagged and read back tagged — and `entity.AsData` exists
+  because patching a tagged value onto a tagged one accumulated them (`!fact.fact.fact.fact`,
+  observed). Verse adding `!vanishing` to an author's tagged value would change what the value
+  means.
+
+So the carriers a node offers besides fields are both spoken for, and the envelope is what is
+left. It is also the only one of the three that can hold structure: `derivedFrom: {rule,
+subject}` is a record, and a comment is lines of text.
+
 **What it costs**, since it is a real loss and not free: there is no longer one path that
 answers "everything verse knows *about* this entity". `demo.pr.1.meta` would have been that, and
 a kpath cannot say "everything except `value`". Whether that question gets asked often enough to
@@ -171,6 +189,37 @@ git-issue.repo` to say which of its fields are computed and which are held — a
 answers the whole verse — so if every kind carries one, a bare read becomes N sweeps. Whatever
 the answer is (evaluate only under the path asked for, cache by revision, refuse one above some
 depth), it has to be decided before this is offered rather than after.
+
+## Comments on a declaration, and the annotation that would carry them
+
+A charter installed from a file loses the comments its author wrote, and the layout is why: a
+rule is stored by decoding it to a Go struct and re-encoding (`persist` writes `t.ToTonyIR()`),
+so only the parts carried as raw nodes survive. `action.patch`'s comments come back;
+the lines above `name:` and `subject:` do not.
+
+Codegen has the mechanism for it — `//tony:schemagen=…,comment=<Field>,LineComment=<Field>`
+puts a struct's own head and line comments into named Go fields — and it is **built in one
+direction only**. Generated `FromTonyIR` unwraps the comment node and captures the lines;
+generated `ToTonyIR` emits nothing. The reflection path says so outright
+(`gomap/mapper_to.go`): *"We'll populate this when we have access to the source IR node. For
+now, this is a placeholder for when marshaling from IR -> IR."* The option is also spelled two
+ways — `lineComment` by reflection, `LineComment` by codegen — so a struct annotated for one is
+silently ignored by the other. Filed upstream as `vtm464whh12krm70g1n0`.
+
+So there are two routes to a rule that keeps its comments, and the choice is not this note's to
+make until the upstream half exists:
+
+- **Annotate the structs.** Every type in the charter grammar declares a comment field, and the
+  stored record stays the normalized one it is today — `verse state get trigger.rule.review`
+  still shows what the engine will do, now with the author's reasons beside it. Costs two fields
+  on each of a dozen types, and is blocked only on the encode half upstream. If that lands, this
+  is the answer and the fork below closes.
+- **Store the document as authored.** `persist` writes what it was given rather than what it
+  decoded. Needs nothing upstream, and the read path already re-normalizes — `LoadCharter` →
+  `ruleOf` → `addTrigger`, which desugars and re-validates, so a spec carrying the sugar
+  spelling still registers the canonical tagged form. What it costs is that the record stops
+  being the normalized form, so `verse state get trigger.rule.review` shows what somebody typed
+  rather than what the engine will do.
 
 ## What breaks
 
