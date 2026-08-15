@@ -127,8 +127,21 @@
     subject:
       system: merge
       kind: proposal
-      value:
-        state: open
+      # ONLY WHILE IT CAN STILL LAND. A branch fast-forwards onto main exactly while main is
+      # where it was cut from, so `base == tip` is the same predicate rule 3 uses negated —
+      # and asking it HERE is what lets the task below be a call list.
+      #
+      # It used to be the task's job: an agent ran `--ff-only`, was refused, and reported
+      # `merged: false` through an answer contract, because "main moved" is the ORDINARY
+      # outcome of this gate and routing it through failure would have lost the difference
+      # between that and a credential expiring. A call list has no answer to say it with. So
+      # the charter asks the question instead, and what is left for the task to fail at is
+      # infrastructure — which is what failure should mean.
+      value: !let
+        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        in:
+          state: open
+          base: .[tip]
   gates:
   - name: merge-to-main
     mode: ask
@@ -140,47 +153,33 @@
     spawn:
       runner: runners:pool:code
       environment: verse-merge
-      driver: llm
       grant: no-delegate
       vector: auto
-      prompt: |
-        In ./verse, merge the branch $branch into your working branch and send it to main, and
-        do nothing else.
-
-            git -C verse fetch origin
-            git -C verse merge --ff-only origin/$branch
-
-        Then call the `push` tool with destination `main`. You cannot run `git push` yourself and
-        must not try: you have no credential, and the runner is what holds one. It pushes what
-        your branch is at, to the ref this environment declares as `main`, and it may be refused
-        — by a supervisor, or by the remote's own rules about its history.
-
-        `--ff-only` is not optional and must not be worked around. If it refuses, main has moved
-        since this branch was cut and the branch is STALE: do not rebase it, do not merge it any
-        other way, and do not resolve a conflict. Say you could not do it and why — a stale
-        proposal is withdrawn and re-proposed by the review that made it, which remembers what
-        it found and will look again at whatever main now says.
-
-        A refused push means the same thing and gets the same answer.
-
-        Answer with a JSON document and nothing else:
-
-            {"merged": true, "branch": "$branch", "sha": "<the sha now on main>"}
-      # `merged` is a RESULT and not a success flag, which is the difference this got wrong once.
-      # Main moves constantly here, so a proposal is usually stale by the time anybody answers —
-      # "could not fast-forward" is the ORDINARY outcome of this gate, not its error branch. The
-      # task did its job when it tried and was refused, so it completes and SAYS so; failing it
-      # would route the expected case through the branch meant for the unexpected one and lose
-      # the difference between "main moved" and "the credential expired".
+      # Four git commands were what this always was. The model was rediscovering them every
+      # firing, and when the branch went out from under it — retired by rule 3 while its motion
+      # was open — it went looking for the objects on the filesystem instead of stopping.
       #
-      # task.Err draws the same line from the other side: "Err is infrastructure failure;
-      # semantic failure is the charter's to check by naming what it expects". This is the
-      # charter naming it.
-      answer:
-        merged: !irtype true
-        reason: !irtype "not a fast-forward: main has moved since this branch was cut"
-        branch: !irtype "verse/auto/example"
-        sha: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
+      # No `fatal:` on either call: the default is that anything ends the list, which is what
+      # is wanted. If the merge does not fast-forward the push must not happen, and the whole
+      # reason it might is now selected against above.
+      calls:
+      - tool: run_bash
+        input:
+          command: "git -C verse fetch origin $branch && git -C verse merge --ff-only FETCH_HEAD"
+      - tool: push
+        input: {destination: main}
+    onDone:
+      patch:
+        state: merged
+        err: !delete null
+    # What is left to fail is infrastructure, or main moving between this firing and the push
+    # — which the remote refuses with `denyNonFastForwards` rather than accepting quietly. Back
+    # to `open` either way: rule 3 retires it if main has genuinely passed it by, and a later
+    # review re-proposes what it found.
+    onFailed:
+      patch:
+        state: open
+        err: $err
     onDone:
       patch:
         # `!when` WAS THE WRONG GUESS, and installing this is what settled it. There is no such
@@ -238,44 +237,13 @@
     patch:
       says: !get-path { system: drift, kind: head, id: "head-moved@git:head:verse", path: result.report }
 ---
-# 2b, 2c. …and the answer becomes a state, in the two rules a patch cannot be.
+# 2b, 2c ARE GONE, and their absence is the point.
 #
-# A patch DEREFS and does not BRANCH, which is what `!when` above was reaching for and is not.
-# Two rules say it with no new operator: each selects the answer it is about and writes the state
-# that follows, and neither re-fires, because writing the state takes the subject out of its own
-# selection.
-#
-# They spawn nothing, so they need no latch and no gate: the decision was made at rule 2's gate,
-# and this is bookkeeping about what came back. `decided` exists only between the task ending and
-# these firing, which is a boundary a reader will occasionally catch and should be able to read.
-- name: proposal-merged
-  stratum: merge
-  condition:
-    subject:
-      system: merge
-      kind: proposal
-      value:
-        state: decided
-        merged: true
-  action:
-    patch:
-      state: merged
----
-# The ORDINARY outcome, and it is not a failure: main moved while somebody was answering, the
-# task tried `--ff-only`, and the remote said no. The review that produced the branch is
-# idempotent, so a stale proposal is withdrawn and re-proposed by a later pass.
-- name: proposal-stale
-  stratum: merge
-  condition:
-    subject:
-      system: merge
-      kind: proposal
-      value:
-        state: decided
-        merged: false
-  action:
-    patch:
-      state: stale
+# They read the merge task's ANSWER — `decided` plus `merged: true|false` — and turned it into
+# a state, because a patch derefs and does not branch. With the merge as a call list there is
+# no answer to read: the task either did it or did not, so `onDone` writes `merged` and
+# `onFailed` writes `open`, and the intermediate `decided` state nobody could act on stops
+# existing. Two rules and one state, deleted by a driver change.
 ---
 # 3. Main moved, so the proposals cut from where it used to be can no longer land — and each
 # one's branch is retired.

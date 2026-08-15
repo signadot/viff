@@ -18,7 +18,7 @@ vector gates the ref it resolves to, and approval is what releases the credentia
 merges `--ff-only` locally and asks for the destination `main`, in the environment `verse-merge`
 that exists to declare it.
 
-Rule 4 still cannot run, and what stops it has moved twice since this was written. The delete it
+Rule 4 RUNS, and what stopped it moved twice on the way there. The delete it
 needs LANDED — a destination may declare `delete: true`, which derives `Verb: Delete` rather than
 `Verb: Push` so a charter can gate retiring separately from delivering, and `merge-gate.tony`'s
 sweep already names the `retire` destination. The task half is no longer an LLM either: since the
@@ -27,7 +27,16 @@ refusal it can survive is `fatal: []`.
 
 Discovery — which branches to retire — was the last of it, and it landed too: a condition can
 read another entity now, so the charter says which proposals main has outrun and spawns one call
-per branch. See below, and rule 3 in the charter.
+per branch. Driven live: a branch retired in ONE SECOND, no model, no fetch, no discovery — where
+the LLM sweep it replaced spent eighteen boundaries hunting for a credential. What that drive also
+found is below, under the docket.
+
+**The merge went with it.** Rule 2 was the last agent here, and its answer contract was what kept
+it one: `merged: false` meant "main moved", the ORDINARY outcome, deliberately not a failure —
+and a call list has no answer to say that with. The charter asks instead, in the condition
+(`base == tip`, the same read rule 3 uses negated), so what is left for the task to fail at is
+infrastructure. Two more rules went with THAT: `proposal-merged` and `proposal-stale` existed
+only to turn the answer into a state.
 
 ### …and most of what the sweep is for needs no git at all
 
@@ -287,10 +296,17 @@ grammar, and two rules conditioned on the answer would say the same thing with n
 
 ## Smaller things the charter works around
 
-**The sweep cannot see the docket.** It must not delete a branch whose question is still standing
-— today it would, and the operator answers into a void. It is *nearly* expressible, and closer
-than this note first said: a gate carrying a formula becomes a **motion**, and a motion is an
-entity. Checked by installing the charter and poking a proposal at it by hand:
+**The sweep cannot see the docket, and it cost a piece of work.** It was written here as a thing
+to watch. It happened: on the first live drive of the new rules, a proposal was approved, its
+merge task started, and rule 3 retired the branch out from under it — within the same second,
+because a call list retiring a branch takes one. The merge agent then went looking for the
+missing objects on the filesystem (`searching whole fs excluding proc for objects containing sha
+…`), which is the behaviour the calls driver exists to remove and is what made the omission
+visible. The fix it had produced was lost, the motion closed `proceed` against work that no
+longer existed, and the branch was gone.
+
+**It is nearly expressible and not quite, and the gap is one this note can now name precisely.**
+A gate carrying a formula becomes a MOTION, and a motion is an entity carrying its subject:
 
 ```tony
 ref: motion:channel:f846a045
@@ -301,15 +317,39 @@ payload:
   deadline_at: "2026-08-15T16:02:26+02:00"
 ```
 
-So the spelling is `!list-paths {system: motion, kind: channel, value: {status: open}, path:
-subject}` — NOT `gate:question:*` with `status: pending`, which is what this note guessed and is
-wrong in all three of system, kind and field. And it is better than guessed: the motion carries
-its `subject`, so what the sweep needs to avoid is a field away rather than something it has to
-join for.
+So the predicate a sweep wants is "no open motion names ME" —
+`!list-paths {system: motion, kind: channel, value: {status: open}, path: subject}` compared
+against `$subject`. Both halves exist: a condition can read another entity now, and `!let` binds
+what it reads. What does not is the comparison, because **a condition's read cannot address
+`$subject`** — refused at install, deliberately, since the read is answered ONCE PER FIRING and a
+condition is what chooses the subject, so there is no one entity to be about yet.
 
-Left out of the first version because it makes the prompt do bookkeeping the charter should do,
-and because with level-triggered gates the ordering stops mattering — delete the branch, the
-question goes.
+That refusal is right for the read it describes and wrong for the rule that wants this one. The
+ask underneath is a read resolved PER CANDIDATE: evaluate the predicate against each entity the
+match selects, with `$subject` bound to that entity, at the cost of one read per candidate rather
+than one per firing. That is a real design question — it changes what a condition costs, and the
+per-firing snapshot argument has to be restated for it — rather than a defect. It is the second
+time this limit has been the thing in the way; the first was the ask this note used to state.
+
+**Until then the ordering is the containment**, and it is worth saying which way round: retire
+LATE, not early. A branch that main has passed is not urgent — nothing reads it, and it costs a
+ref — while a merge that loses its branch mid-flight loses the work. A deadline on the motion
+already bounds how long that window is (`!until [!quorum 1, !deadline "24h"]`), so a sweep that
+skipped proposals younger than the deadline would collide with nothing, without needing to see
+the docket at all. Cruder than the predicate above, expressible today, and untried.
+
+**And it leaves the LEDGER lying.** The retired branch carried a fix, and the review that made it
+had already recorded `task.Fatals: resolved` in `drift:finding:*` — resolved being a claim about
+the WORKING TREE the agent fixed, not about main. Delete the branch and main still has the stale
+comment while the ledger says somebody dealt with it. Nothing re-examines it, because a review
+reads the files a commit touched and no commit touches that file again. So the cost of the race
+is not one lost branch: it is one lost branch plus a finding that will never be found again.
+
+The ledger's `status` is answering two questions with one word — "is this comment still wrong"
+and "did somebody write a fix somewhere" — and the second is only interesting while the first is
+false. Resolving on DELIVERY rather than on the agent's say-so would collapse them, which is a
+change to comment-drift.tony rather than to this charter, and is recorded here because this is
+where the consequence showed up.
 
 **`verse gate approve <id>` does not answer one.** It 404s with *no such question*: `verse gate`
 is the task-gate view, and a motion is answered by `verse vote <motion> approve --as <who>`. The
