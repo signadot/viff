@@ -1,7 +1,5 @@
 package entity
 
-import "github.com/signadot/tony-format/go-tony/ir"
-
 // Store is the entity-verse as its consumers (engine, mirror, actions) see it:
 // write changes, read state, observe the change stream, and catch up from a
 // revision cursor. It is deliberately minimal and transport-agnostic: the store it is
@@ -111,19 +109,7 @@ type Store interface {
 	DeleteScope(name string) error
 }
 
-// IsAbsent reports whether a Require's pattern is the absence question.
-//
-// It has to be askable structurally, not just evaluated, because THE TWO SUBSTRATES SPELL
-// ABSENCE DIFFERENTLY. Absence is a property of a PATH, not of a value: evaluated against the
-// node at a ref, a missing entity reads as tony null; but docd nests every precondition into
-// one root-document match, where a never-written entity is a missing KEY (no null to match)
-// and a DELETED one is a key holding a tombstone. So the same question is `!irtype null` in
-// one spelling and a negated-or-tombstoned path in the other (see LogdStore.CommitIf).
-func IsAbsent(p Payload) bool {
-	return p != nil && p.Type == ir.NullType && p.Tag == "!irtype"
-}
-
-// Absent is the precondition pattern for "nothing is there". A missing entity reads as tony
-// null, and a null PATTERN would match any value (it is the presence test) — so asking about
-// the value's type is what distinguishes absent from merely present.
-func Absent() Payload { return ir.Null().WithTag("!irtype") }
+// ABSENCE IS NOT A PATTERN, and used to be spelled as one: `Absent()` returned `!irtype null`,
+// which the store recognized structurally and never evaluated. See Require.Absent — the
+// question moved onto its own field, where it cannot be mistaken for the value question that
+// spelling actually asks.

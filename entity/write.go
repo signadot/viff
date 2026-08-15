@@ -63,11 +63,28 @@ type Require struct {
 	At Path
 	// Pattern is a tony match against whatever stands at At:
 	//
-	//	Absent()               nothing is there — a create
 	//	Present()              something is there — an update
+	//	Unchanged(cur)         it is still what I read
 	//	Obj{...}.Payload()     it looks like this
 	//	!not {…}, !glob, …     anything else tony.Match can say
+	//
+	// Ignored when Absent is set: there is no value there to ask a question about.
 	Pattern Payload
+	// Absent requires that NOTHING stands at At — the create.
+	//
+	// IT IS A FIELD RATHER THAN A PATTERN, and the difference is the whole of what a pattern
+	// can and cannot say. Absence is a property of the PATH: the document has no key here, so
+	// there is nothing for a pattern placed at that path to be evaluated against. The store
+	// renders it as a negated presence one level up instead (absentPath).
+	//
+	// It used to be a pattern — `Absent()`, i.e. `!irtype null` — which the store recognized by
+	// its shape and routed away before anything could evaluate it. That worked exactly as long
+	// as no entity could hold null, because `!irtype null` is a real tony operator and what it
+	// genuinely asks is "the value here has type null". Once null became a legal payload the
+	// two questions came apart, and the pattern spelling answered the wrong one: an entity
+	// standing at a path holding null would have read as nothing standing there at all, so a
+	// create would have committed straight over it.
+	Absent bool
 }
 
 // Present is the precondition pattern for "something is there, whatever it is". A null
@@ -75,7 +92,9 @@ type Require struct {
 // the exact complement of Absent, which asks about the value's type instead.
 func Present() Payload { return ir.Null() }
 
-// Removed is how a WRITE says a field is gone: `rec["delivered"] = entity.Removed()`.
+// Removed is how a WRITE says a value is gone — at any depth, the entity's own path included:
+// `rec["delivered"] = entity.Removed()` drops a field, and it AS an action's whole patch drops
+// the entity (the reaper, docs/trigger-model.md).
 //
 // It is spelled rather than implied, and that is the whole lesson of the convention it
 // replaces. Absence used to be a bare null — `rec[k] = nil` — which read beautifully and cost
@@ -84,6 +103,9 @@ func Present() Payload { return ir.Null() }
 // however tempting: `{owners: {ENG: nil}}` in source/linear is a MATCH, where a bare null is
 // the presence wildcard, so one spelling would have had to mean two opposite things depending
 // on which side of a comparison it landed.
+//
+// The entity's own path was the last place a bare null still meant removal, and it is not an
+// exception any more: one operator, any depth.
 func Removed() Payload { return deleteOp() }
 
 // deleteOp is how verse spells "this is gone" IN A WRITE: a null wearing `!delete`, which the
@@ -94,13 +116,39 @@ func Removed() Payload { return deleteOp() }
 // unstorable at every depth (see nodeToPayload). The "!" is load-bearing too: mergeop.SplitChild
 // strips a tag's first byte before looking the operator up, so WithTag("delete") names "elete",
 // which is no operator at all and leaves an ordinary null behind.
-func deleteOp() Payload { return ir.Null().WithTag("!delete") }
+func deleteOp() Payload { return ir.Null().WithTag(deleteTag) }
+
+// deleteTag is the operator tag a removal wears, on the way in AND on the way back: verse
+// writes it (deleteOp) and logd forwards it on the change stream, which is how the delta walk
+// tells a removed entity from one whose payload is null (walkEntityChanges).
+const deleteTag = "!delete"
 
 // Created requires that nothing stands at the write's own path — the create.
-func Created() Require { return Require{Pattern: Absent()} }
+func Created() Require { return Require{Absent: true} }
 
 // Updated requires that something already stands at the write's own path — the update.
 func Updated() Require { return Require{Pattern: Present()} }
+
+// Unchanged spells "what stands here is still exactly what I read" — the compare-and-swap half
+// of a read-modify-write, over the payload the caller read.
+//
+// A null needs its own spelling, and that is the whole reason this is a function rather than a
+// call to AsData at each site. AsData leaves a bare null alone, and a bare null PATTERN is
+// Present(): it matches any value. So expecting a null payload to be unchanged would have asked
+// only that something still be there, and a concurrent write of anything at all would have
+// satisfied it — a lost update, silently, on exactly the entities the store had just started
+// letting you write. `!irtype null` is the question actually meant: the value here has type
+// null, and null has exactly one value, so that is the value.
+func Unchanged(cur Payload) Payload {
+	if cur != nil && cur.Type == ir.NullType && cur.Tag == "" {
+		return ir.Null().WithTag(irTypeTag)
+	}
+	return AsData(cur)
+}
+
+// irTypeTag is tony's type-match operator. `!irtype null` asks whether what stands here has
+// type null — which, null having one inhabitant, is whether it IS null.
+const irTypeTag = "!irtype"
 
 // path resolves a Require's target: its own At, or the write's when it has none.
 func (r Require) path(of Write) Path {
@@ -138,10 +186,10 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 		if err != nil {
 			return fmt.Errorf("modify %s: %w", ref, err)
 		}
-		when := Require{Pattern: Absent()} // expect-absent: this is a create
+		when := Require{Absent: true} // expect-absent: this is a create
 		next := fn(nil)
 		if exists {
-			when = Require{Pattern: AsData(cur.Payload)} // expect-unchanged: this is an update
+			when = Require{Pattern: Unchanged(cur.Payload)} // expect-unchanged: this is an update
 			next = fn(cur.Payload)
 		}
 		// The removals go on AFTER the escape, and the order is load-bearing. AsData makes a
@@ -227,10 +275,10 @@ func ModifyFrom(ctx context.Context, s Store, ref Ref, cur Payload, exists bool,
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("modify %s: %w", ref, err)
 	}
-	when := Require{Pattern: Absent()} // expect-absent: this is a create
+	when := Require{Absent: true} // expect-absent: this is a create
 	next := fn(nil)
 	if exists {
-		when = Require{Pattern: AsData(cur)} // expect-unchanged: this is an update
+		when = Require{Pattern: Unchanged(cur)} // expect-unchanged: this is an update
 		next = fn(cur)
 	}
 	value := AsData(next)

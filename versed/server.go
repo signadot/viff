@@ -1319,7 +1319,7 @@ func conditions(cs []api.Condition) ([]entity.Require, error) {
 		case c.Exists != nil && *c.Exists:
 			out = append(out, entity.Require{At: at, Pattern: entity.Present()})
 		case c.Exists != nil:
-			out = append(out, entity.Require{At: at, Pattern: entity.Absent()})
+			out = append(out, entity.Require{At: at, Absent: true})
 		default:
 			return nil, fmt.Errorf("condition asks nothing: set `exists` or `pattern`")
 		}

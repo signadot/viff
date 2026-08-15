@@ -59,7 +59,8 @@ func TestSelectionSkipsAVanishingEntity(t *testing.T) {
 }
 
 // Naming the marker is the opt-in — which is what lets the REAPER be an ordinary trigger:
-// select what is leaving, and remove it. A patch of null at the root is the removal.
+// select what is leaving, and remove it. `!delete null` is the removal, at the root exactly as
+// at a field; a bare null there is the payload null, an entity holding nothing.
 func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -73,7 +74,7 @@ func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 		Name: "reap",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
 			"value": map[string]any{"verse": map[string]any{"meta": map[string]any{"vanishing": nil}}}}},
-		Action: Action{Patch: ir.Null()}, // null at the root removes the entity
+		Action: Action{Patch: entity.Removed()}, // `!delete null` at the root removes the entity
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

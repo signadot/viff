@@ -695,13 +695,12 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 // first narrows the window and does not close it, because a pass mid-flight has already read
 // the world it is about to write about.
 //
-// It asks about `name` rather than about the entity, and that is the whole subtlety.
-// entity.Present() is a NULL pattern — "matches any value, so only a missing path fails it" —
-// and a tombstone IS a null value at the entity's own path (entity.Absent() is `!irtype null`,
-// and absentPath in logdstore ORs it with the no-key case). So a presence test on the ref is
-// satisfied by the very tombstone it is meant to notice. A field inside it is not: removing the
-// entity takes the subtree, so `name` has no key at all, and the presence test fails as
-// intended.
+// It asks about `name` rather than about the entity, and that costs nothing either way now: a
+// removal takes the key with it, so a presence test on the ref would fail on a removed
+// registration too. It used to be load-bearing, on the belief that a removal left a null
+// tombstone standing at the ref — which entity.Present(), a null pattern matching any value,
+// would have been satisfied by. Naming a field inside the entity stayed correct through the
+// correction, so it stays.
 func stillInstalled(ref entity.Ref) entity.Require {
 	return entity.Require{At: ref.At("name"), Pattern: entity.Present()}
 }

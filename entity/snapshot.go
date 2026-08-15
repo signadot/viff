@@ -49,9 +49,9 @@ type docSnapshot struct {
 
 func (s docSnapshot) Rev() int64 { return s.rev }
 
-// Get reads one entity out of the snapshot. A missing or tombstoned path is absence, and
-// the error is always nil: the read that could have failed already happened, when the
-// snapshot was taken.
+// Get reads one entity out of the snapshot. A missing path is absence — a key that is not
+// there, rather than a null value, which is a payload like any other — and the error is always
+// nil: the read that could have failed already happened, when the snapshot was taken.
 func (s docSnapshot) Get(ref Ref) (Entity, bool, error) {
 	p := payloadIn(s.doc, s.root, ref)
 	if p == nil {
@@ -60,16 +60,14 @@ func (s docSnapshot) Get(ref Ref) (Entity, bool, error) {
 	return Entity{Ref: ref, Payload: p}, true, nil
 }
 
-// List enumerates the snapshot's entities whose ref satisfies pred (nil = all), skipping
-// tombstones — the same walk Store.List does, over a document that is already in hand.
+// List enumerates the snapshot's entities whose ref satisfies pred (nil = all) — the same walk
+// Store.List does, over a document that is already in hand. There are no tombstones to skip:
+// this is a materialized document, so a deleted entity has no key in it.
 func (s docSnapshot) List(pred func(Ref) bool) []Entity {
 	var out []Entity
-	for _, ch := range walkEntities(childByKey(s.doc, s.root)) {
-		if ch.deleted {
-			continue
-		}
-		if pred == nil || pred(ch.ref) {
-			out = append(out, Entity{Ref: ch.ref, Payload: ch.payload})
+	for _, e := range walkEntityDoc(childByKey(s.doc, s.root)) {
+		if pred == nil || pred(e.Ref) {
+			out = append(out, e)
 		}
 	}
 	return out

@@ -1168,15 +1168,21 @@ true to false, and nothing fires on a falling edge. The reactive moment was the 
 removal is bookkeeping.
 
 **The reaper is an ordinary trigger.** It selects what is leaving — by naming the marker — and
-removes it. A patch of `null` at the root is the removal:
+removes it. `!delete null` is the removal, at the root exactly as at a field:
 
 ```tony
 - name: reap
   condition:
     subject: { system: demo, kind: pr, value: { verse: { meta: { vanishing: null } } } }
   action:
-    patch: null
+    patch: !delete null
 ```
+
+A bare `patch: null` used to remove too, and now writes the payload `null` — an entity that
+stands there holding nothing, rather than one that is gone. That was never a second way of
+saying removal so much as the store having no way to hold a null, and it cost `!delete` its
+generality: `{tmp: !delete null}` removed a key while removing the whole entity was spelled
+another way entirely. One operator, any depth.
 
 Which is what makes this a convention rather than a mechanism: nothing in the engine knows how
 to reap. A charter says when, and what grace period, and whether anything should happen first.
