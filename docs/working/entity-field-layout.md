@@ -97,36 +97,50 @@ no `status`; most have no `meta`. The envelope is a reservation, not a schema.
 
 `git-issue:repo:verse` holds `{issues: 29, open: 10, closed: 19}` — three numbers the source
 recomputes and rewrites every pass, each rewrite a commit, each commit a change event every
-watcher of that slice pays for. Nothing else in the verse would disagree if they were computed
-when somebody asked.
+watcher of that slice pays for. `motion:channel:*` stores a `tally` the engine rewrites per
+ballot. Nothing else in the verse would disagree if either were computed when somebody asked.
 
-So: a **virtual field is a declared derivation, evaluated at read and never stored.** Verse
-already has the machinery pointed the other way — `!get-path` and `!list-paths` read across
-entities inside a charter — and a virtual field is that grammar asked at read instead of at
-firing.
+**They are computed by Go here, not by a tony operation, and the vocabulary is the proof.** The
+whole operator set is `addtag all and arraydiff at comment delete dive embed field glob has-path
+if insert irtype json-patch key let not nullify or pass pipe quote raw rename replace retag rmtag
+strdiff subtree tag unquote` — there is no count, no length, and no clock. `!list-paths` selects
+entities; it cannot answer `10`. So a declared derivation covers the one case that is pure
+selection and none of the cases actually worth having:
 
-```tony
-# on the KIND, not on each entity
-status:
-  open: !list-paths { system: git-issue, kind: issue, value: {status: open} }
-```
+| wanted | needs | expressible as a match? |
+|---|---|---|
+| `git-issue:repo.status.open` | counting a selection | no — nothing counts |
+| `task:instance.status.elapsed` | a clock | no, and see below |
+| `gate:question.status.overdue` | a clock, against a stored `escalatesAt` | no |
+| `motion:channel.status.tally` | the quorum/select discipline | no — that is engine logic |
 
-They surface under `status` and are indistinguishable there from stored ones, which is the
-point: a reader asks `git-issue.repo.verse.status.open` and does not care. What changes is that
-nothing writes, so nothing commits, so no watcher wakes.
+**A clock cannot be a MATCH operator, and that is not an omission.** A match is evaluated at a
+REVISION — `AsOf`, and the edge rule `¬on(C-1) ∧ on(C)` — so it has to be a pure function of
+store state, or a replayed commit reaches a different verdict than the live one did.
 
-Two things fall out, and both are the real work:
+Verse already puts time exactly where it survives that: a formula is temporal and a `deadline`
+leaf reads the system clock (`formula.go` — "a time derivation, not a store fact", with no
+subtree to watch). So the split this needs is the split the trigger model already made, one
+layer down.
 
-**Where a declaration about a KIND lives.** Verse has no kind-level entity — a kind is only the
-middle segment of an address. `git-issue:repo:verse` is a kind-level aggregate wearing an
-entity's clothes, which is the evidence the need is already here. Making `<system>:<kind>` an
-addressable thing would give virtual fields, and later an `accept:` schema, somewhere to be
-declared.
+Which draws the line the layout needs, and it is per field rather than per mechanism:
 
-**Cost control.** A virtual field over a whole kind is a sweep per read. `verse state` answers
-the whole verse; if every kind carries one, a bare read becomes N sweeps. Whatever the answer is
-(evaluate only at the path asked for, cache by revision, refuse a virtual field above some
-depth), it has to be decided before this is offered, not after.
+- **Pure of the store at a revision** — a count, an aggregate, a tally. Computable at any
+  revision, so a `subject` may match on it and a replay agrees.
+- **Not pure** — anything reading a clock. It may be rendered, and it may be a formula's
+  business (that is what `deadline` is), but it must never enter a match, or the edge model
+  quietly stops being replayable.
+
+So a virtual field is Go, registered against a `(system, kind)`, answering at read. That weakens
+the case for a kind-level ENTITY rather than making it: code needs no place in the store to be
+declared. What a kind entity would still buy is discoverability — somewhere for `verse state
+git-issue.repo` to say which of its fields are computed and which are held — and later an
+`accept:` schema. Worth wanting, not required by this.
+
+**Cost control.** A virtual field over a whole kind is a sweep per read, and `verse state`
+answers the whole verse — so if every kind carries one, a bare read becomes N sweeps. Whatever
+the answer is (evaluate only under the path asked for, cache by revision, refuse one above some
+depth), it has to be decided before this is offered rather than after.
 
 ## What breaks
 
@@ -151,3 +165,7 @@ The migration is a rewrite of every payload, so it wants the same wipe-and-resee
   rule as installed" is clearer than "the rule's value" is the benefit.
 - What happens to `verse.charter.<rule>`, which is keyed by rule name and grows differently from
   everything else in `status`? `status.charter.<rule>` keeps the shape and moves the root.
+- Should a virtual field be visible as such? A reader who cannot tell a held count from a
+  computed one is the goal at the read, and the opposite of it when they are deciding whether
+  writing to it will stick. `status` being verse-owned means nobody should be writing there at
+  all, which may make the question moot.
