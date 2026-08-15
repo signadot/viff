@@ -402,6 +402,17 @@ type Status struct {
 	Tasks    int   `tony:"field=tasks"`
 	Fired    int   `tony:"field=fired"`
 
+	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
+	// these two are things somebody put here, and a verse that has lost them looks healthy by
+	// every other line — which is exactly the state a wiped store comes back in.
+	//
+	// Strata are NAMES IN LEVEL ORDER, low to high: the order is the fact, and `verse stratum`
+	// carries the numbers. Runners are the refs a spawn may name (`runners:pool:code`), which is
+	// a different question from `runner` below — that one is how THIS verse runs a task when a
+	// spawn names nobody.
+	Strata  []string `tony:"field=strata,omitzero"`
+	Runners []string `tony:"field=runners,omitzero"`
+
 	Runner *RunnerStatus `tony:"field=runner,omitzero"`
 	Docd   *Docd         `tony:"field=docd,omitzero"`
 	LLM    *LLM          `tony:"field=llm,omitzero"`

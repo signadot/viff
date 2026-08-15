@@ -1939,6 +1939,24 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Fired
 	irMap["fired"] = ir.FromInt(int64(s.Fired))
 
+	// Field: Strata
+	if len(s.Strata) > 0 {
+		slice := make([]*ir.Node, len(s.Strata))
+		for i, v := range s.Strata {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["strata"] = ir.FromSlice(slice)
+	}
+
+	// Field: Runners
+	if len(s.Runners) > 0 {
+		slice := make([]*ir.Node, len(s.Runners))
+		for i, v := range s.Runners {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["runners"] = ir.FromSlice(slice)
+	}
+
 	// Field: Runner (optional)
 	if s.Runner != nil {
 		node, err = s.Runner.ToTonyIR(opts...)
@@ -2044,6 +2062,40 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "fired", fieldNodeUnwrapped.Type)
 			}
 			s.Fired = int(*fieldNodeUnwrapped.Int64)
+		case "strata":
+			// Field: Strata
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Strata = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"strata\"", fieldNodeUnwrapped.Type)
+			}
+		case "runners":
+			// Field: Runners
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Runners = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"runners\"", fieldNodeUnwrapped.Type)
+			}
 		case "runner":
 			// Field: Runner
 			s.Runner = &RunnerStatus{}

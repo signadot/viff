@@ -2189,6 +2189,8 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
 		Tasks:    s.Taskd.Count(),
 		Fired:    s.Eng.Fired(),
+		Strata:   strataNames(s.Eng.Strata()),
+		Runners:  runnerRefs(s.scopedStore(r)),
 		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
 		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
@@ -2202,6 +2204,27 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// strataNames is the installed levels, low to high — Strata() already sorts, and the order is
+// what a reader is after: which level a derive may land in, relative to the rest.
+func strataNames(ss []trigger.Stratum) []string {
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, s.Name)
+	}
+	return out
+}
+
+// runnerRefs is the runners a spawn may name. Refs rather than records, because status is an
+// orientation and `verse runner` is the surface that answers what one IS.
+func runnerRefs(store entity.Store) []string {
+	es := runner.List(store)
+	out := make([]string, 0, len(es))
+	for _, e := range es {
+		out = append(out, runner.Ref(e.Kind, e.Name).String())
+	}
+	return out
 }
 
 // runnerStatus describes the runner along its two independent legs, so the two are not
