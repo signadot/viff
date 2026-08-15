@@ -29,11 +29,11 @@ context:
 - tony-format/context
 define:
   api: .[verse-routes]
-  entities: .[array(verse-entity)]
   entity: .[verse-entity]
   flows: .[array(string)]
   goals: .[array(verse-goal)]
   tasks: .[array(verse-instance)]
+  state: .[verse-state]
   status: .[verse-status]
   strata: .[array(verse-stratum)]
   triggers: .[array(verse-trigger)]

@@ -33,7 +33,7 @@ func TestWatchQueryRendersThePredicateAsTony(t *testing.T) {
 		t.Run(c.ifmt, func(t *testing.T) {
 			g.IFmt = c.ifmt
 			cfg := &watchConfig{Since: "0", If: c.pattern}
-			q, err := cfg.query()
+			q, err := cfg.query("")
 			if err != nil {
 				t.Fatalf("query: %v", err)
 			}
@@ -61,7 +61,7 @@ func TestWatchQueryKeepsOperators(t *testing.T) {
 	g.IFmt = "tony"
 
 	cfg := &watchConfig{Since: "0", If: `{id: !glob "hotfix-*"}`}
-	q, err := cfg.query()
+	q, err := cfg.query("")
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -70,14 +70,14 @@ func TestWatchQueryKeepsOperators(t *testing.T) {
 	}
 }
 
-// --if-at goes on the wire a SEGMENT AT A TIME, as `entity rm --at` sends its path: the
+// --if-at goes on the wire a SEGMENT AT A TIME, as `state rm --at` sends its path: the
 // address is a list there, so a field name is never re-split at the far end.
 func TestWatchQuerySendsThePathBySegment(t *testing.T) {
 	defer func(f string) { g.IFmt = f }(g.IFmt)
 	g.IFmt = "tony"
 
 	cfg := &watchConfig{Since: "0", If: "true", IfAt: "labels.urgent"}
-	q, err := cfg.query()
+	q, err := cfg.query("")
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestWatchQuerySendsThePathBySegment(t *testing.T) {
 // same stream with it and without it — so it is a usage error, said before anything is sent.
 func TestWatchRejectsAPathWithoutAPredicate(t *testing.T) {
 	cfg := &watchConfig{Since: "0", IfAt: "labels"}
-	_, err := cfg.query()
+	_, err := cfg.query("")
 	if !errors.Is(err, cli.ErrUsage) {
 		t.Fatalf("--if-at alone gave %v, want a usage error", err)
 	}
@@ -104,16 +104,16 @@ func TestWatchRejectsAMalformedPredicate(t *testing.T) {
 	g.IFmt = "tony"
 
 	cfg := &watchConfig{Since: "0", If: "{stage: "}
-	if _, err := cfg.query(); err == nil {
+	if _, err := cfg.query(""); err == nil {
 		t.Fatal("a malformed --if was accepted")
 	}
 }
 
-// runEntity drives `verse entity …` through the COLLECTION's own Run, rather than walking to
+// runState drives `verse state …` through the COMMAND's own Run, rather than walking to
 // the leaf as runCLI does. The walk is what makes runCLI usable for the leaves, and it is also
 // what makes it blind here: a flag on a group, and a group's decision about what to do with a
 // flag meant for its subcommand, both happen in the parent's Parse — which the walk skips.
-func runEntity(t *testing.T, args ...string) (string, error) {
+func runState(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	cc := &cli.Context{
@@ -122,9 +122,9 @@ func runEntity(t *testing.T, args ...string) (string, error) {
 	}
 	cmd := rootCmd()
 	g.Addr = testAddr // after rootCmd, which re-reads it from the config layers
-	sub := cmd.FindSub(cc, "entity")
+	sub := cmd.FindSub(cc, "state")
 	if sub == nil {
-		t.Fatal("no `entity` command")
+		t.Fatal("no `state` command")
 	}
 	// Run FIRST — see runCLI: `return out.String(), sub.Run(...)` would snapshot the buffer
 	// before the command wrote to it.
@@ -132,63 +132,66 @@ func runEntity(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// `verse entity --if` lists by what an entity SAYS. It is the same filter `verse watch --if`
-// streams by, and the reason to have it on the listing too is that the two answer different
+// `verse state --if` reads by what an entity SAYS. It is the same filter `verse watch --if`
+// streams by, and the reason to have it on the read too is that the two answer different
 // questions about one selector: what is true now, and what becomes true next.
-func TestEntitiesFiltersOnThePayload(t *testing.T) {
+func TestStateFiltersOnThePayload(t *testing.T) {
 	serve(t)
 	for _, e := range []struct{ ref, payload string }{
 		{"demo:pr:1", `{stage: open, labels: {urgent: true}}`},
 		{"demo:pr:2", `{stage: merged, labels: {urgent: false}}`},
 		{"demo:pr:3", `{stage: open}`},
 	} {
-		if _, err := runCLI(t, "entity", "put", e.ref, e.payload); err != nil {
+		if _, err := runCLI(t, "state", "put", e.ref, e.payload); err != nil {
 			t.Fatalf("put %s: %v", e.ref, err)
 		}
 	}
 
-	out, err := runEntity(t, "--if", "{stage: open}")
+	// --paths, because the question is WHICH ENTITIES the filter names and that is exactly what
+	// --paths answers. The document itself spells an id as a key rather than as a ref, so
+	// asserting on `demo:pr:1` in the body would be asserting on a rendering.
+	out, err := runState(t, "--paths", "--if", "{stage: open}")
 	if err != nil {
-		t.Fatalf("entity --if: %v", err)
+		t.Fatalf("state --if: %v", err)
 	}
 	if !strings.Contains(out, "demo:pr:1") || !strings.Contains(out, "demo:pr:3") {
-		t.Errorf("--if {stage: open} did not list the open PRs:\n%s", out)
+		t.Errorf("--if {stage: open} did not name the open PRs:\n%s", out)
 	}
 	if strings.Contains(out, "demo:pr:2") {
-		t.Errorf("--if {stage: open} listed the merged PR:\n%s", out)
+		t.Errorf("--if {stage: open} named the merged PR:\n%s", out)
 	}
 
-	// Rooted at a path, and the entity that has no such path is not listed.
-	out, err = runEntity(t, "--if", "{urgent: true}", "--if-at", "labels")
+	// Rooted at a path, and the entity that has no such path is not named.
+	out, err = runState(t, "--paths", "--if", "{urgent: true}", "--if-at", "labels")
 	if err != nil {
-		t.Fatalf("entity --if-at: %v", err)
+		t.Fatalf("state --if-at: %v", err)
 	}
 	if !strings.Contains(out, "demo:pr:1") {
-		t.Errorf("--if-at labels did not list the urgent PR:\n%s", out)
+		t.Errorf("--if-at labels did not name the urgent PR:\n%s", out)
 	}
 	if strings.Contains(out, "demo:pr:2") || strings.Contains(out, "demo:pr:3") {
-		t.Errorf("--if-at labels listed an entity that does not satisfy it:\n%s", out)
+		t.Errorf("--if-at labels named an entity that does not satisfy it:\n%s", out)
 	}
 }
 
-// `verse entity` and `verse entity put` both take an --if, and they mean different things:
+// `verse state` and `verse state put` both take an --if, and they mean different things:
 // a filter on the listing, a precondition on the write. They do not collide, because a parent
-// stops parsing flags at its first positional — so `entity put …` hands the whole tail,
+// stops parsing flags at its first positional — so `state put …` hands the whole tail,
 // flags included, to `put`.
 //
 // This is the pin for that, and it is worth pinning rather than trusting: if the parent ever
 // swallowed the flag, the precondition would not fail — it would VANISH, and a guarded write
 // would silently become an unguarded one.
-func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
+func TestStatePutKeepsItsOwnIf(t *testing.T) {
 	store := serve(t)
 	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	if _, err := runCLI(t, "entity", "put", "demo:pr:1", `{stage: open}`); err != nil {
+	if _, err := runCLI(t, "state", "put", "demo:pr:1", `{stage: open}`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	// A precondition that does NOT hold. Through the collection, with the flag after the
 	// positionals, exactly as someone would type it.
-	if _, err := runEntity(t, "put", "demo:pr:1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
+	if _, err := runState(t, "put", "demo:pr:1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
 		t.Error("a put whose --if does not hold was reported as succeeding")
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "open" {
@@ -196,7 +199,7 @@ func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
 	}
 
 	// And one that does hold still writes, so the pin is not just "everything fails".
-	if _, err := runEntity(t, "put", "demo:pr:1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
+	if _, err := runState(t, "put", "demo:pr:1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
 		t.Fatalf("a put whose --if holds was refused: %v", err)
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "reviewed" {
@@ -204,10 +207,10 @@ func TestEntitiesPutKeepsItsOwnIf(t *testing.T) {
 	}
 }
 
-// --if-at roots --if on the listing too, so alone it is the same usage error it is on watch.
-func TestEntitiesRejectAPathWithoutAPredicate(t *testing.T) {
+// --if-at roots --if on the read too, so alone it is the same usage error it is on watch.
+func TestStateRejectsAPathWithoutAPredicate(t *testing.T) {
 	serve(t)
-	if _, err := runEntity(t, "--if-at", "labels"); !errors.Is(err, cli.ErrUsage) {
+	if _, err := runState(t, "--if-at", "labels"); !errors.Is(err, cli.ErrUsage) {
 		t.Fatalf("--if-at alone gave %v, want a usage error", err)
 	}
 }

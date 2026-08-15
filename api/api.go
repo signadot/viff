@@ -35,16 +35,21 @@ import (
 // different fields set.
 //
 // Ref names the entity; Field goes further, naming a place INSIDE its payload
-// ({"labels","urgent"}), so a write can be a whole entity or one field of one. Field is a
-// list rather than a dotted string because an entity id may itself contain dots (a file
-// path is a perfectly good id), and a dotted spelling could not be told apart from one.
+// ({"labels","urgent"}), so a write can be a whole entity or one field of one.
+//
+// THE WIRE STAYS SPLIT while the CLI takes one address. `verse state put
+// demo.pr.1.labels.urgent true` is one kinded path, and entity.ParsePath is the one parser
+// that reads it — the wire has no reason to re-parse what the CLI has already split, and the
+// structured form is what the store's writePath consumes. A list rather than a dotted string
+// for the reason the CLI needs quoting: an entity id may itself contain dots (a file path is a
+// perfectly good id), so a dotted field spelling could not be told apart from one.
 //
 // The value MERGES at that place: fields it does not mention are left alone, and an absent
 // (null) Payload removes whatever stands there. A writer that means to drop a field says
 // so, by writing null at it.
 //
 // Payload is a tony node, not a map: an entity payload is ANY tony value (see
-// entity.Payload), so `verse entity put demo:count:1 42` has to survive the wire as the
+// entity.Payload), so `verse state put demo:count:1 42` has to survive the wire as the
 // number it is. A map here would have re-imposed on the wire exactly the object constraint
 // the store just dropped.
 //

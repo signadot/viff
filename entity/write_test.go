@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -462,5 +463,73 @@ func TestModifyFromFallsBackWhenNothingIsThere(t *testing.T) {
 	}
 	if got := readObj(t, s, ref); got["stage"] != "open" {
 		t.Fatalf("the write did not land: %+v", got)
+	}
+}
+
+// ONE ADDRESS, and ParsePath is Path.String's inverse — which the two were not before.
+//
+// The colon spelling names an entity WHOLE: dots and all belong to the id, which is what makes
+// it unambiguous and what keeps every address that ever worked meaning what it meant. The dot
+// spelling carries a field path, quoting an id that needs it.
+func TestParsePathIsStringInverted(t *testing.T) {
+	for _, tc := range []struct {
+		in    string
+		want  Path
+		spell string // what String gives back
+	}{
+		{"demo:pr:1", Ref{"demo", "pr", "1"}.At(), "demo:pr:1"},
+		{"demo.pr.1", Ref{"demo", "pr", "1"}.At(), "demo:pr:1"},
+		// A numeric id comes back QUOTED — `."1"` — which is the kpath printer being conservative
+		// rather than a second meaning: `.1` parses as the field named 1 either way.
+		{"demo.pr.1.labels.urgent", Ref{"demo", "pr", "1"}.At("labels", "urgent"), `demo.pr."1".labels.urgent`},
+		// An id carrying colons, `@` and `+` needs no quoting in either spelling.
+		{"git:ref:x@git:ref:y", Ref{"git", "ref", "x@git:ref:y"}.At(), "git:ref:x@git:ref:y"},
+		{"git.ref.x@git:ref:y", Ref{"git", "ref", "x@git:ref:y"}.At(), "git:ref:x@git:ref:y"},
+		// A DOTTED id: the colon spelling gives it to the id, the dot spelling needs quotes —
+		// and that is the whole reason the two spellings are not one.
+		{"demo:pr:a.b", Ref{"demo", "pr", "a.b"}.At(), "demo:pr:a.b"},
+		{`demo.pr."a.b"`, Ref{"demo", "pr", "a.b"}.At(), "demo:pr:a.b"},
+		{`demo.pr."a.b".labels`, Ref{"demo", "pr", "a.b"}.At("labels"), `demo.pr."a.b".labels`},
+	} {
+		got, err := ParsePath(tc.in)
+		if err != nil {
+			t.Errorf("ParsePath(%q): %v", tc.in, err)
+			continue
+		}
+		if got.Ref != tc.want.Ref || strings.Join(got.Field, "\x00") != strings.Join(tc.want.Field, "\x00") {
+			t.Errorf("ParsePath(%q) = %+v, want %+v", tc.in, got, tc.want)
+			continue
+		}
+		if got.String() != tc.spell {
+			t.Errorf("ParsePath(%q).String() = %q, want %q", tc.in, got.String(), tc.spell)
+			continue
+		}
+		// …and round-trips: whatever String spells, ParsePath reads back the same place.
+		again, err := ParsePath(got.String())
+		if err != nil {
+			t.Errorf("ParsePath(%q) — its own spelling — %v", got.String(), err)
+			continue
+		}
+		if again.String() != got.String() {
+			t.Errorf("%q does not round-trip: %q then %q", tc.in, got.String(), again.String())
+		}
+	}
+}
+
+// A write path is object fields. An array element is refused HERE, where the message can say
+// why, rather than rendered into a kpath the store will reject: the store patches at a kpath of
+// object fields, so there is nowhere for `(scott)` to land.
+func TestParsePathRefusesWhatAWriteCannotReach(t *testing.T) {
+	for _, bad := range []string{
+		"merge.proposal.X.votes(scott)",
+		"merge.proposal.X.votes[0]",
+		"demo.pr.*",
+		"demo.pr",
+		"demo",
+		"",
+	} {
+		if got, err := ParsePath(bad); err == nil {
+			t.Errorf("ParsePath(%q) = %+v, want a refusal", bad, got)
+		}
 	}
 }

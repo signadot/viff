@@ -131,7 +131,7 @@ setup() {
 
 	# What the work is ABOUT. A standing binding matches on this, which is the whole difference
 	# between the two doors: one is named by the work, the other selects it.
-	v entity put "$SUBJECT" '{area: payments, title: "raise the retry budget"}' >/dev/null
+	v state put "$SUBJECT" '{area: payments, title: "raise the retry budget"}' >/dev/null
 	ok "subject $SUBJECT"
 
 	# A run that stops at its first action, so there is a real question to answer.
@@ -160,9 +160,8 @@ setup() {
 # Not "the last one listed": store order is not spawn order, so that picked an arbitrary run
 # about the subject — sometimes one already finished, whose question never came and never would.
 run_id() {
-	v entity --system task --kind instance \
-		--if "{flow: \"$SUBJECT\", pending: null}" -o tony |
-		sed -n 's|^[[:space:]]*ref:[[:space:]]*task:instance:||p' | head -1
+	v state --paths --if "{flow: \"$SUBJECT\", pending: null}" task.instance |
+		sed -n 's|^task:instance:||p' | head -1
 }
 
 # Whatever this subject was left holding from an earlier act. One act at a time is the whole
@@ -199,14 +198,14 @@ question_id() {
 	done
 }
 
-field() { v entity get "gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
+field() { v state get "gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
 
 state() {
 	step "the bindings — who may answer, and for what"
 	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
-	v entity --system resolvers --kind instance
-	printf '\n  the address is `<name>@<origin>`, so one `--system resolvers` shows both what is\n'
+	v state resolvers.instance
+	printf '\n  the address is `<name>@<origin>`, so one `verse state resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
 	q=$(question_id)
@@ -215,7 +214,7 @@ state() {
 		return
 	fi
 	step "the question — an entity, and it knows who owns it"
-	v entity get "gate:question:$q"
+	v state get "gate:question:$q"
 	printf '\n  resolver:      the owner. absent means ⊤, the docket a person reads.\n'
 	printf '  escalatesAt:   its clock, if the owner has a deadline. absolute, so a restart cannot slide it.\n'
 	printf '  reownedFrom/Why: the handover, once it has changed hands.\n'
@@ -353,7 +352,7 @@ clean() {
 	for kn in security:reviewer security:payments-review; do
 		v resolver remove "$kn" >/dev/null 2>&1 || true
 	done
-	v entity rm "$SUBJECT" >/dev/null 2>&1 || true
+	v state rm "$SUBJECT" >/dev/null 2>&1 || true
 	ok "removed the bindings, the run and $SUBJECT"
 	printf '  answered questions are kept: a docket that forgets is one nobody can audit.\n\n'
 }
@@ -391,7 +390,7 @@ v() { "$BIN" "${scope[@]}" "$@"; }
 addr() { echo "http://${VERSE_ADDR:-localhost:9797}"; }
 
 command -v curl >/dev/null || die "this one needs curl: a resolver dials in over HTTP"
-v entity >/dev/null 2>&1 || die "no verse at ${VERSE_ADDR:-localhost:9797} — start one with \`./verse up\`"
+v state >/dev/null 2>&1 || die "no verse at ${VERSE_ADDR:-localhost:9797} — start one with \`./verse up\`"
 
 case "${1:-}" in
 "" | list)

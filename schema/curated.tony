@@ -105,3 +105,18 @@ define:
   match: .[tony-base:ir]
 signature:
   name: verse-stratum
+---
+# entity.Doc — the verse's state at a path, and the one signature whose `define` is empty
+# because the SHAPE is the answer rather than a record with fields. The document is
+# `{system: {kind: {id: payload}}}`, so its keys are the systems a verse happens to hold, and a
+# path into it answers with the subtree standing there: an object of kinds, of ids, a payload,
+# or a place inside one. None of that is enumerable here.
+#
+# codec=custom for the same reason: the Go type wraps a node so the schema can NAME what a read
+# answers with, and a generated codec would emit that wrapper as a field. The wire is the
+# document itself, with nothing around it — which is the whole claim being made.
+context:
+- tony-format/context
+define: {}
+signature:
+  name: verse-state

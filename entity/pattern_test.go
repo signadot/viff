@@ -138,9 +138,9 @@ func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 	//
 	// This reverses the old reading, where an absent key read as nil and `{x: null}` was
 	// therefore a way to spell "has NO x" — the exact opposite of what it means now. tony
-	// distinguishes absent from null (docd tombstones with null, so the difference records
-	// whether a field was cleared or never written), and a payload predicate is a tony match
-	// now, so it inherits that rather than flattening it.
+	// distinguishes absent from null (a removal takes the key, so a cleared field and a field
+	// holding null are different shapes, not one), and a payload predicate is a tony match now,
+	// so it inherits that rather than flattening it.
 	//
 	// The three questions and their spellings are TestNullPresenceAbsenceIdioms below.
 	present := Pattern{Predicate: Obj{"x": nil}.Payload()}

@@ -18,9 +18,14 @@ import (
 )
 
 // The read plane's payload filter, on both faces it wears: /watch streams the changes that
-// match, /entities lists the state that does. They are one selector (queryPattern) asked at
+// match, /state answers the state that does. They are one selector (querySelector) asked at
 // two times, and the tests below are deliberately paired so that a divergence shows up as one
 // of them going red on its own.
+//
+// The pairing used to be visible by eye — both faces called MatchEvent/MatchEntity on one
+// Pattern. It is not any more: one answers a DOCUMENT and the other a stream of events, and the
+// narrowing is a path as well as a predicate. TestStateAndWatchNameTheSameSet is what says it
+// instead of the reader having to.
 
 // sentinel is written LAST, so a test knows the stream has delivered everything it is going
 // to the moment it sees it. Reading "until the sentinel" rather than "until nothing arrives
@@ -155,8 +160,13 @@ func TestWatchRootsThePredicateAtAPath(t *testing.T) {
 	}
 }
 
-// listRefs writes the fixture, lists /entities with the given filters, and returns the refs it
-// answered with, sorted — the listing route promises a set, not an order.
+// listRefs writes the fixture, reads /state with the given filters, and returns the refs it
+// answered with, sorted — the read promises a set, not an order.
+//
+// The refs are read back OUT of the document, which is the change in one line: the answer is
+// `{system: {kind: {id: payload}}}` now, so an address is assembled from the keys rather than
+// lifted from a `ref:` field. Every assertion below is unchanged, because they are all about
+// the set and the set is the same one.
 func listRefs(t *testing.T, q url.Values) []string {
 	t.Helper()
 	srv := testServer(t)
@@ -171,33 +181,32 @@ func listRefs(t *testing.T, q url.Values) []string {
 		entitytest.Set(t, srv.Store, ref, e.payload)
 	}
 
-	resp, err := http.Get(ts.URL + "/entities?" + q.Encode())
+	resp, err := http.Get(ts.URL + "/state?" + q.Encode())
 	if err != nil {
-		t.Fatalf("entities: %v", err)
+		t.Fatalf("state: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		t.Fatalf("entities: %s", resp.Status)
+		t.Fatalf("state: %s", resp.Status)
 	}
-	var listed []struct {
-		Ref string `tony:"field=ref"`
+	var doc entity.Doc
+	decodeResp(t, resp, &doc)
+	at, err := entity.ParseAt(q.Get("at"))
+	if err != nil {
+		t.Fatalf("?at %q: %v", q.Get("at"), err)
 	}
-	decodeResp(t, resp, &listed)
-	refs := make([]string, 0, len(listed))
-	for _, e := range listed {
-		refs = append(refs, e.Ref)
-	}
+	refs := doc.Paths(at)
 	sort.Strings(refs)
 	return refs
 }
 
-// The listing takes the same filter the stream does, and picks the same entities by it. What
+// The read takes the same filter the stream does, and picks the same entities by it. What
 // differs is only WHEN the question is asked — of the state as it stands here, of each change
 // as it happens there — which is why both faces are pinned against one fixture.
-func TestListEntitiesFiltersOnThePayload(t *testing.T) {
+func TestStateFiltersOnThePayload(t *testing.T) {
 	all := []string{"demo:pr:1", "demo:pr:2", "demo:pr:3", sentinel.String()}
 	if got := listRefs(t, url.Values{}); !sameRefs(got, all...) {
-		t.Fatalf("an unfiltered listing gave %v, want the whole fixture", got)
+		t.Fatalf("an unfiltered read gave %v, want the whole fixture", got)
 	}
 	if got := listRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got,
 		"demo:pr:1", "demo:pr:3", sentinel.String()) {
@@ -209,20 +218,20 @@ func TestListEntitiesFiltersOnThePayload(t *testing.T) {
 	if got := listRefs(t, url.Values{"if": {"{stage: closed}"}}); len(got) != 0 {
 		t.Errorf("?if {stage: closed} listed %v, want nothing", got)
 	}
-	// The ref dimensions still narrow, and they compose with the predicate rather than
-	// replacing it — the store applies them as List's prefilter, the payload is answered here,
-	// and the answer must be the conjunction either way.
-	if got := listRefs(t, url.Values{"system": {"other"}, "if": {"{stage: open}"}}); len(got) != 0 {
-		t.Errorf("?system other listed %v, want nothing — no entity of that system exists", got)
+	// The PATH still narrows, and it composes with the predicate rather than replacing it — the
+	// store applies the address dimensions as List's prefilter, the payload is answered at the
+	// handler, and the answer must be the conjunction either way.
+	if got := listRefs(t, url.Values{"at": {"other"}, "if": {"{stage: open}"}}); len(got) != 0 {
+		t.Errorf("?at other listed %v, want nothing — no entity of that system exists", got)
 	}
-	if got := listRefs(t, url.Values{"kind": {"pr"}, "if": {"{sentinel: true}"}}); !sameRefs(got, sentinel.String()) {
-		t.Errorf("?kind + ?if listed %v, want the one entity satisfying both", got)
+	if got := listRefs(t, url.Values{"at": {"demo.pr"}, "if": {"{sentinel: true}"}}); !sameRefs(got, sentinel.String()) {
+		t.Errorf("?at + ?if listed %v, want the one entity satisfying both", got)
 	}
 }
 
-// Rooting works the same on the listing as on the stream, including the part that is easy to
+// Rooting works the same on the read as on the stream, including the part that is easy to
 // get wrong: an entity the path does not reach (demo:pr:3 has no labels) is not listed.
-func TestListEntitiesRootsThePredicateAtAPath(t *testing.T) {
+func TestStateRootsThePredicateAtAPath(t *testing.T) {
 	q := url.Values{"if": {"{urgent: true}"}, "if-at": {"labels"}}
 	if got := listRefs(t, q); !sameRefs(got, "demo:pr:1", sentinel.String()) {
 		t.Errorf("?if-at labels listed %v, want the urgent ones", got)
@@ -233,16 +242,16 @@ func TestListEntitiesRootsThePredicateAtAPath(t *testing.T) {
 	}
 }
 
-// The listing rejects a malformed predicate rather than answering the unfiltered store, which
+// The read rejects a malformed predicate rather than answering the unfiltered store, which
 // would be a filter that failed OPEN — the operator sees more than they asked for and has no
 // way to know the filter never ran.
-func TestListEntitiesRejectsAMalformedPredicate(t *testing.T) {
+func TestStateRejectsAMalformedPredicate(t *testing.T) {
 	ts := httptest.NewServer(testServer(t).Handler())
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/entities?" + url.Values{"if": {"{stage: "}}.Encode())
+	resp, err := http.Get(ts.URL + "/state?" + url.Values{"if": {"{stage: "}}.Encode())
 	if err != nil {
-		t.Fatalf("entities: %v", err)
+		t.Fatalf("state: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -314,4 +323,53 @@ func TestWatchRefusesACursorItCannotAnswer(t *testing.T) {
 	if msg := string(body); !strings.Contains(msg, "retained window") || !strings.Contains(msg, "since") {
 		t.Errorf("the refusal does not say what to ask for instead: %q", msg)
 	}
+}
+
+// THE TWO FACES NAME THE SAME SET, which is the invariant the pairing above rests on and the
+// one nothing pinned until now.
+//
+// It used to be visible by eye: both handlers filtered with one entity.Pattern, so a divergence
+// would have been a diff you could see. It is not any more — the read answers a DOCUMENT and
+// the watch a stream of events, and the narrowing is a path as well as a predicate — so this
+// asks the question directly, across the selectors that have somewhere to diverge.
+//
+// The watch's answer is per-CHANGE and the read's per-entity, which is why the fixture is
+// written once with no updates: over it, "the entities that changed" and "the entities that
+// stand" are the same set, and any difference is the selector's.
+func TestStateAndWatchNameTheSameSet(t *testing.T) {
+	for _, q := range []url.Values{
+		{},
+		{"if": {"{stage: open}"}},
+		{"if": {"{stage: !or [open, merged]}"}},
+		{"at": {"demo"}},
+		{"at": {"demo.pr"}},
+		// Narrowing to ONE id, spelled at the sentinel's own address so the stream still
+		// terminates — see below.
+		{"at": {"demo.pr.sentinel"}},
+		{"at": {"demo.*.sentinel"}},
+		{"at": {"demo.pr"}, "if": {"{stage: open}"}},
+		{"at": {"demo.pr"}, "if": {"{urgent: true}"}, "if-at": {"labels"}},
+	} {
+		// The sentinel terminates the stream, so every selector here has to reach it. That rules
+		// out the empty cases (`at=other`), which is a limit of the harness rather than a gap in
+		// the invariant — TestStateFiltersOnThePayload covers those on the read's side.
+		read := listRefs(t, q)
+		if !contains(read, sentinel.String()) {
+			t.Fatalf("%v: the fixture's sentinel is not in the read's own answer — the case is unaskable", q)
+		}
+		streamed := append(watchRefs(t, q), sentinel.String())
+		sort.Strings(streamed)
+		if !sameRefs(read, streamed...) {
+			t.Errorf("%v: the read named %v and the watch named %v", q, read, streamed)
+		}
+	}
+}
+
+func contains(refs []string, want string) bool {
+	for _, r := range refs {
+		if r == want {
+			return true
+		}
+	}
+	return false
 }

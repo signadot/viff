@@ -104,16 +104,31 @@ done
 [ -n "$ready" ] || { tail -20 "$tmp/server.log" >&2; die "server never became ready"; }
 ok "docd-backed server ready"
 
-# ── entity: put/get roundtrip ────────────────────────────────────────────────
-step "entity put/get"
-v entity put demo:pr:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
-haskv "$(v entity get demo:pr:1)" stage open || die "entity get did not roundtrip"
+# ── state: put/get roundtrip ─────────────────────────────────────────────────
+step "state put/get"
+v state put demo:pr:1 '{"stage":"open"}' >/dev/null || die "state put failed"
+haskv "$(v state get demo:pr:1)" stage open || die "state get did not roundtrip"
 ok "demo:pr:1 = {stage:open}"
-# The plural is an ALIAS of the same command, verbs and all, so anyone who reaches for it
-# gets the thing rather than a lecture. The unit tests assert the alias RESOLVES; this
-# asserts what it resolves to still reaches the server.
-haskv "$(v entities get demo:pr:1)" stage open || die "the plural alias did not reach entity get"
-ok "verse entities get == verse entity get (the plural is an alias)"
+# THE ANSWER IS A DOCUMENT, addressed by the same path at any depth: the id is a KEY, not a
+# token inside a rendered ref, and `stage` is what stands under it.
+haskv "$(v state demo.pr.1)" stage open || die "state demo.pr.1 did not answer the payload"
+has "$(v state demo.pr)" '"1":' || die "state demo.pr did not key by id"
+[ "$(v state --paths demo.pr)" = "demo:pr:1" ] || die "--paths did not name the entity"
+# `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
+# renderings frame one differently — tony writes `open`, yaml writes it as a block scalar
+# (`|` then the line). The value is verse's answer; the framing is the encoder's.
+has "$(v state demo.pr.1.stage)" open || die "a path into the payload did not answer"
+ok "one path, four depths: demo / demo.pr / demo.pr.1 / demo.pr.1.stage"
+# ONE ADDRESS on the verbs too: the path reaches inside the payload, which `--at` used to.
+v state put demo.pr.1.labels.urgent true >/dev/null || die "a deep put by path failed"
+has "$(v state demo.pr.1.labels)" urgent || die "the deep put did not land"
+v state rm demo.pr.1.labels.urgent >/dev/null || die "a deep rm by path failed"
+case "$(v state get demo:pr:1)" in *urgent*) die "the deep rm did not take the field" ;; esac
+# …and the two spellings are one grammar: a ref and its kinded path name the same place.
+haskv "$(v state get demo.pr.1)" stage open || die "the kinded path did not reach the entity"
+haskv "$(v state get demo:pr:1)" stage open || die "the ref spelling did not reach the entity"
+has "$(v state get demo.pr.1.stage)" open || die "a path into the payload did not reach the field"
+ok "one address: put/get/rm reach inside a payload, by ref or by path"
 
 # ── the representation: verse READS three dialects and WRITES two ────────────
 # The asymmetry is the design (see package codec): JSON input is parsed as tony, because
@@ -121,22 +136,27 @@ ok "verse entities get == verse entity get (the plural is an alias)"
 # JSON spelling. Both halves are asserted here rather than left to the double-run, because
 # a refusal that quietly became a fallback would still pass a suite run only one way.
 step "representation (-o / negotiation)"
-haskv "$(v entity get demo:pr:1 -o tony)" stage open || die "-o tony did not render"
-has "$(v entity get demo:pr:1 -o yaml)" 'stage: open' || die "-o yaml did not render"
-v entity get demo:pr:1 -o tny >/dev/null 2>&1 && die "a bad -o value was accepted"
-v entity get demo:pr:1 -o json >/dev/null 2>&1 && die "-o json was accepted"
-has "$(v entity get demo:pr:1 -o json 2>&1 || true)" 'does not render json' \
+haskv "$(v state get demo:pr:1 -o tony)" stage open || die "-o tony did not render"
+has "$(v state get demo:pr:1 -o yaml)" 'stage: open' || die "-o yaml did not render"
+v state get demo:pr:1 -o tny >/dev/null 2>&1 && die "a bad -o value was accepted"
+v state get demo:pr:1 -o json >/dev/null 2>&1 && die "-o json was accepted"
+has "$(v state get demo:pr:1 -o json 2>&1 || true)" 'does not render json' \
 	|| die "-o json failed without explaining itself"
 ok "-o tony | yaml render; a bad value and json are rejected"
 # --ifmt says how to READ what the operator supplied; it must not decide how the REQUEST is
 # rendered, because verse renders no json. A WRITE is the case that proves the two are
 # separate: --ifmt json used to fail every command that sends a body — i.e. every write —
 # complaining about rendering json to someone who had only asked to type it.
-v --ifmt json entity put demo:pr:7 '{"stage":"open"}' >/dev/null || die "--ifmt json write failed"
-haskv "$(v entity get demo:pr:7)" stage open || die "the --ifmt json write did not land"
+v --ifmt json state put demo:pr:7 '{"stage":"open"}' >/dev/null || die "--ifmt json write failed"
+haskv "$(v state get demo:pr:7)" stage open || die "the --ifmt json write did not land"
 ok "--ifmt json writes (the input dialect is not the wire rendering)"
 # curl straight at the API: no Accept header at all gets the configured default...
 haskv "$(curl -s "http://$ADDR/entity?ref=demo:pr:1")" stage open || die "the wire did not answer"
+# And the document route, raw: the id is a KEY under the kind, not a `ref:` field beside it.
+raw=$(curl -s "http://$ADDR/state?at=demo.pr")
+has "$raw" '"1":' || die "GET /state?at=demo.pr did not key by id: $raw"
+has "$raw" 'stage' || die "GET /state?at=demo.pr did not carry the payload: $raw"
+case "$raw" in *ref:*) die "GET /state still renders a ref: $raw" ;; esac
 # ...demanding JSON is 406, not tony wearing a JSON label...
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
 	"http://$ADDR/entity?ref=demo:pr:1")
@@ -151,16 +171,16 @@ ok "the wire negotiates (Accept honored, json refused with 406)"
 # connect's. The throwaway data dir reclaims the overlay. See docs/scope-lifecycle.md.
 step "scope isolation (--scope)"
 SC="iso$$"
-v --scope "$SC" entity put demo:pr:9 '{"stage":"scoped-only"}' >/dev/null || die "scoped entity put failed"
-has "$(v --scope "$SC" entity get demo:pr:9)" 'scoped-only' || die "scope does not see its own write"
+v --scope "$SC" state put demo:pr:9 '{"stage":"scoped-only"}' >/dev/null || die "scoped state put failed"
+has "$(v --scope "$SC" state get demo:pr:9)" 'scoped-only' || die "scope does not see its own write"
 ok "scoped write visible inside scope $SC"
 # the overlay must not leak into the baseline
-if has "$(v entity get demo:pr:9 2>/dev/null || true)" 'scoped-only'; then
+if has "$(v state get demo:pr:9 2>/dev/null || true)" 'scoped-only'; then
 	die "scoped write leaked into the baseline"
 fi
 ok "scoped write invisible in the baseline (isolation)"
 # ...but a baseline entity IS visible from within the scope (copy-on-write read-through)
-haskv "$(v --scope "$SC" entity get demo:pr:1)" stage open || die "scope cannot read the baseline (no read-through)"
+haskv "$(v --scope "$SC" state get demo:pr:1)" stage open || die "scope cannot read the baseline (no read-through)"
 ok "baseline entity readable from the scope (read-through)"
 
 # ── reactive core: a non-gated trigger auto-advances its subject ─────────────
@@ -176,10 +196,10 @@ v trigger add -f - >/dev/null <<'JSON' || die "trigger add failed"
 JSON
 ok "charter installed"
 # putting a matching entity fires the trigger, which advances the matched subject.
-v entity put demo:pr:2 '{"stage":"open"}' >/dev/null || die "entity put failed"
+v state put demo:pr:2 '{"stage":"open"}' >/dev/null || die "state put failed"
 advanced=
 for _ in $(seq 1 100); do
-	if haskv "$(v entity get demo:pr:2 2>/dev/null || true)" stage reviewed; then
+	if haskv "$(v state get demo:pr:2 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi
@@ -213,10 +233,10 @@ v trigger add --file "$tmp/charter.tony" >/dev/null || die "tony charter add fai
 has "$(v trigger)" 'smoke-advance-tony' || die "the tony charter did not install"
 ok "installed a .tony charter (block list, suffix-dispatched)"
 
-v entity put demo:pr:3 '{"stage":"queued"}' >/dev/null || die "entity put failed"
+v state put demo:pr:3 '{"stage":"queued"}' >/dev/null || die "state put failed"
 advanced=
 for _ in $(seq 1 100); do
-	if haskv "$(v entity get demo:pr:3 2>/dev/null || true)" stage reviewed; then
+	if haskv "$(v state get demo:pr:3 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi
@@ -242,19 +262,19 @@ JSON
 has "$(v trigger show smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
 ok "installed; the sugar renders back as a tag"
 # two candidates, one matching the glob and one not — the fan-out must pick exactly one.
-v entity put demo:task:hotfix-9 '{"stage":"open"}' >/dev/null || die "entity put failed"
-v entity put demo:task:feature-9 '{"stage":"open"}' >/dev/null || die "entity put failed"
-v entity put demo:note:1 '{"seen":true}' >/dev/null || die "entity put failed"
+v state put demo:task:hotfix-9 '{"stage":"open"}' >/dev/null || die "state put failed"
+v state put demo:task:feature-9 '{"stage":"open"}' >/dev/null || die "state put failed"
+v state put demo:note:1 '{"seen":true}' >/dev/null || die "state put failed"
 escalated=
 for _ in $(seq 1 100); do
-	if haskv "$(v entity get demo:task:hotfix-9 2>/dev/null || true)" stage escalated; then
+	if haskv "$(v state get demo:task:hotfix-9 2>/dev/null || true)" stage escalated; then
 		escalated=1
 		break
 	fi
 	sleep 0.2
 done
 [ -n "$escalated" ] || die "the glob subject did not select demo:task:hotfix-9"
-haskv "$(v entity get demo:task:feature-9)" stage open || die "the glob subject escalated a task it excludes"
+haskv "$(v state get demo:task:feature-9)" stage open || die "the glob subject escalated a task it excludes"
 ok "!glob subject selected hotfix-9 and left feature-9 alone"
 
 # ── `on`: a cause as the RISING EDGE of a store predicate ────────────────────
@@ -274,17 +294,17 @@ v trigger add -f - >/dev/null <<'JSON' || die "on-charter add failed"
 JSON
 has "$(v trigger show smoke-on-green)" 'on' || die "the \`on\` did not survive install"
 ok "installed a charter with an \`on\`"
-v entity put demo:build:1 '{"stage":"reviewed"}' >/dev/null || die "entity put failed"
+v state put demo:build:1 '{"stage":"reviewed"}' >/dev/null || die "state put failed"
 # The cause does not hold: no edge, no firing.
-v entity put smokeci:status:build '{"state":"red"}' >/dev/null || die "entity put failed"
+v state put smokeci:status:build '{"state":"red"}' >/dev/null || die "state put failed"
 sleep 1
-haskv "$(v entity get demo:build:1)" stage reviewed || die "fired before its cause held"
+haskv "$(v state get demo:build:1)" stage reviewed || die "fired before its cause held"
 ok "no firing while the cause is false"
 # ...and now it rises.
-v entity put smokeci:status:build '{"state":"green"}' >/dev/null || die "entity put failed"
+v state put smokeci:status:build '{"state":"green"}' >/dev/null || die "state put failed"
 shippedb=
 for _ in $(seq 1 100); do
-	if haskv "$(v entity get demo:build:1 2>/dev/null || true)" stage shipped; then
+	if haskv "$(v state get demo:build:1 2>/dev/null || true)" stage shipped; then
 		shippedb=1
 		break
 	fi
@@ -308,7 +328,7 @@ v trigger add --file - >/dev/null <<'JSON' || die "gated charter add failed"
     "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
-v entity put demo:release:1 '{"stage":"open"}' >/dev/null || die "entity put failed"
+v state put demo:release:1 '{"stage":"open"}' >/dev/null || die "state put failed"
 # A gate id carries colons (trigger:smoke-gated:ship~1), so it is cut by prefix, not by field.
 GID=
 for _ in $(seq 1 100); do
@@ -319,12 +339,12 @@ done
 [ -n "$GID" ] || die "the ask gate never appeared in verse gate"
 ok "the action is held; verse gate shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
-haskv "$(v entity get demo:release:1)" stage open || die "the ask gate did not hold the action"
+haskv "$(v state get demo:release:1)" stage open || die "the ask gate did not hold the action"
 ok "demo:release:1 still open while the gate is pending"
 v gate y "$GID" -s "ship it" --as human:smoke >/dev/null || die "gate approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
-	if haskv "$(v entity get demo:release:1 2>/dev/null || true)" stage shipped; then
+	if haskv "$(v state get demo:release:1 2>/dev/null || true)" stage shipped; then
 		shipped=1
 		break
 	fi
@@ -353,7 +373,7 @@ ok "task vector → ask (as human:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v entity get "task:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
+	if haskv "$(v state get "task:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
 		observed=1
 		break
 	fi
@@ -376,7 +396,7 @@ SCOPE="smoke$$"
 CONN=$!
 fed=
 for _ in $(seq 1 150); do
-	out=$(v --scope "$SCOPE" entities --system local 2>/dev/null || true)
+	out=$(v --scope "$SCOPE" state local 2>/dev/null || true)
 	if has "$out" 'a.txt' && has "$out" 'b.txt'; then
 		fed=1
 		break
@@ -387,7 +407,7 @@ done
 [ -n "$fed" ] || { tail -20 "$tmp/connect.log" >&2; die "connect did not federate the tree"; }
 ok "federated a.txt + b.txt into scope $SCOPE"
 # content is served on demand off a baseline mount (no --scope) — the subtree-watch path.
-if has "$(v entity get "local:dir-content-$SCOPE:a.txt" 2>/dev/null || true)" 'hello from a'; then
+if has "$(v state get "local:dir-content-$SCOPE:a.txt" 2>/dev/null || true)" 'hello from a'; then
 	ok "file content served through the verse (content mount)"
 else
 	note "content read did not match (mount timing) — federation verified above"
@@ -399,19 +419,21 @@ fi
 # the loop rather than any part of its middle: the file's own record says it was validated.
 val=
 for _ in $(seq 1 60); do
-	if has "$(v --scope "$SCOPE" entity get "local:dir-status-$SCOPE:a.txt" 2>/dev/null || true)" 'validated'; then
+	if has "$(v --scope "$SCOPE" state get "local:dir-status-$SCOPE:a.txt" 2>/dev/null || true)" 'validated'; then
 		val=1
 		break
 	fi
 	sleep 0.5
 done
-[ -n "$val" ] || { v --scope "$SCOPE" entities --system task >&2; die "the per-file validator never validated a.txt"; }
+[ -n "$val" ] || { v --scope "$SCOPE" state task >&2; die "the per-file validator never validated a.txt"; }
 ok "the validator ran and latched: a.txt is marked validated"
 # And it LATCHES: a validated file is not selected again, which is the whole reason the
 # subject says what is outstanding rather than what exists.
-before=$(v --scope "$SCOPE" entities --system task -o tony | grep -c 'ref:' || true)
+# Counted with --paths, one address per line, rather than by grepping `ref:` out of a
+# rendering: the answer is a document now, and an id is a key in it.
+before=$(v --scope "$SCOPE" state --paths task | grep -c . || true)
 sleep 3
-after=$(v --scope "$SCOPE" entities --system task -o tony | grep -c 'ref:' || true)
+after=$(v --scope "$SCOPE" state --paths task | grep -c . || true)
 [ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
 ok "a validated file is not validated again ($after tasks)"
 
@@ -468,10 +490,10 @@ v trigger add --file "$tmp/strata.tony" >/dev/null || die "mixed strata+rules ch
 has "$(v stratum)" 'smoke-sdlc' || die "the ordering did not install"
 ok "one file installs strata and rules, strata first"
 
-v entity put smokegh:issue:1 '{"label":"urgent"}' >/dev/null || die "entity put failed"
+v state put smokegh:issue:1 '{"label":"urgent"}' >/dev/null || die "state put failed"
 derived=
 for _ in $(seq 1 100); do
-	out=$(v entity 2>/dev/null || true)
+	out=$(v state --paths 2>/dev/null || true)
 	if has "$out" 'smokesd:feature:'; then
 		derived=1
 		break
@@ -482,15 +504,15 @@ done
 ok "a rule at level 0 wrote an entity at level 10"
 
 # The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
-dref=$(v entity | grep -o 'smokesd:feature:[^ "]*' | head -1)
-haskv "$(v entity get "$dref")" priority urgent || die "the derived entity lost its literal content"
-has "$(v entity get "$dref")" 'smokegh:issue:1' || die "the derived entity does not record its subject"
+dref=$(v state --paths smokesd.feature | head -1)
+haskv "$(v state get "$dref")" priority urgent || die "the derived entity lost its literal content"
+has "$(v state get "$dref")" 'smokegh:issue:1' || die "the derived entity does not record its subject"
 ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
 
 # And the level above acted on it, which is the whole point of the ordering.
 crossed=
 for _ in $(seq 1 100); do
-	if haskv "$(v entity get "$dref" 2>/dev/null || true)" stage awaiting-approval; then
+	if haskv "$(v state get "$dref" 2>/dev/null || true)" stage awaiting-approval; then
 		crossed=1
 		break
 	fi
@@ -539,10 +561,10 @@ has "$(v stratum)" 'smoke-sdlc' || die "the ordering did not survive the restart
 has "$(v trigger)" 'smoke-derive' || die "a stratified rule did not survive the restart"
 ok "the installed charter is listed again after a restart"
 # And it is live, not merely listed: a PR that opens only now still advances.
-v entity put demo:pr:restart '{"stage":"open"}' >/dev/null || die "post-restart put failed"
+v state put demo:pr:restart '{"stage":"open"}' >/dev/null || die "post-restart put failed"
 advanced=
 for _ in $(seq 1 40); do
-	if haskv "$(v entity get demo:pr:restart 2>/dev/null || true)" stage reviewed; then
+	if haskv "$(v state get demo:pr:restart 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi

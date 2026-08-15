@@ -295,13 +295,17 @@ func fieldName(f *ir.Node) string {
 	return s
 }
 
-// payloadToNode is the write face of a payload. A payload IS a node now, so this only
-// settles the absent case: a nil payload becomes an EMPTY OBJECT (a present entity with
-// no fields), never null, which is how an absent entity is spelled. It is cloned because
-// the node is about to be parented into a patch document.
+// payloadToNode is the write face of a payload. A payload IS a node, so this only clones —
+// the node is about to be parented into a patch document, and ir.FromMap re-parents what it
+// is handed.
+//
+// It used to map a nil payload to an EMPTY OBJECT, because null was how an absent entity was
+// spelled and a write of nil must not be mistaken for one. Absence is `!delete` (deleteOp),
+// which Write spells for itself, so nothing here has to avoid null — and avoiding it is what
+// made `null` unwritable as a payload. A nil payload is the payload null.
 func payloadToNode(p Payload) *ir.Node {
 	if p == nil {
-		return ir.FromMap(map[string]*ir.Node{})
+		return ir.Null()
 	}
 	return clone(p)
 }
@@ -331,14 +335,18 @@ func payloadToNode(p Payload) *ir.Node {
 // holds a document: a goal whose `doneWhen: !fact {facts: …}` went into the store intact came
 // back an untagged object, and read as a match with an unknown `facts` key.
 //
-// A NULL NODE AT THE ROOT is still absence rather than a value, and that is the store's own
-// spelling rather than this convention's: Get reads it as "nothing stands here", which is what
-// a path holding nothing answers with.
+// A NULL NODE AT THE ROOT used to be absence rather than a value — the last place the
+// convention above still held, one level up from the fields it had been lifted off. It cost
+// the same thing at the top that it cost at every depth: `payload: null` was a legal tony
+// value that no entity could hold, because Get read it back as "nothing stands here". Absence
+// is a property of the PATH, and the substrate says so — logd removes the key outright when a
+// `!delete` executes, so an absent entity has no node to read and Match answers not_found.
+// There is nothing left for a null to disambiguate.
+//
+// Nothing is dropped here at all now: a nil node in, a nil payload out, and every node that
+// exists is the value that stands there.
 func nodeToPayload(node *ir.Node) Payload {
-	// A null AT THE ROOT is "nothing stands here" — the store's own answer for an empty path,
-	// and a different question from what a null FIELD means, which is null. Recursing through
-	// this check is what would confuse the two.
-	if node == nil || (node.Type == ir.NullType && node.Tag == "") {
+	if node == nil {
 		return nil
 	}
 	return canonicalFields(node)
@@ -380,12 +388,22 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 
 // --- Store: reads and writes ---
 
-// Get returns an entity by ref. An absent (or deleted) path reads back as null.
 // Get reads one entity. A failed READ is reported as an error, never as absence: the
 // read crosses a network and may traverse a mount owned by another task, so "I could
 // not ask" and "it is not there" are genuinely different answers and the caller has to be
-// able to tell them apart. A null node IS absence — that is how verse spells a tombstone,
-// not logd, which just holds the bare value.
+// able to tell them apart.
+//
+// ABSENCE IS A MISSING KEY, not a null value. A `!delete` removes the key, so a read of a
+// deleted (or never-written) ref answers not_found, which isNotFound turns into ok=false; a
+// null node is the entity's payload, `payload: null`, a value like any other. Reading that as
+// absence too is how a legal tony value came to be one no entity could hold.
+//
+// One answer does not settle itself, and settling it is VERSE's job rather than the match's. A
+// read addresses a VALUE, so it has no way to say "there is no key here" — logd reports a
+// missing key as not_found only when it can resolve a proper ancestor to report it against.
+// Under a path whose ancestors do not resolve either, there is nothing to resolve through and
+// the answer is a bare null: the same answer an entity holding null gives. So on a null, ask
+// the question absence is really about — does the parent have this key — which is keyStands.
 func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -396,10 +414,42 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	if err != nil {
 		return Entity{}, false, fmt.Errorf("read %s: %w", ref, err)
 	}
-	if node == nil || node.Type == ir.NullType {
+	if node == nil {
 		return Entity{}, false, nil
 	}
+	if node.Type == ir.NullType && node.Tag == "" {
+		stands, err := s.keyStands(ctx, ref)
+		if err != nil {
+			return Entity{}, false, fmt.Errorf("read %s: %w", ref, err)
+		}
+		if !stands {
+			return Entity{}, false, nil
+		}
+	}
 	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true, nil
+}
+
+// keyStands reports whether the ref's key is present in its (system, kind) slice — the
+// question "is anything there" actually asks, and the one a value read cannot answer.
+//
+// It asks the PARENT for exactly that one key and nothing else. A null pattern is the presence
+// test, so the answer is an object carrying the key when it stands and a null when it does not
+// — one key on the wire either way, never the whole slice. That is what keeps this affordable
+// enough to be the tiebreaker rather than a second full read.
+//
+// It runs only on the ambiguous answer (see Get), which is a null: a store whose root has never
+// been written, or an entity genuinely holding null. Everything else is already settled by
+// not_found, so the ordinary read still costs one round trip.
+func (s *LogdStore) keyStands(ctx context.Context, ref Ref) (bool, error) {
+	parent := s.rootFor(ref) + "." + seg(ref.System) + "." + seg(ref.Kind)
+	node, err := s.sess.MatchPattern(ctx, parent, ir.FromMap(map[string]*ir.Node{ref.ID: ir.Null()}))
+	if isNotFound(err) {
+		return false, nil // no slice to hold the key
+	}
+	if err != nil {
+		return false, err
+	}
+	return childByKey(node, ref.ID) != nil, nil
 }
 
 // isNotFound reports whether a read error is the substrate saying "nothing stands there"
@@ -486,7 +536,7 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	}
 	pre := make([]pathPattern, 0, len(w.When))
 	for _, r := range w.When {
-		pre = append(pre, pathPattern{at: r.path(w), pattern: r.Pattern})
+		pre = append(pre, pathPattern{at: r.path(w), pattern: r.Pattern, absent: r.Absent})
 	}
 	res, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
@@ -532,7 +582,7 @@ func rootPattern(pre []pathPattern) *ir.Node {
 	var branches []*ir.Node
 	present, any := patTree{}, false
 	for _, p := range pre {
-		if IsAbsent(p.pattern) {
+		if p.absent {
 			branches = append(branches, absentPath(p.at))
 			continue
 		}
@@ -552,25 +602,32 @@ func rootPattern(pre []pathPattern) *ir.Node {
 	}
 }
 
-// pathPattern is one precondition reduced to what the match needs: a place and a pattern.
+// pathPattern is one precondition reduced to what the match needs: a place, and either a
+// pattern to evaluate there or the question of whether anything is there at all.
 type pathPattern struct {
 	at      Path
 	pattern Payload
+	absent  bool // nothing stands at at; pattern is unused
 }
 
-// absentPath renders "nothing stands at ref" — which over docd is TWO shapes, not one.
-// A ref that was never written has no key at its path, so absence is a negated presence
-// (a null pattern is the presence test). A ref that was DELETED still has its key: verse
-// tombstones it with a null leaf, not logd — and that mark is what makes the delete
-// replayable. So the two are ORed, and a claim released by Delete can be taken again —
-// without the second branch, releaseRun would free a claim that claimRun could never
-// re-win, and a sequence would run exactly once per subject for the lifetime of the
-// document.
+// absentPath renders "nothing stands at ref": there is no key at the path, which is a negated
+// presence (a null pattern is the presence test).
+//
+// ONE SHAPE, not two. This used to OR a second branch — a key holding a null, on the belief
+// that a deleted ref keeps its key with a tombstone in it — so that a claim released by Delete
+// could be taken again. The belief was wrong: logd EXECUTES a `!delete` by removing the key, so
+// a deleted ref reads back not_found and matches the first branch like any never-written one.
+// The second branch never fired, and releaseRun/claimRun round-trip on the first alone
+// (TestClaimAfterReleaseIsAbsentByTheKey).
+//
+// Dropping it is not just tidying, because a null is a legal payload now. That branch was
+// `!irtype null`, which asks whether the value here has type null — true of an entity that
+// stands there holding one. A create precondition would have passed straight over a live
+// entity and clobbered it. (Require.Absent is the other half of the same correction.)
 func absentPath(at Path) *ir.Node {
-	noKey, tombstone := patTree{}, patTree{}
-	nestPattern(noKey, at, ir.Null())    // negated below: no key at the path at all
-	nestPattern(tombstone, at, Absent()) // a key holding null: deleted
-	return ir.FromSlice([]*ir.Node{noKey.node().WithTag("!not"), tombstone.node()}).WithTag("!or")
+	noKey := patTree{}
+	nestPattern(noKey, at, ir.Null()) // negated: no key at the path at all
+	return noKey.node().WithTag("!not")
 }
 
 // nestPattern places pattern at m[system][kind][id][field...], building intermediate maps —
@@ -607,7 +664,7 @@ func (p Path) segments() []string {
 
 // patTree is the nesting under construction: branches are patTrees, LEAVES ARE NODES. It is
 // not a map[string]any converted at the end, because that conversion is what used to flatten
-// a pattern — an Absent(), a scalar, an operator — into something gomap could represent, i.e.
+// a pattern — a scalar, an operator, a `!irtype null` — into something gomap could represent, i.e.
 // into nothing. Keeping leaves as nodes is the whole point of the widening.
 type patTree map[string]any
 
@@ -683,8 +740,11 @@ func (s *LogdStore) ensureSynced() {
 }
 
 // List enumerates entities under the root whose ref satisfies pred (nil = all) via
-// a single Match on the root subtree. Tombstoned (deleted) entities are skipped.
-// This is the Lister convenience, not part of the core Store interface.
+// a single Match on the root subtree.
+//
+// It walks a MATERIALIZED document, so there are no tombstones in it to skip: a deleted entity
+// has no key (logd removes it) and is simply not there to walk. That is why this reads with
+// walkEntityDoc rather than the delta walk — every leaf it finds is a payload, null included.
 func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -693,12 +753,9 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 		return nil
 	}
 	var out []Entity
-	for _, ch := range walkEntities(node) {
-		if ch.deleted {
-			continue
-		}
-		if pred == nil || pred(ch.ref) {
-			out = append(out, Entity{Ref: ch.ref, Payload: ch.payload})
+	for _, e := range walkEntityDoc(node) {
+		if pred == nil || pred(e.Ref) {
+			out = append(out, e)
 		}
 	}
 	return out
@@ -981,7 +1038,10 @@ func entitiesFromDoc(doc *ir.Node, root, system, kind string) map[Ref]Payload {
 		return out
 	}
 	walkLeaves(node, depth, func(segs []string, v *ir.Node) {
-		if v == nil || v.Type == ir.NullType {
+		// A missing leaf is nothing; a null one is an entity holding null. The document here is
+		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
+		// `!delete` by removing the key — so absence never reaches this as a value.
+		if v == nil {
 			return
 		}
 		out[refAt(system, kind, segs)] = nodeToPayload(v)
@@ -1376,7 +1436,7 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 // bvm163tyh12krwcqcsn0). A nil doc falls back to the delta, which for a whole-entity write
 // is the same value.
 func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
-	changes := walkEntities(childByKey(patch, s.root)) // strip the document root
+	changes := walkEntityChanges(childByKey(patch, s.root)) // strip the document root
 	s.mu.Lock()
 	if commit > s.rev {
 		s.rev = commit
@@ -1397,11 +1457,12 @@ func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
 	return out
 }
 
-// payloadIn reads one entity's whole payload out of a root-rooted document, or nil if it
-// does not stand there.
+// payloadIn reads one entity's whole payload out of a root-rooted document, or nil if it does
+// not stand there — which is a MISSING KEY, not a null value: the document is materialized, so
+// an entity holding null is present and answers with null.
 func payloadIn(doc *ir.Node, root string, ref Ref) Payload {
 	n := childByKey(childByKey(childByKey(childByKey(doc, root), ref.System), ref.Kind), ref.ID)
-	if n == nil || n.Type == ir.NullType {
+	if n == nil {
 		return nil
 	}
 	return nodeToPayload(n)
@@ -1547,30 +1608,43 @@ func childByKey(node *ir.Node, key string) *ir.Node {
 	return nil
 }
 
-// walkEntities descends a node rooted at the verse subtree (its top-level fields
-// are systems) exactly three object levels — system, kind, id — and yields each
-// entity leaf. A null leaf is a delete (tombstone); any other value is the payload.
-func walkEntities(node *ir.Node) []entityChange {
+// walkEntityLeaves descends a node rooted at the verse subtree (its top-level fields are
+// systems) exactly three object levels — system, kind, id — and calls fn at each entity leaf.
+// It is walkLeaves at the depth the entity namespace has, and the two walks below are what
+// they do with the leaf.
+func walkEntityLeaves(node *ir.Node, fn func(ref Ref, n *ir.Node)) {
+	walkLeaves(node, 3, func(segs []string, v *ir.Node) {
+		fn(Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, v)
+	})
+}
+
+// walkEntityDoc reads the entities out of a MATERIALIZED verse subtree — what Match returns,
+// what a watch's State carries. Every leaf is a payload, `null` included: a deleted entity has
+// no key here to be read as anything.
+func walkEntityDoc(node *ir.Node) []Entity {
+	var out []Entity
+	walkEntityLeaves(node, func(ref Ref, n *ir.Node) {
+		out = append(out, Entity{Ref: ref, Payload: nodeToPayload(n)})
+	})
+	return out
+}
+
+// walkEntityChanges reads the changes out of a DELTA — a commit's patch, where a removal has
+// to be spelled because there is no absence to observe.
+//
+// It is a separate walk from walkEntityDoc for exactly that reason, and the two used to be one
+// function serving both callers, which is how a materialized null came to read as a delete. The
+// tombstone is the `!delete` TAG, which is what verse writes (deleteOp) and what tony.Diff
+// emits for a removed key — not the null, which in a delta is a value being set like any other.
+func walkEntityChanges(node *ir.Node) []entityChange {
 	var out []entityChange
-	var rec func(n *ir.Node, segs []string)
-	rec = func(n *ir.Node, segs []string) {
-		if len(segs) == 3 {
-			ref := Ref{System: segs[0], Kind: segs[1], ID: segs[2]}
-			if n == nil || n.Type == ir.NullType {
-				out = append(out, entityChange{ref: ref, deleted: true})
-			} else {
-				out = append(out, entityChange{ref: ref, payload: nodeToPayload(n)})
-			}
+	walkEntityLeaves(node, func(ref Ref, n *ir.Node) {
+		if n == nil || n.Tag == deleteTag {
+			out = append(out, entityChange{ref: ref, deleted: true})
 			return
 		}
-		if n == nil || n.Type != ir.ObjectType {
-			return
-		}
-		for i, f := range n.Fields {
-			rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
-		}
-	}
-	rec(node, nil)
+		out = append(out, entityChange{ref: ref, payload: nodeToPayload(n)})
+	})
 	return out
 }
 

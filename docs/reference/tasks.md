@@ -200,8 +200,8 @@ is observing entities — and a completion is an entity change, which is what le
 to it.
 
 ```sh
-verse watch --system task
-verse entity get task:instance:<id>
+verse watch task
+verse state get task:instance:<id>
 ```
 
 ```tony
@@ -231,8 +231,8 @@ re-fire idempotent and what `verse flow demo:pr:1` addresses.
 `task:instance:<id>` is therefore the LATEST run, and each run has a record of its own:
 
 ```sh
-verse entity get 'task:run:<id>@<occurrence>'
-verse entity --system task --kind run --if '{flow: "demo:pr:1"}'
+verse state get 'task:run:<id>@<occurrence>'
+verse state --if '{flow: "demo:pr:1"}' task.run
 ```
 
 `occurrence` is the store revision the run is about — the commit that woke the firing, or the
@@ -245,7 +245,7 @@ cannot do — it holds whatever the newest run has written and nothing of the on
 
 Run records are written twice, at the run's start and at its end, so a run that never finishes
 still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by
-events, and removing them is `verse entity rm`, or a charter that marks the old ones
+events, and removing them is `verse state rm`, or a charter that marks the old ones
 [vanishing](../change-events.md) and acts on the edge.
 
 ## The question record
@@ -269,7 +269,7 @@ payload:
 select the questions it cares about without reading prose:
 
 ```sh
-verse entity --system gate --if '{status: pending, effects: {verbs: [write]}}'
+verse state --if '{status: pending, effects: {verbs: [write]}}' gate
 ```
 
 It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
@@ -290,7 +290,7 @@ The gate is closed to further answers the moment one is accepted; what is still 
 whether the party who must act on it knows. It clears on the worker's acknowledgement.
 
 ```sh
-verse entity --system gate --if '{delivered: false}'   # answers still in flight
+verse state --if '{delivered: false}' gate             # answers still in flight
 ```
 
 Every answer names its answerer — `verse gate approve <id> --as human:you` — and two people

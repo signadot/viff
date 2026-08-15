@@ -40,14 +40,14 @@ recomputed live as the world changes. It has spawned nothing; it is watching. Ma
 true, however that happens: a trigger, a source, or a person.
 
 ```sh
-verse entity put ci:status:build '{state: green}'
+verse state put ci:status:build '{state: green}'
 verse goal
 # - name: ship
 #   outcome: done
 #   status: done
 #   terminal: true
 #   waitingOn: []
-verse entity get goal:done:ship
+verse state get goal:done:ship
 # payload:
 #   flow: change:pr:42
 #   goal: ship

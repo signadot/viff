@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
 // Path addresses a place in the verse. A Ref names an entity; Field goes further, naming
@@ -25,13 +26,100 @@ type Path struct {
 // At returns the path to a place inside this entity — with no arguments, the entity itself.
 func (r Ref) At(field ...string) Path { return Path{Ref: r, Field: field} }
 
-// String spells the path as its ref followed by the field path, e.g.
-// demo:pr:1.labels.urgent — the form the CLI accepts.
+// String spells the path, and ParsePath is its inverse — which it was not before, and the
+// reason is the delimiter.
+//
+// An ENTITY is spelled as its ref, `demo:pr:1`, because that is the ref's own spelling and
+// nothing about identity changes here. A path that continues INTO a payload is spelled as a
+// kinded path, `demo.pr.1.labels.urgent`, with each segment quoted as kpath needs it.
+//
+// The two cannot be one spelling until kpath takes a delimiter option, and the reason is an id
+// with a dot in it: `demo:pr:a.b` is an entity whose id is `a.b`, and `demo:pr:a.b.labels` can
+// be read as that entity's `labels` or as an entity named `a.b.labels`. The colon spelling has
+// no way to say which. The dot spelling does — `demo.pr."a.b".labels` — so that is the one that
+// carries a field path. This used to claim it emitted "the form the CLI accepts"; the CLI's
+// ParseRef never implemented it, and this is what implementing it turned out to require.
 func (p Path) String() string {
 	if len(p.Field) == 0 {
 		return p.Ref.String()
 	}
-	return p.Ref.String() + "." + strings.Join(p.Field, ".")
+	return p.KPath()
+}
+
+// KPath spells the path as a kinded path at EVERY depth, the ref included:
+// `demo.pr.1`, `demo.pr.1.labels.urgent`, `demo.pr."a.b"`. It is what a read route takes,
+// which is why it exists beside String — String picks the spelling a reader expects for the
+// depth, and this one picks the grammar the wire takes.
+func (p Path) KPath() string {
+	out := seg(p.System) + "." + seg(p.Kind) + "." + seg(p.ID)
+	for _, f := range p.Field {
+		out += "." + seg(f)
+	}
+	return out
+}
+
+// ParsePath parses the one address a command takes: an entity, or a place inside one.
+//
+//	demo:pr:1                    an entity, by ref — dots and all belong to the id
+//	demo.pr.1                    the same entity, as a kinded path
+//	demo.pr.1.labels.urgent      a place inside its payload
+//	demo.pr."a.b".labels         …an id with a dot in it, which is why quoting exists
+//
+// WHICHEVER DELIMITER COMES FIRST is the one the address is written in, and that single rule
+// is what keeps both spellings unambiguous:
+//
+//	demo:pr:a.b            `:` first — a ref, so the dots belong to the id
+//	git.ref.x@git:ref:y    `.` first — a kinded path, so the colons belong to the id
+//
+// Trying a ref first instead does not work, and the second line is why: SplitN on ":" happily
+// reads `git.ref.x@git:ref:y` as the system `git.ref.x@git`, which is not a thing anybody
+// wrote. Nor does trying a kpath first, which reads `demo:pr:1.labels` as a system called
+// `demo:pr:1`. Each spelling has to be recognized before it is parsed.
+//
+// So every address that ever worked still names what it named — a ref is a ref — and the dot
+// spelling is what carries a field path.
+//
+// The field path is object fields only. `[0]` and `(scott)` address into an ARRAY, which a
+// write cannot reach — the store patches at a kpath of object fields (LogdStore.writePath) —
+// so they are refused here, where the message can say so, rather than rendered into a path the
+// substrate will reject. Reading one is a different matter and `verse state` does it.
+func ParsePath(s string) (Path, error) {
+	if colonFirst(s) {
+		ref, err := ParseRef(s)
+		if err != nil {
+			return Path{}, fmt.Errorf("path %q: %w", s, err)
+		}
+		return Path{Ref: ref}, nil
+	}
+	kp, err := kpath.Parse(s)
+	if err != nil {
+		return Path{}, fmt.Errorf("path %q: %w", s, err)
+	}
+	var segs []string
+	for p := kp; p != nil; p = p.Next {
+		switch {
+		case p.Field != nil:
+			segs = append(segs, *p.Field)
+		case p.FieldAll, p.IndexAll, p.SparseIndexAll:
+			return Path{}, fmt.Errorf("path %q: a wildcard names several places, and this names one", s)
+		default:
+			return Path{}, fmt.Errorf("path %q: an array element is not writable — the store "+
+				"patches at object fields, so address the field that holds the array", s)
+		}
+	}
+	if len(segs) < 3 {
+		return Path{}, fmt.Errorf("path %q: an address starts with system.kind.id (or the ref "+
+			"system:kind:id), and this names %d of the 3", s, len(segs))
+	}
+	return Path{Ref: Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, Field: segs[3:]}, nil
+}
+
+// colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.
+// An address with neither is neither, and reads as a kinded path so that the message about it
+// names the three segments it is missing.
+func colonFirst(s string) bool {
+	c, d := strings.IndexByte(s, ':'), strings.IndexByte(s, '.')
+	return c >= 0 && (d < 0 || c < d)
 }
 
 // IsEntity reports whether the path addresses a whole entity rather than a place inside one.
@@ -63,11 +151,28 @@ type Require struct {
 	At Path
 	// Pattern is a tony match against whatever stands at At:
 	//
-	//	Absent()               nothing is there — a create
 	//	Present()              something is there — an update
+	//	Unchanged(cur)         it is still what I read
 	//	Obj{...}.Payload()     it looks like this
 	//	!not {…}, !glob, …     anything else tony.Match can say
+	//
+	// Ignored when Absent is set: there is no value there to ask a question about.
 	Pattern Payload
+	// Absent requires that NOTHING stands at At — the create.
+	//
+	// IT IS A FIELD RATHER THAN A PATTERN, and the difference is the whole of what a pattern
+	// can and cannot say. Absence is a property of the PATH: the document has no key here, so
+	// there is nothing for a pattern placed at that path to be evaluated against. The store
+	// renders it as a negated presence one level up instead (absentPath).
+	//
+	// It used to be a pattern — `Absent()`, i.e. `!irtype null` — which the store recognized by
+	// its shape and routed away before anything could evaluate it. That worked exactly as long
+	// as no entity could hold null, because `!irtype null` is a real tony operator and what it
+	// genuinely asks is "the value here has type null". Once null became a legal payload the
+	// two questions came apart, and the pattern spelling answered the wrong one: an entity
+	// standing at a path holding null would have read as nothing standing there at all, so a
+	// create would have committed straight over it.
+	Absent bool
 }
 
 // Present is the precondition pattern for "something is there, whatever it is". A null
@@ -75,7 +180,9 @@ type Require struct {
 // the exact complement of Absent, which asks about the value's type instead.
 func Present() Payload { return ir.Null() }
 
-// Removed is how a WRITE says a field is gone: `rec["delivered"] = entity.Removed()`.
+// Removed is how a WRITE says a value is gone — at any depth, the entity's own path included:
+// `rec["delivered"] = entity.Removed()` drops a field, and it AS an action's whole patch drops
+// the entity (the reaper, docs/trigger-model.md).
 //
 // It is spelled rather than implied, and that is the whole lesson of the convention it
 // replaces. Absence used to be a bare null — `rec[k] = nil` — which read beautifully and cost
@@ -84,6 +191,9 @@ func Present() Payload { return ir.Null() }
 // however tempting: `{owners: {ENG: nil}}` in source/linear is a MATCH, where a bare null is
 // the presence wildcard, so one spelling would have had to mean two opposite things depending
 // on which side of a comparison it landed.
+//
+// The entity's own path was the last place a bare null still meant removal, and it is not an
+// exception any more: one operator, any depth.
 func Removed() Payload { return deleteOp() }
 
 // deleteOp is how verse spells "this is gone" IN A WRITE: a null wearing `!delete`, which the
@@ -94,13 +204,39 @@ func Removed() Payload { return deleteOp() }
 // unstorable at every depth (see nodeToPayload). The "!" is load-bearing too: mergeop.SplitChild
 // strips a tag's first byte before looking the operator up, so WithTag("delete") names "elete",
 // which is no operator at all and leaves an ordinary null behind.
-func deleteOp() Payload { return ir.Null().WithTag("!delete") }
+func deleteOp() Payload { return ir.Null().WithTag(deleteTag) }
+
+// deleteTag is the operator tag a removal wears, on the way in AND on the way back: verse
+// writes it (deleteOp) and logd forwards it on the change stream, which is how the delta walk
+// tells a removed entity from one whose payload is null (walkEntityChanges).
+const deleteTag = "!delete"
 
 // Created requires that nothing stands at the write's own path — the create.
-func Created() Require { return Require{Pattern: Absent()} }
+func Created() Require { return Require{Absent: true} }
 
 // Updated requires that something already stands at the write's own path — the update.
 func Updated() Require { return Require{Pattern: Present()} }
+
+// Unchanged spells "what stands here is still exactly what I read" — the compare-and-swap half
+// of a read-modify-write, over the payload the caller read.
+//
+// A null needs its own spelling, and that is the whole reason this is a function rather than a
+// call to AsData at each site. AsData leaves a bare null alone, and a bare null PATTERN is
+// Present(): it matches any value. So expecting a null payload to be unchanged would have asked
+// only that something still be there, and a concurrent write of anything at all would have
+// satisfied it — a lost update, silently, on exactly the entities the store had just started
+// letting you write. `!irtype null` is the question actually meant: the value here has type
+// null, and null has exactly one value, so that is the value.
+func Unchanged(cur Payload) Payload {
+	if cur != nil && cur.Type == ir.NullType && cur.Tag == "" {
+		return ir.Null().WithTag(irTypeTag)
+	}
+	return AsData(cur)
+}
+
+// irTypeTag is tony's type-match operator. `!irtype null` asks whether what stands here has
+// type null — which, null having one inhabitant, is whether it IS null.
+const irTypeTag = "!irtype"
 
 // path resolves a Require's target: its own At, or the write's when it has none.
 func (r Require) path(of Write) Path {
@@ -138,10 +274,10 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 		if err != nil {
 			return fmt.Errorf("modify %s: %w", ref, err)
 		}
-		when := Require{Pattern: Absent()} // expect-absent: this is a create
+		when := Require{Absent: true} // expect-absent: this is a create
 		next := fn(nil)
 		if exists {
-			when = Require{Pattern: AsData(cur.Payload)} // expect-unchanged: this is an update
+			when = Require{Pattern: Unchanged(cur.Payload)} // expect-unchanged: this is an update
 			next = fn(cur.Payload)
 		}
 		// The removals go on AFTER the escape, and the order is load-bearing. AsData makes a
@@ -227,10 +363,10 @@ func ModifyFrom(ctx context.Context, s Store, ref Ref, cur Payload, exists bool,
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("modify %s: %w", ref, err)
 	}
-	when := Require{Pattern: Absent()} // expect-absent: this is a create
+	when := Require{Absent: true} // expect-absent: this is a create
 	next := fn(nil)
 	if exists {
-		when = Require{Pattern: AsData(cur)} // expect-unchanged: this is an update
+		when = Require{Pattern: Unchanged(cur)} // expect-unchanged: this is an update
 		next = fn(cur)
 	}
 	value := AsData(next)

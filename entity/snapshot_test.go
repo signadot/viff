@@ -84,9 +84,9 @@ func TestSnapshotAtHeadAgreesWithLiveStore(t *testing.T) {
 	}
 }
 
-// A tombstone is absence in a snapshot exactly as it is in the store: skipped by List, and
-// reported not-there by Get with a nil error — the read that could have failed already
-// happened, when the snapshot was taken.
+// A removed entity is absence in a snapshot exactly as it is in the store: it has no key to
+// walk, so List does not report it, and Get says not-there with a nil error — the read that
+// could have failed already happened, when the snapshot was taken.
 func TestSnapshotTombstoneIsAbsence(t *testing.T) {
 	s := openStore(t)
 	ref := Ref{System: "demo", Kind: "pr", ID: "gone"}

@@ -116,11 +116,14 @@ func claimCreateOnly(t *testing.T, store Store) {
 	}
 }
 
-// A RELEASED claim is takeable again. Absence has two shapes here — a ref never written
-// has no key, a deleted one keeps its key holding a tombstone — and a create-only
-// precondition that only knows the first reads a released claim as still held. That is
-// not a lost edge case: releaseRun deletes the claim at the end of every sequence run, so
-// getting this wrong lets a sequence run exactly once per subject, forever.
+// A RELEASED claim is takeable again. Absence has ONE shape — no key at the path, whether the
+// ref was never written or was deleted, since a removal takes the key with it — and this is
+// what pins that a released claim reads as absent to a create-only precondition. It is not a
+// lost edge case: releaseRun deletes the claim at the end of every sequence run, so getting it
+// wrong lets a sequence run exactly once per subject, forever.
+//
+// (This used to say absence had two shapes, a no-key one and a key holding a tombstone, and
+// absentPath ORed them. The second never existed; see absentPath.)
 func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 	store := openStore(t)
 	claim := Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}

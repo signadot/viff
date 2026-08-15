@@ -3,6 +3,14 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
+  Node: .[tony-base:ir]
+signature:
+  name: verse-state
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
   payload: .[tony-base:ir]
   ref: .[string]
 signature:

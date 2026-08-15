@@ -14,9 +14,11 @@ import (
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 )
 
 // ── HTTP helpers (all client commands connect to g.Addr) ─────────────────────
@@ -356,20 +358,32 @@ func filterBy(q url.Values, pattern, at string) error {
 		return fmt.Errorf("--if: %w", err)
 	}
 	q.Set("if", string(b))
-	// Segment per parameter, as `entity rm --at` sends its path: the wire takes the address
-	// as a list, so a field name is never re-split at the far end.
+	// Segment per parameter, as a write's field path travels: the wire takes the address as a
+	// list, so a field name is never re-split at the far end.
 	for _, f := range fieldPath(at) {
 		q.Add("if-at", f)
 	}
 	return nil
 }
 
+// fieldPath splits a dot-separated --if-at into the segments the wire takes.
+//
+// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.ParsePath), which quotes a
+// field name carrying a dot, while this stays the flat split because `--if-at` says where to
+// root a predicate inside one payload rather than naming a place in the verse. The wire takes
+// the segments as a list either way, so nothing but this spelling is in the way if a dotted
+// field name ever needs rooting.
+func fieldPath(at string) []string {
+	if at == "" {
+		return nil
+	}
+	return strings.Split(at, ".")
+}
+
 // ── watch ────────────────────────────────────────────────────────────────────
 
 type watchConfig struct {
 	*cli.Command
-	System string `cli:"name=system desc='filter by entity system'"`
-	Kind   string `cli:"name=kind desc='filter by entity kind'"`
 	// default= in the tag rather than a struct literal, so `verse watch --help` SAYS where
 	// the stream starts. A literal sets the same value and tells the reader nothing.
 	Since string `cli:"name=since default=0 desc='start from store revision (cursor); 0 = from the beginning'"`
@@ -388,20 +402,18 @@ func watchCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "watch").
-		WithSynopsis("watch — stream store changes (cursored)").
+		WithSynopsis("watch — stream store changes (cursored): watch [<path>] [--if <pattern>]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
 
 // query renders the filters as the watch route's parameters. The cursor is watch's own; the
-// rest is the selector every read-plane route takes.
-func (cfg *watchConfig) query() (url.Values, error) {
+// rest is the selector every read-plane route takes, path included — `verse watch demo.pr` and
+// `verse state demo.pr` name the same entities and differ only in when they answer.
+func (cfg *watchConfig) query(at string) (url.Values, error) {
 	q := url.Values{"since": {cfg.Since}}
-	if cfg.System != "" {
-		q.Set("system", cfg.System)
-	}
-	if cfg.Kind != "" {
-		q.Set("kind", cfg.Kind)
+	if at != "" {
+		q.Set("at", at)
 	}
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
 		return nil, err
@@ -410,10 +422,21 @@ func (cfg *watchConfig) query() (url.Values, error) {
 }
 
 func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
-	if _, err := cfg.Parse(cc, args); err != nil {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
 		return err
 	}
-	q, err := cfg.query()
+	if len(args) > 1 {
+		return fmt.Errorf("%w: watch takes one path", cli.ErrUsage)
+	}
+	at := ""
+	if len(args) == 1 {
+		at = args[0]
+	}
+	if _, err := entity.ParseAt(at); err != nil {
+		return fmt.Errorf("watch: %w", err)
+	}
+	q, err := cfg.query(at)
 	if err != nil {
 		return fmt.Errorf("watch: %w", err)
 	}
@@ -577,28 +600,60 @@ type entityGetConfig struct{ *cli.Command }
 func entityGetCmd() *cli.Command {
 	cfg := &entityGetConfig{}
 	return cli.NewCommandAt(&cfg.Command, "get").
-		WithSynopsis("get an entity: get <ref>").
+		WithSynopsis("get one place: get <path> (demo:pr:1 · demo.pr.1.labels · merge.proposal.X.votes(scott))").
 		WithRun(cfg.run)
 }
 
+// get names ONE place and answers what stands there, at whatever depth the path reaches. It
+// goes through /state, which is the read that takes a whole path — so `--at` is gone, and a
+// keyed array element (`votes(scott)`) is reachable, which no verse address could do at all
+// before. Nothing stands there is a 404, because a path this deep names a thing.
 func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: entity get wants a ref (system:kind:id)", cli.ErrUsage)
+		return fmt.Errorf("%w: state get wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
 	}
-	resp, err := httpGet("/entity", url.Values{"ref": {args[0]}})
+	at, kp, err := readAt(args[0])
 	if err != nil {
-		return fmt.Errorf("entity get: %w", err)
+		return fmt.Errorf("%w: state get: %s", cli.ErrUsage, err)
+	}
+	// get names ONE place, so it wants a path that reaches one. A shorter path describes a
+	// slice, and the bare read is what answers those.
+	if entity.AtDepth(kp) < 3 {
+		return fmt.Errorf("%w: state get names one place — %q names a slice, so ask `verse state %s`",
+			cli.ErrUsage, args[0], at)
+	}
+	resp, err := httpGet("/state", url.Values{"at": {at}})
+	if err != nil {
+		return fmt.Errorf("state get: %w", err)
 	}
 	return printBody(cc, resp)
 }
 
+// readAt renders a command-line address as the kinded path a read takes.
+//
+// A ref is the same grammar with `:` for a delimiter, so it is normalized here — the one place
+// that has to know the two spellings were ever two. Anything else is already a kinded path and
+// passes through whole, array reach included: a read can follow `votes(scott)` where a write
+// cannot, so this is deliberately more permissive than entity.ParsePath.
+func readAt(s string) (string, *kpath.KPath, error) {
+	if ref, err := entity.ParseRef(s); err == nil {
+		at := ref.At().KPath()
+		kp, err := entity.ParseAt(at)
+		return at, kp, err
+	}
+	kp, err := entity.ParseAt(s)
+	if err != nil {
+		return "", nil, err
+	}
+	return s, kp, nil
+}
+
 type entityPutConfig struct {
 	*cli.Command
-	At     string `cli:"name=at desc='write INSIDE the payload, at this dot-separated field path (e.g. labels.urgent)'"`
 	Create bool   `cli:"name=create desc='only if nothing is there yet — the write loses a race rather than clobbering'"`
 	Update bool   `cli:"name=update desc='only if something is already there'"`
 	If     string `cli:"name=if desc='only if what is there matches this tony pattern'"`
@@ -611,7 +666,7 @@ func entityPutCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "put").
-		WithSynopsis("put an entity: put <ref> <payload> [--at <field.path>] [--create|--update] [--if <pattern>]").
+		WithSynopsis("put at a path: put <path> <payload> [--create|--update] [--if <pattern>]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -638,23 +693,21 @@ func (cfg *entityPutConfig) conditions() ([]api.Condition, error) {
 	return out, nil
 }
 
-// fieldPath splits a dot-separated --at into the segments the wire takes. A field name
-// containing a dot is not addressable this way; the wire takes the segments as a list, so
-// nothing but this spelling is in the way if one ever needs to be.
-func fieldPath(at string) []string {
-	if at == "" {
-		return nil
-	}
-	return strings.Split(at, ".")
-}
-
 func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("%w: entity put wants a ref and a payload", cli.ErrUsage)
+		return fmt.Errorf("%w: state put wants a path and a payload", cli.ErrUsage)
+	}
+	// ONE ADDRESS, all the way down: `state put demo.pr.1.labels.urgent true` is what
+	// `--at labels.urgent` used to spell. The wire keeps {ref, field[]} — it has no reason to
+	// re-parse what the CLI has already split, and the structured form is what the store's
+	// writePath consumes — so this is the one parser, and Path.String is its inverse.
+	at, err := entity.ParsePath(args[0])
+	if err != nil {
+		return fmt.Errorf("%w: state put: %s", cli.ErrUsage, err)
 	}
 	// A payload typed on the command line names no format of its own, so it is read as
 	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
@@ -665,38 +718,30 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	// though the store and the wire both accept them.
 	payload, err := codec.ParseNode([]byte(args[1]), inFmt())
 	if err != nil {
-		return fmt.Errorf("entity put: payload: %w", err)
+		return fmt.Errorf("state put: payload: %w", err)
 	}
 	when, err := cfg.conditions()
 	if err != nil {
-		return fmt.Errorf("entity put: %w", err)
+		return fmt.Errorf("state put: %w", err)
 	}
 	resp, err := httpPost("/entity", api.PutEntity{
-		Ref:     args[0],
-		Field:   fieldPath(cfg.At),
+		Ref:     at.Ref.String(),
+		Field:   at.Field,
 		Payload: payload,
 		When:    when,
 	})
 	if err != nil {
-		return fmt.Errorf("entity put: %w", err)
+		return fmt.Errorf("state put: %w", err)
 	}
 	return printBody(cc, resp)
 }
 
-type entityRmConfig struct {
-	*cli.Command
-	At string `cli:"name=at desc='remove one field INSIDE the payload, at this dot-separated path'"`
-}
+type entityRmConfig struct{ *cli.Command }
 
 func entityRmCmd() *cli.Command {
 	cfg := &entityRmConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
 	return cli.NewCommandAt(&cfg.Command, "rm").
-		WithSynopsis("rm — remove an entity, or one field of it: rm <ref> [--at <field.path>]").
-		WithOpts(opts...).
+		WithSynopsis("rm — remove what stands at a path: rm <path> (an entity, or one field of one)").
 		WithRun(cfg.run)
 }
 
@@ -706,58 +751,69 @@ func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: entity rm wants a ref (system:kind:id)", cli.ErrUsage)
+		return fmt.Errorf("%w: state rm wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
 	}
-	q := url.Values{"ref": {args[0]}}
-	for _, f := range fieldPath(cfg.At) {
+	at, err := entity.ParsePath(args[0])
+	if err != nil {
+		return fmt.Errorf("%w: state rm: %s", cli.ErrUsage, err)
+	}
+	q := url.Values{"ref": {at.Ref.String()}}
+	for _, f := range at.Field {
 		q.Add("field", f)
 	}
 	resp, err := httpDelete("/entity", q)
 	if err != nil {
-		return fmt.Errorf("entity rm: %w", err)
+		return fmt.Errorf("state rm: %w", err)
 	}
 	defer resp.Body.Close()
-	// Nothing stands there now — which is all there is to say, and is equally true of a ref
+	// Nothing stands there now — which is all there is to say, and is equally true of a path
 	// that held nothing to begin with.
-	what := args[0]
-	if cfg.At != "" {
-		what += " " + cfg.At
-	}
-	fmt.Fprintf(cc.Out, "removed %s\n", what)
+	fmt.Fprintf(cc.Out, "removed %s\n", at)
 	return nil
 }
 
-// entity is the one collection with filters of its own, so it does not go through
+// state is the one collection with filters of its own, so it does not go through
 // collection() — the shape is the same, the query is not.
-type entitiesConfig struct {
+type stateConfig struct {
 	*cli.Command
-	System string `cli:"name=system desc='filter by entity system'"`
-	Kind   string `cli:"name=kind desc='filter by entity kind'"`
-	// The same pair `watch` takes, meaning the same thing (filterBy) — the listing and the
-	// stream are one selector asked at two times.
+	// The same pair `watch` takes, meaning the same thing (filterBy) — the read and the stream
+	// are one selector asked at two times.
 	//
-	// `entity put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
-	// flags at its first positional, so `entity put <ref> <payload> --if <pattern>` hands
-	// the flag to `put`, where it is a precondition rather than a filter. Pinned by
-	// TestEntitiesPutKeepsItsOwnIf.
-	If   string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
-	IfAt string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
+	// `state put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
+	// flags at its first positional, so `state put <ref> <payload> --if <pattern>` hands the
+	// flag to `put`, where it is a precondition rather than a filter. Pinned by
+	// TestStatePutKeepsItsOwnIf.
+	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
+	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
+	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
 }
 
-func entityCmd() *cli.Command {
-	cfg := &entitiesConfig{}
+// stateCmd is `verse state`: the verse's state at a path.
+//
+// It replaces `verse entity`, and the noun went with the answer. The old command listed rows of
+// a table that the store does not hold — `[{ref, payload}, …]`, flattened out of the document it
+// does hold — and addressed them in three vocabularies: `--system`/`--kind` to narrow a listing,
+// `system:kind:id` to name one, `--at` to reach inside it. They are one kinded path asked at
+// different depths, so that is what this takes: `verse state`, `verse state demo`,
+// `verse state demo.pr`, `verse state demo.pr.1`, `verse state demo.pr.1.labels.urgent`,
+// `verse state 'demo.pr.*.stage'`.
+//
+// A ref is that same path with `:` for a delimiter, which is why get/put/rm still take one and
+// why nothing about identity moved (see entity/doc.go).
+func stateCmd() *cli.Command {
+	cfg := &stateConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "entity").WithAliases("entities", "e").
-		WithSynopsis("entity — the store [--system <s>] [--kind <k>] [--if <pattern>]; get|put|rm one by <ref>").
+	return cli.NewCommandAt(&cfg.Command, "state").WithAliases("s").
+		WithSynopsis("state — the verse at a path: state [--if <pattern>] [--paths] [<path>]; get|put|rm one by <ref>").
 		WithOpts(opts...).
 		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd()).
 		WithRun(cfg.run)
 }
 
-func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
+func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
@@ -765,22 +821,105 @@ func (cfg *entitiesConfig) run(cc *cli.Context, args []string) error {
 	if handled, err := dispatch(cfg.Command, cc, args); handled {
 		return err
 	}
-	if err := noArgs(cfg.Command, "entity", args); err != nil {
-		return err
+	// FLAGS COME FIRST, and the error says so rather than leaving it to be discovered. A
+	// command that HAS subcommands stops parsing flags at its first positional (cli's
+	// Command.Parse passes all=true only for a leaf), so `state demo.pr --paths` hands
+	// `--paths` through as a second positional. That rule is what routes
+	// `state put <ref> <payload> --if <pattern>` to put's own --if, so it is not one to bend
+	// here; it is one to name when somebody trips over it.
+	if len(args) > 1 {
+		if strings.HasPrefix(args[1], "-") {
+			return fmt.Errorf("%w: flags come before the path — `verse state %s %s`",
+				cli.ErrUsage, strings.Join(args[1:], " "), args[0])
+		}
+		return fmt.Errorf("%w: state takes one path, got %d", cli.ErrUsage, len(args))
+	}
+	at := ""
+	if len(args) == 1 {
+		at = args[0]
+	}
+	// Parsed HERE as well as at the server, so a malformed path is a usage error against the
+	// command the operator typed rather than a 400 from a route they did not.
+	kp, err := entity.ParseAt(at)
+	if err != nil {
+		return fmt.Errorf("state: %w", err)
 	}
 	q := url.Values{}
-	if cfg.System != "" {
-		q.Set("system", cfg.System)
-	}
-	if cfg.Kind != "" {
-		q.Set("kind", cfg.Kind)
+	if at != "" {
+		q.Set("at", at)
 	}
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
-		return fmt.Errorf("entity: %w", err)
+		return fmt.Errorf("state: %w", err)
 	}
-	resp, err := httpGet("/entities", q)
+	resp, err := httpGet("/state", q)
 	if err != nil {
-		return fmt.Errorf("entity: %w", err)
+		return fmt.Errorf("state: %w", err)
+	}
+	if cfg.Paths {
+		return printPaths(cc, resp, kp)
 	}
 	return printBody(cc, resp)
+}
+
+// stateAt reads the verse at a path and hands back the entities standing there.
+//
+// It is what a command that wants ENTITIES uses, and the reason it can: the addresses are in
+// the answer, as keys, so a caller reads them out of the document it already has rather than
+// recovering them from a rendered ref and making a second request. Every consumer in this
+// package used to do the latter — `strings.TrimPrefix(e.Ref, "provider:")` and a SplitN to get
+// the capability back — which is exactly the map the store had thrown away being rebuilt by
+// hand at each caller.
+func stateAt(at string) ([]entity.Entity, error) {
+	kp, err := entity.ParseAt(at)
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	if at != "" {
+		q.Set("at", at)
+	}
+	resp, err := httpGet("/state", q)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return nil, errors.New(msg)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return nil, fmt.Errorf("decoding the state: %w", err)
+	}
+	return (entity.Doc{Node: node}).Entities(kp), nil
+}
+
+// printPaths prints one address per line, derived from the document the read answered with.
+//
+// Client-side, because the addresses are already IN the answer: an id is a key now rather than a
+// token inside a rendered ref, so the server would only be sending back what the document
+// already says. It is the `ls -1` of a read — what a script uses instead of grepping `ref:` out
+// of a listing, which is what scripts had to do while the answer was a table.
+func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return errors.New(msg)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return fmt.Errorf("state --paths: decoding the response: %w", err)
+	}
+	for _, p := range (entity.Doc{Node: node}).Paths(at) {
+		fmt.Fprintln(cc.Out, p)
+	}
+	return nil
 }

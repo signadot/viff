@@ -16,7 +16,7 @@ func TestSchemaPrintsTheWholeSchema(t *testing.T) {
 		t.Fatalf("verse schema: %v", err)
 	}
 	// The root, first inside the define, since it is what the rest is read from.
-	for _, want := range []string{"define:", "root:", "entities: .[array(verse-entity)]", "status: .[verse-status]"} {
+	for _, want := range []string{"define:", "root:", "state: .[verse-state]", "status: .[verse-status]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verse schema is missing %q:\n%s", want, out)
 		}

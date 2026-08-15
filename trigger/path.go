@@ -6,13 +6,20 @@ package trigger
 // — but it could not copy any of it: every `$reference` an action can write reads the subject,
 // or the task that just finished.
 //
-//	repo:   !get-path { system: git, kind: repo, id: $subject.value.head }
-//	branch: !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
+//	repo:   !get-path git.repo.acme
+//	branch: !get-path git.repo.acme.branch
 //	all:    !list-paths { system: git, kind: repo, id: "*", path: branch }
+//	ref:    !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
 //
-// THE PAIR IS ONE GRAMMAR SPLIT BY CARDINALITY, and the names say which. A verse is one
-// document — `{system: {kind: {id: payload}}}` (entity/snapshot.go) — so an entity address is a
-// path prefix and `path:` simply continues it into the payload. `!get-path` answers with ONE
+// ONE ADDRESS, all the way down. A verse is one document — `{system: {kind: {id: payload}}}`
+// (entity/doc.go, and `verse state` answers it) — so an entity address is a path prefix and the
+// path simply continues it into the payload. That used to need the object form's `path:` key,
+// because an id may contain dots and the colon spelling could not say where the id ended; the
+// dot spelling can, quoting where it must, so a whole address fits in one string (see
+// splitAddress). The object form stays for what a string cannot hold: a `value:` predicate, and
+// a `$reference` id that reads better as its own key.
+//
+// THE PAIR IS ONE GRAMMAR SPLIT BY CARDINALITY, and the names say which. `!get-path` answers with ONE
 // node and refuses anything that could name several; `!list-paths` answers with a list and is
 // where the globs live. They mirror go-tony's own split: GetKPath returns one node and rejects a
 // wildcard outright ("any field .* in get"), ListKPath collects.
@@ -62,6 +69,8 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+
 	"github.com/signadot/verse/entity"
 )
 
@@ -106,9 +115,18 @@ func (p pathSpec) String() string { return p.target() + ":" + p.ID }
 
 // readSpec pulls a path read out of a node in either spelling, and reports what is wrong with it.
 //
-// The string form addresses an ENTITY and stops there: an id may itself contain dots, so
-// "git:repo:abc.branch" has no unambiguous split into an id and a path. Going into the payload
-// is the object form's `path:`, which needs no guessing.
+// THE STRING FORM GOES ALL THE WAY DOWN now. It used to address an entity and stop, because an
+// id may itself contain dots and "git:repo:abc.branch" has no unambiguous split into an id and
+// a path — so reaching into the payload needed the object form's `path:`, and one address was
+// spelled across four keys.
+//
+// The delimiter is what dissolves that. A ref is a kinded path whose delimiter is `:`, so the
+// colon spelling names an entity WHOLE — dots and all belong to the id — and the dot spelling
+// carries the path, quoting an id that needs it: `git.repo."abc.branch".sha`. Two spellings of
+// one grammar, each unambiguous, instead of one grammar split by cardinality across an object.
+//
+// The object form stays, and is not merely tolerated: `value:` has nowhere to live in a string,
+// and a `$reference` id reads better as its own key than buried in an address.
 func readSpec(n *ir.Node) (pathSpec, error) {
 	kind := pathKind(n)
 	if kind == "" {
@@ -124,13 +142,13 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 		// ParseExpr refuses a '$' outright — there is no deferred form for a SUBJECT — so the
 		// string spelling is split here instead. The two segments the checks read are still
 		// checked exactly; the id is carried as written and expanded at fire time.
-		parts := strings.SplitN(body.String, ":", 3)
-		if len(parts) != 3 {
-			return spec, fmt.Errorf("!%s %q: want \"system:kind:id\" — all three, because a path "+
-				"read starts from one entity. To go into the payload use the object form's `path:`",
-				kind, body.String)
+		ref, path, err := splitAddress(body.String)
+		if err != nil {
+			return spec, fmt.Errorf("!%s %q: %w — a path read starts from one entity, so an "+
+				"address names system, kind and id, and may then continue into the payload "+
+				"(git.repo.abc.sha)", kind, body.String, err)
 		}
-		spec.System, spec.Kind, spec.ID = parts[0], parts[1], parts[2]
+		spec.System, spec.Kind, spec.ID, spec.Path = ref.System, ref.Kind, ref.ID, path
 	case ir.ObjectType:
 		for i, f := range body.Fields {
 			v := unwrap(body.Values[i])
@@ -168,6 +186,41 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 		return spec, fmt.Errorf("!%s: want an object or a \"system:kind:id\" string, got %v", kind, body.Type)
 	}
 	return spec, spec.validate()
+}
+
+// splitAddress splits one address into the entity it starts from and the kpath it continues
+// into the payload with, empty when it names the entity whole.
+//
+// A REF IS TRIED FIRST, so every address that ever worked still names what it named: an id
+// carrying colons or dots is the id. Only a string that is not a ref is read as a kinded path,
+// and then the first three segments are the entity and the rest is the payload path — rendered
+// back through KPath.String, so `(scott)` and `[0]` survive into the read that will follow
+// them. (entity.ParsePath is the WRITE-side sibling, and refuses those, because a write cannot
+// reach into an array.)
+func splitAddress(s string) (entity.Ref, string, error) {
+	if ref, err := entity.ParseRef(s); err == nil {
+		return ref, "", nil
+	}
+	kp, err := kpath.Parse(s)
+	if err != nil {
+		return entity.Ref{}, "", err
+	}
+	var ref entity.Ref
+	into := []*string{&ref.System, &ref.Kind, &ref.ID}
+	for i := 0; i < 3; i++ {
+		if kp == nil {
+			return entity.Ref{}, "", fmt.Errorf("names %d of the 3 address segments", i)
+		}
+		if kp.Field == nil {
+			return entity.Ref{}, "", fmt.Errorf("an address segment is a name, not an index or a wildcard")
+		}
+		*into[i] = *kp.Field
+		kp = kp.Next
+	}
+	if kp == nil {
+		return ref, "", nil
+	}
+	return ref, kp.String(), nil
 }
 
 // validate enforces what the two segments the checks read must be, and what each cardinality

@@ -67,7 +67,7 @@ func TestOptionLabelsEmpty(t *testing.T) {
 func TestProvidersListsTheEnvelope(t *testing.T) {
 	serve(t)
 
-	if _, err := runCLI(t, "entity", "put", "provider:treat:fixer",
+	if _, err := runCLI(t, "state", "put", "provider:treat:fixer",
 		`{driver: llm, risk: low, grant: no-delegate, tools: [read_file, run_bash]}`); err != nil {
 		t.Fatalf("register: %v", err)
 	}

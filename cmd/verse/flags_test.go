@@ -61,8 +61,12 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 
 // collections pairs each collection's name — the SINGULAR, which is the command — with the
 // plural that is merely an alias of it.
+//
+// `state` is deliberately absent: it is not a collection. It answers ONE document at a path
+// rather than a list of things, so there is no plural to alias and the positional is an address
+// rather than a verb it must refuse. See TestStateTakesAPath.
 var collections = map[string]string{
-	"gate": "gates", "entity": "entities", "task": "tasks",
+	"gate": "gates", "task": "tasks",
 	"flow": "flows", "trigger": "triggers", "goal": "goals",
 	"resolver": "resolvers", "runner": "runners", "source": "sources",
 	"stratum": "strata",
@@ -99,7 +103,7 @@ func TestCollectionsAreOneSingularCommand(t *testing.T) {
 	}
 	// The two short spellings are aliases of the same commands, so they list too. `ps` could
 	// not be one while `task` was a verbs-only group: `verse ps` was "no command provided".
-	for alias, name := range map[string]string{"ps": "task", "e": "entity"} {
+	for alias, name := range map[string]string{"ps": "task"} {
 		if root.FindSub(cc, alias) != root.FindSub(cc, name) {
 			t.Errorf("verse %s does not resolve to verse %s", alias, name)
 		}
@@ -210,5 +214,48 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 		if err := cfg.validate(); err != nil {
 			t.Errorf("%s: validate() = %v, want nil", name, err)
 		}
+	}
+}
+
+// `verse state` takes an ADDRESS, which is what makes it not a collection.
+//
+// Every other listing refuses a positional, because there a positional could only be a verb it
+// does not have. Here it is the whole point: one kinded path, asked at whatever depth, in place
+// of the `--system`/`--kind` pair that could only ever ask at two.
+func TestStateTakesAPath(t *testing.T) {
+	cmd := rootCmd().FindSub(cli.DefaultContext(), "state")
+	if cmd == nil {
+		t.Fatal("verse state: no such command")
+	}
+	if cmd.Hooks.Run == nil {
+		t.Fatal("verse state: no run — bare it answers the whole verse")
+	}
+	// No server is running, so a path that PARSES fails at the dial and a path that does not
+	// fails before it — which is how this tells the guard from the request.
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "and-another"}); !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("two positionals gave %v, want a usage error — state takes one path", err)
+	}
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr["}); err == nil {
+		t.Error("a malformed path was accepted")
+	} else if errors.Is(err, cli.ErrUsage) == false && !strings.Contains(err.Error(), "path") {
+		t.Errorf("a malformed path gave %v, want it named as a path", err)
+	}
+}
+
+// Flags come BEFORE the path, and saying so is the whole of this test.
+//
+// A command that has subcommands stops parsing flags at its first positional — cli's
+// Command.Parse passes all=true only for a leaf — which is the rule that routes
+// `state put <ref> <payload> --if <pattern>` to put's own --if rather than to the read's
+// filter. The cost is that `state demo.pr --paths` reads --paths as a second path, and the
+// error has to name the cause or it looks like the path was rejected.
+func TestStateNamesTheFlagOrder(t *testing.T) {
+	cmd := rootCmd().FindSub(cli.DefaultContext(), "state")
+	err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "--paths"})
+	if !errors.Is(err, cli.ErrUsage) {
+		t.Fatalf("state demo.pr --paths gave %v, want a usage error", err)
+	}
+	if !strings.Contains(err.Error(), "verse state --paths demo.pr") {
+		t.Errorf("the error does not say what to type instead: %v", err)
 	}
 }
