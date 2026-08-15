@@ -61,8 +61,6 @@ const DriverCalls = "calls"
 // Fatals is what a caller in Go writes for the field: `Fatals(FatalErr)` for one, `Fatals()`
 // for none, and a nil Fatal for the default. It exists so the three states are said in words
 // at a call site rather than by taking the address of a slice literal.
-//
-// Called with no outcomes it returns nil, which is the same thing an absent Fatal means.
 func Fatals(os ...StepOutcome) *[]StepOutcome {
 	if os == nil {
 		os = []StepOutcome{}
