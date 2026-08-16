@@ -69,7 +69,9 @@ verse state get demo:pr:1                           # …or by ref, which is the
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse state` answers it at a
 path, so the same address works at every depth and the answer is the subtree standing there.
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
-for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take one.
+for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take
+one — three spellings of one grammar, laid out in
+[reference/entities §Addressing](reference/entities.md#addressing).
 
 AN ADDRESS MAY BE TYPED AS STEPS, which is what `--paths` answers with — so a listing pipes
 back into a read, and nothing needs escaping on the way:

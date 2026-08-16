@@ -5,24 +5,63 @@ task — addressed by a `system:kind:id` triple and carrying a document.
 [Tutorial §2](../tutorial.md#2-entities) drives all of this; here is the surface flat, with
 the corners that section leaves out.
 
-## Refs
+## Addressing
+
+An address is **three segments** — system, kind, id — under an optional reserved root, and it
+has **three spellings**. They are one grammar: the same address, delimited three ways.
 
 ```
-demo:pr:1                     system=demo   kind=pr      id=1
-github:pr:org/repo#42         only the leading colons split, so an id may hold one
-verse:task:instance:run-a1b2  a leading `verse` is the reserved root, and the three follow it
+demo:pr:1                  a REF, delimited by `:`
+demo.pr.1                  a PATH, delimited by `.` — and it carries on into the payload
+demo pr 1                  STEPS, delimited by spaces — one shell word per segment
 ```
 
-Three segments, under an optional reserved root — one grammar shared by the CLI and the charter
-wire: `*` is a wildcard per segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow
-demo:pr:*` and a charter's `"subject": "demo:pr:*"` mean the same set.
+**Whichever delimiter comes FIRST is the one in use.** That single rule is what keeps all three
+unambiguous when an id contains the others, which ids routinely do:
 
-The same address is typed as steps wherever a command's address is its last positional —
-`verse state get demo pr 1` — which is what `--paths` prints, and it needs no quoting for an id
-holding a dot or a slash. A whole line of that output handed over as ONE token works the same
-way (`ref=$(verse state --paths demo.pr | head -1); verse state get "$ref"`): a space before any
-`:` or `.` says the token is steps, by the same whichever-comes-first rule the other two
-spellings follow. In a charter, `!verse-path [demo pr 1]` is the same vector.
+```
+demo:pr:a.b                `:` first — a ref, so the dots belong to the id
+git.ref.x@git:ref:y        `.` first — a path, so the colons belong to the id
+demo pr a.b                ` ` first — steps, so the dot belongs to the step
+github:pr:org/repo#42      only the leading colons split; the id keeps the rest
+verse:task:instance:run-a1b2   a leading `verse` is the reserved root, and the three follow it
+```
+
+**Which spelling goes where.**
+
+| | |
+|---|---|
+| a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved |
+| a path | anywhere the address may continue into the payload: `verse state demo.pr.1.labels.urgent` |
+| steps | at a command line, where the shell's own quoting is the only quoting there is |
+
+Steps are what `verse state --paths` prints, so a listing pipes back into a read. A whole line
+handed back as ONE quoted token is read as steps too, which is what makes the shell idiom work
+either way:
+
+```sh
+ref=$(verse state --paths demo.pr | head -1)
+verse state get "$ref"      # one token holding spaces
+verse state get $ref        # or split by the shell — the same entity
+```
+
+`*` is a wildcard per segment and an id may glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*`
+and a charter's `subject: demo:pr:*` mean the same set. **A selector is the one place the ref
+spelling is the better command-line form**: the shell would expand a bare `*`, so quoting it
+costs back what steps save — which is why the `verse flow` verbs take one token and refuse a
+second rather than reading it as a step.
+
+In a charter, `!verse-path [demo pr 1]` is the steps spelling: the tag is required, because a
+bare list where an address belongs would be a second thing a bare list can mean.
+
+**What takes what:**
+
+| | |
+|---|---|
+| `verse state`, `state get/put/rm`, `verse watch` | any spelling; steps may be several arguments |
+| `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
+| `verse runner/source/resolver show/check/remove` | one token: `<kind>:<name>`, or the address as stored |
+| `verse trigger/stratum show/remove` | a name, not an address |
 
 ## Two halves, one tree
 
@@ -72,8 +111,9 @@ its own root with no history — see below.
 ## Reading
 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse state` answers it at a
-path. The path is a [kinded path](https://signadot.github.io/tony-format/), and it is the same
-address at every depth: a system, a kind, an entity, a place inside a payload.
+path. The path is a [kinded path](https://signadot.github.io/tony-format/) in any of the three
+spellings [above](#addressing), and it is the same address at every depth: a system, a kind, an
+entity, a place inside a payload.
 
 ```sh
 verse state                                         # the whole document
