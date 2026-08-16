@@ -2,6 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -366,4 +369,53 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 	if _, err := runCLI(t, "flow", "show", "demo:seq:1"); err != nil {
 		t.Errorf("one token was refused: %v", err)
 	}
+}
+
+// `verse trigger` lists ONE engine's rules, so a charter installed into packages leaves it
+// answering `[]` — which reads as "nothing installed" and is the second thing anybody types
+// after an install that just said 3 and 5. The listing says where the rules are, on STDERR, so
+// the document on stdout stays a document.
+func TestAnEmptyBaselineSaysWhereTheRulesAre(t *testing.T) {
+	serve(t)
+	if _, err := runCLI(t, "trigger", "add", "--at", "notes", "--file", "-"); err == nil {
+		t.Fatal("a charter add with no input was accepted")
+	}
+	// Installed through the CLI, which is the path a person takes.
+	if err := installPackageRule(t); err != nil {
+		t.Fatalf("installing a package: %v", err)
+	}
+
+	out, errOut, err := runCLIStreams(t, "trigger")
+	if err != nil {
+		t.Fatalf("trigger: %v", err)
+	}
+	if strings.TrimSpace(out) != "[]" {
+		t.Errorf("stdout is not the listing: %q", out)
+	}
+	if !strings.Contains(errOut, "charter package") || !strings.Contains(errOut, "tree") {
+		t.Errorf("nothing said where the rules are:\nstderr: %q", errOut)
+	}
+}
+
+// installPackageRule installs one rule into a package, by posting it the way `trigger add` does.
+func installPackageRule(t *testing.T) error {
+	t.Helper()
+	node, err := codec.ParseNode([]byte(`{
+		name: note,
+		condition: {subject: {system: notes, kind: seen, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`), codec.Tony)
+	if err != nil {
+		return err
+	}
+	resp, err := httpPostNodeTo("/triggers", url.Values{"at": []string{"notes"}}, node)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 201 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

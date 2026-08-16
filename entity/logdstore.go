@@ -160,8 +160,39 @@ type LogdStore struct {
 	// out of (see eventsFromDelta); nil until a watch has run.
 	doc *ir.Node
 
+	// readErr is the last read this store COULD NOT PERFORM, and it exists because List
+	// cannot say so in its signature: it answers a slice, so a store that is unreadable
+	// answers the empty one — which is what a verse holding nothing answers too.
+	//
+	// That confusion is not theoretical. A store whose log holds a patch it cannot replay
+	// (raw.go, and the guard that now refuses to write one) reads as EMPTY: `verse state
+	// --paths` prints nothing, `verse trigger tree` shows a charter of no rules, and writes go
+	// on reporting success — a verse that looks alive and answers nothing, diagnosable only by
+	// reading docd's log. Remembering the failure is what lets the surfaces above say "this
+	// store cannot be read" instead of "there is nothing here".
+	readErr error
+
 	scopesMu sync.Mutex
 	scopes   map[string]*LogdStore // lazily-created scoped children, keyed by scope name
+}
+
+// ReadError is the last read this store could not perform, or nil. The next read that succeeds
+// clears it, so it answers about NOW rather than about the store's whole history.
+//
+// An optional capability rather than a method on Store: a caller that wants it asks for it
+// (`interface{ ReadError() error }`), and the in-memory stores that cannot fail this way need
+// no implementation.
+func (s *LogdStore) ReadError() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readErr
+}
+
+// noteRead records whether a read that cannot report its own failure succeeded.
+func (s *LogdStore) noteRead(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readErr = err
 }
 
 // LogdConfig configures a LogdStore.
@@ -797,6 +828,7 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	node, err := s.sess.Match(ctx, seg(s.root))
+	s.noteRead(err)
 	if err != nil || node == nil {
 		return nil
 	}

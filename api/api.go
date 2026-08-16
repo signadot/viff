@@ -389,6 +389,10 @@ type InboxItem struct {
 // — so with packages installed nothing showed the shape of the whole charter. This is that view,
 // and the imports in it are the graph checked for a cycle at install (trigger/imports.go).
 //
+// BaselinePackage is the `at` a charter with no address is listed under — a name rather than an
+// empty string, because a listing that renders one row's address as nothing reads as a bug.
+const BaselinePackage = "(baseline)"
+
 //tony:schemagen=verse-charter-package,notag
 type CharterPackage struct {
 	// At is the address the package writes in, or `(baseline)` for the charter that has none.

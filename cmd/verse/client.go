@@ -173,6 +173,10 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		// shape in tony's syntax — is not what -o tony means.
 		node = codec.StripLayout(node)
 	}
+	// EMPTY, after the filters, is remembered for the one caller that has something to add to
+	// it: `verse trigger` lists ONE engine, so an empty answer may mean "this engine has no
+	// rules" while the charter is in packages. See elsewhereInPackages.
+	lastPrintEmpty = node == nil || (node.Type == ir.ArrayType && len(node.Values) == 0)
 	if colorize(cc.Out) {
 		return codec.EncodeNodeColor(cc.Out, node, out)
 	}
@@ -181,6 +185,11 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 	}
 	return nil
 }
+
+// lastPrintEmpty reports whether the last collection printed came back empty. Package-level for
+// the reason the filter flags are: one command runs per invocation, and the print funnel is
+// where the answer passes.
+var lastPrintEmpty bool
 
 // printDoc prints a `state` answer: printBody, with the filters applied to ENTITIES rather than
 // to the document as one item — see filters.applyDoc.

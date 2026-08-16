@@ -283,7 +283,7 @@ func (s *Server) packageTree() []api.CharterPackage {
 	for _, at := range names {
 		row := api.CharterPackage{At: at, Rules: rules[at], Strata: strata[at]}
 		if at == "" {
-			row.At = "(baseline)"
+			row.At = api.BaselinePackage
 			row.Writes = "anywhere"
 		} else {
 			row.Writes = at + ".*"

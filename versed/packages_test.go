@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -286,3 +287,36 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 		t.Errorf("the refusal does not name the rule that still needs it: %s", msg)
 	}
 }
+
+// A store that cannot be READ answers the empty slice, which is what a verse holding nothing
+// answers — so a listing built on `Store.List` reports "there is nothing here" for a store that
+// is simply unreadable. That is how an unreplayable patch in the log presents: `verse state`
+// empty, the charter tree showing no rules, every write still reporting success.
+//
+// The surfaces ask the store instead, and answer 503.
+func TestAnUnreadableStoreIsNotAnEmptyVerse(t *testing.T) {
+	if got := storeUnreadable(entitytest.Store(t)); got != nil {
+		t.Fatalf("a healthy store reports %v", got)
+	}
+	if got := storeUnreadable(unreadableStore{}); got == nil {
+		t.Fatal("a store that cannot be read reported no error")
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/state", nil)
+	if !unreadable(rec, req, unreadableStore{}) {
+		t.Fatal("the read failure did not answer")
+	}
+	if rec.Code != 503 {
+		t.Errorf("answered %d, want 503 — the request is fine and the store is not", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "empty verse") {
+		t.Errorf("the body does not say what would otherwise be reported: %s", rec.Body.String())
+	}
+}
+
+// unreadableStore is a reader whose reads fail, which is the only way to have one: the guard in
+// entity/raw.go means no write can create the real thing any more.
+type unreadableStore struct{ entity.Reader }
+
+func (unreadableStore) ReadError() error { return errors.New("replay failed at commit 2277") }

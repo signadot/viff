@@ -8,6 +8,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
@@ -22,7 +23,7 @@ var trig = &triggerFlags{}
 
 func triggerCmd() *cli.Command {
 	trig = &triggerFlags{} // per-invocation, like the filter flags: one command runs per process
-	return filteredCollection("trigger", "triggers", "/triggers",
+	return filteredCollectionPost("trigger", "triggers", "/triggers",
 		"trigger — the installed charter; add|show|remove one rule, tree for all of them",
 		mustOpts(trig),
 		func() url.Values {
@@ -32,7 +33,44 @@ func triggerCmd() *cli.Command {
 			}
 			return q
 		},
+		[]postPrint{elsewhereInPackages},
 		triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd(), triggerTreeCmd())
+}
+
+// AN EMPTY BASELINE IS NOT AN EMPTY CHARTER once packages exist, and this says so.
+//
+// `verse trigger` lists ONE engine's rules, and a charter installed at an address is another
+// engine's — so installing comment-drift (two packages, eight rules) and then typing `verse
+// trigger` answers `[]`, which reads as "nothing installed" and is the second thing anybody
+// does. It cost two rounds of "the install said 3 and 5 and the listing says none".
+//
+// The note goes to STDERR so the listing stays a document: `verse trigger | o list …` keeps
+// working, and a person at a terminal reads the line. It says nothing when the answer is not
+// empty (there is a charter to read) or when `--at`/`--scope` asked about a particular engine
+// (the question was specific, and an empty answer to it is an answer).
+func elsewhereInPackages(cc *cli.Context) {
+	if trig.At != "" || g.Scope != "" || !lastPrintEmpty {
+		return
+	}
+	resp, err := httpGet("/packages", nil)
+	if err != nil {
+		return
+	}
+	var rows []api.CharterPackage
+	decodeClose(resp, &rows)
+	rules, pkgs := 0, 0
+	for _, row := range rows {
+		if row.At == api.BaselinePackage {
+			continue
+		}
+		rules += row.Rules
+		pkgs++
+	}
+	if rules == 0 {
+		return
+	}
+	fmt.Fprintf(cc.Err, "(baseline holds no rules; %d in %d charter package(s) — "+
+		"`verse trigger tree`, or `verse trigger --at <address>`)\n", rules, pkgs)
 }
 
 type triggerTreeConfig struct{ *cli.Command }
@@ -188,6 +226,7 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("trigger add: %w", err)
 	}
+	packaged := false
 	for _, g := range groups {
 		q := url.Values{}
 		if g.at != "" {
@@ -226,6 +265,14 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 			fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n",
 				where, len(g.strata), len(g.rules))
 		}
+		packaged = packaged || g.at != ""
+	}
+	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
+	// leaves `verse trigger` — the next thing anybody types — answering baseline's rules, which
+	// is an empty list. The listing says so too (elsewhereInPackages); saying it here as well is
+	// what keeps somebody from having to be surprised first.
+	if packaged {
+		fmt.Fprintln(cc.Out, "`verse trigger tree` lists every charter; `verse trigger` alone is baseline's")
 	}
 	return nil
 }

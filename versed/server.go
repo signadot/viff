@@ -1294,13 +1294,49 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 // entity, and answering `{}` would say it is there and empty. The empty answer is `{}` rather
 // than an absent one for the same reason inverted — at collection depth the slice is the answer,
 // and it is empty.
+// storeUnreadable reports the store's last failed read, or nil.
+//
+// A LISTING CANNOT SAY THIS ITSELF: `Store.List` answers a slice, so a store that cannot be read
+// answers the empty one, indistinguishable from a verse holding nothing. That is how a store
+// with an unreplayable patch in its log presents — `verse state` empty, `verse trigger tree` a
+// charter of no rules, every write still reporting success. Asking the store turns it into an
+// answer somebody can act on.
+func storeUnreadable(st entity.Reader) error {
+	if h, ok := st.(interface{ ReadError() error }); ok {
+		return h.ReadError()
+	}
+	return nil
+}
+
+// unreadable answers 503 when the store could not be read, and reports whether it did.
+//
+// 503 rather than 500: the request is fine and the verse may be fine again in a moment — what
+// failed is this server's ability to read its own store, which is what Service Unavailable
+// says. The body names the cause, because "cannot read the store" with no cause sends an
+// operator back to the log-reading this exists to replace.
+func unreadable(w http.ResponseWriter, r *http.Request, st entity.Reader) bool {
+	err := storeUnreadable(st)
+	if err == nil {
+		return false
+	}
+	codec.HTTPError(w, r, http.StatusServiceUnavailable, fmt.Sprintf(
+		"the store could not be read, so this answer would be an empty verse rather than the "+
+			"verse: %v — nothing is missing until it reads again, and writes may still be "+
+			"appending", err))
+	return true
+}
+
 func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	sel, err := querySelector(r.URL.Query())
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
-	ents := s.scopedStore(r).List(sel.matchRef)
+	store := s.scopedStore(r)
+	ents := store.List(sel.matchRef)
+	if unreadable(w, r, store) {
+		return
+	}
 	kept := make([]entity.Entity, 0, len(ents))
 	for _, e := range ents {
 		if sel.matchEntity(e) {
@@ -2306,12 +2342,42 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 // ── triggers: the charter ────────────────────────────────────────────────────
 
 func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
+	eng, err := s.engForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if eng == nil {
 		writeOut(w, r, http.StatusOK, []trigger.Trigger{})
 		return
 	}
 	writeOut(w, r, http.StatusOK, eng.Triggers())
+}
+
+// engForRequest is the engine a LISTING is about: baseline, a scope's, or a charter package's.
+//
+// `?at=` was accepted by the install and ignored by the listing, so `verse trigger --at drift`
+// answered with baseline's rules — an empty list, for a package that had three, which reads as
+// "the package installed nothing" rather than as "you asked the wrong engine". A listing and an
+// install have to mean the same thing by the same query parameter.
+//
+// It does NOT create an engine: a listing is a question, and a package nobody has installed
+// anything into has no rules to answer with rather than an engine to bring into being.
+func (s *Server) engForRequest(r *http.Request) (*trigger.Engine, error) {
+	at := r.URL.Query().Get("at")
+	if at == "" {
+		return s.engFor(r.URL.Query().Get("scope")), nil
+	}
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return nil, err
+	}
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	if pe, ok := s.scopeEngs["at:"+confine.Stamp()]; ok {
+		return pe.eng, nil
+	}
+	return nil, nil
 }
 
 // status is a one-shot summary of the running verse: the store's revision and the
@@ -3125,7 +3191,11 @@ func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
 // listPackages answers the charter as a tree: baseline and every package, each with what it
 // writes, what it imports and how much it holds. See Server.packageTree.
 func (s *Server) listPackages(w http.ResponseWriter, r *http.Request) {
-	writeOut(w, r, http.StatusOK, s.packageTree())
+	tree := s.packageTree()
+	if unreadable(w, r, s.Store) {
+		return
+	}
+	writeOut(w, r, http.StatusOK, tree)
 }
 
 // addPackage installs a charter package's `imports:` declaration — the addresses its rules may
@@ -3188,7 +3258,11 @@ func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
 
 // listStrata returns the installed strata, ordered by level.
 func (s *Server) listStrata(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
+	eng, err := s.engForRequest(r) // `?at=` selects a package's levels, as it does its rules
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if eng == nil {
 		writeOut(w, r, http.StatusOK, []trigger.Stratum{})
 		return

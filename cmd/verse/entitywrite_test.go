@@ -53,6 +53,32 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// runCLIStreams is runCLI keeping the two streams apart, for a command that SAYS something
+// beside what it answers — `verse trigger` notes on stderr where the rules are when baseline
+// has none, and the note must not reach the document on stdout.
+func runCLIStreams(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	cc := &cli.Context{
+		Out: nopCloser{&out}, Err: nopCloser{&errOut},
+		In: io.NopCloser(strings.NewReader("")), Go: t.Context(),
+	}
+	cmd := rootCmd()
+	g.Addr = testAddr
+	for len(cmd.Children) > 0 && len(args) > 0 {
+		if strings.HasPrefix(args[0], "-") {
+			break
+		}
+		sub := cmd.FindSub(cc, args[0])
+		if sub == nil {
+			t.Fatalf("no such command: %q", args[0])
+		}
+		cmd, args = sub, args[1:]
+	}
+	err := cmd.Run(cc, args)
+	return out.String(), errOut.String(), err
+}
+
 // nopCloser makes a buffer usable as the context's output, which is closable because a
 // real one is a file.
 type nopCloser struct{ *bytes.Buffer }
