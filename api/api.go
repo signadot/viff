@@ -282,7 +282,7 @@ type FlowSteer struct {
 // must never be wrong — confidently, in the artifact that exists to be trusted about the wire.
 //
 // Returns is also what makes a route COMPARABLE to the schema. The root (schema/root.tony)
-// types each top-level path — `entities: .[array(verse-entity)]` — and is written by hand,
+// types each top-level path — `state: .[verse-state]` — and is written by hand,
 // beholden to no route table; a route's response and returns together say the same thing in the
 // same terms, which is what lets a test hold the two accounts of one surface equal. See
 // TestTheRootIsTheServedSurface.
