@@ -511,3 +511,41 @@ func readOne(t *testing.T, src string, snap entity.Snapshot) (*ir.Node, error) {
 	}
 	return resolveReadAt(node, nil, snap)
 }
+
+// A LIVE CHANGE four segments down has to wake a rule that selects there. The watch is opened at
+// the literal head of the pattern (`verse-dev.drift.head`), and the store reports changes under
+// it at the depth an address has always had — so what arrives is a change to the THREE-segment
+// node, and the rule's subject names a four-segment one.
+//
+// This is the check that the two still meet. It writes the entity AFTER the engine is running,
+// so nothing here is the level-triggered replay: it is the delta path or nothing.
+func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: notice
+  condition:
+    subject: !verse-path [verse-dev, drift, head, "*"]
+    value: {reviewed: pending}
+  action:
+    patch: {reviewed: seen}
+`)); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "head", "abc"),
+		entity.Obj{"reviewed": "pending"}.Payload())
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		e, ok, _ := store.Get(entity.RefAt("verse-dev", "drift", "head", "abc"))
+		if ok && entity.Str(e.Payload, "reviewed") == "seen" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("a live change four segments down did not wake the rule that selects there")
+}

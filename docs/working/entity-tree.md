@@ -91,10 +91,12 @@ Each lands with the suite green.
    `verse state --paths --depth N` lists at a depth, through `Doc.EntitiesAt`; unset answers at
    the depth an address has always had, which is what every listing written before this wants.
 
-   **Watches** are what is left here: `WatchSubtree` emits at the fixed depth, so a live change
-   four segments down is reported as a change to its three-segment ancestor. A deep rule still
-   fires — the seeded replay and the pattern's own Select see it — but the delta path has not
-   been taught the depth, and that is the next thing to do.
+   **Watches** report at the fixed depth, so a live change four segments down arrives as a
+   change to its three-segment ancestor — and a deep rule still fires, because the engine
+   re-evaluates its condition against the store rather than against the event's ref alone (there
+   is a test for exactly this). So the depth is a matter of PRECISION here, not correctness: a
+   deep rule wakes on any change under its literal head and then selects. Teaching
+   `WatchSubtree` a depth is worth doing when the waking becomes measurable, not before.
 6. **The charter tree, whole.** `at:` at any depth, writing where it lives. No `writes:`
    override until that is true — an address that cannot write where it is has not earned a way
    to write elsewhere.
