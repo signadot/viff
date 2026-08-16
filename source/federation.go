@@ -9,7 +9,7 @@ package source
 const (
 	// FederationSystem is the system `verse connect` federates a working tree into. It is
 	// named for what it is rather than being the source package's `System`, because the
-	// registration of an external source is addressed `sources:<system>:<name>` and wants
+	// registration of an external source is addressed `verse:sources:<system>:<name>` and wants
 	// that name — see registration.go.
 	FederationSystem = "local"
 	StatusPrefix     = "dir-status-"  // + <scope>

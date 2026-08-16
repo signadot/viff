@@ -363,6 +363,45 @@ ok "gate y + -s released it: demo:release:1 open → shipped"
 has "$(v gate)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
+# ── the docket: a gate the verse tallies rather than a person answering ──
+# The OTHER list, and it reads the store where motions are stored — which is verse's own half
+# now, and was not checked here, so a docket that answered "nothing" however many motions stood
+# open got as far as a drive before anybody noticed.
+step "docket: a quorum gate posts a motion, and a vote carries it"
+v trigger add --file - >/dev/null <<'TONY' || die "quorum charter add failed"
+- name: smoke-quorum
+  condition:
+    subject: {system: demo, kind: motion, value: {stage: open}}
+  gates:
+  - {name: approvals, mode: ask, formula: !quorum 1}
+  action:
+    patch: {stage: shipped}
+TONY
+v state put demo:motion:1 '{"stage":"open"}' >/dev/null || die "state put failed"
+MID=
+for _ in $(seq 1 100); do
+	MID=$(v docket --if '{axis: whether}' -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	[ -n "$MID" ] && break
+	sleep 0.2
+done
+[ -n "$MID" ] || die "the quorum gate never reached the docket"
+has "$(v docket)" 'demo:motion:1' || die "the docket does not say what is being decided"
+ok "the motion is on the docket as $MID, about demo:motion:1"
+haskv "$(v state get demo:motion:1)" stage open || die "the motion did not hold the action"
+v vote "$MID" approve --as human:smoke >/dev/null || die "vote failed"
+carried=
+for _ in $(seq 1 100); do
+	if haskv "$(v state get demo:motion:1 2>/dev/null || true)" stage shipped; then
+		carried=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$carried" ] || die "the tallied motion did not release the action"
+ok "one approve met the quorum: demo:motion:1 open → shipped"
+has "$(v docket --if '{status: closed}')" "$MID" || die "the settled motion does not carry its outcome"
+ok "the motion is settled on the docket, with its tally and its witness"
+
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
 # live task to exercise the control surfaces against (and observe the slide on).

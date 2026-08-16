@@ -13,7 +13,7 @@ condition:
 action:
   spawn:
     prompt:      "$subject landed. Find references in the verse repository's docs/ that no longer resolve against that tree, and fix them."
-    runner:      runners:pool:code
+    runner:      verse:runners:pool:code
     environment: verse-docs
     driver:      claude
     # Read freely, write freely inside the workspace: the floor is the workspace, and the

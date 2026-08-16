@@ -217,7 +217,9 @@ func providerCmd() *cli.Command {
 func docketCmd() *cli.Command {
 	return listing("docket", "docket — list open motions (votes/selects and their outcomes)",
 		func(cc *cli.Context, args []string) error {
-			ents, err := stateAt("motion.channel")
+			// In verse's own half: a motion is a record verse keeps about its own running,
+			// so the docket reads `verse.motion.channel` rather than the bare system.
+			ents, err := stateAt(entity.VerseRoot + ".motion.channel")
 			if err != nil {
 				return fmt.Errorf("docket: %w", err)
 			}
@@ -255,7 +257,7 @@ func docketCmd() *cli.Command {
 			out := make([]map[string]any, 0, len(ents))
 			for i, e := range ents {
 				// The id is a KEY in the document, so it is read rather than trimmed off a ref.
-				m := map[string]any{"id": e.Ref.ID}
+				m := map[string]any{"id": e.Ref.ID()}
 				for k, v := range entity.ToObj(e.Payload) {
 					m[k] = v
 				}

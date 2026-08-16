@@ -208,3 +208,38 @@ func TestVoteReportsARefusal(t *testing.T) {
 		t.Errorf("it printed success anyway: %q", out)
 	}
 }
+
+// The docket reads the motions where they are STORED, which is verse's own half of the tree.
+// It asked at `motion.channel` — the address before the reserved root — so every docket was
+// empty however many motions stood open, and `verse vote` had nothing to name. A person
+// watching a gate they were meant to answer saw "nothing on the docket".
+//
+// Through the CLI rather than against the listing function, because both halves of the defect
+// were on the path a person takes: the address it asks at, and rendering the id it got back.
+func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
+	store := serve(t)
+
+	entitytest.Set(t, store, entity.VerseRef("motion", "channel", "m1"), entity.Obj{
+		"axis":    "whether",
+		"gate":    "approvals",
+		"status":  "open",
+		"subject": "demo:vote:1",
+		"trigger": "shape-vote",
+	}.Payload())
+
+	out, err := runCLI(t, "docket")
+	if err != nil {
+		t.Fatalf("docket: %v", err)
+	}
+	if strings.Contains(out, "nothing on the docket") {
+		t.Fatalf("an open motion was not on the docket:\n%s", out)
+	}
+	// The id is what `verse vote <id>` takes, so a docket that prints anything else — a Go
+	// method value, as this did once the address was right — is a docket nobody can answer.
+	if !strings.Contains(out, "id: m1") {
+		t.Errorf("the docket does not name the motion by id:\n%s", out)
+	}
+	if !strings.Contains(out, "demo:vote:1") {
+		t.Errorf("the docket does not say what is being decided:\n%s", out)
+	}
+}
