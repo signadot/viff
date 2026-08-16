@@ -43,13 +43,19 @@ func triggerCmd() *cli.Command {
 		WithAliases("triggers").
 		WithSynopsis("trigger — the charter at an address: the rules there and under it; add|show|remove one").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
-		WithSubs(triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd()).
+		WithSubs(triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd(), triggerUninstallCmd()).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
 				return err
 			}
-			if handled, err := dispatch(cfg.Command, cc, args); handled {
+			// `--` ENDS THE VERBS, so an address that collides with one is still reachable:
+			// a package at `remove` is `verse trigger -- remove`, and without it the verb wins
+			// every time. The collision is real rather than theoretical — a package's address
+			// is a system name, and `add`, `show` and `remove` are ordinary words.
+			if len(args) > 0 && args[0] == "--" {
+				args = args[1:]
+			} else if handled, err := dispatch(cfg.Command, cc, args); handled {
 				return err
 			}
 			// THE POSITIONAL IS AN ADDRESS, as it is for `verse state`, and for the same
@@ -286,6 +292,66 @@ func strs(in []string) *ir.Node {
 		out = append(out, ir.FromString(s))
 	}
 	return ir.FromSlice(out)
+}
+
+type triggerUninstallConfig struct {
+	*cli.Command
+	Recurse bool `cli:"name=recurse desc='and every charter installed under this address'"`
+}
+
+// uninstall takes a whole charter package down — its rules, its levels, the declaration of what
+// it imports, and the engine running them.
+//
+// A VERB OF ITS OWN rather than `remove` with an address, because the two arguments are
+// different KINDS of thing: `remove` takes a rule's name, this takes an address, and one
+// command reading its positional as either would guess wrong the first time somebody names a
+// rule after the system it acts on. It pairs with `add --at`, which is what installed it.
+//
+// What it leaves standing is what the package WROTE — a charter's writes are the world's. The
+// server's removePackage says why at length.
+func triggerUninstallCmd() *cli.Command {
+	cfg := &triggerUninstallConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return cli.NewCommandAt(&cfg.Command, "uninstall").
+		WithSynopsis("uninstall a charter package: uninstall <address> [--recurse]").
+		WithOpts(opts...).
+		WithRun(cfg.run)
+}
+
+func (cfg *triggerUninstallConfig) run(cc *cli.Context, args []string) error {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
+	at, err := address(args)
+	if err != nil {
+		return err
+	}
+	if at == "" {
+		return fmt.Errorf("%w: trigger uninstall wants the address of a charter package "+
+			"(`drift`, `demo pr`)", cli.ErrUsage)
+	}
+	q := url.Values{"at": []string{at}}
+	if cfg.Recurse {
+		q.Set("recurse", "true")
+	}
+	resp, err := httpDelete("/packages", q)
+	if err != nil {
+		return fmt.Errorf("trigger uninstall: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("trigger uninstall: no charter is installed at %s", at)
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("trigger uninstall: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	fmt.Fprintf(cc.Out, "uninstalled the charter at %s; what it wrote is still there\n", at)
+	return nil
 }
 
 type triggerShowConfig struct{ *cli.Command }

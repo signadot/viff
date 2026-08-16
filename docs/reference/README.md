@@ -106,6 +106,12 @@ verse
           add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
           show|remove [--at <address>]       …a rule of that charter; needed only when more
                                              than one holds the name
+          uninstall <address> [--recurse]    the whole charter package: its rules, its levels,
+                                             what it imports, and the engine running them.
+                                             What it WROTE stays — a charter's writes are the
+                                             world's. --recurse takes what is under it too
+          -- <address>                       an address that collides with a verb: a package
+                                             at `remove` is `verse trigger -- remove`
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md

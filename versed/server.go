@@ -933,6 +933,7 @@ func (s *Server) Handler() http.Handler {
 	// the two above, and it is posted BEFORE them, because a rule is checked against it.
 	rt.handle("POST /packages", s.addPackage, "verse-trigger", nothing)
 	rt.handle("GET /packages", s.listPackages, "", list("verse-charter-package"))
+	rt.handle("DELETE /packages", s.deletePackage, "", nothing)
 	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
@@ -3196,6 +3197,33 @@ func (s *Server) listPackages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, tree)
+}
+
+// deletePackage uninstalls the charter at an address — rules, levels, declaration and engine.
+// See Server.removePackage for what it deliberately leaves standing.
+func (s *Server) deletePackage(w http.ResponseWriter, r *http.Request) {
+	at := r.URL.Query().Get("at")
+	if at == "" {
+		http.Error(w, "uninstall: `?at=` is required — it names the charter to remove",
+			http.StatusBadRequest)
+		return
+	}
+	if s.ctx == nil {
+		http.Error(w, "engine not started", http.StatusServiceUnavailable)
+		return
+	}
+	// A 404 only when there is NOTHING here and nothing under it: an address with charters
+	// below it but none of its own (`demo`, holding only `demo.pr`) is a real place to remove
+	// from, and `--recurse` is how somebody says so.
+	if !s.packagesSeenAt(at) && len(s.packagesUnder(at)) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.removePackage(at, r.URL.Query().Get("recurse") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // addPackage installs a charter package's `imports:` declaration — the addresses its rules may

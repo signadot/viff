@@ -1066,6 +1066,13 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
 // path below it is a person's own key names. That is the whole ergonomic win — `demo pr a.b
 // labels urgent` needs no quoting anywhere, where the one-token forms need it twice.
 func address(args []string) (string, error) {
+	// A LEADING `--` IS NOT A STEP. It is how a shell says "the options are over", and on a
+	// command whose positional can collide with a verb (`verse trigger -- remove`) it is how
+	// the address wins — so every command that takes one accepts it, rather than one of them
+	// answering about an address whose first segment is two dashes.
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
 	switch len(args) {
 	case 0:
 		return "", nil

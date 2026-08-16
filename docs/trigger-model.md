@@ -237,6 +237,15 @@ verse trigger merge --depth 0   # …without whatever is installed under it
 verse trigger show merge-proposal
 ```
 
+A package comes off whole, too — its rules, its levels, what it imports, and the engine running
+them. What it WROTE stays: a charter's writes are the world's, and `verse state rm` is how those
+go.
+
+```sh
+verse trigger uninstall merge
+verse trigger uninstall demo --recurse   # …and every charter under that address
+```
+
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
 a task acts in the world under its `grant`, and store confinement is not world confinement (see
 [provider selection](provider-selection.md)). And verse's own records — a task's mirror, a

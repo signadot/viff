@@ -320,3 +320,81 @@ func TestAnUnreadableStoreIsNotAnEmptyVerse(t *testing.T) {
 type unreadableStore struct{ entity.Reader }
 
 func (unreadableStore) ReadError() error { return errors.New("replay failed at commit 2277") }
+
+// A package comes off whole: its rules, its levels, the declaration of what it imports, and the
+// engine running them. Before this there was no way to remove one at all — rules went one at a
+// time, and the levels, the declaration and the engine stayed behind whatever you did.
+func TestAPackageCanBeUninstalled(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing = %d: %s", code, msg)
+	}
+
+	if err := srv.removePackage("notes", false); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if _, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note-the-head")); ok {
+		t.Error("the rule outlived the package")
+	}
+	if _, ok, _ := srv.Store.Get(trigger.PackageRef("notes")); ok {
+		t.Error("the declaration of what it imports outlived the package")
+	}
+	if len(srv.packagesSeen()) != 0 {
+		t.Errorf("the package is still listed: %v", srv.packagesSeen())
+	}
+
+	// AND IT STOPPED. A cancelled engine left in the registry would be found by the next
+	// install at this address and observe nothing, which is the failure that looks like a
+	// charter installing fine and never firing.
+	entitytest.Set(t, srv.Store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	time.Sleep(200 * time.Millisecond)
+	if _, ok, _ := srv.Store.Get(entity.RefAt("notes", "seen", "head")); ok {
+		t.Error("the uninstalled package fired")
+	}
+
+	// What it WROTE is not its to take away, which is why nothing here asserts otherwise:
+	// a charter's writes are the world's, and `verse state rm` is how they go.
+}
+
+// A charter under an address is a package of its own, so removing the one above it is refused
+// until somebody says they mean it.
+func TestUninstallingRefusesToSweepUpWhatIsUnderIt(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, at := range []string{"demo", "demo.pr"} {
+		if code, msg := installAt(t, ts.URL, at, `{
+			name: r-`+strings.ReplaceAll(at, ".", "-")+`,
+			condition: {subject: {system: demo, kind: pr}},
+			action: {patch: {seen: true}},
+		}`); code != 201 {
+			t.Fatalf("installing at %s = %d: %s", at, code, msg)
+		}
+	}
+	err := srv.removePackage("demo", false)
+	if err == nil {
+		t.Fatal("removing a charter swept up the one under it")
+	}
+	if !strings.Contains(err.Error(), "demo.pr") || !strings.Contains(err.Error(), "recurse") {
+		t.Errorf("the refusal does not name what is under it, or the way to mean it: %v", err)
+	}
+	if err := srv.removePackage("demo", true); err != nil {
+		t.Fatalf("--recurse: %v", err)
+	}
+	if len(srv.packagesSeen()) != 0 {
+		t.Errorf("--recurse left charters behind: %v", srv.packagesSeen())
+	}
+}

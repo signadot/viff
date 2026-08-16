@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
@@ -302,4 +303,116 @@ func (s *Server) packageTree() []api.CharterPackage {
 		out = append(out, row)
 	}
 	return out
+}
+
+// removePackage uninstalls the charter at an address: its rules, its levels, the declaration of
+// what it imports, and the engine running them.
+//
+// ALL FOUR, because a package is all four and taking any three leaves something that outlives
+// what it belonged to — a rule with no engine, an engine with no rules, or an `imports:` record
+// naming a package nobody can list. Rules first, because a stratum still named by a rule refuses
+// to go (which is right, and is why the order is not free).
+//
+// WHAT IT DOES NOT TAKE is what the package WROTE. A charter's writes are the world's — a
+// package that derived `drift:head:*` leaves those entities standing, and `verse state rm` is
+// how they go. This mirrors a source's `--keep`, and the reasoning is the same: verse cannot
+// tell "the reflection is over" from "the same truth is arriving another way", so it does not
+// guess on the operator's behalf.
+//
+// A CHARTER UNDER IT is refused rather than swept up, because `demo` and `demo.pr` are two
+// packages and somebody removing the first did not necessarily mean the second. The refusal
+// names them; `recurse` is the operator saying they did mean it.
+func (s *Server) removePackage(at string, recurse bool) error {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return err
+	}
+	stamp := confine.Stamp()
+	if stamp == "" {
+		return fmt.Errorf("uninstall wants the address of a charter package; baseline has none " +
+			"— its rules go one at a time (`verse trigger remove <name>`), which is what keeps " +
+			"`uninstall` from being a way to delete a whole verse's charter by mistyping it")
+	}
+	under := s.packagesUnder(stamp)
+	if len(under) > 0 && !recurse {
+		what := "charters are installed under %s (%s): they are packages of their own, and " +
+			"removing this one does not mean removing them. `--recurse` says you mean it"
+		if !s.packagesSeenAt(stamp) {
+			what = "no charter is installed at %s, but %s is under it — `--recurse` removes " +
+				"what is under an address as well as what is at it"
+		}
+		return fmt.Errorf(what, stamp, strings.Join(under, ", "))
+	}
+	targets := under
+	if s.packagesSeenAt(stamp) {
+		targets = append([]string{stamp}, under...)
+	}
+	// Deepest first, so a package is gone before the address above it is.
+	sort.Sort(sort.Reverse(sort.StringSlice(targets)))
+	for _, target := range targets {
+		if err := s.uninstallOne(target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// packagesSeenAt reports whether a charter is installed AT an address — the question a removal
+// asks first, so "there is nothing there" is a 404 rather than a successful no-op.
+func (s *Server) packagesSeenAt(at string) bool {
+	for _, other := range s.packagesSeen() {
+		if other == at {
+			return true
+		}
+	}
+	return false
+}
+
+// packagesUnder is every installed charter STRICTLY under an address.
+func (s *Server) packagesUnder(at string) []string {
+	var out []string
+	for _, other := range s.packagesSeen() {
+		if other != at && strings.HasPrefix(other, at+".") {
+			out = append(out, other)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// uninstallOne takes down one package: its rules, then its levels, then its declaration, then
+// the engine that was running them.
+func (s *Server) uninstallOne(at string) error {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return err
+	}
+	eng, err := s.packageEngine(at)
+	if err != nil {
+		return err
+	}
+	for _, t := range eng.Triggers() {
+		eng.RemoveTrigger(t.Name)
+	}
+	for _, st := range eng.Strata() {
+		if err := eng.RemoveStratum(st.Name); err != nil {
+			return fmt.Errorf("%s: stratum %q: %w", at, st.Name, err)
+		}
+	}
+	if _, _, err := s.Store.Write(entity.Write{
+		At: entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
+	}); err != nil {
+		return fmt.Errorf("%s: removing the declaration: %w", at, err)
+	}
+	// The engine LAST, and dropped from the registry as well as cancelled: a package installed
+	// again at the same address gets a new one, and a cancelled engine left in the map would be
+	// found first and observe nothing.
+	s.scopeMu.Lock()
+	key := "at:" + confine.Stamp()
+	if pe, ok := s.scopeEngs[key]; ok {
+		pe.cancel()
+		delete(s.scopeEngs, key)
+	}
+	s.scopeMu.Unlock()
+	return nil
 }

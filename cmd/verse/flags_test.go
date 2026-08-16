@@ -489,3 +489,25 @@ func TestARuleInAPackageIsReachableByName(t *testing.T) {
 		t.Errorf("the rule is still installed: %s", out)
 	}
 }
+
+// `verse trigger` takes an ADDRESS, and its verbs are ordinary words — so a package at `remove`
+// is shadowed by `trigger remove`. `--` ends the verbs, which is the shell's own convention for
+// exactly this, and every command that takes an address accepts it.
+func TestADashDashReachesAnAddressThatLooksLikeAVerb(t *testing.T) {
+	serve(t)
+	if err := installPackageRuleAt(t, "remove"); err != nil {
+		t.Fatalf("installing at `remove`: %v", err)
+	}
+
+	// Without it, the verb wins — which is what makes the escape necessary rather than tidy.
+	if _, err := runCLI(t, "trigger", "remove"); err == nil {
+		t.Error("`trigger remove` with no name was read as an address")
+	}
+	out, err := runCLI(t, "trigger", "--", "remove")
+	if err != nil {
+		t.Fatalf("trigger -- remove: %v", err)
+	}
+	if !strings.Contains(out, "writes: remove.") {
+		t.Errorf("`--` did not reach the package: %s", out)
+	}
+}
