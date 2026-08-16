@@ -18,6 +18,7 @@ package trigger
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -38,9 +39,43 @@ func IsCharterRule(r entity.Ref) bool {
 	return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
 }
 
-// CharterRef names the entity holding one rule.
-func CharterRef(name string) entity.Ref {
-	return entity.VerseRef(CharterSystem, CharterKind, name)
+// CharterRef names the entity holding one of BASELINE's rules.
+func CharterRef(name string) entity.Ref { return CharterRefAt("", name) }
+
+// CharterRefAt names the entity holding one rule of the charter installed at an address.
+//
+// A PACKAGE'S RECORDS ARE ADDRESSED BY PACKAGE — `verse:trigger:rule:drift:head-moved` — and
+// baseline's keep the bare name. Without that the id is the rule's name alone, so two packages
+// with a rule (or a stratum) of the same name write one record: the second install silently
+// replaces the first's, both engines keep running from memory, and the restart is where one
+// package's rules quietly do not come back. Two groups not having to agree on names is most of
+// what a package is FOR, so the address is what has to carry the package.
+//
+// The package goes FIRST, so a listing sorted by address groups a package's rules together —
+// which is the order somebody reading `verse state verse.trigger.rule` wants. The id may hold
+// colons (ParseRef splits the first two and the rest is the id), so nothing else has to change.
+func CharterRefAt(at, name string) entity.Ref {
+	return entity.VerseRef(CharterSystem, CharterKind, recordID(at, name))
+}
+
+// recordName is the name inside a record id — the tail after the package address, and the whole
+// id for baseline. The split is on the LAST colon: an address may hold none (`drift`) or one
+// (`demo.pr` is dotted, so still none), and a rule's name may not hold one, so the last colon
+// is the divider whenever there is a package at all.
+func recordName(id string) string {
+	if i := strings.LastIndex(id, ":"); i >= 0 {
+		return id[i+1:]
+	}
+	return id
+}
+
+// recordID is the id a charter record takes: the name for baseline, `<address>:<name>` for a
+// package. One function, so a rule and a stratum cannot drift on the spelling.
+func recordID(at, name string) string {
+	if at == "" {
+		return name
+	}
+	return at + ":" + name
 }
 
 // specField is where a durable record keeps the declaration it was installed from — the rule
@@ -123,7 +158,7 @@ func (e *Engine) persist(t Trigger) error {
 	if err != nil {
 		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
-	ref := CharterRef(t.Name)
+	ref := CharterRefAt(e.confine.stamp(), t.Name)
 	if _, _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
 		Value: e.record(doc),
@@ -141,7 +176,9 @@ func (e *Engine) persist(t Trigger) error {
 // Deleting an address nothing ever wrote is a clean no-op in the store, which is what lets a
 // deliberately non-durable rule take this same removal path without a second one, and without
 // a Warn. No durable rule can be caught by it either: a name is unique across the charter.
-func (e *Engine) forget(name string) { e.write(CharterRef(name).At(), nil) }
+func (e *Engine) forget(name string) {
+	e.write(CharterRefAt(e.confine.stamp(), name).At(), nil)
+}
 
 // LoadCharter installs the rules standing in the verse — the durable charter — into this
 // engine. Called at startup, before observation begins, so that entering subtree mode
@@ -200,7 +237,10 @@ func ruleOf(ent entity.Entity) (Trigger, error) {
 	if err := t.FromTonyIR(doc); err != nil {
 		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
 	}
-	if t.Name != ent.Ref.ID() {
+	// The id is the name for baseline and `<address>:<name>` for a package (CharterRefAt), so
+	// the check is against the tail: what has to agree is the NAME, and the package half of the
+	// address is not part of it.
+	if t.Name != recordName(ent.Ref.ID()) {
 		return Trigger{}, fmt.Errorf("charter %s: the rule names itself %q; a rule is addressed by its "+
 			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
 	}

@@ -34,6 +34,7 @@ define:
   tasks: .[array(verse-instance)]
   state: .[verse-state]
   status: .[verse-status]
+  packages: .[array(verse-charter-package)]
   strata: .[array(verse-stratum)]
   triggers: .[array(verse-trigger)]
 signature:

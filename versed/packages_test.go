@@ -14,6 +14,24 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
+// declareImports posts a package's `imports:` declaration, which a rule reading outside its own
+// address needs installed first.
+func declareImports(t *testing.T, url, at string, imports ...string) (int, string) {
+	t.Helper()
+	var q []string
+	for _, im := range imports {
+		q = append(q, im)
+	}
+	node, err := codec.ParseNode([]byte("{imports: ["+strings.Join(q, ", ")+"]}"), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse imports: %v", err)
+	}
+	resp := postTony(t, url+"/packages?at="+at, node)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(body))
+}
+
 // installAt posts a charter into the package at an address, answering with the status so a test
 // can assert a refusal as readily as an install.
 func installAt(t *testing.T, url, at, src string) (int, string) {
@@ -36,6 +54,9 @@ func TestACharterPackageRunsAtItsAddress(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
+	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring imports = %d: %s", code, msg)
+	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
 		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
@@ -52,7 +73,7 @@ func TestACharterPackageRunsAtItsAddress(t *testing.T) {
 
 	// The record says which package it belongs to, so a reader can tell whose rule it is
 	// without inferring it from which listing it turned up in.
-	rule, ok, _ := srv.Store.Get(trigger.CharterRef("note-the-head"))
+	rule, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note-the-head"))
 	if !ok {
 		t.Fatal("the package's rule was not written down")
 	}
@@ -114,6 +135,9 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
+	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring imports = %d: %s", code, msg)
+	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
 		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
@@ -142,4 +166,123 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 		e, ok, _ := second.Store.Get(entity.RefAt("notes", "seen", "head"))
 		return ok && entity.Str(e.Payload, "saw") == "yes"
 	})
+}
+
+// A package reads its own address and what it DECLARES, and nothing else. The refusal names the
+// line to add, because a rule reaching past its imports is a dependency somebody has not written
+// down rather than a mistake in the rule.
+func TestAPackageReadsOnlyWhatItImports(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	rule := `{
+		name: note-the-head,
+		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`
+	code, msg := installAt(t, ts.URL, "notes", rule)
+	if code == 201 {
+		t.Fatal("a package read a system it never declared")
+	}
+	if !strings.Contains(msg, "does not import") || !strings.Contains(msg, "imports: [git.head]") {
+		t.Errorf("the refusal does not say what to add: %s", msg)
+	}
+
+	// Declared, it installs — the same rule, one line of declaration apart.
+	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring imports = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", rule); code != 201 {
+		t.Fatalf("installing after the declaration = %d: %s", code, msg)
+	}
+}
+
+// THE POINT OF THE WHOLE MECHANISM: two packages that feed each other are refused at install,
+// rather than throttled later in a chain that crosses two engines and belongs to neither
+// charter's author.
+func TestAnImportCycleBetweenPackagesIsRefused(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if code, msg := declareImports(t, ts.URL, "a", "b"); code != 201 {
+		t.Fatalf("a importing b = %d: %s", code, msg)
+	}
+	code, msg := declareImports(t, ts.URL, "b", "a")
+	if code == 201 {
+		t.Fatal("two packages reading each other installed")
+	}
+	if !strings.Contains(msg, "cycle") || !strings.Contains(msg, "a → b → a") {
+		t.Errorf("the refusal does not show the loop: %s", msg)
+	}
+
+	// And the shape that is NOT a loop still installs: both reading one source is the ordinary
+	// case, and a chain a → b → c is a dependency order rather than a cycle.
+	if code, msg := declareImports(t, ts.URL, "b", "git"); code != 201 {
+		t.Fatalf("b importing a source = %d: %s", code, msg)
+	}
+}
+
+// A declaration is durable and comes back BEFORE the rules it allows: a restore that loaded the
+// charter first would refuse the very rules it is bringing back.
+func TestAPackagesImportsAreRestored(t *testing.T) {
+	addr := entitytest.Addr(t)
+	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	ctx, stop := context.WithCancel(t.Context())
+	first.Start(ctx)
+	ts := httptest.NewServer(first.Handler())
+	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing = %d: %s", code, msg)
+	}
+	ts.Close()
+	stop()
+	time.Sleep(50 * time.Millisecond)
+
+	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second.Start(t.Context())
+
+	// It runs, which is the whole assertion: the rule reads `git`, and it could only be
+	// restored into an engine that had the declaration back first.
+	entitytest.Set(t, second.Store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	waitUntil(t, "the restored package to fire", func() bool {
+		e, ok, _ := second.Store.Get(entity.RefAt("notes", "seen", "head"))
+		return ok && entity.Str(e.Payload, "saw") == "yes"
+	})
+}
+
+// Narrowing must not leave a rule standing outside what its package declares — re-installing a
+// charter with a line deleted is exactly how that would happen.
+func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing = %d: %s", code, msg)
+	}
+	code, msg := declareImports(t, ts.URL, "notes")
+	if code == 201 {
+		t.Fatal("the declaration narrowed out from under an installed rule")
+	}
+	if !strings.Contains(msg, "note-the-head") {
+		t.Errorf("the refusal does not name the rule that still needs it: %s", msg)
+	}
 }

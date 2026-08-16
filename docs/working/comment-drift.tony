@@ -50,6 +50,16 @@
 # the subject before the task starts, the prompt carries them, and the answer becomes one entity
 # per symbol (`!each`, docs/strata.md). A review reads its own memory and looks at what changed.
 
+# ── THE REVIEW IS A PACKAGE ──────────────────────────────────────────────────────
+#
+# `at:` is the address this half may write in, and `imports:` is what it may read outside it —
+# so the review is confined to `drift:*` by the ENGINE rather than by its rules being careful,
+# and the one thing it reads from anybody else is declared. The gate half below declares its own
+# and imports this one, which makes the two a graph verse checks for a cycle at install
+# (trigger/imports.go). One file, two packages, installed by the one command at the top.
+at: drift
+imports: [ !verse-path [git] ]
+---
 # The reflected slice: the git source's, and nobody else writes it.
 - name: reflected
   level: 0
@@ -421,12 +431,31 @@
 # an event this verse reflects. A periodic check would be asking a question whose answer only
 # changes on an edge we already have.
 
+# ── AND THE GATE IS ITS OWN PACKAGE ──────────────────────────────────────────────
+#
+# It writes `merge:*` and reads two things: the source, and the review's `drift:head` (rule 3
+# below carries the review's report onto the proposal). So the edge is merge → drift, and the
+# graph is a chain rather than a loop — which is what verse checks, and what would refuse this
+# file if the review ever came to read `merge:*` back.
+at: merge
+imports: [git, drift]
+---
+# The same reflected slice, declared again because STRATA ARE PER PACKAGE: two packages each
+# name their own levels, and the records are addressed by package so the two `reflected`s are
+# two entities rather than one overwriting the other.
+- name: reflected
+  level: 0
+  match:
+    system: git
+---
 # Ours: one entity per delivered branch, and one for the sweep. Strictly above `reflected`,
 # because that is the only direction a derive may go.
-# LEVEL 30, not 10, and the number is the one thing here that is not free to choose. The review
-# above holds 0/10/20 (reflected, drift, ledger), and a level is the ordering — two strata at one level do not say which comes first, so installing
-# them together is REFUSED until one moves. Found by installing it: `stratum "merge" wants level
-# 10, which "drift" already holds`.
+#
+# LEVEL 30 IS HISTORY NOW, not arithmetic: the two halves used to be one charter, where the
+# review's 0/10/20 were taken and a level is the ordering — two strata at one level do not say
+# which comes first, so installing them together was REFUSED until one moved (`stratum "merge"
+# wants level 10, which "drift" already holds`). As a package of its own it could be 10, and the
+# number is left where it was because nothing reads it but this file.
 - name: merge
   level: 30
   match:

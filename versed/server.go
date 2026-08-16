@@ -929,6 +929,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
 	rt.handle("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
 	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
+	// A package's own declaration: what it reads outside its address. It carries `?at=` like
+	// the two above, and it is posted BEFORE them, because a rule is checked against it.
+	rt.handle("POST /packages", s.addPackage, "verse-trigger", nothing)
+	rt.handle("GET /packages", s.listPackages, "", list("verse-charter-package"))
 	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
@@ -3113,6 +3117,45 @@ func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
 			code = http.StatusServiceUnavailable
 		}
 		http.Error(w, err.Error(), code)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+// listPackages answers the charter as a tree: baseline and every package, each with what it
+// writes, what it imports and how much it holds. See Server.packageTree.
+func (s *Server) listPackages(w http.ResponseWriter, r *http.Request) {
+	writeOut(w, r, http.StatusOK, s.packageTree())
+}
+
+// addPackage installs a charter package's `imports:` declaration — the addresses its rules may
+// read outside the one they write in. See trigger/imports.go for what it buys.
+func (s *Server) addPackage(w http.ResponseWriter, r *http.Request) {
+	at := r.URL.Query().Get("at")
+	if at == "" {
+		http.Error(w, "imports: `?at=` is required — an `imports:` declaration belongs to a "+
+			"charter package, which is a charter installed at an address", http.StatusBadRequest)
+		return
+	}
+	if s.ctx == nil {
+		http.Error(w, "engine not started", http.StatusServiceUnavailable)
+		return
+	}
+	node, err := codec.ReadNode(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Read from the NODE rather than decoded into a []string: an element may be `!verse-path
+	// [demo pr]`, the steps spelling an address takes everywhere else in a charter, and a
+	// string decode refuses it as "expected string, got Array".
+	subs, err := trigger.ImportsFromNode(node)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.setPackageImports(at, subs); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)

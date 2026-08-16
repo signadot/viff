@@ -144,7 +144,8 @@ func (cfg *stratumAddConfig) run(cc *cli.Context, args []string) error {
 const (
 	defTrigger = "a trigger"
 	defStratum = "a stratum"
-	defUnknown = "neither a trigger nor a stratum"
+	defImports = "a package declaration"
+	defUnknown = "none of a trigger, a stratum and a package declaration"
 )
 
 func defKind(n *ir.Node) string {
@@ -169,6 +170,8 @@ func defKind(n *ir.Node) string {
 		return defTrigger
 	case has("level") && has("match"):
 		return defStratum
+	case has("imports"):
+		return defImports
 	}
 	return defUnknown
 }
@@ -233,4 +236,91 @@ func postDefsTo(cc *cli.Context, route string, q url.Values, defs []*ir.Node) er
 		resp.Body.Close()
 	}
 	return nil
+}
+
+// charterGroup is one package's worth of a charter file: where it goes, what it declares it
+// reads, and the definitions that belong to it.
+type charterGroup struct {
+	at      string
+	imports *ir.Node // the declaration document, nil when there is none
+	strata  []*ir.Node
+	rules   []*ir.Node
+}
+
+// charterGroups splits a charter file into the packages it installs.
+//
+// A declaration document (`imports:`, optionally with `at:`) OPENS a group, and everything after
+// it belongs to that group until the next one. Definitions before any declaration are the file's
+// own charter, installed at `--at` — which is the shape every charter had before packages, and
+// the shape most still have.
+//
+// STRATA AND RULES ARE SEPARATED WITHIN A GROUP, whatever order the file put them in: a rule
+// naming a stratum that is not installed yet is HELD rather than refused — right for two
+// independent installs, and wrong for one document whose author wrote both, where it would leave
+// half the charter dormant because of how it was laid out.
+func charterGroups(defs []*ir.Node, flagAt string) ([]charterGroup, error) {
+	cur := charterGroup{at: flagAt}
+	var out []charterGroup
+	seen := map[string]bool{}
+	for _, def := range defs {
+		switch defKind(def) {
+		case defStratum:
+			cur.strata = append(cur.strata, def)
+		case defTrigger:
+			cur.rules = append(cur.rules, def)
+		case defImports:
+			at, err := declaredAt(def)
+			if err != nil {
+				return nil, err
+			}
+			switch {
+			case at == "" && flagAt == "":
+				return nil, fmt.Errorf("a package declaration says what a package READS, so it " +
+					"needs to say which one: give it `at: <address>`, or install the file with " +
+					"`--at <address>`")
+			case at == "":
+				at = flagAt
+			case flagAt != "" && at != flagAt:
+				return nil, fmt.Errorf("the file installs a package at %q and --at says %q: the "+
+					"declaration is the one that travels with the charter, so drop the flag", at, flagAt)
+			}
+			if seen[at] {
+				return nil, fmt.Errorf("the file declares %q twice: `imports:` is what the PACKAGE "+
+					"reads, and two declarations have no order that would settle which wins", at)
+			}
+			seen[at] = true
+			// A group opened before any definitions is the FIRST group rather than a second
+			// one, so a file that starts with its declaration does not install an empty charter.
+			if cur.imports != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
+				out = append(out, cur)
+			}
+			cur = charterGroup{at: at, imports: def}
+		default:
+			return nil, fmt.Errorf("a definition is %s: a trigger has a `condition`, a stratum "+
+				"has a `level` and a `match`, a package declaration has `imports`", defUnknown)
+		}
+	}
+	if cur.imports != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
+		out = append(out, cur)
+	}
+	return out, nil
+}
+
+// declaredAt reads the `at:` a package declaration carries, empty when it names none.
+func declaredAt(def *ir.Node) (string, error) {
+	n := codec.Unwrap(def)
+	if n == nil || n.Type != ir.ObjectType {
+		return "", nil
+	}
+	for i, key := range n.Fields {
+		if key == nil || key.Type != ir.StringType || key.String != "at" {
+			continue
+		}
+		v := codec.Unwrap(n.Values[i])
+		if v == nil || v.Type != ir.StringType || v.String == "" {
+			return "", fmt.Errorf("a package declaration's `at:` is an address (`drift`, `demo.pr`)")
+		}
+		return v.String, nil
+	}
+	return "", nil
 }

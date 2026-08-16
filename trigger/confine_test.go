@@ -50,12 +50,14 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 }
 
 // What it may write, it writes. The guard is not a general refusal of anything that mentions
-// another address: a rule may READ anywhere — "react to what happened over there, record what
-// it means over here" is the shape most real rules have.
-func TestAConfinedCharterStillReadsAnywhere(t *testing.T) {
+// another address: "react to what happened over there, record what it means over here" is the
+// shape most real rules have — so a package reads what it DECLARES (imports.go), and the
+// declaration is what makes the dependency visible rather than what makes it possible.
+func TestAConfinedCharterReadsWhatItImports(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.Confine(Subtree{"", "drift", ""})
+	eng.SetImports([]Subtree{{"", "git", ""}}) // …declared, which is the half imports.go adds
 
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: note-the-head
@@ -113,8 +115,10 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	store := entitytest.Store(t)
 	mine := New(store, task.AutoResolver{})
 	mine.Confine(Subtree{"", "mine", ""})
+	mine.SetImports([]Subtree{{"", "git", ""}})
 	theirs := New(store, task.AutoResolver{})
 	theirs.Confine(Subtree{"", "theirs", ""})
+	theirs.SetImports([]Subtree{{"", "git", ""}}) // both read the source; neither imports the other
 
 	// Both rules say the same thing about the same cause, and each writes in its own half.
 	for _, c := range []struct {
@@ -171,6 +175,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.Confine(Subtree{"", "drift", ""})
+	eng.SetImports([]Subtree{{"", "git", ""}})
 
 	// The levels as the real charter writes them: the SOURCE slice at the bottom — which is
 	// what a package's lowest level owns, since its rules select from what they read — and the

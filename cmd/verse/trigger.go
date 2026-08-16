@@ -11,10 +11,57 @@ import (
 	"github.com/signadot/verse/codec"
 )
 
+// triggerFlags narrow WHICH charter is listed. `verse trigger` answers one engine's rules, and
+// with packages installed there are several — so the two flags are how a reader says which, and
+// `--tree` is how they see that there are several at all.
+type triggerFlags struct {
+	At string `cli:"name=at desc='the charter package at this address, rather than baseline'"`
+}
+
+var trig = &triggerFlags{}
+
 func triggerCmd() *cli.Command {
-	return collection("trigger", "triggers", "/triggers",
-		"trigger — the installed charter; add|show|remove one rule",
-		triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd())
+	trig = &triggerFlags{} // per-invocation, like the filter flags: one command runs per process
+	return filteredCollection("trigger", "triggers", "/triggers",
+		"trigger — the installed charter; add|show|remove one rule, tree for all of them",
+		mustOpts(trig),
+		func() url.Values {
+			q := url.Values{}
+			if trig.At != "" {
+				q.Set("at", trig.At)
+			}
+			return q
+		},
+		triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd(), triggerTreeCmd())
+}
+
+type triggerTreeConfig struct{ *cli.Command }
+
+// The charter as a TREE, which is the view a package makes necessary: `verse trigger` answers
+// ONE engine's rules, so with packages installed there was no way to see that there were
+// several, what each may write, or the import graph between them.
+//
+// A listing like any other — an array, filtered by `--if`/`--trim` — rather than drawn glyphs:
+// the shape is three fields wide, and a document is what a person can grep, diff and pipe.
+func triggerTreeCmd() *cli.Command {
+	cfg := &triggerTreeConfig{}
+	return cli.NewCommandAt(&cfg.Command, "tree").
+		WithSynopsis("tree — every charter: baseline and each package, what it writes and imports").
+		WithOpts(filterOpts()...).
+		WithRun(func(cc *cli.Context, args []string) error {
+			args, err := cfg.Parse(cc, args) // its own --if/--trim, like every other listing
+			if err != nil {
+				return err
+			}
+			if err := noArgs(cfg.Command, "trigger tree", args); err != nil {
+				return err
+			}
+			resp, err := httpGet("/packages", nil)
+			if err != nil {
+				return fmt.Errorf("trigger tree: %w", err)
+			}
+			return printBody(cc, resp)
+		})
 }
 
 type triggerShowConfig struct{ *cli.Command }
@@ -121,41 +168,64 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("trigger add: no trigger found in the input")
 	}
 
-	// STRATA FIRST, whatever order the file put them in. A rule naming a stratum that is not
-	// installed yet is HELD rather than refused — which is right, because two independent
-	// installs must not depend on their order — but a file is not two independent installs. It
-	// is one document whose author wrote both, and silently leaving half of it dormant because
-	// of how it was laid out would be the tool making the author responsible for something it
-	// knows perfectly well.
-	var strata, rules []*ir.Node
-	for _, def := range defs {
-		switch defKind(def) {
-		case defStratum:
-			strata = append(strata, def)
-		case defTrigger:
-			rules = append(rules, def)
-		default:
-			return fmt.Errorf("trigger add: a definition is %s: a trigger has a `condition`, "+
-				"a stratum has a `level` and a `match`", defUnknown)
-		}
-	}
-	q := url.Values{}
-	if cfg.At != "" {
-		q.Set("at", cfg.At)
-	}
-	// The strata first, for the reason `up` restores them first: a rule naming a stratum that
-	// is not installed yet is HELD rather than refused, and a package's levels are its own.
-	if err := postDefsTo(cc, "/strata", q, strata); err != nil {
-		return fmt.Errorf("trigger add: installing strata: %w", err)
-	}
-	if err := postDefsTo(cc, "/triggers", q, rules); err != nil {
+	// ONE FILE MAY HOLD SEVERAL PACKAGES, and a `---` document carrying `at:` is where each
+	// begins. That is what keeps a charter that spans two addresses ONE program in one file:
+	//
+	//	at: drift
+	//	imports: [git]
+	//	---
+	//	- name: head-moved …
+	//	---
+	//	at: merge
+	//	imports: [git, drift]
+	//	---
+	//	- name: proposal-appeared …
+	//
+	// Everything after a declaration belongs to it, until the next one. A file with no
+	// declaration is one charter, installed where `--at` says (or baseline, which is most of
+	// them), and that is the case this started as.
+	groups, err := charterGroups(defs, cfg.At)
+	if err != nil {
 		return fmt.Errorf("trigger add: %w", err)
 	}
-	switch {
-	case len(strata) == 0:
-		fmt.Fprintf(cc.Out, "installed %d trigger(s)\n", len(rules))
-	default:
-		fmt.Fprintf(cc.Out, "installed %d stratum(a) and %d trigger(s)\n", len(strata), len(rules))
+	for _, g := range groups {
+		q := url.Values{}
+		if g.at != "" {
+			q.Set("at", g.at)
+		}
+		// THE DECLARATION FIRST, before either: a rule is checked against what its package
+		// imports as it installs, so sending it after would refuse the rules it is there to
+		// allow. Then the strata, for the reason `up` restores them first — a rule naming a
+		// stratum that is not installed yet is HELD rather than refused, and a package's levels
+		// are its own.
+		if g.imports != nil {
+			if g.at == "" {
+				return fmt.Errorf("trigger add: `imports:` belongs to a charter package — give " +
+					"it an address (`at:` in the declaration, or `--at`), or drop it: the " +
+					"baseline charter may write anywhere, so there is no graph an import would " +
+					"be an edge in")
+			}
+			if err := postDefsTo(cc, "/packages", q, []*ir.Node{g.imports}); err != nil {
+				return fmt.Errorf("trigger add: declaring what %s imports: %w", g.at, err)
+			}
+		}
+		if err := postDefsTo(cc, "/strata", q, g.strata); err != nil {
+			return fmt.Errorf("trigger add: installing strata: %w", err)
+		}
+		if err := postDefsTo(cc, "/triggers", q, g.rules); err != nil {
+			return fmt.Errorf("trigger add: %w", err)
+		}
+		where := "baseline"
+		if g.at != "" {
+			where = "package " + g.at
+		}
+		switch {
+		case len(g.strata) == 0:
+			fmt.Fprintf(cc.Out, "%s: installed %d trigger(s)\n", where, len(g.rules))
+		default:
+			fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n",
+				where, len(g.strata), len(g.rules))
+		}
 	}
 	return nil
 }

@@ -101,6 +101,14 @@ verse
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md
           add --scope <name>                 …into a federation's own charter instead
+          [--at <address>]                   (on the bare listing) that package's rules
+          tree                               every charter at once: baseline and each
+                                             package, what it writes and what it imports
+                                             A CHARTER FILE may open a package with a `---`
+                                             document of its own: `at: drift` says where it
+                                             writes, `imports: [git, other]` what it reads
+                                             besides — an undeclared read does not install,
+                                             and the graph over packages must be acyclic
   task (tasks, ps) [--runner <ref>]          every task, whatever runs it
           run <prompt…> [--attach] [--wait] [--driver scripted|calls|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default

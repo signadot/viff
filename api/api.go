@@ -382,6 +382,27 @@ type InboxItem struct {
 // are configured ON THIS SERVER — the common gotcha, since the runtime reads its own
 // environment rather than the client's.
 //
+// CharterPackage is one row of the charter TREE: baseline or a package, what it may write, what
+// it declares it reads, and how much of a charter it holds.
+//
+// `verse trigger` answers ONE engine's rules — baseline's, or the one named by `--at`/`--scope`
+// — so with packages installed nothing showed the shape of the whole charter. This is that view,
+// and the imports in it are the graph checked for a cycle at install (trigger/imports.go).
+//
+//tony:schemagen=verse-charter-package,notag
+type CharterPackage struct {
+	// At is the address the package writes in, or `(baseline)` for the charter that has none.
+	At string `tony:"field=at"`
+	// Writes is `anywhere` for baseline and the address prefix for a package — the confinement,
+	// said the way a refusal says it.
+	Writes string `tony:"field=writes"`
+	// Imports is what this package declares it reads outside its own address. Empty on a
+	// package means it reads only inside it; absent on baseline, which is unconfined.
+	Imports []string `tony:"field=imports,omitzero"`
+	Rules   int      `tony:"field=rules"`
+	Strata  int      `tony:"field=strata"`
+}
+
 //tony:schemagen=verse-status,notag
 type Status struct {
 	StoreRev int64 `tony:"field=storeRev"`

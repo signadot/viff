@@ -91,6 +91,13 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := e.checkConfined(t); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	// And what it READS, against what the package declares. After the write check because the
+	// two answer different questions and the write one is the sharper failure: a rule reaching
+	// past its address to WRITE is a mistake, and one reaching past it to read is a dependency
+	// somebody has not written down. See imports.go.
+	if err := e.checkImports(t); err != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
 	// LAST, and fatal. A charter that cannot stop spawning is refused rather than logged: it
 	// is not a style question but a rule with no end state, and the operator installing it is
 	// the one person positioned to fix it.

@@ -45,9 +45,21 @@ const (
 	StrataKind   = "strata"
 )
 
-// StrataRef names the entity holding one stratum.
-func StrataRef(name string) entity.Ref {
-	return entity.VerseRef(StrataSystem, StrataKind, name)
+// IsStratum reports whether an address is a durable stratum's — the namespace's own question,
+// asked by anything that lists the ordering, as IsCharterRule is for the rules.
+func IsStratum(r entity.Ref) bool {
+	return r.Reserved() && r.System() == StrataSystem && r.Kind() == StrataKind
+}
+
+// StrataRef names the entity holding one of BASELINE's strata.
+func StrataRef(name string) entity.Ref { return StrataRefAt("", name) }
+
+// StrataRefAt names the entity holding one stratum of the charter installed at an address —
+// addressed by package for the reason CharterRefAt gives at length: two packages declaring a
+// level of the same name (`reflected` is the obvious one, since every package that reads a
+// source wants a bottom level for it) would otherwise write one record.
+func StrataRefAt(at, name string) entity.Ref {
+	return entity.VerseRef(StrataSystem, StrataKind, recordID(at, name))
 }
 
 // Stratum is one level of the ordering: what it owns, and where it sits.
@@ -390,7 +402,7 @@ func (e *Engine) RemoveStratum(name string) error {
 			"to nothing. Remove the rules first, or move them", name, len(users), shown)
 	}
 	e.removeStratum(name)
-	e.write(StrataRef(name).At(), nil)
+	e.write(StrataRefAt(e.confine.stamp(), name).At(), nil)
 	return nil
 }
 
@@ -478,7 +490,7 @@ func (e *Engine) persistStratum(s Stratum) error {
 	if err != nil {
 		return fmt.Errorf("stratum %q: encoding it: %w", s.Name, err)
 	}
-	ref := StrataRef(s.Name)
+	ref := StrataRefAt(e.confine.stamp(), s.Name)
 	if _, _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
 		Value: e.record(doc),
@@ -531,7 +543,7 @@ func stratumOf(ent entity.Entity) (Stratum, error) {
 	if err := s.FromTonyIR(doc); err != nil {
 		return Stratum{}, fmt.Errorf("stratum %s: %w", ent.Ref, err)
 	}
-	if s.Name != ent.Ref.ID() {
+	if s.Name != recordName(ent.Ref.ID()) { // the tail: a package's records carry its address
 		return Stratum{}, fmt.Errorf("stratum %s: it names itself %q; a stratum is addressed by "+
 			"its name, so it would install as one and be removed as another", ent.Ref, s.Name)
 	}
