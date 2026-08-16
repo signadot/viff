@@ -575,6 +575,86 @@ func TestARuleKeepsItsComments(t *testing.T) {
 	}
 }
 
+// EVERY POSITION A RULE HAS, head comment and line comment alike, through the store.
+//
+// The line beside a value was the half nothing carried. A struct-level `lineComment=` holds the
+// note beside the RULE — `- {name: r} # …`, the way a list of them is written — and there is no
+// such thing for `name: r # the short name`, because a scalar field has no type of its own to
+// hang it on. So a charter installed from a file came back with the lines ABOVE its fields and
+// none of the lines BESIDE them: the arbitrary half again, one position further in.
+//
+// The document below is the check, and it is deliberately written in the layout an operator
+// uses rather than the compact one the other tests use — comments only exist in block form.
+// What it does NOT assert is WHICH carrier holds a given line, for the reason
+// TestAConditionKeepsItsFieldComments gives: a comment before a container's first entry heads
+// the container, so the carrier is a function of the author's field order. Survival is the
+// promise; placement is layout.
+func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
+	eng, store := newEng(t)
+	src := "# why this rule exists\n" +
+		"name: everything # the short name\n" +
+		"# which level it lives in\n" +
+		"stratum: base # the ground floor\n" +
+		"# what this is about\n" +
+		"condition: # cause and subject\n" +
+		"  # the subject\n" +
+		"  subject: demo:pr # any PR\n" +
+		"  # what has to hold\n" +
+		"  when: ci:status # a build says so\n" +
+		"# who has to agree\n" +
+		"gates: # conjunctive\n" +
+		"# the first gate\n" +
+		"- name: approval # by a human\n" +
+		"  mode: ask # blocking\n" +
+		"# what it does\n" +
+		"action: # the write\n" +
+		"  # the patch\n" +
+		"  patch: # merged into the subject\n" +
+		"    stage: reviewing # the new stage\n"
+	if err := eng.AddStratum(Stratum{Name: "base", Level: 1, Match: []Match{{"system": "demo"}}}); err != nil {
+		t.Fatalf("AddStratum: %v", err)
+	}
+	node, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var installed Trigger
+	if err := installed.FromTonyIR(node); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if err := eng.AddTrigger(installed); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	ent, ok, err := store.Get(CharterRef("everything"))
+	if err != nil || !ok {
+		t.Fatalf("the charter entity: ok=%v err=%v", ok, err)
+	}
+	back, err := ruleOf(ent)
+	if err != nil {
+		t.Fatalf("ruleOf: %v", err)
+	}
+	out, err := codec.Marshal(back, codec.Tony)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, line := range strings.Split(src, "\n") {
+		i := strings.Index(line, "#")
+		if i < 0 {
+			continue
+		}
+		if want := strings.TrimSpace(line[i:]); !strings.Contains(string(out), want) {
+			t.Errorf("the rule came back without %q:\n%s", want, out)
+		}
+	}
+	// And the rule is still the rule: a comment is not data, and none of these carriers is a
+	// field of the document.
+	if back.Name != "everything" || back.Stratum != "base" ||
+		back.Condition.Subject.Kind() != "pr" || len(back.Gates) != 1 {
+		t.Fatalf("the rule itself did not survive carrying its comments: %+v", back)
+	}
+}
+
 // A comment above a field OF a hand-written codec survives too, which is the last position in a
 // charter that nothing carried.
 //

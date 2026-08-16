@@ -488,10 +488,16 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: Name
 	irMap["name"] = ir.FromString(string(s.Name))
+	if n, ok := irMap["name"]; ok {
+		irMap["name"] = gomap.ApplyComments(n, s.NameDoc, s.NameNote)
+	}
 
 	// Field: Stratum
 	if s.Stratum != "" {
 		irMap["stratum"] = ir.FromString(string(s.Stratum))
+	}
+	if n, ok := irMap["stratum"]; ok {
+		irMap["stratum"] = gomap.ApplyComments(n, s.StratumDoc, s.StratumNote)
 	}
 
 	// Field: Condition
@@ -501,7 +507,7 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	}
 	irMap["condition"] = node
 	if n, ok := irMap["condition"]; ok {
-		irMap["condition"] = gomap.ApplyComments(n, s.ConditionDoc, nil)
+		irMap["condition"] = gomap.ApplyComments(n, s.ConditionDoc, s.ConditionNote)
 	}
 
 	// Field: Gates
@@ -517,7 +523,7 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["gates"] = ir.FromSlice(slice)
 	}
 	if n, ok := irMap["gates"]; ok {
-		irMap["gates"] = gomap.ApplyComments(n, s.GatesDoc, nil)
+		irMap["gates"] = gomap.ApplyComments(n, s.GatesDoc, s.GatesNote)
 	}
 
 	// Field: Gating (optional)
@@ -590,12 +596,24 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
 			s.Name = string(fieldNodeUnwrapped.String)
+			if fieldNode.Type == ir.CommentType {
+				s.NameDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.NameNote = v.Comment.Lines
+			}
 		case "stratum":
 			// Field: Stratum
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "stratum", fieldNodeUnwrapped.Type)
 			}
 			s.Stratum = string(fieldNodeUnwrapped.String)
+			if fieldNode.Type == ir.CommentType {
+				s.StratumDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.StratumNote = v.Comment.Lines
+			}
 		case "condition":
 			// Field: Condition
 			if err := s.Condition.FromTonyIR(fieldNode, opts...); err != nil {
@@ -603,6 +621,9 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			if fieldNode.Type == ir.CommentType {
 				s.ConditionDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.ConditionNote = v.Comment.Lines
 			}
 		case "gates":
 			// Field: Gates
@@ -621,6 +642,9 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			if fieldNode.Type == ir.CommentType {
 				s.GatesDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.GatesNote = v.Comment.Lines
 			}
 		case "gating":
 			// Field: Gating
@@ -682,6 +706,9 @@ func (s *Gating) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s.Resolver != "" {
 		irMap["resolver"] = ir.FromString(string(s.Resolver))
 	}
+	if n, ok := irMap["resolver"]; ok {
+		irMap["resolver"] = gomap.ApplyComments(n, s.ResolverDoc, s.ResolverNote)
+	}
 
 	// Field: Gates
 	if len(s.Gates) > 0 {
@@ -694,6 +721,9 @@ func (s *Gating) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			slice[i] = node
 		}
 		irMap["gates"] = ir.FromSlice(slice)
+	}
+	if n, ok := irMap["gates"]; ok {
+		irMap["gates"] = gomap.ApplyComments(n, s.GatesDoc, s.GatesNote)
 	}
 
 	res := ir.FromMap(irMap)
@@ -750,6 +780,12 @@ func (s *Gating) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "resolver", fieldNodeUnwrapped.Type)
 			}
 			s.Resolver = string(fieldNodeUnwrapped.String)
+			if fieldNode.Type == ir.CommentType {
+				s.ResolverDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.ResolverNote = v.Comment.Lines
+			}
 		case "gates":
 			// Field: Gates
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -764,6 +800,12 @@ func (s *Gating) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Gates = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
+			}
+			if fieldNode.Type == ir.CommentType {
+				s.GatesDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.GatesNote = v.Comment.Lines
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -814,10 +856,16 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s.Name != "" {
 		irMap["name"] = ir.FromString(string(s.Name))
 	}
+	if n, ok := irMap["name"]; ok {
+		irMap["name"] = gomap.ApplyComments(n, s.NameDoc, s.NameNote)
+	}
 
 	// Field: Mode
 	if s.Mode != "" {
 		irMap["mode"] = ir.FromString(string(s.Mode))
+	}
+	if n, ok := irMap["mode"]; ok {
+		irMap["mode"] = gomap.ApplyComments(n, s.ModeDoc, s.ModeNote)
 	}
 
 	// Field: Formula (optional)
@@ -827,6 +875,9 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			return nil, err
 		}
 		irMap["formula"] = node
+		if n, ok := irMap["formula"]; ok {
+			irMap["formula"] = gomap.ApplyComments(n, s.FormulaDoc, s.FormulaNote)
+		}
 	}
 
 	// Field: OnDenied (optional)
@@ -892,17 +943,35 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
 			s.Name = string(fieldNodeUnwrapped.String)
+			if fieldNode.Type == ir.CommentType {
+				s.NameDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.NameNote = v.Comment.Lines
+			}
 		case "mode":
 			// Field: Mode
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "mode", fieldNodeUnwrapped.Type)
 			}
 			s.Mode = string(fieldNodeUnwrapped.String)
+			if fieldNode.Type == ir.CommentType {
+				s.ModeDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.ModeNote = v.Comment.Lines
+			}
 		case "formula":
 			// Field: Formula
 			s.Formula = &Formula{}
 			if err := s.Formula.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
+			}
+			if fieldNode.Type == ir.CommentType {
+				s.FormulaDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.FormulaNote = v.Comment.Lines
 			}
 		case "onDenied":
 			// Field: OnDenied
@@ -985,6 +1054,9 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			slice[i] = node
 		}
 		irMap["seq"] = ir.FromSlice(slice)
+	}
+	if n, ok := irMap["seq"]; ok {
+		irMap["seq"] = gomap.ApplyComments(n, s.SeqDoc, s.SeqNote)
 	}
 
 	// Field: OnDone (optional)
@@ -1103,6 +1175,12 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Seq = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"seq\"", fieldNodeUnwrapped.Type)
+			}
+			if fieldNode.Type == ir.CommentType {
+				s.SeqDoc = fieldNode.Lines
+			}
+			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
+				s.SeqNote = v.Comment.Lines
 			}
 		case "onDone":
 			// Field: OnDone

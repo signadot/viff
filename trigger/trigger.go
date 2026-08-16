@@ -52,26 +52,45 @@ type Trigger struct {
 	Doc  []string `tony:"-"`
 	Note []string `tony:"-"`
 
-	Name string `tony:"field=name"`
-	// Stratum names the level this rule lives in — a trigger:strata:<name> entity carrying
-	// the pattern its subject must fall inside, and the level a derive must climb above.
-	// Empty is the IMPLICIT stratum: unordered, checked against nothing, which is exactly
-	// what every rule written before strata existed means. See stratum.go.
-	Stratum string `tony:"field=stratum,omitzero"`
-
-	// ConditionDoc is the comment written above `condition:`, carried by the FIELD rather than by
-	// the value's own type — which is what makes it possible at all. A struct-level `comment=`
+	// The per-FIELD comment carriers: <Field>Doc is the lines written above that field,
+	// <Field>Note the one written beside its value.
+	//
+	// ConditionDoc is the reason the field form exists at all. A struct-level `comment=`
 	// captures the comment on a struct's OWN node, and Condition has no generated codec to
 	// capture it with (its codec is hand-written). The field-level form (go-tony v0.0.145) names
 	// the field's VALUE instead, which exists whatever the value turns out to be.
 	//
+	// The Notes are the same argument for the other position. A struct-level `lineComment=`
+	// carries the note beside the RULE (`- {name: r} # …` in a list); the note beside a FIELD's
+	// value is a different place in the document, and a scalar field has no type of its own to
+	// carry it — which is why `name: comment # this is a comment`, about as ordinary a line as a
+	// charter contains, was the one comment that reached the store and came back missing.
+	//
 	// GatesDoc takes the comment above `gates:` AND the one above its first entry, which are one
 	// comment: a block list begins at its first element, so both head the list. Every later
 	// entry keeps its own, carried by Gate itself.
-	ConditionDoc []string  `tony:"-"`
-	GatesDoc     []string  `tony:"-"`
-	Condition    Condition `tony:"field=condition,comment=ConditionDoc"`
-	Gates        []Gate    `tony:"field=gates,omitzero,comment=GatesDoc"` // conjunctive (all must proceed)
+	//
+	// `gating:` and `action:` are absent here on purpose: Gating and Action have generated
+	// codecs of their own, so their struct-level comment=/lineComment= already carry both
+	// positions. A second carrier on the field would capture the same lines twice.
+	NameDoc       []string `tony:"-"`
+	NameNote      []string `tony:"-"`
+	StratumDoc    []string `tony:"-"`
+	StratumNote   []string `tony:"-"`
+	ConditionDoc  []string `tony:"-"`
+	ConditionNote []string `tony:"-"`
+	GatesDoc      []string `tony:"-"`
+	GatesNote     []string `tony:"-"`
+
+	Name string `tony:"field=name,comment=NameDoc,lineComment=NameNote"`
+	// Stratum names the level this rule lives in — a trigger:strata:<name> entity carrying
+	// the pattern its subject must fall inside, and the level a derive must climb above.
+	// Empty is the IMPLICIT stratum: unordered, checked against nothing, which is exactly
+	// what every rule written before strata existed means. See stratum.go.
+	Stratum   string    `tony:"field=stratum,omitzero,comment=StratumDoc,lineComment=StratumNote"`
+	Condition Condition `tony:"field=condition,comment=ConditionDoc,lineComment=ConditionNote"`
+	// conjunctive (all must proceed)
+	Gates []Gate `tony:"field=gates,omitzero,comment=GatesDoc,lineComment=GatesNote"`
 	// Gating groups the two facts about a rule's OWN gates: which they are, and who answers
 	// them. `gates:` at the top level still works and means `gating: {gates: …}` — the two
 	// are one field read two ways, not two fields that can disagree, and writing both is
@@ -93,12 +112,18 @@ type Gating struct {
 	// and they exist so a charter read back is the one its author wrote.
 	Doc  []string `tony:"-"`
 	Note []string `tony:"-"`
+	// The per-field carriers, as on Trigger: a scalar field has no type of its own to hold
+	// what was written about it.
+	ResolverDoc  []string `tony:"-"`
+	ResolverNote []string `tony:"-"`
+	GatesDoc     []string `tony:"-"`
+	GatesNote    []string `tony:"-"`
 	// Resolver names the binding that answers these gates — `resolvers:<kind>:<name>`. Same
 	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
 	// and one word for it is worth more than either word being marginally better in its own
 	// place. Empty leaves the question to the standing layer, then to the human docket.
-	Resolver string `tony:"field=resolver,omitzero"`
-	Gates    []Gate `tony:"field=gates,omitzero"`
+	Resolver string `tony:"field=resolver,omitzero,comment=ResolverDoc,lineComment=ResolverNote"`
+	Gates    []Gate `tony:"field=gates,omitzero,comment=GatesDoc,lineComment=GatesNote"`
 }
 
 // AllGates is the rule's gates however they were written.
@@ -132,16 +157,20 @@ func (t Trigger) GateResolver() string {
 //
 //tony:schemagen=verse-condition,notag,codec=custom
 type Condition struct {
-	// SubjectDoc, OnDoc and WhenDoc are the comments written above those three fields.
+	// SubjectDoc/OnDoc/WhenDoc are the comments written above those three fields, and the
+	// Notes the ones written beside their values.
 	//
 	// They are captured and re-emitted by Condition's OWN codec (tonycodec.go), which is what
 	// this case needs and the annotations cannot supply: `comment=` is emitted by codegen, and
 	// codegen writes no codec for a `codec=custom` type. Every other comment in a charter is
 	// carried either by the value's type or by the field holding it in a GENERATED parent; a
 	// field of a hand-written codec has neither, so the codec does it by hand.
-	SubjectDoc []string `tony:"-"`
-	OnDoc      []string `tony:"-"`
-	WhenDoc    []string `tony:"-"`
+	SubjectDoc  []string `tony:"-"`
+	SubjectNote []string `tony:"-"`
+	OnDoc       []string `tony:"-"`
+	OnNote      []string `tony:"-"`
+	WhenDoc     []string `tony:"-"`
+	WhenNote    []string `tony:"-"`
 
 	// Subject is what the firing is ABOUT, selected at the fire instant — never
 	// accumulated, so it carries no temporal operators. An address names one entity; a
@@ -281,11 +310,21 @@ type Gate struct {
 	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
 	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
 	// and they exist so a charter read back is the one its author wrote.
-	Doc     []string `tony:"-"`
-	Note    []string `tony:"-"`
-	Name    string   `tony:"field=name,omitzero"`
-	Mode    string   `tony:"field=mode,omitzero"` // auto | ask | park
-	Formula *Formula `tony:"field=formula,omitzero"`
+	Doc  []string `tony:"-"`
+	Note []string `tony:"-"`
+	// The per-field carriers, as on Trigger. FormulaDoc/FormulaNote are the Condition case
+	// again: Formula's codec is hand-written, so the field is the only place a comment about
+	// it can be held.
+	NameDoc     []string `tony:"-"`
+	NameNote    []string `tony:"-"`
+	ModeDoc     []string `tony:"-"`
+	ModeNote    []string `tony:"-"`
+	FormulaDoc  []string `tony:"-"`
+	FormulaNote []string `tony:"-"`
+	Name        string   `tony:"field=name,omitzero,comment=NameDoc,lineComment=NameNote"`
+	// auto | ask | park
+	Mode    string   `tony:"field=mode,omitzero,comment=ModeDoc,lineComment=ModeNote"`
+	Formula *Formula `tony:"field=formula,omitzero,comment=FormulaDoc,lineComment=FormulaNote"`
 	// OnDenied is what a NO means for the subject — an action applied when this gate
 	// refuses, about the same subjects the firing was about.
 	//
@@ -445,7 +484,12 @@ type Action struct {
 	// onCancelled / onOrphaned as off-ramps (firing one ends the sequence), but not onDone,
 	// because the list already says what comes next. This action's own onDone fires after the
 	// WHOLE sequence, so a sequence is a unit with its own completion and nesting composes.
-	Seq []Action `tony:"field=seq,omitzero"`
+	// SeqDoc/SeqNote: the list is not a struct, so the comments about `seq:` need the field.
+	// SeqDoc takes the line above `seq:` AND the one above its first element, which are one
+	// comment (see Trigger.GatesDoc); each later element keeps its own on the Action it is.
+	SeqDoc  []string `tony:"-"`
+	SeqNote []string `tony:"-"`
+	Seq     []Action `tony:"field=seq,omitzero,comment=SeqDoc,lineComment=SeqNote"`
 
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a

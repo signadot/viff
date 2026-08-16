@@ -146,16 +146,22 @@ than about a string, and nothing has to re-parse to ask a question about it.
 **A rule keeps the comments it was written with**, so the record carries the reasons and not only
 the shape — the example above reads back with all three of its notes in place.
 
-A comment attaches to the VALUE it precedes, and something has to carry it — the value's own
-type, the field holding it, or the codec of whatever it sits inside. Between them they cover a
-charter:
+A comment attaches to the VALUE it is written about — above it, or beside it on the same line —
+and something has to carry it: the value's own type, the field holding it, or the codec of
+whatever it sits inside. Between them they cover a charter:
 
-| a comment above | kept by |
+| a comment on | kept by |
 |---|---|
-| the rule, `action:`, `spawn:`, a gate entry | the value's own type |
+| the rule, `action:`, `gating:`, `spawn:`, a gate entry | the value's own type |
 | a `patch:` or `derive:` body | nothing needed — the value is stored as-is |
-| `condition:`, `gates:` | the FIELD holding it — which is how a value whose own type cannot carry one still keeps it |
+| `name:`, `stratum:`, `condition:`, `gates:`, `seq:`, a gate's `name:`/`mode:`/`formula:` | the FIELD holding it — which is how a value whose own type cannot carry one still keeps it |
 | `subject:`, `on:`, `when:` | Condition's own codec, which is hand-written and so carries them by hand |
+
+The two positions are one question asked twice, and both are carried: `name: review # the short
+name` reads back as it was written, as `# what this rule is for` above it does.
+
+The exception is the FIELDS OF A SPAWN — `driver:`, `prompt:`, `runner:` and the rest. A comment
+above or beside `spawn:` is kept, and one written on a field inside it is not.
 
 **A comment above a container and one above its first entry are the same comment.** A block list
 begins at its first element and an object at its first field, so both head the container, they
