@@ -5,6 +5,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 )
@@ -127,5 +128,113 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	pat, _ = all.pattern()
 	if len(pat.Select(store)) != 2 {
 		t.Errorf("a leaf wildcard selected %d, want the two under `head`", len(pat.Select(store)))
+	}
+}
+
+// A STEP MAY BE AN OPERATOR, at any position — `!verse-path [demo pr !glob "hot-*"]` — which is
+// what the three-dimension spelling already allows per dimension (`{kind: !glob "k-*"}`).
+//
+// It used to be dropped on the way in. The failure was quiet in the worst way: a `!glob` at the
+// ID position behaved, because an id containing `*` globs anyway, and the same operator one
+// level along matched a segment literally named `head-*`. A pattern that reads as a glob and
+// selects nothing is worse than one that is refused.
+func TestAStepMayCarryAnOperator(t *testing.T) {
+	store := entitytest.Store(t)
+	for _, ref := range []entity.Ref{
+		entity.RefAt("verse-dev", "drift", "head-main", "abc"),
+		entity.RefAt("verse-dev", "drift", "head-next", "abc"),
+		entity.RefAt("verse-dev", "drift", "finding", "abc"),
+	} {
+		entitytest.Set(t, store, ref, entity.Obj{"seen": true}.Payload())
+	}
+
+	node, err := codec.ParseNode([]byte(`{subject: !verse-path [verse-dev, drift, !glob "head-*", "*"]}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c Condition
+	if err := c.FromTonyIR(node); err != nil {
+		t.Fatalf("an operator in a step was refused: %v", err)
+	}
+
+	if !c.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "head-main", "abc")) {
+		t.Error("the glob did not match what it names")
+	}
+	if c.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "finding", "abc")) {
+		t.Error("the glob matched past itself")
+	}
+
+	pat, err := c.Subject.pattern()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pat.Select(store); len(got) != 2 {
+		t.Errorf("selected %v, want the two under a head-* level", got)
+	}
+
+	// ANY OPERATOR, not just a string-shaped one: `!or [hot, cold]` is a list, and a step that
+	// had to have a text reading could not hold it at all.
+	node, err = codec.ParseNode([]byte(`{subject: !verse-path [demo, pr, !or [hot, cold]]}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var either Condition
+	if err := either.FromTonyIR(node); err != nil {
+		t.Fatalf("a list-shaped operator in a step was refused: %v", err)
+	}
+	for _, id := range []string{"hot", "cold"} {
+		if !either.Subject.MatchRef(entity.RefAt("demo", "pr", id)) {
+			t.Errorf("%q is one of the two named", id)
+		}
+	}
+	if either.Subject.MatchRef(entity.RefAt("demo", "pr", "warm")) {
+		t.Error("the or matched what it does not name")
+	}
+
+	// And the watch it opens stops ABOVE the operator: a level that is constrained but not
+	// named cannot narrow a subtree, so the watch is the literal head and the pattern does the
+	// rest — which is what a `*` position does too.
+	if got := subtreeOf(c.Subject).Path(); len(got) != 2 || got[1] != "drift" {
+		t.Errorf("the watch subtree is %v, want the literal head of the path", got)
+	}
+}
+
+// EACH ELEMENT OF A PATH IS A MATCH, in tony's own grammar, asked of that one segment — so the
+// operators a payload predicate takes work at an address position too, with nothing here
+// enumerating them.
+//
+// Two conveniences sit above that and only two: `*` is any segment, and `!raw` is the escape
+// that says a segment is a NAME. Without the second, an id that happens to be `*` — or to be
+// named after an operator — could not be addressed at all, which is a hole exactly where
+// somebody's id is.
+func TestEveryPathSegmentIsAMatch(t *testing.T) {
+	for _, tc := range []struct {
+		seg  string
+		id   string
+		want bool
+	}{
+		{`!not archived`, "live", true},
+		{`!not archived`, "archived", false},
+		{`!or [hot, cold]`, "cold", true},
+		{`!or [hot, cold]`, "warm", false},
+		{`!and [!glob "h*", !not hold]`, "hot", true},
+		{`!and [!glob "h*", !not hold]`, "hold", false},
+		{`1`, "1", true},     // an untagged scalar is the name it spells
+		{`"*"`, "any", true}, // the wildcard, as everywhere else in an address
+		{`!raw "*"`, "*", true},
+		{`!raw "*"`, "any", false}, // …and escaped, it is the id that IS an asterisk
+	} {
+		node, err := codec.ParseNode([]byte(`{subject: !verse-path [demo, pr, `+tc.seg+`]}`), codec.Tony)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.seg, err)
+		}
+		var c Condition
+		if err := c.FromTonyIR(node); err != nil {
+			t.Errorf("%s was refused: %v", tc.seg, err)
+			continue
+		}
+		if got := c.Subject.MatchRef(entity.RefAt("demo", "pr", tc.id)); got != tc.want {
+			t.Errorf("[demo pr %s] vs id %q = %v, want %v", tc.seg, tc.id, got, tc.want)
+		}
 	}
 }

@@ -723,6 +723,11 @@ func stepsMatch(node *ir.Node) (Match, error) {
 			"(`!%s [demo pr 1]`), so a list of steps cannot be read as anything else",
 			VersePathTag, VersePathTag)
 	}
+	// The NODES, not their text: a step may carry an operator (`!glob "hot-*"`), and the tag is
+	// what says so. ParseStepNodes keeps it.
+	if hasTaggedStep(node) {
+		return ParseStepNodes(node.Values)
+	}
 	steps := make([]string, 0, len(node.Values))
 	for _, v := range node.Values {
 		// ANY SCALAR, not just a string: an id is a name whatever it looks like, and `1` is
@@ -751,6 +756,16 @@ func atMatch(val *ir.Node) (Match, error) {
 	}
 	return nil, fmt.Errorf("match: `at` is an address as a path (`demo.pr`) or as steps "+
 		"(`!%s [demo pr]`); got %v", VersePathTag, val.Type)
+}
+
+// hasTaggedStep reports whether any step of an address carries an operator.
+func hasTaggedStep(node *ir.Node) bool {
+	for _, v := range node.Values {
+		if u := unwrap(v); u != nil && u.Tag != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // stepText is a step's text, whatever scalar it was written as. It is scalarText's question

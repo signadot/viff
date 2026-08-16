@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"strings"
+
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
@@ -29,11 +31,17 @@ type Pattern struct {
 	// Path is the address as a PATH — the general form the three above are a reading of, and
 	// the only one that can name a place deeper than three segments (`verse-dev.drift.head`).
 	//
-	// When it is set it is the authority and Root/System/Kind are ignored; when it is not,
-	// they are, which is every pattern written before addresses became trees. It is not on the
-	// wire (`tony:"-"`) because the charter grammar's spelling of it is `trigger.Match`'s
-	// `path:`, and a Pattern is what that compiles TO.
-	Path []string `tony:"-"`
+	// A segment is a NODE rather than a string because a segment may be an OPERATOR: `!glob
+	// "head-*"` is a perfectly good thing to say about one level of an address, and it is what
+	// the three-dimension spelling already allows per dimension (`{kind: !glob "k-*"}`).
+	// Carrying strings would have to drop the tag, which is worse than refusing it — a pattern
+	// that reads as a glob and matches literally is a rule that silently selects nothing.
+	//
+	// When it is set it is the authority and Root/System/Kind are ignored; when it is not, they
+	// are, which is every pattern written before addresses became trees. It is not on the wire
+	// (`tony:"-"`) because the charter grammar's spelling of it is `trigger.Match`'s `path:`,
+	// and a Pattern is what that compiles TO.
+	Path []*ir.Node `tony:"-"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
 	// it. Create and update are not distinguished (see Op) — express "only the
@@ -147,29 +155,116 @@ func (p Pattern) MatchRef(ref Ref) bool {
 }
 
 // pathCovers reports whether an address is at or under the pattern's path. A segment of `*`
-// matches any one segment, which is the same wildcard the three-dimension spelling has.
+// matches any one segment, and a segment carrying an operator is asked of the address's own
+// segment as a tony match — the same grammar a dimension takes, one level at a time.
 func (p Pattern) pathCovers(ref Ref) bool {
 	segs := ref.Segs()
 	if len(segs) < len(p.Path) {
 		return false
 	}
 	for i, want := range p.Path {
-		if want != "*" && want != segs[i] {
+		if !SegMatches(want, segs[i]) {
 			return false
 		}
 	}
 	return true
 }
 
+// SegMatches reports whether one address segment satisfies one path segment.
+//
+// EVERY ELEMENT OF A PATH IS A MATCH, in tony's own grammar, asked of that one segment: `demo`
+// is an equality, `!glob "hot-*"` a glob, `!or [hot, cold]` either, `!not archived` anything
+// else. Nothing here enumerates the operators — tony.Match owns them, which is what keeps a
+// path segment as expressive as a payload predicate and stops this growing a second grammar.
+//
+// Two conveniences sit above that, and only two. `*` is any segment, because it is what every
+// other address spelling in verse means by it. And an untagged scalar is compared as its TEXT,
+// so `!verse-path [demo pr 1]` matches the id `1` — an address segment is a name, whatever it
+// was written as.
+func SegMatches(want *ir.Node, seg string) bool {
+	if want == nil {
+		return true
+	}
+	if lit, raw := rawSeg(want); raw {
+		return lit == seg // `!raw` is the escape: this is a NAME, not an operator over one
+	}
+	if want.Tag == "" {
+		text, ok := segText(want)
+		return ok && (text == "*" || text == seg)
+	}
+	ok, err := tony.Match(ir.FromString(seg), want)
+	return err == nil && ok
+}
+
+// rawSeg reads a segment written as DATA — `!raw "*"` for an address whose segment is literally
+// named `*`, `!raw "!glob"` for one named after an operator.
+//
+// It is the same escape a payload takes, at the one other place verse reads a document as a
+// pattern: without it a name that happens to look like an operator (or like the wildcard) could
+// not be addressed at all, and the grammar would have a hole exactly where somebody's id is.
+func rawSeg(n *ir.Node) (string, bool) {
+	first, rest, _ := strings.Cut(n.Tag, ".")
+	if first != rawName {
+		return "", false
+	}
+	inner := *n
+	inner.Tag = rest
+	if inner.Tag != "" {
+		return "", false // `!raw.glob` is data that still carries a tag; not a plain name
+	}
+	text, ok := segText(&inner)
+	return text, ok
+}
+
+// segText is an untagged scalar as the name it spells, and whether it spells one at all.
+func segText(n *ir.Node) (string, bool) {
+	switch n.Type {
+	case ir.StringType:
+		return n.String, true
+	case ir.NumberType:
+		return n.Number, n.Number != ""
+	case ir.BoolType:
+		if n.Bool {
+			return "true", true
+		}
+		return "false", true
+	}
+	return "", false
+}
+
+// PathLiteral is a path segment's literal text, and whether it is one at all — what a WATCH can
+// narrow on. An operator has no literal: it constrains the level without naming it, so a watch
+// stops there and the pattern does the rest.
+func PathLiteral(want *ir.Node) (string, bool) {
+	if want == nil {
+		return "", false
+	}
+	// `!raw` names a segment, so a watch CAN narrow on it — it is data, and data is a literal.
+	if lit, raw := rawSeg(want); raw {
+		return lit, true
+	}
+	if want.Tag != "" {
+		return "", false
+	}
+	text, ok := segText(want)
+	if !ok || text == "*" {
+		return "", false
+	}
+	return text, true
+}
+
 // literalPrefix is the leading segments of the path that name a place rather than a wildcard —
 // the deepest subtree a read can be narrowed to before the pattern has to do the picking.
 func (p Pattern) literalPrefix() []string {
+	var out []string
 	for i, seg := range p.Path {
-		if seg == "*" {
-			return p.Path[:i]
+		lit, ok := PathLiteral(seg)
+		if !ok || i == len(p.Path)-1 {
+			break // a wildcard, an operator, or the leaf being selected: read above it
 		}
+		out = append(out, lit)
 	}
-	return p.Path[:len(p.Path)-1] // the leaf is what is being selected, not read under
+	return out
 }
 
 // Depth is how many segments the pattern names, which is the depth of the entities it selects.

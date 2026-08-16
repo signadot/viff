@@ -389,7 +389,7 @@ func (m Match) pattern() (entity.Pattern, error) {
 	if m.Deep() {
 		// The path is the authority when there is one: the three dimensions cannot hold an
 		// address this long, and a Pattern carrying both would have two answers.
-		p.Path = m.Segs()
+		p.Path = m.SegNodes()
 	}
 	return p, nil
 }
@@ -558,7 +558,7 @@ func present(n *ir.Node) (*ir.Node, bool) { return n, n != nil }
 // read the entity and use MatchEvent.
 func (m Match) MatchRef(ref entity.Ref) bool {
 	if m.Deep() {
-		return entity.Pattern{Path: m.Segs()}.MatchRef(ref)
+		return entity.Pattern{Path: m.SegNodes()}.MatchRef(ref)
 	}
 	if s := m.System(); s != "" && s != ref.System() {
 		return false
@@ -620,13 +620,13 @@ func ParseSteps(steps []string) (Match, error) {
 	// reading of the first three, which is every address written so far; `path` is the general
 	// one, and Match.Segs is where the two meet. See docs/working/entity-tree.md.
 	if len(steps) > len(keys) {
-		out := make([]string, 0, len(steps))
+		out := make([]*ir.Node, 0, len(steps))
 		for i, seg := range steps {
 			seg = strings.TrimSpace(seg)
 			if seg == "" {
 				return nil, fmt.Errorf("empty step %d in address %q", i+1, strings.Join(steps, " "))
 			}
-			out = append(out, seg)
+			out = append(out, ir.FromString(seg))
 		}
 		return Match{mKeyPath: out}, nil
 	}
@@ -655,8 +655,16 @@ func ParseSteps(steps []string) (Match, error) {
 // spelling could leave `kind` unset and mean the first. An unset dimension is dropped, so a
 // short address stays short.
 func (m Match) Segs() []string {
-	if p, ok := m[mKeyPath].([]string); ok {
-		return p
+	if p, ok := m[mKeyPath].([]*ir.Node); ok {
+		out := make([]string, 0, len(p))
+		for _, seg := range p {
+			lit, ok := entity.PathLiteral(seg)
+			if !ok {
+				lit = "*" // an operator names no literal: for a prefix it is unconstrained
+			}
+			out = append(out, lit)
+		}
+		return out
 	}
 	var out []string
 	if r := m.Root(); r != "" {
@@ -675,8 +683,64 @@ func (m Match) Segs() []string {
 	return out
 }
 
+// SegNodes is the address as PATTERNS, one per segment — the reading that keeps an operator.
+// Segs is the same thing flattened to literals, which is what a prefix and a message want.
+func (m Match) SegNodes() []*ir.Node {
+	if p, ok := m[mKeyPath].([]*ir.Node); ok {
+		return p
+	}
+	var out []*ir.Node
+	for _, seg := range m.Segs() {
+		out = append(out, ir.FromString(seg))
+	}
+	return out
+}
+
 // Deep reports whether the match names an address deeper than the three dimensions can hold.
-func (m Match) Deep() bool { _, ok := m[mKeyPath].([]string); return ok }
+func (m Match) Deep() bool { _, ok := m[mKeyPath].([]*ir.Node); return ok }
+
+// ParseStepNodes is ParseSteps over steps that may carry an OPERATOR — `!verse-path [demo pr
+// !glob "hot-*"]`. A step is a node, so a tag survives to the dimension or the path that holds
+// it, where the string form had to drop it.
+//
+// Dropping it is what this replaced, and the failure was quiet: a `!glob` at the id position
+// happened to behave, because an id containing `*` globs anyway, and the same operator one
+// level along matched a segment literally called `head-*`. A pattern that reads as a glob and
+// selects nothing is worse than one that is refused.
+func ParseStepNodes(steps []*ir.Node) (Match, error) {
+	segs := make([]*ir.Node, 0, len(steps))
+	texts := make([]string, 0, len(steps))
+	tagged := false
+	for i, n := range steps {
+		u := unwrap(n)
+		if u == nil {
+			return nil, fmt.Errorf("match: step %d of !%s is empty", i+1, VersePathTag)
+		}
+		segs = append(segs, u)
+		if u.Tag != "" {
+			// An OPERATOR, of whatever shape: `!glob "hot-*"` is a string and `!or [hot, cold]`
+			// is a list, and neither has a text reading — which is the whole reason a step is
+			// carried as a node. It is evaluated against the address's segment by tony.Match,
+			// the same grammar a dimension's operator takes.
+			tagged = true
+			texts = append(texts, "*")
+			continue
+		}
+		t, ok := stepText(u)
+		if !ok {
+			return nil, fmt.Errorf("match: a step of !%s is a name or an operator over one; got %v",
+				VersePathTag, u.Type)
+		}
+		texts = append(texts, t)
+	}
+	if !tagged {
+		return ParseSteps(texts)
+	}
+	// An operator was written, so the address is carried as a PATH of patterns: that is the only
+	// reading that holds one at an arbitrary position. The three-dimension spelling could hold
+	// one per dimension and had nowhere to put a fourth.
+	return Match{mKeyPath: segs}, nil
+}
 
 // prefix is the address levels a match fixes above the id: its root when it names one, then
 // system and kind. It is what a watch path and a store prefilter are built from, so the two

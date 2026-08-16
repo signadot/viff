@@ -43,19 +43,33 @@ Each lands with the suite green.
    the readers, `RefAt` no longer pads a short address to three, and `String` renders the colon
    form for the three-segment addresses that exist today and a dotted path for anything deeper —
    because `a:b:c:d` cannot be read back (an id may hold colons) and `a.b.c.d` can.
-2. **`trigger.Match` takes a path.** `{path: [verse-dev, drift, head, "*"]}` beside the
+2. **`trigger.Match` takes a path.** Done. `{path: [verse-dev, drift, head, "*"]}` beside the
    `{system, kind, id}` shorthand — a union rather than a `rest:` fourth dimension, because
    `!verse-path [a b c]` already spells exactly this and a fourth field only means anything
    alongside the other three. A SHORTER PATH IS A PREFIX, which is what `{system, kind}` with no
-   id already means. `Matches.contains`/`overlaps` become prefix tests, and strata, write
-   confinement and the import graph follow from that without changing.
-3. **Derive targets and path reads.** `derive: {a: {b: {c: …}}}` is already nested, so a target
+   id already means.
+
+   **Every element of a path is a MATCH**, in tony's own grammar, asked of that one segment:
+   `!glob "hot-*"`, `!or [hot, cold]`, `!and [!glob "h*", !not hold]`, or a bare name for
+   equality. Nothing in verse enumerates the operators — `tony.Match` owns them, which is what
+   keeps a segment as expressive as a payload predicate and stops a second grammar growing here.
+   Two conveniences sit above that and only two: `*` is any segment, and `!raw` says a segment
+   is a NAME, so an id that IS `*` (or is named after an operator) can still be addressed.
+
+   A `*` is a POSITION, which is the difference a path forces: an unset `kind` means "and
+   nothing below it", where `[demo, "*", 1]` means "any one segment, then this".
+
+3. **The store answers at a depth.** Done. `ListAt(at, depth, pred)`, with the depth coming from
+   the pattern's own path and the read narrowed to its literal head. A watch stops at the first
+   segment that is not a literal — an operator constrains a level without naming it, so it
+   cannot narrow a subtree, and the pattern does the rest.
+4. **Derive targets and path reads.** `derive: {a: {b: {c: …}}}` is already nested, so a target
    is a path; `!get-path`/`!list-paths` take one.
-4. **Writes and watches.** `ParsePath` stops splitting an address into three-plus-a-field: a
+5. **Writes and watches.** `ParsePath` stops splitting an address into three-plus-a-field: a
    write is a value at a path, which is what the store does anyway. A watch is told its depth by
    whoever opens it (`WatchSubtree(prefix, depth)`), which is where §2's patterns arrive.
-5. **The charter tree, whole.** `at:` at any depth, writing where it lives. No `writes:`
+6. **The charter tree, whole.** `at:` at any depth, writing where it lives. No `writes:`
    override until that is true — an address that cannot write where it is has not earned a way
    to write elsewhere.
-6. **The colons.** Last, deliberately: the ref spelling is in every stored record, every task id
+7. **The colons.** Last, deliberately: the ref spelling is in every stored record, every task id
    and every charter written so far, so it moves when the rest is standing.
