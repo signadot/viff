@@ -98,10 +98,10 @@ A put **merges**. Fields you do not name are left alone, which is why the answer
 entity as it now stands rather than an echo of what you sent:
 
 ```sh
-verse state put demo:pr:1 '{owner: dee}'              # changes the owner, keeps the stage
+verse state put demo pr 1 '{owner: dee}'             # changes the owner, keeps the stage
 verse state put demo.pr.1.labels.urgent true         # one field, deep
 verse state rm  demo.pr.1.labels.urgent              # and gone again
-verse state rm demo:scratch:1                         # the whole entity
+verse state rm demo scratch 1                        # the whole entity
 ```
 
 A payload typed on the command line is read as tony, which is why `{stage: open}` needs no
@@ -146,7 +146,7 @@ updated) or `delete`.
 Now, in another terminal, write to it and watch the line arrive:
 
 ```sh
-verse state put demo:pr:2 '{stage: open}'
+verse state put demo pr 2 '{stage: open}'
 ```
 
 Then advance it past the filter (`'{stage: reviewing}'`) and note that nothing arrives: the
@@ -219,7 +219,7 @@ about its own running — so observing the fleet is observing entities:
 
 ```sh
 verse watch verse.task                        # the whole fleet's lifecycle
-verse state get verse:task:instance:<id>      # its result, still there after it finished
+verse state get verse task instance <id>      # its result, still there after it finished
 verse state verse.task --trim '{status: null}'   # …or just where everything got to
 ```
 
@@ -319,7 +319,7 @@ at once without them arguing over an entity.
 
 ```sh
 ./scripts/charter-shapes.sh run patch
-verse state get demo:patch:1     # stage: triaged
+verse state get demo patch 1     # stage: triaged
 ```
 
 The action has no target of its own: it acts on the condition's `subject`.
@@ -328,10 +328,10 @@ A rule also acts on the **backlog**, which is worth seeing rather than being tol
 
 ```sh
 ./scripts/charter-shapes.sh remove patch          # nothing is watching
-verse state put demo:patch:2 '{stage: open}'
-verse state get demo:patch:2                    # stage: open — nobody reacted
+verse state put demo patch 2 '{stage: open}'
+verse state get demo patch 2                    # stage: open — nobody reacted
 ./scripts/charter-shapes.sh install patch
-verse state get demo:patch:2                    # stage: triaged — installing it acted
+verse state get demo patch 2                    # stage: triaged — installing it acted
 ```
 
 A trigger's observation replays what it reads when it opens, so a rule is a statement about
@@ -486,10 +486,10 @@ rising edge:
 
 ```sh
 ./scripts/charter-shapes.sh run on
-verse state get demo:on:1                        # stage: released
+verse state get demo on 1                        # stage: released
 
-verse state put demo:on:2 '{stage: waiting}'     # CI is still green…
-verse state get demo:on:2                        # …and this one stays `waiting`
+verse state put demo on 2 '{stage: waiting}'     # CI is still green…
+verse state get demo on 2                        # …and this one stays `waiting`
 ```
 
 Two properties, and both are the point of choosing `on` over `when`. **An edge does not
@@ -534,7 +534,7 @@ write in a circle, it comes with the thing that bounds it: a **stratum**, a decl
 ```sh
 ./scripts/charter-shapes.sh run derive
 verse stratum                                                  # the ordering
-verse state get derived:feature:shape-derive@demo:derive:1
+verse state get derived feature shape-derive@demo:derive:1
 ```
 
 Two rules, checked at install and neither reading the store: a rule's **subject** must be
@@ -635,7 +635,7 @@ naming its voter, since a motion must be settled attributably:
 ```sh
 verse vote 8f306077 approve --as alice    # 1 of 2 — still open
 verse vote 8f306077 approve --as bob      # 2 of 2 → carries
-verse state get demo:vote:1              # stage: merged
+verse state get demo vote 1              # stage: merged
 ```
 
 The motion then reads `status: closed`, `outcome: proceed`, `tally: 2` and a `witness` naming

@@ -204,8 +204,8 @@ an ordinary fact, so you can write one yourself and watch where it goes. Start w
 supervisor cleared inside its remit:
 
 ```sh
-verse state put change:pr:7 '{stage: assessed, tests: green, review: {decision: approve, risk: low}}'
-verse state get change:pr:7
+verse state put change pr 7 '{stage: assessed, tests: green, review: {decision: approve, risk: low}}'
+verse state get change pr 7
 # payload:
 #   review: { decision: approve, risk: low }
 #   stage: landed            ← land-auto fired; `verse gate` is empty
@@ -214,8 +214,8 @@ verse state get change:pr:7
 Now the same approval, at a change CI does not support:
 
 ```sh
-verse state put change:pr:8 '{stage: assessed, tests: red, review: {decision: approve, risk: low, why: "docs only"}}'
-verse state get change:pr:8
+verse state put change pr 8 '{stage: assessed, tests: red, review: {decision: approve, risk: low, why: "docs only"}}'
+verse state get change pr 8
 # payload:
 #   review:
 #     decision: escalate
@@ -232,15 +232,15 @@ verse gate
 #   subject: change:pr:8
 verse gate approve trigger:land-ask:sign-off~090ea377 --as human:scott
 # approved trigger:land-ask:sign-off~090ea377
-verse state get change:pr:8      # stage: landed
+verse state get change pr 8      # stage: landed
 ```
 
 The id's suffix is derived from the firing's subjects rather than counted, so the same
 decision re-reached is the same question rather than a second one.
 
-With credentials, `verse state put change:pr:9 '{stage: proposed, tests: green}'` runs the
-real thing: `verse flow` shows the assessment in flight, `verse state get
-verse:task:instance:assess@change:pr:9` shows what the supervisor read and said, and the change
+With credentials, `verse state put change pr 9 '{stage: proposed, tests: green}'` runs the
+real thing: `verse flow` shows the assessment in flight, `verse state get verse task instance
+assess@change:pr:9` shows what the supervisor read and said, and the change
 ends `landed`, `closed`, or waiting at a gate.
 
 ## Where this stops

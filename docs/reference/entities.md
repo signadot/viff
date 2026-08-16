@@ -167,11 +167,11 @@ entity as it now stands rather than an echo of what you sent, and why two writer
 one entity do not clobber each other.
 
 ```sh
-verse state put demo:pr:1 '{stage: open}'
-verse state put demo:pr:1 '{owner: ana}'              # adds an owner, keeps the stage
+verse state put demo pr 1 '{stage: open}'             # as steps: nothing needs quoting
+verse state put demo:pr:1 '{owner: ana}'             # …or by ref: adds an owner, keeps the stage
 verse state put demo.pr.1.labels.urgent true         # write INSIDE the payload
 verse state rm  demo.pr.1.labels.urgent              # remove one field
-verse state rm demo:pr:1                              # the whole entity
+verse state rm demo pr 1                             # the whole entity
 ```
 
 A payload typed on the command line names no file, so it is read in the default input format

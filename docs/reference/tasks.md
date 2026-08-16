@@ -202,7 +202,7 @@ to it.
 
 ```sh
 verse watch verse.task
-verse state get verse:task:instance:<id>
+verse state get verse task instance <id>
 ```
 
 ```tony

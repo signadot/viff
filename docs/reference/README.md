@@ -138,6 +138,9 @@ verse
           show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
+          ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
+          the shell would expand, so it is the ref spelling here and `verse state`'s vector
+          spelling there. A second positional is refused rather than read as a step
   docket                                     the motions on the docket (votes + provider
                                              selections), open and settled — a settled one
                                              carries its outcome, or `orphaned` and a `why`

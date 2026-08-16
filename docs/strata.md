@@ -135,7 +135,7 @@ sentence with the element's key in it — and the engine writes the subject link
 `verse.meta.derivedFrom`:
 
 ```
-$ verse state get signadot:feature:urgent-label@gh:issue:1
+$ verse state get signadot feature urgent-label@gh:issue:1
 priority: urgent
 what: gh:issue:1
 verse:

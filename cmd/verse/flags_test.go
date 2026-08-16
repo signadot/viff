@@ -337,3 +337,33 @@ func TestMixingTheAddressSpellingsIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// A command that takes ONE token refuses a second rather than answering about args[0].
+//
+// `verse state` takes an address as separate steps and these take one, so the spelling that
+// works next door is the one somebody types here — and `verse flow show demo seq 1` used to
+// send the subject `demo` and answer, truthfully, with every flow in the system. A wrong answer
+// that looks right is the failure mode worth a test.
+func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
+	serve(t)
+
+	for _, argv := range [][]string{
+		{"flow", "show", "demo", "seq", "1"},
+		{"flow", "pause", "demo", "seq", "1"},
+		{"trigger", "show", "a", "b"},
+		{"stratum", "remove", "a", "b"},
+		{"runner", "show", "pool", "code"},
+		{"source", "show", "git", "verse"},
+		{"task", "get", "run-1", "extra"},
+	} {
+		out, err := runCLI(t, argv...)
+		if err == nil {
+			t.Errorf("%v was accepted, answering about %q alone:\n%s", argv, argv[2], out)
+		}
+	}
+
+	// And one token still works, which is the half that must not break.
+	if _, err := runCLI(t, "flow", "show", "demo:seq:1"); err != nil {
+		t.Errorf("one token was refused: %v", err)
+	}
+}

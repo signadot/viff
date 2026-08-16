@@ -838,6 +838,14 @@ func requireAs(as, noun, why string) error {
 }
 
 // oneArg parses flags (anywhere) and returns the single required positional.
+// oneArg is the single positional a command takes — an id, a name, a ref, a subject address.
+//
+// A SECOND POSITIONAL IS REFUSED rather than ignored, and that is the whole of what this adds
+// over reading args[0]. These commands take ONE TOKEN where `state` takes a vector of steps, so
+// somebody typing the spelling that works next door gets it wrong here in the worst way: `verse
+// flow show demo seq 1` used to send the subject `demo` and answer, truthfully and about
+// something else, with every flow in the `demo` system. A wrong answer that looks right is worse
+// than an error, and the error can say which spelling this command takes.
 func oneArg(cmd *cli.Command, cc *cli.Context, args []string, want string) (string, error) {
 	args, err := cmd.Parse(cc, args)
 	if err != nil {
@@ -845,6 +853,11 @@ func oneArg(cmd *cli.Command, cc *cli.Context, args []string, want string) (stri
 	}
 	if len(args) < 1 {
 		return "", fmt.Errorf("%w: %s", cli.ErrUsage, want)
+	}
+	if len(args) > 1 {
+		return "", fmt.Errorf("%w: %s — and this takes ONE token, so %q is after it. (An address "+
+			"as separate steps is `verse state`'s; here it is one argument.)",
+			cli.ErrUsage, want, args[1])
 	}
 	return args[0], nil
 }
