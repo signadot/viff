@@ -143,6 +143,40 @@ The gain is that the record is the rule: `verse state get trigger:rule:review` s
 document to read field by field, a charter change is an observable fact about a shape rather
 than about a string, and nothing has to re-parse to ask a question about it.
 
+**A rule keeps the comments it was written with**, so the record carries the reasons and not only
+the shape — the example above reads back with all three of its notes in place.
+
+A comment attaches to the VALUE it precedes, and something has to carry it: either the value's
+own type says it does, or the FIELD holding it does. Between them they cover a charter, and the
+one gap left is a level down:
+
+| a comment above | kept by |
+|---|---|
+| the rule, `action:`, `spawn:`, a gate entry | the value's own type |
+| a `patch:` or `derive:` body | nothing needed — the value is stored as-is |
+| `condition:`, `gates:` | the FIELD holding it — which is how a value whose own type cannot carry one still keeps it |
+| `subject:`, and inside a formula | **nobody yet** — those are fields OF a hand-written codec, which emits no annotation of its own |
+
+**A comment above a list and one above its first entry are the same comment.** A block list
+begins at its first element, so both head the list, they merge, and they come back together
+above it. Every later entry keeps its own separately.
+
+```tony
+gates:
+# both of these merge onto the list…
+- { name: approval, mode: ask }
+# …while this one stays with its entry
+- { name: security, mode: ask }
+```
+
+The same holds one level out, for a charter file that is a list of rules: a comment above the
+first rule belongs to the file. Write it inside the item to attach it to the rule.
+
+```tony
+- # what this rule is for
+  name: review
+```
+
 Restoring a rule is an ordinary install, which means it **replays**: a subtree watch is
 level-triggered at the open, so a restored trigger acts on what already matches it — including
 what arrived while verse was down. A restart is then just an install over a verse that has

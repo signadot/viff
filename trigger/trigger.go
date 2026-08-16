@@ -57,9 +57,21 @@ type Trigger struct {
 	// the pattern its subject must fall inside, and the level a derive must climb above.
 	// Empty is the IMPLICIT stratum: unordered, checked against nothing, which is exactly
 	// what every rule written before strata existed means. See stratum.go.
-	Stratum   string    `tony:"field=stratum,omitzero"`
-	Condition Condition `tony:"field=condition"`
-	Gates     []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	Stratum string `tony:"field=stratum,omitzero"`
+
+	// ConditionDoc is the comment written above `condition:`, carried by the FIELD rather than by
+	// the value's own type — which is what makes it possible at all. A struct-level `comment=`
+	// captures the comment on a struct's OWN node, and Condition has no generated codec to
+	// capture it with (its codec is hand-written). The field-level form (go-tony v0.0.145) names
+	// the field's VALUE instead, which exists whatever the value turns out to be.
+	//
+	// GatesDoc takes the comment above `gates:` AND the one above its first entry, which are one
+	// comment: a block list begins at its first element, so both head the list. Every later
+	// entry keeps its own, carried by Gate itself.
+	ConditionDoc []string  `tony:"-"`
+	GatesDoc     []string  `tony:"-"`
+	Condition    Condition `tony:"field=condition,comment=ConditionDoc"`
+	Gates        []Gate    `tony:"field=gates,omitzero,comment=GatesDoc"` // conjunctive (all must proceed)
 	// Gating groups the two facts about a rule's OWN gates: which they are, and who answers
 	// them. `gates:` at the top level still works and means `gating: {gates: …}` — the two
 	// are one field read two ways, not two fields that can disagree, and writing both is
@@ -74,8 +86,13 @@ type Trigger struct {
 
 // Gating is a rule's own gates and who answers them.
 //
-//tony:schemagen=verse-gating,notag
+//tony:schemagen=verse-gating,notag,comment=Doc,lineComment=Note
 type Gating struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc  []string `tony:"-"`
+	Note []string `tony:"-"`
 	// Resolver names the binding that answers these gates — `resolvers:<kind>:<name>`. Same
 	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
 	// and one word for it is worth more than either word being marginally better in its own
@@ -248,8 +265,13 @@ func (c Condition) validateOn() error {
 // is set the gate is monitored on the store's watch stream (see Monitor) rather than posed
 // to a resolver; Mode is then optional (defaults to a blocking gate).
 //
-//tony:schemagen=verse-trigger-gate,notag
+//tony:schemagen=verse-trigger-gate,notag,comment=Doc,lineComment=Note
 type Gate struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc     []string `tony:"-"`
+	Note    []string `tony:"-"`
 	Name    string   `tony:"field=name,omitzero"`
 	Mode    string   `tony:"field=mode,omitzero"` // auto | ask | park
 	Formula *Formula `tony:"field=formula,omitzero"`
@@ -356,8 +378,13 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 // is what lets a task's output become a fact the next `when` can match rather than only
 // text in the next prompt. A Spawn's strings keep the older flat substitution (launch.Bind).
 //
-//tony:schemagen=verse-action,notag
+//tony:schemagen=verse-action,notag,comment=Doc,lineComment=Note
 type Action struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc  []string `tony:"-"`
+	Note []string `tony:"-"`
 	// Patch is applied to the subject's payload with tony.Patch — the WRITE half of the
 	// vocabulary whose read half is a Match. It merges rather than assigns, so a nested
 	// write touches one subtree instead of replacing its parent, and it can carry the

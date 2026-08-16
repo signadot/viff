@@ -208,15 +208,48 @@ asked a node what it was without stepping past a comment first:
   to rebuild a rule at startup — got the value with the wrapper already gone. The rule now is
   that navigation sees through a comment and the value it arrives at keeps its own.
 
-What is NOT covered, and it is most of a charter file: a comment above an element of a LIST is
-discarded by the parser, so the natural way to write a multi-rule charter still loses them. Only
-a rule that is its own document (`---`-separated, which `trigger add` accepts) keeps its own.
-Filed upstream as `8rr738ffh12kr3t8g5n0`; when it lands, the list form starts working with no
-change here.
+WHERE A COMMENT LANDS is positional, and worth knowing before writing a charter, because one of
+the three spellings does not do what it looks like:
 
-Nested comments are a separate gap and a smaller one: `Condition`, `Match`, `Formula` and
-`Stratum` have hand-written codecs (`codec=custom`), so a comment above `subject:` needs each of
-those to carry the annotation itself.
+| written | belongs to |
+|---|---|
+| anything before a container's first item | the CONTAINER — and blank lines do not separate, so a file header and a comment meant for the first rule merge into one |
+| a comment between items | the item that FOLLOWS it — so every item but the first can take one |
+| `- # …` then the fields | that item |
+
+So in a charter file the first rule cannot take a head comment the ordinary way — there is no
+position between "the list starts" and "the first rule" except inside the item, and that
+spelling works. Every later rule takes one normally (go-tony v0.0.144). A rule written as its
+own `---` document takes one too.
+
+Nested comments are a separate matter, and nothing about them is broken — every position
+decodes, and a head-commented patch still fires and applies, because `tony.Patch` sees through
+the wrapper. They are only LOST, and the rule for which is simple: **a comment attaches to a
+value, and it survives iff whatever that value decodes into can carry it.**
+
+```
+# 1 above the rule          survives — Trigger declares comment=Doc
+action:
+  patch:
+    # 4 above the patch     survives — Action.Patch is a raw node, so the wrapper rides inside it
+    stage: x
+condition:
+  subject: demo:pr          2, above the subject, is dropped
+name: r                     3, above the action, is dropped
+```
+
+The per-FIELD annotation (go-tony v0.0.145, guarded in v0.0.146) turned out to shrink this a
+lot: it names the field's VALUE, which exists whatever the value is, so a parent carries a
+comment for a field whose own type cannot — a list, a scalar, or a struct with a hand-written
+codec. `condition:` and `gates:` are kept that way, and neither Condition nor Match had to
+change.
+
+What is left is one level further down. A comment above one of the custom-codec types is
+carried by whichever field holds it. A comment above a field OF one — `subject:` inside a
+`condition:` — is not, and cannot be: the annotation is emitted by codegen, and codegen writes no
+codec for those, so `Condition`, `Match`, `Formula`, `Requirement` and `Stratum` would each have
+to capture and rebuild in their hand-written ones. For `Match` that is probably not worth it: its
+commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a head comment.
 
 ## What breaks## What breaks
 
