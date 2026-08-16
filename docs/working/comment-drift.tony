@@ -4,7 +4,7 @@
 # reads main's tip against itself and remembers what it found, and the MERGE GATE turns what the
 # review's fixes deliver into a proposal somebody decides. Install it whole —
 #
-#     verse trigger add --file docs/working/comment-drift.tony
+#     verse charter add --file docs/working/comment-drift.tony
 #
 # — which installs the strata first whatever order they appear in (cmd/verse: "STRATA FIRST"),
 # so the ordering is in force before a rule names it.
@@ -26,7 +26,7 @@
 #
 #   docs/working/verse-dev/comment-drift-install.sh — on `use/verse-dev`, and it predates this
 #   file: it removes the review's three rules and three strata before re-adding them, because
-#   `verse trigger add` refuses what is already installed. Re-installing all eight needs the
+#   `verse charter add` refuses what is already installed. Re-installing all eight needs the
 #   same treatment for the gate's five and `merge`.
 #
 # THREE rules and three strata, where the obvious shape is one rule. Each of the three is a wall

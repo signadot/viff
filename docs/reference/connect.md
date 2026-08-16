@@ -88,7 +88,7 @@ The scope's engine observes via per-trigger subtree watches, each watching exact
 
 ## The charter a scope runs
 
-A scope runs **the rules installed into it**, and only those. `verse trigger add --scope me`
+A scope runs **the rules installed into it**, and only those. `verse charter add --scope me`
 writes the rule into the scope's own layer, where it is durable and addressable (`verse state
 get verse:trigger:rule:x --scope me`); the record carries `scope: me`, which is what says whose
 it is.

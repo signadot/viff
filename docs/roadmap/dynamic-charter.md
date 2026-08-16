@@ -17,7 +17,7 @@ Nobody wrote either shape in advance.
 Nothing here needs a new mechanism, which is what makes it worth writing down.
 
 A charter is *data*, so an agent can emit one — a trigger is a tony document, and
-`verse trigger add` is how it lands. Installation is already a runtime act, not a deploy.
+`verse charter add` is how it lands. Installation is already a runtime act, not a deploy.
 
 A [goal](../working/goals-residual.md) owned a bundle of triggers, held a live status, and
 reaped them on a terminal. That is exactly the lifetime a per-change charter wants: authored

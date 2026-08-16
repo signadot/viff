@@ -94,28 +94,35 @@ verse
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
-  trigger (triggers) [<address>]             the charter AT AN ADDRESS: what may be written
-                                             there, what it imports, its rules and strata in
-                                             full, and the same for every address under it.
-                                             Bare, that is the whole charter — baseline at
-                                             the root, each package under the address it
-                                             writes in (`trigger drift`, `trigger demo pr`)
+  charter (charters) [<address>]             THE INSTALLED CHARTER, at an address: what may
+                                             be written there, what it imports, its triggers
+                                             and strata in full, and the same at every
+                                             address under it. Bare, that is all of it —
+                                             baseline at the root, each package under the
+                                             address it writes in (`charter drift`,
+                                             `charter verse-dev drift`). Every node answers
+                                             the same shape, `children:` and all
           [--depth <n>]                      how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
-          add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
-          show|remove [--at <address>]       …a rule of that charter; needed only when more
-                                             than one holds the name
-          uninstall <address> [--recurse]    the whole charter package: its rules, its levels,
-                                             what it imports, and the engine running them.
-                                             What it WROTE stays — a charter's writes are the
-                                             world's. --recurse takes what is under it too
-          -- <address>                       an address that collides with a verb: a package
-                                             at `remove` is `verse trigger -- remove`
+          add [--file <f>|-] [file]          install one: triggers, strata and `imports:`
+                                             from one file, in the order that works.
+                                             Re-applying a file is fine — a rule is replaced,
+                                             a level that already stands as declared is a
+                                             no-op, and one that differs is refused
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md
           add --scope <name>                 …into a federation's own charter instead
+          show <name> · remove <name>        one trigger or one stratum, by name
+          show|remove [--at <address>]       …of that charter; needed only when more than one
+                                             holds the name
+          uninstall <address> [--recurse]    a charter package, whole: its rules, its levels,
+                                             what it imports, and the engine running them.
+                                             What it WROTE stays — a charter's writes are the
+                                             world's. --recurse takes what is under it too
+          -- <address>                       an address that collides with a verb: a package
+                                             at `remove` is `verse charter -- remove`
           A charter file may open a package with a `---` document of its own — `at: drift`
           is where its rules write, `imports: [git, other]` what they may read besides, in
           either address spelling (`!verse-path [demo pr]` too). A package reads inside its
@@ -143,8 +150,6 @@ verse
           remove <ref> [--forget | --keep]   what becomes of what it reflected
   resolver (resolvers)                       who answers questions
           add [--file <f>|-] [file] · show <ref> · remove <ref>
-  stratum (strata)                           the declared level ordering
-          add [--file <f>|-] [file] · show <name> · remove <name>
   flow (flows)                               the distinct subjects with live work
           show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),

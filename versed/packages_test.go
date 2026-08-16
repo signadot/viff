@@ -27,7 +27,7 @@ func declareImports(t *testing.T, url, at string, imports ...string) (int, strin
 	if err != nil {
 		t.Fatalf("parse imports: %v", err)
 	}
-	resp := postTony(t, url+"/packages?at="+at, node)
+	resp := postTony(t, url+"/charter?at="+at, node)
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, strings.TrimSpace(string(body))
@@ -41,7 +41,7 @@ func installAt(t *testing.T, url, at, src string) (int, string) {
 	if err != nil {
 		t.Fatalf("parse charter: %v", err)
 	}
-	resp := postTony(t, url+"/triggers?at="+at, node)
+	resp := postTony(t, url+"/charter?at="+at, node)
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, strings.TrimSpace(string(body))

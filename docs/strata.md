@@ -44,7 +44,7 @@ declared level, with rules living in one and derivations only ever climbing.
           kind: pr
 ```
 
-`verse trigger add -f charter.tony` installs both halves, strata first whatever order the file
+`verse charter add -f charter.tony` installs both halves, strata first whatever order the file
 put them in. Numbers with gaps, for the reason BASIC had them: room to insert a level later
 without renumbering its neighbours.
 
@@ -67,7 +67,7 @@ rather than analysed.
 - an action's **derive** must be inside some **strictly higher** stratum's `match`.
 
 Both are checked at install, and neither reads the store. A charter that breaks either is refused
-by `verse trigger add`, naming which rule and which level.
+by `verse charter add`, naming which rule and which level.
 
 A stratum's `match` does two jobs at once, and that is the economy worth noticing: it says **what
 subjects this stratum owns** and **what derivations it accepts from below**. One declaration,
@@ -299,18 +299,18 @@ stratum arrives. It has already passed every other check, so what holding defers
 question and nothing else.
 
 **A file produces held rules whenever it names a stratum it does not itself define**, which a
-charter written to sit beside another one does. `verse trigger add` sends a file's own strata
+charter written to sit beside another one does. `verse charter add` sends a file's own strata
 first, so a self-contained charter never holds; one whose rules name a neighbour's stratum holds
 exactly those rules until the neighbour is installed.
 
 That is the intended behaviour and it is **invisible**, which is the corner worth knowing before
-it costs you an afternoon. A held rule is not in `verse trigger`, `verse trigger show <name>`
+it costs you an afternoon. A held rule is not in `verse charter`, `verse charter show <name>`
 answers *no such trigger*, and `verse status` counts what fires — so a four-rule charter installs
 into a verse that reports two rules and explains nothing. The held ones are there:
 
 ```sh
 verse state trigger                 # the whole charter, held rules included
-verse stratum                        # what they are waiting for
+verse charter                        # what they are waiting for
 ```
 
 Read together those two say it, and nothing says it for you. What is missing is a state on the
@@ -321,16 +321,16 @@ pattern that would no longer exist, and nothing re-runs a check — they would g
 unstratified, having been told they were ordered. Remove the rules first, or move them.
 
 ```
-$ verse stratum             # the ordering, by level
-$ verse stratum show sdlc
-$ verse stratum remove sdlc # refused while rules live there
+$ verse charter             # the ordering, by level
+$ verse charter show sdlc
+$ verse charter remove sdlc # refused while rules live there
 ```
 
 ## Corners
 
 **A misspelled field is named, to a depth.** An unknown field decodes silently — gomap ignores
 what it does not recognise — so `startum: sdlc` would install into the implicit stratum and report
-success, discarding the one field that says which guarantees apply. `verse trigger add` refuses
+success, discarding the one field that says which guarantees apply. `verse charter add` refuses
 it, and likewise an unknown field in a `condition`, in an `action`, or in a sequence element or
 completion hook below one. It stops where the shape stops being the charter's: a `spawn` is a
 launch spec, and a `patch` or `derive` payload has the author's own keys in it.

@@ -73,14 +73,14 @@ ok "server ready (data in $tmp/data)"
 
 # ── install: one file, strata and rules, ordering first ──────────────────────
 step "install $CHARTER"
-v trigger add --file "$CHARTER" || die "the charter did not install"
+v charter add --file "$CHARTER" || die "the charter did not install"
 printf '\n'
-v stratum
+v charter
 ok "the ordering installed, and every rule passed its level check"
 
 # The refusal, for contrast: the same charter with one write pointing DOWN.
 step "the one thing that is refused"
-if v trigger add -f - >/dev/null 2>&1 <<'YAML'; then
+if v charter add -f - >/dev/null 2>&1 <<'YAML'; then
 - name: close-the-loop
   stratum: sdlc
   condition:
@@ -94,7 +94,7 @@ YAML
 	die "a derive pointing down was accepted"
 fi
 printf '  '
-v trigger add -f - 2>&1 <<'YAML' | head -3 || true
+v charter add -f - 2>&1 <<'YAML' | head -3 || true
 - name: close-the-loop
   stratum: sdlc
   condition:

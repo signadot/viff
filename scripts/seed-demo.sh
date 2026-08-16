@@ -5,7 +5,7 @@
 # a live gate waiting for you the moment it finishes.
 #
 # It is the missing first five minutes. `verse up` gives you an empty verse, and an empty
-# verse looks the same as a broken one: `verse entity`, `verse trigger` and `verse gate`
+# verse looks the same as a broken one: `verse entity`, `verse charter` and `verse gate`
 # all answer with nothing. This seeds enough that they don't, and prints what to type next.
 #
 # Unlike smoke.sh — which builds its own binaries and runs its own isolated server — this
@@ -95,7 +95,7 @@ ENTITIES=(
 
 if $clean; then
 	step "clean"
-	for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; done
+	for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
 	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
@@ -109,8 +109,8 @@ fi
 # and is still waiting for you. Removing first makes a re-run idempotent — `trigger add`
 # refuses a duplicate name, which is right, and is not what a seed script should trip over.
 step "charter"
-for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; done
-v trigger add -f - >/dev/null <<'TONY' || die "trigger add failed"
+for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
+v charter add -f - >/dev/null <<'TONY' || die "charter add failed"
 - name: demo-review
   condition:
     subject: { system: demo, kind: pr, value: { stage: open } }

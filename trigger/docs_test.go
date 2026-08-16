@@ -24,7 +24,7 @@ import (
 // that does not is running it.
 //
 // It extracts fenced tony/json blocks AND heredoc bodies inside shell blocks (which is how the
-// tutorial shows `verse trigger add -f -`), keeps whatever parses as a trigger with a name and
+// tutorial shows `verse charter add -f -`), keeps whatever parses as a trigger with a name and
 // a subject, and installs it on a fresh engine. Anything that is not a charter — a fragment, a
 // goal record, an entity payload — simply does not parse as one and is skipped.
 func TestDocCharartersInstall(t *testing.T) {
@@ -104,7 +104,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			// thing it documents does not work.
 			for i, node := range nodes {
 				if err := CheckFields(node); err != nil {
-					t.Errorf("%s:%d: charter %q would be refused by `verse trigger add`:\n  %v\n\n%s",
+					t.Errorf("%s:%d: charter %q would be refused by `verse charter add`:\n  %v\n\n%s",
 						filepath.Base(path), blk.line, trigs[i].Name, err, indent(blk.text))
 				}
 			}
@@ -158,7 +158,7 @@ func isBinding(text string) bool {
 var fence = regexp.MustCompile("(?s)```(tony|json|yaml)( +proposed)?\\n(.*?)```")
 
 // charterBlocks yields every fenced tony/json block, plus every heredoc body (which is how a
-// doc shows a charter being piped into `verse trigger add -f -`). Go's regexp has no
+// doc shows a charter being piped into `verse charter add -f -`). Go's regexp has no
 // backreference, so the heredoc terminator is matched by scanning rather than by pattern.
 func charterBlocks(src string) []block {
 	var out []block

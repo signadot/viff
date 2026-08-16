@@ -174,7 +174,7 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		node = codec.StripLayout(node)
 	}
 	// EMPTY, after the filters, is remembered for the one caller that has something to add to
-	// it: `verse trigger` lists ONE engine, so an empty answer may mean "this engine has no
+	// it: `verse charter` lists ONE engine, so an empty answer may mean "this engine has no
 	// rules" while the charter is in packages. See elsewhereInPackages.
 	lastPrintEmpty = node == nil || (node.Type == ir.ArrayType && len(node.Values) == 0)
 	if colorize(cc.Out) {
@@ -1067,7 +1067,7 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
 // labels urgent` needs no quoting anywhere, where the one-token forms need it twice.
 func address(args []string) (string, error) {
 	// A LEADING `--` IS NOT A STEP. It is how a shell says "the options are over", and on a
-	// command whose positional can collide with a verb (`verse trigger -- remove`) it is how
+	// command whose positional can collide with a verb (`verse charter -- remove`) it is how
 	// the address wins — so every command that takes one accepts it, rather than one of them
 	// answering about an address whose first segment is two dashes.
 	if len(args) > 0 && args[0] == "--" {

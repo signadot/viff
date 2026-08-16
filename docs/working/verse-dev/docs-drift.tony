@@ -1,6 +1,6 @@
 # verse-dev drive, phase 1: a commit lands, and the docs get checked against it.
 #
-#   verse trigger add -f docs/working/verse-dev/docs-drift.tony
+#   verse charter add -f docs/working/verse-dev/docs-drift.tony
 #
 # NOT installed yet on purpose — see the note. The loop this creates (phase 3 merges, the
 # source reflects, this fires again) is the experiment rather than a thing to prevent, and the

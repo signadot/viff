@@ -73,7 +73,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	waitStage(t, store, ref, "reviewed")
 }
 
-// A removal is as durable as an install. Otherwise `verse trigger remove` is a pause: the
+// A removal is as durable as an install. Otherwise `verse charter remove` is a pause: the
 // rule stops firing until the next start, then comes back with nobody having reinstalled it.
 func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	addr := entitytest.Addr(t)
@@ -248,7 +248,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 
 // A rule whose document disagrees with its address is refused rather than reconciled:
 // installing under the name and deleting under the address would leave a rule that
-// `verse trigger remove` cannot get rid of.
+// `verse charter remove` cannot get rid of.
 func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})

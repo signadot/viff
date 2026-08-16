@@ -9,7 +9,7 @@ import (
 )
 
 // A charter installed over HTTP comes back with the comments it was written with — the
-// operator's own path, `verse trigger add -f rule.tony` then `verse trigger show`.
+// operator's own path, `verse charter add -f rule.tony` then `verse charter show`.
 //
 // It is worth a test at this level because the loss was invisible from either end: the
 // document arrives whole (the wire is tony and the parser is asked for comments), the rule
@@ -30,7 +30,7 @@ func TestATriggerInstalledOverHTTPKeepsItsComments(t *testing.T) {
 		"    system: comment\n"+
 		"name: comment # this is a comment\n")
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL+"/triggers/comment", nil)
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/charter/comment", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -87,7 +87,7 @@ verse's own state says so.
 | `verse state`, `state get/put/rm`, `verse watch` | any spelling; steps may be several arguments |
 | `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
 | `verse runner/source/resolver show/check/remove` | one token: `<kind>:<name>`, or the address as stored |
-| `verse trigger/stratum show/remove` | a name, not an address |
+| `verse charter/stratum show/remove` | a name, not an address |
 
 ## Two halves, one tree
 
@@ -116,7 +116,7 @@ registry of doers is written by whoever runs the verse.
 
 **The reserved half is read like anything else and written only through the verbs that own
 it.** `verse state get verse:trigger:rule:review` reads a rule; `verse state put` at any
-`verse:` address is refused, and says which verb to use instead (`verse trigger add`,
+`verse:` address is refused, and says which verb to use instead (`verse charter add`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
 boundary had a name, anyone who could reach the store could install a rule, stamp a task record
 or answer a question on verse's behalf — with no route positioned to say no.

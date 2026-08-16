@@ -68,10 +68,10 @@ rather than a review.
 The obvious rule is upstream's: strict for files, lenient for the wire. **It is unimplementable
 as stated, because verse has no client-side decode of a charter.**
 
-`verse stratum add` reads bytes (`codec.ReadSource`), parses them to nodes, classifies each by
+`verse charter add` reads bytes (`codec.ReadSource`), parses them to nodes, classifies each by
 which fields it has *without decoding it* (`defKind` — a rule has a `condition`, a stratum has
 a `level` and a `match`), and forwards each node verbatim (`postDefs` → `httpPostNode`,
-`cmd/verse/client.go:88`). `verse trigger add` does the same. The only place
+`cmd/verse/client.go:88`). `verse charter add` does the same. The only place
 a charter becomes a Go value is `addStratum`/`addTrigger` in versed.
 
 That is deliberate and worth keeping. A CLI that decoded charters would be a CLI that refuses
@@ -197,7 +197,7 @@ will have an example to be designed against.
   it lenient; the first person to typo a `grant` will disagree, and they will be right, because
   §4's clause plainly covers it — a grant is an authorization, and an unread one widens. Wants
   a read of `launch/` to say which of its fields are selection-shaped.
-- **A `--check` for `verse trigger add`.** Decode locally, strictly, and report at the file with
+- **A `--check` for `verse charter add`.** Decode locally, strictly, and report at the file with
   a line number, before anything is sent. It reintroduces exactly the client-side interpretation
   §3 argues against — but as an opt-in check rather than as the install path, which may be the
   whole difference. Cheap to try once step 4 lands.

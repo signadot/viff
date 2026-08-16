@@ -382,38 +382,6 @@ type InboxItem struct {
 // are configured ON THIS SERVER — the common gotcha, since the runtime reads its own
 // environment rather than the client's.
 //
-// CharterPackage is one row of the charter TREE: baseline or a package, what it may write, what
-// it declares it reads, and how much of a charter it holds.
-//
-// `verse trigger` answers ONE engine's rules — baseline's, or the one named by `--at`/`--scope`
-// — so with packages installed nothing showed the shape of the whole charter. This is that view,
-// and the imports in it are the graph checked for a cycle at install (trigger/imports.go).
-//
-// BaselinePackage is the `at` a charter with no address is listed under — a name rather than an
-// empty string, because a listing that renders one row's address as nothing reads as a bug.
-const BaselinePackage = "(baseline)"
-
-//tony:schemagen=verse-charter-package,notag
-type CharterPackage struct {
-	// At is the address the package writes in, or `(baseline)` for the charter that has none.
-	At string `tony:"field=at"`
-	// Writes is `anywhere` for baseline and the address prefix for a package — the confinement,
-	// said the way a refusal says it.
-	Writes string `tony:"field=writes"`
-	// Imports is what this package declares it reads outside its own address. Empty on a
-	// package means it reads only inside it; absent on baseline, which is unconfined.
-	Imports []string `tony:"field=imports,omitzero"`
-	// Rules and Strata are what stands in this charter, BY NAME rather than by count.
-	//
-	// Names because this is the answer to "what is installed" — a count says a charter is there
-	// and nothing about what it does, and a rule's name is what every other command takes
-	// (`trigger show <name>`, `stratum remove <name>`). The rules themselves are a listing away
-	// (`verse trigger <address>`), which the CLI folds into the tree it renders from these
-	// pages long.
-	Rules  []string `tony:"field=rules"`
-	Strata []string `tony:"field=strata,omitzero"`
-}
-
 //tony:schemagen=verse-status,notag
 type Status struct {
 	StoreRev int64 `tony:"field=storeRev"`
@@ -427,14 +395,14 @@ type Status struct {
 	// these three are things somebody put here, and a verse that has lost them looks healthy by
 	// every other line — which is exactly the state a wiped store comes back in.
 	//
-	// Strata are NAMES IN LEVEL ORDER, low to high: the order is the fact, and `verse stratum`
+	// Strata are NAMES IN LEVEL ORDER, low to high: the order is the fact, and `verse charter`
 	// carries the numbers. Runners are the refs a spawn may name (`runners:pool:code`), which is
 	// a different question from `runner` below — that one is how THIS verse runs a task when a
 	// spawn names nobody. Sources are the refs of what WRITES into this verse
 	// (`sources:git:main`) — the one line here that says anything is arriving at all, since a
 	// verse whose sources are gone goes on reporting a fine store rev and an idle charter.
 	//
-	// All three are refs rather than records: status is an orientation, and `verse stratum`,
+	// All three are refs rather than records: status is an orientation, and `verse charter`,
 	// `verse runners` and `verse sources` are the surfaces that answer what one IS. A source's
 	// health — when its last pass completed, whether it is failing — is on `verse sources`.
 	Strata  []string `tony:"field=strata,omitzero"`

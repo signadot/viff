@@ -154,7 +154,7 @@ var ErrCharter = errors.New("the charter could not be written")
 // persist writes t into the verse as its charter entity.
 //
 // Its failure is RETURNED rather than logged, unlike the engine's reactive writes: this one
-// is on a request path (`verse trigger add`), and a trigger that did not persist is one the
+// is on a request path (`verse charter add`), and a trigger that did not persist is one the
 // next restart silently drops. The installer is entitled to hear that at install time
 // rather than discover it after a restart, by its absence.
 func (e *Engine) persist(t Trigger) error {

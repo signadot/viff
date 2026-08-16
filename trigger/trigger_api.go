@@ -21,6 +21,20 @@ import (
 // interprets the trigger directly — there is no separate compiled form.
 func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true) }
 
+// InstallTrigger is AddTrigger for a CHARTER FILE: a rule of the same name is REPLACED rather
+// than refused, because the file is what the operator means and re-applying one is the ordinary
+// way to change a rule.
+//
+// AddTrigger keeps its refusal, and should: it is one rule at a time, where a name already in
+// use is a collision somebody has not noticed. A file naming a rule twice is a different thing
+// from a file being applied twice.
+func (e *Engine) InstallTrigger(t Trigger) error {
+	if _, ok := e.Trigger(t.Name); ok {
+		e.RemoveTrigger(t.Name)
+	}
+	return e.addTrigger(t, true)
+}
+
 // addTrigger installs a trigger, writing it to the durable charter when durable.
 //
 // A caller passes false when the rule is already written down elsewhere: LoadCharter's rules

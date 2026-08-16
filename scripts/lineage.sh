@@ -138,7 +138,7 @@ ENTITIES=(
 
 if $clean; then
 	step "clean"
-	for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; done
+	for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
 	ok "removed the rules"
 	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
 	# the address the engine chose, not by one this script invented.
@@ -151,7 +151,7 @@ if $clean; then
 	done
 	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the entities — derived ones, and every release a run cut"
-	for s in "${STRATA[@]}"; do v stratum remove "$s" >/dev/null 2>&1 || true; done
+	for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
 	ok "removed the ordering"
 	printf '\nwhat this script wrote is gone. The tasks it started are left where they are —\nthey are the record that they ran, and removing one would not make the engine forget\nit anyway. The next run keys its release on the store revision, so it does not care.\n'
 	exit 0
@@ -199,9 +199,9 @@ fi
 # price of the shipped vocabulary, it is the same price a real deployment pays, and --clean
 # takes it back.
 step "the ordering, and the rules that cross it"
-for t in "${TRIGGERS[@]}"; do v trigger remove "$t" >/dev/null 2>&1 || true; done
-for s in "${STRATA[@]}"; do v stratum remove "$s" >/dev/null 2>&1 || true; done
-v trigger add -f - >/dev/null <<'TONY' || die "the charter did not install"
+for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
+for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
+v charter add -f - >/dev/null <<'TONY' || die "the charter did not install"
 - name: lin-source
   level: 0
   match: "git"

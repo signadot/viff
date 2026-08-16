@@ -39,7 +39,7 @@ func TestEncodeNodeColorRendersTheSameDocument(t *testing.T) {
 // The test above passed while this failed: it rendered a document with nothing said about
 // it, so "the same document" was true of the only part the colored path was rendering. The
 // coloured entry points were written separately from encodeNode and never got its
-// EncodeComments(true), so `verse trigger show` printed a stripped charter to the operator
+// EncodeComments(true), so `verse charter show` printed a stripped charter to the operator
 // and the full one to `| cat` — the format flag was not the difference, the pipe was.
 func TestEncodeNodeColorKeepsComments(t *testing.T) {
 	src := "# why this rule exists\nname: r # the short name\ncondition: {subject: demo:pr}\n"

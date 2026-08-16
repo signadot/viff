@@ -161,7 +161,7 @@ therefore available before any of the mechanism above is built, and may be the r
 version on its own.
 
 **"Space" collides with "scope"**, which is already the copy-on-write overlay and already a
-`verse trigger add --scope` flag. Two near-synonyms for unrelated concepts is a cost paid
+`verse charter add --scope` flag. Two near-synonyms for unrelated concepts is a cost paid
 forever by every reader, and the word to pick is the one nobody can confuse with a scope.
 
 **`galaxy` is the candidate**, on the grounds that verse's own name licenses it. It reads
@@ -193,7 +193,7 @@ So the callable thing is not a trigger.
 
 An earlier draft of this argument had a func expanded into the caller at install. That is wrong
 twice over. `trigger-model.md` states the model has **no compiled form** — a trigger is
-interpreted directly — and an expansion is exactly one. And a frozen copy means `verse trigger
+interpreted directly — and an expansion is exactly one. And a frozen copy means `verse charter
 show` displays the expansion rather than the call: you could not ask who calls a func, or fix
 every caller by fixing the definition, which is most of what a func is for.
 
@@ -268,5 +268,5 @@ compiled form, and it should be named here rather than discovered later.
   registry in the store's read path is worth what prefix matching buys.
 - **`seq` inside a func, called from inside a `seq`.** Refused, presumably — but "no chain may
   contain two `seq` segments" is stated over chains, and a chain now spans two documents.
-- **What renaming on import means for `verse trigger show`.** A rule read back should say what
+- **What renaming on import means for `verse charter show`.** A rule read back should say what
   was written, and a renamed import is a fact about the caller that the callee does not carry.

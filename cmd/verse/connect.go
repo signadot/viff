@@ -317,7 +317,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 	if err != nil {
 		return fmt.Errorf("connect: install trigger: %w", err)
 	}
-	resp, err := httpPostNode("/triggers", node) // urlFor folds ?scope=<scope>
+	resp, err := httpPostNode("/charter", node) // urlFor folds ?scope=<scope>
 	if err != nil {
 		return fmt.Errorf("connect: install trigger: %w", err)
 	}

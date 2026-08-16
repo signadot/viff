@@ -41,7 +41,7 @@ The subject is a change, `change:pr:<n>`, carrying a `stage`, a `tests` fact, an
 assessed — the supervisor's `review`. Install it:
 
 ```sh
-verse trigger add -f - <<'TONY'
+verse charter add -f - <<'TONY'
 - name: assess                 # the supervisor decides, and decides whether to promote
   condition:
     subject: { system: change, kind: pr, value: { stage: proposed } }

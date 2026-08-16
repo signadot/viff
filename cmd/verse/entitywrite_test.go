@@ -54,7 +54,7 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 }
 
 // runCLIStreams is runCLI keeping the two streams apart, for a command that SAYS something
-// beside what it answers — `verse trigger` notes on stderr where the rules are when baseline
+// beside what it answers — `verse charter` notes on stderr where the rules are when baseline
 // has none, and the note must not reach the document on stdout.
 func runCLIStreams(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()

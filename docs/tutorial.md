@@ -541,13 +541,13 @@ write in a circle, it comes with the thing that bounds it: a **stratum**, a decl
 
 ```sh
 ./scripts/charter-shapes.sh run derive
-verse stratum                                                  # the ordering
+verse charter                                                  # the ordering
 verse state get derived feature shape-derive@demo:derive:1
 ```
 
 Two rules, checked at install and neither reading the store: a rule's **subject** must be
 inside its own stratum, and a **derive** must land in a strictly higher one. A charter file may
-hold both strata and rules — `verse trigger add` installs the ordering first.
+hold both strata and rules — `verse charter add` installs the ordering first.
 
 The derived entity's id is the *engine's*, a function of (rule, subject), so the rule name and
 the subject are both in it: no two rules can ever address the same derived entity, and a
@@ -585,11 +585,11 @@ Rules install and read back in tony, so inspecting one is a round trip rather th
 format:
 
 ```sh
-verse trigger add -f charter.tony # or: cat charter.tony | verse trigger add -f -
-verse trigger
-verse trigger show shape-latch
-verse trigger remove shape-latch
-verse stratum                     # and `verse stratum show|remove` for one of them
+verse charter add -f charter.tony # or: cat charter.tony | verse charter add -f -
+verse charter
+verse charter show shape-latch
+verse charter remove shape-latch
+verse charter                     # and `verse charter show|remove` for one of them
 ```
 
 A charter is durable — each rule is an entity (`verse:trigger:rule:<name>`), and each stratum

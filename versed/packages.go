@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
 )
@@ -247,64 +246,6 @@ func (s *Server) restorePackageImports() {
 	}
 }
 
-// packageTree is the charter as a TREE: baseline, then every package, each with the address it
-// writes in, what it imports, and how many rules it holds.
-//
-// It answers the question the listings could not — `verse trigger` shows ONE engine's rules, so
-// with several packages installed there was no way to see the shape of the whole charter, let
-// alone the graph the imports now form. Read off the durable records rather than the live
-// engines, because a package whose rules are all dormant is still a package, and a record is
-// what a restart brings back.
-func (s *Server) packageTree() []api.CharterPackage {
-	rules := map[string][]string{}
-	strata := map[string][]string{}
-	for _, ent := range s.Store.List(trigger.IsCharterRule) {
-		at := entity.Str(ent.Payload, trigger.AtField)
-		rules[at] = append(rules[at], trigger.RecordName(ent.Ref.ID()))
-	}
-	for _, ent := range s.Store.List(trigger.IsStratum) {
-		at := entity.Str(ent.Payload, trigger.AtField)
-		strata[at] = append(strata[at], trigger.RecordName(ent.Ref.ID()))
-	}
-	ats := map[string]bool{"": true} // baseline is always a row, even with no rules yet
-	for at := range rules {
-		ats[at] = true
-	}
-	for at := range strata {
-		ats[at] = true
-	}
-	imports := s.packageImports()
-	for at := range imports {
-		ats[at] = true
-	}
-	names := make([]string, 0, len(ats))
-	for at := range ats {
-		names = append(names, at)
-	}
-	sort.Strings(names) // baseline first, then by address, so two readers see one order
-	out := make([]api.CharterPackage, 0, len(names))
-	for _, at := range names {
-		sort.Strings(rules[at]) // one order, so two readers see one charter
-		sort.Strings(strata[at])
-		row := api.CharterPackage{At: at, Rules: rules[at], Strata: strata[at]}
-		if row.Rules == nil {
-			row.Rules = []string{} // an empty charter is empty, not absent
-		}
-		if at == "" {
-			row.At = api.BaselinePackage
-			row.Writes = "anywhere"
-		} else {
-			row.Writes = at + ".*"
-			row.Imports = trigger.StampImports(imports[at])
-			if row.Imports == nil {
-				row.Imports = []string{}
-			}
-		}
-		out = append(out, row)
-	}
-	return out
-}
-
 // removePackage uninstalls the charter at an address: its rules, its levels, the declaration of
 // what it imports, and the engine running them.
 //
@@ -330,7 +271,7 @@ func (s *Server) removePackage(at string, recurse bool) error {
 	stamp := confine.Stamp()
 	if stamp == "" {
 		return fmt.Errorf("uninstall wants the address of a charter package; baseline has none " +
-			"— its rules go one at a time (`verse trigger remove <name>`), which is what keeps " +
+			"— its rules go one at a time (`verse charter remove <name>`), which is what keeps " +
 			"`uninstall` from being a way to delete a whole verse's charter by mistyping it")
 	}
 	under := s.packagesUnder(stamp)

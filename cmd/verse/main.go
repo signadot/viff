@@ -65,8 +65,8 @@ func outFmt() (codec.Format, error) {
 
 // colorize reports whether output should carry ANSI colour.
 //
-// Colour is a property of the DESTINATION. `verse trigger list` into a terminal wants it;
-// `verse trigger list | o v` and `| jq` are broken by it, and so is anything reading the
+// Colour is a property of the DESTINATION. `verse charter list` into a terminal wants it;
+// `verse charter list | o v` and `| jq` are broken by it, and so is anything reading the
 // output as a document. So the default is auto — a character device on stdout and nothing
 // saying otherwise.
 //
@@ -196,11 +196,10 @@ func rootCmd() *cli.Command {
 			stateCmd(),
 			taskCmd(),
 			flowCmd(),
-			triggerCmd(),
+			charterCmd(),
 			resolverCmd(),
 			runnerCmd(),
 			sourceCmd(),
-			stratumCmd(),
 			voteCmd(),
 			docketCmd(),
 			providerCmd(),
@@ -250,7 +249,7 @@ func collection(name, plural, route, synopsis string, subs ...*cli.Command) *cli
 // stamped on, and would be a second place that has to agree about it.
 // post runs after a listing has printed, for a collection that has something to SAY about an
 // answer rather than to add to it — a note on stderr, so the document on stdout stays a
-// document. `verse trigger` is the one: see elsewhereInPackages.
+// document. `verse charter` is the one: see elsewhereInPackages.
 type postPrint func(*cli.Context)
 
 func filteredCollectionPost(name, plural, route, synopsis string, opts []*cli.Opt,
@@ -315,7 +314,7 @@ func dispatch(cmd *cli.Command, cc *cli.Context, args []string) (bool, error) {
 // been.
 //
 // A listing that IGNORED its arguments would turn a typo into a plausible answer:
-// `verse trigger add-it review` printing your charter reads as success at the wrong thing.
+// `verse charter add-it review` printing your charter reads as success at the wrong thing.
 func noArgs(cmd *cli.Command, name string, args []string) error {
 	if len(args) == 0 {
 		return nil

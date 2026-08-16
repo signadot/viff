@@ -235,34 +235,34 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 		if err := os.WriteFile(f, []byte(src), 0o600); err != nil {
 			t.Fatalf("write charter: %v", err)
 		}
-		if _, err := runCLI(t, "trigger", "add", f); err != nil {
+		if _, err := runCLI(t, "charter", "add", f); err != nil {
 			t.Fatalf("install: %v", err)
 		}
 	}
 
 	// --if names WHICH rules, over the same match language a charter's `value:` takes.
 	//
-	// `verse trigger` answers the charter as a TREE — one document rather than a list of rules
+	// `verse charter` answers the charter as a TREE — one document rather than a list of rules
 	// — so the filters apply to it whole: `--if` keeps or drops the answer, and `--trim` cuts
 	// fields wherever they sit. The rules are in it either way, which is what this checks.
-	out, err := runCLI(t, "trigger")
+	out, err := runCLI(t, "charter")
 	if err != nil {
-		t.Fatalf("trigger: %v", err)
+		t.Fatalf("charter: %v", err)
 	}
 	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
 		t.Errorf("the tree does not hold the rules: %s", out)
 	}
 	// --trim says how much of the answer to write, and it reaches wherever the field sits.
-	out, err = runCLI(t, "trigger", "--trim", `{writes: null}`)
+	out, err = runCLI(t, "charter", "--trim", `{writes: null}`)
 	if err != nil {
-		t.Fatalf("trigger --trim: %v", err)
+		t.Fatalf("charter --trim: %v", err)
 	}
 	if !strings.Contains(out, "anywhere") || strings.Contains(out, "condition") {
 		t.Errorf("--trim did not project: %s", out)
 	}
 	// --if keeps or drops the answer, and NOTHING KEPT IS NOT AN ERROR: an empty answer is a
 	// true answer to the question asked.
-	out, err = runCLI(t, "trigger", "--if", `{writes: nowhere}`)
+	out, err = runCLI(t, "charter", "--if", `{writes: nowhere}`)
 	if err != nil {
 		t.Errorf("an empty result was an error: %v", err)
 	}

@@ -208,7 +208,7 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 
 func addRule(t *testing.T, ts *httptest.Server, doc string) {
 	t.Helper()
-	resp, err := http.Post(ts.URL+"/triggers", "application/tony", strings.NewReader(doc))
+	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(doc))
 	if err != nil {
 		t.Fatalf("trigger add: %v", err)
 	}

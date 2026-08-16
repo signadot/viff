@@ -319,6 +319,30 @@ func (e *Engine) stratum(name string) (Stratum, bool) {
 // AddStratum installs a stratum — durably, as its trigger:strata:<name> entity.
 func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true) }
 
+// InstallStratum is AddStratum for a CHARTER FILE: a level that is already installed EXACTLY as
+// declared is a no-op, so re-applying a file works.
+//
+// A level that differs is still refused, and that is not timidity: the rules in it were checked
+// against it when they installed (checkLevels), so changing it under them would leave a charter
+// whose ordering nobody has verified. Taking the package down and putting it back is what
+// re-checks them, and the refusal says so.
+func (e *Engine) InstallStratum(s Stratum) error {
+	for _, x := range e.Strata() {
+		if x.Name != s.Name {
+			continue
+		}
+		if x.Level == s.Level && matchesText(x.Match) == matchesText(s.Match) {
+			return nil // the same level, declared again: the file has been applied twice
+		}
+		return fmt.Errorf("stratum %q is installed with a different definition (level %d %s, "+
+			"not level %d %s): the rules in it were checked against the one that stands, so "+
+			"changing it under them would leave an ordering nobody has verified. Uninstall the "+
+			"charter and install it again", s.Name, x.Level, matchesText(x.Match),
+			s.Level, matchesText(s.Match))
+	}
+	return e.addStratum(s, true)
+}
+
 // addStratum installs a stratum, writing it to the store when durable.
 //
 // The two set-properties live here rather than in validate because neither is a property of the

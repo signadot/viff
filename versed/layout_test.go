@@ -29,7 +29,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 	charter := `{ name: braced,
 	  condition: { subject: { system: demo, kind: pr, value: { stage: open } } },
 	  action: { patch: { stage: reviewing }, spawn: { driver: scripted, prompt: "echo hi" } } }`
-	resp, err := http.Post(ts.URL+"/triggers", "application/tony", strings.NewReader(charter))
+	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(charter))
 	if err != nil {
 		t.Fatalf("post charter: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 		t.Fatalf("install: %s", resp.Status)
 	}
 
-	got, err := http.Get(ts.URL + "/triggers/braced")
+	got, err := http.Get(ts.URL + "/charter/braced")
 	if err != nil {
 		t.Fatalf("get charter: %v", err)
 	}

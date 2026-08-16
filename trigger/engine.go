@@ -212,7 +212,7 @@ func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 // It exists because a scoped store READS BASELINE THROUGH: listing `trigger:rule:*` in a
 // scope returns baseline's rules and the scope's own, with nothing on the record to tell
 // them apart, so a restore either resurrects nothing or installs the whole baseline charter
-// into one dev's federation. Neither is what `verse trigger add --scope me` promised. The
+// into one dev's federation. Neither is what `verse charter add --scope me` promised. The
 // scope's name on the record answers it exactly, at the one moment the answer is known: the
 // install itself.
 //

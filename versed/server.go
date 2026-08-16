@@ -749,7 +749,7 @@ func (s *Server) engFor(scope string) *trigger.Engine {
 // It observes store.Scope(scope) — one dev's copy-on-write federation — and spawns
 // into that same scope. Requires Start to have captured the lifetime ctx.
 //
-// The scope's own charter is RESTORED into it, which is what makes `verse trigger add
+// The scope's own charter is RESTORED into it, which is what makes `verse charter add
 // --scope me` durable in the sense the word usually carries: the rule was always written
 // down, and until this it was written down and then interpreted by nobody, because a scope's
 // engine is created on demand and restored nothing. A dev came back from a restart to a
@@ -884,10 +884,10 @@ func (s *Server) Handler() http.Handler {
 	// than of anything verse names. That is the whole shape, so it is published.
 	rt.handle("GET /flows", s.listFlows, "", list("string"))
 	rt.handle("GET /flow/tree", s.flowTree, "", list("verse-flow-tree"))
-	rt.handle("GET /triggers", s.listTriggers, "", list("verse-trigger"))
-	rt.handle("GET /triggers/{name}", s.getTrigger, "", one("verse-trigger"))
-	rt.handle("GET /strata", s.listStrata, "", list("verse-stratum"))
-	rt.handle("GET /strata/{name}", s.getStratum, "", one("verse-stratum"))
+	// ONE ROUTE FOR THE CHARTER: the tree at an address, and one rule or one level by name
+	// inside it. `/triggers` and `/strata` were two surfaces over one idea — see versed/charter.go.
+	rt.handle("GET /charter", s.getCharter, "", nothing)
+	rt.handle("GET /charter/{name}", s.getCharterItem, "", one("verse-trigger"))
 	// the API describing itself: the route table, and the schema its entries name
 	rt.handle("GET /api", s.serveAPI, "", one("verse-routes"))
 	rt.handle("GET /schema", s.serveSchema, "", nothing)
@@ -895,8 +895,9 @@ func (s *Server) Handler() http.Handler {
 	// mutation + control (out-of-band from observation; priority-serviced)
 	rt.handle("POST /entity", s.putEntity, "verse-put-entity", one("verse-entity"))
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
-	rt.handle("POST /triggers", s.addTrigger, "verse-trigger", nothing)
-	rt.handle("DELETE /triggers/{name}", s.removeTrigger, "", nothing)
+	rt.handle("POST /charter", s.addCharter, "verse-trigger", nothing)
+	rt.handle("DELETE /charter/{name}", s.deleteCharterItem, "", nothing)
+	rt.handle("DELETE /charter", s.deleteCharter, "", nothing)
 	// resolvers — who answers a question. A binding is installed rather than declared in a
 	// charter, because it outlives any one rule and is managed by whoever supervises rather
 	// than by whoever wrote the work.
@@ -928,13 +929,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /resolvers/instance/{id}/events", s.resolverEvents, "", stream("verse-frame"))
 	rt.handle("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
 	rt.handle("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
-	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
+
 	// A package's own declaration: what it reads outside its address. It carries `?at=` like
 	// the two above, and it is posted BEFORE them, because a rule is checked against it.
-	rt.handle("POST /packages", s.addPackage, "verse-trigger", nothing)
-	rt.handle("GET /packages", s.listPackages, "", list("verse-charter-package"))
-	rt.handle("DELETE /packages", s.deletePackage, "", nothing)
-	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
+
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
 	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", one("verse-steered"))
@@ -1299,7 +1297,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 //
 // A LISTING CANNOT SAY THIS ITSELF: `Store.List` answers a slice, so a store that cannot be read
 // answers the empty one, indistinguishable from a verse holding nothing. That is how a store
-// with an unreplayable patch in its log presents — `verse state` empty, `verse trigger` a
+// with an unreplayable patch in its log presents — `verse state` empty, `verse charter` a
 // charter of no rules, every write still reporting success. Asking the store turns it into an
 // answer somebody can act on.
 func storeUnreadable(st entity.Reader) error {
@@ -1399,7 +1397,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 // It is not a lock on the DATA. A reader still reads it (that is the point of it being
 // entities), the engine still writes it, and a scope's own copy still layers over it. What is
 // refused is one path — the generic write — because every legitimate change to verse's own
-// state has a verb: `verse trigger add`, `verse resolver add`, `verse gate approve`. A ballot
+// state has a verb: `verse charter add`, `verse resolver add`, `verse gate approve`. A ballot
 // is not among them, deliberately: `vote:*` is the world's half, since casting one is an act
 // somebody takes rather than a record verse keeps.
 func reservedWrite(ref entity.Ref) error {
@@ -2340,21 +2338,6 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	}
 }
 
-// ── triggers: the charter ────────────────────────────────────────────────────
-
-func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
-	eng, err := s.engForRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if eng == nil {
-		writeOut(w, r, http.StatusOK, []trigger.Trigger{})
-		return
-	}
-	writeOut(w, r, http.StatusOK, eng.Triggers())
-}
-
 // engForRequest is the engine a LISTING is about: baseline, a scope's, or a charter package's.
 //
 // `?at=` was accepted by the install and ignored by the listing, so the rules of a package
@@ -3124,258 +3107,6 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		h.SetVector(body.Vector, body.By)
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
-	// Read as a DOCUMENT first, so an unknown field can be named. Decoding drops one silently
-	// — gomap ignores what it does not recognise — and the fields it would drop are the ones
-	// that say what the rule is allowed to do: `startum:` installs unstratified, `derve:` is a
-	// derivation that never happens. Both report success. See trigger.CheckFields.
-	node, err := codec.ReadNode(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := trigger.CheckFields(node); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	var d trigger.Trigger
-	if err := codec.FromNode(node, &d); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if d.Name == "" {
-		http.Error(w, "trigger name required", http.StatusBadRequest)
-		return
-	}
-	// ?scope=<s> installs the trigger on that scope's engine (created on first use),
-	// observing and acting within the scope — the reactivity for a `verse connect`
-	// federation. No scope → the baseline charter.
-	eng := s.Eng
-	if scope := r.URL.Query().Get("scope"); scope != "" {
-		if s.ctx == nil {
-			http.Error(w, "engine not started", http.StatusServiceUnavailable)
-			return
-		}
-		eng = s.scopeEngine(scope)
-	}
-	// ?at=<kpath> installs it into the CHARTER PACKAGE at that address: its own engine, which
-	// may write only inside the address (trigger/confine.go). No `at` → the baseline charter,
-	// which may write anywhere.
-	if at := r.URL.Query().Get("at"); at != "" {
-		if s.ctx == nil {
-			http.Error(w, "engine not started", http.StatusServiceUnavailable)
-			return
-		}
-		got, err := s.packageEngine(at)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		eng = got
-	}
-	if err := eng.AddTrigger(d); err != nil {
-		// A rule the store would not record is not a bad request: the trigger is fine and
-		// the client cannot fix it by sending a better one. Saying 400 there sends someone
-		// to debug a correct charter while the verse is the thing that is unwell.
-		code := http.StatusBadRequest
-		if errors.Is(err, trigger.ErrCharter) {
-			code = http.StatusServiceUnavailable
-		}
-		http.Error(w, err.Error(), code)
-		return
-	}
-	w.WriteHeader(http.StatusCreated)
-}
-
-// listPackages answers the charter as a tree: baseline and every package, each with what it
-// writes, what it imports and how much it holds. See Server.packageTree.
-func (s *Server) listPackages(w http.ResponseWriter, r *http.Request) {
-	tree := s.packageTree()
-	if unreadable(w, r, s.Store) {
-		return
-	}
-	writeOut(w, r, http.StatusOK, tree)
-}
-
-// deletePackage uninstalls the charter at an address — rules, levels, declaration and engine.
-// See Server.removePackage for what it deliberately leaves standing.
-func (s *Server) deletePackage(w http.ResponseWriter, r *http.Request) {
-	at := r.URL.Query().Get("at")
-	if at == "" {
-		http.Error(w, "uninstall: `?at=` is required — it names the charter to remove",
-			http.StatusBadRequest)
-		return
-	}
-	if s.ctx == nil {
-		http.Error(w, "engine not started", http.StatusServiceUnavailable)
-		return
-	}
-	// A 404 only when there is NOTHING here and nothing under it: an address with charters
-	// below it but none of its own (`demo`, holding only `demo.pr`) is a real place to remove
-	// from, and `--recurse` is how somebody says so.
-	if !s.packagesSeenAt(at) && len(s.packagesUnder(at)) == 0 {
-		http.NotFound(w, r)
-		return
-	}
-	if err := s.removePackage(at, r.URL.Query().Get("recurse") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// addPackage installs a charter package's `imports:` declaration — the addresses its rules may
-// read outside the one they write in. See trigger/imports.go for what it buys.
-func (s *Server) addPackage(w http.ResponseWriter, r *http.Request) {
-	at := r.URL.Query().Get("at")
-	if at == "" {
-		http.Error(w, "imports: `?at=` is required — an `imports:` declaration belongs to a "+
-			"charter package, which is a charter installed at an address", http.StatusBadRequest)
-		return
-	}
-	if s.ctx == nil {
-		http.Error(w, "engine not started", http.StatusServiceUnavailable)
-		return
-	}
-	node, err := codec.ReadNode(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// Read from the NODE rather than decoded into a []string: an element may be `!verse-path
-	// [demo pr]`, the steps spelling an address takes everywhere else in a charter, and a
-	// string decode refuses it as "expected string, got Array".
-	subs, err := trigger.ImportsFromNode(node)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := s.setPackageImports(at, subs); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusCreated)
-}
-
-func (s *Server) getTrigger(w http.ResponseWriter, r *http.Request) {
-	eng, err := s.engForRequest(r) // `?at=` reaches a package's rule, as it does its listing
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if eng == nil {
-		http.NotFound(w, r)
-		return
-	}
-	d, ok := eng.Trigger(r.PathValue("name"))
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	writeOut(w, r, http.StatusOK, d)
-}
-
-func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
-	eng, err := s.engForRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if eng == nil || !eng.RemoveTrigger(r.PathValue("name")) {
-		http.NotFound(w, r)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// ── strata: the declared level ordering the charter is checked against ────────────
-
-// listStrata returns the installed strata, ordered by level.
-func (s *Server) listStrata(w http.ResponseWriter, r *http.Request) {
-	eng, err := s.engForRequest(r) // `?at=` selects a package's levels, as it does its rules
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if eng == nil {
-		writeOut(w, r, http.StatusOK, []trigger.Stratum{})
-		return
-	}
-	writeOut(w, r, http.StatusOK, eng.Strata())
-}
-
-func (s *Server) getStratum(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
-	if eng == nil {
-		http.NotFound(w, r)
-		return
-	}
-	st, ok := eng.Stratum(r.PathValue("name"))
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	writeOut(w, r, http.StatusOK, st)
-}
-
-// addStratum installs one stratum. Its refusals — a name already taken, a LEVEL already taken,
-// a pattern overlapping another stratum's — are all 400s: each is a property of the charter the
-// client sent, and each is fixable by sending a different one.
-func (s *Server) addStratum(w http.ResponseWriter, r *http.Request) {
-	var st trigger.Stratum
-	if err := codec.Read(r, &st); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	eng := s.Eng
-	if scope := r.URL.Query().Get("scope"); scope != "" {
-		if s.ctx == nil {
-			http.Error(w, "engine not started", http.StatusServiceUnavailable)
-			return
-		}
-		eng = s.scopeEngine(scope)
-	}
-	// ?at=<kpath>: a package's levels are its own, and are confined the same way its rules are
-	// (a stratum reaching outside the address is refused).
-	if at := r.URL.Query().Get("at"); at != "" {
-		got, err := s.packageEngine(at)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		eng = got
-	}
-	if err := eng.AddStratum(st); err != nil {
-		code := http.StatusBadRequest
-		if errors.Is(err, trigger.ErrCharter) {
-			code = http.StatusServiceUnavailable
-		}
-		http.Error(w, err.Error(), code)
-		return
-	}
-	w.WriteHeader(http.StatusCreated)
-}
-
-// removeStratum removes one. A stratum still holding rules is a CONFLICT rather than a 404 or a
-// bad request: the request names something real and is well formed, and what refuses it is the
-// state of the charter — which the client can fix by removing those rules.
-func (s *Server) removeStratum(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
-	if eng == nil {
-		http.NotFound(w, r)
-		return
-	}
-	err := eng.RemoveStratum(r.PathValue("name"))
-	switch {
-	case err == nil:
-		w.WriteHeader(http.StatusNoContent)
-	case errors.Is(err, trigger.ErrNoStratum):
-		http.NotFound(w, r)
-	default:
-		http.Error(w, err.Error(), http.StatusConflict)
-	}
 }
 
 // ── flow: engine steering (control plane) ────────────────────────────────────

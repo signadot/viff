@@ -125,5 +125,5 @@ Three things want settling before any of that is worth writing:
   subject deselects, which nothing currently evaluates.
 - **Whether the author can see it.** A rule that does not fire because of an invisible record is
   the same debugging problem as a rule that does not fire because of an invisible conjunct — the
-  reason `condition ∧ ¬patch` was shelved on that issue. `verse trigger show` would have to say
+  reason `condition ∧ ¬patch` was shelved on that issue. `verse charter show` would have to say
   what has run.

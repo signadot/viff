@@ -166,7 +166,7 @@ type LogdStore struct {
 	//
 	// That confusion is not theoretical. A store whose log holds a patch it cannot replay
 	// (raw.go, and the guard that now refuses to write one) reads as EMPTY: `verse state
-	// --paths` prints nothing, `verse trigger` shows a charter of no rules, and writes go
+	// --paths` prints nothing, `verse charter` shows a charter of no rules, and writes go
 	// on reporting success — a verse that looks alive and answers nothing, diagnosable only by
 	// reading docd's log. Remembering the failure is what lets the surfaces above say "this
 	// store cannot be read" instead of "there is nothing here".

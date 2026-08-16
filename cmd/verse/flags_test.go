@@ -72,9 +72,8 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 // rather than a verb it must refuse. See TestStateTakesAPath.
 var collections = map[string]string{
 	"gate": "gates", "task": "tasks",
-	"flow": "flows", "trigger": "triggers",
+	"flow": "flows", "charter": "charters",
 	"resolver": "resolvers", "runner": "runners", "source": "sources",
-	"stratum": "strata",
 }
 
 // A collection is ONE command, named in the singular, and bare it lists. The plural is an
@@ -116,18 +115,18 @@ func TestCollectionsAreOneSingularCommand(t *testing.T) {
 }
 
 // A listing that IGNORES positionals turns a wrong command into a plausible answer:
-// `verse trigger add-it review` would print the charter rather than say the verb is not one.
+// `verse charter add-it review` would print the charter rather than say the verb is not one.
 // `list` is called out by name, because it is the mistake a bare-listing collection invites
 // and it must not become a second way to list.
 func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {
 	root := rootCmd()
 	cc := cli.DefaultContext()
 	for singular := range collections {
-		// `trigger` takes an ADDRESS where the others take a verb or nothing (`verse trigger
-		// drift comments`), so a word it does not know is a place with no charter rather than
+		// `charter` takes an ADDRESS where the others take a verb or nothing (`verse charter
+		// verse-dev drift`), so a word it does not know is a place with no charter rather than
 		// a verb it does not have — the same trade `verse state` makes, and the reason it is
-		// not in this list either. Its own refusal is tested at TestTheCharterListsAsATree.
-		if singular == "trigger" {
+		// not in this list either. Its own refusals are tested at TestTheCharterListsAsATree.
+		if singular == "charter" {
 			continue
 		}
 		cmd := root.FindSub(cc, singular)
@@ -378,19 +377,19 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 	}
 }
 
-// `verse trigger` answers the charter as a TREE — baseline at the root and each package under
+// `verse charter` answers the charter as a TREE — baseline at the root and each package under
 // the address it writes in — which is what makes an installed package visible at all. It listed
 // one engine's rules before, so installing comment-drift (two packages, eight rules) and typing
-// `verse trigger` answered `[]`, which reads as a failed install and did, twice.
+// `verse charter` answered `[]`, which reads as a failed install and did, twice.
 func TestTheCharterListsAsATree(t *testing.T) {
 	serve(t)
 	if err := installPackageRule(t); err != nil {
 		t.Fatalf("installing a package: %v", err)
 	}
 
-	out, err := runCLI(t, "trigger")
+	out, err := runCLI(t, "charter")
 	if err != nil {
-		t.Fatalf("trigger: %v", err)
+		t.Fatalf("charter: %v", err)
 	}
 	for _, want := range []string{
 		"writes: anywhere", // baseline, at the root
@@ -405,9 +404,9 @@ func TestTheCharterListsAsATree(t *testing.T) {
 	}
 
 	// The address reaches one charter, at any depth, and answers the same shape there.
-	one, err := runCLI(t, "trigger", "notes")
+	one, err := runCLI(t, "charter", "notes")
 	if err != nil {
-		t.Fatalf("trigger notes: %v", err)
+		t.Fatalf("charter notes: %v", err)
 	}
 	if !strings.Contains(one, "writes: notes.") || !strings.Contains(one, "name: note") {
 		t.Errorf("the address did not reach the package: %s", one)
@@ -418,7 +417,7 @@ func TestTheCharterListsAsATree(t *testing.T) {
 
 	// An address nobody installed at is an error rather than an empty document: it is a
 	// question about a place, and "nothing is there" is worth saying out loud.
-	if _, err := runCLI(t, "trigger", "nowhere"); err == nil {
+	if _, err := runCLI(t, "charter", "nowhere"); err == nil {
 		t.Error("an address with no charter answered as though it had one")
 	}
 }
@@ -437,7 +436,7 @@ func installPackageRuleAt(t *testing.T, at string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpPostNodeTo("/triggers", url.Values{"at": []string{at}}, node)
+	resp, err := httpPostNodeTo("/charter", url.Values{"at": []string{at}}, node)
 	if err != nil {
 		return err
 	}
@@ -461,9 +460,9 @@ func TestARuleInAPackageIsReachableByName(t *testing.T) {
 		t.Fatalf("installing a package: %v", err)
 	}
 
-	out, err := runCLI(t, "trigger", "show", "note")
+	out, err := runCLI(t, "charter", "show", "note")
 	if err != nil {
-		t.Fatalf("trigger show: %v", err)
+		t.Fatalf("charter show: %v", err)
 	}
 	if !strings.Contains(out, "name: note") {
 		t.Errorf("show did not find the package's rule: %s", out)
@@ -473,24 +472,24 @@ func TestARuleInAPackageIsReachableByName(t *testing.T) {
 	if err := installPackageRuleAt(t, "other"); err != nil {
 		t.Fatalf("installing a second package: %v", err)
 	}
-	_, err = runCLI(t, "trigger", "show", "note")
+	_, err = runCLI(t, "charter", "show", "note")
 	if err == nil || !strings.Contains(err.Error(), "--at") {
 		t.Errorf("an ambiguous name did not ask which charter: %v", err)
 	}
-	if out, err := runCLI(t, "trigger", "show", "note", "--at", "other"); err != nil {
+	if out, err := runCLI(t, "charter", "show", "note", "--at", "other"); err != nil {
 		t.Errorf("--at did not settle it: %v (%s)", err, out)
 	}
 
 	// And removing reaches it too, which it could not before.
-	if _, err := runCLI(t, "trigger", "remove", "note", "--at", "notes"); err != nil {
-		t.Errorf("trigger remove --at: %v", err)
+	if _, err := runCLI(t, "charter", "remove", "note", "--at", "notes"); err != nil {
+		t.Errorf("charter remove --at: %v", err)
 	}
-	if out, err := runCLI(t, "trigger", "notes"); err == nil && strings.Contains(out, "name: note") {
+	if out, err := runCLI(t, "charter", "notes"); err == nil && strings.Contains(out, "name: note") {
 		t.Errorf("the rule is still installed: %s", out)
 	}
 }
 
-// `verse trigger` takes an ADDRESS, and its verbs are ordinary words — so a package at `remove`
+// `verse charter` takes an ADDRESS, and its verbs are ordinary words — so a package at `remove`
 // is shadowed by `trigger remove`. `--` ends the verbs, which is the shell's own convention for
 // exactly this, and every command that takes an address accepts it.
 func TestADashDashReachesAnAddressThatLooksLikeAVerb(t *testing.T) {
@@ -500,12 +499,12 @@ func TestADashDashReachesAnAddressThatLooksLikeAVerb(t *testing.T) {
 	}
 
 	// Without it, the verb wins — which is what makes the escape necessary rather than tidy.
-	if _, err := runCLI(t, "trigger", "remove"); err == nil {
-		t.Error("`trigger remove` with no name was read as an address")
+	if _, err := runCLI(t, "charter", "remove"); err == nil {
+		t.Error("`charter remove` with no name was read as an address")
 	}
-	out, err := runCLI(t, "trigger", "--", "remove")
+	out, err := runCLI(t, "charter", "--", "remove")
 	if err != nil {
-		t.Fatalf("trigger -- remove: %v", err)
+		t.Fatalf("charter -- remove: %v", err)
 	}
 	if !strings.Contains(out, "writes: remove.") {
 		t.Errorf("`--` did not reach the package: %s", out)

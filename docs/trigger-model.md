@@ -112,8 +112,8 @@ A charter installed with `--at` is a **package**: it runs in an engine of its ow
 write only inside the address it was installed at.
 
 ```sh
-verse trigger add --at notes notes-charter.tony    # its rules write under notes:*
-verse trigger add charter.tony                     # baseline: may write anywhere
+verse charter add --at notes notes-charter.tony    # its rules write under notes:*
+verse charter add charter.tony                     # baseline: may write anywhere
 ```
 
 That is what lets two groups keep rules in one verse without arranging not to collide. Isolation
@@ -163,7 +163,7 @@ down.
 One file may hold SEVERAL packages: a `---` document carrying `at:` opens one, and everything
 after it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is
 two — a `drift` package that reviews and a `merge` package that gates what the review delivers —
-installed by one `verse trigger add --file`.
+installed by one `verse charter add --file`.
 
 **Its levels are its own**, and so are its records: a package's rules and strata are addressed
 by package (`verse:trigger:rule:drift:head-moved`), so two packages may each declare a
@@ -196,19 +196,19 @@ the arrangement above, is not a loop.
 through it is not a loop between packages and this cannot see it — which is the same reason
 baseline is unconfined in what it writes.
 
-`verse trigger` reads the charter AT AN ADDRESS, the way `verse state` reads the verse at one —
+`verse charter` reads the charter AT AN ADDRESS, the way `verse state` reads the verse at one —
 because the charter is one document with a place for every package, so "what is installed here"
 is the same question at every depth, and every node answers the same shape.
 
 ```sh
-verse trigger                  # the whole charter
-verse trigger drift            # the `drift` package and anything under it
-verse trigger demo pr          # …one deeper: the package at demo.pr
-verse trigger drift --depth 0  # …that address alone, without what is under it
+verse charter                  # the whole charter
+verse charter drift            # the `drift` package and anything under it
+verse charter demo pr          # …one deeper: the package at demo.pr
+verse charter drift --depth 0  # …that address alone, without what is under it
 ```
 
 ```sh
-verse trigger --depth 1
+verse charter --depth 1
 # writes: anywhere            ← baseline: no address, so it may write anywhere
 # rules: []
 # children:
@@ -232,9 +232,9 @@ of names would leave what it DOES to a second command per rule. `--depth 0` is h
 short. One rule by name is still one command:
 
 ```sh
-verse trigger merge             # that package alone, rules and all
-verse trigger merge --depth 0   # …without whatever is installed under it
-verse trigger show merge-proposal
+verse charter merge             # that package alone, rules and all
+verse charter merge --depth 0   # …without whatever is installed under it
+verse charter show merge-proposal
 ```
 
 A package comes off whole, too — its rules, its levels, what it imports, and the engine running
@@ -242,8 +242,8 @@ them. What it WROTE stays: a charter's writes are the world's, and `verse state 
 go.
 
 ```sh
-verse trigger uninstall merge
-verse trigger uninstall demo --recurse   # …and every charter under that address
+verse charter uninstall merge
+verse charter uninstall demo --recurse   # …and every charter under that address
 ```
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
@@ -354,7 +354,7 @@ So it was removed rather than carried. The finding and the three shapes a better
 might take are in [Goals: what is left](working/goals-residual.md); where it is headed is
 [a charter authored per change](roadmap/dynamic-charter.md).
 
-A **scoped charter** (`verse trigger add --scope`) is restored the same way, when the scope's
+A **scoped charter** (`verse charter add --scope`) is restored the same way, when the scope's
 engine is next built — which is on demand, so in practice when the dev reconnects. Its record
 carries `scope: <name>`, which is what makes it restorable at all: a scoped store reads
 baseline layered underneath, so a listing in a scope returns baseline's rules and the scope's
@@ -516,7 +516,7 @@ carry, and "unknown key" would not say so.
 
 The address string is sugar for the identity dimensions, so `demo:pr:*` means
 `{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
-what reads back when you `verse trigger show` it: `demo:pr`. Same match, shorter spelling.
+what reads back when you `verse charter show` it: `demo:pr`. Same match, shorter spelling.
 
 Keep it small. This is where complexity hides. To act "only the first time", match a state
 field your action then advances — a LATCH. That is not a nicety: a rule with no latch is

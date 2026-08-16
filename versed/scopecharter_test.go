@@ -15,7 +15,7 @@ import (
 
 // A SCOPE'S OWN CHARTER SURVIVES A RESTART, the way baseline's does.
 //
-// `verse trigger add --scope me` writes the rule into the scope — it is durable, it is listed,
+// `verse charter add --scope me` writes the rule into the scope — it is durable, it is listed,
 // and `verse state get trigger:rule:x --scope me` reads it back. What it did not do is RUN
 // after a restart: a scope's engine is created on demand and never restored anything, so the
 // dev came back to a scope holding a written-down charter that nothing was interpreting. No
@@ -88,7 +88,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 
 func addScopedRule(t *testing.T, ts *httptest.Server, scope, doc string) {
 	t.Helper()
-	resp, err := http.Post(ts.URL+"/triggers?scope="+scope, "application/tony", strings.NewReader(doc))
+	resp, err := http.Post(ts.URL+"/charter?scope="+scope, "application/tony", strings.NewReader(doc))
 	if err != nil {
 		t.Fatalf("scoped trigger add: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 		action: {patch: {stage: baseline-said-so}},
 	}`)
 	// The dev's move: drop the inherited rule here, then write their own under its name.
-	resp, err := http.NewRequest(http.MethodDelete, firstHTTP.URL+"/triggers/review?scope=me", nil)
+	resp, err := http.NewRequest(http.MethodDelete, firstHTTP.URL+"/charter/review?scope=me", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

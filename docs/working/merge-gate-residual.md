@@ -161,7 +161,7 @@ state: !when
 
 — a tagged list, as data. The proposal sat in a state no rule selects and no reader can act on,
 while `mergedSha` and `reason` beside it were correct. That is the worst shape a wrong spelling
-can have: it parses, it installs, it round-trips through `verse trigger show`, the firing
+can have: it parses, it installs, it round-trips through `verse charter show`, the firing
 succeeds, and the only thing wrong is the value in the store.
 
 The fix is what this note already said and the charter did not do: record the answer as the FACT
