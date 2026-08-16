@@ -143,6 +143,33 @@ The gain is that the record is the rule: `verse state get trigger:rule:review` s
 document to read field by field, a charter change is an observable fact about a shape rather
 than about a string, and nothing has to re-parse to ask a question about it.
 
+**A rule keeps some of the comments it was written with**, so the record can carry the reasons
+and not only the shape. Which ones survive is worth knowing before relying on it, because it is
+not all of them. A comment attaches to the VALUE it precedes, and is kept when that value is
+something able to carry one:
+
+| a comment above | kept? | why |
+|---|---|---|
+| the rule itself | yes | `Trigger` carries it |
+| `action:`, `spawn:`, a gate entry | yes | those values are structs that carry it |
+| a `patch:` or `derive:` body | yes | the value is stored as-is, so nothing can drop it |
+| `condition:`, `subject:` | no | their codecs are hand-written and do not carry comments yet |
+| `gates:` itself | no | the value is a LIST, and there is no list to carry it |
+
+The `gates:` row is a limit rather than a gap to fill: a comment is carried by whatever its
+value decodes into, and a list decodes into no such thing. Put it on the entry instead.
+
+**The first item of any list is the exception, and it applies everywhere** — to the rules in a
+charter file and to the entries of a `gates:` alike. Everything written before a list's first
+item belongs to the list rather than to that item, and blank lines do not separate, so a file
+header and a note meant for the first rule merge into one. Write it inside the item and it is
+kept like any other:
+
+```tony
+- # what this rule is for
+  name: review
+```
+
 Restoring a rule is an ordinary install, which means it **replays**: a subtree watch is
 level-triggered at the open, so a restored trigger acts on what already matches it — including
 what arrived while verse was down. A restart is then just an install over a verse that has

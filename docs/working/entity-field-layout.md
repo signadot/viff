@@ -214,7 +214,7 @@ the three spellings does not do what it looks like:
 | written | belongs to |
 |---|---|
 | anything before a container's first item | the CONTAINER — and blank lines do not separate, so a file header and a comment meant for the first rule merge into one |
-| a comment between items | the item that FOLLOWS it |
+| a comment between items | the item that FOLLOWS it — so every item but the first can take one |
 | `- # …` then the fields | that item |
 
 So in a charter file the first rule cannot take a head comment the ordinary way — there is no
