@@ -117,12 +117,30 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	}
 	// A `!match` tag is accepted and never emitted: the match atom is written unwrapped,
 	// but someone may spell it explicitly.
+	// `!verse-path [demo pr 1]` — an address as STEPS, checked before the guard below because
+	// it is a tag this type accepts rather than one it refuses.
+	if tagName(node) == VersePathTag {
+		parsed, err := stepsMatch(node)
+		if err != nil {
+			return err
+		}
+		*m = parsed
+		return nil
+	}
 	if tag := tagName(node); tag != "" && tag != string(ReqMatch) {
 		return fmt.Errorf("match: unexpected tag %q", node.Tag)
 	}
 	switch node.Type {
 	case ir.StringType:
 		parsed, err := ParseExpr(node.String)
+		if err != nil {
+			return err
+		}
+		*m = parsed
+		return nil
+	case ir.ArrayType:
+		// An untagged list is not an address — stepsMatch is what says so, and why.
+		parsed, err := stepsMatch(node)
 		if err != nil {
 			return err
 		}
@@ -148,11 +166,26 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 // somewhere that can hold it or is reported, never dropped.
 func matchFromObject(node *ir.Node) (Match, error) {
 	out := Match{}
+	var at Match // the `at:` spelling, merged after the loop so a conflict is caught either way
 	for i, key := range node.Fields {
 		k := key.String
 		val := unwrap(node.Values[i])
 		switch k {
-		case mKeySystem, mKeyKind, mKeyID:
+		case mKeyAt: //nolint:dupl // the conflict is checked once, after the loop
+			// `at:` is the whole address prefix as ONE covering path — `at: demo.pr` for
+			// `{system: demo, kind: pr}`, `at: verse.gate.question` for the same three in
+			// verse's own half. It EXPANDS here rather than being carried as a dimension of
+			// its own: what a match means is the dimensions, and one address written two ways
+			// in one map would be two answers to ask a firing about.
+			//
+			// It takes the vector spelling too, so `at: !verse-path [demo pr]` reads.
+			got, err := atMatch(val)
+			if err != nil {
+				return nil, err
+			}
+			at = got
+
+		case mKeySystem, mKeyKind, mKeyID, mKeyRoot:
 			// A dimension is a closed grammar — a string, or an operator over one — so an
 			// object here is unambiguously the tag-keyed spelling of an operator and can
 			// be desugared without asking what the surrounding keys mean.
@@ -188,6 +221,16 @@ func matchFromObject(node *ir.Node) (Match, error) {
 			}
 			out[k] = v
 		}
+	}
+	// `at:` merges LAST and refuses to overwrite: the two are one address written two ways, and
+	// a map holding both has said it twice. Checked here rather than in the loop, so the
+	// refusal does not depend on which key the author wrote first.
+	for dim, v := range at {
+		if _, taken := out[dim]; taken {
+			return nil, fmt.Errorf("match: `at` names %s, and so does the match itself — an "+
+				"address is written one way or the other", dim)
+		}
+		out[dim] = v
 	}
 	return out, nil
 }
@@ -663,4 +706,59 @@ func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		}
 	}
 	return nil
+}
+
+// VersePathTag marks an address written as STEPS: `!verse-path [demo pr 1]`.
+//
+// The tag is required rather than inferred from the array. A bare list where an address belongs
+// would be a second thing a bare list can mean — the union form a stratum's `match` takes is
+// already one — and an address is exactly the place where guessing wrong is expensive.
+const VersePathTag = "verse-path"
+
+// stepsMatch reads the tagged-vector spelling of an address into the same dimensions the string
+// spelling produces.
+func stepsMatch(node *ir.Node) (Match, error) {
+	if tagName(node) != VersePathTag {
+		return nil, fmt.Errorf("match: an address written as a list needs the !%s tag "+
+			"(`!%s [demo pr 1]`), so a list of steps cannot be read as anything else",
+			VersePathTag, VersePathTag)
+	}
+	steps := make([]string, 0, len(node.Values))
+	for _, v := range node.Values {
+		// ANY SCALAR, not just a string: an id is a name whatever it looks like, and `1` is
+		// the id of half the entities anybody writes down. Refusing a number here would make
+		// the vector spelling the one form that needs quoting, which is the opposite of what
+		// it is for.
+		step, ok := stepText(unwrap(v))
+		if !ok {
+			return nil, fmt.Errorf("match: a step of !%s is a name; got %v", VersePathTag, v.Type)
+		}
+		steps = append(steps, step)
+	}
+	return ParseSteps(steps)
+}
+
+// atMatch reads the `at:` dimension: an address prefix as a kinded path (`demo.pr`) or as the
+// tagged vector (`!verse-path [demo pr]`), into the dimensions it names.
+func atMatch(val *ir.Node) (Match, error) {
+	switch {
+	case val == nil:
+		return nil, fmt.Errorf("match: `at` is empty")
+	case val.Type == ir.ArrayType:
+		return stepsMatch(val)
+	case val.Type == ir.StringType:
+		return ParseSteps(strings.Split(val.String, "."))
+	}
+	return nil, fmt.Errorf("match: `at` is an address as a path (`demo.pr`) or as steps "+
+		"(`!%s [demo pr]`); got %v", VersePathTag, val.Type)
+}
+
+// stepText is a step's text, whatever scalar it was written as. It is scalarText's question
+// asked of an ADDRESS rather than of an interpolation, and it answers no for a composite for
+// the same reason: a step is a name, and a list is not one.
+func stepText(n *ir.Node) (string, bool) {
+	if n == nil {
+		return "", false
+	}
+	return scalarText(n)
 }

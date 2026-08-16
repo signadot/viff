@@ -476,6 +476,28 @@ name the subtree verse watches and the set it lists — they become a docd watch
 (`Formula.Subtrees`) and the store's `List` prefilter — and a watch path cannot be a
 predicate. Write the whole segment as `*` for "any", and put the operator on `id`.
 
+`at` is the whole address prefix as ONE covering path, which is the same three dimensions
+written once:
+
+```tony
+subject: { at: demo.pr, value: {stage: open} }        # {system: demo, kind: pr}
+subject: { at: verse.gate.question }                   # …and in verse's own half
+subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
+```
+
+`!verse-path [demo pr 1]` is an address written as STEPS — the spelling `verse state --paths`
+answers with and `verse state` takes, so an address read off a listing pastes into a charter
+without being re-punctuated. It goes wherever the string form goes:
+
+```tony
+subject: !verse-path [demo pr 1]      # the same as "demo:pr:1"
+when:    !verse-path [git head verse]
+```
+
+The tag is required on a list, so a list of steps cannot be read as anything else — and an
+address is written one way or the other: `{at: demo.pr, system: other}` is refused rather than
+merged.
+
 `root` names which half of the verse the match is about, and an unwritten one is the world's:
 
 ```tony

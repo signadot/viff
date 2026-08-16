@@ -457,3 +457,62 @@ func sameDoc(a, b *ir.Node) bool {
 		return a.DeepEqual(b)
 	}
 }
+
+// AN ADDRESS IN A CHARTER, three ways, all meaning the one thing. The string is what charters
+// have always written; `at:` is the whole prefix as one covering path; `!verse-path` is the
+// same address as STEPS — the spelling a command line prints and takes, so an address read off
+// a listing pastes into a charter without being re-punctuated.
+func TestAnAddressMayBeWrittenThreeWays(t *testing.T) {
+	want := Match{"system": "demo", "kind": "pr", "id": "1"}
+	for _, src := range []string{
+		`"demo:pr:1"`,
+		`{at: demo.pr.1}`,
+		`{at: !verse-path [demo pr 1]}`,
+		`!verse-path [demo pr 1]`,
+		`{system: demo, kind: pr, id: "1"}`,
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
+			t.Errorf("%s: %v", src, err)
+			continue
+		}
+		if m.System() != want.System() || m.Kind() != want.Kind() || m.ID() != want.ID() {
+			t.Errorf("%s → %v, want %v", src, m, want)
+		}
+	}
+	// And verse's own half, where the address is one segment deeper.
+	for _, src := range []string{
+		`"verse:gate:question:*"`,
+		`{at: verse.gate.question}`,
+		`{at: !verse-path [verse gate question]}`,
+		`!verse-path [verse gate question "*"]`,
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
+			t.Errorf("%s: %v", src, err)
+			continue
+		}
+		if m.Root() != "verse" || m.System() != "gate" || m.Kind() != "question" || m.ID() != "" {
+			t.Errorf("%s → %v, want the reserved half's gate:question", src, m)
+		}
+	}
+}
+
+// An address written twice in one match is refused rather than merged: `at` and the dimensions
+// are two spellings of one thing, and a map holding both has said it twice.
+func TestAnAddressIsWrittenOneWayOrTheOther(t *testing.T) {
+	for _, src := range []string{
+		`{at: demo.pr, system: other}`,
+		`{system: demo, at: demo.pr}`,
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err == nil {
+			t.Errorf("%s installed as %v, want a refusal", src, m)
+		}
+	}
+	// A bare list is not an address: the tag is what says it is one.
+	var m Match
+	if err := codec.Unmarshal([]byte(`[demo, pr, 1]`), &m, codec.Tony); err == nil {
+		t.Errorf("a bare list read as an address: %v", m)
+	}
+}

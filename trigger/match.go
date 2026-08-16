@@ -109,6 +109,7 @@ type Match map[string]any
 // The match dimensions. `value` is the payload predicate, and the only one of the four that
 // is not a string dimension — see the note on Match.
 const (
+	mKeyAt     = "at"   // the whole address prefix as one path: `demo.pr`, `verse.gate.question`
 	mKeyRoot   = "root" // which half of the verse: empty is the world's, `verse` is verse's own
 	mKeySystem = "system"
 	mKeyKind   = "kind"
@@ -121,7 +122,7 @@ const (
 // (docs/trigger-model.md), an object is classified as a match or as a formula tag
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
-	mKeyRoot: true, mKeySystem: true, mKeyKind: true, mKeyID: true, mKeyValue: true,
+	mKeyAt: true, mKeyRoot: true, mKeySystem: true, mKeyKind: true, mKeyID: true, mKeyValue: true,
 }
 
 // removedKeys are dimensions a match once had, named so a charter carrying one fails with an
@@ -580,15 +581,40 @@ func ParseExpr(s string) (Match, error) {
 			"subject is a pattern matched against the entity a firing is about, e.g. \"demo:pr:*\" "+
 			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
 	}
-	parts := strings.SplitN(s, ":", 3) // an id may itself contain colons
+	// A leading `verse` is the reserved root, and the three an address has follow it — the
+	// same prefix rule ParseRef applies, so a charter names verse's own half the way an
+	// operator does (`verse:gate:question:*`).
+	rest, reserved := strings.CutPrefix(s, entity.VerseRoot+":")
+	parts := strings.SplitN(rest, ":", 3) // an id may itself contain colons
+	if reserved {
+		parts = append([]string{entity.VerseRoot}, parts...)
+	}
+	return ParseSteps(parts)
+}
+
+// ParseSteps is ParseExpr over an address already SPLIT INTO STEPS — the `!verse-path [demo pr
+// 1]` spelling, and the shared body of both.
+//
+// The steps are positional: a leading `verse` is the reserved root, then system, kind and id.
+// `*` is a wildcard, which is simply an unset dimension, and an empty step is a mistake rather
+// than a wildcard — `[demo, "", 1]` is somebody's template that expanded to nothing.
+func ParseSteps(steps []string) (Match, error) {
+	keys := []string{mKeySystem, mKeyKind, mKeyID}
+	if len(steps) > 0 && strings.TrimSpace(steps[0]) == entity.VerseRoot {
+		keys = append([]string{mKeyRoot}, keys...)
+	}
+	if len(steps) > len(keys) {
+		return nil, fmt.Errorf("address %q has %d steps; an address has at most %d (%s)",
+			strings.Join(steps, " "), len(steps), len(keys), strings.Join(keys, ", "))
+	}
 	m := Match{}
-	for i, key := range []string{mKeySystem, mKeyKind, mKeyID} {
-		if i >= len(parts) {
+	for i, key := range keys {
+		if i >= len(steps) {
 			break
 		}
-		seg := strings.TrimSpace(parts[i])
+		seg := strings.TrimSpace(steps[i])
 		if seg == "" {
-			return nil, fmt.Errorf("empty segment %d in address %q", i+1, s)
+			return nil, fmt.Errorf("empty step %d in address %q", i+1, strings.Join(steps, " "))
 		}
 		if seg == "*" {
 			continue // a wildcard is simply an unset dimension
