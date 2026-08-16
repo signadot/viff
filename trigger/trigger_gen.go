@@ -500,6 +500,7 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		return nil, fmt.Errorf("failed to convert field %q: %w", "Condition", err)
 	}
 	irMap["condition"] = node
+	irMap["condition"] = gomap.ApplyComments(irMap["condition"], s.ConditionDoc, nil)
 
 	// Field: Gates
 	if len(s.Gates) > 0 {
@@ -594,6 +595,9 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			// Field: Condition
 			if err := s.Condition.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "condition", err)
+			}
+			if fieldNode.Type == ir.CommentType {
+				s.ConditionDoc = fieldNode.Lines
 			}
 		case "gates":
 			// Field: Gates

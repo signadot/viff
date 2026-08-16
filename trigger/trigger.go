@@ -57,9 +57,23 @@ type Trigger struct {
 	// the pattern its subject must fall inside, and the level a derive must climb above.
 	// Empty is the IMPLICIT stratum: unordered, checked against nothing, which is exactly
 	// what every rule written before strata existed means. See stratum.go.
-	Stratum   string    `tony:"field=stratum,omitzero"`
-	Condition Condition `tony:"field=condition"`
-	Gates     []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	Stratum string `tony:"field=stratum,omitzero"`
+
+	// ConditionDoc is the comment written above `condition:`, carried by the FIELD rather than by
+	// the value's own type — which is what makes it possible at all. A struct-level `comment=`
+	// captures the comment on a struct's OWN node, and Condition has no generated codec to
+	// capture it with (its codec is hand-written). The field-level form (go-tony v0.0.145) names
+	// the field's VALUE instead, which exists whatever the value turns out to be.
+	//
+	// `gates:` wants the same thing and cannot have it yet: the annotation is emitted outside
+	// codegen's omitzero guard, so a rule with no gates writes a nil into the field map and
+	// ToTonyIR segfaults — which is most rules (tony-format#gzdawgp1h12kss2ng5n0). Condition is
+	// required, so its key is always there and the same annotation is safe. When that lands,
+	// `gates:` takes a GatesDoc the same way, and with it the comment above the first ENTRY:
+	// a block list begins at its first element, so those two are one comment.
+	ConditionDoc []string  `tony:"-"`
+	Condition    Condition `tony:"field=condition,comment=ConditionDoc"`
+	Gates        []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
 	// Gating groups the two facts about a rule's OWN gates: which they are, and who answers
 	// them. `gates:` at the top level still works and means `gating: {gates: …}` — the two
 	// are one field read two ways, not two fields that can disagree, and writing both is
