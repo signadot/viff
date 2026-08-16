@@ -199,7 +199,7 @@ verse gate approve run-f3e31ed0390f~d1 --as human:you
 (`⏸ gate "write" (write_file) — approve? [y/N]`) — while the same gate stays resolvable from
 anywhere else by its id, since it is the same question either way. There is a rough edge in
 which of the two rules applies when you hand verse a *command* and it satisfies it with an
-*agent*; [reference/tasks.md](reference/tasks.md#who-you-addressed) states it, and
+*agent*; [reference/tasks.md](reference/tasks.md#the-rough-edge-who-you-addressed) states it, and
 [authority](roadmap/authority.md) is where it gets fixed.
 
 ### A task is an entity too
@@ -600,8 +600,24 @@ But some questions are not one person's to answer in one click. A gate can inste
 ```sh
 ./scripts/charter-shapes.sh run vote
 verse docket
-# 8f306077  whether open  options=[proceed=approve(2)]  subject=demo:vote:1
 ```
+
+```tony
+- axis: whether
+  gate: approvals
+  id: 8f306077
+  options:
+  - choice: approve
+    id: proceed
+    need: 2
+  status: open
+  subject: demo:vote:1
+```
+
+The listing is a document like every other, so `verse docket -o yaml`, a `get` into one entry
+and a diff against the docket a minute ago all work. `choice` is the word a ballot must carry
+— `approve` here, not the option's own name — which is what `verse vote` checks before it
+writes one.
 
 The rule fired; the action is waiting — not on a person, on a tally. Cast ballots, each
 naming its voter, since a motion must be settled attributably:
@@ -609,10 +625,12 @@ naming its voter, since a motion must be settled attributably:
 ```sh
 verse vote 8f306077 approve --as alice    # 1 of 2 — still open
 verse vote 8f306077 approve --as bob      # 2 of 2 → carries
-verse docket
-# 8f306077  whether closed  options=[proceed=approve(2)]  outcome=proceed tally=2  subject=demo:vote:1
 verse state get demo:vote:1              # stage: merged
 ```
+
+The motion then reads `status: closed`, `outcome: proceed`, `tally: 2` and a `witness` naming
+the ballots that carried it — the audit trail, on the entity, rather than a line that scrolled
+past.
 
 A motion is an ordinary entity (`motion:channel:<id>`), so the docket is a view of the store:
 you can watch it, get one, and write a rule that reacts to it. It stays live until it

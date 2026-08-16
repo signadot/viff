@@ -17,12 +17,14 @@ Three segments, in one grammar shared by the CLI and the charter wire: `*` is a 
 segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow demo:pr:*` and a charter's
 `"subject": "demo:pr:*"` mean the same set.
 
-Systems verse itself writes into: `task:instance:*` (the mirror of every running task)
-and `task:claim:*` (its run claim), `gate:question:*` (every gate awaiting an answer),
-`resolvers:*` (who answers them, and `resolvers:instance:*` for who is watching one run — see
-[resolvers.md](resolvers.md)),
-`trigger:rule:*` (the installed charter), `goal:*`, `motion:channel:*` and `vote:*` (the
-docket and its ballots), `local:*` (a federated working tree). None of them are special — they are entities, so you can `get`, `watch` and write
+Systems verse itself writes into: `task:instance:*` (the mirror of every running task),
+`task:run:*` (the record of a run that happened) and `task:claim:*` (a sequence's run claim),
+`gate:question:*` (every gate awaiting an answer), `resolvers:*` (who answers them, and
+`resolvers:instance:*` for who is watching one run — see [resolvers.md](resolvers.md)),
+`trigger:rule:*` (the installed charter) and `trigger:strata:*` (its declared levels),
+`motion:channel:*` and `vote:*` (the docket and its ballots), `runners:*` (where work can run)
+and `sources:*` (what reflects an external system in), `local:*` (a federated working tree).
+None of them are special — they are entities, so you can `get`, `watch` and write
 rules about them.
 
 ## Reading

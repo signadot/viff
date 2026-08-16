@@ -66,7 +66,7 @@ The creds are read by the **server**, so set them before `up`, not in the client
 environment. `verse status` shows an `llm` block with `available` and a masked key.
 
 The driver is chosen per spawn, so a trigger's `spawn.driver`, `connect --driver` and
-`task run --driver` each select `scripted` or `llm` for that one task. Requesting `llm`
+`task run --driver` each select `scripted`, `calls` or `llm` for that one task. Requesting `llm`
 with no configured creds fails that one task — status `failed`, with a message telling you
 to set the creds — and the engine keeps running. What each driver implies for gates is in
 [tasks.md](tasks.md#the-dial).

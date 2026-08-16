@@ -194,18 +194,35 @@ verse state get task:instance:<id>
 # doer: provider:treat:fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 
-**The docket** shows each option's envelope where the options differ in one:
+**The docket** carries each option's envelope, so what a ballot would authorise is beside the
+name it is cast for:
 
 ```sh
 verse docket
-# … select open  options=[fixer(2)[no-delegate +read_file,list_dir,write_file,run_bash]
-#                         memo(2)[read-only +read_file,list_dir]] …
 ```
 
-Only what differs from a plain name is added, so a ballot between doers that vary by nothing
-but model reads exactly as it did before. This is not decoration: once options differ in what
-they may *do*, a voter picking between two names is picking between two authorities, and a
-listing that showed only names would have the group authorise a capability nobody put in front
+```tony
+- axis: select
+  capability: treat
+  chain: treat.onDone
+  id: aa92f8cc
+  options:
+  - grant: no-delegate
+    id: fixer
+    need: 2
+    tools: [read_file, list_dir, write_file, run_bash]
+  - grant: read-only
+    id: memo
+    need: 2
+    tools: [read_file, list_dir]
+  status: open
+  subject: demo:finding:7
+```
+
+A doer that adds nothing to the spawn writes neither field, so a ballot between doers that vary
+by nothing but model reads exactly as it did before. This is not decoration: once options differ
+in what they may *do*, a voter picking between two names is picking between two authorities, and
+a listing that showed only names would have the group authorise a capability nobody put in front
 of them.
 
 **`verse provider`** lists the registry with every attribute beside the driver, which is where

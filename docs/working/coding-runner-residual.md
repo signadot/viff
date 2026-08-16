@@ -186,7 +186,7 @@ and they do not all travel:
   whatever the spawn said, justified by *"your prompt IS the command, so you authorized it by
   typing it"*. True of a hand-typed `verse task run`; false of a list a charter derived from
   entity state, which nobody typed. Scripted's ungatedness is a property of HOW THE TASK WAS
-  ADDRESSED rather than of the driver — [the rough edge in reference/tasks.md](../reference/tasks.md#who-you-addressed)
+  ADDRESSED rather than of the driver — [the rough edge in reference/tasks.md](../reference/tasks.md#the-rough-edge-who-you-addressed)
   arriving as a concrete fork — so `calls` respects the spawn's vector and the exemption stays on
   the CLI path where the argument holds.
 - **The answer-contract refusal should.** A scripted task fails a spawn carrying `answer:`
