@@ -79,10 +79,21 @@ func (p Path) KPath() string {
 // So every address that ever worked still names what it named — a ref is a ref — and the dot
 // spelling is what carries a field path.
 //
-// The field path is object fields only. `[0]` and `(scott)` address into an ARRAY, which a
-// write cannot reach — the store patches at a kpath of object fields (LogdStore.writePath) —
-// so they are refused here, where the message can say so, rather than rendered into a path the
-// substrate will reject. Reading one is a different matter and `verse state` does it.
+// The field path is object fields only. `[0]` and `(scott)` address into an ARRAY, and they are
+// refused here, where the message can say so.
+//
+// NOT because the substrate would reject them — that was the reason written here, and it is
+// wrong. logd patches an in-range index perfectly well; entity/arraywrite_test.go pins all
+// three answers it gives. The one that decides this is the third: an index PAST THE END is
+// ACCEPTED, and the log is then unreadable — every later read replays that patch and fails, so
+// the entity, its neighbours and the whole listing are gone, unrepairably, from one write.
+//
+// Whether an index is in range is a fact about the value at the moment of the write. A patch
+// does not check it, and verse cannot check it without a read whose answer the next write can
+// invalidate — losing that race costs the store rather than the write. So the shape is refused
+// whole, which also keeps `writePath` renderable as fields alone. Reading into an array is a
+// different matter: it navigates a materialized document here rather than at the substrate, and
+// `verse state` offers both spellings.
 func ParsePath(s string) (Path, error) {
 	if colonFirst(s) {
 		ref, err := ParseRef(s)
@@ -103,8 +114,9 @@ func ParsePath(s string) (Path, error) {
 		case p.FieldAll, p.IndexAll, p.SparseIndexAll:
 			return Path{}, fmt.Errorf("path %q: a wildcard names several places, and this names one", s)
 		default:
-			return Path{}, fmt.Errorf("path %q: an array element is not writable — the store "+
-				"patches at object fields, so address the field that holds the array", s)
+			return Path{}, fmt.Errorf("path %q: a write does not address an array element — an "+
+				"index that is out of range by the time it lands takes the log with it, and "+
+				"nothing here can tell. Address the field that holds the array", s)
 		}
 	}
 	if len(segs) < 3 {

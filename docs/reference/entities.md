@@ -90,9 +90,27 @@ array is merged by key and kept without the tag — which means an array put thr
 `verse state put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
-Writing into an array is a different matter and is not offered: the store patches at a kpath of
-object fields, so `state put` refuses `[0]` and `(scott)` rather than rendering a path the
-substrate will reject. Address the field that holds the array.
+Writing into an array is a different matter, and `state put` refuses `[0]` and `(scott)`.
+
+Not because the substrate cannot do it — it can, and what it does with the three paths that
+look alike is the whole reason:
+
+| a write at | what logd does |
+|---|---|
+| `votes[1].choice`, in range | patches it, and it reads back |
+| `votes(scott).choice`, keyed | refuses it; nothing is harmed |
+| `votes[2]` where two stand | **accepts it**, and the log is then unreadable |
+
+The third is why. It is not a bad write that fails but a bad write that succeeds: every later
+read replays that patch and dies on it, so the entity, its neighbours and the whole listing are
+gone — and no client can undo it, since removing the field and removing the entity are
+themselves patches appended after the bad one. Whether an index is in range is a fact about the
+value at the moment the write lands, which a patch does not check and verse cannot check without
+a read the next write can invalidate. Losing that race costs the store rather than the write, so
+the shape is refused whole. Address the field that holds the array.
+
+`entity/arraywrite_test.go` pins all three, the fatal one included, so this decision gets
+re-taken rather than inherited when go-tony stops accepting it.
 
 ### What the document does not cover
 

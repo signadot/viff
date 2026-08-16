@@ -517,8 +517,9 @@ func TestParsePathIsStringInverted(t *testing.T) {
 }
 
 // A write path is object fields. An array element is refused HERE, where the message can say
-// why, rather than rendered into a kpath the store will reject: the store patches at a kpath of
-// object fields, so there is nowhere for `(scott)` to land.
+// why. Not because the substrate would reject it — it does not, and arraywrite_test.go is what
+// it actually does — but because an index past the end is accepted and takes the log with it,
+// and no parser can know which side of the end an index will be on when it lands.
 func TestParsePathRefusesWhatAWriteCannotReach(t *testing.T) {
 	for _, bad := range []string{
 		"merge.proposal.X.votes(scott)",
