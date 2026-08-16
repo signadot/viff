@@ -13,23 +13,20 @@ import (
 	"github.com/signadot/tony-format/go-tony/parse"
 )
 
-// WHY A WRITE PATH IS OBJECT FIELDS, checked against the substrate rather than assumed.
-//
-// `ParsePath` refuses `[0]` and `(scott)`, and the reason written beside it used to be "the
-// store patches at a kpath of object fields, so the substrate would reject it". That is not
-// true, and these tests are what it is instead — three different answers to three paths that
-// look alike:
+// WHAT THE SUBSTRATE DOES WITH AN ARRAY PATH, checked rather than assumed — three answers to
+// three paths that look alike:
 //
 //	votes[0].choice     an IN-RANGE index: the patch lands and reads back
-//	votes(scott).choice a KEYED element:   refused by the substrate, no harm done
-//	votes[2] on 2       PAST THE END:      accepted, and then nothing in the store can be read
+//	votes(scott).choice a KEYED element:   refused at the commit, no harm done
+//	votes[2] on 2       PAST THE END:      refused at the patch, naming the length
 //
-// The third is why the refusal stays. It is not a bad write that fails; it is a bad write that
-// SUCCEEDS and takes the log with it. Whether an index is in range is a fact about the value at
-// the time of the write, which a patch does not check and verse cannot check without a read it
-// would then be racing. So the CLI refuses the whole shape, and these tests pin the premise —
-// including the fatal one, which will start failing when go-tony fixes it, at which point this
-// decision is worth re-taking rather than inheriting.
+// The third one is the history worth keeping. It used to be ACCEPTED, and the log was then
+// unreadable — a bad write that succeeded and took every later read with it. That is what
+// `ParsePath`'s refusal of array element writes was resting on, and it is fixed upstream as of
+// go-tony v0.0.149 (tony-format 7cdvym1fh12ksmd5g5n0), which is why the refusal now rests on
+// something else: `Path.Field` is a list of object field names, and offering `[0]` or `(scott)`
+// means teaching the write path — and its preconditions — to carry a kpath segment. That is a
+// feature, filed rather than assumed away.
 //
 // The READ side is unaffected and does offer both spellings: it navigates a materialized
 // document in Go (entity.Nest), not a kpath handed to the substrate.
@@ -73,17 +70,19 @@ func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 	}
 }
 
-// AND THE ONE THAT MATTERS. An index PAST THE END is accepted by the substrate and poisons the
-// log: every subsequent read replays that patch and fails, so the entity, its neighbours and
-// the whole listing are gone — from a client that only ever wrote one field.
+// AND THE ONE THE REFUSAL RESTS ON. An index PAST THE END is refused, and refused at the write
+// — where the array's length is known and a caller can be told.
 //
-// It cannot be undone from here. A fresh session replays the same log; deleting the field and
-// deleting the entity are themselves patches appended after the bad one, and the read still
-// dies on the way past it.
+// It was not always. Until go-tony v0.0.149 this patch was ACCEPTED and the log was then
+// unreadable: every later read replayed it and failed, so the entity, its neighbours and the
+// whole listing were gone, unrepairably, from one write (tony-format 7cdvym1fh12ksmd5g5n0). The
+// test that pinned that is this one, inverted — it skipped on a refusal and said to re-take the
+// decision, which is what happened when the fix landed.
 //
-// This is a go-tony defect, not a verse policy, and it is pinned here because a policy of ours
-// rests on it: `ParsePath` refuses array paths, so verse itself can never emit this patch.
-func TestAnArrayPatchPastTheEndPoisonsTheLog(t *testing.T) {
+// Kept, because a promise this cheap to check should not be inherited: the reason verse refuses
+// array element writes is no longer "it would take the store with it", and if this ever starts
+// being accepted again the reason has to be re-taken a second time.
+func TestAnArrayPatchPastTheEndIsRefused(t *testing.T) {
 	addr := startLogd(t)
 	s := openStoreAt(t, addr)
 	ref := RefAt("demo", "pr", "1")
@@ -96,35 +95,25 @@ func TestAnArrayPatchPastTheEndPoisonsTheLog(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// Two elements stand there; this addresses the third.
-	if _, err := s.sess.Patch(ctx, s.refPath(ref)+".votes[2]", mustParseNode(t, `{by: ana}`)); err != nil {
-		t.Skipf("the substrate now refuses a patch past the end (%v) — good news, and the "+
-			"reasoning in ParsePath and reference/entities.md should be re-taken", err)
+	_, err := s.sess.Patch(ctx, s.refPath(ref)+".votes[2]", mustParseNode(t, `{by: ana}`))
+	if err == nil {
+		t.Fatal("a patch past the end of an array was accepted — the log is now unreadable, and " +
+			"the reasoning in ParsePath and reference/entities.md rests on it not being")
+	}
+	if !strings.Contains(err.Error(), "past the end") {
+		t.Errorf("the refusal does not say what is wrong: %v", err)
 	}
 
-	if _, _, err := s.Get(ref); err == nil {
-		t.Fatal("the entity still reads — the defect this pins is fixed; re-take the refusal")
+	// And NOTHING IS DAMAGED, which is the half that changed: the entity reads, its neighbour
+	// reads, and the listing every read plane is built on still answers.
+	if got := renderPayload(t, s, ref); !strings.Contains(got, "choice: approve") {
+		t.Errorf("the refused patch changed the entity: %s", got)
 	}
-	// The blast radius is the LOG, not the entity: a neighbour nothing touched is unreadable
-	// too, and the listing every read plane is built on comes back empty.
-	if _, _, err := s.Get(other); err == nil {
-		t.Error("a neighbour entity still reads; the damage is narrower than this test claims")
+	if _, ok, err := s.Get(other); err != nil || !ok {
+		t.Errorf("a neighbour entity is unreadable after a refused patch: ok=%v err=%v", ok, err)
 	}
-	if n := len(s.List(func(Ref) bool { return true })); n != 0 {
-		t.Errorf("List saw %d entities; the damage is narrower than this test claims", n)
-	}
-	// And it is not repairable from a client: not by a new session, not by removing the field,
-	// not by removing the entity.
-	if _, _, err := openStoreAt(t, addr).Get(ref); err == nil {
-		t.Error("a fresh session reads it; the log is not poisoned after all")
-	}
-	if _, _, err := s.Write(Write{At: Path{Ref: ref, Field: []string{"votes"}}}); err != nil {
-		t.Fatalf("removing the field: %v", err)
-	}
-	if _, _, err := s.Write(Write{At: ref.At()}); err != nil {
-		t.Fatalf("removing the entity: %v", err)
-	}
-	if _, _, err := s.Get(ref); err == nil {
-		t.Error("removing the entity repaired the log; say so rather than calling it fatal")
+	if n := len(s.List(func(Ref) bool { return true })); n != 2 {
+		t.Errorf("List saw %d entities, want 2 — the log did not survive a refused patch", n)
 	}
 }
 

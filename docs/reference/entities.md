@@ -124,27 +124,25 @@ array is merged by key and kept without the tag — which means an array put thr
 `verse state put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
-Writing into an array is a different matter, and `state put` refuses `[0]` and `(scott)`.
-
-Not because the substrate cannot do it — it can, and what it does with the three paths that
-look alike is the whole reason:
+Writing into an array is a different matter, and `state put` refuses `[0]` and `(scott)` —
+though not for the reason it used to.
 
 | a write at | what logd does |
 |---|---|
 | `votes[1].choice`, in range | patches it, and it reads back |
-| `votes(scott).choice`, keyed | refuses it; nothing is harmed |
-| `votes[2]` where two stand | **accepts it**, and the log is then unreadable |
+| `votes(scott).choice`, keyed | refuses it at the commit; nothing is harmed |
+| `votes[2]` where two stand | refuses it at the patch, naming the length |
 
-The third is why. It is not a bad write that fails but a bad write that succeeds: every later
-read replays that patch and dies on it, so the entity, its neighbours and the whole listing are
-gone — and no client can undo it, since removing the field and removing the entity are
-themselves patches appended after the bad one. Whether an index is in range is a fact about the
-value at the moment the write lands, which a patch does not check and verse cannot check without
-a read the next write can invalidate. Losing that race costs the store rather than the write, so
-the shape is refused whole. Address the field that holds the array.
+The third row is new, and it is why this section is shorter than it was. Until go-tony v0.0.149
+a patch past the end was **accepted**, and the log was unreadable ever after — a bad write that
+succeeded and took every later read of the whole store with it, unrepairably. That hazard was
+what the refusal rested on; it is fixed upstream, and a refused patch now leaves everything
+standing.
 
-`entity/arraywrite_test.go` pins all three, the fatal one included, so this decision gets
-re-taken rather than inherited when go-tony stops accepting it.
+What is left is ordinary work: a write path is a ref plus a list of object FIELD names, and
+offering an element means teaching that list — and the preconditions built from it — to carry a
+kpath segment. So it stays refused for now, and `entity/arraywrite_test.go` pins all three
+answers so the reasoning is checked at each go-tony bump rather than inherited.
 
 ### What the document does not cover
 

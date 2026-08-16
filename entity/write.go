@@ -85,18 +85,21 @@ func (p Path) KPath() string {
 // The field path is object fields only. `[0]` and `(scott)` address into an ARRAY, and they are
 // refused here, where the message can say so.
 //
-// NOT because the substrate would reject them — that was the reason written here, and it is
-// wrong. logd patches an in-range index perfectly well; entity/arraywrite_test.go pins all
-// three answers it gives. The one that decides this is the third: an index PAST THE END is
-// ACCEPTED, and the log is then unreadable — every later read replays that patch and fails, so
-// the entity, its neighbours and the whole listing are gone, unrepairably, from one write.
+// THE REASON HAS CHANGED, and the old one is worth knowing because it was load-bearing twice.
+// It was "the substrate would reject them", which was simply wrong — logd patches an in-range
+// index perfectly well. Then it was the real hazard: an index PAST THE END was ACCEPTED and the
+// log was unreadable ever after, so a bad write did not fail, it succeeded and took every later
+// read with it. That is fixed upstream (go-tony v0.0.149, tony-format 7cdvym1fh12ksmd5g5n0):
+// the patch is now refused, naming the length, and nothing is damaged.
 //
-// Whether an index is in range is a fact about the value at the moment of the write. A patch
-// does not check it, and verse cannot check it without a read whose answer the next write can
-// invalidate — losing that race costs the store rather than the write. So the shape is refused
-// whole, which also keeps `writePath` renderable as fields alone. Reading into an array is a
-// different matter: it navigates a materialized document here rather than at the substrate, and
-// `verse state` offers both spellings.
+// What is left is ordinary work rather than a hazard. A write path is `Ref` + a list of object
+// FIELD NAMES, and offering an element means teaching that list to carry a kpath segment —
+// through `writePath`, through `segments()`, and through the preconditions built from it. So
+// this stays refused until somebody does that, and entity/arraywrite_test.go pins the three
+// answers the substrate gives so the reasoning is checked rather than inherited.
+//
+// Reading into an array is a different matter and is offered: it navigates a materialized
+// document here rather than at the substrate, and `verse state` takes both spellings.
 func ParsePath(s string) (Path, error) {
 	if colonFirst(s) {
 		ref, err := ParseRef(s)
