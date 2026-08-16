@@ -41,7 +41,12 @@ flags for pointing at a store or a task runner you already have, are in
 ## 2. Entities
 
 An entity is anything the flow refers to — a PR, a build, a person, a CI status — addressed
-by a `system:kind:id` triple and carrying a document. That is the whole data model.
+by three segments (system, kind, id) and carrying a document. That is the whole data model.
+
+At a command you type those segments as separate words — `demo pr 1` — and in a document they
+are written with `:` between them, `demo:pr:1`. One address, and
+[§Addressing](reference/entities.md#addressing) is the whole grammar; you can read this section
+without it.
 
 ```sh
 ./scripts/seed-demo.sh --clean   # if you ran it above: its rules react to what we seed next
@@ -63,7 +68,8 @@ verse state --if '{stage: !or [open, merged]}'      # …an operator, not just e
 verse state --if '{urgent: true}' --if-at labels    # …rooted inside the payload
 verse state demo.pr --trim '{stage: null}'          # …and how much of each entity to print
 verse state --paths demo.pr                         # just the addresses
-verse state get demo:pr:1                           # …or by ref, which is the same address
+verse state get demo pr 1                           # one entity, whole
+verse state get demo:pr:1                           # …the same address written as a ref
 ```
 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse state` answers it at a
@@ -115,11 +121,11 @@ A write can also refuse to happen. Each condition is checked *with* the write, i
 the store, so nothing can change in between:
 
 ```sh
-verse state put --create demo:pr:1  '{stage: open}'   # only if nothing is there yet → refused
-verse state put --update demo:pr:99 '{stage: open}'   # only if something is        → refused
+verse state put --create demo pr 1  '{stage: open}'   # only if nothing is there yet → refused
+verse state put --update demo pr 99 '{stage: open}'   # only if something is        → refused
 # write refused: a condition did not hold
 
-verse state put --if '{stage: merged}' demo:pr:4 '{owner: dee}'   # only if it still looks like this
+verse state put --if '{stage: merged}' demo pr 4 '{owner: dee}'   # only if it still looks like this
 ```
 
 That is how two writers advance one entity without losing each other's fields — CAS spelled

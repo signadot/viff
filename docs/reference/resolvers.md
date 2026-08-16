@@ -136,7 +136,7 @@ verse resolver add <file>                       # install one (- = stdin)
 verse resolver show   verse:resolvers:security:review # or security:review
 verse resolver remove verse:resolvers:security:review
 
-verse state resolvers.instance                  # who is watching what
+verse state verse.resolvers.instance            # who is watching what
 verse gate                                      # the docket, resolver-owned questions included
 verse gate approve <id> --as <who> [--override] # answer, or answer over an exclusive owner
 ```

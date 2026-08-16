@@ -54,6 +54,32 @@ second rather than reading it as a step.
 In a charter, `!verse-path [demo pr 1]` is the steps spelling: the tag is required, because a
 bare list where an address belongs would be a second thing a bare list can mean.
 
+### The reserved root
+
+One name at the front is not a system: **`verse` is the reserved root**, and everything verse
+keeps about its own running lives under it ([below](#two-halves-one-tree)). It is a segment like
+any other in all three spellings, so an address in verse's half is FOUR segments rather than
+three:
+
+```sh
+verse state get verse task instance run-a1b2       # steps
+verse state get verse:task:instance:run-a1b2       # …as a ref
+verse state verse.task.instance                    # …and as a path, at whatever depth
+```
+
+Two consequences worth knowing before they surprise you:
+
+- **No world system may be called `verse`.** `verse:x:1` does not parse as an entity — it reads
+  as the root plus two segments, and says so: *"an address starts with system.kind.id … and this
+  names 3 of the 4"*.
+- **The address parses; the WRITE is refused.** `verse state put verse task instance x '{…}'` is
+  a well-formed address and a 403: what verse writes about itself is written by the verbs that
+  own it (`trigger add`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
+
+In a charter, the same segment is a `root` dimension on a match — `{root: verse, system: task,
+kind: instance}` — and an unwritten `root` means the world's half, so a rule that means to watch
+verse's own state says so.
+
 **What takes what:**
 
 | | |
@@ -231,9 +257,9 @@ Each condition is checked *with* the write, in one step at the store, so nothing
 in between. A refused write says so, leaves the entity alone, and exits non-zero.
 
 ```sh
-verse state put --create demo:pr:1 '{stage: open}'                # only if nothing is there yet
-verse state put --update demo:pr:1 '{stage: open}'                # only if something is
-verse state put --if '{stage: draft}' demo:pr:2 '{stage: open}'   # only if it still looks like this
+verse state put --create demo pr 1 '{stage: open}'                # only if nothing is there yet
+verse state put --update demo pr 1 '{stage: open}'                # only if something is
+verse state put --if '{stage: draft}' demo pr 2 '{stage: open}'   # only if it still looks like this
 # write refused: a condition did not hold
 ```
 

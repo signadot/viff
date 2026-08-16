@@ -232,8 +232,8 @@ re-fire idempotent and what `verse flow demo:pr:1` addresses.
 `verse:task:instance:<id>` is therefore the LATEST run, and each run has a record of its own:
 
 ```sh
-verse state get 'verse:task:run:<id>@<occurrence>'
-verse state --if '{flow: "demo:pr:1"}' task.run
+verse state get verse task run '<id>@<occurrence>'
+verse state --if '{flow: "demo:pr:1"}' verse.task.run
 ```
 
 `occurrence` is the store revision the run is about — the commit that woke the firing, or the
