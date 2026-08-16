@@ -358,3 +358,24 @@ func TestScopedWatchSeesADeleteOfAnInheritedEntity(t *testing.T) {
 			ev.Ref, ev.Op, ref)
 	}
 }
+
+// A watch is addressed by a PREFIX of an address, and the (system, kind) pair is one way of
+// spelling one. This pins the equivalence rather than leaving it to the reader: the same slice
+// arrives whether the whole-system watch is asked for as one segment or as two with an empty
+// second, which is the compatibility the variadic signature is carrying.
+func TestWatchSubtreeTakesAPrefix(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "9"}
+	set(t, s, ref, Obj{"stage": "open"}.Payload())
+
+	for _, prefix := range [][]string{{"demo"}, {"demo", ""}} {
+		ch, unsub, err := s.WatchSubtree(prefix...)
+		if err != nil {
+			t.Fatalf("watch %q: %v", prefix, err)
+		}
+		if ev := reader(ch).next(t, "the replay"); ev.Ref != ref {
+			t.Errorf("watch %q replayed %s, want %s", prefix, ev.Ref, ref)
+		}
+		unsub()
+	}
+}

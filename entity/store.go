@@ -83,9 +83,14 @@ type Store interface {
 	// cross-boundary query cannot stay a closure — but it is what the CLI's listings
 	// are written against today.
 	List(pred func(Ref) bool) []Entity
-	// WatchSubtree observes exactly one (system,kind) slice — or a whole system when kind
-	// is "" — rather than the whole store. It is what a scoped trigger watches, so that
-	// observation is precisely what the trigger matches and no root watch is held.
+	// WatchSubtree observes exactly the slice standing at a prefix of an address — one
+	// (system, kind), or a whole system given the system alone — rather than the whole store.
+	// It is what a scoped trigger watches, so that observation is precisely what the trigger
+	// matches and no root watch is held.
+	//
+	// A PREFIX rather than a (system, kind) pair, because that is what it always was: the
+	// implementation built a path out of the two and the second was optional. A trailing
+	// empty segment is dropped, so the pair form still says what it said.
 	//
 	// Unlike Observe it is LEVEL-TRIGGERED at the open: it first replays what already
 	// stands in the slice as Set events, then streams changes. A rule is a statement about
@@ -97,7 +102,7 @@ type Store interface {
 	// edge — a value that appeared and disappeared across two commits of one burst would
 	// leave no trace in the merged diff — and a consumer cannot recover a transition the
 	// stream never reported.
-	WatchSubtree(system, kind string) (<-chan Commit, func(), error)
+	WatchSubtree(prefix ...string) (<-chan Commit, func(), error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
 	// This is the seam for local-dev / sandbox federation — a developer's working tree

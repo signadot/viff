@@ -622,7 +622,7 @@ func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
 	}
 	// get names ONE place, so it wants a path that reaches one. A shorter path describes a
 	// slice, and the bare read is what answers those.
-	if entity.AtDepth(kp) < 3 {
+	if entity.AtDepth(kp) < entity.Depth {
 		return fmt.Errorf("%w: state get names one place — %q names a slice, so ask `verse state %s`",
 			cli.ErrUsage, args[0], at)
 	}

@@ -27,10 +27,6 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
-// entityDepth is how many path segments name an entity: system, kind, id. Below it a path is
-// inside a payload, which is the store's business only insofar as it holds it.
-const entityDepth = 3
-
 // Doc is the verse's state at a path: the subtree standing there, verbatim.
 //
 // It wraps a node rather than being one because it is a WIRE TYPE — the body of a read — and
@@ -233,17 +229,20 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 	var rec func(n *ir.Node, seen []string)
 	rec = func(n *ir.Node, seen []string) {
 		if len(seen) == wild {
-			var ref Ref
+			// The path fixed some segments and the document carries the rest, in order:
+			// interleaving them is what turns a leaf into the address it stands at.
+			segs := make([]string, 0, len(fixed))
 			next := 0
-			for i, dst := range []*string{&ref.System, &ref.Kind, &ref.ID} {
-				if fixed[i] != "" {
-					*dst = fixed[i]
-					continue
+			for _, f := range fixed {
+				if f == "" {
+					f = seen[next]
+					next++
 				}
-				*dst = seen[next]
-				next++
+				segs = append(segs, f)
 			}
-			out = append(out, Entity{Ref: ref, Payload: n})
+			if ref, ok := RefOf(segs); ok {
+				out = append(out, Entity{Ref: ref, Payload: n})
+			}
 			return
 		}
 		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
@@ -259,18 +258,19 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 
 // levels splits a path into the entity levels it fixes and the number it leaves for the
 // document to carry. ok is false for a path that cannot address entities at all.
-func levels(at *kpath.KPath) (fixed [entityDepth]string, wild int, ok bool) {
+func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {
+	fixed = make([]string, Depth)
 	depth := 0
 	for kp := at; kp != nil; kp = kp.Next {
-		if depth >= entityDepth {
-			return fixed, 0, false // inside a payload: no entities down here
+		if depth >= Depth {
+			return nil, 0, false // inside a payload: no entities down here
 		}
 		switch {
 		case kp.Field != nil:
 			fixed[depth] = *kp.Field
 		case kp.FieldAll: // stays empty: the document carries it
 		default:
-			return fixed, 0, false // an index or a keyed element is not an entity level
+			return nil, 0, false // an index or a keyed element is not an entity level
 		}
 		depth++
 	}
@@ -291,16 +291,16 @@ func levels(at *kpath.KPath) (fixed [entityDepth]string, wild int, ok bool) {
 // one answers a document and the other a stream — they narrow by this, and by the same
 // Pattern, and a test can say so (TestStateAndWatchNameTheSameSet).
 //
-// Only the first three segments are asked about: below the id a path is inside a payload, and
+// Only the segments an address HAS are asked about: below them a path is inside a payload, and
 // an entity is still the thing a change is about.
 func MatchesAt(ref Ref, at *kpath.KPath) bool {
-	dims := [entityDepth]string{ref.System, ref.Kind, ref.ID}
+	segs := ref.Segs()
 	i := 0
-	for kp := at; kp != nil && i < entityDepth; kp, i = kp.Next, i+1 {
+	for kp := at; kp != nil && i < len(segs); kp, i = kp.Next, i+1 {
 		switch {
 		case kp.FieldAll: // every key at this level
 		case kp.Field != nil:
-			if *kp.Field != dims[i] {
+			if *kp.Field != segs[i] {
 				return false
 			}
 		default:

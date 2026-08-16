@@ -248,7 +248,11 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 // the one place the two roots are chosen between, and reads/writes route by the rendered
 // path, so every caller keeps addressing a mounted slice as an ordinary ref.
 func (s *LogdStore) refPath(ref Ref) string {
-	return s.rootFor(ref) + "." + seg(ref.System) + "." + seg(ref.Kind) + "." + seg(ref.ID)
+	path := s.rootFor(ref)
+	for _, sg := range ref.Segs() {
+		path += "." + seg(sg)
+	}
+	return path
 }
 
 // rootFor picks the top-level segment a ref renders under: MountRoot for a
@@ -832,16 +836,19 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 // the engine restarts over a verse still in that state. The latch idiom answers it — match
 // a field the action advances (see docs/change-events.md) — and it is the same discipline a
 // re-entry already needs.
-func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), error) {
+func (s *LogdStore) WatchSubtree(prefix ...string) (<-chan Commit, func(), error) {
+	// A trailing empty segment names no level and is dropped, which is the two-argument
+	// (system, kind) shape still speaking: `WatchSubtree("demo", "")` is a whole-system watch
+	// and always was.
+	for len(prefix) > 0 && prefix[len(prefix)-1] == "" {
+		prefix = prefix[:len(prefix)-1]
+	}
 	// The path as segments as well as a kpath: the two watch event shapes are rooted
 	// differently and the document has to hold one of them (see stateDoc).
-	segs := []string{s.root, system}
-	if kind != "" {
-		segs = append(segs, kind)
-	}
-	path := seg(s.root) + "." + seg(system)
-	if kind != "" {
-		path += "." + seg(kind)
+	segs := append([]string{s.root}, prefix...)
+	path := seg(s.root)
+	for _, p := range prefix {
+		path += "." + seg(p)
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	w, err := s.establish(ctx, path, &libctl.WatchOptions{})
@@ -910,7 +917,7 @@ func (s *LogdStore) WatchSubtree(system, kind string) (<-chan Commit, func(), er
 		// commit: this watch reports one subtree, and a consumer of it has no use for the
 		// revisions where its slice stood still.
 		emitDiff := func() bool {
-			cur := entitiesFromDoc(doc, s.root, system, kind)
+			cur := entitiesFromDoc(doc, s.root, prefix)
 			var changes []Event
 			for ref, p := range cur {
 				// ir.Node.DeepEqual, NOT reflect.DeepEqual. A node carries structural
@@ -1063,37 +1070,29 @@ func stateDoc(at *ir.Node, segs []string) *ir.Node {
 // WatchSubtree maintains by applying watch events), keyed by full Ref. It navigates to
 // the watched (system[,kind]) node and walks the remaining depth to the entity leaves —
 // pure structure, no diff interpretation.
-func entitiesFromDoc(doc *ir.Node, root, system, kind string) map[Ref]Payload {
-	node := childByKey(childByKey(doc, root), system)
-	depth := 2 // kind, id
-	if kind != "" {
-		node = childByKey(node, kind)
-		depth = 1 // id
+func entitiesFromDoc(doc *ir.Node, root string, prefix []string) map[Ref]Payload {
+	node := childByKey(doc, root)
+	for _, p := range prefix {
+		node = childByKey(node, p)
 	}
 	out := map[Ref]Payload{}
 	if node == nil || node.Type != ir.ObjectType {
 		return out
 	}
-	walkLeaves(node, depth, func(segs []string, v *ir.Node) {
+	// What the watch fixed, plus what the document still carries below it, is the address —
+	// so the remaining depth is a subtraction rather than a case per watch shape.
+	walkLeaves(node, Depth-len(prefix), func(segs []string, v *ir.Node) {
 		// A missing leaf is nothing; a null one is an entity holding null. The document here is
 		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
 		// `!delete` by removing the key — so absence never reaches this as a value.
 		if v == nil {
 			return
 		}
-		out[refAt(system, kind, segs)] = nodeToPayload(v)
+		if ref, ok := RefOf(append(append([]string{}, prefix...), segs...)); ok {
+			out[ref] = nodeToPayload(v)
+		}
 	})
 	return out
-}
-
-// refAt builds the entity Ref for a leaf found `depth` levels below the watched node:
-// with kind set the single seg is the id; for a whole-system watch the two segs are
-// kind then id.
-func refAt(system, kind string, segs []string) Ref {
-	if kind != "" {
-		return Ref{System: system, Kind: kind, ID: segs[0]}
-	}
-	return Ref{System: system, Kind: segs[0], ID: segs[1]}
 }
 
 // walkLeaves descends exactly `depth` object levels from node, invoking fn with the
@@ -1648,12 +1647,18 @@ func childByKey(node *ir.Node, key string) *ir.Node {
 }
 
 // walkEntityLeaves descends a node rooted at the verse subtree (its top-level fields are
-// systems) exactly three object levels — system, kind, id — and calls fn at each entity leaf.
-// It is walkLeaves at the depth the entity namespace has, and the two walks below are what
-// they do with the leaf.
+// systems) to the depth an address has, and calls fn at each entity leaf. It is walkLeaves at
+// the depth the entity namespace has, and the two walks below are what they do with the leaf.
+//
+// A leaf whose segments do not name an entity is SKIPPED rather than passed on as a Ref built
+// from whatever was there. The walk descends a fixed number of levels through whatever object
+// structure it finds, so "the thing at this depth" and "an address" are two claims, and only
+// RefOf makes the second one.
 func walkEntityLeaves(node *ir.Node, fn func(ref Ref, n *ir.Node)) {
-	walkLeaves(node, 3, func(segs []string, v *ir.Node) {
-		fn(Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, v)
+	walkLeaves(node, Depth, func(segs []string, v *ir.Node) {
+		if ref, ok := RefOf(segs); ok {
+			fn(ref, v)
+		}
 	})
 }
 

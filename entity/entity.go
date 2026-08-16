@@ -51,6 +51,42 @@ func ParseRef(s string) (Ref, error) {
 	return Ref{System: parts[0], Kind: parts[1], ID: parts[2]}, nil
 }
 
+// Segs is a ref's segments, in order — the form everything that WALKS an address speaks,
+// as against the three names a caller writes.
+//
+// The distinction is the point. A store path, a subtree watch, a document's key levels and
+// the entity a document's leaf stands at are all "a sequence of segments", and each of them
+// used to say so by naming system, kind and id — which is how the arity came to be stated in
+// a dozen places instead of one. They ask here now, so the arity is `Depth`'s business and
+// theirs is the walk.
+func (r Ref) Segs() []string { return []string{r.System, r.Kind, r.ID} }
+
+// RefOf is Segs' inverse: the ref standing at these segments.
+//
+// It reports whether the segments name an entity at all, which today means exactly three of
+// them, none empty — the same question ParseRef answers about a string. A caller that has
+// walked to a leaf has segments rather than a rendering, and rebuilding the string for
+// ParseRef to take apart again is how an id containing a colon comes back as a different
+// entity than the one that was found.
+func RefOf(segs []string) (Ref, bool) {
+	if len(segs) != Depth {
+		return Ref{}, false
+	}
+	for _, s := range segs {
+		if s == "" {
+			return Ref{}, false
+		}
+	}
+	return Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, true
+}
+
+// Depth is how many segments name an entity.
+//
+// It is the ONE place the arity is written down. Everything else asks Segs, RefOf or this
+// constant, which is what makes an address of another depth a change to this line and its
+// grammar rather than to every walk in the tree.
+const Depth = 3
+
 // Entity is a Ref plus its payload — one node of the verse. The payload is the small
 // metadata the entity carries (not the underlying system's contents); stages and other
 // lifecycle facts are conventions on it — a "stage" field a trigger matches and an action

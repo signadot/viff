@@ -119,11 +119,15 @@ func ParsePath(s string) (Path, error) {
 				"nothing here can tell. Address the field that holds the array", s)
 		}
 	}
-	if len(segs) < 3 {
+	if len(segs) < Depth {
 		return Path{}, fmt.Errorf("path %q: an address starts with system.kind.id (or the ref "+
-			"system:kind:id), and this names %d of the 3", s, len(segs))
+			"system:kind:id), and this names %d of the %d", s, len(segs), Depth)
 	}
-	return Path{Ref: Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, Field: segs[3:]}, nil
+	ref, ok := RefOf(segs[:Depth])
+	if !ok {
+		return Path{}, fmt.Errorf("path %q: its first %d segments do not name an entity", s, Depth)
+	}
+	return Path{Ref: ref, Field: segs[Depth:]}, nil
 }
 
 // colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.

@@ -1263,7 +1263,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if doc.Node == nil {
-		if entity.AtDepth(sel.at) >= 3 {
+		if entity.AtDepth(sel.at) >= entity.Depth {
 			codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
 				"nothing stands at %s", r.URL.Query().Get("at")))
 			return
