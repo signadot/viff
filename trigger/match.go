@@ -111,6 +111,7 @@ type Match map[string]any
 // is not a string dimension — see the note on Match.
 const (
 	mKeyAt     = "at"   // the whole address prefix as one path: `demo.pr`, `verse.gate.question`
+	mKeyPath   = "path" // the address as a PATH of any depth: `[verse-dev, drift, head, "*"]`
 	mKeyRoot   = "root" // which half of the verse: empty is the world's, `verse` is verse's own
 	mKeySystem = "system"
 	mKeyKind   = "kind"
@@ -123,7 +124,8 @@ const (
 // (docs/trigger-model.md), an object is classified as a match or as a formula tag
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
-	mKeyAt: true, mKeyRoot: true, mKeySystem: true, mKeyKind: true, mKeyID: true, mKeyValue: true,
+	mKeyAt: true, mKeyPath: true, mKeyRoot: true, mKeySystem: true, mKeyKind: true,
+	mKeyID: true, mKeyValue: true,
 }
 
 // removedKeys are dimensions a match once had, named so a charter carrying one fails with an
@@ -378,12 +380,18 @@ func (m Match) pattern() (entity.Pattern, error) {
 	if err := m.Validate(); err != nil {
 		return entity.Pattern{}, err
 	}
-	return entity.Pattern{
+	p := entity.Pattern{
 		Root:      m.Root(),
 		System:    m.System(),
 		Kind:      m.Kind(),
 		Predicate: m.Predicate(),
-	}, nil
+	}
+	if m.Deep() {
+		// The path is the authority when there is one: the three dimensions cannot hold an
+		// address this long, and a Pattern carrying both would have two answers.
+		p.Path = m.Segs()
+	}
+	return p, nil
 }
 
 // matchID applies the `id` dimension. See matchDim; kept as its own name because the id is
@@ -549,6 +557,9 @@ func present(n *ir.Node) (*ir.Node, bool) { return n, n != nil }
 // is a ref string. `value` is not consulted here: a caller wanting a payload predicate must
 // read the entity and use MatchEvent.
 func (m Match) MatchRef(ref entity.Ref) bool {
+	if m.Deep() {
+		return entity.Pattern{Path: m.Segs()}.MatchRef(ref)
+	}
 	if s := m.System(); s != "" && s != ref.System() {
 		return false
 	}
@@ -604,9 +615,20 @@ func ParseSteps(steps []string) (Match, error) {
 	if len(steps) > 0 && strings.TrimSpace(steps[0]) == entity.VerseRoot {
 		keys = append([]string{mKeyRoot}, keys...)
 	}
+	// DEEPER THAN THE THREE DIMENSIONS is a PATH, and the dimensions have nowhere to put it —
+	// so it is carried whole rather than truncated or refused. `{system, kind, id}` stays the
+	// reading of the first three, which is every address written so far; `path` is the general
+	// one, and Match.Segs is where the two meet. See docs/working/entity-tree.md.
 	if len(steps) > len(keys) {
-		return nil, fmt.Errorf("address %q has %d steps; an address has at most %d (%s)",
-			strings.Join(steps, " "), len(steps), len(keys), strings.Join(keys, ", "))
+		out := make([]string, 0, len(steps))
+		for i, seg := range steps {
+			seg = strings.TrimSpace(seg)
+			if seg == "" {
+				return nil, fmt.Errorf("empty step %d in address %q", i+1, strings.Join(steps, " "))
+			}
+			out = append(out, seg)
+		}
+		return Match{mKeyPath: out}, nil
 	}
 	m := Match{}
 	for i, key := range keys {
@@ -624,6 +646,37 @@ func ParseSteps(steps []string) (Match, error) {
 	}
 	return m, nil
 }
+
+// Segs is the address a match names, as segments — the general reading that `path` carries
+// directly and `{root, system, kind, id}` is the first three (or four) of.
+//
+// A `*` is a named wildcard rather than an absence, because a path has to say which POSITION is
+// unconstrained: `[demo, "*", 1]` and `[demo, 1]` are different questions, where the dimension
+// spelling could leave `kind` unset and mean the first. An unset dimension is dropped, so a
+// short address stays short.
+func (m Match) Segs() []string {
+	if p, ok := m[mKeyPath].([]string); ok {
+		return p
+	}
+	var out []string
+	if r := m.Root(); r != "" {
+		out = append(out, r)
+	}
+	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
+		v := m.str(k)
+		if v == "" && m.dim(k) == nil {
+			break // an unset dimension ends the address: what follows it is unconstrained too
+		}
+		if v == "" {
+			v = "*" // an operator: a position this cannot spell as a literal
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// Deep reports whether the match names an address deeper than the three dimensions can hold.
+func (m Match) Deep() bool { _, ok := m[mKeyPath].([]string); return ok }
 
 // prefix is the address levels a match fixes above the id: its root when it names one, then
 // system and kind. It is what a watch path and a store prefilter are built from, so the two
@@ -730,6 +783,21 @@ func (s Subtree) covers(ref entity.Ref) bool {
 
 // subtreeOf is the subtree a match reads.
 func subtreeOf(m Match) Subtree {
+	if m.Deep() {
+		// The watch is the path UP TO ITS FIRST WILDCARD, and never the leaf itself: a subtree
+		// watch at the entity would see that entity's own changes and not its appearance, which
+		// is what the three-dimension reading avoids by watching (root, system, kind) and
+		// leaving the id to the pattern.
+		segs := m.Segs()
+		cut := len(segs) - 1
+		for i, seg := range segs {
+			if seg == "*" && i < cut {
+				cut = i
+				break
+			}
+		}
+		return SubtreeAt(segs[:cut]...)
+	}
 	return SubtreeAt(append(rootSegs(m.Root()), m.System(), m.Kind())...)
 }
 

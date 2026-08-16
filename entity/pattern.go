@@ -26,6 +26,14 @@ type Pattern struct {
 	Root   string `tony:"field=root,omitzero"`
 	System string `tony:"field=system"`
 	Kind   string `tony:"field=kind,omitzero"`
+	// Path is the address as a PATH — the general form the three above are a reading of, and
+	// the only one that can name a place deeper than three segments (`verse-dev.drift.head`).
+	//
+	// When it is set it is the authority and Root/System/Kind are ignored; when it is not,
+	// they are, which is every pattern written before addresses became trees. It is not on the
+	// wire (`tony:"-"`) because the charter grammar's spelling of it is `trigger.Match`'s
+	// `path:`, and a Pattern is what that compiles TO.
+	Path []string `tony:"-"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
 	// it. Create and update are not distinguished (see Op) — express "only the
@@ -130,10 +138,32 @@ func (p Pattern) MatchEntity(e Entity) bool {
 // that lost its system must not quietly become a whole-verse sweep. Here an empty dimension
 // is an operator declining to filter, which is the opposite intent.
 func (p Pattern) MatchRef(ref Ref) bool {
+	if len(p.Path) > 0 {
+		return p.pathCovers(ref)
+	}
 	return (p.Root == ref.Root()) &&
 		(p.System == "" || p.System == ref.System()) &&
 		(p.Kind == "" || p.Kind == ref.Kind())
 }
+
+// pathCovers reports whether an address is at or under the pattern's path. A segment of `*`
+// matches any one segment, which is the same wildcard the three-dimension spelling has.
+func (p Pattern) pathCovers(ref Ref) bool {
+	segs := ref.Segs()
+	if len(segs) < len(p.Path) {
+		return false
+	}
+	for i, want := range p.Path {
+		if want != "*" && want != segs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Depth is how many segments the pattern names, which is the depth of the entities it selects.
+// Zero means it names none, and the three-dimension reading decides.
+func (p Pattern) Depth() int { return len(p.Path) }
 
 // Select returns the refs of every stored entity the pattern picks: entities of
 // (System, Kind) whose payload satisfies every Fields entry.
@@ -148,9 +178,13 @@ func (p Pattern) MatchRef(ref Ref) bool {
 // addressing it by identity, not selecting from what exists (see trigger.Match.Select). If you
 // name a retiring entity, you meant that one.
 func (p Pattern) Select(r Reader) []Ref {
-	ents := r.List(func(ref Ref) bool {
+	pick := func(ref Ref) bool {
 		return ref.System() == p.System && (p.Kind == "" || ref.Kind() == p.Kind)
-	})
+	}
+	if len(p.Path) > 0 {
+		pick = p.pathCovers
+	}
+	ents := r.List(pick)
 	skipVanishing := !namesVanishing(p.Predicate)
 	out := make([]Ref, 0, len(ents))
 	for _, e := range ents {
