@@ -146,20 +146,23 @@ than about a string, and nothing has to re-parse to ask a question about it.
 **A rule keeps the comments it was written with**, so the record carries the reasons and not only
 the shape — the example above reads back with all three of its notes in place.
 
-A comment attaches to the VALUE it precedes, and something has to carry it: either the value's
-own type says it does, or the FIELD holding it does. Between them they cover a charter, and the
-one gap left is a level down:
+A comment attaches to the VALUE it precedes, and something has to carry it — the value's own
+type, the field holding it, or the codec of whatever it sits inside. Between them they cover a
+charter:
 
 | a comment above | kept by |
 |---|---|
 | the rule, `action:`, `spawn:`, a gate entry | the value's own type |
 | a `patch:` or `derive:` body | nothing needed — the value is stored as-is |
 | `condition:`, `gates:` | the FIELD holding it — which is how a value whose own type cannot carry one still keeps it |
-| `subject:`, and inside a formula | **nobody yet** — those are fields OF a hand-written codec, which emits no annotation of its own |
+| `subject:`, `on:`, `when:` | Condition's own codec, which is hand-written and so carries them by hand |
 
-**A comment above a list and one above its first entry are the same comment.** A block list
-begins at its first element, so both head the list, they merge, and they come back together
-above it. Every later entry keeps its own separately.
+**A comment above a container and one above its first entry are the same comment.** A block list
+begins at its first element and an object at its first field, so both head the container, they
+merge, and they come back together above it. Everything after the first keeps its own. This is
+why a comment above `subject:` reads back above the condition when `subject:` is written first,
+and beside the field when it is not — the text survives either way, and only its carrier
+changes.
 
 ```tony
 gates:

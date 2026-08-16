@@ -132,6 +132,17 @@ func (t Trigger) GateResolver() string {
 //
 //tony:schemagen=verse-condition,notag,codec=custom
 type Condition struct {
+	// SubjectDoc, OnDoc and WhenDoc are the comments written above those three fields.
+	//
+	// They are captured and re-emitted by Condition's OWN codec (tonycodec.go), which is what
+	// this case needs and the annotations cannot supply: `comment=` is emitted by codegen, and
+	// codegen writes no codec for a `codec=custom` type. Every other comment in a charter is
+	// carried either by the value's type or by the field holding it in a GENERATED parent; a
+	// field of a hand-written codec has neither, so the codec does it by hand.
+	SubjectDoc []string `tony:"-"`
+	OnDoc      []string `tony:"-"`
+	WhenDoc    []string `tony:"-"`
+
 	// Subject is what the firing is ABOUT, selected at the fire instant — never
 	// accumulated, so it carries no temporal operators. An address names one entity; a
 	// system+kind selector is a pattern — the changed entity when there is no When,
