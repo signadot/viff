@@ -81,6 +81,68 @@ const (
 	pathKey      = "path"
 )
 
+// addressPattern reads an address written as a path — `[verse-dev, drift, finding, "*"]`, or
+// the same as a dotted string — into the per-segment matches a path is.
+func addressPattern(v *ir.Node) ([]*ir.Node, error) {
+	switch {
+	case v == nil:
+		return nil, fmt.Errorf("is empty")
+	case v.Type == ir.StringType:
+		segs, err := entity.PathSegs(v.String)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]*ir.Node, 0, len(segs))
+		for _, sg := range segs {
+			out = append(out, ir.FromString(sg))
+		}
+		return out, nil
+	case v.Type == ir.ArrayType:
+		m, err := PathMatch(v.Values)
+		if err != nil {
+			return nil, err
+		}
+		return m.SegNodes(), nil
+	}
+	return nil, fmt.Errorf("is a list of segments or a dotted path; got %v", v.Type)
+}
+
+// validateAt is validate for an address written as a path. The rules are the same ones, said
+// about segments rather than about three named dimensions.
+//
+// WHAT IS FIXED AT INSTALL is the point of both: the level check asks whether a read lands at or
+// below the rule's own stratum, and it can only ask that of the segments that are literal. So
+// every segment but the LAST must be one — the last is the entity being named, which may glob
+// in a list read and may be a `$reference` in either.
+func (p pathSpec) validateAt() error {
+	if len(p.At) < 2 {
+		return fmt.Errorf("!%s: an address names a place and something in it; %q names %d segment(s)",
+			p.kind, p.target(), len(p.At))
+	}
+	for i, seg := range p.At[:len(p.At)-1] {
+		lit, ok := entity.PathLiteral(seg)
+		if !ok || strings.ContainsAny(lit, "$*?[") {
+			return fmt.Errorf("!%s %s: segment %d is not literal — everything above the entity "+
+				"has to be, because it is what says whether the read is at or below the rule's "+
+				"own level, and a check that cannot be made at install is not a check",
+				p.kind, p.target(), i+1)
+		}
+	}
+	if p.kind != GetPathTag {
+		return nil
+	}
+	// What makes it a GET: neither the entity nor the field may name several things.
+	if lit, ok := entity.PathLiteral(p.At[len(p.At)-1]); !ok || strings.ContainsAny(lit, "*?[") {
+		return fmt.Errorf("!%s %s: the last segment can name several entities. Use !%s, which "+
+			"answers with a list", p.kind, p.target(), ListPathsTag)
+	}
+	if strings.Contains(p.Path, "*") {
+		return fmt.Errorf("!%s %s: the path %q has a wildcard, which can name several values. "+
+			"Use !%s, which answers with a list", p.kind, p.target(), p.Path, ListPathsTag)
+	}
+	return nil
+}
+
 // pathKind reports which of the two a node is, or "" for anything else.
 func pathKind(n *ir.Node) string {
 	if n == nil {
@@ -100,13 +162,60 @@ type pathSpec struct {
 	kind         string // GetPathTag or ListPathsTag
 	System, Kind string // always literal
 	ID           string // literal, a $reference, or (list only) a glob
-	Path         string // a kpath into the payload; "" is the whole payload
+	// At is the address as a PATH when the read was written with one — `at: [verse-dev, drift,
+	// finding, "*"]` — and is what the three above are a reading of. `path` below is the FIELD
+	// path inside the payload and keeps that name, which is why the address is `at:` here and
+	// `path:` in a match: in a read the two would collide, and only one of them can be `path`.
+	At   []*ir.Node
+	Path string // a kpath into the payload; "" is the whole payload
 	// Value is the payload predicate, list only — "of the ones that are there, the ones
 	// that look like this". nil is no predicate, which is every id the address selects.
 	Value *ir.Node
 }
 
-func (p pathSpec) target() string { return p.System + ":" + p.Kind }
+func (p pathSpec) target() string {
+	if len(p.At) > 0 {
+		return strings.Join(p.match().Segs(), ".")
+	}
+	return p.System + ":" + p.Kind
+}
+
+// match is the read's address as a pattern — what it selects, and what the level check compares
+// against a stratum.
+func (p pathSpec) match() Match {
+	if len(p.At) > 0 {
+		m := Match{mKeyPath: p.At}
+		if p.Value != nil {
+			m[mKeyValue] = p.Value
+		}
+		return m
+	}
+	m := Match{mKeySystem: p.System, mKeyKind: p.Kind, mKeyID: p.ID}
+	if p.Value != nil {
+		m[mKeyValue] = p.Value
+	}
+	return m
+}
+
+// place is the read's address as a PATTERN OF A PLACE — the address minus the entity being
+// named, which is what a stratum owns and what the level check compares against.
+//
+// A read names an entity; a stratum names where entities live. Comparing the two directly would
+// ask whether a stratum owns one id, which it never does.
+func (p pathSpec) place() Match {
+	if len(p.At) > 0 {
+		return Match{mKeyPath: p.At[:len(p.At)-1]}
+	}
+	return Match{mKeySystem: p.System, mKeyKind: p.Kind}
+}
+
+// ref is the entity a one-node read names, for an address written as a path.
+func (p pathSpec) ref() entity.Ref {
+	if len(p.At) > 0 {
+		return entity.RefAt(p.match().Segs()...)
+	}
+	return entity.RefAt(p.System, p.Kind, p.ID)
+}
 
 // String is the address the read names — what the level check's refusals quote when they say
 // which entity a derive reached for. The predicate is deliberately not in it: those messages
@@ -164,6 +273,18 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 				spec.Value = body.Values[i]
 				continue
 			}
+			// `at` is the address as a PATH — a list of segments, each a match, exactly as a
+			// condition's `path:` takes. It is taken before the string check for the same
+			// reason `value` is: it is not a string, and it is the only address form that can
+			// name a place deeper than three segments.
+			if f.String == mKeyAt {
+				at, err := addressPattern(v)
+				if err != nil {
+					return spec, fmt.Errorf("!%s: %s: %w", kind, mKeyAt, err)
+				}
+				spec.At = at
+				continue
+			}
 			if v.Type != ir.StringType {
 				return spec, fmt.Errorf("!%s: %q must be a string", kind, f.String)
 			}
@@ -177,8 +298,8 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 			case pathKey:
 				spec.Path = v.String
 			default:
-				return spec, fmt.Errorf("!%s: unknown key %q (want %s, %s, %s, %s%s)",
-					kind, f.String, mKeySystem, mKeyKind, mKeyID, pathKey,
+				return spec, fmt.Errorf("!%s: unknown key %q (want %s, or %s/%s/%s, and %s%s)",
+					kind, f.String, mKeyAt, mKeySystem, mKeyKind, mKeyID, pathKey,
 					map[bool]string{true: ", " + mKeyValue}[kind == ListPathsTag])
 			}
 		}
@@ -226,6 +347,9 @@ func splitAddress(s string) (entity.Ref, string, error) {
 // validate enforces what the two segments the checks read must be, and what each cardinality
 // may say about the rest.
 func (p pathSpec) validate() error {
+	if len(p.At) > 0 {
+		return p.validateAt()
+	}
 	for _, seg := range []struct{ what, v string }{{mKeySystem, p.System}, {mKeyKind, p.Kind}, {mKeyID, p.ID}} {
 		if seg.v == "" {
 			return fmt.Errorf("!%s has no %s: a path read starts from an entity address, and all "+
@@ -336,7 +460,7 @@ func (p pathSpec) answer(snap entity.Snapshot) (entity.Payload, error) {
 
 // get answers the one-node form.
 func (p pathSpec) get(snap entity.Snapshot) (entity.Payload, error) {
-	ref := entity.RefAt(p.System, p.Kind, p.ID)
+	ref := p.ref()
 	ent, ok, err := snap.Get(ref)
 	if err != nil {
 		return nil, fmt.Errorf("!%s %s: %w", p.kind, ref, err)
@@ -368,10 +492,7 @@ func (p pathSpec) get(snap entity.Snapshot) (entity.Payload, error) {
 // payload. Deterministic, which a list written into an entity has to be: a charter re-deriving
 // the same set in a different order would write a real change every lap.
 func (p pathSpec) list(snap entity.Snapshot) (entity.Payload, error) {
-	m := Match{mKeySystem: p.System, mKeyKind: p.Kind, mKeyID: p.ID}
-	if p.Value != nil {
-		m[mKeyValue] = p.Value // narrows the selection; Match.Select already resolves it
-	}
+	m := p.match() // the address, at whatever depth, plus the payload predicate if there is one
 	out := []*ir.Node{}
 	for _, ref := range m.Select(snap) {
 		ent, ok, err := snap.Get(ref)

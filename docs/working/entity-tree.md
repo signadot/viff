@@ -76,9 +76,12 @@ Each lands with the suite green.
    difference matters exactly once, and a stratum is where: `[verse-dev, drift, head]` is a
    PLACE that derived entities land under, not an entity whose id is `head`.
 
-   Still to do here: `!get-path`/`!list-paths`. The string form (`!get-path a.b.c.d`) reads at a
-   path already — a read wants a VALUE and needs no entity boundary at all — so what is left is
-   the object form's address, where `path:` is taken by the field path inside the payload.
+   `!get-path`/`!list-paths` name their address as `at:` — `{at: [verse-dev, drift, head, abc],
+   path: sha}`. The address is `at:` in a read and `path:` in a condition, and that is not taste:
+   in a read `path:` is already the FIELD path inside the payload, and the field path was there
+   first. Everything above the entity must be literal, for the reason it always was — the level
+   check asks whether a read lands at or below the rule's own stratum, and it can only ask that
+   of segments known at install.
 5. **Writes and watches.** `ParsePath` stops splitting an address into three-plus-a-field: a
    write is a value at a path, which is what the store does anyway. A watch is told its depth by
    whoever opens it (`WatchSubtree(prefix, depth)`), which is where §2's patterns arrive.

@@ -457,3 +457,57 @@ func mustPathMatch(t *testing.T, src string) Match {
 	}
 	return m
 }
+
+// A PATH READ AT DEPTH: `!get-path` and `!list-paths` name their address as `at:`, so a rule can
+// read the entity a package keeps four segments down.
+//
+// The address is `at:` here and `path:` in a condition, and that is not an accident of taste: in
+// a READ, `path:` is already the FIELD path inside the payload. Two things cannot both be
+// `path`, and the field path is the one that was there first.
+func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
+	store := entitytest.Store(t)
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "head", "abc"),
+		entity.Obj{"sha": "deadbeef", "reviewed": "done"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "finding", "f1"),
+		entity.Obj{"status": "open", "says": "a comment drifted"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "finding", "f2"),
+		entity.Obj{"status": "closed", "says": "fixed"}.Payload())
+
+	snap, err := store.AsOf(store.Rev())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// One node, four segments down, reaching a field of it.
+	got, err := readOne(t, `!get-path {at: [verse-dev, drift, head, abc], path: sha}`, snap)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.String != "deadbeef" {
+		t.Errorf("get answered %v, want the sha", got)
+	}
+
+	// Many, with a wildcard at the leaf and a payload predicate narrowing them.
+	list, err := readOne(t, `!list-paths {at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says}`, snap)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list.Values) != 1 || list.Values[0].String != "a comment drifted" {
+		t.Errorf("list answered %v, want the one open finding", list)
+	}
+
+	// And a get whose leaf globs is refused, because a value slot takes one thing.
+	if _, err := readOne(t, `!get-path {at: [verse-dev, drift, finding, "f*"], path: says}`, snap); err == nil {
+		t.Error("a get with a globbing leaf was accepted")
+	}
+}
+
+// readOne parses one path-read expression and answers it against a snapshot.
+func readOne(t *testing.T, src string, snap entity.Snapshot) (*ir.Node, error) {
+	t.Helper()
+	node, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse %s: %v", src, err)
+	}
+	return resolveReadAt(node, nil, snap)
+}

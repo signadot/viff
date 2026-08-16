@@ -675,7 +675,7 @@ func (e *Engine) checkLevels(t Trigger) (bool, error) {
 			return false, err // shape; Action.validate says it better, but this path sees hooks too
 		}
 		for _, rt := range targets {
-			at := e.stratumFor(Match{mKeySystem: rt.System, mKeyKind: rt.Kind})
+			at := e.stratumFor(rt.place())
 			if at == nil {
 				return false, fmt.Errorf("derive into %s reads %s, which is in no stratum: a read "+
 					"inside a derive has to be at or below the rule's own level, and an entity "+
