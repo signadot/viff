@@ -295,13 +295,7 @@ func EncodeNodeWire(w io.Writer, n *ir.Node, f Format) error { return encodeNode
 // a terminal should reach for it. Piped output must stay clean — `verse … | jq` and
 // `verse … | o v` both break on escape codes.
 func EncodeNodeColor(w io.Writer, n *ir.Node, f Format) error {
-	if n == nil {
-		n = ir.Null()
-	}
-	if !Writable(f) {
-		return fmt.Errorf("%s", ErrNotWritable)
-	}
-	return encode.Encode(n, w, encode.EncodeFormat(f), encode.EncodeColors(encode.NewColors()))
+	return encodeNodeOpts(w, n, f, false, true)
 }
 
 // EncodeNodeWireColor is EncodeNodeWire with ANSI colour: compact and single-line, and
@@ -313,17 +307,19 @@ func EncodeNodeColor(w io.Writer, n *ir.Node, f Format) error {
 // was the one a live stream needs. The caller still decides about the terminal (see
 // EncodeNodeColor); this only supplies the rendering.
 func EncodeNodeWireColor(w io.Writer, n *ir.Node, f Format) error {
-	if n == nil {
-		n = ir.Null()
-	}
-	if !Writable(f) {
-		return fmt.Errorf("%s", ErrNotWritable)
-	}
-	return encode.Encode(n, w, encode.EncodeFormat(f), encode.EncodeWire(true),
-		encode.EncodeColors(encode.NewColors()))
+	return encodeNodeOpts(w, n, f, true, true)
 }
 
 func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
+	return encodeNodeOpts(w, n, f, wire, false)
+}
+
+// encodeNodeOpts is the ONE place a node becomes bytes, which is the point of it: colour and
+// comments are independent choices, and while they were made in separate functions the
+// coloured ones quietly rendered without comments. That is the only path a terminal ever
+// takes, so every comment in a charter was invisible to the operator who wrote it while
+// `verse trigger show | cat` printed them all.
+func encodeNodeOpts(w io.Writer, n *ir.Node, f Format, wire, color bool) error {
 	if n == nil {
 		n = ir.Null()
 	}
@@ -338,6 +334,9 @@ func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 	opts := []encode.EncodeOption{encode.EncodeFormat(f), encode.EncodeComments(true)}
 	if wire {
 		opts = append(opts, encode.EncodeWire(true))
+	}
+	if color {
+		opts = append(opts, encode.EncodeColors(encode.NewColors()))
 	}
 	return encode.Encode(n, w, opts...)
 }

@@ -33,6 +33,39 @@ func TestEncodeNodeColorRendersTheSameDocument(t *testing.T) {
 	}
 }
 
+// …and a COMMENTED document is the case that matters, because colour is what a terminal
+// gets and a terminal is where a human reads the comments they wrote.
+//
+// The test above passed while this failed: it rendered a document with nothing said about
+// it, so "the same document" was true of the only part the colored path was rendering. The
+// coloured entry points were written separately from encodeNode and never got its
+// EncodeComments(true), so `verse trigger show` printed a stripped charter to the operator
+// and the full one to `| cat` — the format flag was not the difference, the pipe was.
+func TestEncodeNodeColorKeepsComments(t *testing.T) {
+	src := "# why this rule exists\nname: r # the short name\ncondition: {subject: demo:pr}\n"
+	doc, err := ParseNode([]byte(src), Tony)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := EncodeNodeColor(&buf, doc, Tony); err != nil {
+		t.Fatalf("color: %v", err)
+	}
+	got := stripANSI(buf.String())
+	plain, err := NodeBytes(doc, Tony)
+	if err != nil {
+		t.Fatalf("plain: %v", err)
+	}
+	if got != string(plain) {
+		t.Errorf("colored output differs once escapes are stripped:\n plain: %q\n got:   %q", plain, got)
+	}
+	for _, want := range []string{"# why this rule exists", "# the short name"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the colored rendering dropped %q:\n%s", want, got)
+		}
+	}
+}
+
 // The colored path refuses JSON exactly as the plain one does. It is a separate entry
 // point with its own encode call, so it needs its own gate — `-o json --color always`
 // must not succeed where `-o json` fails.
