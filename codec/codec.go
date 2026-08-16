@@ -231,13 +231,13 @@ func ParseNodeOrNil(data []byte, f Format) (*ir.Node, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, nil
 	}
-	return parse.Parse(data, parse.ParseFormat(readAs(f)))
+	return parse.Parse(data, parse.ParseFormat(readAs(f)), parse.ParseComments(true))
 }
 
 // ParseNodes parses a multi-document stream (`---` separated) — the idiomatic tony
 // spelling of "several charters in one file".
 func ParseNodes(data []byte, f Format) ([]*ir.Node, error) {
-	return parse.ParseMulti(data, parse.ParseFormat(readAs(f)))
+	return parse.ParseMulti(data, parse.ParseFormat(readAs(f)), parse.ParseComments(true))
 }
 
 // readAs is the parser a declared format is READ with. It is the identity except for
@@ -335,7 +335,7 @@ func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 	if !Writable(f) {
 		return fmt.Errorf("%s", ErrNotWritable)
 	}
-	opts := []encode.EncodeOption{encode.EncodeFormat(f)}
+	opts := []encode.EncodeOption{encode.EncodeFormat(f), encode.EncodeComments(true)}
 	if wire {
 		opts = append(opts, encode.EncodeWire(true))
 	}

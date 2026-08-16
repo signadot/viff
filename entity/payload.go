@@ -83,20 +83,33 @@ func Val(v any) Payload {
 }
 
 // Get returns the named field of an object payload, or nil — for a scalar, a list, or an
-// absent field alike. Callers distinguish "no such field" from "field is null" by checking
+// absent field alike.
+//
+// IT SEES THROUGH COMMENTS, at the payload and at the field, because a head comment WRAPS the
+// value it precedes: a payload somebody wrote a note above is not an object as far as a type
+// check, and every field-shaped read of it would answer empty. The store keeps comments (logd's
+// NextState), so this is the ordinary case rather than an exotic one, and tony.Match sees
+// through them too — which is what makes the silent version so bad, a rule selecting an entity
+// and then reading nothing out of it. Callers distinguish "no such field" from "field is null" by checking
 // the node, not by a second return: a payload that cannot have fields and one that lacks
 // this one are the same answer to the same question.
 func Get(p Payload, field string) Payload {
+	p = ir.Uncomment(p)
 	if p == nil || p.Type != ir.ObjectType {
 		return nil
 	}
+	// The RECEIVER is unwrapped, the answer is not: navigation sees through a comment, and the
+	// value it arrives at keeps its own. A caller that wants the value reads it with Str or
+	// IsObj, which unwrap; a caller that wants what was SAID about it — trigger.ruleOf, decoding
+	// a rule that carries its author's reasons — would have nothing left to read if this
+	// unwrapped here.
 	return ir.Get(p, field)
 }
 
 // Str reads a string field, empty when absent or not a string. It replaces the
 // `payload["flow"].(string)` idiom, which had the same tolerance.
 func Str(p Payload, field string) string {
-	f := Get(p, field)
+	f := ir.Uncomment(Get(p, field))
 	if f == nil || f.Type != ir.StringType {
 		return ""
 	}
@@ -112,13 +125,13 @@ func Str(p Payload, field string) string {
 // Reading a list now means asking for the element type you want rather than type-asserting
 // the slice the writer happened to use.
 func Strs(p Payload, field string) []string {
-	f := Get(p, field)
+	f := ir.Uncomment(Get(p, field))
 	if f == nil || f.Type != ir.ArrayType {
 		return nil
 	}
 	out := make([]string, 0, len(f.Values))
 	for _, v := range f.Values {
-		if v != nil && v.Type == ir.StringType {
+		if v = ir.Uncomment(v); v != nil && v.Type == ir.StringType {
 			out = append(out, v.String)
 		}
 	}
@@ -128,6 +141,7 @@ func Strs(p Payload, field string) []string {
 // Fields returns an object payload's fields, nil for anything else — the iteration face,
 // replacing `for k, v := range payload`.
 func Fields(p Payload) map[string]*ir.Node {
+	p = ir.Uncomment(p)
 	if p == nil || p.Type != ir.ObjectType {
 		return nil
 	}
@@ -136,7 +150,7 @@ func Fields(p Payload) map[string]*ir.Node {
 
 // IsObj reports whether the payload is an object, i.e. whether field-shaped questions can
 // mean anything about it.
-func IsObj(p Payload) bool { return p != nil && p.Type == ir.ObjectType }
+func IsObj(p Payload) bool { p = ir.Uncomment(p); return p != nil && p.Type == ir.ObjectType }
 
 // ToObj reads a whole object payload back as Go values — the inverse of Obj.Payload, and
 // nil for anything that is not an object. It is for code that builds a payload

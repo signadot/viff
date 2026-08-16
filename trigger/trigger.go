@@ -30,8 +30,28 @@ import (
 // holds and every Gate resolves to proceed, the Action fires. Gates are conjunctive
 // (all-of); an empty Gates fires with no approval.
 //
-//tony:schemagen=verse-trigger,notag
+//tony:schemagen=verse-trigger,notag,comment=Doc,lineComment=Note
 type Trigger struct {
+	// Doc and Note are the comments the rule was WRITTEN with — the lines above it, and the one
+	// beside it — carried through the decode and re-encode a charter makes on its way into the
+	// store. Nothing reads them and no rule acts on them; they are here so the record is the
+	// rule as its author left it, reasons included.
+	//
+	// A rule is persisted from this struct (`persist` writes `t.ToTonyIR()`), so without them an
+	// installed charter came back stripped of every comment except those inside a field carried
+	// as a raw node — `action.patch` kept its notes and the lines above `name:` did not, which
+	// is the arbitrary half of a document surviving that is worse than none of it.
+	//
+	// `tony:"-"` because they ride the NODE rather than being fields of the document: a head
+	// comment wraps the value it precedes, a line comment sits on the value it follows. Codegen
+	// leaves them out of the field set for the same reason (isCommentCarrier), so neither path
+	// spells them as keys.
+	//
+	// Needs go-tony v0.0.142, which built the encode half of these annotations; before it they
+	// captured on the way in and were dropped on the way out.
+	Doc  []string `tony:"-"`
+	Note []string `tony:"-"`
+
 	Name string `tony:"field=name"`
 	// Stratum names the level this rule lives in — a trigger:strata:<name> entity carrying
 	// the pattern its subject must fall inside, and the level a derive must climb above.

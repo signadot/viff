@@ -14,9 +14,13 @@
 package entity
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/encode"
+	"github.com/signadot/tony-format/go-tony/format"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
 )
@@ -367,5 +371,43 @@ func TestACommentedPayloadIsStillReadable(t *testing.T) {
 		if Str(got.Payload, "stage") != "open" {
 			t.Fatalf("%s was selected and then read blank — the worst of both", sel)
 		}
+	}
+}
+
+// A payload keeps the comments it was written with, at every depth — and stays addressable.
+//
+// This is the half that makes them worth carrying: the store keeps comments, so a document put
+// there with notes on it reads back with them. Both KINDS have to survive, because half a
+// document's comments is worse than none: a line comment rides on its node and survives any
+// rebuild by accident, while a head comment WRAPS the value it precedes and is dropped by one
+// (canonicalFields sorts, and sorting used to rebuild from inside the wrapper).
+func TestAPayloadKeepsItsComments(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	p, err := parse.Parse([]byte("# about this pr\nstage: open # still open\nlabels:\n  # about the labels\n  urgent: true\n"),
+		parse.ParseTony(), parse.ParseComments(true))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if ok, _, err := s.Write(Write{At: ref.At(), Value: p}); err != nil || !ok {
+		t.Fatalf("write: committed=%v err=%v", ok, err)
+	}
+
+	e, ok, err := s.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("get: ok=%v err=%v", ok, err)
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(e.Payload, &buf, encode.EncodeFormat(format.TonyFormat), encode.EncodeComments(true)); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{"# about this pr", "# still open", "# about the labels"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("the payload lost %q:\n%s", want, buf.String())
+		}
+	}
+	// …and none of that costs addressability, which is the whole point of seeing through them.
+	if got := Str(Get(e.Payload, "labels"), "urgent"); got != "true" && !IsObj(Get(e.Payload, "labels")) {
+		t.Fatalf("labels is not readable through its comment")
 	}
 }
