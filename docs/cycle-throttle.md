@@ -19,6 +19,12 @@ up the revision of the commit that woke it and stamps depth+1 on everything it w
 that is not in the map was caused by somebody else — a person, a task completing, a mirror, a
 peer engine, or this engine before a restart — and starts a fresh chain.
 
+A chain that crosses ENGINES is a different question and has a different answer: between charter
+packages the loop is excluded rather than bounded, because a package declares what it reads and
+the graph over packages must be acyclic at install
+([trigger-model.md](trigger-model.md#a-charter-can-be-installed-at-an-address)). What is left
+here is a chain within one engine, which is what the depth cap is for.
+
 This works because a write reports the revision it landed at (`Store.Write`), and that is the
 same revision the change stream later carries for it. Without that correspondence a writer could
 not recognize its own write coming back around, and there would be nothing to key on.

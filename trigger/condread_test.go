@@ -32,7 +32,7 @@ const proposalCharter = `
 
 func mustParseCharter(t *testing.T, src string) Trigger {
 	t.Helper()
-	trigs, _, _, ok := parseBlock(src)
+	trigs, _, _, _, ok := parseBlock(src)
 	if !ok || len(trigs) == 0 {
 		t.Fatalf("did not parse as a charter:\n%s", src)
 	}

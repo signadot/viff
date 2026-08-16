@@ -22,7 +22,7 @@ func TestDocsCharterCarriesRunner(t *testing.T) {
 		if !strings.Contains(blk.text, "runner:") {
 			continue
 		}
-		trigs, _, _, ok := parseBlock(blk.text)
+		trigs, _, _, _, ok := parseBlock(blk.text)
 		if !ok || len(trigs) == 0 {
 			continue
 		}

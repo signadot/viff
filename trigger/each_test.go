@@ -64,7 +64,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
       derive: {drift: {finding: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}}
 `,
 	} {
-		trigs, _, strata, ok := parseBlock(src)
+		trigs, _, strata, _, ok := parseBlock(src)
 		if !ok {
 			t.Fatalf("did not parse as a charter:\n%s", src)
 		}
@@ -122,7 +122,7 @@ func TestEachRefusals(t *testing.T) {
       patch: {reviewed: done}
       derive: {drift: {finding: !each ` + c.derive + `}}
 `
-			trigs, _, strata, ok := parseBlock(src)
+			trigs, _, strata, _, ok := parseBlock(src)
 			if !ok {
 				t.Fatalf("did not parse as a charter")
 			}
@@ -160,7 +160,7 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
     patch: {triaged: true}
     derive: {signadot: {feature: {priority: urgent, about: $subject.id}}}
 `
-	trigs, _, strata, ok := parseBlock(src)
+	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
 		t.Fatal("did not parse as a charter")
 	}
@@ -201,7 +201,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
       patch: {reviewed: done}
       derive: {drift: {finding: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}}
 `
-	trigs, _, strata, ok := parseBlock(src)
+	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
 		t.Fatal("did not parse as a charter")
 	}
@@ -239,7 +239,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
     patch: {reviewed: done}
     derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}}
 `
-	trigs, _, strata, ok := parseBlock(src)
+	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
 		t.Fatal("did not parse as a charter")
 	}
@@ -352,7 +352,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
     patch: {reviewed: done}
     derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}}
 `
-	trigs, _, strata, ok := parseBlock(src)
+	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
 		t.Fatal("did not parse as a charter")
 	}
@@ -447,7 +447,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
               says: $item.says
               about: $subject.id
 `
-	trigs, _, strata, ok := parseBlock(src)
+	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
 		t.Fatal("did not parse as a charter")
 	}
@@ -543,7 +543,7 @@ func TestLedgerReachesThePrompt(t *testing.T) {
       reviewed: gathered
       outstanding: !list-paths {system: drift, kind: finding, id: "*", value: {status: open}}
 `
-	trigs, _, strata, ok := parseBlock(src)
+	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
 		t.Fatal("did not parse as a charter")
 	}

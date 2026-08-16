@@ -40,9 +40,10 @@ Under `verse:` are `task:instance:*` (the mirror of every running task), `task:r
 record of a run that happened) and `task:claim:*` (a sequence's run claim); `gate:question:*`
 (every gate awaiting an answer); `resolvers:*` (who answers them, and `resolvers:instance:*`
 for who is watching one run — see [resolvers.md](resolvers.md)); `trigger:rule:*` (the
-installed charter) and `trigger:strata:*` (its declared levels); `motion:channel:*` (the
-docket); `runners:*` (where work can run) and `sources:*` (what reflects an external system
-in).
+installed charter — `trigger:rule:<package>:<name>` for a rule installed at an address),
+`trigger:strata:*` (its declared levels) and `trigger:package:*` (what each package imports);
+`motion:channel:*` (the docket); `runners:*` (where work can run) and `sources:*` (what
+reflects an external system in).
 
 Two things are deliberately NOT in verse's half. `vote:*` — a ballot is an act somebody takes,
 not a record verse keeps, which is why casting one is an ordinary write. And `provider:*` — the

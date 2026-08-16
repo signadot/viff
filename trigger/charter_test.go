@@ -299,7 +299,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
     spawn: {driver: scripted, prompt: "review it"}
     onDone: {patch: {reviewed: done}}
 `
-	trigs, _, _, ok := parseBlock(src)
+	trigs, _, _, _, ok := parseBlock(src)
 	if !ok || len(trigs) != 1 {
 		t.Fatalf("parse: ok=%v n=%d", ok, len(trigs))
 	}

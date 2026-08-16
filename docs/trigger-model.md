@@ -127,6 +127,9 @@ and a read otherwise — so a package's rule can select a source and derive from
 most of them do:
 
 ```tony
+at: drift                        # where this package writes — its engine is confined to it
+imports: [ !verse-path [git] ]   # …and what it may read besides
+---
 - name: reflected           # the level the source sits at
   level: 0
   match: {system: git}
@@ -142,16 +145,14 @@ most of them do:
 Two packages both reacting to `git:*` is the ordinary arrangement, not an exotic one. What each
 may do about it is write in its own address.
 
-**Reads are DECLARED.** A package reads inside its own address and whatever its `imports:` names,
-and nothing else — an undeclared read does not install, and the refusal says which line to add:
+**Reads are DECLARED**, which is the `imports:` line above. A package reads inside its own
+address and whatever it names, and nothing else — an undeclared read does not install, and the
+refusal says which line to add:
 
-```tony
-at: drift                     # where this package writes
-imports: [ !verse-path [git] ]  # …and what it reads besides
----
-- name: head-moved
-  condition: {subject: git:head:verse}
-  action: {derive: {drift: {head: {repo: $subject.value.repo}}}}
+```
+rule "note-the-head" reads git:head:*, which notes:* does not import: a charter installed
+at an address reads inside it and what it declares, so that the graph over packages can be
+checked for a cycle. Add it: `imports: [git.head]` (this package imports nothing)
 ```
 
 An absent `imports:` is not "everything", it is nothing: a package with no declaration reads only
@@ -166,12 +167,13 @@ installed by one `verse trigger add --file`.
 
 **Its levels are its own**, and so are its records: a package's rules and strata are addressed
 by package (`verse:trigger:rule:drift:head-moved`), so two packages may each declare a
-`reflected` level without one overwriting the other. They are not confined — a package's lowest
-level owns the slice it READS. comment-drift's `reflected` owns `system: git`: its rules select from the source and
-derive above it, which is the ordinary shape. What makes per-package levels coherent is the
-write confinement rather than a second check on the strata: with no cross-package write there is
-no cross-package derive, so there is no cross-package ordering to define, and two packages may
-both declare a level 10 and mean nothing to each other.
+`reflected` level without one overwriting the other — which is what comment-drift's two halves
+need, since both read the git source and both want a bottom level for it. They are not
+confined: a package's lowest level owns the slice it READS, and its rules select from there and
+derive above it. What makes per-package levels coherent is the write confinement rather than a
+second check on the strata — with no cross-package write there is no cross-package derive, so
+there is no cross-package ordering to define, and two packages may both declare a level 10 and
+mean nothing to each other.
 
 **The import graph is acyclic.** `a` reading what `b` writes while `b` reads what `a` writes is a
 feedback loop neither charter's author can see in their own file, and nothing else catches it:
@@ -181,27 +183,44 @@ when what P reads meets what Q may write, which is Q's address — and a cycle i
 install, showing the loop:
 
 ```
-imports: this would close a cycle between packages: drift → merge → drift — one reads what the
-next writes, all the way round …
+imports: this would close a cycle between packages: drift → merge → drift — one reads what
+the next writes, all the way round, so a write on any of them can wake the others and come
+back. A package graph is acyclic: break the loop, or fold the two halves into one package
 ```
 
 Importing an address no package is installed at adds no edge: `git` is a source's slice, and
-reading a source is not depending on a package. Two packages both reading `git:*` is the ordinary
-arrangement, and it is not a loop.
+reading a source is not depending on a package — which is why two packages both reading it,
+the arrangement above, is not a loop.
 
 **What it does not cover**: baseline. The unpackaged charter may write anywhere, so a loop
 through it is not a loop between packages and this cannot see it — which is the same reason
 baseline is unconfined in what it writes.
 
 `verse trigger tree` is the whole charter at once — baseline and each package, what it writes,
-what it imports, and how much it holds:
+what it imports, and how much it holds. It is a listing like any other, so `--trim` cuts it to
+the columns you are asking about:
 
 ```sh
-verse trigger tree
-# - at: (baseline)   writes: anywhere   rules: 4
-# - at: drift        writes: drift.*    imports: [git]         rules: 3
-# - at: merge        writes: merge.*    imports: [git, drift]  rules: 5
+verse trigger tree --trim '{at: null, writes: null, imports: null, rules: null}'
+# - at: (baseline)
+#   rules: 0
+#   writes: anywhere
+# - at: drift
+#   imports:
+#   - git
+#   rules: 3
+#   writes: drift.*
+# - at: merge
+#   imports:
+#   - git
+#   - drift
+#   rules: 5
+#   writes: merge.*
 ```
+
+That is comment-drift installed: the review at `drift`, the gate at `merge` importing it, and
+a baseline nobody has put anything in. `verse trigger` still answers ONE engine's rules —
+baseline by default, `--at merge` for a package's — which is why the tree exists.
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
 a task acts in the world under its `grant`, and store confinement is not world confinement (see

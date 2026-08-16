@@ -41,7 +41,7 @@ func TestDocCharartersInstall(t *testing.T) {
 	// strata: an ordering is charter-wide, so two docs each owning `gh` at level 0 would
 	// collide on a shared engine over nothing more than both being examples.
 	store := entitytest.Store(t)
-	total, n, proposed, bindings := 0, 0, 0, 0
+	total, n, proposed, bindings, packaged := 0, 0, 0, 0, 0
 	for _, path := range docs {
 		src, err := os.ReadFile(path)
 		if err != nil {
@@ -64,7 +64,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			// comment following a flow collection (`a: {} # c`), which is a shape a charter is
 			// naturally written in and which therefore reached the docs. A hang here is a
 			// failure like any other rather than a suite that never finishes.
-			trigs, nodes, strata, ok, timedOut := parseWithin(blk.text, 5*time.Second)
+			trigs, nodes, strata, pkg, ok, timedOut := parseWithin(blk.text, 5*time.Second)
 			if timedOut {
 				t.Errorf("%s:%d: parsing this block does not terminate — a reader who pastes "+
 					"it gets a hung client:\n\n%s", filepath.Base(path), blk.line, indent(blk.text))
@@ -75,6 +75,20 @@ func TestDocCharartersInstall(t *testing.T) {
 			}
 			total++
 			eng := New(store, task.AutoResolver{})
+			// A BLOCK THAT DECLARES A PACKAGE IS CHECKED AS ONE: confined to the address it
+			// names and reading only what it imports, so a doc example claiming isolation is
+			// held to it rather than passing on an engine that has neither.
+			if pkg.at != "" || len(pkg.imports) > 0 {
+				packaged++
+				at, err := ParseAt(pkg.at)
+				if err != nil {
+					t.Errorf("%s:%d: `at: %s` is not an address a package installs at:\n  %v",
+						filepath.Base(path), blk.line, pkg.at, err)
+					continue
+				}
+				eng.Confine(at)
+				eng.SetImports(pkg.imports)
+			}
 			// The ORDERING first, as an install does — a rule naming a stratum that is not
 			// there is held rather than refused, which would make a stratified example pass
 			// this test by not being checked.
@@ -109,8 +123,13 @@ func TestDocCharartersInstall(t *testing.T) {
 		t.Fatal("found no charters in the docs — the extractor has stopped working, which " +
 			"would make this test pass forever while checking nothing")
 	}
-	t.Logf("installed %d charter block(s) from %d docs; %d marked proposed, %d resolver bindings",
-		total, len(docs), proposed, bindings)
+	t.Logf("installed %d charter block(s) from %d docs (%d as packages, confined and declared); "+
+		"%d marked proposed, %d resolver bindings", total, len(docs), packaged, proposed, bindings)
+	if packaged == 0 {
+		t.Error("no doc block declared a package — either the docs stopped documenting them or " +
+			"the declaration stopped being recognized, and both make this test check less than " +
+			"it says")
+	}
 }
 
 type block struct {
@@ -182,24 +201,37 @@ func heredocs(src string, at func(int) int) []block {
 // parseWithin is parseBlock, bounded. The goroutine it abandons on a timeout is the price
 // of reporting a hang instead of becoming one; a hung parse holds one goroutine until the test
 // binary exits.
-func parseWithin(text string, d time.Duration) (trigs []Trigger, nodes []*ir.Node, strata []Stratum, ok, timedOut bool) {
+func parseWithin(text string, d time.Duration) (trigs []Trigger, nodes []*ir.Node, strata []Stratum, pkg pkgDecl, ok, timedOut bool) {
 	type result struct {
 		trigs  []Trigger
 		nodes  []*ir.Node
 		strata []Stratum
+		pkg    pkgDecl
 		ok     bool
 	}
 	done := make(chan result, 1)
 	go func() {
-		ts, ns, ss, k := parseBlock(text)
-		done <- result{ts, ns, ss, k}
+		ts, ns, ss, p, k := parseBlock(text)
+		done <- result{ts, ns, ss, p, k}
 	}()
 	select {
 	case r := <-done:
-		return r.trigs, r.nodes, r.strata, r.ok, false
+		return r.trigs, r.nodes, r.strata, r.pkg, r.ok, false
 	case <-time.After(d):
-		return nil, nil, nil, false, true
+		return nil, nil, nil, pkgDecl{}, false, true
 	}
+}
+
+// pkgDecl is the `at:`/`imports:` document a doc block may open with — what makes the block a
+// PACKAGE rather than a charter, and what the engine below is confined and declared from.
+//
+// Without this a doc example that says it installs at an address was checked as if it did not:
+// classify saw a document that was neither a rule nor a stratum and skipped the whole block, so
+// the one example whose point is the confinement was the one nothing ran. (Found that way: the
+// example in trigger-model.md derived with no stratum and did not install.)
+type pkgDecl struct {
+	at      string
+	imports []Subtree
 }
 
 // parseBlock reads a block as a charter, in either dialect: one definition, a list of them, or
@@ -208,7 +240,7 @@ func parseWithin(text string, d time.Duration) (trigs []Trigger, nodes []*ir.Nod
 // It reports false for anything that is not a charter — which is most blocks, and is the point:
 // a fragment, an entity payload and a goal record all fail to be a trigger with a subject. A
 // block of ONLY strata is not a charter either; there would be no rule to check against it.
-func parseBlock(text string) ([]Trigger, []*ir.Node, []Stratum, bool) {
+func parseBlock(text string) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool) {
 	for _, f := range []codec.Format{codec.Tony, codec.JSON} {
 		defs, err := codec.ParseNodes([]byte(text), f)
 		if err != nil {
@@ -230,23 +262,32 @@ func parseBlock(text string) ([]Trigger, []*ir.Node, []Stratum, bool) {
 			}
 			flat = append(flat, doc)
 		}
-		trigs, nodes, strata, ok := classify(flat)
+		trigs, nodes, strata, pkg, ok := classify(flat)
 		if ok {
-			return trigs, nodes, strata, true
+			return trigs, nodes, strata, pkg, true
 		}
 	}
-	return nil, nil, nil, false
+	return nil, nil, nil, pkgDecl{}, false
 }
 
 // classify sorts a block's definitions into rules and strata, and reports false the moment one
 // is neither. Told apart by decoding: a stratum refuses a field it does not know (so a rule
 // fails to be one), and a rule without a subject is not installable (so a stratum fails to be
 // one).
-func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, bool) {
+func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool) {
 	var trigs []Trigger
 	var nodes []*ir.Node
 	var strata []Stratum
+	var pkg pkgDecl
 	for _, def := range defs {
+		if at, ok := declaredAt(def); ok {
+			ims, err := ImportsFromNode(def)
+			if err != nil {
+				return nil, nil, nil, pkgDecl{}, false
+			}
+			pkg = pkgDecl{at: at, imports: ims}
+			continue
+		}
 		var s Stratum
 		if err := s.FromTonyIR(def); err == nil && isOrdering([]Stratum{s}) {
 			strata = append(strata, s)
@@ -258,9 +299,38 @@ func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, bool) {
 			nodes = append(nodes, def) // kept for the field check, which reads the DOCUMENT
 			continue
 		}
-		return nil, nil, nil, false
+		return nil, nil, nil, pkgDecl{}, false
 	}
-	return trigs, nodes, strata, len(trigs) > 0
+	return trigs, nodes, strata, pkg, len(trigs) > 0
+}
+
+// declaredAt reads a package declaration's address, and reports whether the document is one at
+// all: `at:` alone is a package that imports nothing, and `imports:` alone is one whose address
+// comes from `--at` on the command line.
+func declaredAt(def *ir.Node) (string, bool) {
+	n := codec.Unwrap(def)
+	if n == nil || n.Type != ir.ObjectType {
+		return "", false
+	}
+	var at string
+	var isDecl bool
+	for i, key := range n.Fields {
+		if key == nil || key.Type != ir.StringType {
+			continue
+		}
+		switch key.String {
+		case "at":
+			isDecl = true
+			if v := codec.Unwrap(n.Values[i]); v != nil && v.Type == ir.StringType {
+				at = v.String
+			}
+		case "imports":
+			isDecl = true
+		case "condition", "action", "level", "match", "name":
+			return "", false // a rule or a stratum, whatever else it carries
+		}
+	}
+	return at, isDecl
 }
 
 // isOrdering reports whether this decoded as a real stratum — a name and a pattern, which a

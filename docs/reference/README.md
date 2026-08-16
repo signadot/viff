@@ -95,20 +95,22 @@ verse
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
-  trigger (triggers)                         the installed charter
+  trigger (triggers) [--at <address>]        the installed charter — baseline's rules, or
+                                             the package's at <address>
           add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md
           add --scope <name>                 …into a federation's own charter instead
-          [--at <address>]                   (on the bare listing) that package's rules
-          tree                               every charter at once: baseline and each
-                                             package, what it writes and what it imports
-                                             A CHARTER FILE may open a package with a `---`
-                                             document of its own: `at: drift` says where it
-                                             writes, `imports: [git, other]` what it reads
-                                             besides — an undeclared read does not install,
-                                             and the graph over packages must be acyclic
+          tree                               EVERY charter at once: baseline and each
+                                             package, what it writes, what it imports, and
+                                             how many rules and strata it holds
+          A charter file may open a package with a `---` document of its own — `at: drift`
+          is where its rules write, `imports: [git, other]` what they may read besides, in
+          either address spelling (`!verse-path [demo pr]` too). A package reads inside its
+          own address and its imports and NOWHERE else; an undeclared read does not install,
+          and the graph over packages must be acyclic (a cycle is refused, showing the loop).
+          Several `at:` documents in one file install several packages.
   task (tasks, ps) [--runner <ref>]          every task, whatever runs it
           run <prompt…> [--attach] [--wait] [--driver scripted|calls|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default

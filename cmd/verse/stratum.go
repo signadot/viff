@@ -170,7 +170,10 @@ func defKind(n *ir.Node) string {
 		return defTrigger
 	case has("level") && has("match"):
 		return defStratum
-	case has("imports"):
+	// `at:` alone is a declaration too — a package that imports nothing still says where it is,
+	// which is what lets one file open several packages and what makes "reads nothing outside
+	// itself" a thing somebody can write down rather than only a default.
+	case has("imports"), has("at"):
 		return defImports
 	}
 	return defUnknown
