@@ -85,6 +85,12 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if levelErr != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, levelErr)
 	}
+	// The confinement, before the ordering below: a rule that may not write where it acts is
+	// refused whatever its levels say, and "outside this charter's address" is the more
+	// specific answer of the two.
+	if err := e.checkConfined(t); err != nil {
+		return fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
 	// LAST, and fatal. A charter that cannot stop spawning is refused rather than logged: it
 	// is not a style question but a rule with no end state, and the operator installing it is
 	// the one person positioned to fix it.

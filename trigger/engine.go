@@ -95,6 +95,9 @@ type Engine struct {
 	// mirror, a peer, and a restart alike. Written by a firing's store (see causal.go), read
 	// per commit on the dispatch path — so it is guarded on its own rather than behind the
 	// loop, which firings do not run on.
+	// confine is the subtree this engine's charter may write in — zero for a baseline engine,
+	// which may write anywhere. See confine.go.
+	confine Subtree
 	chainMu sync.Mutex
 	causes  map[int64]link
 	trips   int // firings refused for running past the depth bound (see throttled)
@@ -1873,6 +1876,15 @@ func proceedWord(ok bool) string {
 // begins. Every other write the engine makes goes through e.store and stays outside every
 // chain; see modifyOn for why that is the right cut rather than an omission.
 func (e *Engine) patchEntity(chain string, parent int64, ref entity.Ref, patch entity.Payload) error {
+	// THE CONFINEMENT, at the moment of the write. A static check at install cannot be the
+	// whole answer while a derive's address can be templated, and this is the one place every
+	// charter-authored write passes through — which is what lets it be a promise rather than a
+	// convention each action keeps.
+	if err := e.mayWrite(ref); err != nil {
+		e.logger.Warn("a charter write was refused: it is outside what this charter may write",
+			"chain", chain, "ref", ref.String(), "err", err)
+		return err
+	}
 	var perr error
 	if err := e.modifyOn(e.caused(chain, parent), ref, func(cur entity.Payload) entity.Payload {
 		// An ABSENT entity is a null document, not a nil one — tony.Patch panics on a nil

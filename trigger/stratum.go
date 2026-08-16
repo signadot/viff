@@ -315,6 +315,12 @@ func (e *Engine) addStratum(s Stratum, durable bool) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
+	// A charter's levels are about its own addresses: a stratum reaching outside what this
+	// engine may write is either inert or a claim about somebody else's, and both read better
+	// as a refusal than as an ordering nothing can use.
+	if err := e.checkConfinedStratum(s); err != nil {
+		return err
+	}
 	e.trigMu.Lock()
 	for _, x := range e.strata {
 		if x.Name == s.Name {
