@@ -159,9 +159,11 @@ setup() {
 #
 # Not "the last one listed": store order is not spawn order, so that picked an arbitrary run
 # about the subject — sometimes one already finished, whose question never came and never would.
+# The mirror is in verse's own half (`verse:task:instance:*`) and `--paths` answers in steps,
+# so the id is the last step of each line.
 run_id() {
-	v state --paths --if "{flow: \"$SUBJECT\", pending: null}" task.instance |
-		sed -n 's|^verse:task:instance:||p' | head -1
+	v state --paths --if "{flow: \"$SUBJECT\", pending: null}" verse.task.instance 2>/dev/null |
+		awk 'NF {print $NF}' | head -1
 }
 
 # Whatever this subject was left holding from an earlier act. One act at a time is the whole
@@ -204,8 +206,8 @@ state() {
 	step "the bindings — who may answer, and for what"
 	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
-	v state resolvers.instance
-	printf '\n  the address is `<name>@<origin>`, so one `verse state resolvers` shows both what is\n'
+	v state verse.resolvers.instance
+	printf '\n  the address is `<name>@<origin>`, so one `verse state verse.resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
 	q=$(question_id)

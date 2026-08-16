@@ -142,10 +142,12 @@ if $clean; then
 	ok "removed the rules"
 	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
 	# the address the engine chose, not by one this script invented.
+	# `--paths` answers in steps, one address per LINE — so it is read a line at a time and
+	# handed over whole. Splitting on whitespace would tear each address into three words.
 	for sys in lineage lintag; do
-		for e in $(v state --paths "$sys" 2>/dev/null); do
-			v state rm "$e" >/dev/null 2>&1 || true
-		done
+		while IFS= read -r e; do
+			[ -n "$e" ] && v state rm "$e" >/dev/null 2>&1 || true
+		done < <(v state --paths "$sys" 2>/dev/null)
 	done
 	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the entities — derived ones, and every release a run cut"
@@ -299,12 +301,13 @@ step "the link verse writes, and the id it gives it"
 # address from its subject; the engine writes the linkage at `verse.meta.derivedFrom`.
 tref=
 for _ in $(seq 1 100); do
-	for t in $(v state --paths lineage 2>/dev/null); do
+	while IFS= read -r t; do
+		[ -n "$t" ] || continue
 		if v state get "$t" -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
 			tref=$t
 			break 2
 		fi
-	done
+	done < <(v state --paths lineage 2>/dev/null)
 	sleep 0.2
 done
 [ -n "$tref" ] ||
