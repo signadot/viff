@@ -229,8 +229,18 @@ check-json: ## fail if non-test code imports encoding/json outside the allowlist
 check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is absent)
 	@./scripts/check-mermaid.sh
 
+# The docs BUILD, which is a different question from whether their links resolve on disk: mkdocs
+# serves docs/ and nothing above it, so a link out of the tree (`../../scripts/x.sh`) resolves
+# for a reader of the repo and 404s for a reader of the site. --strict makes that a failure.
+#
+# It skips loudly when mkdocs is absent, for the reason check-mermaid skips without node: `make
+# check` stays runnable on a machine with nothing but Go. `pip install -r requirements.txt`.
+.PHONY: check-docs
+check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
+	@if command -v mkdocs >/dev/null 2>&1; then 		mkdocs build --strict --site-dir "$$(mktemp -d)/site" >/dev/null && echo "the docs build"; 	else 		echo "mkdocs absent — skipping the docs build (pip install -r requirements.txt)"; 	fi
+
 .PHONY: check
-check: check-generate check-json check-mermaid ## every static check (what CI should run before the tests)
+check: check-generate check-json check-mermaid check-docs ## every static check (what CI should run before the tests)
 
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an ephemeral port)
