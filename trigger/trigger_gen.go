@@ -500,7 +500,9 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		return nil, fmt.Errorf("failed to convert field %q: %w", "Condition", err)
 	}
 	irMap["condition"] = node
-	irMap["condition"] = gomap.ApplyComments(irMap["condition"], s.ConditionDoc, nil)
+	if n, ok := irMap["condition"]; ok {
+		irMap["condition"] = gomap.ApplyComments(n, s.ConditionDoc, nil)
+	}
 
 	// Field: Gates
 	if len(s.Gates) > 0 {
@@ -513,6 +515,9 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			slice[i] = node
 		}
 		irMap["gates"] = ir.FromSlice(slice)
+	}
+	if n, ok := irMap["gates"]; ok {
+		irMap["gates"] = gomap.ApplyComments(n, s.GatesDoc, nil)
 	}
 
 	// Field: Gating (optional)
@@ -613,6 +618,9 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Gates = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
+			}
+			if fieldNode.Type == ir.CommentType {
+				s.GatesDoc = fieldNode.Lines
 			}
 		case "gating":
 			// Field: Gating

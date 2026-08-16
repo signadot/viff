@@ -143,8 +143,8 @@ The gain is that the record is the rule: `verse state get trigger:rule:review` s
 document to read field by field, a charter change is an observable fact about a shape rather
 than about a string, and nothing has to re-parse to ask a question about it.
 
-**A rule keeps most of the comments it was written with**, so the record carries the reasons and
-not only the shape.
+**A rule keeps the comments it was written with**, so the record carries the reasons and not only
+the shape — the example above reads back with all three of its notes in place.
 
 A comment attaches to the VALUE it precedes, and something has to carry it: either the value's
 own type says it does, or the FIELD holding it does. Between them they cover a charter, and the
@@ -154,9 +154,8 @@ one gap left is a level down:
 |---|---|
 | the rule, `action:`, `spawn:`, a gate entry | the value's own type |
 | a `patch:` or `derive:` body | nothing needed — the value is stored as-is |
-| `condition:` | the field holding it, since Condition's own codec is hand-written |
-| `gates:` | **nobody yet** — the annotation exists but crashes on a rule with no gates (`gzdawgp1h12kss2ng5n0`) |
-| `subject:`, and inside a formula | **nobody yet** — fields OF a hand-written codec, which emits no annotation of its own |
+| `condition:`, `gates:` | the FIELD holding it — which is how a value whose own type cannot carry one still keeps it |
+| `subject:`, and inside a formula | **nobody yet** — those are fields OF a hand-written codec, which emits no annotation of its own |
 
 **A comment above a list and one above its first entry are the same comment.** A block list
 begins at its first element, so both head the list, they merge, and they come back together

@@ -238,18 +238,18 @@ condition:
 name: r                     3, above the action, is dropped
 ```
 
-A third case is neither: a comment above a LIST-valued field (`gates:`) has nowhere to live,
-because what carries one is a struct saying it does. The per-field hook that would fix it is
-declared upstream and never populated, so a field-level `comment=` is silently ignored
-(`xvexrbthh12ksrahg5n0`).
+The per-FIELD annotation (go-tony v0.0.145, guarded in v0.0.146) turned out to shrink this a
+lot: it names the field's VALUE, which exists whatever the value is, so a parent carries a
+comment for a field whose own type cannot — a list, a scalar, or a struct with a hand-written
+codec. `condition:` and `gates:` are kept that way, and neither Condition nor Match had to
+change.
 
-So the remaining work is two piles of very different size. The GENERATED types (`Action`,
-`Gate`, `Gating`) need one annotation each and a regenerate. The CUSTOM-codec ones
-(`Condition`, `Match`, `Formula`, `Requirement`, `Stratum`) cannot use the annotation at all —
-codegen writes no codec for them, so their hand-written `FromTonyIR`/`ToTonyIR` would each have
-to capture `node.Lines` and rebuild the wrapper themselves. For `Match` that is probably not
-worth it: its commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a
-head comment.
+What is left is one level further down. A comment above one of the custom-codec types is
+carried by whichever field holds it. A comment above a field OF one — `subject:` inside a
+`condition:` — is not, and cannot be: the annotation is emitted by codegen, and codegen writes no
+codec for those, so `Condition`, `Match`, `Formula`, `Requirement` and `Stratum` would each have
+to capture and rebuild in their hand-written ones. For `Match` that is probably not worth it: its
+commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a head comment.
 
 ## What breaks## What breaks
 

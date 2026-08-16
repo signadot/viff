@@ -65,15 +65,13 @@ type Trigger struct {
 	// capture it with (its codec is hand-written). The field-level form (go-tony v0.0.145) names
 	// the field's VALUE instead, which exists whatever the value turns out to be.
 	//
-	// `gates:` wants the same thing and cannot have it yet: the annotation is emitted outside
-	// codegen's omitzero guard, so a rule with no gates writes a nil into the field map and
-	// ToTonyIR segfaults — which is most rules (tony-format#gzdawgp1h12kss2ng5n0). Condition is
-	// required, so its key is always there and the same annotation is safe. When that lands,
-	// `gates:` takes a GatesDoc the same way, and with it the comment above the first ENTRY:
-	// a block list begins at its first element, so those two are one comment.
+	// GatesDoc takes the comment above `gates:` AND the one above its first entry, which are one
+	// comment: a block list begins at its first element, so both head the list. Every later
+	// entry keeps its own, carried by Gate itself.
 	ConditionDoc []string  `tony:"-"`
+	GatesDoc     []string  `tony:"-"`
 	Condition    Condition `tony:"field=condition,comment=ConditionDoc"`
-	Gates        []Gate    `tony:"field=gates,omitzero"` // conjunctive (all must proceed)
+	Gates        []Gate    `tony:"field=gates,omitzero,comment=GatesDoc"` // conjunctive (all must proceed)
 	// Gating groups the two facts about a rule's OWN gates: which they are, and who answers
 	// them. `gates:` at the top level still works and means `gating: {gates: …}` — the two
 	// are one field read two ways, not two fields that can disagree, and writing both is
