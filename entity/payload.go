@@ -98,13 +98,18 @@ func Get(p Payload, field string) Payload {
 	if p == nil || p.Type != ir.ObjectType {
 		return nil
 	}
-	return ir.Uncomment(ir.Get(p, field))
+	// The RECEIVER is unwrapped, the answer is not: navigation sees through a comment, and the
+	// value it arrives at keeps its own. A caller that wants the value reads it with Str or
+	// IsObj, which unwrap; a caller that wants what was SAID about it — trigger.ruleOf, decoding
+	// a rule that carries its author's reasons — would have nothing left to read if this
+	// unwrapped here.
+	return ir.Get(p, field)
 }
 
 // Str reads a string field, empty when absent or not a string. It replaces the
 // `payload["flow"].(string)` idiom, which had the same tolerance.
 func Str(p Payload, field string) string {
-	f := Get(p, field)
+	f := ir.Uncomment(Get(p, field))
 	if f == nil || f.Type != ir.StringType {
 		return ""
 	}
@@ -120,7 +125,7 @@ func Str(p Payload, field string) string {
 // Reading a list now means asking for the element type you want rather than type-asserting
 // the slice the writer happened to use.
 func Strs(p Payload, field string) []string {
-	f := Get(p, field)
+	f := ir.Uncomment(Get(p, field))
 	if f == nil || f.Type != ir.ArrayType {
 		return nil
 	}

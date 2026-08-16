@@ -515,7 +515,17 @@ func (s *Trigger) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	}
 	irMap["action"] = node
 
-	return ir.FromMap(irMap), nil
+	res := ir.FromMap(irMap)
+	if len(s.Note) > 0 {
+		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
+	}
+	if len(s.Doc) > 0 {
+		wrap := &ir.Node{Type: ir.CommentType, Lines: s.Doc, Values: []*ir.Node{res}}
+		res.Parent = wrap
+		res.ParentIndex = 0
+		res = wrap
+	}
+	return res, nil
 }
 
 // FromTonyIR populates Trigger from a Tony IR node.
@@ -526,11 +536,16 @@ func (s *Trigger) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 
 	// Unwrap CommentType nodes to get the actual data node
 	if node.Type == ir.CommentType {
+		s.Doc = node.Lines
 		if len(node.Values) > 0 {
 			node = node.Values[0]
 		} else {
 			return nil
 		}
+	}
+
+	if node.Comment != nil {
+		s.Note = node.Comment.Lines
 	}
 
 	if node.Type == ir.NullType {

@@ -147,6 +147,11 @@ const (
 )
 
 func defKind(n *ir.Node) string {
+	// Unwrapped HERE rather than by the caller, because this is the question a comment gets in
+	// the way of: a definition somebody wrote a note above is a CommentType node, and asking a
+	// wrapper what fields it has answers none. The caller keeps the wrapper, since the note is
+	// part of the rule it installs.
+	n = codec.Unwrap(n)
 	has := func(field string) bool {
 		if n == nil || n.Type != ir.ObjectType {
 			return false
@@ -180,15 +185,22 @@ func charterDefs(data []byte, srcFmt codec.Format) ([]*ir.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	// UNWRAPPED TO LOOK AT, KEPT AS IT WAS TO SEND. A comment wraps the value it precedes, so
+	// deciding what a document IS means stepping past the wrapper — and installing it means not
+	// throwing the wrapper away, because that comment is the author's reason for the rule and
+	// the record is meant to be the rule as they left it (trigger.Trigger's Doc field).
+	//
+	// Unwrap used to be applied to the value itself here, which was invisible for as long as
+	// nothing parsed comments and lossy the moment something did.
 	var defs []*ir.Node
 	for _, doc := range docs {
-		doc = codec.Unwrap(doc)
-		if doc == nil || doc.Type == ir.NullType {
+		inner := codec.Unwrap(doc)
+		if inner == nil || inner.Type == ir.NullType {
 			continue // a trailing `---`, or an empty document
 		}
-		if doc.Type == ir.ArrayType {
-			for _, elem := range doc.Values {
-				if elem = codec.Unwrap(elem); elem != nil && elem.Type != ir.NullType {
+		if inner.Type == ir.ArrayType {
+			for _, elem := range inner.Values {
+				if in := codec.Unwrap(elem); in != nil && in.Type != ir.NullType {
 					defs = append(defs, elem)
 				}
 			}

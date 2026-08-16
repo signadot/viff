@@ -522,3 +522,55 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 		t.Error("a subject that HAS `reviewed` is still selected — the latch would never hold")
 	}
 }
+
+// A RULE KEEPS THE COMMENTS IT WAS WRITTEN WITH, through the store and a restart.
+//
+// The record is meant to be the rule as its author left it, and until go-tony v0.0.142 it could
+// not be: a rule is persisted from this struct (`t.ToTonyIR()`), so everything the struct itself
+// carried lost its comments while a raw-node field like `action.patch` kept them — the arbitrary
+// half of a document surviving, which is worse than none of it.
+//
+// The path this walks is the real one: decode as an install does, persist, then read back as
+// LoadCharter does.
+func TestARuleKeepsItsComments(t *testing.T) {
+	eng, store := newEng(t)
+	src := []byte("# why this rule exists, in the author's words\n" +
+		"name: commented\n" +
+		"condition:\n  subject: { system: demo, kind: pr, value: { stage: open } }\n" +
+		"action:\n  patch: { stage: reviewing }\n")
+	node, err := codec.ParseNode(src, codec.Tony)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	var installed Trigger
+	if err := installed.FromTonyIR(node); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(installed.Doc) == 0 {
+		t.Fatal("the decode dropped the rule's comment — comment= is not reaching Trigger.Doc")
+	}
+	if err := eng.AddTrigger(installed); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	// …and back out the way a restart reads it.
+	ent, ok, err := store.Get(CharterRef("commented"))
+	if err != nil || !ok {
+		t.Fatalf("the charter entity: ok=%v err=%v", ok, err)
+	}
+	back, err := ruleOf(ent)
+	if err != nil {
+		t.Fatalf("ruleOf: %v", err)
+	}
+	if len(back.Doc) == 0 {
+		t.Fatal("the rule came back with no comment — the store or the read stripped it")
+	}
+	if back.Doc[0] != "# why this rule exists, in the author's words" {
+		t.Fatalf("Doc = %q, want the line the author wrote", back.Doc)
+	}
+	// The comment is not DATA: it does not become a field, and the rule is otherwise identical.
+	if back.Name != "commented" || back.Condition.Subject.Kind() != "pr" {
+		t.Fatalf("the rule itself did not survive: %+v", back)
+	}
+}

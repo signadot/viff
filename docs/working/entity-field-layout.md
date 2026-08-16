@@ -190,38 +190,35 @@ answers the whole verse — so if every kind carries one, a bare read becomes N 
 the answer is (evaluate only under the path asked for, cache by revision, refuse one above some
 depth), it has to be decided before this is offered rather than after.
 
-## Comments on a declaration, and the annotation that would carry them
+## Comments on a declaration — done, and what it took
 
-A charter installed from a file loses the comments its author wrote, and the layout is why: a
-rule is stored by decoding it to a Go struct and re-encoding (`persist` writes `t.ToTonyIR()`),
-so only the parts carried as raw nodes survive. `action.patch`'s comments come back;
-the lines above `name:` and `subject:` do not.
+A rule keeps the comments its author wrote now, and the fork this section used to describe is
+closed: `persist` still writes the NORMALIZED record (`t.ToTonyIR()`), and the comments ride
+along in it. Storing the document as authored was the other route and is not needed.
 
-Codegen has the mechanism for it — `//tony:schemagen=…,comment=<Field>,LineComment=<Field>`
-puts a struct's own head and line comments into named Go fields — and it is **built in one
-direction only**. Generated `FromTonyIR` unwraps the comment node and captures the lines;
-generated `ToTonyIR` emits nothing. The reflection path says so outright
-(`gomap/mapper_to.go`): *"We'll populate this when we have access to the source IR node. For
-now, this is a placeholder for when marshaling from IR -> IR."* The option is also spelled two
-ways — `lineComment` by reflection, `LineComment` by codegen — so a struct annotated for one is
-silently ignored by the other. Filed upstream as `vtm464whh12krm70g1n0`.
+`//tony:schemagen=verse-trigger,notag,comment=Doc,lineComment=Note` is the whole of the
+declaration; go-tony v0.0.142 built the encode half of those annotations and v0.0.143 finished
+the codec. Two things in verse had to move with it, and both were the same shape — code that
+asked a node what it was without stepping past a comment first:
 
-So there are two routes to a rule that keeps its comments, and the choice is not this note's to
-make until the upstream half exists:
+- `codec.Unwrap` in `charterDefs` was applied to the value being INSTALLED, not just to the one
+  being inspected, so the CLI threw the rule's comment away before it ever reached the wire. It
+  was invisible for as long as nothing parsed comments and lossy the moment something did.
+- `entity.Get` unwrapped its ANSWER as well as its receiver, so `ruleOf` — reading `spec` back
+  to rebuild a rule at startup — got the value with the wrapper already gone. The rule now is
+  that navigation sees through a comment and the value it arrives at keeps its own.
 
-- **Annotate the structs.** Every type in the charter grammar declares a comment field, and the
-  stored record stays the normalized one it is today — `verse state get trigger.rule.review`
-  still shows what the engine will do, now with the author's reasons beside it. Costs two fields
-  on each of a dozen types, and is blocked only on the encode half upstream. If that lands, this
-  is the answer and the fork below closes.
-- **Store the document as authored.** `persist` writes what it was given rather than what it
-  decoded. Needs nothing upstream, and the read path already re-normalizes — `LoadCharter` →
-  `ruleOf` → `addTrigger`, which desugars and re-validates, so a spec carrying the sugar
-  spelling still registers the canonical tagged form. What it costs is that the record stops
-  being the normalized form, so `verse state get trigger.rule.review` shows what somebody typed
-  rather than what the engine will do.
+What is NOT covered, and it is most of a charter file: a comment above an element of a LIST is
+discarded by the parser, so the natural way to write a multi-rule charter still loses them. Only
+a rule that is its own document (`---`-separated, which `trigger add` accepts) keeps its own.
+Filed upstream as `8rr738ffh12kr3t8g5n0`; when it lands, the list form starts working with no
+change here.
 
-## What breaks
+Nested comments are a separate gap and a smaller one: `Condition`, `Match`, `Formula` and
+`Stratum` have hand-written codecs (`codec=custom`), so a comment above `subject:` needs each of
+those to carry the annotation itself.
+
+## What breaks## What breaks
 
 Everything reads one level deeper — but exactly one, which is the point of collapsing `meta`.
 `verse state demo.pr.1` answers `{value: …, status: …}` rather than the payload;
