@@ -39,10 +39,15 @@ import (
 // turning a generic action into a specific launch. All fields are optional; a
 // runtime supplies defaults for any left blank.
 //
-//tony:schemagen=verse-launch-spec,notag
+//tony:schemagen=verse-launch-spec,notag,comment=Doc,lineComment=Note
 type Spec struct {
-	Driver string `tony:"field=driver,omitzero"`
-	Prompt string `tony:"field=prompt,omitzero"`
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc    []string `tony:"-"`
+	Note   []string `tony:"-"`
+	Driver string   `tony:"field=driver,omitzero"`
+	Prompt string   `tony:"field=prompt,omitzero"`
 	// Frame is the standing instructions the Prompt is read in — the agent's system prompt.
 	//
 	// It is INLINE, alongside Prompt, rather than a reference like the axes below, and the

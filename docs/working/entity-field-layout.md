@@ -208,11 +208,19 @@ asked a node what it was without stepping past a comment first:
   to rebuild a rule at startup — got the value with the wrapper already gone. The rule now is
   that navigation sees through a comment and the value it arrives at keeps its own.
 
-What is NOT covered, and it is most of a charter file: a comment above an element of a LIST is
-discarded by the parser, so the natural way to write a multi-rule charter still loses them. Only
-a rule that is its own document (`---`-separated, which `trigger add` accepts) keeps its own.
-Filed upstream as `8rr738ffh12kr3t8g5n0`; when it lands, the list form starts working with no
-change here.
+WHERE A COMMENT LANDS is positional, and worth knowing before writing a charter, because one of
+the three spellings does not do what it looks like:
+
+| written | belongs to |
+|---|---|
+| anything before a container's first item | the CONTAINER — and blank lines do not separate, so a file header and a comment meant for the first rule merge into one |
+| a comment between items | the item that FOLLOWS it |
+| `- # …` then the fields | that item |
+
+So in a charter file the first rule cannot take a head comment the ordinary way — there is no
+position between "the list starts" and "the first rule" except inside the item, and that
+spelling works. Every later rule takes one normally (go-tony v0.0.144). A rule written as its
+own `---` document takes one too.
 
 Nested comments are a separate matter, and nothing about them is broken — every position
 decodes, and a head-commented patch still fires and applies, because `tony.Patch` sees through

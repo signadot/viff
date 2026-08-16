@@ -45,6 +45,12 @@ func TestBindCarriesEveryField(t *testing.T) {
 		"Chain":      "the kpath of the spawning action, which only the engine knows",
 		"Doer":       "who the selection picked, which is an answer and not a request",
 		"Occurrence": "the commit that caused this firing, which is a fact about the cause and not a request",
+		// A comment describes the spawn AS WRITTEN, so it belongs to the charter and not to the
+		// run: the persisted rule is the un-bound spec, which keeps them, and binding one into a
+		// running task would carry an author's note somewhere nobody reads it. Substituting
+		// `$subject` inside a comment would be worse still.
+		"Doc":  "a comment on the rule, which describes what was written rather than what runs",
+		"Note": "a comment on the rule, which describes what was written rather than what runs",
 	}
 
 	out := reflect.ValueOf(spec.Bind(Binding{}))

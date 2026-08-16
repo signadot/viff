@@ -354,7 +354,17 @@ func (s *GoalDef) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["triggers"] = ir.FromSlice(slice)
 	}
 
-	return ir.FromMap(irMap), nil
+	res := ir.FromMap(irMap)
+	if len(s.Note) > 0 {
+		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
+	}
+	if len(s.Doc) > 0 {
+		wrap := &ir.Node{Type: ir.CommentType, Lines: s.Doc, Values: []*ir.Node{res}}
+		res.Parent = wrap
+		res.ParentIndex = 0
+		res = wrap
+	}
+	return res, nil
 }
 
 // FromTonyIR populates GoalDef from a Tony IR node.
@@ -365,11 +375,16 @@ func (s *GoalDef) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 
 	// Unwrap CommentType nodes to get the actual data node
 	if node.Type == ir.CommentType {
+		s.Doc = node.Lines
 		if len(node.Values) > 0 {
 			node = node.Values[0]
 		} else {
 			return nil
 		}
+	}
+
+	if node.Comment != nil {
+		s.Note = node.Comment.Lines
 	}
 
 	if node.Type == ir.NullType {
@@ -669,7 +684,17 @@ func (s *Gating) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["gates"] = ir.FromSlice(slice)
 	}
 
-	return ir.FromMap(irMap), nil
+	res := ir.FromMap(irMap)
+	if len(s.Note) > 0 {
+		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
+	}
+	if len(s.Doc) > 0 {
+		wrap := &ir.Node{Type: ir.CommentType, Lines: s.Doc, Values: []*ir.Node{res}}
+		res.Parent = wrap
+		res.ParentIndex = 0
+		res = wrap
+	}
+	return res, nil
 }
 
 // FromTonyIR populates Gating from a Tony IR node.
@@ -680,11 +705,16 @@ func (s *Gating) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 
 	// Unwrap CommentType nodes to get the actual data node
 	if node.Type == ir.CommentType {
+		s.Doc = node.Lines
 		if len(node.Values) > 0 {
 			node = node.Values[0]
 		} else {
 			return nil
 		}
+	}
+
+	if node.Comment != nil {
+		s.Note = node.Comment.Lines
 	}
 
 	if node.Type == ir.NullType {
@@ -796,7 +826,17 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onDenied"] = node
 	}
 
-	return ir.FromMap(irMap), nil
+	res := ir.FromMap(irMap)
+	if len(s.Note) > 0 {
+		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
+	}
+	if len(s.Doc) > 0 {
+		wrap := &ir.Node{Type: ir.CommentType, Lines: s.Doc, Values: []*ir.Node{res}}
+		res.Parent = wrap
+		res.ParentIndex = 0
+		res = wrap
+	}
+	return res, nil
 }
 
 // FromTonyIR populates Gate from a Tony IR node.
@@ -807,11 +847,16 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 
 	// Unwrap CommentType nodes to get the actual data node
 	if node.Type == ir.CommentType {
+		s.Doc = node.Lines
 		if len(node.Values) > 0 {
 			node = node.Values[0]
 		} else {
 			return nil
 		}
+	}
+
+	if node.Comment != nil {
+		s.Note = node.Comment.Lines
 	}
 
 	if node.Type == ir.NullType {
@@ -966,7 +1011,17 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onOrphaned"] = node
 	}
 
-	return ir.FromMap(irMap), nil
+	res := ir.FromMap(irMap)
+	if len(s.Note) > 0 {
+		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
+	}
+	if len(s.Doc) > 0 {
+		wrap := &ir.Node{Type: ir.CommentType, Lines: s.Doc, Values: []*ir.Node{res}}
+		res.Parent = wrap
+		res.ParentIndex = 0
+		res = wrap
+	}
+	return res, nil
 }
 
 // FromTonyIR populates Action from a Tony IR node.
@@ -977,11 +1032,16 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 
 	// Unwrap CommentType nodes to get the actual data node
 	if node.Type == ir.CommentType {
+		s.Doc = node.Lines
 		if len(node.Values) > 0 {
 			node = node.Values[0]
 		} else {
 			return nil
 		}
+	}
+
+	if node.Comment != nil {
+		s.Note = node.Comment.Lines
 	}
 
 	if node.Type == ir.NullType {

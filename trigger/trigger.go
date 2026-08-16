@@ -74,8 +74,13 @@ type Trigger struct {
 
 // Gating is a rule's own gates and who answers them.
 //
-//tony:schemagen=verse-gating,notag
+//tony:schemagen=verse-gating,notag,comment=Doc,lineComment=Note
 type Gating struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc  []string `tony:"-"`
+	Note []string `tony:"-"`
 	// Resolver names the binding that answers these gates — `resolvers:<kind>:<name>`. Same
 	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
 	// and one word for it is worth more than either word being marginally better in its own
@@ -248,8 +253,13 @@ func (c Condition) validateOn() error {
 // is set the gate is monitored on the store's watch stream (see Monitor) rather than posed
 // to a resolver; Mode is then optional (defaults to a blocking gate).
 //
-//tony:schemagen=verse-trigger-gate,notag
+//tony:schemagen=verse-trigger-gate,notag,comment=Doc,lineComment=Note
 type Gate struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc     []string `tony:"-"`
+	Note    []string `tony:"-"`
 	Name    string   `tony:"field=name,omitzero"`
 	Mode    string   `tony:"field=mode,omitzero"` // auto | ask | park
 	Formula *Formula `tony:"field=formula,omitzero"`
@@ -356,8 +366,13 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 // is what lets a task's output become a fact the next `when` can match rather than only
 // text in the next prompt. A Spawn's strings keep the older flat substitution (launch.Bind).
 //
-//tony:schemagen=verse-action,notag
+//tony:schemagen=verse-action,notag,comment=Doc,lineComment=Note
 type Action struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc  []string `tony:"-"`
+	Note []string `tony:"-"`
 	// Patch is applied to the subject's payload with tony.Patch — the WRITE half of the
 	// vocabulary whose read half is a Match. It merges rather than assigns, so a nested
 	// write touches one subtree instead of replacing its parent, and it can carry the

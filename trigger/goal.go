@@ -27,8 +27,13 @@ import (
 
 // GoalDef is the wire form of a goal — fully declarative, installable over the wire.
 //
-//tony:schemagen=verse-goal,notag
+//tony:schemagen=verse-goal,notag,comment=Doc,lineComment=Note
 type GoalDef struct {
+	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
+	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
+	// and they exist so a charter read back is the one its author wrote.
+	Doc      []string  `tony:"-"`
+	Note     []string  `tony:"-"`
 	Name     string    `tony:"field=name"`
 	Subject  string    `tony:"field=subject,omitzero"`  // the entity this goal is about (steering key)
 	DoneWhen *Formula  `tony:"field=doneWhen"`          // success predicate (a fact/quorum atom in v1)
