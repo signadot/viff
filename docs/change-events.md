@@ -238,7 +238,8 @@ answers it — match a field the action advances — and a re-write to the same 
 A logd commit is a single, atomic transaction that can patch many branches at once —
 several `verse.<system>.<kind>.<id>` paths, across systems and kinds. But an
 `entity.Event` names exactly one `Ref`, so the store normalises: `walkEntityChanges` recurses
-the commit's delta and, at path-depth 3 (`system/kind/id`), emits one `Event` per
+the commit's delta and, at path-depth 3 (`system/kind/id` — the depth an address has unless a
+reader asks for another), emits one `Event` per
 entity — all sharing that commit's number as their `Rev` (`LogdStore.eventsFromDelta`).
 Patch five branches in one tx → five per-entity events; patch a whole kind subtree, or
 above it → it descends to each `id` and still yields one event apiece. The "one entity per

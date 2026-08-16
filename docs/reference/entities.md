@@ -1,20 +1,30 @@
 # Entities
 
 An entity is anything the flow refers to — a PR, a build, a person, a CI status, a running
-task — addressed by a `system:kind:id` triple and carrying a document.
+task — addressed by a PATH (`demo:pr:1`, `verse-dev.drift.head.abc`) and carrying a document.
 [Tutorial §2](../tutorial.md#2-entities) drives all of this; here is the surface flat, with
 the corners that section leaves out.
 
 ## Addressing
 
-An address is **three segments** — system, kind, id — under an optional reserved root, and it
-has **three spellings**. They are one grammar: the same address, delimited three ways.
+An address is **a path**: as many segments as the tree it names is deep. Three is the ordinary
+shape — system, kind, id — and it is what most of this repository is written in, but a charter
+installed at `verse-dev.drift` keeps its entities at `verse-dev.drift.head.<id>`, four segments
+down, and that is an address like any other.
+
+It has **three spellings**, which are one grammar delimited three ways:
 
 ```
-demo:pr:1                  a REF, delimited by `:`
-demo.pr.1                  a PATH, delimited by `.` — and it carries on into the payload
-demo pr 1                  STEPS, delimited by spaces — one shell word per segment
+demo:pr:1                  a REF, delimited by `:` — three segments, and only three
+demo.pr.1                  a PATH, delimited by `.` — any depth, and it carries on into the payload
+demo pr 1                  STEPS, delimited by spaces — one shell word per segment, any depth
 ```
+
+**The ref spelling stops at three.** `a:b:c:d` cannot be read back — the id may itself contain
+colons, so the grammar splits at the first two and the rest is the id — which is why an address
+deeper than three is written as a path or as steps, and why a deeper one RENDERS as a path. The
+colon form is what every stored record, every task id and every charter written so far carries,
+and it means exactly what it always did.
 
 **Whichever delimiter comes FIRST is the one in use.** That single rule is what keeps all three
 unambiguous when an id contains the others, which ids routinely do:
@@ -27,13 +37,23 @@ github:pr:org/repo#42      only the leading colons split; the id keeps the rest
 verse:task:instance:run-a1b2   a leading `verse` is the reserved root, and the three follow it
 ```
 
+**How deep is an entity?** It is a property of the QUESTION, not of the store. A document
+holding `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c` — or one at `a.b` whose payload
+happens to be nested — and nothing in it says which. So a rule's pattern says how deep its
+subjects are (`{path: [verse-dev, drift, head, "*"]}` selects four-segment entities), a write
+names the place it writes, and a listing is asked (`verse state --paths --depth 4`). Where
+nothing says, the answer is the three an address has always had. See
+[working/entity-tree.md](../working/entity-tree.md) for why it is this way round rather than a
+marker in the store.
+
 **Which spelling goes where.**
 
 | | |
 |---|---|
-| a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved |
-| a path | anywhere the address may continue into the payload: `verse state demo.pr.1.labels.urgent` |
-| steps | at a command line, where the shell's own quoting is the only quoting there is |
+| a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved — three segments |
+| a path | any depth, and anywhere the address may continue into the payload: `verse state demo.pr.1.labels.urgent`, `verse-dev.drift.head.abc` |
+| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse state get verse-dev drift head abc` |
+| a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
 Steps are what `verse state --paths` prints, so a listing pipes back into a read. A whole line
 handed back as ONE quoted token is read as steps too, which is what makes the shell idiom work
@@ -80,14 +100,32 @@ In a charter, the same segment is a `root` dimension on a match — `{root: vers
 kind: instance}` — and an unwritten `root` means the world's half, so a rule that means to watch
 verse's own state says so.
 
+**In a charter**, an address is a `path:` — and every segment of it is a MATCH, in tony's own
+grammar, asked of that one segment:
+
+```tony
+subject: {path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}
+subject: !verse-path [verse-dev drift !glob "head-*" "*"]
+subject: {system: demo, kind: pr, id: 1}      # the three-segment shorthand, unchanged
+```
+
+So `!glob "hot-*"`, `!or [hot, cold]` and `!and [!glob "h*", !not hold]` all say at a position
+what they already say about a payload. Nothing in verse enumerates the operators; `tony.Match`
+owns them. One convention sits above that: a bare `*` is any segment, and inside an operator a
+`*` is an ordinary character — which is how an id that IS an asterisk is named (`!glob "[*]"`).
+
+A `*` is a POSITION, which the dimensions could not say: an unset `kind` means "and nothing
+below it", where `[demo, "*", 1]` means "any one segment, then this".
+
 **What takes what:**
 
 | | |
 |---|---|
-| `verse state`, `state get/put/rm`, `verse watch` | any spelling; steps may be several arguments |
+| `verse state`, `state get/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
 | `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
 | `verse runner/source/resolver show/check/remove` | one token: `<kind>:<name>`, or the address as stored |
-| `verse charter/stratum show/remove` | a name, not an address |
+| `verse charter [<address>]` | an address in the CHARTER tree, any depth: `verse charter verse-dev drift` |
+| `verse charter show/remove <name>` | a name, not an address |
 
 ## Two halves, one tree
 

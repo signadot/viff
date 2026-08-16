@@ -1,6 +1,7 @@
 # The trigger model — entities, matches, and one selector grammar
 
-One noun and two grammars carry the whole model. An entity is a node `system:kind:id`
+One noun and two grammars carry the whole model. An entity is a node at an address —
+`system:kind:id` in the ordinary case, a path of any depth where a charter keeps its own tree —
 with a small payload. A match names entities at an instant; a formula relates the
 verse over time. Every trigger concept — `when`, `subject`, gates, flows — lands on
 exactly one of those two, and knowing which is the thing to be unambiguous about.
@@ -414,9 +415,10 @@ channel, its place in a causal chain. A re-evaluation about a subject already fi
 running work it started — is not a second firing, which is what keeps a rule waiting on a
 human from asking again at every commit.
 
-This is why `subject` is bounded where a `when` formula ranges freely: it pins `system:kind`
-and predicates over the single entity's payload, rather than composing over time. "all open
-PRs" is just `{system: demo, kind: pr, value: {stage: open}}`.
+This is why `subject` is bounded where a `when` formula ranges freely: it pins a PLACE and
+predicates over the single entity's payload, rather than composing over time. "all open PRs" is
+just `{system: demo, kind: pr, value: {stage: open}}`, and the same thing one level deeper is
+`{path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}`.
 
 ### The string form is an address, in one grammar
 
@@ -425,6 +427,13 @@ wire and the CLI (`verse flow <addr>`) parse it with `ParseExpr`: three segments
 wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo:pr:*"` in a
 charter and `verse flow demo:pr:*` on the command line mean the same set, as they read like
 they should.
+
+The string form is the three-segment one, because that is what a colon spelling can carry. An
+address of any depth is a VECTOR — `!verse-path [verse-dev drift head "*"]`, or `path:
+[verse-dev, drift, head, "*"]` in the object form — where every element is a match in its own
+right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for equality, `*` for any segment.
+Nothing here enumerates the operators; `tony.Match` owns them, so a segment is as expressive as
+a payload predicate.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
 whose cause is a `verse:task:instance` change and which acts on PRs acts on the PRs its own
@@ -795,10 +804,11 @@ triggers writing under one key do not clobber each other, and the
 apply. `patch: { tmp: !delete null }` removes a key, which is something no amount of setting
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
-`derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It is
-addressed `<system>.<kind>`, its content may reference its own subject and — at or below its
-own level — other entities, and the derived entity's
-id is the engine's, a function of (rule, subject). It is only installable inside a declared
+`derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It names a
+PLACE — `<system>.<kind>` in the nested spelling, or `- {path: [verse-dev, drift, head], value:
+…}` for a place of any depth — its content may reference its own subject and, at or below its
+own level, other entities; and the derived entity's id is the engine's, a function of (rule,
+subject). It is only installable inside a declared
 level ordering, where it must land strictly above the rule that writes it: see
 [strata](strata.md).
 
@@ -955,7 +965,7 @@ They are facts about a run, with no entity to hang a path off.
 parts still means what it meant:
 
 | `$subject` | the whole ref, `demo:pr:1` |
-| `$subject.ref` `.system` `.kind` `.id` | the address, and its three segments |
+| `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
 | `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
 | `$subject.commit` | that commit's revision |
 
@@ -979,7 +989,14 @@ action:
     green:    !list-paths { system: git, kind: repo, id: "*", value: {state: green}, path: branch }
     # the string form addresses an entity and stops there
     also:     !get-path "git:repo:$subject.value.head"
+    # and `at:` names the address as a PATH, at whatever depth the tree is
+    says:     !get-path { at: [verse-dev, drift, head, "head-moved@git:head:verse"], path: result.report }
+    open:     !list-paths { at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says }
 ```
+
+The address is `at:` here and `path:` in a condition, which looks like an inconsistency and is
+not: in a READ, `path:` is already the field path inside the payload, and the field path was
+there first. Two things cannot both be `path`.
 
 **One grammar, split by cardinality, and the names say which.** A verse is one document —
 `{system: {kind: {id: payload}}}` — so an entity address is a path prefix, and `path:` continues
@@ -995,8 +1012,13 @@ answers that question instead.
 |---|---|
 | `system`, `kind` | always literal — no reference, no glob |
 | `id` | literal, a `$reference`, or (list only) a glob |
+| `at` | the address as a path, any depth; everything above the entity is literal, and the last segment is what `id` would be |
 | `path` | a kpath into the payload; wildcards are list-only. Omitted, you get the whole payload |
 | `value` | a payload predicate, **list only** — of the ids the address selects, the ones that look like this |
+
+Everything above the entity must be literal in either spelling, and for the same reason: the
+level check asks whether a read lands at or below the rule's own stratum, and it can only ask
+that of the segments known at install.
 
 `!get-path` refuses a `value` for the reason it refuses a globbing id: a predicate can name
 several, and an entity that is not there does not satisfy one — while one that is there might not

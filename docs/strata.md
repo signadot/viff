@@ -75,8 +75,28 @@ read from opposite directions.
 
 ## What a stratum may match
 
-A system, optionally a kind, and nothing below — no `id`, no `value` predicate. Write a union as
-a list: `match: [ "gh", "linear" ]`.
+**A PLACE**, and nothing below it — no id, no `value` predicate. Write a union as a list:
+`match: [ "gh", "linear" ]`.
+
+A system and optionally a kind is the ordinary spelling. A charter that keeps a deeper tree
+names the place as a path, and it is the same statement one level further down:
+
+```tony
+- {name: tip,    level: 10, match: {path: [verse-dev, drift, head]}}
+- {name: ledger, level: 20, match: {path: [verse-dev, drift, finding]}}
+```
+
+`path:` always means a path, at every length — where `!verse-path [a b c]` folds three segments
+into system/kind/id for the sake of every charter written before addresses were trees. A stratum
+is the one place that difference matters: `[verse-dev, drift, head]` is a PLACE entities land
+under, not an entity whose id is `head`.
+
+**An OPERATOR at a level position reads as `*` for containment**, because that is the honest
+answer: `!glob "head*"` might select outside the level and nothing at install can say it does
+not. So a rule whose subject globs a level is not in a stratum that owns one particular level —
+and since strata are pairwise disjoint, there is usually no level that owns it either. Such a
+rule is unstratified, which is fine as long as it does not derive: an operator belongs at the
+LEAF of an address, where the id already globs, rather than at a level of it.
 
 The restriction is not tidiness. A derived entity's id belongs to the engine (below), so at
 install there is no id to check a pattern against — a stratum matching on one could not be
@@ -85,8 +105,19 @@ level depend on a state that rules change as they fire, which is not a level.
 
 ## `derive` — identity, not state
 
-The address is exactly two levels — `<system>.<kind>` — and everything under it is payload.
-Nothing deeper is address, so there is no boundary to find.
+The address is a PLACE and the content goes under it. In the nested spelling that place is two
+levels — `<system>.<kind>` — and everything below is payload; where a charter keeps a deeper
+tree, the entry names its place as a path and there is still no boundary to find:
+
+```tony
+derive:                                  # the nested spelling: two levels, then the payload
+  drift:
+    head: {sha: $subject.value.sha}
+
+derive:                                  # a place of any depth, named
+- path: [verse-dev, drift, head]
+  value: {sha: $subject.value.sha}
+```
 
 **A derive may reference its subject, and nothing else** — `$subject` and its parts resolve,
 every other `$reference` is refused at install. (A path read may reach further, at a price the
@@ -111,7 +142,7 @@ The parts:
 | reference | resolves to |
 |---|---|
 | `$subject` | the whole ref, `"gh:issue:1"` — a match address as it stands |
-| `$subject.ref` `.system` `.kind` `.id` | the address, and its three segments |
+| `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
 | `$subject.value` | the subject's payload **at the commit that caused the firing** |
 | `$subject.commit` | that commit's revision — not in a derive |
 

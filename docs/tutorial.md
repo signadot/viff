@@ -41,7 +41,8 @@ flags for pointing at a store or a task runner you already have, are in
 ## 2. Entities
 
 An entity is anything the flow refers to — a PR, a build, a person, a CI status — addressed
-by three segments (system, kind, id) and carrying a document. That is the whole data model.
+by a path — three segments (system, kind, id) in the ordinary case, more where a charter keeps
+its own tree — and carrying a document. That is the whole data model.
 
 At a command you type those segments as separate words — `demo pr 1` — and in a document they
 are written with `:` between them, `demo:pr:1`. One address, and

@@ -76,7 +76,10 @@ verse
                                              demo · demo.pr · demo.pr.1 · demo.pr.1.labels.urgent
                                              'demo.pr.*.stage' · (none) = the whole verse
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
-          [--paths]                          … one address per line instead of the document
+          [--paths] [--depth <n>]            … one address per line instead of the document;
+                                             --depth says how many segments an address has
+                                             (default: 3, or 4 under verse), since a document
+                                             cannot say where its entities are
                                              flags go on either side of the path
           get <path>                         one place, at any depth — and a read may reach into
                                              an array: merge.proposal.X.votes(scott)

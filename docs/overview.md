@@ -37,13 +37,14 @@ store, not through a scheduler.
 
 ## The model, in five nouns
 
-An *entity* is anything the SDLC refers to, named by a `system:kind:id` triple (`demo:pr:1`,
+An *entity* is anything the SDLC refers to, named by an address (`demo:pr:1`,
 `github:pr:org/repo#42`, `verse:task:instance:review-1`) and carrying an arbitrary payload
 value. The entity store is the shared, observable, cursored log of these.
 
 A *trigger* is one charter rule: when the condition holds and its gates resolve, an action
 fires. It has a `condition` — the `subject` the firing is about, which is required, plus an
-optional `when` (a point-in-time match over system/kind/id/op/value, or a temporal formula)
+optional `when` (a point-in-time match over an address and a payload predicate, or a temporal
+formula)
 for when the cause is not the subject itself — a conjunctive list of `gates`, and an `action`.
 See [the trigger model](trigger-model.md).
 
@@ -221,7 +222,9 @@ the mirror.
 
 ## Data and failure model
 
-*Refs and cursors.* A ref is `system:kind:id`; a store revision is monotonic but sparse and
+*Refs and cursors.* A ref is `system:kind:id` — three segments, the ordinary depth; an address
+may be deeper and is then written as a path (`verse-dev.drift.head.abc`). A store revision is
+monotonic but sparse and
 is treated as an opaque cursor. The task event stream carries its own per-task cursor
 for resume. Nothing assumes dense or gap-free numbering, and everything reconciles via
 `since`.

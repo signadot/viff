@@ -46,7 +46,8 @@ identical to update, since logd delivers the writer's applied patch verbatim.
 This one is subtle, and it is the load-bearing assumption worth naming.
 
 A single docd commit can atomically patch many entities, but the store normalises each commit
-into **one change event per entity** — `walkEntityChanges`, at path-depth `system/kind/id` — all
+into **one change event per entity** — `walkEntityChanges`, at path-depth `system/kind/id`,
+which is the depth an address has unless a reader asks for another — all
 sharing that commit's revision. That normalisation is exactly what guarantees a trigger's
 subject is always one entity: dispatch is per-entity-edge, so `$subject`, and the flow or goal
 keyed on it, is never ambiguous even under a broad match, since a broad pattern just fans out
