@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 )
 
@@ -55,6 +57,32 @@ func CharterRef(name string) entity.Ref {
 // structural write would, and which the text form got for free by being one scalar.
 const specField = "spec"
 
+// scopeField is the federation a record belongs to — absent for baseline. It is what makes a
+// scope's charter restorable: a scoped store reads baseline layered underneath, so a listing
+// in a scope returns both, and only the record can say which is which. See Engine.SetScope.
+const scopeField = "scope"
+
+// ownRecord reports whether a charter record belongs to THIS engine's federation: the scope
+// stamped on it is the scope the engine acts in.
+//
+// A record with no scope is baseline's. Read from a scope that is what an INHERITED rule looks
+// like, and skipping it is what keeps `verse connect` from installing the whole baseline
+// charter into one dev's federation — which is a decision about what a scope means, not a
+// restore detail, and is not this function's to make (docs/reference/connect.md).
+func (e *Engine) ownRecord(ent entity.Entity) bool {
+	return entity.Str(ent.Payload, scopeField) == e.scope
+}
+
+// record builds a declaration's durable payload: the spec, plus the scope when this engine
+// acts in one. One builder, so a rule and a stratum cannot drift on either.
+func (e *Engine) record(doc *ir.Node) entity.Payload {
+	p := entity.Obj{specField: entity.Raw(doc)}
+	if e.scope != "" {
+		p[scopeField] = e.scope
+	}
+	return p.Payload()
+}
+
 // ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is
 // fine, the verse could not record it. A caller answering a request tells the two apart
 // with errors.Is — a malformed rule is the installer's problem, an unwritable charter is
@@ -75,7 +103,7 @@ func (e *Engine) persist(t Trigger) error {
 	ref := CharterRef(t.Name)
 	if _, _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
-		Value: entity.Obj{specField: entity.Raw(doc)}.Payload(),
+		Value: e.record(doc),
 	}); err != nil {
 		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
 	}
@@ -106,11 +134,18 @@ func (e *Engine) forget(name string) { e.write(CharterRef(name).At(), nil) }
 // left alone: the rest of the charter is still a program worth running, and a rule verse
 // could not read is not one it should quietly delete. Errors are joined, so one bad rule
 // names itself rather than hiding behind "the charter failed to load".
+//
+// IN A SCOPE it restores the scope's OWN rules and passes over the baseline ones it can see
+// through the overlay (ownRecord). Baseline's charter running in every live federation is a
+// question about what a scope means, and a restore is not where it gets decided.
 func (e *Engine) LoadCharter() error {
 	var errs []error
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
 	}) {
+		if !e.ownRecord(ent) {
+			continue
+		}
 		t, err := ruleOf(ent)
 		if err != nil {
 			errs = append(errs, err)

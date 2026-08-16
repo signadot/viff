@@ -202,7 +202,6 @@ func descend(payload Payload, field []string) Payload {
 	return payload
 }
 
-
 // MatchesPayload and MatchesChange are the pattern MINUS its address dimensions — what a READ
 // asks, where the path has already said which entities are in question.
 //

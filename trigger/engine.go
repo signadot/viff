@@ -163,6 +163,11 @@ type Engine struct {
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
 	subtree bool
 	bgctx   context.Context
+	// scope is the federation this engine acts in — "" for baseline. It is written onto
+	// every rule this engine persists, and read back to tell the scope's OWN charter from
+	// baseline's, which a scoped store reads through and cannot otherwise distinguish. See
+	// SetScope.
+	scope string
 	// watchers holds, per trigger name, the cancel that stops THAT trigger's subtree
 	// watchers. In subtree mode a trigger's observation is its own goroutines, so the
 	// charter alone no longer says what fires: removing a trigger has to stop them, or a
@@ -192,6 +197,25 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 }
 
 func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
+
+// SetScope names the federation this engine acts in — a `verse connect` scope, or "" for
+// baseline. Set before anything is installed, because it is stamped on what this engine
+// persists.
+//
+// It exists because a scoped store READS BASELINE THROUGH: listing `trigger:rule:*` in a
+// scope returns baseline's rules and the scope's own, with nothing on the record to tell
+// them apart, so a restore either resurrects nothing or installs the whole baseline charter
+// into one dev's federation. Neither is what `verse trigger add --scope me` promised. The
+// scope's name on the record answers it exactly, at the one moment the answer is known: the
+// install itself.
+//
+// A record carrying `scope: me` also answers the same question for a reader — `verse state
+// get trigger:rule:x --scope me` says which federation the rule belongs to rather than
+// leaving it to be inferred from which listing it turned up in.
+func (e *Engine) SetScope(name string) { e.scope = name }
+
+// Scope is the federation this engine acts in, "" for baseline.
+func (e *Engine) Scope() string { return e.scope }
 
 // SetLogger redirects engine logging. Debug carries dispatch detail (off by default),
 // Warn carries misconfiguration an operator must act on.
