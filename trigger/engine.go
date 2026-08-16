@@ -304,7 +304,7 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 		return fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
 	}
 	for _, st := range subtrees {
-		if st[1] == "" { // the system: a root alone is the whole of a half, which is not watchable
+		if st.Named() == 0 { // a root alone is the whole of a half, which is not watchable
 			return fmt.Errorf("subtree trigger %q needs a system in its `on`, its `when` or its "+
 				"`subject` (kind optional); a scoped engine opens no root watch, so there is "+
 				"nothing to watch without one", t.Name)

@@ -18,7 +18,7 @@ import (
 // they got wrong.
 func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 	eng := New(entitytest.Store(t), denyResolver{})
-	eng.Confine(Subtree{"", "demo", ""})
+	eng.Confine(SubtreeAt("demo"))
 
 	err := eng.AddTrigger(Trigger{
 		Name:      "reach",
@@ -56,8 +56,8 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 func TestAConfinedCharterReadsWhatItImports(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	eng.Confine(Subtree{"", "drift", ""})
-	eng.SetImports([]Subtree{{"", "git", ""}}) // …declared, which is the half imports.go adds
+	eng.Confine(SubtreeAt("drift"))
+	eng.SetImports([]Subtree{SubtreeAt("git")}) // …declared, which is the half imports.go adds
 
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: note-the-head
@@ -85,7 +85,7 @@ func TestAConfinedCharterReadsWhatItImports(t *testing.T) {
 func TestAWriteOutsideTheConfinementIsRefusedAtTheWrite(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	eng.Confine(Subtree{"", "drift", ""})
+	eng.Confine(SubtreeAt("drift"))
 
 	// The direct proof, at the level the guarantee lives: whatever a template resolves to, the
 	// write goes through here.
@@ -114,11 +114,11 @@ func TestAWriteOutsideTheConfinementIsRefusedAtTheWrite(t *testing.T) {
 func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	store := entitytest.Store(t)
 	mine := New(store, task.AutoResolver{})
-	mine.Confine(Subtree{"", "mine", ""})
-	mine.SetImports([]Subtree{{"", "git", ""}})
+	mine.Confine(SubtreeAt("mine"))
+	mine.SetImports([]Subtree{SubtreeAt("git")})
 	theirs := New(store, task.AutoResolver{})
-	theirs.Confine(Subtree{"", "theirs", ""})
-	theirs.SetImports([]Subtree{{"", "git", ""}}) // both read the source; neither imports the other
+	theirs.Confine(SubtreeAt("theirs"))
+	theirs.SetImports([]Subtree{SubtreeAt("git")}) // both read the source; neither imports the other
 
 	// Both rules say the same thing about the same cause, and each writes in its own half.
 	for _, c := range []struct {
@@ -174,8 +174,8 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	eng.Confine(Subtree{"", "drift", ""})
-	eng.SetImports([]Subtree{{"", "git", ""}})
+	eng.Confine(SubtreeAt("drift"))
+	eng.SetImports([]Subtree{SubtreeAt("git")})
 
 	// The levels as the real charter writes them: the SOURCE slice at the bottom — which is
 	// what a package's lowest level owns, since its rules select from what they read — and the

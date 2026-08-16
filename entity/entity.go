@@ -49,6 +49,10 @@ type Ref struct {
 // address, Segs hands back the parts.
 const sep = "\x00"
 
+// Sep is sep for the packages that build addresses beside this one — trigger's Subtree keeps
+// its segments the same way, and for the same reason.
+const Sep = sep
+
 // VerseRoot is the one reserved first segment: everything verse writes about its own running
 // lives under it, and nothing else may.
 //

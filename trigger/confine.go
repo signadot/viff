@@ -61,16 +61,23 @@ func (e *Engine) Confinement() Subtree { return e.confine }
 func (s Subtree) confined() bool { return s != Subtree{} }
 
 // match renders the confinement as the pattern the containment checks compare against.
+//
+// It writes the address into the dimensions a Match has today — root, then system, then kind —
+// which is what containment compares. A subtree deeper than that has no dimension left to hold
+// its tail, and that is the next step of docs/working/entity-tree.md rather than a silent
+// truncation: it is refused where it is parsed (ParseAt), so nothing reaches here that this
+// cannot say.
 func (s Subtree) match() Match {
 	m := Match{}
-	if s[0] != "" {
-		m[mKeyRoot] = s[0]
+	segs := s.Path()
+	if len(segs) > 0 && segs[0] == entity.VerseRoot {
+		m[mKeyRoot] = entity.VerseRoot
+		segs = segs[1:]
 	}
-	if s[1] != "" {
-		m[mKeySystem] = s[1]
-	}
-	if s[2] != "" {
-		m[mKeyKind] = s[2]
+	for i, k := range []string{mKeySystem, mKeyKind} {
+		if i < len(segs) && segs[i] != "" {
+			m[k] = segs[i]
+		}
 	}
 	return m
 }
@@ -179,14 +186,12 @@ func ParseAt(at string) (Subtree, error) {
 			"(`demo`, `demo.pr`); %q names %d segments, which is an entity rather than a place "+
 			"to install a charter", at, len(segs))
 	}
-	var out Subtree
-	for i, sg := range segs {
+	for _, sg := range segs {
 		if sg == "" {
 			return Subtree{}, fmt.Errorf("a charter's address has an empty segment: %q", at)
 		}
-		out[i+1] = sg // [0] is the root, which a charter's address never names
 	}
-	return out, nil
+	return SubtreeAt(segs...), nil // no root: a charter's address never names one
 }
 
 // writesSubject reports whether a rule writes the entity it selects — which is what makes the

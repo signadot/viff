@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/entity"
 )
@@ -149,7 +150,7 @@ func (t Trigger) importReads() []Subtree {
 		specs, err := readTargets(doc)
 		if err == nil {
 			for _, sp := range specs {
-				add(Subtree{"", sp.System, sp.Kind})
+				add(SubtreeAt(sp.System, sp.Kind))
 			}
 		}
 	}
@@ -192,12 +193,19 @@ func StampImports(in []Subtree) []string {
 // Level by level, where an empty level is a wildcard: `demo` overlaps `demo.pr` because one
 // contains the other, and `demo.pr` and `demo.issue` overlap nowhere.
 func (s Subtree) Overlaps(o Subtree) bool {
-	for i := range s {
-		if s[i] != "" && o[i] != "" && s[i] != o[i] {
-			return false
-		}
+	// ANCESTOR-OR-EQUAL EITHER WAY, which is go-tony's own question about two paths: `demo`
+	// meets `demo.pr` because one contains the other, and `demo.pr` misses `demo.issue` because
+	// neither does. Asking the path grammar rather than comparing segments is what keeps a
+	// quoted segment (`demo."a.b"`) from being split into two by hand.
+	mine, err := kpath.Parse(s.kp)
+	if err != nil {
+		return false
 	}
-	return true
+	theirs, err := kpath.Parse(o.kp)
+	if err != nil {
+		return false
+	}
+	return mine.MatchesPrefix(theirs) || theirs.MatchesPrefix(mine)
 }
 
 // PackageKind is where a package's own declaration lives: `verse:trigger:package:<address>`,

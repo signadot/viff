@@ -491,6 +491,30 @@ func JoinSegs(segs []string) string {
 	return out
 }
 
+// PathSegs is a kinded path as its raw segments — the names, unquoted, in order.
+//
+// It is the inverse of JoinSegs, and it goes through the kpath parser rather than splitting on
+// dots: a segment may CONTAIN a dot (`demo.pr."a.b"`), so the only correct split is the one that
+// knows the quoting. Wildcards and indexes are refused here for the same reason ParsePath
+// refuses them — this answers "which names", and neither is one.
+func PathSegs(at string) ([]string, error) {
+	if at == "" {
+		return nil, nil
+	}
+	kp, err := kpath.Parse(at)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for p := kp; p != nil; p = p.Next {
+		if p.Field == nil {
+			return nil, fmt.Errorf("path %q: %q is not a name", at, p.String())
+		}
+		out = append(out, *p.Field)
+	}
+	return out, nil
+}
+
 // ReadPath renders a command-line address as the kinded path a READ takes, and the kpath it
 // parsed to — a ref spelled with `:` normalized into the one grammar the read routes speak.
 //

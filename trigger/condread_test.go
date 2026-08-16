@@ -153,7 +153,7 @@ func TestAConditionReadJoinsTheReadSet(t *testing.T) {
 	trig := mustParseCharter(t, proposalCharter)
 	var found bool
 	for _, st := range trig.reads() {
-		if st[1] == "git" && st[2] == "head" {
+		if p := st.Path(); len(p) == 2 && p[0] == "git" && p[1] == "head" {
 			found = true
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/verse/entity"
 )
@@ -642,23 +643,103 @@ func (m Match) prefix() []string {
 // The root is first and is usually empty: a rule is about what the world is about. A rule that
 // says `root: verse` watches verse's own half, one level deeper, and `Path` is what turns
 // either shape into the segments a watch takes.
-type Subtree [3]string
+type Subtree struct {
+	// kp is the address as a KINDED PATH — `demo.pr`, `verse.task.instance` — which is the
+	// spelling the store, a read and a watch all take, and the one go-tony can compare.
+	//
+	// A string rather than a parsed *KPath because a Subtree is a MAP KEY (one watch per
+	// distinct subtree) and a pointer is neither comparable by value nor stable. Parsing is
+	// what the tree operations below do, and they are asked at install and at watch setup
+	// rather than per event.
+	kp string
+}
 
-// Path is the subtree as segments, with the empty levels dropped — the form WatchSubtree and
-// AsOf take.
-func (s Subtree) Path() []string {
-	out := make([]string, 0, len(s))
-	for _, seg := range s {
-		if seg == "" {
-			continue
-		}
-		out = append(out, seg)
+// SubtreeAt builds the subtree standing at these segments, a leading `verse` being the root
+// like any other segment.
+func SubtreeAt(segs ...string) Subtree {
+	for len(segs) > 0 && segs[len(segs)-1] == "" {
+		segs = segs[:len(segs)-1]
 	}
-	return out
+	var out []string
+	for _, sg := range segs {
+		if sg != "" {
+			out = append(out, sg)
+		}
+	}
+	return Subtree{kp: entity.JoinSegs(out)}
+}
+
+// SubtreeOfPath builds the subtree a kinded path names.
+func SubtreeOfPath(at string) Subtree { return Subtree{kp: at} }
+
+// KPath is the subtree as the kinded path it is.
+func (s Subtree) KPath() string { return s.kp }
+
+// Path is the subtree as segments — the form WatchSubtree and AsOf take.
+func (s Subtree) Path() []string {
+	segs, err := entity.PathSegs(s.kp)
+	if err != nil {
+		return nil
+	}
+	return segs
+}
+
+// Named is how many segments the subtree names, root included. Zero is the whole verse, which
+// is not something a watch may open.
+func (s Subtree) Named() int { return len(s.Path()) }
+
+// Parent is the subtree one level up, and the zero subtree at the top.
+func (s Subtree) Parent() Subtree {
+	segs := s.Path()
+	if len(segs) == 0 {
+		return Subtree{}
+	}
+	return SubtreeAt(segs[:len(segs)-1]...)
+}
+
+// root is the half of the verse this subtree is in — `verse` for verse's own, empty for the
+// world's, which is also what a subtree naming nothing at all is.
+func (s Subtree) root() string {
+	if segs := s.Path(); len(segs) > 0 && segs[0] == entity.VerseRoot {
+		return entity.VerseRoot
+	}
+	return ""
+}
+
+// covers reports whether an address falls in this subtree — every segment this one names must
+// match, and what it does not name is below it.
+//
+// It is go-tony's own prefix test (`MatchesPrefix`), which is the point of holding a kpath: a
+// subtree is a path and "is this address under it" is a question the path grammar already
+// answers, wildcards and quoting included. Hand-rolled segment loops got the quoting wrong the
+// moment an id held a dot.
+func (s Subtree) covers(ref entity.Ref) bool {
+	if s.kp == "" {
+		return ref.Root() == "" // the world's half: an address in verse's own is not in it
+	}
+	mine, err := kpath.Parse(s.kp)
+	if err != nil {
+		return false
+	}
+	theirs, err := kpath.Parse(entity.JoinSegs(ref.Segs()))
+	if err != nil {
+		return false
+	}
+	return mine.MatchesPrefix(theirs)
 }
 
 // subtreeOf is the subtree a match reads.
-func subtreeOf(m Match) Subtree { return Subtree{m.Root(), m.System(), m.Kind()} }
+func subtreeOf(m Match) Subtree {
+	return SubtreeAt(append(rootSegs(m.Root()), m.System(), m.Kind())...)
+}
+
+// rootSegs is the leading root segment of a path, or none.
+func rootSegs(root string) []string {
+	if root == "" {
+		return nil
+	}
+	return []string{root}
+}
 
 // paths renders subtrees as the segment lists a read or a watch takes.
 func paths(sts []Subtree) [][]string {
@@ -667,18 +748,4 @@ func paths(sts []Subtree) [][]string {
 		out = append(out, st.Path())
 	}
 	return out
-}
-
-// covers reports whether an address falls in this subtree: each level the subtree names must
-// match, and a level it leaves empty is a wildcard. The root is a level like the others, which
-// is what keeps a subtree in the world's half from covering verse's own.
-func (s Subtree) covers(ref entity.Ref) bool {
-	for i, want := range [...]string{ref.Root(), ref.System(), ref.Kind()} {
-		if s[i] != "" && s[i] != want {
-			return false
-		}
-	}
-	// A subtree naming no root is about the world's half, and an address in verse's own is
-	// not in it — a rule that did not ask for verse's records does not read them.
-	return s[0] != "" || !ref.Reserved()
 }

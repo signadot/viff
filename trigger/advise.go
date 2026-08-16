@@ -98,7 +98,7 @@ func adviseSampling(t Trigger) string {
 	}
 	var missed []Subtree
 	for _, st := range append(t.Condition.When.Subtrees(), matchFormula(t.Condition.Subject).Subtrees()...) {
-		if !covered[st] && !covered[Subtree{st[0], st[1], ""}] {
+		if !covered[st] && !covered[st.Parent()] {
 			missed = append(missed, st)
 		}
 	}
