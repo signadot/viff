@@ -144,34 +144,41 @@ document to read field by field, a charter change is an observable fact about a 
 than about a string, and nothing has to re-parse to ask a question about it.
 
 **A rule keeps some of the comments it was written with**, so the record can carry the reasons
-and not only the shape. Which ones survive is worth knowing before relying on it, because it is
-not all of them. A comment attaches to the VALUE it precedes, and is kept when that value is
-something able to carry one:
+and not only the shape. One rule decides which: a comment attaches to the VALUE it precedes, and
+is kept when that value is something able to carry one.
 
-| a comment above | kept? | why |
+| a comment above | kept? | because the value is |
 |---|---|---|
-| the rule itself | yes | `Trigger` carries it |
-| `action:`, `spawn:`, a gate entry | yes | those values are structs that carry it |
-| a `patch:` or `derive:` body | yes | the value is stored as-is, so nothing can drop it |
-| `condition:`, `subject:` | no | their codecs are hand-written and do not carry comments yet |
-| `gates:` itself | no | the directive is per-STRUCT, and a list is not one — see below |
+| the rule, `action:`, `spawn:`, a gate entry | yes | a struct, and it says it carries one |
+| a `patch:` or `derive:` body | yes | stored as-is, so nothing can drop it |
+| `condition:`, `subject:` | no | a struct whose codec is hand-written and does not carry one yet |
+| `gates:`, and the FIRST gate entry | no | a list, which nothing can name yet |
 
-The `gates:` row is a gap upstream rather than a property of comments. What carries a comment
-today is a struct saying it does, so a comment above a value that decodes into one is kept and a
-comment above a LIST has nowhere to go. go-tony declares the per-field hook that would close it
-(`gomap.FieldInfo`'s comment fields) and never populates it, so asking for one in a field tag is
-silently ignored — filed as `xvexrbthh12ksrahg5n0`. Until then, put the comment on the entry.
+The last row is one case rather than two, which is the part worth knowing. A block list begins
+at its first element, so a comment written above `gates:` and one written above the first entry
+are the SAME comment as far as the document is concerned — they merge onto the list, and are
+lost together. Every later entry keeps its own.
 
-**The first item of any list is the exception, and it applies everywhere** — to the rules in a
-charter file and to the entries of a `gates:` alike. Everything written before a list's first
-item belongs to the list rather than to that item, and blank lines do not separate, so a file
-header and a note meant for the first rule merge into one. Write it inside the item and it is
-kept like any other:
+```tony
+gates:
+# both of these...
+- { name: approval, mode: ask }
+# ...but this one is kept
+- { name: security, mode: ask }
+```
+
+The same holds one level out, for a charter file that is a list of rules: the first rule cannot
+take a head comment above its dash, because that text belongs to the list. Write it inside the
+item and it is kept like any other.
 
 ```tony
 - # what this rule is for
   name: review
 ```
+
+What would close the whole row at once is a per-field annotation upstream — the comment sits on
+the field's value, which is a thing an annotation could name and currently cannot
+(`xvexrbthh12ksrahg5n0`).
 
 Restoring a rule is an ordinary install, which means it **replays**: a subtree watch is
 level-triggered at the open, so a restored trigger acts on what already matches it — including
