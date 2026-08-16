@@ -528,19 +528,23 @@ entry: it lists a decision, somebody makes it, and nothing moves.
 
 Startup gives the awaiter back, by the route the axis makes available:
 
-- A **whether-gate** motion blocks the firing itself, and the firing comes back on its own.
-  The action never ran — that is what the gate is holding — so the subject still matches, the
-  rule's replay re-monitors the same channel, and the ballots already cast still count.
+- A **whether-gate** motion blocks the firing itself, and the firing comes back by being
+  *evaluated again*: its action never ran — that is what the gate is holding — so a rule that
+  still selects the subject re-monitors the same channel, and the ballots already cast still
+  count. Re-evaluated, not resumed, which is the distinction the next paragraph turns on.
 - A **who-select** motion (a `spawn` with a `provider`) opens *after* the action has written
   its latch, so nothing re-fires it. It records the `chain` of the action it is blocking, and
   startup navigates that chain back into the charter and re-enters the selection — the same
   lookup key a resumed task's hooks are rehydrated from.
 
 A motion nothing can answer any more is *settled* rather than left standing: its rule left the
-charter, its action moved, or its subject is gone. It is stamped `status: orphaned` with a
-`why` and a `when`, keeping the trail while taking it off the list of things a person can act
-on. That is not a verdict — the channel carries no `outcome`, because nobody decided anything —
-so a rule reinstalled later reopens the same channel over the same ballots.
+charter, its action moved, its subject is gone — or, the case that is easy to miss, **the
+subject moved out of what the rule selects**. A merge proposal swept to `state: stale` is no
+longer picked by a rule that reads `!not.has-path state`, so that rule will never look at its
+gate again however healthy the rule is. The motion is stamped `status: orphaned` with a `why`
+and a `when`, keeping the trail while taking it off the list of things a person can act on.
+That is not a verdict — the channel carries no `outcome`, because nobody decided anything — so
+a rule that selects the subject again reopens the same channel over the same ballots.
 
 The resume is idempotent by construction, which is what lets it run beside a rule that also
 re-fires: the channel id is derived from the subject and the spec, the commit is terminal-once

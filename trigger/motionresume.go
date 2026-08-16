@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/signadot/verse/entity"
@@ -37,10 +38,11 @@ const motionOrphaned = "orphaned"
 //
 // The two axes need different things, because their continuations do:
 //
-//   - A WHETHER-motion blocks the firing itself, and the firing comes back on its own: the
-//     rule's action never ran (that is what the gate is holding), so the subject still matches
-//     and the trigger's replay re-monitors the same channel over the same ballots. Nothing to
-//     do here beyond noticing when the rule it belongs to is gone from the charter.
+//   - A WHETHER-motion blocks the firing itself, and the firing comes back by being EVALUATED
+//     again: its action never ran (that is what the gate is holding), so a rule that still
+//     selects the subject re-monitors the same channel over the same ballots. What this owes
+//     that case is nothing — and what it owes the other one is an answer, because a rule that
+//     no longer selects the subject will never look at that motion again (reviewWhether).
 //   - A WHO-motion blocks a spawn that the action already latched its way past. Nothing will
 //     re-fire it, so this re-enters the selection itself, through the same launchSpawn a
 //     firing uses. Both paths are idempotent by construction: the channel id is derived from
@@ -56,12 +58,7 @@ func (e *Engine) ResumeMotions() int {
 			continue // closed: terminal-once, and nothing is waiting on a decided motion
 		}
 		if entity.Str(p, "axis") != "select" {
-			// A whether-motion, whose awaiter is the firing. It comes back with the rule, so
-			// the only thing to settle is a motion whose rule is not there any more: a
-			// listing asking the room to approve something no charter will act on.
-			if name := entity.Str(p, "trigger"); name != "" && !e.knowsTrigger(name) {
-				e.orphanMotion(ent.Ref, "the rule that opened it is no longer in the charter")
-			}
+			e.reviewWhether(ent.Ref, p)
 			continue
 		}
 		chain := entity.Str(p, "chain")
@@ -115,6 +112,73 @@ func (e *Engine) ResumeMotions() int {
 		e.logger.Info("resumed open motions from the docket", "count", resumed)
 	}
 	return resumed
+}
+
+// reviewWhether decides what a whether-motion left open by the previous verse is: something the
+// rule will monitor again, or something nothing will ever read.
+//
+// Its awaiter is the firing, and the firing comes back only if the rule still SELECTS the
+// subject — the replay is a re-evaluation, not a resumption. Two ways that fails, and only the
+// first was obvious: the rule left the charter, and the SUBJECT MOVED OUT of what the rule
+// picks. The second is the one seen in the wild: a merge proposal was marked `state: stale` by
+// a sweep while its gate stood open, which is exactly what its rule's `!not.has-path state`
+// excludes. The motion stayed `open` on the docket, somebody voted approve, and the tally never
+// moved, because nothing was left to move it.
+//
+// Only the whether axis is asked this. A who-motion's subject is EXPECTED to have moved on —
+// the action wrote its latch before opening the selection — so the same question there would
+// orphan every one of them.
+func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload) {
+	name := entity.Str(p, "trigger")
+	if name == "" {
+		return // it does not say whose it is; leave it standing rather than guess
+	}
+	t, ok := e.triggerNamed(name)
+	if !ok {
+		// A rule HELD for a stratum that has not arrived installs the moment the stratum does,
+		// so it is not a rule that is gone.
+		if !e.knowsTrigger(name) {
+			e.orphanMotion(ref, "the rule that opened it is no longer in the charter")
+		}
+		return
+	}
+	subj, err := entity.ParseRef(entity.Str(p, "subject"))
+	if err != nil {
+		return
+	}
+	if !e.stillSelects(t, subj) {
+		e.orphanMotion(ref, fmt.Sprintf("%s no longer selects %s, so nothing will read the answer",
+			name, subj))
+	}
+}
+
+// stillSelects reports whether a trigger's subject predicate still picks this entity out of the
+// verse as it stands — the same question the dispatcher asks per commit, asked once at startup
+// against the current revision.
+//
+// It answers TRUE when it cannot tell (an unreadable store, a predicate whose read fails).
+// Leaving a motion standing costs a stale docket entry; settling one wrongly takes a live
+// question away from the people it is in front of, and this is not the code that should be
+// deciding that on a guess.
+//
+// It asks about the SUBJECT alone, not the cause: a rule fired by an `on` edge may still select
+// its subject and never see that edge again. So a motion this keeps is not a promise that the
+// rule will re-fire — only that nothing about the subject says it cannot.
+func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
+	now, err := e.store.AsOf(e.store.Rev(), t.reads()...)
+	if err != nil {
+		return true
+	}
+	m, err := e.conditionMatch(t.Condition.Subject, now)
+	if err != nil {
+		return true
+	}
+	for _, r := range m.Select(now) {
+		if r == subj {
+			return true
+		}
+	}
+	return false
 }
 
 // resumeSelection re-enters the spawn a who-motion is blocking: it awaits the same channel

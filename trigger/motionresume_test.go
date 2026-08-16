@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,6 +167,70 @@ func TestResumeOrphansAMotionWhoseRuleIsGone(t *testing.T) {
 	}
 }
 
+// A whether-motion whose SUBJECT has moved out of what its rule selects is settled, even
+// though the rule is installed and healthy.
+//
+// This is the staging failure, reduced. A merge proposal's gate stood open on `!quorum 1`; a
+// sweep wrote `state: stale` onto the proposal, which is exactly what the rule's
+// `!not.has-path state` excludes; verse was redeployed. The rule was re-evaluated, did not
+// select the proposal, and never looked at the motion again — so the docket went on offering
+// it, somebody voted approve, and the tally never moved. The rule being present is not the
+// question; whether it still picks this subject is.
+func TestResumeSettlesAMotionItsRuleNoLongerSelects(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, denyResolver{})
+	// The staging rule, in its own grammar rather than hand-built: `!not.has-path state` is a
+	// tagged predicate about the payload, and spelling it as a Go map is how a test comes to
+	// pass because its predicate matches nothing at all.
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: merge-proposal
+  condition:
+    subject: {system: merge, kind: proposal, value: !not.has-path state}
+  gates:
+  - {name: merge-to-main, mode: ask, formula: !quorum 1}
+  action:
+    patch: {state: merged}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	// The guard on the guard: with no `state` written the rule DOES select it, so the settle
+	// below is about the sweep's write and not about a predicate that never matched.
+	if !eng.stillSelects(eng.triggers[0], entity.Ref{System: "merge", Kind: "proposal", ID: "p0"}) {
+		entitytest.Set(t, store, entity.Ref{System: "merge", Kind: "proposal", ID: "p0"},
+			entity.Obj{"branch": "auto/y"}.Payload())
+		if !eng.stillSelects(eng.triggers[0], entity.Ref{System: "merge", Kind: "proposal", ID: "p0"}) {
+			t.Fatal("the rule selects no undecided proposal either; the predicate is the thing under test")
+		}
+	}
+	// The proposal as the sweep left it: swept stale while its gate stood open.
+	subj := entity.Ref{System: "merge", Kind: "proposal", ID: "p1"}
+	entitytest.Set(t, store, subj, entity.Obj{"state": "stale", "branch": "auto/x"}.Payload())
+	ref := channel(t, store, "e7596c16", entity.Obj{
+		"axis": "whether", "status": "open", "subject": subj.String(),
+		"trigger": "merge-proposal", "gate": "merge-to-main",
+		"options": []any{map[string]any{"id": "proceed", "choice": "approve", "need": 1}},
+	})
+	// And a ballot already cast into it, which is what makes the stale listing expensive: it
+	// reads as a decision somebody made.
+	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: "e7596c16", ID: "me"},
+		entity.Obj{"choice": "approve", "by": "me"}.Payload())
+
+	eng.ResumeMotions()
+
+	got := statusOf(t, store, ref)
+	if got["status"] != motionOrphaned {
+		t.Fatalf("status = %v, want orphaned — the rule cannot select this subject any more: %+v",
+			got["status"], got)
+	}
+	if why, _ := got["why"].(string); !strings.Contains(why, "merge:proposal:p1") {
+		t.Errorf("why = %q, want it to name the subject the rule stopped selecting", why)
+	}
+	// Settled, not decided: the vote stands in the log, and no outcome was invented from it.
+	if got["outcome"] != nil {
+		t.Fatalf("a motion nobody carried was given an outcome: %+v", got)
+	}
+}
+
 // A whether-motion whose rule is still installed is left alone: its awaiter is the firing,
 // and the firing comes back with the rule's own replay. Settling it here would orphan a
 // question somebody is about to be asked again.
@@ -182,6 +247,10 @@ func TestResumeLeavesALiveWhetherMotionOpen(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
+	// The subject still standing where the rule can see it: the action never ran, which is what
+	// the gate is holding, so nothing has moved it out of the selection.
+	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+		entity.Obj{"stage": "open"}.Payload())
 	ref := channel(t, store, "w2", entity.Obj{
 		"axis": "whether", "status": "open", "subject": "demo:pr:1", "trigger": "merge",
 	})
