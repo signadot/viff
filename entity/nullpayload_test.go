@@ -411,3 +411,51 @@ func TestAPayloadKeepsItsComments(t *testing.T) {
 		t.Fatalf("labels is not readable through its comment")
 	}
 }
+
+// A payload written under the ESCAPE keeps them too — the same document, stored the way a
+// record holding a document is stored.
+//
+// Raw tags the value as data, and it used to tag whatever node it was handed. A document with
+// a comment above it IS a wrapper holding the value, so the escape landed on the comment: the
+// write still succeeded and still replaced, and every LINE comment inside it was dropped while
+// the head comments came back. That is the arbitrary half again, and it is what the charter
+// reads out of — `verse trigger show` had lost `name: r # the short name` before anything got
+// as far as rendering it.
+//
+// The document deliberately puts a line comment on an OBJECT (`labels:`), because that is the
+// case that failed: a scalar's note survived, so the loss looked like a rendering quirk rather
+// than a write that had eaten half of what it was given.
+func TestAnEscapedPayloadKeepsItsComments(t *testing.T) {
+	s := openStore(t)
+	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	p, err := parse.Parse([]byte("# about this pr\nstage: open # still open\nlabels: # what it is tagged with\n  urgent: true # by whom\n"),
+		parse.ParseTony(), parse.ParseComments(true))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if ok, _, err := s.Write(Write{At: ref.At(), Value: Obj{"spec": Raw(p)}.Payload()}); err != nil || !ok {
+		t.Fatalf("write: committed=%v err=%v", ok, err)
+	}
+
+	e, ok, err := s.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("get: ok=%v err=%v", ok, err)
+	}
+	spec := Get(e.Payload, "spec")
+	if spec == nil {
+		t.Fatalf("the escaped document is not on the entity: %v", e.Payload)
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(spec, &buf, encode.EncodeFormat(format.TonyFormat), encode.EncodeComments(true)); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{"# about this pr", "# still open", "# what it is tagged with", "# by whom"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("the escaped payload lost %q:\n%s", want, buf.String())
+		}
+	}
+	// The escape is still an escape: what it holds is data, and the tag is not part of it.
+	if !IsObj(spec) || Str(spec, "stage") != "open" {
+		t.Fatalf("the escaped document did not land as data: %s", buf.String())
+	}
+}

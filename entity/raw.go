@@ -39,12 +39,27 @@ const rawName = "raw"
 // why the wrap is a deliberate call at such a write rather than something the store does for
 // every value: an ordinary write means its merge, and a caller that sends a patch (versed's
 // write surface does) means its operators.
+//
+// THE TAG GOES ON THE VALUE, NOT ON THE COMMENT ABOVE IT. A head comment WRAPS the value it
+// precedes, so a document somebody wrote a note above arrives here as a CommentType node
+// holding the real one — and tagging the wrapper escapes something that is not the value. The
+// write still lands, and it lands lossy: the head comments survive (they are the wrappers
+// being copied) while every LINE comment inside is dropped, which is the arbitrary half of a
+// document surviving that this tree keeps having to rule out. A charter installed from a file
+// came back having lost `name: r # the short name` and kept `# why this rule exists`.
+//
+// It is the same distinction the navigation split makes (ir/nav.go, canonicalFields): a
+// comment is not a container, and an escape is about what the value IS.
 func Raw(p Payload) Payload {
 	if p == nil {
 		return nil
 	}
 	out := clone(p)
-	out.Tag = rawTag(out.Tag)
+	value := out
+	for value.Type == ir.CommentType && len(value.Values) == 1 {
+		value = value.Values[0]
+	}
+	value.Tag = rawTag(value.Tag)
 	return out
 }
 
