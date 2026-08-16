@@ -512,13 +512,13 @@ done
 ok "a rule at level 0 wrote an entity at level 10"
 
 # The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
-# UNQUOTED on purpose: --paths answers in steps, so the shell's own word splitting is what
-# hands the address to `state get` — which is the round trip the spelling exists for.
+# QUOTED, which is the idiom a script writes: `--paths` answers in steps, and a whole line
+# handed over as one token is the same address as the same line split by the shell. Both are
+# checked here, because a script that captured a path and quoted it used to read nothing.
 dref=$(v state --paths smokesd.feature | head -1)
+haskv "$(v state get "$dref")" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086
-haskv "$(v state get $dref)" priority urgent || die "the derived entity lost its literal content"
-# shellcheck disable=SC2086
-has "$(v state get $dref)" 'smokegh:issue:1' || die "the derived entity does not record its subject"
+has "$(v state get $dref)" 'smokegh:issue:1' || die "unquoted steps did not reach the same entity"
 ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
 
 # And the level above acted on it, which is the whole point of the ordering.

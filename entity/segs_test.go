@@ -117,3 +117,49 @@ func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
 	}
 	return Doc{Node: n}
 }
+
+// The steps a `--paths` listing prints come back as ONE TOKEN when a script quotes them, which
+// is the correct shell idiom — `ref=$(verse state --paths demo.pr | head -1)` and then `verse
+// state get "$ref"`. So the address grammar takes a space as a delimiter by the same
+// whichever-comes-first rule as `:` and `.`, and the two ways a shell can hand over the same
+// address name the same entity.
+func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
+	for _, c := range []struct {
+		steps string
+		want  Ref
+	}{
+		{"demo pr 1", RefAt("demo", "pr", "1")},
+		{"demo pr a.b", RefAt("demo", "pr", "a.b")},                                  // a dot INSIDE a step
+		{"git ref x@git:ref:y", RefAt("git", "ref", "x@git:ref:y")},                  // and a colon
+		{"verse task instance run-a1", RefAt("verse", "task", "instance", "run-a1")}, // both halves
+		{"demo  pr   1", RefAt("demo", "pr", "1")},                                   // as a line splits
+	} {
+		p, err := ParsePath(c.steps)
+		if err != nil {
+			t.Errorf("ParsePath(%q): %v", c.steps, err)
+			continue
+		}
+		if p.Ref != c.want || len(p.Field) != 0 {
+			t.Errorf("ParsePath(%q) = %s%v, want %s", c.steps, p.Ref, p.Field, c.want)
+		}
+		// And a read of the same token reaches the same place, since a read and a write have to
+		// agree about what an address is.
+		at, _, err := ReadPath(c.steps)
+		if err != nil || at != c.want.At().KPath() {
+			t.Errorf("ReadPath(%q) = (%q, %v), want %q", c.steps, at, err, c.want.At().KPath())
+		}
+	}
+
+	// A field path is steps too, so `verse state get demo pr 1 labels urgent` quoted whole
+	// reaches the field rather than being refused as a fourth segment.
+	p, err := ParsePath("demo pr 1 labels urgent")
+	if err != nil || p.Ref != RefAt("demo", "pr", "1") || strings.Join(p.Field, ".") != "labels.urgent" {
+		t.Errorf(`ParsePath("demo pr 1 labels urgent") = (%v, %v)`, p, err)
+	}
+
+	// The other spellings are untouched: a space AFTER a delimiter is part of what it delimits,
+	// which is what keeps an id holding a space readable by ref.
+	if p, err := ParsePath("demo:pr:a b"); err != nil || p.Ref.ID() != "a b" {
+		t.Errorf(`ParsePath("demo:pr:a b") = (%v, %v), want the id "a b"`, p, err)
+	}
+}

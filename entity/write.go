@@ -101,6 +101,7 @@ func (p Path) KPath() string {
 // Reading into an array is a different matter and is offered: it navigates a materialized
 // document here rather than at the substrate, and `verse state` takes both spellings.
 func ParsePath(s string) (Path, error) {
+	s = fromSteps(s)
 	if colonFirst(s) {
 		ref, err := ParseRef(s)
 		if err != nil {
@@ -138,6 +139,41 @@ func ParsePath(s string) (Path, error) {
 		return Path{}, fmt.Errorf("path %q: its first %d segments do not name an entity", s, want)
 	}
 	return Path{Ref: ref, Field: segs[want:]}, nil
+}
+
+// fromSteps folds the THIRD spelling — an address as steps, `demo pr a.b` — into the kinded
+// path the other two already parse to, by the same whichever-comes-first rule: a space before
+// any `:` or `.` means the whole token is a vector of steps, and each step is handed to
+// JoinSegs whole, so its own dots and colons are quoted rather than read as delimiters.
+//
+// It is here rather than only in the CLI's argv walk because that walk sees steps only when
+// the shell split them, and the shell does that only when nobody quoted the address. `verse
+// state --paths` answers in steps, and `ref=$(… | head -1); verse state get "$ref"` is what a
+// script then writes — the quoted form, which is the correct shell idiom and used to arrive
+// here as one token holding spaces. One rule, so the two forms are the same address.
+//
+// A step holding a space is not addressable this way, which is the same trade the printed form
+// already makes: `--paths` writes them space-separated, so a space inside one could not be read
+// back either. The ref spelling still names it.
+func fromSteps(s string) string {
+	if !spaceFirst(s) {
+		return s
+	}
+	return JoinSegs(strings.Fields(s))
+}
+
+// spaceFirst reports whether an address is written as steps: a space before any `:` or `.`.
+func spaceFirst(s string) bool {
+	i := strings.IndexByte(s, ' ')
+	if i < 0 {
+		return false
+	}
+	for _, d := range []byte{':', '.'} {
+		if j := strings.IndexByte(s, d); j >= 0 && j < i {
+			return false
+		}
+	}
+	return true
 }
 
 // colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.
@@ -465,6 +501,7 @@ func JoinSegs(segs []string) string {
 // nobody named. Whichever delimiter comes FIRST is the one in use, which is what ParsePath
 // already says and what this now says too.
 func ReadPath(s string) (string, *kpath.KPath, error) {
+	s = fromSteps(s)
 	if colonFirst(s) {
 		ref, err := ParseRef(s)
 		if err != nil {

@@ -86,9 +86,12 @@ verse
           put [--if <pattern>]               only if what is there matches
                                              (a put MERGES: fields it does not name are left alone,
                                               and `rm <path>` is how one goes away)
-          An address is one grammar in two delimiters: `demo:pr:1` is a ref and names the
-          entity whole; `demo.pr.1.labels` continues into the payload. Whichever delimiter
-          comes first is the one in use, so an id may hold either.
+          An address is one grammar in three delimiters: `demo:pr:1` is a ref and names the
+          entity whole; `demo.pr.1.labels` continues into the payload; `demo pr 1 labels` is
+          the same as separate steps, which is what `--paths` prints and what needs no quoting
+          for an id holding a `.` or a `:`. Whichever delimiter comes FIRST is the one in use,
+          so an id may hold either of the others — and a whole `--paths` line handed back as
+          one quoted token is read as steps, so a captured address round-trips either way.
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s

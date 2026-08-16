@@ -19,7 +19,10 @@ demo:pr:*` and a charter's `"subject": "demo:pr:*"` mean the same set.
 
 The same address is typed as steps wherever a command's address is its last positional —
 `verse state get demo pr 1` — which is what `--paths` prints, and it needs no quoting for an id
-holding a dot or a slash. In a charter, `!verse-path [demo pr 1]` is the same vector.
+holding a dot or a slash. A whole line of that output handed over as ONE token works the same
+way (`ref=$(verse state --paths demo.pr | head -1); verse state get "$ref"`): a space before any
+`:` or `.` says the token is steps, by the same whichever-comes-first rule the other two
+spellings follow. In a charter, `!verse-path [demo pr 1]` is the same vector.
 
 ## Two halves, one tree
 
