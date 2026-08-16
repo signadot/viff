@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -70,7 +72,17 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("vote: %w", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	// The STATUS, not just the transport. This printed "voted" on any answer the server gave,
+	// including a refusal — so a ballot that was never recorded reported itself cast, and the
+	// only way to find out was that the tally never moved.
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+		if m := strings.TrimSpace(string(msg)); m != "" {
+			return fmt.Errorf("vote: %s", m)
+		}
+		return fmt.Errorf("vote: %s", resp.Status)
+	}
 	fmt.Fprintf(cc.Out, "%s voted %s on motion %s\n", cfg.As, choice, motion)
 	return nil
 }
