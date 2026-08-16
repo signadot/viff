@@ -240,26 +240,29 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 		}
 	}
 
-	// --if names WHICH rules, over the same match language a charter's `value:` takes. On
-	// `--rules`, where the items ARE rules: bare, `verse trigger` answers the charter TREE, in
-	// which there is no rule document to filter.
-	out, err := runCLI(t, "trigger", "--rules", "--if", `{name: alpha}`)
+	// --if names WHICH rules, over the same match language a charter's `value:` takes.
+	//
+	// `verse trigger` answers the charter as a TREE — one document rather than a list of rules
+	// — so the filters apply to it whole: `--if` keeps or drops the answer, and `--trim` cuts
+	// fields wherever they sit. The rules are in it either way, which is what this checks.
+	out, err := runCLI(t, "trigger")
 	if err != nil {
-		t.Fatalf("trigger --if: %v", err)
+		t.Fatalf("trigger: %v", err)
 	}
-	if !strings.Contains(out, "alpha") || strings.Contains(out, "beta") {
-		t.Errorf("--if did not select: %s", out)
+	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
+		t.Errorf("the tree does not hold the rules: %s", out)
 	}
-	// --trim says how much of each, and the two compose.
-	out, err = runCLI(t, "trigger", "--rules", "--if", `{name: alpha}`, "--trim", `{name: null}`)
+	// --trim says how much of the answer to write, and it reaches wherever the field sits.
+	out, err = runCLI(t, "trigger", "--trim", `{writes: null}`)
 	if err != nil {
-		t.Fatalf("trigger --if --trim: %v", err)
+		t.Fatalf("trigger --trim: %v", err)
 	}
-	if !strings.Contains(out, "alpha") || strings.Contains(out, "condition") {
+	if !strings.Contains(out, "anywhere") || strings.Contains(out, "condition") {
 		t.Errorf("--trim did not project: %s", out)
 	}
-	// NOTHING KEPT IS NOT AN ERROR: an empty answer is a true answer to the question asked.
-	out, err = runCLI(t, "trigger", "--rules", "--if", `{name: nobody}`)
+	// --if keeps or drops the answer, and NOTHING KEPT IS NOT AN ERROR: an empty answer is a
+	// true answer to the question asked.
+	out, err = runCLI(t, "trigger", "--if", `{writes: nowhere}`)
 	if err != nil {
 		t.Errorf("an empty result was an error: %v", err)
 	}

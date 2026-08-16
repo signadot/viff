@@ -43,7 +43,7 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 		}
 		sub := cmd.FindSub(cc, args[0])
 		if sub == nil {
-			t.Fatalf("no such command: %q", args[0])
+			break // not a subcommand: it is an argument, and the command decides what it means
 		}
 		cmd, args = sub, args[1:]
 	}
@@ -71,7 +71,7 @@ func runCLIStreams(t *testing.T, args ...string) (string, string, error) {
 		}
 		sub := cmd.FindSub(cc, args[0])
 		if sub == nil {
-			t.Fatalf("no such command: %q", args[0])
+			break // not a subcommand: it is an argument, and the command decides what it means
 		}
 		cmd, args = sub, args[1:]
 	}

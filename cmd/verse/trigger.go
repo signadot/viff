@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -9,27 +11,37 @@ import (
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 )
 
 // triggerFlags narrow WHICH charter is listed. `verse trigger` answers one engine's rules, and
 // with packages installed there are several — so the two flags are how a reader says which, and
 // `--tree` is how they see that there are several at all.
 type triggerFlags struct {
-	At    string `cli:"name=at desc='the rules of the charter package at this address, in full'"`
-	Rules bool   `cli:"name=rules desc='the rules in full rather than the tree — baseline, or --at'"`
+	// Depth is how far under the address to go: 0 is that address alone, 1 adds its immediate
+	// children, and -1 (the default) is everything under it. It exists because a charter is a
+	// program and printing all of it is often not the question.
+	Depth int `cli:"name=depth desc='how far under the address to go: 0 is it alone, -1 (default) is everything'"`
+	// At names a charter for `show` and `remove`, where a rule NAME is the argument and a name
+	// is unique within a charter rather than across them. The listing needs no such flag: its
+	// address is the positional.
+	At string `cli:"name=at desc='the charter holding this rule, when more than one has the name'"`
 }
 
-var trig = &triggerFlags{}
+var trig = &triggerFlags{Depth: -1}
 
 func triggerCmd() *cli.Command {
 	cfg := &struct{ *cli.Command }{}
-	trig = &triggerFlags{} // per-invocation, like the filter flags: one command runs per process
+	// Depth defaults to EVERYTHING, which is -1 rather than the zero value: a struct's zero is
+	// what the flags library reads as the default, and 0 means "this address alone".
+	trig = &triggerFlags{Depth: -1} // per-invocation, like the filter flags: one command per process
 	return cli.NewCommandAt(&cfg.Command, "trigger").
 		WithAliases("triggers").
-		WithSynopsis("trigger — the installed charter as a tree; add|show|remove one rule").
+		WithSynopsis("trigger — the charter at an address: the rules there and under it; add|show|remove one").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
 		WithSubs(triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd()).
 		WithRun(func(cc *cli.Context, args []string) error {
@@ -40,84 +52,178 @@ func triggerCmd() *cli.Command {
 			if handled, err := dispatch(cfg.Command, cc, args); handled {
 				return err
 			}
-			if err := noArgs(cfg.Command, "trigger", args); err != nil {
+			// THE POSITIONAL IS AN ADDRESS, as it is for `verse state`, and for the same
+			// reason: the charter is one document with a place for every package, so the
+			// question "what is installed here" is the same question at every depth. Steps
+			// or a dotted path, whichever the shell makes easier.
+			//
+			// A FLAG AMONG THE POSITIONALS ENDS IT, and the tail is parsed after — which is
+			// what lets `--depth`/`--trim` sit on either side of the address, exactly as
+			// `verse state` allows. Without it `trigger drift --trim …` reads the flag as
+			// two more steps and answers "no charter is installed at drift.--trim…".
+			var addr []string
+			addr, args = args, nil
+			for i, a := range addr {
+				if strings.HasPrefix(a, "-") {
+					addr, args = addr[:i], addr[i:]
+					break
+				}
+			}
+			at, err := address(addr)
+			if err != nil {
 				return err
 			}
-			// ONE CHARTER'S RULES when the question named one, the whole tree otherwise.
-			// `--at drift`, `--scope me` and `--rules` are specific questions and get the
-			// rules themselves — which is also where `--if`/`--trim` mean what they always
-			// did, since a rule is the item there. Bare, the answer is what is installed and
-			// where, and there is no rule document in it to filter.
-			if trig.At != "" || trig.Rules || g.Scope != "" {
-				q := url.Values{}
-				if trig.At != "" {
-					q.Set("at", trig.At)
-				}
-				resp, err := httpGet("/triggers", q)
-				if err != nil {
-					return fmt.Errorf("trigger: %w", err)
-				}
-				return printBody(cc, resp)
+			if args, err = cfg.Parse(cc, args); err != nil {
+				return err
 			}
-			return printCharterTree(cc)
+			if len(args) > 0 {
+				return fmt.Errorf("%w: trigger takes one address (as one token or as steps), "+
+					"and %q is after it", cli.ErrUsage, args[0])
+			}
+			return printCharterTree(cc, at)
 		})
 }
 
-// printCharterTree renders the whole charter as a TREE, which is what an address makes it: the
-// baseline charter at the root, and each package under the segments of the address it writes in.
+// printCharterTree prints the charter standing at an address: what may be written there, what
+// it reads, the rules and strata installed there, and the same again for every address under it.
 //
-//	writes: anywhere              # baseline: no address, so it may write anywhere
-//	rules: [land-auto, land-ask]
-//	children:
-//	  drift:
-//	    writes: drift.*
-//	    imports: [git]
-//	    rules: [comment-drift, gather, head-moved]
-//	  demo:
-//	    children:                 # nothing is installed at `demo` itself
-//	      pr:
-//	        writes: demo.pr.*
-//	        rules: [review]
+//	verse trigger                 the whole charter — baseline at the root, packages below
+//	verse trigger drift           the `drift` package and anything under it
+//	verse trigger drift comments  …one deeper: the package at drift.comments
+//	verse trigger --depth 0       …this address only, without what is under it
 //
-// BY NAME rather than by body, because this is the answer to "what is installed": a name is what
-// every other command takes, and comment-drift's rules are pages long. `verse trigger --at
-// drift` is the rules themselves, one charter at a time, and `trigger show <name>` is one rule.
+// ONE SHAPE AT EVERY LEVEL, which is what makes the address worth having: each node answers
+// `writes`/`imports`/`rules`/`strata`/`children`, so a reader who learns the root has learned
+// every node, and `--trim` cuts the same fields wherever it is asked.
 //
-// It answers the tree even when there are no packages at all, where it is baseline's rules under
-// `rules:` and no `children:` — one shape, so a reader who learns it once does not meet a
-// different one the first time somebody installs a package.
+// THE RULES THEMSELVES, not their names. This is the charter — the program the verse is running
+// — and a listing of names would leave the question it exists to answer ("what does it do") to a
+// second command per rule. `--depth 0` is how it gets shorter: the charter at this address and
+// nothing under it.
 //
-// Assembled here rather than served, for the reason the docket is: the wire carries the flat
-// rows (one per charter, each naming its address) and the shape is a rendering of them. A tree
-// on the wire would be a second, recursive type for the same facts.
-func printCharterTree(cc *cli.Context) error {
-	resp, err := httpGet("/packages", nil)
+// Assembled here rather than served: the wire carries the flat rows (one per charter, each
+// naming its address) and one listing per charter, which are the two questions the server
+// already answers. The shape is a rendering of them, as the docket's is.
+func printCharterTree(cc *cli.Context, at string) error {
+	rows, err := charterRows(cc)
+	if err != nil || rows == nil {
+		return err
+	}
+	want, err := entity.ParseAt(at) // the address as a path, so `drift comments` and `drift.comments` are one
 	if err != nil {
 		return fmt.Errorf("trigger: %w", err)
 	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		return printBody(cc, resp) // a 503 from an unreadable store says so in its own words
-	}
-	var rows []api.CharterPackage
-	decodeClose(resp, &rows)
+	segs := kpathSegs(want)
 	root := &charterNode{}
+	found := at == ""
 	for _, row := range rows {
-		node := root
+		addr := []string{}
 		if row.At != api.BaselinePackage {
-			for _, seg := range strings.Split(row.At, ".") {
-				node = node.child(seg)
-			}
+			addr = strings.Split(row.At, ".")
+		}
+		rest, under := below(addr, segs)
+		if !under {
+			continue
+		}
+		found = true
+		if trig.Depth >= 0 && len(rest) > trig.Depth {
+			continue // deeper than asked for
+		}
+		node := root
+		for _, seg := range rest {
+			node = node.child(seg)
 		}
 		node.row, node.here = row, true
+		if node.rules, node.strata, err = charterOf(row.At); err != nil {
+			return fmt.Errorf("trigger: %s: %w", row.At, err)
+		}
+	}
+	if !found {
+		return fmt.Errorf("no charter is installed at %s, and none under it — `verse trigger` "+
+			"lists every address that has one", at)
 	}
 	return printIR(cc, root.node())
 }
 
-// charterNode is one place in the address tree: a charter installed there (or not, for a
+// below reports whether a charter's address is at or under the address asked for, and what is
+// left of it once the asked-for part is taken off — which is where it hangs in the answer.
+func below(addr, want []string) ([]string, bool) {
+	if len(addr) < len(want) {
+		return nil, false
+	}
+	for i, seg := range want {
+		if addr[i] != seg {
+			return nil, false
+		}
+	}
+	return addr[len(want):], true
+}
+
+// kpathSegs is a parsed address as plain segments.
+func kpathSegs(kp *kpath.KPath) []string {
+	var out []string
+	for p := kp; p != nil; p = p.Next {
+		if p.Field != nil {
+			out = append(out, *p.Field)
+		}
+	}
+	return out
+}
+
+// charterRows reads which charters exist, or nil when the answer was an error this has already
+// printed (an unreadable store says so in its own words).
+func charterRows(cc *cli.Context) ([]api.CharterPackage, error) {
+	resp, err := httpGet("/packages", nil)
+	if err != nil {
+		return nil, fmt.Errorf("trigger: %w", err)
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, printBody(cc, resp)
+	}
+	var rows []api.CharterPackage
+	decodeClose(resp, &rows)
+	return rows, nil
+}
+
+// charterOf reads one charter's rules and strata in full — the two listings the server already
+// answers, asked per address.
+func charterOf(at string) (rules, strata *ir.Node, err error) {
+	q := url.Values{}
+	if at != api.BaselinePackage {
+		q.Set("at", at)
+	}
+	if rules, err = listingNode(q, "/triggers"); err != nil {
+		return nil, nil, err
+	}
+	strata, err = listingNode(q, "/strata")
+	return rules, strata, err
+}
+
+// listingNode reads one of the server's listings as a document, rather than printing it: the
+// tree holds several, and each has to be placed rather than emitted where it arrived.
+func listingNode(q url.Values, route string) (*ir.Node, error) {
+	resp, err := httpGet(route, q)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, errors.New(strings.TrimSpace(string(body)))
+	}
+	return codec.ParseNode(body, respFmt(resp))
+}
+
+// charterNode is one place in the address tree: the charter installed there (or none, for a
 // segment that only leads somewhere) and whatever is installed below it.
 type charterNode struct {
 	row      api.CharterPackage
 	here     bool // a charter is installed AT this address, rather than only under it
+	rules    *ir.Node
+	strata   *ir.Node
 	kids     map[string]*charterNode
 	kidOrder []string
 }
@@ -140,8 +246,7 @@ func (n *charterNode) child(seg string) *charterNode {
 // first and `writes` last, so the shallowest fact about a charter would be the one furthest down
 // every entry.
 func (n *charterNode) node() *ir.Node {
-	fields := []*ir.Node{}
-	values := []*ir.Node{}
+	var fields, values []*ir.Node
 	add := func(key string, v *ir.Node) {
 		fields = append(fields, ir.FromString(key))
 		values = append(values, v)
@@ -151,14 +256,14 @@ func (n *charterNode) node() *ir.Node {
 		if n.row.Imports != nil {
 			add("imports", strs(n.row.Imports))
 		}
-		add("rules", strs(n.row.Rules))
-		if len(n.row.Strata) > 0 {
-			add("strata", strs(n.row.Strata))
+		add("rules", orEmpty(n.rules))
+		if n.strata != nil && len(n.strata.Values) > 0 {
+			add("strata", n.strata)
 		}
 	}
 	if len(n.kidOrder) > 0 {
 		sort.Strings(n.kidOrder)
-		kf, kv := []*ir.Node{}, []*ir.Node{}
+		var kf, kv []*ir.Node
 		for _, seg := range n.kidOrder {
 			kf = append(kf, ir.FromString(seg))
 			kv = append(kv, n.kids[seg].node())
@@ -166,6 +271,13 @@ func (n *charterNode) node() *ir.Node {
 		add("children", &ir.Node{Type: ir.ObjectType, Fields: kf, Values: kv})
 	}
 	return &ir.Node{Type: ir.ObjectType, Fields: fields, Values: values}
+}
+
+func orEmpty(n *ir.Node) *ir.Node {
+	if n == nil {
+		return ir.FromSlice(nil)
+	}
+	return n
 }
 
 func strs(in []string) *ir.Node {
@@ -181,7 +293,9 @@ type triggerShowConfig struct{ *cli.Command }
 func triggerShowCmd() *cli.Command {
 	cfg := &triggerShowConfig{}
 	return cli.NewCommandAt(&cfg.Command, "show").
-		WithSynopsis("show a trigger: show <name>").WithRun(cfg.run)
+		WithSynopsis("show a trigger: show <name> [--at <address>]").
+		WithOpts(mustOpts(trig)...).
+		WithRun(cfg.run)
 }
 
 func (cfg *triggerShowConfig) run(cc *cli.Context, args []string) error {
@@ -189,7 +303,11 @@ func (cfg *triggerShowConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpGet("/triggers/"+name, nil)
+	at, err := whichCharter(cc, "trigger show", name)
+	if err != nil {
+		return err
+	}
+	resp, err := httpGet("/triggers/"+name, atQuery(at))
 	if err != nil {
 		return fmt.Errorf("trigger show: %w", err)
 	}
@@ -200,12 +318,62 @@ func (cfg *triggerShowConfig) run(cc *cli.Context, args []string) error {
 	return printBody(cc, resp)
 }
 
+// whichCharter finds the charter holding a rule by name, since a name is unique WITHIN a charter
+// and not across them: two packages may each have a `review`, which is most of what packages are
+// for. It answers the address to ask at.
+//
+// `--at` settles it when the operator knows. Otherwise the tree is read and the name looked for:
+// exactly one charter holding it is no ambiguity at all and is answered without ceremony, and
+// several is a question only the operator can settle — so it is asked, naming them.
+//
+// Baseline first, because a charter with no address is where a rule is until somebody packages
+// it, and because `verse trigger show <name>` meant baseline before packages existed.
+func whichCharter(cc *cli.Context, what, name string) (string, error) {
+	if trig.At != "" {
+		return trig.At, nil
+	}
+	rows, err := charterRows(cc)
+	if err != nil || rows == nil {
+		return "", err
+	}
+	var holds []string
+	for _, row := range rows {
+		for _, rule := range row.Rules {
+			if rule != name {
+				continue
+			}
+			if row.At == api.BaselinePackage {
+				return "", nil // baseline: ask with no address, as this always did
+			}
+			holds = append(holds, row.At)
+		}
+	}
+	switch len(holds) {
+	case 0:
+		return "", nil // let the request 404 and say so in the caller's words
+	case 1:
+		return holds[0], nil
+	}
+	return "", fmt.Errorf("%w: %s %s: %d charters hold a rule called %q (%s) — say which with "+
+		"`--at <address>`", cli.ErrUsage, what, name, len(holds), name, strings.Join(holds, ", "))
+}
+
+// atQuery is `?at=` when there is an address, and nothing when the charter is baseline's.
+func atQuery(at string) url.Values {
+	if at == "" {
+		return nil
+	}
+	return url.Values{"at": []string{at}}
+}
+
 type triggerRemoveConfig struct{ *cli.Command }
 
 func triggerRemoveCmd() *cli.Command {
 	cfg := &triggerRemoveConfig{}
 	return cli.NewCommandAt(&cfg.Command, "remove").
-		WithSynopsis("remove a trigger: remove <name>").WithRun(cfg.run)
+		WithSynopsis("remove a trigger: remove <name> [--at <address>]").
+		WithOpts(mustOpts(trig)...).
+		WithRun(cfg.run)
 }
 
 func (cfg *triggerRemoveConfig) run(cc *cli.Context, args []string) error {
@@ -213,7 +381,11 @@ func (cfg *triggerRemoveConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := httpDelete("/triggers/"+name, nil)
+	at, err := whichCharter(cc, "trigger remove", name)
+	if err != nil {
+		return err
+	}
+	resp, err := httpDelete("/triggers/"+name, atQuery(at))
 	if err != nil {
 		return fmt.Errorf("trigger remove: %w", err)
 	}

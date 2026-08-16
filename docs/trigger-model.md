@@ -196,35 +196,44 @@ the arrangement above, is not a loop.
 through it is not a loop between packages and this cannot see it — which is the same reason
 baseline is unconfined in what it writes.
 
-`verse trigger` is the whole charter as a TREE, which is what an address makes it: the baseline
-charter at the root, and each package under the segments of the address it writes in.
+`verse trigger` reads the charter AT AN ADDRESS, the way `verse state` reads the verse at one —
+because the charter is one document with a place for every package, so "what is installed here"
+is the same question at every depth, and every node answers the same shape.
 
 ```sh
-verse trigger
+verse trigger                  # the whole charter
+verse trigger drift            # the `drift` package and anything under it
+verse trigger demo pr          # …one deeper: the package at demo.pr
+verse trigger drift --depth 0  # …that address alone, without what is under it
+```
+
+```sh
+verse trigger --depth 1
 # writes: anywhere            ← baseline: no address, so it may write anywhere
 # rules: []
 # children:
 #   drift:
 #     writes: drift.*
 #     imports: [git]
-#     rules: [comment-drift, gather, head-moved]
-#     strata: [drift, ledger, reflected]
+#     rules: [ … the three rules, in full … ]
+#     strata: [ … ]
 #   merge:
 #     writes: merge.*
 #     imports: [git, drift]
-#     rules: [merge-proposal, proposal-appeared, proposal-based, proposal-outrun, proposal-says]
-#     strata: [merge, reflected]
+#     rules: [ … ]
 ```
 
 That is comment-drift installed: the review at `drift`, the gate at `merge` importing it, and a
-baseline nobody has put anything in. A package at `demo.pr` would nest under a `demo` that holds
-only `children:`, since nothing is installed at `demo` itself.
+baseline nobody has put anything in. A package at `demo.pr` nests under a `demo` that holds only
+`children:`, since nothing is installed at `demo` itself.
 
-BY NAME rather than by body, because this is the answer to "what is installed" — and a rule's
-name is what every other command takes. The rules themselves are one charter at a time:
+THE RULES THEMSELVES, not their names: this is the program the verse is running, and a listing
+of names would leave what it DOES to a second command per rule. `--depth 0` is how it gets
+short. One rule by name is still one command:
 
 ```sh
-verse trigger --at merge        # that package's rules, in full
+verse trigger merge             # that package alone, rules and all
+verse trigger merge --depth 0   # …without whatever is installed under it
 verse trigger show merge-proposal
 ```
 

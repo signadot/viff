@@ -408,7 +408,7 @@ type CharterPackage struct {
 	// Names because this is the answer to "what is installed" — a count says a charter is there
 	// and nothing about what it does, and a rule's name is what every other command takes
 	// (`trigger show <name>`, `stratum remove <name>`). The rules themselves are a listing away
-	// (`verse trigger --at <address>`), which is the right depth for a charter whose rules are
+	// (`verse trigger <address>`), which the CLI folds into the tree it renders from these
 	// pages long.
 	Rules  []string `tony:"field=rules"`
 	Strata []string `tony:"field=strata,omitzero"`

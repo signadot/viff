@@ -2356,7 +2356,7 @@ func (s *Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 
 // engForRequest is the engine a LISTING is about: baseline, a scope's, or a charter package's.
 //
-// `?at=` was accepted by the install and ignored by the listing, so `verse trigger --at drift`
+// `?at=` was accepted by the install and ignored by the listing, so the rules of a package
 // answered with baseline's rules — an empty list, for a package that had three, which reads as
 // "the package installed nothing" rather than as "you asked the wrong engine". A listing and an
 // install have to mean the same thing by the same query parameter.
@@ -3232,7 +3232,11 @@ func (s *Server) addPackage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getTrigger(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
+	eng, err := s.engForRequest(r) // `?at=` reaches a package's rule, as it does its listing
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if eng == nil {
 		http.NotFound(w, r)
 		return
@@ -3246,7 +3250,11 @@ func (s *Server) getTrigger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeTrigger(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
+	eng, err := s.engForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if eng == nil || !eng.RemoveTrigger(r.PathValue("name")) {
 		http.NotFound(w, r)
 		return

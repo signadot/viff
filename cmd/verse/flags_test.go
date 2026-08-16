@@ -123,6 +123,13 @@ func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {
 	root := rootCmd()
 	cc := cli.DefaultContext()
 	for singular := range collections {
+		// `trigger` takes an ADDRESS where the others take a verb or nothing (`verse trigger
+		// drift comments`), so a word it does not know is a place with no charter rather than
+		// a verb it does not have — the same trade `verse state` makes, and the reason it is
+		// not in this list either. Its own refusal is tested at TestTheCharterListsAsATree.
+		if singular == "trigger" {
+			continue
+		}
 		cmd := root.FindSub(cc, singular)
 		if cmd == nil {
 			t.Fatalf("verse %s: no such command", singular)
@@ -390,36 +397,47 @@ func TestTheCharterListsAsATree(t *testing.T) {
 		"children:",
 		"notes:",         // the package, under the address it writes in
 		"writes: notes.", // …and what it may write
-		"note",           // its rule, BY NAME
+		"name: note",     // its rule, in full
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the tree does not show %q:\n%s", want, out)
 		}
 	}
 
-	// And the rules themselves are one charter at a time, which is where a filter has items.
-	rules, err := runCLI(t, "trigger", "--at", "notes", "--trim", `{name: null}`)
+	// The address reaches one charter, at any depth, and answers the same shape there.
+	one, err := runCLI(t, "trigger", "notes")
 	if err != nil {
-		t.Fatalf("trigger --at: %v", err)
+		t.Fatalf("trigger notes: %v", err)
 	}
-	if !strings.Contains(rules, "name: note") {
-		t.Errorf("--at did not answer the package's rules: %s", rules)
+	if !strings.Contains(one, "writes: notes.") || !strings.Contains(one, "name: note") {
+		t.Errorf("the address did not reach the package: %s", one)
+	}
+	if strings.Contains(one, "anywhere") {
+		t.Errorf("the address answered about baseline too: %s", one)
+	}
+
+	// An address nobody installed at is an error rather than an empty document: it is a
+	// question about a place, and "nothing is there" is worth saying out loud.
+	if _, err := runCLI(t, "trigger", "nowhere"); err == nil {
+		t.Error("an address with no charter answered as though it had one")
 	}
 }
 
 // installPackageRule installs one rule into a package, by posting it the way `trigger add` does.
-func installPackageRule(t *testing.T) error {
+func installPackageRule(t *testing.T) error { return installPackageRuleAt(t, "notes") }
+
+func installPackageRuleAt(t *testing.T, at string) error {
 	t.Helper()
 	g.Addr = testAddr // runCLI does this on its way in; this posts before any command runs
 	node, err := codec.ParseNode([]byte(`{
 		name: note,
-		condition: {subject: {system: notes, kind: seen, id: head}},
+		condition: {subject: {system: `+at+`, kind: seen, id: head}},
 		action: {patch: {saw: "yes"}},
 	}`), codec.Tony)
 	if err != nil {
 		return err
 	}
-	resp, err := httpPostNodeTo("/triggers", url.Values{"at": []string{"notes"}}, node)
+	resp, err := httpPostNodeTo("/triggers", url.Values{"at": []string{at}}, node)
 	if err != nil {
 		return err
 	}
@@ -429,4 +447,45 @@ func installPackageRule(t *testing.T) error {
 		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+// A rule in a PACKAGE is reachable by name. `show` and `remove` asked baseline's engine and
+// nothing else, so every rule in every package was un-showable and un-removable — installed,
+// listed in the tree, and addressable by no command.
+//
+// A name is unique WITHIN a charter and not across them, which is most of what packages are
+// for, so the name is looked for: one charter holding it is answered, several is a question.
+func TestARuleInAPackageIsReachableByName(t *testing.T) {
+	serve(t)
+	if err := installPackageRule(t); err != nil {
+		t.Fatalf("installing a package: %v", err)
+	}
+
+	out, err := runCLI(t, "trigger", "show", "note")
+	if err != nil {
+		t.Fatalf("trigger show: %v", err)
+	}
+	if !strings.Contains(out, "name: note") {
+		t.Errorf("show did not find the package's rule: %s", out)
+	}
+
+	// Two charters holding one name is a question only the operator can settle.
+	if err := installPackageRuleAt(t, "other"); err != nil {
+		t.Fatalf("installing a second package: %v", err)
+	}
+	_, err = runCLI(t, "trigger", "show", "note")
+	if err == nil || !strings.Contains(err.Error(), "--at") {
+		t.Errorf("an ambiguous name did not ask which charter: %v", err)
+	}
+	if out, err := runCLI(t, "trigger", "show", "note", "--at", "other"); err != nil {
+		t.Errorf("--at did not settle it: %v (%s)", err, out)
+	}
+
+	// And removing reaches it too, which it could not before.
+	if _, err := runCLI(t, "trigger", "remove", "note", "--at", "notes"); err != nil {
+		t.Errorf("trigger remove --at: %v", err)
+	}
+	if out, err := runCLI(t, "trigger", "notes"); err == nil && strings.Contains(out, "name: note") {
+		t.Errorf("the rule is still installed: %s", out)
+	}
 }

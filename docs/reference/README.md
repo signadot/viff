@@ -94,12 +94,18 @@ verse
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
-  trigger (triggers)                         the installed charter as a TREE: baseline at
+  trigger (triggers) [<address>]             the charter AT AN ADDRESS: what may be written
+                                             there, what it imports, its rules and strata in
+                                             full, and the same for every address under it.
+                                             Bare, that is the whole charter — baseline at
                                              the root, each package under the address it
-                                             writes in, rules and strata BY NAME
-          [--at <address>]                   …that charter's rules in full, instead
-          [--scope <name>]                   …a federation's own charter, instead
+                                             writes in (`trigger drift`, `trigger demo pr`)
+          [--depth <n>]                      how far under it to go: 0 is that address
+                                             alone; -1 (the default) is everything
+          [--scope <name>]                   …a federation's own charter instead
           add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
+          show|remove [--at <address>]       …a rule of that charter; needed only when more
+                                             than one holds the name
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md
