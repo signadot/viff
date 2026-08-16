@@ -121,17 +121,29 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 	}
 }
 
-// A motion the client cannot read is not grounds to refuse. The check exists to catch the
-// certainly-wrong case, not to become a second authority on what the server will accept — so
-// an unknown motion still reaches it, exactly as before.
-func TestVoteOnAnUnknownMotionIsTheServersCall(t *testing.T) {
-	store := serve(t)
-
-	if _, err := runCLI(t, "vote", "nosuch", "approve", "--as", "alice"); err != nil {
-		t.Fatalf("vote on an unknown motion was refused client-side: %v", err)
+// A motion the client CANNOT READ is still not grounds to refuse — a read that fails says
+// nothing about the motion — but a motion that is definitively NOT THERE is, and that reverses
+// what this test used to assert.
+//
+// The old reasoning was that the check should not become a second authority on what the server
+// will accept. What it missed is that the server accepts a ballot for a motion that does not
+// exist: a ballot is an ordinary entity write, so `vote:nosuch:alice` lands, no tally ever reads
+// it, and the voter watches a number that will not move. Nobody is the authority in that story.
+//
+// It was found the way these things are: `verse vote approve <id>` — the arguments the wrong way
+// round, which reads as English — wrote a ballot on a motion called "approve" and left the
+// docket unchanged. See TestVoteRefusesAMotionThatIsNotThere.
+func TestVoteOnAnUnreadableMotionIsTheServersCall(t *testing.T) {
+	// The read itself failing (no server) leaves the decision to the request, which then fails
+	// on its own terms rather than on a guess made here.
+	defer func(addr string) { testAddr = addr }(testAddr)
+	testAddr = "127.0.0.1:1" // nothing listening: the motion read cannot be performed
+	_, err := runCLI(t, "vote", "nosuch", "approve", "--as", "alice")
+	if err == nil {
+		t.Fatal("a ballot with no server behind it reported success")
 	}
-	if p := payloadOf(t, store, entity.RefAt("vote", "nosuch", "alice")); p == nil {
-		t.Error("the ballot did not reach the store")
+	if strings.Contains(err.Error(), "docket") {
+		t.Errorf("an unreadable motion was refused as though it were absent: %v", err)
 	}
 }
 
@@ -188,7 +200,11 @@ func TestVoteReportsARefusal(t *testing.T) {
 				http.Error(w, "the store said no", http.StatusBadRequest)
 				return
 			}
-			w.WriteHeader(http.StatusNotFound) // checkChoice: unreadable motion is not its call
+			// The motion IS there, so the client has nothing to refuse and the ballot reaches
+			// the store — which is what this test is about. A motion that is not there is
+			// refused before that (TestVoteRefusesAMotionThatIsNotThere).
+			w.Header().Set("Content-Type", "application/tony")
+			_, _ = w.Write([]byte("ref: verse:motion:channel:m1\npayload: {axis: whether, status: open}\n"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -241,5 +257,47 @@ func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
 	}
 	if !strings.Contains(out, "demo:vote:1") {
 		t.Errorf("the docket does not say what is being decided:\n%s", out)
+	}
+}
+
+// A BALLOT ON A MOTION THAT IS NOT THERE is refused. The store would take the write — a ballot
+// is an ordinary entity — and nothing would ever read it, so the voter learns nothing and the
+// tally they are watching never moves.
+//
+// The swap is why it matters more than it looks. `verse vote approve <id>` reads as English and
+// is the wrong way round, so it recorded a ballot on a motion called "approve" with the id as
+// the choice; the docket was unchanged and the confirmation ("me voted <id> on motion approve")
+// parsed as a sentence either way round. Both halves are checked here.
+func TestVoteRefusesAMotionThatIsNotThere(t *testing.T) {
+	store := serve(t)
+	whetherMotion(t, store, "m1")
+
+	_, err := runCLI(t, "vote", "nosuch", "approve", "--as", "alice")
+	if err == nil {
+		t.Fatal("a ballot on a motion that does not exist was accepted")
+	}
+	if !strings.Contains(err.Error(), "docket") {
+		t.Errorf("the refusal does not say where to look: %v", err)
+	}
+	if p := payloadOf(t, store, entity.RefAt("vote", "nosuch", "alice")); p != nil {
+		t.Errorf("a ballot was written for a motion that is not there: %v", p)
+	}
+
+	// And when the choice names a real motion, the refusal says which way round it goes.
+	_, err = runCLI(t, "vote", "approve", "m1", "--as", "alice")
+	if err == nil {
+		t.Fatal("the swapped form was accepted")
+	}
+	if !strings.Contains(err.Error(), "wrong way round") || !strings.Contains(err.Error(), "vote m1 approve") {
+		t.Errorf("the refusal does not name the swap: %v", err)
+	}
+
+	// The right way round still works, and the confirmation leads with the motion.
+	out, err := runCLI(t, "vote", "m1", "approve", "--as", "alice")
+	if err != nil {
+		t.Fatalf("a good ballot was refused: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out), "motion m1:") {
+		t.Errorf("the confirmation does not lead with the motion: %q", out)
 	}
 }

@@ -164,6 +164,9 @@ verse
                                              selections), open and settled — a settled one
                                              carries its outcome, or `orphaned` and a `why`
   vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
+                                             THE MOTION FIRST: `vote approve <id>` reads as
+                                             English and is the wrong way round; it is refused,
+                                             and the refusal says which way it goes
   provider (providers)                       the provider registry (provider:<capability>:<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +

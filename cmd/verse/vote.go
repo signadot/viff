@@ -82,7 +82,10 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 		}
 		return fmt.Errorf("vote: %s", resp.Status)
 	}
-	fmt.Fprintf(cc.Out, "%s voted %s on motion %s\n", cfg.As, choice, motion)
+	// The motion FIRST, because that is the argument order and a confirmation that reads back in
+	// the order you typed is one you can check. "me voted 7a11e2ef on motion approve" parses as
+	// a sentence whichever way round the values are, which is how a swap went unnoticed.
+	fmt.Fprintf(cc.Out, "motion %s: %s voted %q\n", motion, cfg.As, choice)
 	return nil
 }
 
@@ -103,14 +106,26 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 // the case that is certainly wrong — the motion is right there, its options are known, and the
 // choice is none of them.
 func checkChoice(motion, choice string) error {
-	resp, err := httpGet("/entity", url.Values{"ref": {"verse:motion:channel:" + motion}})
+	got, ok, err := readMotion(motion)
 	if err != nil {
 		return nil // cannot read it: not our call to make
 	}
-	var ent struct {
-		Payload map[string]any `tony:"field=payload"`
+	// A MOTION THAT IS NOT THERE takes no ballots. The store would accept the write — a ballot
+	// is an ordinary entity — and nothing would ever read it, so the voter learns nothing and
+	// the tally they were watching never moves.
+	//
+	// The swap is why this matters more than it looks: `vote approve <id>` reads as English and
+	// is the wrong way round, so it recorded a ballot on a motion called "approve" with the id
+	// as the choice, and the docket was unchanged. Both halves of that are checked here.
+	if !ok {
+		if _, isMotion, _ := readMotion(choice); isMotion {
+			return fmt.Errorf("%w: no motion %q — but %q is one, so the arguments are the wrong "+
+				"way round: `verse vote %s %s`", cli.ErrUsage, motion, choice, choice, motion)
+		}
+		return fmt.Errorf("%w: no motion %q is on the docket — see `verse docket`",
+			cli.ErrUsage, motion)
 	}
-	decodeClose(resp, &ent)
+	ent := struct{ Payload map[string]any }{Payload: got}
 	if err := checkOpen(motion, ent.Payload); err != nil {
 		return err
 	}
@@ -125,6 +140,27 @@ func checkChoice(motion, choice string) error {
 	}
 	return fmt.Errorf("%w: motion %s takes %s, not %q — see `verse docket`",
 		cli.ErrUsage, motion, strings.Join(want, " or "), choice)
+}
+
+// readMotion reads one motion off the docket: its payload, whether it is there at all, and
+// whether the read could be performed.
+func readMotion(id string) (map[string]any, bool, error) {
+	if id == "" {
+		return nil, false, nil
+	}
+	resp, err := httpGet("/entity", url.Values{"ref": {"verse:motion:channel:" + id}})
+	if err != nil {
+		return nil, false, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, false, nil
+	}
+	var ent struct {
+		Payload map[string]any `tony:"field=payload"`
+	}
+	decodeClose(resp, &ent)
+	return ent.Payload, len(ent.Payload) > 0, nil
 }
 
 // checkOpen refuses a ballot into a motion that is not taking any, for the reason checkChoice
