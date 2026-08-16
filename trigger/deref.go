@@ -101,9 +101,9 @@ const (
 func subjectNode(subj entity.Ref, value entity.Payload, commit int64) *ir.Node {
 	fields := map[string]*ir.Node{
 		subjPartRef:    ir.FromString(subj.String()),
-		subjPartSystem: ir.FromString(subj.System),
-		subjPartKind:   ir.FromString(subj.Kind),
-		subjPartID:     ir.FromString(subj.ID),
+		subjPartSystem: ir.FromString(subj.System()),
+		subjPartKind:   ir.FromString(subj.Kind()),
+		subjPartID:     ir.FromString(subj.ID()),
 	}
 	if value != nil {
 		fields[subjPartValue] = value.DeepCopy()

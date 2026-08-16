@@ -69,7 +69,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 	}
 
 	// The owner's own verdict is taken, through the same path.
-	inst := resolver.InstanceRef("payments-review", "run-1").ID
+	inst := resolver.InstanceRef("payments-review", "run-1").ID()
 	ok := postTony(t, ts.URL+"/resolvers/instance/"+inst+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	defer ok.Body.Close()

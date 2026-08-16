@@ -13,7 +13,7 @@ import (
 // what a caller builds out of it, not the other way round.
 func TestWriteMerges(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "reviewed"}.Payload()})
@@ -36,7 +36,7 @@ func TestWriteMerges(t *testing.T) {
 // without reading or rewriting the rest of it.
 func TestWriteDeepField(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{
 		"stage":  "open",
 		"labels": map[string]any{"urgent": false, "area": "store"},
@@ -58,7 +58,7 @@ func TestWriteDeepField(t *testing.T) {
 // writes nothing at all.
 func TestWriteCreateAndUpdate(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 
 	if ok, _, err := s.Write(Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload(), When: []Require{Updated()}}); err != nil || ok {
 		t.Fatalf("update of an absent entity: committed=%v err=%v, want refused", ok, err)
@@ -88,7 +88,7 @@ func TestWriteCreateAndUpdate(t *testing.T) {
 // it isn't already set" one call rather than a read and a race.
 func TestWriteConditionOnAField(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload()})
 
 	at := ref.At("owner")
@@ -107,8 +107,8 @@ func TestWriteConditionOnAField(t *testing.T) {
 // the reason create/update need no address repeated.
 func TestRequireDefaultsToTheWritesPath(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	gate := Ref{System: "demo", Kind: "gate", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
+	gate := RefAt("demo", "gate", "1")
 	mustWrite(t, s, Write{At: Path{Ref: gate}, Value: Obj{"open": true}.Payload()})
 
 	// One condition about the write's own path (absent), one about somewhere else.
@@ -163,7 +163,7 @@ func readObj(t *testing.T, s Store, ref Ref) map[string]any {
 // "does it look like this?" is answering about a fragment.
 func TestEventIsLevelNotDelta(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 
 	ch, unsub := s.Observe()
@@ -190,7 +190,7 @@ func TestEventIsLevelNotDelta(t *testing.T) {
 // has been overwritten — an event says what was true when it happened, not what is true now.
 func TestEventLevelsAtItsOwnCommit(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open"}.Payload()})
 	first := s.Rev()
 
@@ -216,7 +216,7 @@ func TestEventLevelsAtItsOwnCommit(t *testing.T) {
 // comes and retries to its deadline.
 func TestModifyOnAScalarPayload(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "count", ID: "1"}
+	ref := RefAt("demo", "count", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Val(100)})
 
 	if err := Modify(t.Context(), s, ref, func(cur Payload) Payload {
@@ -240,7 +240,7 @@ func TestModifyOnAScalarPayload(t *testing.T) {
 func TestSinceLevelsFromTheStart(t *testing.T) {
 	s := openStore(t)
 	start := s.Rev() // fix the low-watermark before anything is written
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 
@@ -265,7 +265,7 @@ func TestModifyNoLostUpdateViaWrite(t *testing.T) {
 // payload and answers with the whole payload, so what it leaves out it means to leave out.
 func TestModifyDropsFields(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"stage": "open", "note": "x"}.Payload()})
 
 	if err := Modify(t.Context(), s, ref, func(cur Payload) Payload {
@@ -288,12 +288,12 @@ func TestModifyDropsFields(t *testing.T) {
 // told the store is unreachable, it waits.
 func TestAbsentReadsAreNotFailures(t *testing.T) {
 	s := openStore(t)
-	mustWrite(t, s, Write{At: Ref{System: "demo", Kind: "pr", ID: "1"}.At(), Value: Obj{"a": "1"}.Payload()})
+	mustWrite(t, s, Write{At: RefAt("demo", "pr", "1").At(), Value: Obj{"a": "1"}.Payload()})
 
 	for _, ref := range []Ref{
-		{System: "demo", Kind: "pr", ID: "2"},        // the id has never been written
-		{System: "demo", Kind: "issue", ID: "1"},     // nor the kind
-		{System: "motion", Kind: "channel", ID: "x"}, // nor the system
+		RefAt("demo", "pr", "2"),        // the id has never been written
+		RefAt("demo", "issue", "1"),     // nor the kind
+		RefAt("motion", "channel", "x"), // nor the system
 	} {
 		e, ok, err := s.Get(ref)
 		if err != nil {
@@ -322,7 +322,7 @@ func remove(t *testing.T, s Store, ref Ref) {
 // still there holding nothing — so the read strips them all the way down.
 func TestRemovedFieldsAreInvisibleAtAnyDepth(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: ref.At(), Value: Obj{
 		"stage":  "open",
 		"labels": map[string]any{"urgent": true, "area": "store"},
@@ -352,7 +352,7 @@ func TestRemovedFieldsAreInvisibleAtAnyDepth(t *testing.T) {
 // declining to record a change that is not one.
 func TestSameValueWriteRaisesNoCommit(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
 	root, unsubRoot := s.Observe()
@@ -393,7 +393,7 @@ func TestSameValueWriteRaisesNoCommit(t *testing.T) {
 // again is a round trip for something already in hand.
 func TestModifyFromWritesWithoutReading(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 
 	// Create: nothing stands there, and the caller says so.
 	if err := ModifyFrom(t.Context(), s, ref, nil, false, func(cur Payload) Payload {
@@ -432,7 +432,7 @@ func TestModifyFromWritesWithoutReading(t *testing.T) {
 // re-applies fn against what is actually there.
 func TestModifyFromFallsBackOnAStaleSnapshot(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"n": 1}.Payload())
 
 	// A snapshot from before somebody else's write. fn increments, so a lost update would be
@@ -455,7 +455,7 @@ func TestModifyFromFallsBackOnAStaleSnapshot(t *testing.T) {
 // precondition cannot hold against an absent entity, so this is the same fallback.
 func TestModifyFromFallsBackWhenNothingIsThere(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 
 	if err := ModifyFrom(t.Context(), s, ref, Obj{"stage": "ghost"}.Payload(), true,
 		func(Payload) Payload { return Obj{"stage": "open"}.Payload() }); err != nil {

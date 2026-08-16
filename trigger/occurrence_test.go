@@ -33,7 +33,7 @@ func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 		return nil
 	})
 
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "7"}
+	pr := entity.RefAt("demo", "pr", "7")
 	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewing"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -52,7 +52,7 @@ func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"},
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"),
 		entity.Obj{"state": "green"}.Payload())
 
 	spec := waitSpec(t, specs)
@@ -67,7 +67,7 @@ func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 	}
 
 	// A second firing about the same subject: same id, later commit.
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"},
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"),
 		entity.Obj{"state": "green", "again": 1}.Payload())
 	next := waitSpec(t, specs)
 	if next.Occurrence <= spec.Occurrence {

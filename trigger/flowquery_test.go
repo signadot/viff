@@ -123,9 +123,9 @@ func TestSteerWholeKind(t *testing.T) {
 // subject entity, so it only applies to subjects that exist in the store.
 func TestFlowAddressingByPayload(t *testing.T) {
 	store := entitytest.Store(t)
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "merged"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"), entity.Obj{"stage": "merged"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "3"), entity.Obj{"stage": "open"}.Payload())
 
 	eng := New(store, task.AutoResolver{})
 	spawnFP(t, eng, "p1", "demo:pr:1")
@@ -181,8 +181,8 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
-	a := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	b := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	a := entity.RefAt("demo", "pr", "1")
+	b := entity.RefAt("demo", "pr", "2")
 	eng.Spawn(spawnID("review", a), launch.Spec{Subject: a.String()})
 	eng.Spawn(spawnID("review", b), launch.Spec{Subject: b.String()})
 

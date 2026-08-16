@@ -94,7 +94,7 @@ func TestASpawnWithNoResolverBindsNothing(t *testing.T) {
 		t.Fatalf("an unbound question carries %v as its owner: %+v", q["resolver"], q)
 	}
 	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.System == resolver.System && ref.Kind == resolver.InstanceKind
+		return ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
 	}) {
 		t.Fatalf("an unbound spawn minted %s", ent.Ref)
 	}

@@ -20,13 +20,13 @@ import (
 // time — the registry, longhand.
 func registerTreatments(t *testing.T, store entity.Store) {
 	t.Helper()
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "fixer"}, entity.Obj{
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "fixer"), entity.Obj{
 		"driver": "llm", "risk": "low",
 		"tools": []any{"read_file", "list_dir", "write_file", "run_bash"},
 		"grant": "no-delegate",
 		"frame": "You apply a confirmed one-line fix, then build and run the named test.",
 	}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "memo"}, entity.Obj{
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "memo"), entity.Obj{
 		"driver": "llm", "risk": "high",
 		"tools": []any{"read_file", "list_dir"},
 		"grant": "read-only",
@@ -76,8 +76,8 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 	eng.Start(ctx)
 
 	got := map[string]launch.Spec{}
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "finding", ID: "1"}, entity.Obj{"risk": "low"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "finding", ID: "2"}, entity.Obj{"risk": "high"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "finding", "1"), entity.Obj{"risk": "low"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "finding", "2"), entity.Obj{"risk": "high"}.Payload())
 	// Read until both subjects have arrived rather than exactly twice: this charter spawns
 	// without a latch, so it is re-evaluated and spawns again at each commit touching
 	// demo:finding — which is what the install-time warning says about it. What the test is
@@ -125,7 +125,7 @@ func TestInlineEligibleCarriesOnlyTheDriver(t *testing.T) {
 	eng := New(store, denyResolver{})
 	p := &launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "auto"}
 
-	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, entity.Ref{System: "change", Kind: "pr", ID: "inline"})
+	frag, ok := eng.selectProvider(launch.Spec{Provider: p}, entity.RefAt("change", "pr", "inline"))
 	if !ok {
 		t.Fatal("inline eligible did not select")
 	}
@@ -141,11 +141,11 @@ func TestInlineEligibleCarriesOnlyTheDriver(t *testing.T) {
 func TestAttributeOnlyProviderStillWorks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "claude"},
+	entitytest.Set(t, store, entity.RefAt("provider", "review", "claude"),
 		entity.Obj{"driver": "llm-claude", "tier": "premium"}.Payload())
 
 	frag, ok := eng.selectProvider(launch.Spec{Provider: &launch.Provider{Capability: "review", Select: "auto"}},
-		entity.Ref{System: "change", Kind: "pr", ID: "old"})
+		entity.RefAt("change", "pr", "old"))
 	if !ok {
 		t.Fatal("attribute-only provider did not select")
 	}
@@ -161,7 +161,7 @@ func TestAttributeOnlyProviderStillWorks(t *testing.T) {
 func TestDisjointToolsIsIneligible(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "shell"},
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "shell"),
 		entity.Obj{"driver": "llm", "tools": []any{"run_bash"}}.Payload())
 
 	spawned := make(chan launch.Spec, 1)
@@ -183,7 +183,7 @@ func TestDisjointToolsIsIneligible(t *testing.T) {
 		t.Errorf("whyNoEligible = %q, want it to name the tool conflict", why)
 	}
 
-	subj := entity.Ref{System: "demo", Kind: "finding", ID: "d"}
+	subj := entity.RefAt("demo", "finding", "d")
 	if _, err := (Action{Spawn: &spawn}).applyOne("treat", occasion{ev: entity.Event{Ref: subj}}, subj, eng, fromSubject); err != nil {
 		t.Fatalf("applyOne = %v; an unresolvable selection is a non-spawn, not a failure", err)
 	}

@@ -35,7 +35,7 @@ func cover(system, kind string) entity.Pattern {
 }
 
 func ref(system, kind, id string) entity.Ref {
-	return entity.Ref{System: system, Kind: kind, ID: id}
+	return entity.RefAt(system, kind, id)
 }
 
 // countingStore counts the writes converge ISSUES.
@@ -372,7 +372,7 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 			{System: "demo", Kind: "thing", Predicate: mine},
 		}}
 		for i := range n {
-			rn.Add(entity.Ref{System: "demo", Kind: "thing", ID: fmt.Sprint(i)},
+			rn.Add(entity.RefAt("demo", "thing", fmt.Sprint(i)),
 				entity.Obj{"repo": "r", "stage": stage})
 		}
 		return rn
@@ -406,11 +406,11 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 	}
 
 	// And it is still correct: the updates landed and the missing one is gone.
-	e, ok, _ := counting.Get(entity.Ref{System: "demo", Kind: "thing", ID: "0"})
+	e, ok, _ := counting.Get(entity.RefAt("demo", "thing", "0"))
 	if !ok || entity.Str(e.Payload, "stage") != "merged" {
 		t.Fatalf("thing:0 = %+v, ok=%v — the update did not land", entity.ToObj(e.Payload), ok)
 	}
-	if _, ok, _ := counting.Get(entity.Ref{System: "demo", Kind: "thing", ID: "19"}); ok {
+	if _, ok, _ := counting.Get(entity.RefAt("demo", "thing", "19")); ok {
 		t.Fatal("thing:19 left the answer and was not tombstoned")
 	}
 }

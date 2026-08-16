@@ -155,10 +155,10 @@ func (t Trigger) touches(c entity.Commit) bool {
 	reads := t.reads()
 	for _, ev := range c.Changes {
 		for _, st := range reads {
-			if st[0] != "" && st[0] != ev.Ref.System {
+			if st[0] != "" && st[0] != ev.Ref.System() {
 				continue
 			}
-			if st[1] != "" && st[1] != ev.Ref.Kind {
+			if st[1] != "" && st[1] != ev.Ref.Kind() {
 				continue
 			}
 			return true

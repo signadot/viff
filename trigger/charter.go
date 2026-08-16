@@ -32,7 +32,7 @@ const (
 
 // CharterRef names the entity holding one rule.
 func CharterRef(name string) entity.Ref {
-	return entity.Ref{System: CharterSystem, Kind: CharterKind, ID: name}
+	return entity.RefAt(CharterSystem, CharterKind, name)
 }
 
 // specField is where a durable record keeps the declaration it was installed from — the rule
@@ -109,7 +109,7 @@ func (e *Engine) forget(name string) { e.write(CharterRef(name).At(), nil) }
 func (e *Engine) LoadCharter() error {
 	var errs []error
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
-		return r.System == CharterSystem && r.Kind == CharterKind
+		return r.System() == CharterSystem && r.Kind() == CharterKind
 	}) {
 		t, err := ruleOf(ent)
 		if err != nil {
@@ -142,7 +142,7 @@ func ruleOf(ent entity.Entity) (Trigger, error) {
 	if err := t.FromTonyIR(doc); err != nil {
 		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
 	}
-	if t.Name != ent.Ref.ID {
+	if t.Name != ent.Ref.ID() {
 		return Trigger{}, fmt.Errorf("charter %s: the rule names itself %q; a rule is addressed by its "+
 			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
 	}

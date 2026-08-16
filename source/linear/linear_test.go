@@ -185,8 +185,8 @@ func TestLinearTargetsTheTeamARefBelongsTo(t *testing.T) {
 	src := newSource(t, f, linear.Config{Teams: []string{"ENG"}})
 	for _, ref := range []entity.Ref{
 		linear.TeamRef("ENG"),
-		{System: "linear", Kind: "issue", ID: "ENG-1"},
-		{System: "linear", Kind: "cycle", ID: "ENG/4"},
+		entity.RefAt("linear", "issue", "ENG-1"),
+		entity.RefAt("linear", "cycle", "ENG/4"),
 	} {
 		rn, err := src.Reflect(context.Background(), ref)
 		if err != nil {
@@ -237,15 +237,15 @@ func TestLinearOwnershipIsFourClaimsPerTeam(t *testing.T) {
 			"issue claim is what separates them", ok, err)
 	}
 	for _, ref := range []entity.Ref{
-		{System: "linear", Kind: "team", ID: "ENG"},
-		{System: "linear", Kind: "issue", ID: "ENG-1"},
-		{System: "linear", Kind: "cycle", ID: "ENG/4"},
+		entity.RefAt("linear", "team", "ENG"),
+		entity.RefAt("linear", "issue", "ENG-1"),
+		entity.RefAt("linear", "cycle", "ENG/4"),
 	} {
 		if !claims(t, owns, ref) {
 			t.Fatalf("%s is written but not claimed", ref)
 		}
 	}
-	if claims(t, owns, entity.Ref{System: "linear", Kind: "issue", ID: "ENGINE-1"}) {
+	if claims(t, owns, entity.RefAt("linear", "issue", "ENGINE-1")) {
 		t.Fatal("ENG claims ENGINE-1")
 	}
 }
@@ -268,7 +268,7 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 		t.Fatal(err)
 	}
 	get := func(id string) (entity.Obj, bool) {
-		e, ok, _ := store.Get(entity.Ref{System: linear.System, Kind: "issue", ID: id})
+		e, ok, _ := store.Get(entity.RefAt(linear.System, "issue", id))
 		return entity.ToObj(e.Payload), ok
 	}
 	if _, ok := get("ENG-1"); !ok {
@@ -326,8 +326,8 @@ func TestTwoTeamsShareAProjectWithoutTombstoningEachOther(t *testing.T) {
 	f.project("ENG", "p-eng", "Sources") // and one that is ENG's alone
 
 	store := entitytest.Store(t)
-	shared := entity.Ref{System: "linear", Kind: "project", ID: "p-shared"}
-	engOnly := entity.Ref{System: "linear", Kind: "project", ID: "p-eng"}
+	shared := entity.RefAt("linear", "project", "p-shared")
+	engOnly := entity.RefAt("linear", "project", "p-eng")
 
 	reflector := func(team string) *source.Reflector {
 		return source.NewReflector(newSource(t, f, linear.Config{Teams: []string{team}}), store, 0)
@@ -428,7 +428,7 @@ func TestOneSourceOverTwoTeamsWritesBothSlots(t *testing.T) {
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
-	e, ok, _ := store.Get(entity.Ref{System: "linear", Kind: "project", ID: "p-shared"})
+	e, ok, _ := store.Get(entity.RefAt("linear", "project", "p-shared"))
 	if !ok {
 		t.Fatal("the shared project was not written")
 	}

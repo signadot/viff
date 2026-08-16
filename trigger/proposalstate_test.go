@@ -24,7 +24,7 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	head := entity.Ref{System: "git", Kind: "head", ID: "verse"}
+	head := entity.RefAt("git", "head", "verse")
 	setPayload(t, store, head, `{sha: aaa111}`)
 
 	// rule 1b (pin base once) and rule 3's selector (undecided AND passed by), as proposed.
@@ -57,12 +57,12 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
 	eng.Start(ctx)
 
 	// A proposal appears with no base and no state — what the trimmed derive writes.
-	fresh := entity.Ref{System: "merge", Kind: "proposal", ID: "fresh"}
+	fresh := entity.RefAt("merge", "proposal", "fresh")
 	setPayload(t, store, fresh, `{branch: "verse/auto/x", sha: bbb}`)
 	waitField(t, store, fresh, "base", "aaa111") // 1b pinned it, once
 
 	// A decided one is left alone even when main passes it by.
-	decided := entity.Ref{System: "merge", Kind: "proposal", ID: "decided"}
+	decided := entity.RefAt("merge", "proposal", "decided")
 	setPayload(t, store, decided, `{branch: "verse/auto/y", sha: ccc, base: aaa111, state: merged}`)
 
 	setPayload(t, store, head, `{sha: zzz999}`) // main moves

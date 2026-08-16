@@ -33,8 +33,8 @@ func TestSelectionSkipsAVanishingEntity(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	live := entity.Ref{System: "demo", Kind: "pr", ID: "live"}
-	going := entity.Ref{System: "demo", Kind: "pr", ID: "going"}
+	live := entity.RefAt("demo", "pr", "live")
+	going := entity.RefAt("demo", "pr", "going")
 	entitytest.Set(t, store, live, entity.Obj{"stage": "open"}.Payload())
 	entitytest.Set(t, store, going, entity.Obj{"stage": "open"}.Payload())
 	vanish(t, store, going)
@@ -50,7 +50,7 @@ func TestSelectionSkipsAVanishingEntity(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "poke"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "poke"), entity.Obj{}.Payload())
 	waitStage(t, store, live, "reviewing")
 	time.Sleep(200 * time.Millisecond)
 	if got := entity.Str(mustGet(t, store, going), "stage"); got != "open" {
@@ -65,8 +65,8 @@ func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	going := entity.Ref{System: "demo", Kind: "pr", ID: "going"}
-	staying := entity.Ref{System: "demo", Kind: "pr", ID: "staying"}
+	going := entity.RefAt("demo", "pr", "going")
+	staying := entity.RefAt("demo", "pr", "staying")
 	entitytest.Set(t, store, going, entity.Obj{"stage": "open"}.Payload())
 	entitytest.Set(t, store, staying, entity.Obj{"stage": "open"}.Payload())
 
@@ -106,8 +106,8 @@ func TestVanishingIsARisingEdge(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	going := entity.Ref{System: "demo", Kind: "pr", ID: "going"}
-	audit := entity.Ref{System: "audit", Kind: "record", ID: "latest"}
+	going := entity.RefAt("demo", "pr", "going")
+	audit := entity.RefAt("audit", "record", "latest")
 	entitytest.Set(t, store, going, entity.Obj{"stage": "open"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -171,7 +171,7 @@ func mustWriteNil(t *testing.T, store entity.Store, ref entity.Ref) {
 func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -199,7 +199,7 @@ func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 		t.Fatalf("a rule brought back an entity that had left: %v", entity.ToObj(e.Payload))
 	}
 	// A name that has NEVER existed is still nameable — the create amendment is intact.
-	fresh := entity.Ref{System: "demo", Kind: "report", ID: "1"}
+	fresh := entity.RefAt("demo", "report", "1")
 	if got := (Match{"system": "demo", "kind": "report", "id": "1"}).Select(store); len(got) != 1 || got[0] != fresh {
 		t.Fatalf("naming a never-written entity selected %v, want a set of one", got)
 	}

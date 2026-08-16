@@ -29,8 +29,8 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	one := entity.RefAt("demo", "pr", "1")
+	two := entity.RefAt("demo", "pr", "2")
 	entitytest.Set(t, store, one, entity.Obj{"stage": "reviewing"}.Payload())
 	entitytest.Set(t, store, two, entity.Obj{"stage": "reviewing"}.Payload())
 
@@ -77,7 +77,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 
 	// Seeded, because the subject SELECTS from the store: with the `flow` redirect gone, a
 	// pattern subject acts on what is really there.
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "7"}
+	pr := entity.RefAt("demo", "pr", "7")
 	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewing"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -115,7 +115,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 // order was fixed; goal latches now also publish `flow` for a trigger to read.
 func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	ev := entity.Event{
-		Ref: entity.Ref{System: "goal", Kind: "done", ID: "ship"},
+		Ref: entity.RefAt("goal", "done", "ship"),
 		Op:  entity.Set,
 		To:  entity.Obj{"subject": "change:pr:42", "flow": "change:pr:42"}.Payload(),
 	}
@@ -251,8 +251,8 @@ func TestSubjectIsASelectionNotTheChangedEntity(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
-	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	one := entity.RefAt("demo", "pr", "1")
+	two := entity.RefAt("demo", "pr", "2")
 	entitytest.Set(t, store, two, entity.Obj{"stage": "open"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -283,7 +283,7 @@ func TestEmptyWhenMatchesEverything(t *testing.T) {
 	if !f.IsMatchAtom() {
 		t.Fatal("{} should parse as a match atom")
 	}
-	if !f.MatchEvent(entity.Event{Ref: entity.Ref{System: "anything", Kind: "x", ID: "1"}, Op: entity.Set}) {
+	if !f.MatchEvent(entity.Event{Ref: entity.RefAt("anything", "x", "1"), Op: entity.Set}) {
 		t.Fatal("{} should match every change")
 	}
 }

@@ -20,10 +20,10 @@ func waitAnyQuestion(t *testing.T, srv *Server) string {
 	t.Helper()
 	for range 300 {
 		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+			return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
 		}) {
 			if entity.ToObj(ent.Payload)["status"] == mirror.QuestionPending {
-				return ent.Ref.ID
+				return ent.Ref.ID()
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -65,7 +65,7 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	qid := waitAnyQuestion(t, srv)
 
-	inst := resolver.InstanceRef("payments-review", "change:pr:1").ID
+	inst := resolver.InstanceRef("payments-review", "change:pr:1").ID()
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet,
 		ts.URL+"/resolvers/instance/"+inst+"/events?since=1", nil)
 	resp, err := http.DefaultClient.Do(req)

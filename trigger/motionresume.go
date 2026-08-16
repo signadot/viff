@@ -51,7 +51,7 @@ const motionOrphaned = "orphaned"
 func (e *Engine) ResumeMotions() int {
 	resumed := 0
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
-		return r.System == motionSystem && r.Kind == motionChannelKind
+		return r.System() == motionSystem && r.Kind() == motionChannelKind
 	}) {
 		p := ent.Payload
 		if entity.Str(p, "outcome") != "" {
@@ -101,7 +101,7 @@ func (e *Engine) ResumeMotions() int {
 			e.orphanMotion(ent.Ref, "the subject it is about is gone")
 			continue
 		}
-		e.tracef("resuming select %s: %s on %s", ent.Ref.ID, chain, subj)
+		e.tracef("resuming select %s: %s on %s", ent.Ref.ID(), chain, subj)
 		go e.resumeSelection(*act, chain, subj)
 		resumed++
 	}
@@ -206,7 +206,7 @@ func (e *Engine) resumeSelection(a Action, chain string, subj entity.Ref) {
 // was asked, and why it was never decided, is the trail — and a docket entry that vanishes is
 // one nobody can account for.
 func (e *Engine) orphanMotion(ref entity.Ref, why string) {
-	e.tracef("orphaning motion %s: %s", ref.ID, why)
+	e.tracef("orphaning motion %s: %s", ref.ID(), why)
 	e.modify(ref, func(cur entity.Payload) entity.Payload {
 		if entity.Str(cur, "outcome") != "" {
 			return cur // it committed while we were deciding it had not; terminal-once

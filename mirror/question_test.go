@@ -26,7 +26,7 @@ func ids(t *testing.T, store entity.Store, p entity.Pattern) []string {
 	p.System, p.Kind = QuestionSystem, QuestionKind
 	var out []string
 	for _, ref := range p.Select(store) {
-		out = append(out, ref.ID)
+		out = append(out, ref.ID())
 	}
 	return out
 }

@@ -60,23 +60,23 @@ func Nest(ents []Entity, at *kpath.KPath) (Doc, error) {
 func nestAll(ents []Entity) *ir.Node {
 	systems := map[string]map[string]map[string]*ir.Node{}
 	for _, e := range ents {
-		kinds, ok := systems[e.Ref.System]
+		kinds, ok := systems[e.Ref.System()]
 		if !ok {
 			kinds = map[string]map[string]*ir.Node{}
-			systems[e.Ref.System] = kinds
+			systems[e.Ref.System()] = kinds
 		}
-		ids, ok := kinds[e.Ref.Kind]
+		ids, ok := kinds[e.Ref.Kind()]
 		if !ok {
 			ids = map[string]*ir.Node{}
-			kinds[e.Ref.Kind] = ids
+			kinds[e.Ref.Kind()] = ids
 		}
 		// A payload that is Go-nil still occupies its key: the entity stands there, and what it
 		// holds is null. Absence is the key not being here at all.
 		if e.Payload == nil {
-			ids[e.Ref.ID] = ir.Null()
+			ids[e.Ref.ID()] = ir.Null()
 			continue
 		}
-		ids[e.Ref.ID] = clone(e.Payload)
+		ids[e.Ref.ID()] = clone(e.Payload)
 	}
 	out := make(map[string]*ir.Node, len(systems))
 	for system, kinds := range systems {

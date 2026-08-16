@@ -37,7 +37,7 @@ import (
 // An in-range index patch works, so "the substrate cannot write into an array" is false.
 func TestTheSubstrateDoesPatchAnInRangeArrayElement(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	seedVotes(t, s, ref)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -56,7 +56,7 @@ func TestTheSubstrateDoesPatchAnInRangeArrayElement(t *testing.T) {
 // `(key)` is therefore not a spelling a write could be given even if the shape were offered.
 func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if _, _, err := s.Write(Write{At: ref.At(), Value: Raw(mustParseNode(t,
 		`{votes: !key(by) [{by: scott, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -86,8 +86,8 @@ func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 func TestAnArrayPatchPastTheEndPoisonsTheLog(t *testing.T) {
 	addr := startLogd(t)
 	s := openStoreAt(t, addr)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
-	other := Ref{System: "demo", Kind: "pr", ID: "2"}
+	ref := RefAt("demo", "pr", "1")
+	other := RefAt("demo", "pr", "2")
 	seedVotes(t, s, ref)
 	if _, _, err := s.Write(Write{At: other.At(), Value: Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatalf("seed the neighbour: %v", err)

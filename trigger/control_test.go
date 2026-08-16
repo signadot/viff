@@ -31,7 +31,7 @@ func TestControlOutranksObservation(t *testing.T) {
 
 	// A burst of changes arrives while paused; none may fire.
 	for i := 0; i < 20; i++ {
-		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, entity.Obj{}.Payload())
+		entitytest.Set(t, store, entity.RefAt("demo", "x", fmt.Sprint(i)), entity.Obj{}.Payload())
 	}
 	time.Sleep(100 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {

@@ -15,8 +15,8 @@ import (
 // decision, re-reached, is the same question. It used to come off a counter, which made
 // every firing a new docket entry.
 func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
-	a := []entity.Ref{{System: "demo", Kind: "pr", ID: "1"}}
-	b := []entity.Ref{{System: "demo", Kind: "pr", ID: "2"}}
+	a := []entity.Ref{entity.RefAt("demo", "pr", "1")}
+	b := []entity.Ref{entity.RefAt("demo", "pr", "2")}
 	both := []entity.Ref{a[0], b[0]}
 
 	if gateID("ship", "ok", a) != gateID("ship", "ok", a) {
@@ -55,7 +55,7 @@ func TestRepeatedFiringsShareOneGateQuestion(t *testing.T) {
 	reg := task.NewRegistry()
 	eng := New(store, reg)
 
-	ref := entity.Ref{System: "demo", Kind: "release", ID: "1"}
+	ref := entity.RefAt("demo", "release", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		// It latches on `stage`, so once shipped it stops selecting. Until then every write

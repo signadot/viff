@@ -38,7 +38,7 @@ func TestAScopedSourceWritesIntoItsScopeAndNotBaseline(t *testing.T) {
 	if resp := installScoped(t, ts, "sandbox", "mine", dir); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("scoped install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	head := entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)}
+	head := entity.RefAt(source.GitSystem, "head", baseOf(dir))
 	waitForRef(t, srv.Store.Scope("sandbox"), head)
 
 	// Baseline read DIRECTLY, since a scoped read would find its own overlay and say nothing
@@ -114,7 +114,7 @@ func TestDeletingAScopeTakesItsSources(t *testing.T) {
 	if resp := installScoped(t, ts, "sandbox", "mine", dir); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	head := entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)}
+	head := entity.RefAt(source.GitSystem, "head", baseOf(dir))
 	waitForRef(t, srv.Store.Scope("sandbox"), head)
 
 	resp := postTony(t, ts.URL+"/scope/delete?scope=sandbox", map[string]any{})
@@ -161,7 +161,7 @@ func TestAScopedReflectionHidesAnInheritedEntity(t *testing.T) {
 	repo := baseOf(dir)
 	// A branch baseline believes in and the repo does not have. It is under the cover a git
 	// reflection claims (`git:ref:{repo}`), so a pass that sees it must decide about it.
-	ghost := entity.Ref{System: source.GitSystem, Kind: "ref", ID: repo + "/ghost"}
+	ghost := entity.RefAt(source.GitSystem, "ref", repo+"/ghost")
 	entitytest.Set(t, srv.Store, ghost, entity.Obj{
 		"repo": repo, "name": "ghost", "sha": "deadbeef", "type": "commit",
 	}.Payload())
@@ -170,7 +170,7 @@ func TestAScopedReflectionHidesAnInheritedEntity(t *testing.T) {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	scoped := srv.Store.Scope("sandbox")
-	waitForRef(t, scoped, entity.Ref{System: source.GitSystem, Kind: "head", ID: repo})
+	waitForRef(t, scoped, entity.RefAt(source.GitSystem, "head", repo))
 
 	// In the scope, the branch is gone: this checkout does not have it, and that is what the
 	// scope's triggers should see.

@@ -14,7 +14,7 @@ import (
 // the option's `choice`, not its id, which is the gap a voter falls into.
 func whetherMotion(t *testing.T, s entity.Store, id string) {
 	t.Helper()
-	entitytest.Set(t, s, entity.Ref{System: "motion", Kind: "channel", ID: id}, entity.Obj{
+	entitytest.Set(t, s, entity.RefAt("motion", "channel", id), entity.Obj{
 		"axis": "whether", "status": "open", "gate": "approvals",
 		"options": []any{
 			entity.Obj{"id": "proceed", "choice": "approve", "need": int64(2)},
@@ -39,7 +39,7 @@ func TestVoteRefusesABallotNoTallyCouldCount(t *testing.T) {
 		t.Errorf("error %q does not say what the motion takes — a refusal that does not name "+
 			"the alternative sends the voter back to the docket to guess", err)
 	}
-	if p := payloadOf(t, store, entity.Ref{System: "vote", Kind: "m1", ID: "alice"}); p != nil {
+	if p := payloadOf(t, store, entity.RefAt("vote", "m1", "alice")); p != nil {
 		t.Errorf("a refused ballot was still written: %v", p)
 	}
 }
@@ -52,7 +52,7 @@ func TestVoteAcceptsWhatTheMotionNames(t *testing.T) {
 	if _, err := runCLI(t, "vote", "m1", "approve", "--as", "alice"); err != nil {
 		t.Fatalf("vote m1 approve: %v", err)
 	}
-	p := payloadOf(t, store, entity.Ref{System: "vote", Kind: "m1", ID: "alice"})
+	p := payloadOf(t, store, entity.RefAt("vote", "m1", "alice"))
 	if p == nil || p["choice"] != "approve" {
 		t.Errorf("ballot = %v, want choice approve", p)
 	}
@@ -62,7 +62,7 @@ func TestVoteAcceptsWhatTheMotionNames(t *testing.T) {
 // rather than a fixed vocabulary, which is the whole reason it can serve both axes.
 func TestVoteAcceptsASelectOption(t *testing.T) {
 	store := serve(t)
-	entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "channel", ID: "m2"}, entity.Obj{
+	entitytest.Set(t, store, entity.RefAt("motion", "channel", "m2"), entity.Obj{
 		"axis": "who", "status": "open",
 		"options": []any{
 			entity.Obj{"id": "gpt", "choice": "gpt", "need": int64(2)},
@@ -103,7 +103,7 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := serve(t)
-			entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "channel", ID: tc.id},
+			entitytest.Set(t, store, entity.RefAt("motion", "channel", tc.id),
 				tc.payload.Payload())
 
 			choice, _ := tc.payload["options"].([]any)[0].(entity.Obj)["choice"].(string)
@@ -114,7 +114,7 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.says) {
 				t.Errorf("error %q does not say why the ballot is refused", err)
 			}
-			if p := payloadOf(t, store, entity.Ref{System: "vote", Kind: tc.id, ID: "alice"}); p != nil {
+			if p := payloadOf(t, store, entity.RefAt("vote", tc.id, "alice")); p != nil {
 				t.Errorf("a refused ballot was still written: %v", p)
 			}
 		})
@@ -130,7 +130,7 @@ func TestVoteOnAnUnknownMotionIsTheServersCall(t *testing.T) {
 	if _, err := runCLI(t, "vote", "nosuch", "approve", "--as", "alice"); err != nil {
 		t.Fatalf("vote on an unknown motion was refused client-side: %v", err)
 	}
-	if p := payloadOf(t, store, entity.Ref{System: "vote", Kind: "nosuch", ID: "alice"}); p == nil {
+	if p := payloadOf(t, store, entity.RefAt("vote", "nosuch", "alice")); p == nil {
 		t.Error("the ballot did not reach the store")
 	}
 }
@@ -144,7 +144,7 @@ func TestVoteRefusesAnEmptyMotionID(t *testing.T) {
 	if _, err := runCLI(t, "vote", "", "approve", "--as", "alice"); err == nil {
 		t.Fatal("an empty motion id was accepted; the ballot would belong to nothing")
 	}
-	if p := payloadOf(t, store, entity.Ref{System: "vote", Kind: "", ID: "alice"}); p != nil {
+	if p := payloadOf(t, store, entity.RefAt("vote", "", "alice")); p != nil {
 		t.Errorf("a ballot was written for no motion: %v", p)
 	}
 }

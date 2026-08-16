@@ -18,7 +18,7 @@ import (
 // which refs went stale — so this one constant is the whole of git's side of the contract, and
 // the installed hook and the reflector have to agree about it.
 func TestGitHintNamesTheRepo(t *testing.T) {
-	want := entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}
+	want := entity.RefAt(source.GitSystem, "head", "A")
 	if got := source.HeadRef("A"); got != want {
 		t.Fatalf("HeadRef(A) = %v, want %v", got, want)
 	}
@@ -87,19 +87,19 @@ func TestGitReflectorHintReconciles(t *testing.T) {
 	defer cancel()
 	go rf.Run(ctx)
 
-	waitFor(t, store, entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"}) // initial sync
+	waitFor(t, store, entity.RefAt(source.GitSystem, "head", "A")) // initial sync
 
 	// a new branch the periodic net won't see (it's off) — only a hint reconcile surfaces it.
 	gitRun(t, dir, "branch", "shiny")
 	rf.Hint(source.HeadRef("A"))
 
-	waitFor(t, store, entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/shiny"})
+	waitFor(t, store, entity.RefAt(source.GitSystem, "ref", "A/shiny"))
 
 	// And a hint with NO refs is a full resync, which is what a delivery that named nothing
 	// asks for.
 	gitRun(t, dir, "branch", "shinier")
 	rf.Hint()
-	waitFor(t, store, entity.Ref{System: source.GitSystem, Kind: "ref", ID: "A/shinier"})
+	waitFor(t, store, entity.RefAt(source.GitSystem, "ref", "A/shinier"))
 }
 
 func waitFor(t *testing.T, store entity.Store, ref entity.Ref) {

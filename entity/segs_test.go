@@ -14,10 +14,10 @@ import (
 // found — the id would be re-split at its own colons.
 func TestSegsRoundTripsAnIDHoldingColons(t *testing.T) {
 	for _, ref := range []Ref{
-		{System: "demo", Kind: "pr", ID: "1"},
-		{System: "merge", Kind: "proposal", ID: "appeared@git:ref:verse/auto/x"},
-		{System: "github", Kind: "pr", ID: "org/repo#42"},
-		{System: "demo", Kind: "pr", ID: "a.b"},
+		RefAt("demo", "pr", "1"),
+		RefAt("merge", "proposal", "appeared@git:ref:verse/auto/x"),
+		RefAt("github", "pr", "org/repo#42"),
+		RefAt("demo", "pr", "a.b"),
 	} {
 		segs := ref.Segs()
 		if len(segs) != Depth {
@@ -60,7 +60,7 @@ func TestRefOfRefusesWhatIsNotAnAddress(t *testing.T) {
 // writes a literal 3 into a walk instead of asking, because the walk and the constant would
 // then disagree the day the constant changes.
 func TestDepthIsWhatEveryAddressHas(t *testing.T) {
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if got := len(ref.Segs()); got != Depth {
 		t.Fatalf("a ref has %d segments and Depth says %d", got, Depth)
 	}

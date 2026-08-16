@@ -341,7 +341,7 @@ func TestACharterSetsTheRetainedWindow(t *testing.T) {
 	if err := srv.Eng.AddTrigger(trig); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, srv.Store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+	entitytest.Set(t, srv.Store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 
 	select {

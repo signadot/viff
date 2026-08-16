@@ -52,9 +52,9 @@ func TestTriggerFiresOnTheBacklogAtInstall(t *testing.T) {
 	store := entitytest.Store(t)
 
 	// The verse is already populated: two tasks match, one does not.
-	ready1 := entity.Ref{System: "demo", Kind: "task", ID: "t1"}
-	ready2 := entity.Ref{System: "demo", Kind: "task", ID: "t2"}
-	queued := entity.Ref{System: "demo", Kind: "task", ID: "t3"}
+	ready1 := entity.RefAt("demo", "task", "t1")
+	ready2 := entity.RefAt("demo", "task", "t2")
+	queued := entity.RefAt("demo", "task", "t3")
 	entitytest.Set(t, store, ready1, entity.Obj{"stage": "ready", "note": "one"}.Payload())
 	entitytest.Set(t, store, ready2, entity.Obj{"stage": "ready", "note": "two"}.Payload())
 	entitytest.Set(t, store, queued, entity.Obj{"stage": "queued", "note": "three"}.Payload())
@@ -84,7 +84,7 @@ func TestTriggerAddedLaterFiresOnTheBacklog(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 
-	ref := entity.Ref{System: "demo", Kind: "task", ID: "t1"}
+	ref := entity.RefAt("demo", "task", "t1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "ready", "note": "late"}.Payload())
 
 	if err := eng.AddTrigger(echoTrigger("announce")); err != nil {

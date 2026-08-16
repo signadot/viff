@@ -29,7 +29,7 @@ func derefRoot() entity.Payload {
 		"verse":  entity.Obj{"review": entity.Obj{"done": true, "step": 2}},
 		"list":   []any{"a", "b"},
 		"obj":    entity.Obj{"k": "v"},
-	}.Payload(), subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0))
+	}.Payload(), subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
 }
 
 // A patch value that is exactly one reference resolves to that reference's NODE, so the
@@ -210,7 +210,7 @@ func resolvedSubject(t *testing.T, root entity.Payload) string {
 // the store's predicates are type-exact.
 func TestRefRootPreservesNumberTypes(t *testing.T) {
 	ev := entity.Event{To: entity.Obj{"count": 3}.Payload()}
-	root := refRoot(ev.To, subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0))
+	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
 	n := entity.Get(root, "count")
 	if n == nil || n.Int64 == nil || *n.Int64 != 3 {
 		t.Fatalf("count did not survive as an integer: %v", n)
@@ -224,7 +224,7 @@ func TestRefRootPreservesNumberTypes(t *testing.T) {
 // rule bindingFor states for the spawn side.
 func TestRefRootSubjectWins(t *testing.T) {
 	ev := entity.Event{To: entity.Obj{"subject": "demo:pr:999"}.Payload()}
-	root := refRoot(ev.To, subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0))
+	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
 	if s := resolvedSubject(t, root); s != "demo:pr:1" {
 		t.Errorf("subject = %q, want the resolved subject demo:pr:1", s)
 	}
@@ -234,7 +234,7 @@ func TestRefRootSubjectWins(t *testing.T) {
 // whole value to an invented name — the rule payloadBinding already states for the spawn side.
 func TestRefRootScalarPayload(t *testing.T) {
 	ev := entity.Event{To: ir.FromInt(42)}
-	root := refRoot(ev.To, subjectNode(entity.Ref{System: "demo", Kind: "count", ID: "1"}, nil, 0))
+	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "count", "1"), nil, 0))
 	if _, err := expandString("$anything", root); err == nil {
 		t.Error("a reference into a scalar payload should error")
 	}
@@ -250,7 +250,7 @@ func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	pr := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, pr, entity.Obj{"stage": "reviewed", "branch": "hotfix-9"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -269,7 +269,7 @@ func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"},
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"),
 		entity.Obj{"state": "green", "branch": "main"}.Payload())
 
 	deadline := time.After(3 * time.Second)
@@ -296,7 +296,7 @@ func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	pr := entity.RefAt("demo", "pr", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "note",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},

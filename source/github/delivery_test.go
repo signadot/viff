@@ -90,7 +90,7 @@ func TestCapturedDeliveries(t *testing.T) {
 			if len(refs) != 1 {
 				t.Fatalf("a %s delivery hinted %v", captured.Event, refs)
 			}
-			if refs[0].Kind == "repo" {
+			if refs[0].Kind() == "repo" {
 				t.Fatalf("a %s delivery fell back to the repository (%s), which is what a field "+
 					"path this build reads wrongly looks like", captured.Event, refs[0])
 			}

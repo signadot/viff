@@ -28,7 +28,7 @@ func TestAResolverReadsARunAndAnswersIt(t *testing.T) {
 
 	askingRun(t, srv, ts, "watched", binding)
 	qid := waitQuestion(t, srv, "watched")
-	inst := resolver.InstanceRef("security-review", "watched").ID
+	inst := resolver.InstanceRef("security-review", "watched").ID()
 	base := ts.URL + "/resolvers/instance/" + inst
 
 	// Dial the stream from the beginning and read until the ask, keeping what came before it.
@@ -101,7 +101,7 @@ func TestAResolverCannotAnswerAQuestionItDoesNotOwn(t *testing.T) {
 	mine := waitQuestion(t, srv, "watched")
 	theirs := waitQuestion(t, srv, "elsewhere")
 
-	base := ts.URL + "/resolvers/instance/" + resolver.InstanceRef("security-review", "watched").ID
+	base := ts.URL + "/resolvers/instance/" + resolver.InstanceRef("security-review", "watched").ID()
 	resp := postTony(t, base+"/verdicts", api.Verdict{ID: theirs, Verdict: "proceed"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
@@ -127,7 +127,7 @@ func TestAResolverReportsItsPosition(t *testing.T) {
 	waitQuestion(t, srv, "watched")
 	ref := resolver.InstanceRef("security-review", "watched")
 
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID+"/position",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID()+"/position",
 		api.Position{Position: 12, Notes: "denied the prod path once; staging is fine"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {

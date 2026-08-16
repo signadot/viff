@@ -73,13 +73,13 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	}}
 
 	// Below threshold: one vote → not satisfied.
-	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "alice"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.RefAt("motion", "vote", "alice"), entity.Obj{"choice": "approve"}.Payload())
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) satisfied with 1 vote")
 	}
 
 	// At threshold: two votes → satisfied, witness names both.
-	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "bob"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.RefAt("motion", "vote", "bob"), entity.Obj{"choice": "approve"}.Payload())
 	ok, witness := quorum.Eval(st)
 	if !ok {
 		t.Fatalf("quorum(2) not satisfied with 2 votes")
@@ -89,7 +89,7 @@ func TestFormulaEvalQuorum(t *testing.T) {
 	}
 
 	// Revoke below threshold: delete a vote → un-satisfied (safety: it can flip back).
-	entitytest.Remove(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "bob"})
+	entitytest.Remove(t, st, entity.RefAt("motion", "vote", "bob"))
 	if ok, _ := quorum.Eval(st); ok {
 		t.Fatalf("quorum(2) still satisfied after a vote was retracted")
 	}
@@ -103,9 +103,9 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 		Facts: Match{"system": "motion", "kind": "vote", "value": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
-	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Obj{"choice": "approve"}.Payload())
-	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Obj{"choice": "reject"}.Payload())
-	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "vote", ID: "c"}, entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.RefAt("motion", "vote", "a"), entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, st, entity.RefAt("motion", "vote", "b"), entity.Obj{"choice": "reject"}.Payload())
+	entitytest.Set(t, st, entity.RefAt("motion", "vote", "c"), entity.Obj{"choice": "approve"}.Payload())
 	ok, witness := approvals.Eval(st)
 	if !ok || len(witness) != 2 {
 		t.Fatalf("approve-quorum(2) = (%v, %d refs), want (true, 2) — 'reject' must not count", ok, len(witness))
@@ -126,13 +126,13 @@ func TestFormulaEvalNamedFactNeedsTheEntity(t *testing.T) {
 	if ok, _ := green.Eval(st); ok {
 		t.Fatal("a named fact held with nothing in the store")
 	}
-	entitytest.Set(t, st, entity.Ref{System: "ci", Kind: "status", ID: "green"}, entity.Obj{"ok": true}.Payload())
+	entitytest.Set(t, st, entity.RefAt("ci", "status", "green"), entity.Obj{"ok": true}.Payload())
 	ok, witness := green.Eval(st)
-	if !ok || len(witness) != 1 || witness[0].ID != "green" {
+	if !ok || len(witness) != 1 || witness[0].ID() != "green" {
 		t.Fatalf("named fact = (%v, %v), want (true, [ci:status:green])", ok, witness)
 	}
 	// …and it goes back to unsatisfied when the fact does, like every other leaf.
-	entitytest.Remove(t, st, entity.Ref{System: "ci", Kind: "status", ID: "green"})
+	entitytest.Remove(t, st, entity.RefAt("ci", "status", "green"))
 	if ok, _ := green.Eval(st); ok {
 		t.Fatal("a named fact still held after the entity was removed")
 	}
@@ -142,7 +142,7 @@ func TestFormulaEvalNamedFactNeedsTheEntity(t *testing.T) {
 func TestFormulaEvalStubbedKindBlocks(t *testing.T) {
 	st := entitytest.Store(t)
 	judged := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqJudgment, Facts: Match{"system": "motion", "kind": "judgment"}}}
-	entitytest.Set(t, st, entity.Ref{System: "motion", Kind: "judgment", ID: "x"}, entity.Obj{"verdict": "ship"}.Payload())
+	entitytest.Set(t, st, entity.RefAt("motion", "judgment", "x"), entity.Obj{"verdict": "ship"}.Payload())
 	if ok, _ := judged.Eval(st); ok {
 		t.Fatalf("stubbed requirement %q should block, not satisfy", ReqJudgment)
 	}

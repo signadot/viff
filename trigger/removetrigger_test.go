@@ -26,7 +26,7 @@ func TestRemovedTriggerStopsFiring(t *testing.T) {
 	eng.ObserveScoped(t.Context()) // versed's production path (per-trigger subtree watch)
 
 	// It observes while installed.
-	first := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	first := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, first, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, first, "reviewed")
 
@@ -36,7 +36,7 @@ func TestRemovedTriggerStopsFiring(t *testing.T) {
 	fired := eng.Fired()
 
 	// And not after. A fresh subject, so nothing about this depends on the first one.
-	second := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	second := entity.RefAt("demo", "pr", "2")
 	entitytest.Set(t, store, second, entity.Obj{"stage": "open"}.Payload())
 	time.Sleep(300 * time.Millisecond)
 
@@ -71,11 +71,11 @@ func TestRemovingOneTriggerLeavesTheOthersObserving(t *testing.T) {
 		t.Fatal("RemoveTrigger reported the trigger did not exist")
 	}
 
-	issue := entity.Ref{System: "demo", Kind: "issue", ID: "1"}
+	issue := entity.RefAt("demo", "issue", "1")
 	entitytest.Set(t, store, issue, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, issue, "triaged")
 
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	pr := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, pr, entity.Obj{"stage": "open"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if e, _, _ := store.Get(pr); entity.ToObj(e.Payload)["stage"] != "open" {
@@ -102,7 +102,7 @@ func TestReAddedTriggerObservesAgain(t *testing.T) {
 		t.Fatalf("re-add after remove: %v", err)
 	}
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "reviewed")
 }

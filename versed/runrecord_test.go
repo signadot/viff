@@ -37,7 +37,7 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 		}
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 
 	// TWO RUNTIMES over one store, because that is how an id comes to run twice. Within one
@@ -52,7 +52,7 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 	first := occurrenceOf(t, store, "run-1")
 	ts.Close()
 
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"},
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"),
 		entity.Obj{"stage": "open"}.Payload())
 
 	srv2 := NewWithStore(drive, store)

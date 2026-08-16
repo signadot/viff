@@ -61,7 +61,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 	// the test's benefit but the ordinary case: a store at revision 0 has had no commits, so
 	// a run in it has no revision to name, and the moment anything is written that stops
 	// being true.
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 
 	spawnScoped(t, ts, "run-1", "")
@@ -74,7 +74,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 	// A second run of the SAME id, as a re-fire produces. The verse has moved on, so this
 	// run is about a later revision — which is the whole of what makes the two tellable
 	// apart.
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"},
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"),
 		entity.Obj{"stage": "open"}.Payload())
 	spawnScoped(t, ts, "run-1", "")
 

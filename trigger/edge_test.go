@@ -13,7 +13,7 @@ import (
 // ci writes a ci:status entity at a state.
 func ci(t *testing.T, store entity.Store, state string) {
 	t.Helper()
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"},
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"),
 		entity.Obj{"state": state}.Payload())
 }
 
@@ -56,7 +56,7 @@ func TestOnFiresOnTheRisingEdge(t *testing.T) {
 	for _, ref := range reviewed {
 		waitStage(t, store, ref, "shipped")
 	}
-	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "3"}); entity.ToObj(e.Payload)["stage"] != "open" {
+	if e, _, _ := store.Get(entity.RefAt("demo", "pr", "3")); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("an unselected entity was acted on: %#v", e.Payload)
 	}
 	// One firing per member, which is what the budget meters.
@@ -80,17 +80,17 @@ func TestOnDoesNotReFireWhileItHolds(t *testing.T) {
 
 	prs(t, store, "reviewed", "1")
 	ci(t, store, "green")
-	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"}, "shipped")
+	waitStage(t, store, entity.RefAt("demo", "pr", "1"), "shipped")
 
 	// A second PR reaches `reviewed` while CI is still green. The predicate never fell, so
 	// there is no rising edge and this PR is not shipped.
 	prs(t, store, "reviewed", "2")
 	// And the cause's own subtree changes again, still green — still no edge.
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"},
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"),
 		entity.Obj{"state": "green", "run": 2}.Payload())
 	time.Sleep(400 * time.Millisecond)
 
-	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	two := entity.RefAt("demo", "pr", "2")
 	if e, _, _ := store.Get(two); entity.ToObj(e.Payload)["stage"] != "reviewed" {
 		t.Fatalf("an edge re-fired while its predicate stayed true: %s = %#v", two, e.Payload)
 	}
@@ -116,7 +116,7 @@ func TestOnIsGuardedByWhen(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	one := entity.RefAt("demo", "pr", "1")
 	prs(t, store, "reviewed", "1")
 
 	ci(t, store, "green") // the cause rises, but the condition does not hold
@@ -127,7 +127,7 @@ func TestOnIsGuardedByWhen(t *testing.T) {
 
 	// Make the condition hold, then raise the cause again. Note the condition becoming true is
 	// NOT itself a cause — the edge has to rise for the trigger to be asked at all.
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "notion", ID: "n"}, entity.Obj{"ok": true}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "notion", "n"), entity.Obj{"ok": true}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if e, _, _ := store.Get(one); entity.ToObj(e.Payload)["stage"] != "reviewed" {
 		t.Fatalf("the condition becoming true fired the trigger; only `on` is a cause: %#v", e.Payload)
@@ -155,7 +155,7 @@ func TestOnDoesNotFireOnTheBacklog(t *testing.T) {
 	eng.ObserveScoped(ctx) // the mode whose seed replay WOULD fire a subject-dispatched rule
 	time.Sleep(500 * time.Millisecond)
 
-	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	one := entity.RefAt("demo", "pr", "1")
 	if e, _, _ := store.Get(one); entity.ToObj(e.Payload)["stage"] != "reviewed" {
 		t.Fatalf("an `on` trigger fired on the backlog: %#v", e.Payload)
 	}
@@ -173,7 +173,7 @@ func TestOnDoesNotFireOnTheBacklog(t *testing.T) {
 func TestOnWithAPinnedIDReadsItsPredicate(t *testing.T) {
 	store := entitytest.Store(t)
 	reviewed := prs(t, store, "reviewed", "1")
-	rel := entity.Ref{System: "ci", Kind: "status", ID: "release"}
+	rel := entity.RefAt("ci", "status", "release")
 
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
@@ -250,7 +250,7 @@ func TestSubjectDispatchIsUnchangedAlongsideOn(t *testing.T) {
 	eng.Start(ctx)
 
 	// The subject-dispatched rule fires on the change to its own subject, as it always has.
-	one := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	one := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, one, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, one, "reviewed")
 
@@ -275,14 +275,14 @@ func TestEdgeReadsOneSnapshot(t *testing.T) {
 	eng.Start(ctx)
 
 	ci(t, store, "green")
-	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"}, "shipped")
+	waitStage(t, store, entity.RefAt("demo", "pr", "1"), "shipped")
 
 	// pr:2 reaches `reviewed` AFTER the commit the edge rose at. It is not in that snapshot,
 	// so it is not in this firing — the selection is as of C, not as of whenever the sweep
 	// happened to run.
 	prs(t, store, "reviewed", "2")
 	time.Sleep(300 * time.Millisecond)
-	two := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	two := entity.RefAt("demo", "pr", "2")
 	if e, _, _ := store.Get(two); entity.ToObj(e.Payload)["stage"] != "reviewed" {
 		t.Fatalf("a member added after the edge's commit was acted on: %#v", e.Payload)
 	}

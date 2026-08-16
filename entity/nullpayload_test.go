@@ -28,7 +28,7 @@ import (
 // A null payload round-trips: it is written, read back as null, and listed.
 func TestEntityMayHoldNull(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: ir.Null()}); err != nil || !ok {
 		t.Fatalf("write null payload: committed=%v err=%v", ok, err)
 	}
@@ -57,7 +57,7 @@ func TestEntityMayHoldNull(t *testing.T) {
 // above depends on. A snapshot reads it the same way, since it walks the same document.
 func TestDeleteIsAbsentNotNull(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: Obj{"stage": "open"}.Payload()}); err != nil || !ok {
 		t.Fatalf("write: committed=%v err=%v", ok, err)
 	}
@@ -89,7 +89,7 @@ func TestDeleteIsAbsentNotNull(t *testing.T) {
 // value absent.
 func TestCreateOverANullPayloadIsRefused(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: ir.Null()}); err != nil || !ok {
 		t.Fatalf("write null payload: committed=%v err=%v", ok, err)
 	}
@@ -117,8 +117,8 @@ func TestCreateOverANullPayloadIsRefused(t *testing.T) {
 func TestNothingStandsInAnUnwrittenStore(t *testing.T) {
 	s := openStore(t)
 	for _, ref := range []Ref{
-		{System: "demo", Kind: "pr", ID: "1"},
-		{System: "nosys", Kind: "nokind", ID: "whatever"},
+		RefAt("demo", "pr", "1"),
+		RefAt("nosys", "nokind", "whatever"),
 	} {
 		e, ok, err := s.Get(ref)
 		if err != nil {
@@ -134,11 +134,11 @@ func TestNothingStandsInAnUnwrittenStore(t *testing.T) {
 
 	// And once something else is written, the unwritten neighbours are still absent — now by
 	// not_found, the other spelling.
-	other := Ref{System: "demo", Kind: "pr", ID: "2"}
+	other := RefAt("demo", "pr", "2")
 	if ok, _, err := s.Write(Write{At: other.At(), Value: Obj{"stage": "open"}.Payload()}); err != nil || !ok {
 		t.Fatalf("write: committed=%v err=%v", ok, err)
 	}
-	if _, ok, err := s.Get(Ref{System: "demo", Kind: "pr", ID: "1"}); err != nil || ok {
+	if _, ok, err := s.Get(RefAt("demo", "pr", "1")); err != nil || ok {
 		t.Fatalf("a neighbour of a written entity: ok=%v err=%v, want absent", ok, err)
 	}
 }
@@ -147,7 +147,7 @@ func TestNothingStandsInAnUnwrittenStore(t *testing.T) {
 // terms: Require.Absent asks about the path, a pattern asks about the value standing there.
 func TestAbsenceAndNullAreDifferentQuestions(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: ir.Null()}); err != nil || !ok {
 		t.Fatalf("write null payload: committed=%v err=%v", ok, err)
 	}
@@ -184,7 +184,7 @@ func TestAbsenceAndNullAreDifferentQuestions(t *testing.T) {
 // test, so spelling expect-unchanged with one would ask only that something still be there.
 func TestModifyDoesNotLoseAnUpdateOverNull(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: ir.Null()}); err != nil || !ok {
 		t.Fatalf("write null payload: committed=%v err=%v", ok, err)
 	}
@@ -220,7 +220,7 @@ func TestModifyDoesNotLoseAnUpdateOverNull(t *testing.T) {
 // delete leaves behind.
 func TestClaimAfterReleaseIsAbsentByTheKey(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "run", Kind: "claim", ID: "seq@demo:pr:1"}
+	ref := RefAt("run", "claim", "seq@demo:pr:1")
 	claim := func() bool {
 		ok, _, err := s.Write(Write{At: ref.At(), Value: Obj{"by": "engine"}.Payload(), When: []Require{Created()}})
 		if err != nil {
@@ -249,7 +249,7 @@ func TestChangesTellNullFromDeleted(t *testing.T) {
 	commits, unsub := s.Observe()
 	defer unsub()
 
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: ir.Null()}); err != nil || !ok {
 		t.Fatalf("write null payload: committed=%v err=%v", ok, err)
 	}
@@ -277,7 +277,7 @@ func TestSubtreeWatchTellsNullFromDeleted(t *testing.T) {
 	}
 	defer unsub()
 
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	if ok, _, err := s.Write(Write{At: ref.At(), Value: ir.Null()}); err != nil || !ok {
 		t.Fatalf("write null payload: committed=%v err=%v", ok, err)
 	}
@@ -327,7 +327,7 @@ func awaitEvent(t *testing.T, commits <-chan Commit, ref Ref) Event {
 // verse's alone, and a document put there by `o` or by hand is one verse still has to read.
 func TestACommentedPayloadIsStillReadable(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	p, err := parse.Parse([]byte("# what this is about\nstage: open # still open\nlabels:\n  # the deep one\n  urgent: true\n"),
 		parse.ParseTony(), parse.ParseComments(true))
 	if err != nil {
@@ -383,7 +383,7 @@ func TestACommentedPayloadIsStillReadable(t *testing.T) {
 // (canonicalFields sorts, and sorting used to rebuild from inside the wrapper).
 func TestAPayloadKeepsItsComments(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	p, err := parse.Parse([]byte("# about this pr\nstage: open # still open\nlabels:\n  # about the labels\n  urgent: true\n"),
 		parse.ParseTony(), parse.ParseComments(true))
 	if err != nil {
@@ -427,7 +427,7 @@ func TestAPayloadKeepsItsComments(t *testing.T) {
 // than a write that had eaten half of what it was given.
 func TestAnEscapedPayloadKeepsItsComments(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	p, err := parse.Parse([]byte("# about this pr\nstage: open # still open\nlabels: # what it is tagged with\n  urgent: true # by whom\n"),
 		parse.ParseTony(), parse.ParseComments(true))
 	if err != nil {

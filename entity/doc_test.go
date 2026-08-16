@@ -257,7 +257,7 @@ func flatten(t *testing.T, n *ir.Node) string {
 // tag is data", so the payload lands carrying its own annotation and a read can follow it.
 func TestKeyedReachAgainstTheStore(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "merge", Kind: "proposal", ID: "X"}
+	ref := RefAt("merge", "proposal", "X")
 	votes := ir.FromSlice([]*ir.Node{
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),

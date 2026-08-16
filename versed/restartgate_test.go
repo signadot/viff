@@ -213,7 +213,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	if err := first.Eng.AddTrigger(rule); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, first.Store, entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+	entitytest.Set(t, first.Store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 	var posed string
 	for range 400 {

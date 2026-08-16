@@ -15,7 +15,7 @@ import (
 func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{}) // must NOT be consulted for a formula gate
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "42"}
+	merged := entity.RefAt("result", "merged", "42")
 
 	eng.AddTrigger(Trigger{
 		Name:      "merge",
@@ -37,7 +37,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 	eng.Start(ctx)
 
 	// Fire the trigger; the formula gate now blocks, monitoring votes.
-	entitytest.Set(t, store, entity.Ref{System: "change", Kind: "pr", ID: "42"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("change", "pr", "42"), entity.Obj{}.Payload())
 
 	// No votes → must not fire.
 	if existsWithin(store, merged, 100*time.Millisecond) {
@@ -64,7 +64,7 @@ func TestTemporalGateFiresOnQuorum(t *testing.T) {
 func castBallot(t *testing.T, s entity.Store, tr, gate string, subject entity.Ref, voter, choice string) {
 	t.Helper()
 	did := motionChannelID(gateID(tr, gate, []entity.Ref{subject}))
-	entitytest.Set(t, s, entity.Ref{System: "vote", Kind: did, ID: voter}, entity.Obj{"choice": choice, "by": voter}.Payload())
+	entitytest.Set(t, s, entity.RefAt("vote", did, voter), entity.Obj{"choice": choice, "by": voter}.Payload())
 }
 
 func castVote(t *testing.T, s entity.Store, tr, gate string, subject entity.Ref, voter string) {
@@ -76,7 +76,7 @@ func castVote(t *testing.T, s entity.Store, tr, gate string, subject entity.Ref,
 func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "a"}
+	merged := entity.RefAt("result", "merged", "a")
 	eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
@@ -87,7 +87,7 @@ func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	pr := entity.Ref{System: "change", Kind: "pr", ID: "a"}
+	pr := entity.RefAt("change", "pr", "a")
 	entitytest.Set(t, store, pr, entity.Obj{}.Payload())
 	castVote(t, store, "merge", "approvals", merged, "x")
 	castVote(t, store, "merge", "approvals", merged, "y")
@@ -101,7 +101,7 @@ func TestTemporalUntilProceedsOnQuorum(t *testing.T) {
 func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "b"}
+	merged := entity.RefAt("result", "merged", "b")
 	eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
@@ -112,10 +112,10 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "change", Kind: "pr", ID: "b"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("change", "pr", "b"), entity.Obj{}.Payload())
 	// one vote (short of quorum), then the deadline fires first → default deny.
-	entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "vote", ID: "x"}, entity.Obj{"choice": "approve"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "deadline", ID: "b"}, entity.Obj{"at": "now"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("motion", "vote", "x"), entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("motion", "deadline", "b"), entity.Obj{"at": "now"}.Payload())
 	if existsWithin(store, merged, 300*time.Millisecond) {
 		t.Fatal("fired despite deadline reached before quorum")
 	}
@@ -127,7 +127,7 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 func TestTemporalDenyQuorum(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "d"}
+	merged := entity.RefAt("result", "merged", "d")
 	eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
@@ -141,7 +141,7 @@ func TestTemporalDenyQuorum(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	pr := entity.Ref{System: "change", Kind: "pr", ID: "d"}
+	pr := entity.RefAt("change", "pr", "d")
 	entitytest.Set(t, store, pr, entity.Obj{}.Payload())
 	// One reject — short of the deny-quorum, and no approvals: stays open, must not fire.
 	castBallot(t, store, "merge", "approvals", merged, "alice", "reject")
@@ -163,7 +163,7 @@ func TestTemporalDenyQuorum(t *testing.T) {
 func TestMotionChannelNamesTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "s"}
+	merged := entity.RefAt("result", "merged", "s")
 	eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
@@ -175,12 +175,13 @@ func TestMotionChannelNamesTheSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "change", Kind: "pr", ID: "s"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("change", "pr", "s"), entity.Obj{}.Payload())
 
 	// The channel is keyed by (trigger, gate, subjects) — the same id the ballots are cast
 	// into — so finding it at all is half the assertion; what it SAYS is the other half.
-	channel := entity.Ref{System: "motion", Kind: "channel",
-		ID: motionChannelID(gateID("merge", "approvals", []entity.Ref{merged}))}
+	channel := entity.RefAt("motion", "channel",
+		motionChannelID(gateID("merge", "approvals", []entity.Ref{merged})))
+
 	if !existsWithin(store, channel, 2*time.Second) {
 		t.Fatal("no channel opened for the formula gate")
 	}
@@ -206,8 +207,8 @@ func quorumUntilDeadline(n int) *Formula {
 func TestCommitMotionTerminalOnce(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	ref := entity.Ref{System: "motion", Kind: "commit", ID: "t1"}
-	witness := []entity.Ref{{System: "motion", Kind: "vote", ID: "a"}, {System: "motion", Kind: "vote", ID: "b"}}
+	ref := entity.RefAt("motion", "commit", "t1")
+	witness := []entity.Ref{entity.RefAt("motion", "vote", "a"), entity.RefAt("motion", "vote", "b")}
 
 	if eff, revoked := eng.commitMotion(ref, nil, "proceed", witness); revoked || eff != "proceed" {
 		t.Fatalf("first commit: eff=%q revoked=%v, want proceed/false", eff, revoked)
@@ -232,7 +233,7 @@ func TestCommitMotionTerminalOnce(t *testing.T) {
 func TestCommitMotionRevokeGuard(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	ref := entity.Ref{System: "motion", Kind: "commit", ID: "t2"}
+	ref := entity.RefAt("motion", "commit", "t2")
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "motion", "kind": "vote"}, N: 2}}
 
 	// The witness was captured, but the facts have since dropped (0 votes now) → revoked.
@@ -253,14 +254,14 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	const did = "dtest"
-	channel := entity.Ref{System: "motion", Kind: "channel", ID: did}
+	channel := entity.RefAt("motion", "channel", did)
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
 		Facts: Match{"system": "vote", "kind": did, "value": map[string]any{"choice": "approve"}},
 		N:     2,
 	}}
-	alice := entity.Ref{System: "vote", Kind: did, ID: "alice"}
-	bob := entity.Ref{System: "vote", Kind: did, ID: "bob"}
+	alice := entity.RefAt("vote", did, "alice")
+	bob := entity.RefAt("vote", did, "bob")
 	seed := func() {
 		entitytest.Set(t, store, channel, entity.Obj{"status": "open", "gate": "approvals"}.Payload())
 		entitytest.Set(t, store, alice, entity.Obj{"choice": "approve"}.Payload())
@@ -278,10 +279,10 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 
 	// Fresh motion, a witness ballot retracted before commit → revoked, nothing written.
 	const did2 = "dtest2"
-	ch2 := entity.Ref{System: "motion", Kind: "channel", ID: did2}
+	ch2 := entity.RefAt("motion", "channel", did2)
 	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "vote", "kind": did2, "value": map[string]any{"choice": "approve"}}, N: 2}}
-	a2 := entity.Ref{System: "vote", Kind: did2, ID: "alice"}
-	b2 := entity.Ref{System: "vote", Kind: did2, ID: "bob"}
+	a2 := entity.RefAt("vote", did2, "alice")
+	b2 := entity.RefAt("vote", did2, "bob")
 	entitytest.Set(t, store, ch2, entity.Obj{"status": "open"}.Payload())
 	entitytest.Set(t, store, a2, entity.Obj{"choice": "approve"}.Payload())
 	entitytest.Set(t, store, b2, entity.Obj{"choice": "approve"}.Payload())
@@ -301,7 +302,7 @@ func TestDeadlineAtStampAndReuse(t *testing.T) {
 	eng := New(store, denyResolver{})
 	base := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 	eng.SetClock(func() time.Time { return base })
-	ref := entity.Ref{System: "motion", Kind: "channel", ID: "z"}
+	ref := entity.RefAt("motion", "channel", "z")
 
 	at1 := eng.deadlineAt(ref, time.Hour)
 	if !at1.Equal(base.Add(time.Hour)) {
@@ -318,7 +319,7 @@ func TestDeadlineAtStampAndReuse(t *testing.T) {
 func TestUntilDeadlineDefaults(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "dl"}
+	merged := entity.RefAt("result", "merged", "dl")
 	eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
@@ -332,13 +333,13 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "change", Kind: "pr", ID: "dl"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("change", "pr", "dl"), entity.Obj{}.Payload())
 	if existsWithin(store, merged, 250*time.Millisecond) {
 		t.Fatal("fired despite no quorum and a passed deadline")
 	}
 	// the motion should have closed by deadline default (deny).
 	did := motionChannelID(gateID("merge", "g", []entity.Ref{merged}))
-	ch, _, _ := store.Get(entity.Ref{System: "motion", Kind: "channel", ID: did})
+	ch, _, _ := store.Get(entity.RefAt("motion", "channel", did))
 	if entity.ToObj(ch.Payload)["outcome"] != "deny" {
 		t.Fatalf("motion outcome = %v, want deny (deadline default)", entity.ToObj(ch.Payload)["outcome"])
 	}

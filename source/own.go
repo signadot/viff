@@ -306,7 +306,7 @@ func Disjoint(a, b []Own) (bool, error) {
 // inside it is asked to delete the entity once rather than twice. Deleting the deeper one after
 // the shallower would write into an entity that is already gone.
 func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
-	point := Claim{System: ref.System, Kind: ref.Kind, ID: ref.ID}
+	point := Claim{System: ref.System(), Kind: ref.Kind(), ID: ref.ID()}
 	var out []entity.Path
 	for _, c := range claims {
 		if c.Disjoint(point) {

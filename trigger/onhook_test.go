@@ -38,7 +38,7 @@ func startHookTask(store entity.Store, id string, spec launch.Spec) *task.Task {
 	return p
 }
 
-func prRef(id string) entity.Ref { return entity.Ref{System: "demo", Kind: "pr", ID: id} }
+func prRef(id string) entity.Ref { return entity.RefAt("demo", "pr", id) }
 
 // prSubject is a demo:pr at a specific stage — the subject of most of these triggers, and
 // with no `when` beside it, their cause too. A field predicate rather than a bare kind, so

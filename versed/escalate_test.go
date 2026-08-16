@@ -41,7 +41,7 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 	}
 
 	// Hop one: the named layer declines, and the standing binding covering the subject owns it.
-	resp := escalateAs(t, ts, resolver.InstanceRef("security-review", "run-1").ID, qid)
+	resp := escalateAs(t, ts, resolver.InstanceRef("security-review", "run-1").ID(), qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("escalate = %s, want 204", resp.Status)
@@ -58,7 +58,7 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 	}
 
 	// Hop two: the standing binding declines, and there is nobody above it. Absent is ⊤.
-	resp = escalateAs(t, ts, resolver.InstanceRef("payments-review", "run-1").ID, qid)
+	resp = escalateAs(t, ts, resolver.InstanceRef("payments-review", "run-1").ID(), qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("second escalate = %s, want 204", resp.Status)
@@ -91,7 +91,7 @@ func TestEscalatingWhatIsNotYours(t *testing.T) {
 	mine := waitQuestion(t, srv, "run-1")
 	theirs := waitQuestion(t, srv, "run-2")
 
-	inst := resolver.InstanceRef("payments-review", "run-1").ID
+	inst := resolver.InstanceRef("payments-review", "run-1").ID()
 	resp := escalateAs(t, ts, inst, theirs)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
@@ -119,16 +119,16 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	installResolver(t, ts.URL,
 		`{name: security-review, kind: security, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
-	subject := entity.Ref{System: "change", Kind: "pr", ID: "1"}
+	subject := entity.RefAt("change", "pr", "1")
 	pr(t, srv, "1", "payments")
 	mirror.Watch(srv.Store, "resolvers:security:payments-review", "payments-review", subject)
 
 	spawnFor(t, ts, "run-1", subject.String(), "resolvers:security:security-review")
 	qid := waitQuestion(t, srv, "run-1")
-	escalateAs(t, ts, resolver.InstanceRef("security-review", "run-1").ID, qid).Body.Close()
+	escalateAs(t, ts, resolver.InstanceRef("security-review", "run-1").ID(), qid).Body.Close()
 	time.Sleep(50 * time.Millisecond)
 
-	spine := resolver.InstanceRef("payments-review", subject.String()).ID
+	spine := resolver.InstanceRef("payments-review", subject.String()).ID()
 	var arrived bool
 	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+spine+"/events?since=0") {
 		if ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "resolvers:security:payments-review" {
@@ -233,7 +233,7 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	spawnFor(t, ts, "run-1", "change:pr:1", "")
 	qid := waitQuestion(t, srv, "run-1")
 
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+resolver.InstanceRef("payments-review", "run-1").ID+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+resolver.InstanceRef("payments-review", "run-1").ID()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	time.Sleep(350 * time.Millisecond)
@@ -270,7 +270,7 @@ func TestAnAnswerBeatsAHandover(t *testing.T) {
 
 	// Settled first, then the sweep arrives and must decline to move it.
 	resp := postTony(t, ts.URL+"/resolvers/instance/"+
-		resolver.InstanceRef("security-review", "run-1").ID+"/verdicts",
+		resolver.InstanceRef("security-review", "run-1").ID()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	docket(t, srv)

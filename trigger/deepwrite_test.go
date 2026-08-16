@@ -35,7 +35,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if _, _, err := store.Write(entity.Write{
 		At:    entity.Path{Ref: ref},
 		Value: entity.Obj{"stage": "open", "env": "prod"}.Payload(),
@@ -86,7 +86,7 @@ func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ref := entity.Ref{System: "demo", Kind: "task", ID: "t1"}
+	ref := entity.RefAt("demo", "task", "t1")
 	// Written BEFORE the watch opens — so only the seed can account for it.
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "queued", "note": "ship it"}.Payload())
 

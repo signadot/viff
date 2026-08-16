@@ -26,7 +26,7 @@ const (
 
 // QuestionRef addresses one question.
 func QuestionRef(id string) entity.Ref {
-	return entity.Ref{System: QuestionSystem, Kind: QuestionKind, ID: id}
+	return entity.RefAt(QuestionSystem, QuestionKind, id)
 }
 
 // Question status, monotonic: a question is posed once and settles once.
@@ -214,7 +214,7 @@ func answerRecord(res task.Resolution) entity.Obj {
 // for the same fact — the party who could have answered no longer exists.
 func OrphanQuestions(store entity.Store, taskID string) {
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System == QuestionSystem && ref.Kind == QuestionKind
+		return ref.System() == QuestionSystem && ref.Kind() == QuestionKind
 	}) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] != taskID || p["status"] != QuestionPending {

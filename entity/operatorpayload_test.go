@@ -36,13 +36,13 @@ func TestAnOperatorTagInAPayloadDoesNotPoisonTheStore(t *testing.T) {
 		"says":   ir.FromString("what the comment claims, against what the code does").WithTag("!irtype"),
 	})
 
-	set(t, s, Ref{System: "task", Kind: "instance", ID: "run-1"}, Obj{
+	set(t, s, RefAt("task", "instance", "run-1"), Obj{
 		"status": "done",
 		"data":   AsData(answer), // the fix: what a projection stores is data
 	}.Payload())
 
 	// The entity itself round-trips.
-	e, ok, err := s.Get(Ref{System: "task", Kind: "instance", ID: "run-1"})
+	e, ok, err := s.Get(RefAt("task", "instance", "run-1"))
 	if err != nil || !ok {
 		t.Fatalf("get the entity that was written: ok=%v err=%v", ok, err)
 	}
@@ -53,8 +53,8 @@ func TestAnOperatorTagInAPayloadDoesNotPoisonTheStore(t *testing.T) {
 	// And — the assertion this test exists for — so does everything else. An unrelated
 	// entity written before it is still readable, which is precisely what stopped being
 	// true in production.
-	set(t, s, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
-	if _, ok, err := s.Get(Ref{System: "demo", Kind: "pr", ID: "1"}); err != nil || !ok {
+	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
+	if _, ok, err := s.Get(RefAt("demo", "pr", "1")); err != nil || !ok {
 		t.Fatalf("an unrelated entity became unreadable: ok=%v err=%v", ok, err)
 	}
 	if n := len(s.List(nil)); n != 2 {

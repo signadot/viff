@@ -44,7 +44,7 @@ func TestWatchQueryRendersThePredicateAsTony(t *testing.T) {
 			// Compared as a MATCH rather than as bytes: the point is that the server asks the
 			// same question, not that the rendering is character-for-character anything.
 			if !(entity.Pattern{Predicate: got}).MatchEvent(entity.Event{
-				Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: want,
+				Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set, To: want,
 			}) {
 				t.Errorf("--ifmt %s: %q reached the wire as %q, which does not match %v",
 					c.ifmt, c.pattern, q.Get("if"), want)
@@ -184,7 +184,7 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 // would silently become an unguarded one.
 func TestStatePutKeepsItsOwnIf(t *testing.T) {
 	store := serve(t)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if _, err := runCLI(t, "state", "put", "demo:pr:1", `{stage: open}`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

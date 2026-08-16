@@ -158,7 +158,7 @@ func TestRemoveEntityAndField(t *testing.T) {
 	if code := rm(url.Values{"ref": {"demo:pr:1"}, "field": {"tmp"}}); code != http.StatusNoContent {
 		t.Fatalf("remove a field = %d, want 204", code)
 	}
-	e, ok, _ := srv.Store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "1"})
+	e, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1"))
 	if !ok || entity.Str(e.Payload, "stage") != "open" {
 		t.Fatalf("removing a field took the entity with it: %+v", e.Payload)
 	}
@@ -169,7 +169,7 @@ func TestRemoveEntityAndField(t *testing.T) {
 	if code := rm(url.Values{"ref": {"demo:pr:1"}}); code != http.StatusNoContent {
 		t.Fatalf("remove the entity = %d, want 204", code)
 	}
-	if _, ok, _ := srv.Store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "1"}); ok {
+	if _, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1")); ok {
 		t.Fatal("entity still present after removal")
 	}
 	// Removing what is not there is not an error.

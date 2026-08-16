@@ -446,7 +446,7 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 		systems[c.System] = true
 	}
 	var out []entity.Path
-	for _, ent := range r.List(func(ref entity.Ref) bool { return wildcard || systems[ref.System] }) {
+	for _, ent := range r.List(func(ref entity.Ref) bool { return wildcard || systems[ref.System()] }) {
 		out = append(out, source.Claimed(claims, ent.Ref)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })

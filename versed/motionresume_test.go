@@ -18,9 +18,9 @@ func motions(t *testing.T, srv *Server) map[string]entity.Obj {
 	t.Helper()
 	out := map[string]entity.Obj{}
 	for _, e := range srv.Store.List(func(r entity.Ref) bool {
-		return r.System == "motion" && r.Kind == "channel"
+		return r.System() == "motion" && r.Kind() == "channel"
 	}) {
-		out[e.Ref.ID] = entity.ToObj(e.Payload)
+		out[e.Ref.ID()] = entity.ToObj(e.Payload)
 	}
 	return out
 }
@@ -67,7 +67,7 @@ func TestARestartResumesAWhoMotion(t *testing.T) {
 	if err := first.Eng.AddTrigger(rule); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	pr := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, first.Store, pr, entity.Obj{"stage": "open"}.Payload())
 	waitUntil(t, "the who-motion to reach the docket", func() bool { return len(motions(t, first)) == 1 })
 
@@ -87,7 +87,7 @@ func TestARestartResumesAWhoMotion(t *testing.T) {
 	second.Start(t.Context())
 
 	// The pick, cast from the docket exactly as `verse vote <motion> claude --as scott` does.
-	entitytest.Set(t, second.Store, entity.Ref{System: "vote", Kind: mid, ID: "scott"},
+	entitytest.Set(t, second.Store, entity.RefAt("vote", mid, "scott"),
 		entity.Obj{"choice": "claude", "by": "scott"}.Payload())
 
 	waitUntil(t, "the resumed motion to close on the pick", func() bool {
@@ -97,7 +97,7 @@ func TestARestartResumesAWhoMotion(t *testing.T) {
 	// claim, since a motion that closes and spawns nothing has resumed only on paper.
 	waitUntil(t, "the picked doer to be spawned", func() bool {
 		for _, e := range second.Store.List(func(r entity.Ref) bool {
-			return r.System == mirror.System && r.Kind == mirror.InstanceKind
+			return r.System() == mirror.System && r.Kind() == mirror.InstanceKind
 		}) {
 			if entity.Str(e.Payload, "doer") == "claude" {
 				return true
@@ -133,7 +133,7 @@ func TestARestartRemonitorsAWhetherMotion(t *testing.T) {
 	if err := first.Eng.AddTrigger(rule); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	pr := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, first.Store, pr, entity.Obj{"stage": "open"}.Payload())
 	waitUntil(t, "the whether-motion to reach the docket", func() bool { return len(motions(t, first)) == 1 })
 	var mid string
@@ -141,7 +141,7 @@ func TestARestartRemonitorsAWhetherMotion(t *testing.T) {
 		mid = id
 	}
 	// One of the two approvals, before the lights go out.
-	entitytest.Set(t, first.Store, entity.Ref{System: "vote", Kind: mid, ID: "alice"},
+	entitytest.Set(t, first.Store, entity.RefAt("vote", mid, "alice"),
 		entity.Obj{"choice": "approve", "by": "alice"}.Payload())
 	stop()
 
@@ -152,7 +152,7 @@ func TestARestartRemonitorsAWhetherMotion(t *testing.T) {
 	if got := motions(t, second)[mid]; got["outcome"] != nil {
 		t.Fatalf("the restart decided a motion nobody finished voting on: %+v", got)
 	}
-	entitytest.Set(t, second.Store, entity.Ref{System: "vote", Kind: mid, ID: "bob"},
+	entitytest.Set(t, second.Store, entity.RefAt("vote", mid, "bob"),
 		entity.Obj{"choice": "approve", "by": "bob"}.Payload())
 
 	waitUntil(t, "the quorum to carry across the restart", func() bool {

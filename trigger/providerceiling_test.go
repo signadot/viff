@@ -68,7 +68,7 @@ func TestCeilingMatrixOverTheGrantVocabulary(t *testing.T) {
 			t.Run(ceiling+"/"+doer, func(t *testing.T) {
 				store := entitytest.Store(t)
 				eng := New(store, denyResolver{})
-				entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "d"},
+				entitytest.Set(t, store, entity.RefAt("provider", "treat", "d"),
 					entity.Obj{"driver": "llm", "grant": doer}.Payload())
 
 				spawn := launch.Spec{Grant: ceiling, Provider: &launch.Provider{Capability: "treat", Select: "auto"}}
@@ -88,7 +88,7 @@ func TestCeilingMatrixOverTheGrantVocabulary(t *testing.T) {
 func TestCeilingRefusalNamesBothSides(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "greedy"},
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "greedy"),
 		entity.Obj{"driver": "llm", "grant": "all"}.Payload())
 
 	why := eng.whyNoEligible(launch.Spec{Grant: "read-only", Provider: &launch.Provider{Capability: "treat", Select: "auto"}})
@@ -105,7 +105,7 @@ func TestCeilingRefusalNamesBothSides(t *testing.T) {
 func TestUnknownDoerGrantIsIneligible(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "typo"},
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "typo"),
 		entity.Obj{"driver": "llm", "grant": "reed-only"}.Payload())
 
 	spawn := launch.Spec{Grant: "all", Provider: &launch.Provider{Capability: "treat", Select: "auto"}}
@@ -126,7 +126,7 @@ func TestProviderSettingAnUnhonoredFieldIsIneligible(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			store := entitytest.Store(t)
 			eng := New(store, denyResolver{})
-			entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "sneaky"},
+			entitytest.Set(t, store, entity.RefAt("provider", "treat", "sneaky"),
 				entity.Obj{"driver": "llm", field: "auto"}.Payload())
 
 			spawn := launch.Spec{Grant: "all", Vector: "ask", Provider: &launch.Provider{Capability: "treat", Select: "auto"}}
@@ -147,13 +147,13 @@ func TestProviderSettingAnUnhonoredFieldIsIneligible(t *testing.T) {
 func TestBallotOffersOnlySeatableDoers(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "careful"},
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "careful"),
 		entity.Obj{"driver": "llm", "grant": "read-only"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "greedy"},
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "greedy"),
 		entity.Obj{"driver": "llm", "grant": "all"}.Payload())
 
 	spawn := launch.Spec{Grant: "read-only", Provider: &launch.Provider{Capability: "treat", Select: "vote", Need: 1}}
-	subj := entity.Ref{System: "demo", Kind: "finding", ID: "ballot"}
+	subj := entity.RefAt("demo", "finding", "ballot")
 
 	options, _ := eng.eligibleProviders(spawn)
 	if len(options) != 1 || options[0] != "careful" {
@@ -163,8 +163,8 @@ func TestBallotOffersOnlySeatableDoers(t *testing.T) {
 	// And a ballot cast for the refused doer cannot seat it: the motion's options are the
 	// eligible set, so a vote for `greedy` is a vote for something not on the ballot.
 	did := motionChannelID(providerSpecSeed(subj, spawn.Provider))
-	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "x"}, entity.Obj{"choice": "greedy"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: did, ID: "y"}, entity.Obj{"choice": "careful"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("vote", did, "x"), entity.Obj{"choice": "greedy"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("vote", did, "y"), entity.Obj{"choice": "careful"}.Payload())
 
 	frag, ok := eng.selectProvider(spawn, subj)
 	if !ok || frag.Grant != "read-only" {
@@ -179,11 +179,11 @@ func TestBallotOffersOnlySeatableDoers(t *testing.T) {
 func TestDoerWithoutGrantInheritsTheSpawns(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "treat", ID: "quiet"},
+	entitytest.Set(t, store, entity.RefAt("provider", "treat", "quiet"),
 		entity.Obj{"driver": "llm", "tools": []any{"read_file"}}.Payload())
 
 	spawn := launch.Spec{Grant: "read-only", Provider: &launch.Provider{Capability: "treat", Select: "auto"}}
-	frag, ok := eng.selectProvider(spawn, entity.Ref{System: "demo", Kind: "finding", ID: "q"})
+	frag, ok := eng.selectProvider(spawn, entity.RefAt("demo", "finding", "q"))
 	if !ok {
 		t.Fatal("a doer with no grant of its own was refused")
 	}

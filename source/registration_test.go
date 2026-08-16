@@ -23,7 +23,7 @@ func TestRegistrationRefRoundTrips(t *testing.T) {
 		if parsed != ref {
 			t.Fatalf("%q round-tripped to %q", ref, parsed)
 		}
-		if parsed.System != source.System || parsed.Kind != "git" || parsed.ID != name {
+		if parsed.System() != source.System || parsed.Kind() != "git" || parsed.ID() != name {
 			t.Fatalf("the address should be sources:<system>:<name>, got %+v", parsed)
 		}
 	}

@@ -254,7 +254,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		t.Fatalf("does not install: %v", err)
 	}
 
-	subj := entity.Ref{System: "git", Kind: "commit", ID: "verse/abc"}
+	subj := entity.RefAt("git", "commit", "verse/abc")
 	fire := func(t *testing.T, findings string) error {
 		t.Helper()
 		payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: `+findings+`}`), codec.Tony)
@@ -269,7 +269,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		return err
 	}
 	drift := func() []entity.Entity {
-		return store.List(func(r entity.Ref) bool { return r.System == "drift" })
+		return store.List(func(r entity.Ref) bool { return r.System() == "drift" })
 	}
 
 	// Twelve findings, twelve entities.
@@ -290,8 +290,8 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		if obj["sym"] == nil || obj["was"] != "stale" {
 			t.Errorf("%s carries %v", e.Ref, obj)
 		}
-		if !strings.Contains(e.Ref.ID, "fan@git:commit:verse_abc") {
-			t.Errorf("id %q does not carry (rule, subject)", e.Ref.ID)
+		if !strings.Contains(e.Ref.ID(), "fan@git:commit:verse_abc") {
+			t.Errorf("id %q does not carry (rule, subject)", e.Ref.ID())
 		}
 	}
 
@@ -316,7 +316,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	}
 	for _, c := range commits {
 		for _, ch := range c.Changes {
-			if ch.Ref.System == "drift" {
+			if ch.Ref.System() == "drift" {
 				t.Errorf("re-deriving the same content changed %s — the no-op the ordering "+
 					"rests on did not hold", ch.Ref)
 			}
@@ -366,7 +366,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	if err := eng.addTrigger(trigs[0], false); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
-	subj := entity.Ref{System: "git", Kind: "commit", ID: "verse/abc"}
+	subj := entity.RefAt("git", "commit", "verse/abc")
 	payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: [{sym: "entity.a", was: x} {was: y} {sym: "entity.c", was: z}]}`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
@@ -389,7 +389,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 // Losing one member of a fan-out to a collision is the failure that reads as a shorter ledger
 // and nothing else.
 func TestEachIDSeparatesKeysThatFlattenAlike(t *testing.T) {
-	subj := entity.Ref{System: "drift", Kind: "head", ID: "x"}
+	subj := entity.RefAt("drift", "head", "x")
 	seen := map[string]string{}
 	for _, key := range []string{
 		"entity.nodeToPayload",
@@ -469,13 +469,13 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subj := entity.Ref{System: "git", Kind: "commit", ID: "verse/abc"}
+	subj := entity.RefAt("git", "commit", "verse/abc")
 	hook := trigs[0].Action.OnDone
 	if _, err := hook.applyOne("review.onDone", occasion{ev: entity.Event{Ref: subj, To: answer}}, subj, eng, fromCause); err != nil {
 		t.Fatalf("the hook failed: %v", err)
 	}
 
-	got := store.List(func(r entity.Ref) bool { return r.System == "drift" })
+	got := store.List(func(r entity.Ref) bool { return r.System() == "drift" })
 	if len(got) != 2 {
 		t.Fatalf("derived %d entities from a two-finding answer", len(got))
 	}
@@ -491,7 +491,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	// The key that needed flattening is still its own entity, and still legible.
 	var ids []string
 	for _, e := range got {
-		ids = append(ids, e.Ref.ID)
+		ids = append(ids, e.Ref.ID())
 	}
 	sort.Strings(ids)
 	if !strings.Contains(ids[1], "source_github.Reflect") {
@@ -520,7 +520,7 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ref := entity.Ref{System: "drift", Kind: "finding", ID: f.id}
+		ref := entity.RefAt("drift", "finding", f.id)
 		if _, _, err := store.Write(entity.Write{At: ref.At(), Value: p}); err != nil {
 			t.Fatal(err)
 		}
@@ -556,7 +556,7 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 		t.Fatalf("gather does not install: %v", err)
 	}
 
-	subj := entity.Ref{System: "drift", Kind: "head", ID: "verse"}
+	subj := entity.RefAt("drift", "head", "verse")
 	head, _ := codec.ParseNode([]byte(`{sha: abc, reviewed: pending}`), codec.Tony)
 	if _, _, err := store.Write(entity.Write{At: subj.At(), Value: head}); err != nil {
 		t.Fatal(err)

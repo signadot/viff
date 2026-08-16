@@ -51,7 +51,7 @@ func TestStatus(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	entitytest.Set(t, srv.Store, entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{"k": "v"}.Payload())
+	entitytest.Set(t, srv.Store, entity.RefAt("demo", "x", "1"), entity.Obj{"k": "v"}.Payload())
 
 	m = get()
 	if n, _ := codec.AsInt64(m["triggers"]); n != 1 {

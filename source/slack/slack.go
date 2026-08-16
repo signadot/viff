@@ -159,13 +159,13 @@ func (s *Slack) Owns() []source.Own {
 // ChannelRef is the ref that targets one channel — what a hint names, and what a targeted
 // reconcile narrows to.
 func ChannelRef(workspace, channel string) entity.Ref {
-	return entity.Ref{System: System, Kind: "channel", ID: workspace + "/" + channel}
+	return entity.RefAt(System, "channel", workspace+"/"+channel)
 }
 
 // ChannelRef is the same ref in THIS source's system, which is what a delivery endpoint must
 // hint: a hint at `slack:channel:x` reaches nothing when the source writes `chat:channel:x`.
 func (s *Slack) ChannelRef(channel string) entity.Ref {
-	return entity.Ref{System: s.system, Kind: "channel", ID: s.workspace + "/" + channel}
+	return entity.RefAt(s.system, "channel", s.workspace+"/"+channel)
 }
 
 // Workspace is the id prefix this source writes under.
@@ -192,14 +192,14 @@ func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection,
 // A message ref narrows to its channel rather than to itself, which is the same subsumption
 // git makes: the window is read per channel, so a finer target would cost the same call.
 func (s *Slack) target(ref entity.Ref) (channel string, full bool) {
-	if ref.System != s.system || ref.ID == "" {
+	if ref.System() != s.system || ref.ID() == "" {
 		return "", true
 	}
-	ws, rest, ok := strings.Cut(ref.ID, "/")
+	ws, rest, ok := strings.Cut(ref.ID(), "/")
 	if !ok || ws != s.workspace {
 		return "", false
 	}
-	switch ref.Kind {
+	switch ref.Kind() {
 	case "channel":
 		return rest, false
 	case "message":
@@ -386,7 +386,7 @@ func (s *Slack) addMessage(rn *source.Reflection, channel string, m message) {
 		p["url"] = strings.TrimRight(s.url, "/") + "/archives/" + channel + "/p" +
 			strings.Replace(m.TS, ".", "", 1)
 	}
-	rn.Add(entity.Ref{System: s.system, Kind: "message", ID: s.workspace + "/" + channel + "/" + m.TS}, p)
+	rn.Add(entity.RefAt(s.system, "message", s.workspace+"/"+channel+"/"+m.TS), p)
 }
 
 func (s *Slack) addUser(rn *source.Reflection, u user) {
@@ -412,5 +412,5 @@ func (s *Slack) addUser(rn *source.Reflection, u user) {
 	if u.TZ != "" {
 		p["tz"] = u.TZ
 	}
-	rn.Add(entity.Ref{System: s.system, Kind: "user", ID: s.workspace + "/" + u.ID}, p)
+	rn.Add(entity.RefAt(s.system, "user", s.workspace+"/"+u.ID), p)
 }

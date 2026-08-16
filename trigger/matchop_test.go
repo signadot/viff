@@ -78,7 +78,7 @@ func TestMatchOperatorSpellingsAgree(t *testing.T) {
 // what it meant.
 func TestMatchIDOperatorGrammar(t *testing.T) {
 	ev := func(id string) entity.Event {
-		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: id}, Op: entity.Set}
+		return entity.Event{Ref: entity.RefAt("demo", "pr", id), Op: entity.Set}
 	}
 	cases := []struct {
 		src  string
@@ -120,7 +120,7 @@ func TestMatchIDOperatorGrammar(t *testing.T) {
 func TestMatchOperatorSelects(t *testing.T) {
 	store := entitytest.Store(t)
 	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-1"} {
-		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: id}, entity.Obj{"stage": "open"}.Payload())
+		entitytest.Set(t, store, entity.RefAt("demo", "pr", id), entity.Obj{"stage": "open"}.Payload())
 	}
 
 	m := mustMatch(t, `{system: demo, kind: pr, id: !glob "hotfix-*"}`, codec.Tony)
@@ -129,7 +129,7 @@ func TestMatchOperatorSelects(t *testing.T) {
 		t.Fatalf("selected %v, want the two hotfix PRs", refs)
 	}
 	for _, r := range refs {
-		if !strings.HasPrefix(r.ID, "hotfix-") {
+		if !strings.HasPrefix(r.ID(), "hotfix-") {
 			t.Errorf("selected %s, which the glob excludes", r)
 		}
 	}
@@ -228,7 +228,7 @@ func TestUpstreamIgnoresUnknownTags(t *testing.T) {
 // root now, so the operator is not something to reject, it is the thing being evaluated.
 func TestMatchValueAcceptsOperators(t *testing.T) {
 	ev := func(p entity.Obj) entity.Event {
-		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: p.Payload()}
+		return entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set, To: p.Payload()}
 	}
 	cases := []struct {
 		src   string
@@ -271,7 +271,7 @@ func TestMatchValueAcceptsOperators(t *testing.T) {
 func TestMatchValueStillPlain(t *testing.T) {
 	m := mustMatch(t, `{system: demo, kind: pr, value: {stage: open, n: 2}}`, codec.Tony)
 	ev := entity.Event{
-		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+		Ref: entity.RefAt("demo", "pr", "1"),
 		Op:  entity.Set, To: entity.Obj{"stage": "open", "n": int64(2)}.Payload(),
 	}
 	if !m.MatchEvent(ev) {
@@ -285,7 +285,7 @@ func TestMatchValueStillPlain(t *testing.T) {
 func TestMatchValueRootPredicate(t *testing.T) {
 	ev := func(v any) entity.Event {
 		return entity.Event{
-			Ref: entity.Ref{System: "demo", Kind: "count", ID: "1"},
+			Ref: entity.RefAt("demo", "count", "1"),
 			Op:  entity.Set, To: entity.Val(v),
 		}
 	}
@@ -328,7 +328,7 @@ func TestMatchValueRootPredicate(t *testing.T) {
 func TestMatchValueScalarIsTheWholePayload(t *testing.T) {
 	m := mustMatch(t, `{system: demo, value: "stage=open"}`, codec.Tony)
 	ev := func(v entity.Payload) entity.Event {
-		return entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set, To: v}
+		return entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set, To: v}
 	}
 	if !m.MatchEvent(ev(entity.Val("stage=open"))) {
 		t.Error(`value: "stage=open" did not match the payload "stage=open"`)
@@ -368,7 +368,7 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 		t.Fatalf("install: %v", err)
 	}
 
-	ref := entity.Ref{System: "demo", Kind: "count", ID: "1"}
+	ref := entity.RefAt("demo", "count", "1")
 	entitytest.Set(t, store, ref, entity.Val(100))
 	deadline := time.After(3 * time.Second)
 	for {
@@ -394,7 +394,7 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 	ev := func(p entity.Obj) entity.Event {
 		return entity.Event{
-			Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+			Ref: entity.RefAt("demo", "pr", "1"),
 			Op:  entity.Set, To: p.Payload(),
 		}
 	}

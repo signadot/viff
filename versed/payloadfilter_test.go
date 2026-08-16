@@ -37,7 +37,7 @@ import (
 // on a stream that is behaving correctly. It carries a `sentinel` field of its own so that
 // "this filter delivers nothing" is still expressible: filter on that field, and the only
 // frame is the terminator.
-var sentinel = entity.Ref{System: "demo", Kind: "pr", ID: "sentinel"}
+var sentinel = entity.RefAt("demo", "pr", "sentinel")
 
 // fixture is the set of changes every test here watches, in write order.
 var fixture = []struct {

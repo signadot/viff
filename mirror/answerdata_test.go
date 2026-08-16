@@ -29,13 +29,13 @@ func TestAnAnswerEchoingItsContractLandsAsData(t *testing.T) {
 	// Stored, and then read back — the read is the assertion, since an operator that reached
 	// the log takes every later read with it, not only this entity's.
 	s := entitytest.Store(t)
-	ref := entity.Ref{System: System, Kind: InstanceKind, ID: "run-1"}
+	ref := entity.RefAt(System, InstanceKind, "run-1")
 	entitytest.Set(t, s, ref, entity.Obj{"status": "done", "data": d}.Payload())
 
 	if _, ok, err := s.Get(ref); err != nil || !ok {
 		t.Fatalf("get the task record: ok=%v err=%v", ok, err)
 	}
-	other := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	other := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, s, other, entity.Obj{"stage": "open"}.Payload())
 	if _, ok, err := s.Get(other); err != nil || !ok {
 		t.Fatalf("an unrelated entity became unreadable after the answer was stored: ok=%v err=%v", ok, err)

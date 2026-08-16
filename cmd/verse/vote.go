@@ -199,7 +199,7 @@ func providerCmd() *cli.Command {
 			}
 			for _, e := range ents {
 				payload := entity.ToObj(e.Payload)
-				line := fmt.Sprintf("%-10s %-14s driver=%v", e.Ref.Kind, e.Ref.ID, payload["driver"])
+				line := fmt.Sprintf("%-10s %-14s driver=%v", e.Ref.Kind(), e.Ref.ID(), payload["driver"])
 				for k, v := range payload {
 					if k != "driver" {
 						line += fmt.Sprintf(" %s=%v", k, v)

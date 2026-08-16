@@ -51,7 +51,7 @@ func TestATargetedPassCoversOneItemAndNothingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rn.Entities) != 1 || rn.Entities[0].Ref.ID != "acme/app#2" {
+	if len(rn.Entities) != 1 || rn.Entities[0].Ref.ID() != "acme/app#2" {
 		t.Fatalf("a targeted pass answered with %d entities: %v", len(rn.Entities), payloads(rn))
 	}
 	if len(rn.Covers) != 1 {
@@ -65,7 +65,7 @@ func TestATargetedPassCoversOneItemAndNothingElse(t *testing.T) {
 	// mass-deletion bug — so this is asserted by what the cover does rather than by its shape:
 	// it must not match the issue this pass said nothing about.
 	other := entity.Entity{
-		Ref:     entity.Ref{System: "github", Kind: "issue", ID: "acme/app#1"},
+		Ref:     entity.RefAt("github", "issue", "acme/app#1"),
 		Payload: entity.Obj{"repo": "acme/app", "number": 1, "state": "open"}.Payload(),
 	}
 	if c.MatchEntity(other) {
@@ -73,7 +73,7 @@ func TestATargetedPassCoversOneItemAndNothingElse(t *testing.T) {
 			entity.ToObj(c.Predicate))
 	}
 	self := entity.Entity{
-		Ref:     entity.Ref{System: "github", Kind: "issue", ID: "acme/app#2"},
+		Ref:     entity.RefAt("github", "issue", "acme/app#2"),
 		Payload: entity.Obj{"repo": "acme/app", "number": 2, "state": "open"}.Payload(),
 	}
 	if !c.MatchEntity(self) {
@@ -150,7 +150,7 @@ func TestASecondPassOverUnchangedDataWritesNothing(t *testing.T) {
 		t.Fatalf("a second pass over unchanged data wrote %d — a payload is not stable", second)
 	}
 	// And the labels are sorted, which is what makes that true rather than lucky.
-	got := entity.Strs(mustGet(t, store, entity.Ref{System: "github", Kind: "issue", ID: "acme/app#1"}), "labels")
+	got := entity.Strs(mustGet(t, store, entity.RefAt("github", "issue", "acme/app#1")), "labels")
 	if len(got) != 3 || got[0] != "api" || got[1] != "bug" || got[2] != "sdlc" {
 		t.Fatalf("labels = %v, want them sorted so a re-read is not a change", got)
 	}
@@ -239,7 +239,7 @@ func TestAClosedItemIsWindowedAndAgesOut(t *testing.T) {
 	}
 	pass()
 
-	closed := entity.Ref{System: "github", Kind: "issue", ID: "acme/app#2"}
+	closed := entity.RefAt("github", "issue", "acme/app#2")
 	if entity.Str(mustGet(t, store, closed), "state") != "closed" {
 		t.Fatal("a closed issue is not in the settled half")
 	}
@@ -250,11 +250,11 @@ func TestAClosedItemIsWindowedAndAgesOut(t *testing.T) {
 	if _, ok, _ := store.Get(closed); ok {
 		t.Fatal("an item that fell out of the settled window was not tombstoned")
 	}
-	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "issue", ID: "acme/app#3"}); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("github", "issue", "acme/app#3")); !ok {
 		t.Fatal("the newer closure is missing")
 	}
 	// And the open one is untouched by any of it.
-	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "issue", ID: "acme/app#1"}); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("github", "issue", "acme/app#1")); !ok {
 		t.Fatal("the settled window reached an open issue")
 	}
 }
@@ -302,7 +302,7 @@ func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range rn.Entities {
-		if e.Ref.System != "github-internal" {
+		if e.Ref.System() != "github-internal" {
 			t.Fatalf("an entity outside the chosen system: %s", e.Ref)
 		}
 	}
@@ -353,9 +353,9 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 	}
 	// Not a neighbour's, and not a kind this build does not write yet.
 	for _, ref := range []entity.Ref{
-		{System: "github", Kind: "issue", ID: "acme/other#1"},
-		{System: "github", Kind: "repo", ID: "acme/other"},
-		{System: "github", Kind: "issue", ID: "other/app#1"},
+		entity.RefAt("github", "issue", "acme/other#1"),
+		entity.RefAt("github", "repo", "acme/other"),
+		entity.RefAt("github", "issue", "other/app#1"),
 	} {
 		if places := source.Claimed(claims, ref); len(places) != 0 {
 			t.Fatalf("%s is claimed but not written: %v", ref, places)
@@ -442,9 +442,9 @@ func TestAnotherSourcesSliceIsAnsweredWithNothing(t *testing.T) {
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
 
 	for _, ref := range []entity.Ref{
-		{System: "github", Kind: "repo", ID: "other/app"},
-		{System: "github", Kind: "issue", ID: "other/app#1"},
-		{System: "linear", Kind: "issue", ID: "ENG-1"},
+		entity.RefAt("github", "repo", "other/app"),
+		entity.RefAt("github", "issue", "other/app#1"),
+		entity.RefAt("linear", "issue", "ENG-1"),
 	} {
 		rn, err := src.Reflect(context.Background(), ref)
 		if err != nil {
@@ -575,7 +575,7 @@ func TestTheCheckStateLandsOnThePullRequest(t *testing.T) {
 	// And no check entities were invented to carry any of it.
 	rn, _ := src.Reflect(context.Background(), entity.Ref{})
 	for _, e := range rn.Entities {
-		if e.Ref.Kind == "check" || e.Ref.Kind == "checkRun" {
+		if e.Ref.Kind() == "check" || e.Ref.Kind() == "checkRun" {
 			t.Fatalf("a check kind appeared: %s", e.Ref)
 		}
 	}
@@ -644,7 +644,7 @@ func TestDiscussionsTurnedOffLeaveWhatIsStandingAlone(t *testing.T) {
 		}
 	}
 	pass()
-	disc := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#9"}
+	disc := entity.RefAt("github", "discussion", "acme/app#9")
 	if _, ok, _ := store.Get(disc); !ok {
 		t.Fatal("the discussion was not reflected in the first place")
 	}
@@ -657,7 +657,7 @@ func TestDiscussionsTurnedOffLeaveWhatIsStandingAlone(t *testing.T) {
 	}
 	// And the rest of the repository still reflects, which is the other half: a pass that can
 	// say nothing about discussions still has everything else to say.
-	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "issue", ID: "acme/app#1"}); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("github", "issue", "acme/app#1")); !ok {
 		t.Fatal("a repository with discussions off stopped reflecting its issues")
 	}
 }
@@ -680,7 +680,7 @@ func TestAGraphQLRefusalIsNotAnEmptyAnswer(t *testing.T) {
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
-	disc := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#9"}
+	disc := entity.RefAt("github", "discussion", "acme/app#9")
 	if _, ok, _ := store.Get(disc); !ok {
 		t.Fatal("the discussion was not reflected in the first place")
 	}
@@ -719,7 +719,7 @@ func TestAClosedDiscussionIsWindowed(t *testing.T) {
 		}
 	}
 	pass()
-	closed := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#2"}
+	closed := entity.RefAt("github", "discussion", "acme/app#2")
 	if entity.Str(mustGet(t, store, closed), "state") != "closed" {
 		t.Fatal("a closed discussion is not in the settled half")
 	}
@@ -728,7 +728,7 @@ func TestAClosedDiscussionIsWindowed(t *testing.T) {
 	if _, ok, _ := store.Get(closed); ok {
 		t.Fatal("a discussion that fell out of the settled window was not tombstoned")
 	}
-	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#1"}); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("github", "discussion", "acme/app#1")); !ok {
 		t.Fatal("the settled window reached an open discussion")
 	}
 }
@@ -898,7 +898,7 @@ func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
-	disc := entity.Ref{System: "github", Kind: "discussion", ID: "acme/app#9"}
+	disc := entity.RefAt("github", "discussion", "acme/app#9")
 	if _, ok, _ := store.Get(disc); !ok {
 		t.Fatal("the discussion was not reflected in the first place")
 	}
@@ -1081,10 +1081,10 @@ func TestACommentJoinsToItsItemByRef(t *testing.T) {
 		t.Fatalf("the comment says it is on %v", on)
 	}
 	// The pull request is there under that number and the issue is not, which is the join.
-	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "pr", ID: "acme/app#2"}); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("github", "pr", "acme/app#2")); !ok {
 		t.Fatal("the pull request the comment is on is missing")
 	}
-	if _, ok, _ := store.Get(entity.Ref{System: "github", Kind: "issue", ID: "acme/app#2"}); ok {
+	if _, ok, _ := store.Get(entity.RefAt("github", "issue", "acme/app#2")); ok {
 		t.Fatal("an issue exists under a pull request's number")
 	}
 }

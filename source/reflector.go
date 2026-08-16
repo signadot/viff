@@ -96,11 +96,11 @@ func (r Reflection) Check(system string) error {
 		}
 	}
 	for _, e := range r.Entities {
-		if e.Ref.System != system {
+		if e.Ref.System() != system {
 			return fmt.Errorf("reflection: entity %s is outside %q, the slice this source owns",
 				e.Ref, system)
 		}
-		if e.Ref.Kind == "" || e.Ref.ID == "" {
+		if e.Ref.Kind() == "" || e.Ref.ID() == "" {
 			return fmt.Errorf("reflection: entity %s has no kind or no id", e.Ref)
 		}
 	}
@@ -402,10 +402,10 @@ func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 		systems[p.System] = true
 	}
 	for _, e := range rn.Entities {
-		systems[e.Ref.System] = true
+		systems[e.Ref.System()] = true
 	}
 	out := map[entity.Ref]entity.Payload{}
-	for _, e := range rf.store.List(func(ref entity.Ref) bool { return systems[ref.System] }) {
+	for _, e := range rf.store.List(func(ref entity.Ref) bool { return systems[ref.System()] }) {
 		out[e.Ref] = e.Payload
 	}
 	return out

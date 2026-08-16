@@ -68,7 +68,7 @@ func TestCharterRoundTrip(t *testing.T) {
 				// without — though not key-for-key: `id: "*"` renders as the address `demo:pr`
 				// and comes back with the wildcard as an unset dimension, which is the same
 				// match (ParseExpr). So compare what it MATCHES.
-				probe := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+				probe := entity.RefAt("demo", "pr", "1")
 				if len(got.Condition.Subject) == 0 {
 					t.Errorf("the subject did not survive\n%s", b)
 				} else if got.Condition.Subject.MatchRef(probe) != want.Condition.Subject.MatchRef(probe) {

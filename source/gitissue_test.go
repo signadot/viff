@@ -112,7 +112,7 @@ func TestGitIssueReconcile(t *testing.T) {
 	}
 
 	get := func(kind, id string) entity.Obj {
-		e, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: kind, ID: id})
+		e, ok, _ := store.Get(entity.RefAt(source.GitIssueSystem, kind, id))
 		if !ok {
 			t.Fatalf("missing git-issue:%s:%s", kind, id)
 		}
@@ -144,7 +144,7 @@ func TestGitIssueReconcile(t *testing.T) {
 
 	// Multi-repo: B's issue is B's, and A's summary counts only A's two.
 	get("issue", "B/"+elsewhere)
-	if _, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: "issue", ID: "A/" + elsewhere}); ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitIssueSystem, "issue", "A/"+elsewhere)); ok {
 		t.Error("B's issue leaked into A")
 	}
 	if s := get("repo", "A"); s["open"] != int64(1) || s["closed"] != int64(1) || s["issues"] != int64(2) {
@@ -156,10 +156,10 @@ func TestGitIssueReconcile(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile after delete: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: "issue", ID: "A/" + shut}); ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitIssueSystem, "issue", "A/"+shut)); ok {
 		t.Error("a deleted issue ref must tombstone its entity")
 	}
-	if _, ok, _ := store.Get(entity.Ref{System: source.GitIssueSystem, Kind: "issue", ID: "B/" + elsewhere}); !ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitIssueSystem, "issue", "B/"+elsewhere)); !ok {
 		t.Error("A's reconcile tombstoned B's issue")
 	}
 }
@@ -189,7 +189,7 @@ func TestGitIssueCoversPerRepoEvenWhenEmpty(t *testing.T) {
 		}
 	}
 	// The summary is the one entity a tracker with no issues has.
-	if len(rn.Entities) != 1 || rn.Entities[0].Ref.Kind != "repo" {
+	if len(rn.Entities) != 1 || rn.Entities[0].Ref.Kind() != "repo" {
 		t.Fatalf("want just the repo summary, got %+v", rn.Entities)
 	}
 }
@@ -209,8 +209,8 @@ func TestGitIssueTargetedReconcile(t *testing.T) {
 	gi.AddRepo("B", dirB)
 
 	for _, ref := range []entity.Ref{
-		{System: source.GitIssueSystem, Kind: "repo", ID: "A"},
-		{System: source.GitIssueSystem, Kind: "issue", ID: "A/" + a},
+		entity.RefAt(source.GitIssueSystem, "repo", "A"),
+		entity.RefAt(source.GitIssueSystem, "issue", "A/"+a),
 	} {
 		got, rn := reflectIssues(t, gi, ref)
 		for name, p := range got {

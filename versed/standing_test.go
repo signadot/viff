@@ -37,7 +37,7 @@ func standing(name, area string) string {
 
 func pr(t *testing.T, srv *Server, id, area string) entity.Ref {
 	t.Helper()
-	ref := entity.Ref{System: "change", Kind: "pr", ID: id}
+	ref := entity.RefAt("change", "pr", id)
 	entitytest.Set(t, srv.Store, ref, entity.Obj{"area": area}.Payload())
 	return ref
 }
@@ -84,7 +84,7 @@ func TestAStandingBindingCoversWhatItSelects(t *testing.T) {
 		t.Fatalf("an infra PR is covered by %q", got.Name)
 	}
 	// A different kind entirely is untouched.
-	other := entity.Ref{System: "demo", Kind: "release", ID: "1"}
+	other := entity.RefAt("demo", "release", "1")
 	entitytest.Set(t, srv.Store, other, entity.Obj{"area": "payments"}.Payload())
 	if got, ok := resolver.Owner(srv.Store, other); ok {
 		t.Fatalf("a release is covered by %q", got.Name)
@@ -223,7 +223,7 @@ func waitOwner(t *testing.T, srv *Server, origin string) string {
 	t.Helper()
 	for range 400 {
 		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+			return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
 		}) {
 			p := entity.ToObj(ent.Payload)
 			if p["origin"] == origin && p["status"] == mirror.QuestionPending {
@@ -270,9 +270,9 @@ func instances(t *testing.T, srv *Server) map[string]map[string]any {
 	t.Helper()
 	out := map[string]map[string]any{}
 	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.System == resolver.System && ref.Kind == resolver.InstanceKind
+		return ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
 	}) {
-		out[ent.Ref.ID] = entity.ToObj(ent.Payload)
+		out[ent.Ref.ID()] = entity.ToObj(ent.Payload)
 	}
 	return out
 }
@@ -301,7 +301,7 @@ func TestAnInstanceFollowsItsOrigin(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	waitOwner(t, srv, "guard")
 	for range 2 {
-		entitytest.Set(t, srv.Store, entity.Ref{System: "change", Kind: "pr", ID: "1"},
+		entitytest.Set(t, srv.Store, entity.RefAt("change", "pr", "1"),
 			entity.Obj{"area": "payments", "touched": time.Now().UnixNano()}.Payload())
 	}
 	time.Sleep(150 * time.Millisecond)
@@ -358,7 +358,7 @@ func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
 	spawnFor(t, ts, "run-1", "change:pr:1", "")
 	waitQuestion(t, srv, "run-1")
 	ref := resolver.InstanceRef("payments-review", "run-1")
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID+"/position",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID()+"/position",
 		api.Position{Position: 9, Notes: "read this far"})
 	resp.Body.Close()
 
@@ -463,7 +463,7 @@ func TestRemovingTheLastBindingSendsAQuestionToTheDocket(t *testing.T) {
 
 	// A verdict from the removed binding loses on the ownership check that already exists —
 	// no new rule, and its instance is gone besides.
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.ID+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {

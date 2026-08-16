@@ -141,7 +141,7 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 			// finish without one — every element being a bare patch completes immediately — and
 			// then ev is the original triggering change, whose ref is the subject rather than a
 			// task. There is no task to hang it on in that case, so it stays traced.
-			if oc.ev.Ref.System == mirror.System && oc.ev.Ref.Kind == mirror.InstanceKind {
+			if oc.ev.Ref.System() == mirror.System && oc.ev.Ref.Kind() == mirror.InstanceKind {
 				e.recordHookFailure(oc.ev.Ref, hook, err)
 			}
 		}

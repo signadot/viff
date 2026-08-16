@@ -540,8 +540,8 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 // follow-on; this keeps the entity truthful.
 func (s *Server) reconcileTasks() {
 	var resumed []resumedRun
-	for _, ent := range s.Store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
-		if ent.Ref.Kind == mirror.RunKind {
+	for _, ent := range s.Store.List(func(r entity.Ref) bool { return r.System() == mirror.System }) {
+		if ent.Ref.Kind() == mirror.RunKind {
 			// A record of a run that HAPPENED, not a task that is running. Named explicitly
 			// for the reason the claim below is: it carries a `status` like an instance does,
 			// so nothing later would catch it, and reconcile would try to resume history —
@@ -549,7 +549,7 @@ func (s *Server) reconcileTasks() {
 			// of one that did not.
 			continue
 		}
-		if ent.Ref.Kind == mirror.ClaimKind {
+		if ent.Ref.Kind() == mirror.ClaimKind {
 			// A run claim, not a task. It is cleared below rather than here, and it is
 			// named explicitly so it is not merely skipped by accident (a claim carries no
 			// `status`, so it would fall through the check that follows).
@@ -573,12 +573,12 @@ func (s *Server) reconcileTasks() {
 			// runner ENTITY still existing, so removing one would orphan work that is running
 			// perfectly well — a deletion with an action at a distance, and the thing that
 			// would make step 1's `--leave` a lie.
-			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID); h != nil {
+			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID()); h != nil {
 				// re-attach: observe
 				// The binding its spawn named is read back off the entity rather than
 				// remembered: a resumed task must be watched by whoever was watching
 				// it, and the launch that said so is long gone.
-				s.reflect(s.Store, ent.Ref.ID, h, mirror.Meta{
+				s.reflect(s.Store, ent.Ref.ID(), h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
 					// provenance this does not hand back is provenance the resumed task
@@ -592,7 +592,7 @@ func (s *Server) reconcileTasks() {
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
-				s.Eng.AdoptChain(subject, ent.Ref.ID, chain, h)
+				s.Eng.AdoptChain(subject, ent.Ref.ID(), chain, h)
 				resumed = append(resumed, resumedRun{subject: subject, chain: chain})
 				continue
 			}
@@ -678,7 +678,7 @@ type resumedRun struct{ subject, chain string }
 // worth fixing when scoped resume is, since both are the same gap.
 func (s *Server) reconcileClaims(resumed []resumedRun) {
 	for _, ent := range s.Store.List(func(r entity.Ref) bool {
-		return r.System == mirror.System && r.Kind == mirror.ClaimKind
+		return r.System() == mirror.System && r.Kind() == mirror.ClaimKind
 	}) {
 		if claimIsLive(ent, resumed) {
 			continue
@@ -713,7 +713,7 @@ type storeContentReader struct {
 }
 
 func (c storeContentReader) ReadContent(path string) (string, bool, error) {
-	e, ok, err := c.store.Get(entity.Ref{System: source.FederationSystem, Kind: c.kind, ID: path})
+	e, ok, err := c.store.Get(entity.RefAt(source.FederationSystem, c.kind, path))
 	if err != nil {
 		return "", false, err
 	}
@@ -1480,7 +1480,7 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 func pendingQuestions(store entity.Store) []entity.Entity {
 	var out []entity.Entity
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
 	}) {
 		if p := entity.ToObj(ent.Payload); p != nil && p["status"] == mirror.QuestionPending {
 			out = append(out, ent)
@@ -1598,7 +1598,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 // finding it; the fields are what the checks below compare, and a check that re-derives its
 // inputs from a string is one that can disagree with what is stored.
 func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool) {
-	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
+	ref := entity.RefAt(resolver.System, resolver.InstanceKind, r.PathValue("id"))
 	e, found, err := s.scopedStore(r).Get(ref)
 	if err != nil || !found {
 		return "", entity.Ref{}, false
@@ -1610,14 +1610,14 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 	if err != nil {
 		return "", entity.Ref{}, false
 	}
-	return binding, origin, binding != "" && origin.ID != ""
+	return binding, origin, binding != "" && origin.ID() != ""
 }
 
 // watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
 // stored beside it: a run's fine grain hangs off the spine, and which one you are reading is
 // a property of what you are watching rather than a flag that could disagree with it.
 func watchesARun(origin entity.Ref) bool {
-	return origin.System == mirror.System && origin.Kind == mirror.InstanceKind
+	return origin.System() == mirror.System && origin.Kind() == mirror.InstanceKind
 }
 
 // resolverEvents hands a resolver the stream of the run it watches — the task's OWN read
@@ -1640,7 +1640,7 @@ func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
 	// so a resolver over a local run and one over a brokered run read through one path. The
 	// task route splits only because it forwards to the runtime's own mount, and a
 	// resolver is not asking that route's question.
-	s.streamEvents(w, r, origin.ID)
+	s.streamEvents(w, r, origin.ID())
 }
 
 // streamSpine serves the commits that touched one subject, from `?since=<revision>`.
@@ -1751,10 +1751,10 @@ func spineCarries(ev entity.Event, subject entity.Ref) bool {
 	// polled for: a transfer writes the question, and the layer above is reading here. The
 	// design says the question "appears in the stream of the layer above" and that there is
 	// no second path anywhere, `⊤` included.
-	if ev.Ref.System == mirror.QuestionSystem && ev.Ref.Kind == mirror.QuestionKind {
+	if ev.Ref.System() == mirror.QuestionSystem && ev.Ref.Kind() == mirror.QuestionKind {
 		return entity.Str(ev.To, "subject") == subject.String()
 	}
-	if ev.Ref.System != mirror.System || ev.Ref.Kind != "instance" {
+	if ev.Ref.System() != mirror.System || ev.Ref.Kind() != "instance" {
 		return false
 	}
 	return entity.Str(ev.To, "flow") == subject.String()
@@ -1810,7 +1810,7 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	// task holds it.
 	var taskID string
 	if watchesARun(origin) {
-		taskID = origin.ID
+		taskID = origin.ID()
 	}
 	s.answerQuestion(w, r, api.Resolve{
 		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
@@ -1945,7 +1945,7 @@ func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
 		return false
 	}
 	if watchesARun(origin) {
-		return q["task"] == origin.ID
+		return q["task"] == origin.ID()
 	}
 	return q["subject"] == origin.String()
 }
@@ -1967,7 +1967,7 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 	if p.Notes != "" {
 		rec["notes"] = p.Notes
 	}
-	ref := entity.Ref{System: resolver.System, Kind: resolver.InstanceKind, ID: r.PathValue("id")}
+	ref := entity.RefAt(resolver.System, resolver.InstanceKind, r.PathValue("id"))
 	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2081,7 +2081,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 		// Bindings only. An instance shares the system deliberately — one `--system
 		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
-		return ref.System == resolver.System && ref.Kind != resolver.InstanceKind
+		return ref.System() == resolver.System && ref.Kind() != resolver.InstanceKind
 	}) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -2216,7 +2216,7 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System == resolver.System && ref.Kind == resolver.InstanceKind
+		return ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
 	}) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
@@ -2554,15 +2554,15 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 	}
 	out := make([]task.Instance, 0)
 	for _, ent := range store.List(func(r entity.Ref) bool {
-		return r.System == mirror.System && r.Kind == mirror.InstanceKind
+		return r.System() == mirror.System && r.Kind() == mirror.InstanceKind
 	}) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
 		}
-		inst, ok := live[ent.Ref.ID]
+		inst, ok := live[ent.Ref.ID()]
 		if !ok {
-			inst = instanceFromRecord(ent.Ref.ID, rec)
+			inst = instanceFromRecord(ent.Ref.ID(), rec)
 		}
 		// Where it ran is the RECORD's to say, not the runtime's: the runtime knows it hosts
 		// the task, and the record knows which installed runner that is and what the
@@ -2622,9 +2622,9 @@ func instanceFromRecord(id string, rec map[string]any) task.Instance {
 func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	ids := map[string]bool{}
 	for _, e := range store.List(func(ref entity.Ref) bool {
-		return ref.System == mirror.System && ref.Kind == "instance"
+		return ref.System() == mirror.System && ref.Kind() == "instance"
 	}) {
-		ids[e.Ref.ID] = true
+		ids[e.Ref.ID()] = true
 	}
 	return ids
 }

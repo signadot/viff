@@ -126,13 +126,13 @@ func (g *Git) Owns() []Own {
 // HeadRef is the ref that targets one repo: a reconcile of it reconciles that repo, since a
 // per-repo pass is content-addressed and subsumes finer targeting. It is what a hint names.
 func HeadRef(id string) entity.Ref {
-	return entity.Ref{System: GitSystem, Kind: "head", ID: id}
+	return entity.RefAt(GitSystem, "head", id)
 }
 
 // HeadRef is the same ref in THIS source's system, which is what a hook this source installs
 // has to name: a hint at `git:head:x` reaches nothing when the source writes `mirror:head:x`.
 func (g *Git) HeadRef(id string) entity.Ref {
-	return entity.Ref{System: g.system, Kind: "head", ID: id}
+	return entity.RefAt(g.system, "head", id)
 }
 
 // hookMarker identifies the hook verse installs, so we only ever overwrite/remove our own.
@@ -236,12 +236,12 @@ func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 // single repo the ref belongs to (its id is the git:head:<repo> id, or the leading segment of
 // a git:ref:<repo>/<name> id).
 func (g *Git) targets(ref entity.Ref) map[string]repo {
-	if ref.System != g.system || ref.ID == "" {
+	if ref.System() != g.system || ref.ID() == "" {
 		return g.repos.all()
 	}
-	id := ref.ID
-	if ref.Kind == "ref" {
-		id, _, _ = strings.Cut(ref.ID, "/") // <repo>/<name>
+	id := ref.ID()
+	if ref.Kind() == "ref" {
+		id, _, _ = strings.Cut(ref.ID(), "/") // <repo>/<name>
 	}
 	if r, ok := g.repos.get(id); ok {
 		return map[string]repo{id: r}
@@ -289,14 +289,14 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	sort.Strings(names)
 	for _, name := range names {
 		r := refs[name]
-		rn.Add(entity.Ref{System: g.system, Kind: "ref", ID: id + "/" + name},
+		rn.Add(entity.RefAt(g.system, "ref", id+"/"+name),
 			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ})
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
 	if head := gitHead(ctx, dir); head != nil {
 		head["repo"] = id
-		rn.Add(entity.Ref{System: g.system, Kind: "head", ID: id}, head)
+		rn.Add(entity.RefAt(g.system, "head", id), head)
 	}
 
 	// Recent commits: a bounded tip window. Scoped per-repo (git:commit:<repo>/<sha>) — a
@@ -310,7 +310,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		if len(c.trailers) > 0 {
 			p["trailers"] = c.trailers
 		}
-		rn.Add(entity.Ref{System: g.system, Kind: "commit", ID: id + "/" + c.sha}, p)
+		rn.Add(entity.RefAt(g.system, "commit", id+"/"+c.sha), p)
 	}
 	return rn, nil
 }

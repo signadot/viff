@@ -54,7 +54,7 @@ func TestReflectionIsTheSameAcrossBothTransports(t *testing.T) {
 
 	// And a targeted ref, since that is a parameter the transport has to carry rather than a
 	// value it merely echoes: a ref lost on the way would answer for the whole source.
-	one, err := serve(t, g).Reflect(ctx, entity.Ref{System: source.GitSystem, Kind: "head", ID: "A"})
+	one, err := serve(t, g).Reflect(ctx, entity.RefAt(source.GitSystem, "head", "A"))
 	if err != nil {
 		t.Fatalf("targeted reflect over http: %v", err)
 	}
@@ -111,7 +111,7 @@ func (e erroring) Reflect(context.Context, entity.Ref) (source.Reflection, error
 func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 	ctx := context.Background()
 	store := newStore(t)
-	standing := entity.Ref{System: "x", Kind: "a", ID: "1"}
+	standing := entity.RefAt("x", "a", "1")
 
 	// Something the source reflected earlier, standing in the store.
 	ok := &fakeSource{system: "x", answer: func() source.Reflection {

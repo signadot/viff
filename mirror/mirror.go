@@ -32,7 +32,7 @@ const System = "task"
 const InstanceKind = "instance"
 
 // Ref is the entity that mirrors task id.
-func Ref(id string) entity.Ref { return entity.Ref{System: System, Kind: InstanceKind, ID: id} }
+func Ref(id string) entity.Ref { return entity.RefAt(System, InstanceKind, id) }
 
 // RunKind is the kind ONE RUN lives under, as against the id's latest state.
 //
@@ -49,7 +49,7 @@ const RunKind = "run"
 
 // RunRef addresses one run: the task's id and the revision that run is about.
 func RunRef(id string, occurrence int64) entity.Ref {
-	return entity.Ref{System: System, Kind: RunKind, ID: id + "@" + strconv.FormatInt(occurrence, 10)}
+	return entity.RefAt(System, RunKind, id+"@"+strconv.FormatInt(occurrence, 10))
 }
 
 // writeRun records this run at its own address — at creation, so a run that never finishes
@@ -472,12 +472,13 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 	if binding == "" || name == "" {
 		return
 	}
-	ref := entity.Ref{System: resolverSystem, Kind: resolverInstance, ID: name + "@" + origin.ID}
-	if origin.System != System {
+	id := name + "@" + origin.ID()
+	if origin.System() != System {
 		// A subject's id may not be unique across systems the way a task id is, so its
 		// address carries the whole ref.
-		ref.ID = name + "@" + origin.String()
+		id = name + "@" + origin.String()
 	}
+	ref := entity.RefAt(resolverSystem, resolverInstance, id)
 	_, _, _ = store.Write(entity.Write{
 		At: ref.At(),
 		Value: entity.Obj{
@@ -618,4 +619,4 @@ const ClaimKind = "claim"
 
 // ClaimRef is the entity a run is claimed at. The id is the spawn id, so the claim and the
 // task it guards share one address — there is nothing to keep in step.
-func ClaimRef(id string) entity.Ref { return entity.Ref{System: System, Kind: ClaimKind, ID: id} }
+func ClaimRef(id string) entity.Ref { return entity.RefAt(System, ClaimKind, id) }

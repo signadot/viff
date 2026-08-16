@@ -313,7 +313,7 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "gh", Kind: "issue", ID: "1"}
+	ref := entity.RefAt("gh", "issue", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"n": 1}.Payload())
 	derived := waitDerived(t, store, "signadot", "feature")
 	obj := entity.ToObj(derived.Payload)
@@ -403,12 +403,12 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "gh", Kind: "issue", ID: "1"},
+	entitytest.Set(t, store, entity.RefAt("gh", "issue", "1"),
 		entity.Obj{"state": "open"}.Payload())
 	deadline := time.After(3 * time.Second)
 	for {
 		for _, e := range store.List(func(r entity.Ref) bool {
-			return r.System == "signadot" && r.Kind == "feature"
+			return r.System() == "signadot" && r.Kind() == "feature"
 		}) {
 			if entity.ToObj(e.Payload)["urgent"] == true {
 				return
@@ -452,7 +452,7 @@ func TestDeriveFiresAndCrossesTheLevel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "gh", Kind: "issue", ID: "1"}, entity.Obj{"label": "urgent"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("gh", "issue", "1"), entity.Obj{"label": "urgent"}.Payload())
 
 	derived := waitDerived(t, store, "signadot", "feature")
 	obj := entity.ToObj(derived.Payload)
@@ -490,12 +490,12 @@ func TestDeriveIsIdempotentPerSubject(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "gh", Kind: "issue", ID: "1"}
+	ref := entity.RefAt("gh", "issue", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"n": 1}.Payload())
 	waitDerived(t, store, "signadot", "feature")
 	// Change the subject again: the same rule about the same subject writes the same address.
 	entitytest.Set(t, store, ref, entity.Obj{"n": 2}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "gh", Kind: "issue", ID: "2"}, entity.Obj{"n": 1}.Payload())
+	entitytest.Set(t, store, entity.RefAt("gh", "issue", "2"), entity.Obj{"n": 1}.Payload())
 	waitCount(t, store, "signadot", "feature", 2)
 }
 
@@ -694,7 +694,7 @@ func waitDerived(t *testing.T, s entity.Store, system, kind string) entity.Entit
 	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {
-		ents := s.List(func(r entity.Ref) bool { return r.System == system && r.Kind == kind })
+		ents := s.List(func(r entity.Ref) bool { return r.System() == system && r.Kind() == kind })
 		if len(ents) > 0 {
 			return ents[0]
 		}
@@ -710,7 +710,7 @@ func waitCount(t *testing.T, s entity.Store, system, kind string, want int) {
 	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {
-		ents := s.List(func(r entity.Ref) bool { return r.System == system && r.Kind == kind })
+		ents := s.List(func(r entity.Ref) bool { return r.System() == system && r.Kind() == kind })
 		if len(ents) == want {
 			return
 		}
@@ -805,7 +805,7 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "gh", Kind: "issue", ID: "1"}, entity.Obj{"stage": "a"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("gh", "issue", "1"), entity.Obj{"stage": "a"}.Payload())
 	derived := waitDerived(t, store, "signadot", "feature")
 	waitStage(t, store, derived.Ref, "awaiting-approval")
 
@@ -830,7 +830,7 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 // bindingFor publishes them as keys. Forgetting that does not error: `$subject.id` substitutes
 // the bare key and leaves the text "demo:pr:1.id", which is why this is pinned.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
-	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.Ref{System: "demo", Kind: "pr", ID: "1"})
+	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.RefAt("demo", "pr", "1"))
 	spec := launch.Spec{Prompt: "review $subject.id in $subject.system ($subject) at $stage"}
 	got := spec.Bind(b).Prompt
 	if want := "review 1 in demo (demo:pr:1) at open"; got != want {
@@ -842,7 +842,7 @@ func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 // what keeps every charter written before the record existed meaning what it meant.
 func TestSubjectPartsResolveInAPatch(t *testing.T) {
 	root := refRoot(entity.Obj{"stage": "open"}.Payload(),
-		subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "7"}, entity.Obj{"stage": "open"}.Payload(), 42))
+		subjectNode(entity.RefAt("demo", "pr", "7"), entity.Obj{"stage": "open"}.Payload(), 42))
 	for ref, want := range map[string]string{
 		"$subject":             "demo:pr:7",
 		"$subject.ref":         "demo:pr:7",
@@ -887,7 +887,7 @@ func TestSubjectValueReadsAtTheCausingCommit(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	// Let the firing reach its gate, then move the subject on underneath it.
 	time.Sleep(150 * time.Millisecond)

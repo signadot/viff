@@ -156,7 +156,7 @@ func stringsNode(ss []string) *ir.Node {
 // the other let `verse docket` name the doorbell (and name nothing at all on a replay, where
 // a level-triggered firing has no dispatching event to speak of).
 func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, subject entity.Ref) *motion {
-	f = f.bind(channel.ID)
+	f = f.bind(channel.ID())
 	m := &motion{
 		channel: channel, subject: subject.String(), axis: "whether",
 		trigger: t.Name, gate: gname,
@@ -198,7 +198,7 @@ func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref
 		m.options = append(m.options, motionOption{
 			id: opt, need: need, choice: opt,
 			grant: f.Grant, tools: f.Tools,
-			formula: quorumFormula(channel.ID, opt, need),
+			formula: quorumFormula(channel.ID(), opt, need),
 		})
 	}
 	if p.Within != "" {

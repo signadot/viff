@@ -21,7 +21,7 @@ func prs(t *testing.T, store entity.Store, stage string, ids ...string) []entity
 	t.Helper()
 	out := make([]entity.Ref, 0, len(ids))
 	for _, id := range ids {
-		ref := entity.Ref{System: "demo", Kind: "pr", ID: id}
+		ref := entity.RefAt("demo", "pr", id)
 		entitytest.Set(t, store, ref, entity.Obj{"stage": stage}.Payload())
 		out = append(out, ref)
 	}
@@ -52,13 +52,13 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	eng.Start(ctx)
 
 	// ONE change, about nothing in particular — the fan-out comes from the Subject.
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 
 	for _, ref := range reviewed {
 		waitStage(t, store, ref, "shipped")
 	}
 	// The non-matching PR is untouched: the Subject selected a set, not everything.
-	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "4"}); entity.ToObj(e.Payload)["stage"] != "open" {
+	if e, _, _ := store.Get(entity.RefAt("demo", "pr", "4")); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("an unselected entity was acted on: %#v", e.Payload)
 	}
 	// Budget metering is per entity acted on, so three members cost at least three. It can
@@ -104,7 +104,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 
 	seen := map[string]string{} // subject -> task
 	ids := map[string]bool{}
@@ -168,7 +168,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ci := entity.Ref{System: "ci", Kind: "status", ID: "build"}
+	ci := entity.RefAt("ci", "status", "build")
 	entitytest.Set(t, store, ci, entity.Obj{"state": "green"}.Payload())
 	eventuallyN(t, "2 spawns", func() bool { return spawns.Load() == 2 })
 
@@ -212,12 +212,12 @@ func TestFanOutActsOnEveryMemberWithoutTripping(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 
 	eventuallyN(t, "all 10 members to advance", func() bool {
 		shipped := 0
 		for _, id := range ids {
-			if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: id}); entity.ToObj(e.Payload)["stage"] == "shipped" {
+			if e, _, _ := store.Get(entity.RefAt("demo", "pr", id)); entity.ToObj(e.Payload)["stage"] == "shipped" {
 				shipped++
 			}
 		}
@@ -254,7 +254,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 	time.Sleep(250 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired %d times over an empty subject set", f)
@@ -306,10 +306,10 @@ func TestEachSubjectRaisesItsOwnGate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 
 	for _, id := range []string{"1", "2", "3"} {
-		waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: id}, "shipped")
+		waitStage(t, store, entity.RefAt("demo", "pr", id), "shipped")
 	}
 	// Each question names the one subject it decides about, and no question names a set.
 	subjects := map[string]bool{}
@@ -370,13 +370,13 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 
 	for _, ref := range open {
 		waitStage(t, store, ref, "shipped")
 	}
 	// And no entity called "*" was conjured by the action's `set`.
-	if e, ok, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "*"}); ok {
+	if e, ok, _ := store.Get(entity.RefAt("demo", "pr", "*")); ok {
 		t.Fatalf("the glob was named instead of selected: created demo:pr:* = %#v", e.Payload)
 	}
 }
@@ -400,11 +400,11 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
 
-	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}, "shipped")
-	waitStage(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-2"}, "shipped")
-	if e, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "feature-9"}); entity.ToObj(e.Payload)["stage"] != "open" {
+	waitStage(t, store, entity.RefAt("demo", "pr", "hotfix-1"), "shipped")
+	waitStage(t, store, entity.RefAt("demo", "pr", "hotfix-2"), "shipped")
+	if e, _, _ := store.Get(entity.RefAt("demo", "pr", "feature-9")); entity.ToObj(e.Payload)["stage"] != "open" {
 		t.Fatalf("the glob overreached beyond its family: %#v", e.Payload)
 	}
 }
@@ -428,8 +428,8 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
-	waitStage(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "noted")
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
+	waitStage(t, store, entity.RefAt("audit", "record", "latest"), "noted")
 }
 
 // A subject selects what its pattern names and nothing else — including when the change that
@@ -442,7 +442,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 // the charter never named it.
 func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	store := entitytest.Store(t)
-	other := entity.Ref{System: "other", Kind: "thing", ID: "1"}
+	other := entity.RefAt("other", "thing", "1")
 	entitytest.Set(t, store, other, entity.Obj{"stage": "x"}.Payload())
 
 	eng := New(store, task.AutoResolver{})
@@ -461,7 +461,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed task whose payload names `other` — which the subject does not select.
-	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "rev-1"},
+	entitytest.Set(t, store, entity.RefAt("task", "instance", "rev-1"),
 		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
@@ -477,8 +477,8 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 // two schemes that merely look alike. A firing is one subject now, so there is one id.
 func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 	refs := []entity.Ref{
-		{System: "demo", Kind: "pr", ID: "1"},
-		{System: "demo", Kind: "pr", ID: "path/with/slashes"}, // safeSeg rewrites → hashed
+		entity.RefAt("demo", "pr", "1"),
+		entity.RefAt("demo", "pr", "path/with/slashes"), // safeSeg rewrites → hashed
 	}
 	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Driver: "scripted"}}}
 

@@ -36,7 +36,7 @@ func TestStartRestoresTheCharter(t *testing.T) {
 		t.Fatalf("charter after restart = %v; want the rule the first server was given", got)
 	}
 	// And it is a live rule, not just a listed one: the restored charter observes.
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	deadline := time.After(2 * time.Second)
 	for {

@@ -14,7 +14,7 @@ import (
 // spawning action inside its trigger. Parsing it back is what a flow view (and, later, a
 // resume that re-derives hooks) needs, so the form has to survive kpath.Parse unquoted.
 func TestChainIsAKPath(t *testing.T) {
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	for _, chain := range []string{"review", "review.onDone", "review.onDone.onFailed"} {
 		id := spawnID(chain, ref)
 		got, rest, ok := chainOf(id)
@@ -64,9 +64,9 @@ func TestChainPrefixMatching(t *testing.T) {
 func TestSpawnIDIsPasteSafe(t *testing.T) {
 	const globs = `*?[]{}()~!$&;'"<>|` + "`\\"
 	ids := []string{
-		spawnID("review", entity.Ref{System: "demo", Kind: "pr", ID: "1"}),
-		spawnID("review.onDone.onFailed", entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}),
-		spawnID("review", entity.Ref{System: "local", Kind: "file", ID: "a/b c"}),
+		spawnID("review", entity.RefAt("demo", "pr", "1")),
+		spawnID("review.onDone.onFailed", entity.RefAt("demo", "pr", "hotfix-1")),
+		spawnID("review", entity.RefAt("local", "file", "a/b c")),
 	}
 	for _, id := range ids {
 		if i := strings.IndexAny(id, globs); i >= 0 {
@@ -135,7 +135,7 @@ func TestTriggerNameValidation(t *testing.T) {
 // could not be split back into (chain, ref), because the trigger name and the ref both
 // spend '-'. The '@' boundary fixes it, and this is the regression.
 func TestDashInTriggerNameStillDecodes(t *testing.T) {
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "hotfix-1"}
+	ref := entity.RefAt("demo", "pr", "hotfix-1")
 	id := spawnID("ship-reviewed", ref)
 	chain, rest, ok := chainOf(id)
 	if !ok || chain != "ship-reviewed" || rest != ref.String() {

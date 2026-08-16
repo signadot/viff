@@ -194,7 +194,7 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "review@demo:pr:2"},
+	entitytest.Set(t, store, entity.RefAt("task", "instance", "review@demo:pr:2"),
 		entity.Obj{"status": "running", "flow": "demo:pr:2", "chain": "review", "trigger": "review"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:2")
@@ -217,7 +217,7 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "run-abc"},
+	entitytest.Set(t, store, entity.RefAt("task", "instance", "run-abc"),
 		entity.Obj{"status": "running", "flow": "demo:pr:3", "prompt": "poke at it"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:3")
@@ -235,7 +235,7 @@ func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "gone@demo:pr:4"},
+	entitytest.Set(t, store, entity.RefAt("task", "instance", "gone@demo:pr:4"),
 		entity.Obj{"status": "done", "flow": "demo:pr:4", "chain": "gone", "trigger": "gone"}.Payload())
 
 	tree := onlyTree(t, eng, "demo:pr:4")
@@ -254,7 +254,7 @@ func TestFlowTreeAddressing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 	for _, id := range []string{"1", "2"} {
-		entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "review@demo:pr:" + id},
+		entitytest.Set(t, store, entity.RefAt("task", "instance", "review@demo:pr:"+id),
 			entity.Obj{"status": "done", "flow": "demo:pr:" + id, "chain": "review", "trigger": "review"}.Payload())
 	}
 	m, _ := ParseExpr("demo:pr:*")

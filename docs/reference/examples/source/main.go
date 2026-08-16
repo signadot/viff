@@ -106,7 +106,7 @@ func (d *demo) Owns() []source.Own { return d.git.Owns() }
 //	        Predicate: entity.Obj{"project": project}.Payload(),   // say what you are complete FOR
 //	    }}}
 //	    for _, i := range issues {
-//	        rn.Add(entity.Ref{System: "linear", Kind: "issue", ID: i.ID},
+//	        rn.Add(entity.RefAt("linear", "issue", i.ID),
 //	            entity.Obj{"project": project, "title": i.Title, "stage": i.State})
 //	    }
 //	    return rn, nil

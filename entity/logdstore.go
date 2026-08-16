@@ -258,7 +258,7 @@ func (s *LogdStore) refPath(ref Ref) string {
 // rootFor picks the top-level segment a ref renders under: MountRoot for a
 // controller-mounted (historyless) slice, this store's root otherwise.
 func (s *LogdStore) rootFor(ref Ref) string {
-	if IsMountOwned(ref.System, ref.Kind) {
+	if IsMountOwned(ref.System(), ref.Kind()) {
 		return seg(MountRoot)
 	}
 	return seg(s.root)
@@ -482,15 +482,15 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 // been written, or an entity genuinely holding null. Everything else is already settled by
 // not_found, so the ordinary read still costs one round trip.
 func (s *LogdStore) keyStands(ctx context.Context, ref Ref) (bool, error) {
-	parent := s.rootFor(ref) + "." + seg(ref.System) + "." + seg(ref.Kind)
-	node, err := s.sess.MatchPattern(ctx, parent, ir.FromMap(map[string]*ir.Node{ref.ID: ir.Null()}))
+	parent := s.rootFor(ref) + "." + seg(ref.System()) + "." + seg(ref.Kind())
+	node, err := s.sess.MatchPattern(ctx, parent, ir.FromMap(map[string]*ir.Node{ref.ID(): ir.Null()}))
 	if isNotFound(err) {
 		return false, nil // no slice to hold the key
 	}
 	if err != nil {
 		return false, err
 	}
-	return childByKey(node, ref.ID) != nil, nil
+	return childByKey(node, ref.ID()) != nil, nil
 }
 
 // isNotFound reports whether a read error is the substrate saying "nothing stands there"
@@ -694,7 +694,7 @@ func nestPattern(root patTree, at Path, pattern Payload) {
 // log), which is why the tail may be short rather than invalid.
 func (p Path) segments() []string {
 	out := make([]string, 0, 3+len(p.Field))
-	for _, seg := range append([]string{p.System, p.Kind, p.ID}, p.Field...) {
+	for _, seg := range append([]string{p.System(), p.Kind(), p.ID()}, p.Field...) {
 		if seg == "" {
 			return out
 		}
@@ -1498,7 +1498,7 @@ func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
 // not stand there — which is a MISSING KEY, not a null value: the document is materialized, so
 // an entity holding null is present and answers with null.
 func payloadIn(doc *ir.Node, root string, ref Ref) Payload {
-	n := childByKey(childByKey(childByKey(childByKey(doc, root), ref.System), ref.Kind), ref.ID)
+	n := childByKey(childByKey(childByKey(childByKey(doc, root), ref.System()), ref.Kind()), ref.ID())
 	if n == nil {
 		return nil
 	}

@@ -44,7 +44,7 @@ func TestCausalDepthClimbsWithEachHop(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	_, external, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{"stage": "a"}.Payload()})
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +139,7 @@ func TestRefusedWriteRecordsNothing(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	w := eng.caused("claimer", 0)
 
-	claim := entity.Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}
+	claim := entity.RefAt("run", "claim", "review@demo:pr:1")
 	won, rev, err := w.Write(entity.Write{
 		At: claim.At(), Value: entity.Obj{"by": "first"}.Payload(), When: []entity.Require{entity.Created()},
 	})
@@ -226,7 +226,7 @@ func TestRunawayCycleStopsAtTheTriggerCount(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{"stage": "a"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestPacedCycleNeverTrips(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{"stage": "a"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestBurstOfExternalWritesDoesNotTrip(t *testing.T) {
 
 	const n = 30 // 30× the cap of 1: a depth-counting bug that counted firings would trip here
 	for i := 0; i < n; i++ {
-		ref := entity.Ref{System: "demo", Kind: "pr", ID: strconv.Itoa(i)}
+		ref := entity.RefAt("demo", "pr", strconv.Itoa(i))
 		if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{"stage": "new"}.Payload()}); err != nil {
 			t.Fatal(err)
 		}
@@ -337,7 +337,7 @@ func TestBurstOfExternalWritesDoesNotTrip(t *testing.T) {
 	for {
 		done := 0
 		for i := 0; i < n; i++ {
-			got, _, _ := store.Get(entity.Ref{System: "demo", Kind: "pr", ID: strconv.Itoa(i)})
+			got, _, _ := store.Get(entity.RefAt("demo", "pr", strconv.Itoa(i)))
 			if entity.Str(got.Payload, "stage") == "seen" {
 				done++
 			}
@@ -426,7 +426,7 @@ func TestTripReportsTheCycleByName(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{"stage": "a"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
@@ -548,7 +548,7 @@ func TestTrippedChainIsPacedNotStopped(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{"stage": "a"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestTrippedChainIsPacedNotStopped(t *testing.T) {
 // firing is now correct, so the held one is stale and must not land on top of it.
 func TestPacedFiringAbortsWhenTheSubjectMoves(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	subj := entity.RefAt("demo", "pr", "1")
 
 	// It waits the full D when nothing disturbs it.
 	start := time.Now()
@@ -620,7 +620,7 @@ func TestPacedFiringAbortsWhenTheSubjectMoves(t *testing.T) {
 	// A write to something else leaves it waiting.
 	go func() { done <- eng.pauseFor(context.Background(), subj, 120*time.Millisecond) }()
 	time.Sleep(30 * time.Millisecond)
-	eng.subjectMoved(entity.Ref{System: "demo", Kind: "pr", ID: "other"})
+	eng.subjectMoved(entity.RefAt("demo", "pr", "other"))
 	if proceed := <-done; !proceed {
 		t.Error("a write to a DIFFERENT entity aborted the wait; the chain is per subject")
 	}

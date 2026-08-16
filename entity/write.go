@@ -51,7 +51,7 @@ func (p Path) String() string {
 // which is why it exists beside String — String picks the spelling a reader expects for the
 // depth, and this one picks the grammar the wire takes.
 func (p Path) KPath() string {
-	out := seg(p.System) + "." + seg(p.Kind) + "." + seg(p.ID)
+	out := seg(p.System()) + "." + seg(p.Kind()) + "." + seg(p.ID())
 	for _, f := range p.Field {
 		out += "." + seg(f)
 	}
@@ -256,7 +256,7 @@ const irTypeTag = "!irtype"
 
 // path resolves a Require's target: its own At, or the write's when it has none.
 func (r Require) path(of Write) Path {
-	if r.At.System == "" && r.At.Kind == "" && r.At.ID == "" && len(r.At.Field) == 0 {
+	if r.At.System() == "" && r.At.Kind() == "" && r.At.ID() == "" && len(r.At.Field) == 0 {
 		return of.At
 	}
 	return r.At

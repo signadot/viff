@@ -123,7 +123,7 @@ func statusOf(t *testing.T, dir, xidr string) string {
 	}
 	var found []entity.Obj
 	for _, e := range rn.Entities {
-		if e.Ref.Kind == "issue" && strings.Contains(e.Ref.ID, xidr) {
+		if e.Ref.Kind() == "issue" && strings.Contains(e.Ref.ID(), xidr) {
 			found = append(found, entity.ToObj(e.Payload))
 		}
 	}

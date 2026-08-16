@@ -263,8 +263,8 @@ func (m Match) FieldString(key string) string {
 // publishes a fact nothing has written before. A glob in any segment makes it a selection
 // over what exists instead, so it can only ever act on entities that are really there.
 func (m Match) Names() (entity.Ref, bool) {
-	r := entity.Ref{System: m.System(), Kind: m.Kind(), ID: m.ID()}
-	if r.System == "" || r.Kind == "" || r.ID == "" {
+	r := entity.RefAt(m.System(), m.Kind(), m.ID())
+	if r.System() == "" || r.Kind() == "" || r.ID() == "" {
 		return entity.Ref{}, false
 	}
 	// A PAYLOAD PREDICATE makes it a selection, whatever the three segments say. Naming is by
@@ -291,7 +291,7 @@ func (m Match) Names() (entity.Ref, bool) {
 			return entity.Ref{}, false
 		}
 	}
-	if strings.ContainsRune(r.System+r.Kind+r.ID, '*') {
+	if strings.ContainsRune(r.System()+r.Kind()+r.ID(), '*') {
 		return entity.Ref{}, false
 	}
 	return r, true
@@ -316,7 +316,7 @@ func (m Match) MatchEvent(ev entity.Event) bool {
 	if err != nil {
 		return false
 	}
-	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID)
+	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID())
 }
 
 // Select returns the refs of every stored entity the match picks — the SET face, used to
@@ -354,7 +354,7 @@ func (m Match) Select(r entity.Reader) []entity.Ref {
 	if m.hasDim(mKeyID) {
 		kept := refs[:0]
 		for _, r := range refs {
-			if m.matchID(r.ID) {
+			if m.matchID(r.ID()) {
 				kept = append(kept, r)
 			}
 		}
@@ -540,13 +540,13 @@ func present(n *ir.Node) (*ir.Node, bool) { return n, n != nil }
 // is a ref string. `value` is not consulted here: a caller wanting a payload predicate must
 // read the entity and use MatchEvent.
 func (m Match) MatchRef(ref entity.Ref) bool {
-	if s := m.System(); s != "" && s != ref.System {
+	if s := m.System(); s != "" && s != ref.System() {
 		return false
 	}
-	if k := m.Kind(); k != "" && k != ref.Kind {
+	if k := m.Kind(); k != "" && k != ref.Kind() {
 		return false
 	}
-	return m.matchID(ref.ID)
+	return m.matchID(ref.ID())
 }
 
 // ParseExpr parses an entity-address expression into a Match — the ONE string surface for

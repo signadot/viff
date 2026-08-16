@@ -73,7 +73,7 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 // The point of the feature: a charter can COPY state it does not own.
 func TestReadCopiesAnotherEntity(t *testing.T) {
 	eng, store := newEng(t)
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "abc"),
 		entity.Obj{"branch": "main", "clean": true}.Payload())
 	if err := eng.AddTrigger(Trigger{
 		Name:      "copy",
@@ -91,7 +91,7 @@ func TestReadCopiesAnotherEntity(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open", "head": "abc"}.Payload())
 	waitStage(t, store, ref, "read")
 	got, _, _ := store.Get(ref)
@@ -119,7 +119,7 @@ func TestReadOfSomethingAbsentFailsTheFiring(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	time.Sleep(400 * time.Millisecond)
 	got, _, _ := store.Get(ref)
@@ -136,7 +136,7 @@ func TestReadAnswersAtTheCausingCommit(t *testing.T) {
 	store := entitytest.Store(t)
 	release := make(chan struct{})
 	eng := New(store, blockingResolver{release: release})
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "abc"),
 		entity.Obj{"branch": "main"}.Payload())
 	if err := eng.AddTrigger(Trigger{
 		Name:      "gated-read",
@@ -153,10 +153,10 @@ func TestReadAnswersAtTheCausingCommit(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	time.Sleep(150 * time.Millisecond) // let it reach the gate
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "abc"),
 		entity.Obj{"branch": "moved-on"}.Payload())
 	time.Sleep(100 * time.Millisecond)
 	close(release)
@@ -254,7 +254,7 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 	counting := &countingStore{Store: store}
 	eng := New(counting, task.AutoResolver{})
 	for _, id := range []string{"a", "b", "c"} {
-		entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: id}, entity.Obj{"n": id}.Payload())
+		entitytest.Set(t, store, entity.RefAt("git", "repo", id), entity.Obj{"n": id}.Payload())
 	}
 	oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}}
 	patch := entity.Obj{
@@ -262,7 +262,7 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 		"b": get("git:repo:b"),
 		"c": get("git:repo:c"),
 	}.Payload()
-	out, err := expandPatch(patch, refRoot(nil, subjectNode(entity.Ref{System: "demo", Kind: "pr", ID: "1"}, nil, 0)),
+	out, err := expandPatch(patch, refRoot(nil, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0)),
 		eng.readerFor(oc))
 	if err != nil {
 		t.Fatalf("expanding three reads: %v", err)
@@ -302,7 +302,7 @@ func (c *countingStore) asOf() int {
 // and `path:` continues it.
 func TestGetPathReachesIntoThePayload(t *testing.T) {
 	eng, store := newEng(t)
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "abc"),
 		entity.Obj{"branch": "main", "meta": entity.Obj{"tags": []any{"v1", "v2"}}}.Payload())
 	if err := eng.AddTrigger(Trigger{
 		Name:      "deep",
@@ -318,7 +318,7 @@ func TestGetPathReachesIntoThePayload(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "read")
 	got, _, _ := store.Get(ref)
@@ -336,10 +336,10 @@ func TestGetPathReachesIntoThePayload(t *testing.T) {
 func TestListPathsCollects(t *testing.T) {
 	eng, store := newEng(t)
 	for _, r := range []struct{ id, branch string }{{"c", "three"}, {"a", "one"}, {"b", "two"}} {
-		entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: r.id},
+		entitytest.Set(t, store, entity.RefAt("git", "repo", r.id),
 			entity.Obj{"branch": r.branch}.Payload())
 	}
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "other", ID: "x"},
+	entitytest.Set(t, store, entity.RefAt("git", "other", "x"),
 		entity.Obj{"branch": "not-a-repo"}.Payload())
 	if err := eng.AddTrigger(Trigger{
 		Name:      "collect",
@@ -355,7 +355,7 @@ func TestListPathsCollects(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "read")
 	got, _, _ := store.Get(ref)
@@ -388,7 +388,7 @@ func TestListPathsCollects(t *testing.T) {
 // ("any field .* in get") and ListKPath is for.
 func TestListPathsWildcardPath(t *testing.T) {
 	eng, store := newEng(t)
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "abc"),
 		entity.Obj{"labels": entity.Obj{"a": "one", "b": "two"}}.Payload())
 	if err := eng.AddTrigger(Trigger{
 		Name:      "labels",
@@ -403,7 +403,7 @@ func TestListPathsWildcardPath(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "read")
 	got, _, _ := store.Get(ref)
@@ -442,7 +442,7 @@ func TestListPathsNarrowsByPredicate(t *testing.T) {
 	for _, r := range []struct{ id, branch, state string }{
 		{"a", "one", "green"}, {"b", "two", "red"}, {"c", "three", "green"},
 	} {
-		entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: r.id},
+		entitytest.Set(t, store, entity.RefAt("git", "repo", r.id),
 			entity.Obj{"branch": r.branch, "state": r.state}.Payload())
 	}
 	if err := eng.AddTrigger(Trigger{
@@ -467,7 +467,7 @@ func TestListPathsNarrowsByPredicate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "read")
 	got, _, _ := store.Get(ref)
@@ -518,7 +518,7 @@ func TestListPathsPredicateExpandsAReference(t *testing.T) {
 	for _, r := range []struct{ id, pr, target string }{
 		{"x", "pr:1", "main"}, {"y", "pr:2", "next"}, {"z", "pr:3", "main"},
 	} {
-		entitytest.Set(t, store, entity.Ref{System: "tr", Kind: "trace", ID: r.id},
+		entitytest.Set(t, store, entity.RefAt("tr", "trace", r.id),
 			entity.Obj{"pr": r.pr, "target": r.target}.Payload())
 	}
 	if err := eng.AddTrigger(Trigger{
@@ -537,7 +537,7 @@ func TestListPathsPredicateExpandsAReference(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "rel", Kind: "tag", ID: "v1"}
+	ref := entity.RefAt("rel", "tag", "v1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "cut", "target": "main"}.Payload())
 	waitStage(t, store, ref, "shipped")
 	got, _, _ := store.Get(ref)
@@ -563,9 +563,9 @@ func TestListPathsPredicateExpandsAReference(t *testing.T) {
 // asked here, including the dotted id that is the whole reason the two spellings exist.
 func TestGetPathTakesOneAddress(t *testing.T) {
 	eng, store := newEng(t)
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "abc"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "abc"),
 		entity.Obj{"branch": "main", "meta": entity.Obj{"tags": []any{"v1", "v2"}}}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "git", Kind: "repo", ID: "a.b"},
+	entitytest.Set(t, store, entity.RefAt("git", "repo", "a.b"),
 		entity.Obj{"branch": "dotted"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{
@@ -585,7 +585,7 @@ func TestGetPathTakesOneAddress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "read")
 

@@ -148,7 +148,7 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 				"address names system, kind and id, and may then continue into the payload "+
 				"(git.repo.abc.sha)", kind, body.String, err)
 		}
-		spec.System, spec.Kind, spec.ID, spec.Path = ref.System, ref.Kind, ref.ID, path
+		spec.System, spec.Kind, spec.ID, spec.Path = ref.System(), ref.Kind(), ref.ID(), path
 	case ir.ObjectType:
 		for i, f := range body.Fields {
 			v := unwrap(body.Values[i])
@@ -205,18 +205,18 @@ func splitAddress(s string) (entity.Ref, string, error) {
 	if err != nil {
 		return entity.Ref{}, "", err
 	}
-	var ref entity.Ref
-	into := []*string{&ref.System, &ref.Kind, &ref.ID}
-	for i := 0; i < 3; i++ {
+	segs := make([]string, 0, entity.Depth)
+	for i := 0; i < entity.Depth; i++ {
 		if kp == nil {
-			return entity.Ref{}, "", fmt.Errorf("names %d of the 3 address segments", i)
+			return entity.Ref{}, "", fmt.Errorf("names %d of the %d address segments", i, entity.Depth)
 		}
 		if kp.Field == nil {
 			return entity.Ref{}, "", fmt.Errorf("an address segment is a name, not an index or a wildcard")
 		}
-		*into[i] = *kp.Field
+		segs = append(segs, *kp.Field)
 		kp = kp.Next
 	}
+	ref := entity.RefAt(segs...)
 	if kp == nil {
 		return ref, "", nil
 	}
@@ -336,7 +336,7 @@ func (p pathSpec) answer(snap entity.Snapshot) (entity.Payload, error) {
 
 // get answers the one-node form.
 func (p pathSpec) get(snap entity.Snapshot) (entity.Payload, error) {
-	ref := entity.Ref{System: p.System, Kind: p.Kind, ID: p.ID}
+	ref := entity.RefAt(p.System, p.Kind, p.ID)
 	ent, ok, err := snap.Get(ref)
 	if err != nil {
 		return nil, fmt.Errorf("!%s %s: %w", p.kind, ref, err)

@@ -22,7 +22,7 @@ import (
 func TestAMotionIsWithdrawnWhenItsSubjectLeavesTheSelection(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	subj := entity.Ref{System: "merge", Kind: "proposal", ID: "p1"}
+	subj := entity.RefAt("merge", "proposal", "p1")
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: merge-proposal
   condition:
@@ -47,10 +47,10 @@ func TestAMotionIsWithdrawnWhenItsSubjectLeavesTheSelection(t *testing.T) {
 	// The sweep marks it stale while the gate stands open, and the monitor is still live.
 	entitytest.Set(t, store, subj, entity.Obj{"state": "stale"}.Payload())
 	// Then somebody votes approve on what the docket still lists.
-	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: mid, ID: "me"},
+	entitytest.Set(t, store, entity.RefAt("vote", mid, "me"),
 		entity.Obj{"choice": "approve", "by": "me"}.Payload())
 
-	ref := entity.Ref{System: motionSystem, Kind: motionChannelKind, ID: mid}
+	ref := entity.RefAt(motionSystem, motionChannelKind, mid)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if statusOf(t, store, ref)["status"] == motionOrphaned {
@@ -82,7 +82,7 @@ func TestAMotionIsWithdrawnWhenItsSubjectLeavesTheSelection(t *testing.T) {
 func TestAMotionStillCarriesWhileItsSubjectHolds(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	subj := entity.Ref{System: "merge", Kind: "proposal", ID: "p2"}
+	subj := entity.RefAt("merge", "proposal", "p2")
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: merge-proposal
   condition:
@@ -100,7 +100,7 @@ func TestAMotionStillCarriesWhileItsSubjectHolds(t *testing.T) {
 
 	entitytest.Set(t, store, subj, entity.Obj{"branch": "auto/y"}.Payload())
 	mid := waitMotion(t, store)
-	entitytest.Set(t, store, entity.Ref{System: "vote", Kind: mid, ID: "me"},
+	entitytest.Set(t, store, entity.RefAt("vote", mid, "me"),
 		entity.Obj{"choice": "approve", "by": "me"}.Payload())
 
 	deadline := time.Now().Add(3 * time.Second)
@@ -112,7 +112,7 @@ func TestAMotionStillCarriesWhileItsSubjectHolds(t *testing.T) {
 	}
 	t.Fatalf("the gate did not carry: subject = %+v, motion = %+v",
 		statusOf(t, store, subj),
-		statusOf(t, store, entity.Ref{System: motionSystem, Kind: motionChannelKind, ID: mid}))
+		statusOf(t, store, entity.RefAt(motionSystem, motionChannelKind, mid)))
 }
 
 // waitMotion waits for a motion channel to open and returns its id.
@@ -121,9 +121,9 @@ func waitMotion(t *testing.T, store entity.Store) string {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		for _, e := range store.List(func(r entity.Ref) bool {
-			return r.System == motionSystem && r.Kind == motionChannelKind
+			return r.System() == motionSystem && r.Kind() == motionChannelKind
 		}) {
-			return e.Ref.ID
+			return e.Ref.ID()
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

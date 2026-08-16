@@ -518,9 +518,9 @@ func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	// own top-level fields are already flat here ($stage). `commit` is absent because a spawn
 	// is not where provenance belongs and a firing may have none.
 	b[refSubject+"."+subjPartRef] = subject.String()
-	b[refSubject+"."+subjPartSystem] = subject.System
-	b[refSubject+"."+subjPartKind] = subject.Kind
-	b[refSubject+"."+subjPartID] = subject.ID
+	b[refSubject+"."+subjPartSystem] = subject.System()
+	b[refSubject+"."+subjPartKind] = subject.Kind()
+	b[refSubject+"."+subjPartID] = subject.ID()
 	return b
 }
 

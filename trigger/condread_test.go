@@ -65,9 +65,9 @@ func TestAConditionComparesAgainstAnotherEntity(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	head := entity.Ref{System: "git", Kind: "head", ID: "verse"}
-	fresh := entity.Ref{System: "merge", Kind: "proposal", ID: "fresh"}
-	old := entity.Ref{System: "merge", Kind: "proposal", ID: "old"}
+	head := entity.RefAt("git", "head", "verse")
+	fresh := entity.RefAt("merge", "proposal", "fresh")
+	old := entity.RefAt("merge", "proposal", "old")
 
 	setPayload(t, store, head, `{sha: aaa111}`)
 	setPayload(t, store, fresh, `{state: open, base: aaa111}`) // cut from the current tip
@@ -103,7 +103,7 @@ func TestAConditionReadOfAnAbsentEntitySelectsNothing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	open := entity.Ref{System: "merge", Kind: "proposal", ID: "open"}
+	open := entity.RefAt("merge", "proposal", "open")
 	setPayload(t, store, open, `{state: open, base: aaa111}`)
 
 	if err := eng.AddTrigger(mustParseCharter(t, proposalCharter)); err != nil {

@@ -123,7 +123,7 @@ func TestSlackATargetedPassCoversOnlyItsChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range rn.Entities {
-		if !strings.Contains(e.Ref.ID, "C1") {
+		if !strings.Contains(e.Ref.ID(), "C1") {
 			t.Fatalf("a targeted pass carried %s", e.Ref)
 		}
 	}
@@ -219,8 +219,8 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	held := func(ts string) bool {
-		_, ok, _ := store.Get(entity.Ref{System: slack.System, Kind: "message",
-			ID: "Acme/C1/" + ts})
+		_, ok, _ := store.Get(entity.RefAt(slack.System, "message",
+			"Acme/C1/"+ts))
 		return ok
 	}
 	if !held("1700000001.000100") || !held("1700000002.000100") {
@@ -273,9 +273,9 @@ func TestSlackOwnershipIsOneClaimPerWorkspace(t *testing.T) {
 	// Every ref this source writes is inside what it claims — which is the bound on what a
 	// --forget removal may tombstone.
 	for _, ref := range []entity.Ref{
-		{System: "slack", Kind: "channel", ID: "Acme/C1"},
-		{System: "slack", Kind: "message", ID: "Acme/C1/1700000001.000100"},
-		{System: "slack", Kind: "user", ID: "Acme/U1"},
+		entity.RefAt("slack", "channel", "Acme/C1"),
+		entity.RefAt("slack", "message", "Acme/C1/1700000001.000100"),
+		entity.RefAt("slack", "user", "Acme/U1"),
 	} {
 		if !claims(t, owns, ref) {
 			t.Fatalf("%s is written but not claimed", ref)

@@ -10,8 +10,8 @@ import (
 // `charter`, say — does not. The two halves of the reservation are separate questions.
 func TestVanishingOptIn(t *testing.T) {
 	s := openStore(t)
-	live := Ref{System: "demo", Kind: "pr", ID: "live"}
-	going := Ref{System: "demo", Kind: "pr", ID: "going"}
+	live := RefAt("demo", "pr", "live")
+	going := RefAt("demo", "pr", "going")
 	set(t, s, live, Obj{"stage": "open"}.Payload())
 	set(t, s, going, Obj{"stage": "open"}.Payload())
 	mustWrite(t, s, Write{At: going.At(), Value: VanishPatch(time.Now())})

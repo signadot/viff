@@ -40,9 +40,9 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 
 	// Two doers that differ in everything a Fragment carries EXCEPT the driver — so the
 	// driver cannot distinguish them and only the doer's own id can.
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "careful"},
+	entitytest.Set(t, store, entity.RefAt("provider", "review", "careful"),
 		entity.Obj{"driver": "llm", "tier": "careful", "grant": "read-only"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "provider", Kind: "review", ID: "fast"},
+	entitytest.Set(t, store, entity.RefAt("provider", "review", "fast"),
 		entity.Obj{"driver": "llm", "tier": "fast", "grant": "no-delegate"}.Payload())
 
 	if err := eng.AddTrigger(Trigger{

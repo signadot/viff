@@ -16,11 +16,11 @@ import (
 func questionsIn(store entity.Store, taskID string) []string {
 	var out []string
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
 	}) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] == taskID && p["status"] == mirror.QuestionPending {
-			out = append(out, ent.Ref.ID)
+			out = append(out, ent.Ref.ID())
 		}
 	}
 	return out

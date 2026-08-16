@@ -174,7 +174,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 
 	// Control: no mounts yet, so the root watch is single-route.
 	before := s.Rev()
-	refA := Ref{System: "demo", Kind: "pr", ID: "a"}
+	refA := RefAt("demo", "pr", "a")
 	set(t, s, refA, Obj{"stage": "open"}.Payload())
 	eventually(t, "Since to replay a write with no mount present", func() bool {
 		evs, ok, _ := sinceReplays(t, s, before)
@@ -200,7 +200,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 
 	// The claim: Since still replays a write made after the mount.
 	mid := s.Rev()
-	refB := Ref{System: "demo", Kind: "pr", ID: "b"}
+	refB := RefAt("demo", "pr", "b")
 	set(t, s, refB, Obj{"stage": "open"}.Payload())
 
 	evs, ok, elapsed, found := awaitSince(t, s, mid, refB)
@@ -216,7 +216,7 @@ func TestLogdStore_SinceAcrossContentMount(t *testing.T) {
 
 	// End-to-end: a mount-owned ref still resolves through refPath → MountRoot → docd →
 	// the controller. This is what makes the split path-rendering only.
-	got, ok, _ := s.Get(Ref{System: "local", Kind: contentMountKind, ID: "README.md"})
+	got, ok, _ := s.Get(RefAt("local", contentMountKind, "README.md"))
 	if !ok || ToObj(got.Payload)["content"] != "hi" {
 		t.Fatalf("mount-owned ref did not resolve through MountRoot: ok=%v payload=%#v", ok, got.Payload)
 	}
@@ -247,7 +247,7 @@ func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
 	s, docd := storeOverDocd(t)
 
 	before := s.Rev()
-	refA := Ref{System: "demo", Kind: "pr", ID: "a"}
+	refA := RefAt("demo", "pr", "a")
 	set(t, s, refA, Obj{"stage": "open"}.Payload())
 	eventually(t, "Since to replay a write with no mount present", func() bool {
 		evs, ok, _ := sinceReplays(t, s, before)
@@ -263,7 +263,7 @@ func TestLogdStore_SinceUnderMountBelowRoot(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 
 	mid := s.Rev()
-	refB := Ref{System: "demo", Kind: "pr", ID: "b"}
+	refB := RefAt("demo", "pr", "b")
 	set(t, s, refB, Obj{"stage": "open"}.Payload())
 
 	evs, ok, elapsed, found := awaitSince(t, s, mid, refB)

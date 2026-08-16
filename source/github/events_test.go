@@ -253,7 +253,7 @@ func TestATargetedRunPassCoversTheRunAndLandsOnItsPullRequest(t *testing.T) {
 	// The covers name the run and that pull request, and nothing else: a cover over the run
 	// window would tombstone every other run in the repository.
 	other := entity.Entity{
-		Ref:     entity.Ref{System: "github", Kind: "run", ID: "acme/app/1"},
+		Ref:     entity.RefAt("github", "run", "acme/app/1"),
 		Payload: entity.Obj{"repo": "acme/app", "id": int64(1)}.Payload(),
 	}
 	for _, c := range rn.Covers {

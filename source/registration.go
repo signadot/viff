@@ -23,7 +23,7 @@ const System = "sources"
 
 // Ref addresses an installed source.
 func Ref(system, name string) entity.Ref {
-	return entity.Ref{System: System, Kind: system, ID: name}
+	return entity.RefAt(System, system, name)
 }
 
 // Entity is one installed source: an address, somewhere to reach it, and what it claims.
@@ -237,7 +237,7 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 // List reads every installed source, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
 	var out []Entity
-	for _, ent := range r.List(func(ref entity.Ref) bool { return ref.System == System }) {
+	for _, ent := range r.List(func(ref entity.Ref) bool { return ref.System() == System }) {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue

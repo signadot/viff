@@ -82,7 +82,7 @@ func payloadOf(t *testing.T, s entity.Store, ref entity.Ref) map[string]any {
 	return entity.ToObj(e.Payload)
 }
 
-var pr1 = entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+var pr1 = entity.RefAt("demo", "pr", "1")
 
 // The write a person types: a whole entity, then one field of it, then a field removed —
 // each without having to send the parts they are not talking about.

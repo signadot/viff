@@ -23,7 +23,7 @@ import (
 func TestOnDeniedLatchesTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	pr := entity.RefAt("demo", "pr", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "guard",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
@@ -57,7 +57,7 @@ func TestOnDeniedLatchesTheSubject(t *testing.T) {
 func TestOnDeniedOnAFormulaGate(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{}) // never consulted: a formula gate is monitored, not posed
-	merged := entity.Ref{System: "result", Kind: "merged", ID: "f"}
+	merged := entity.RefAt("result", "merged", "f")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
@@ -77,7 +77,7 @@ func TestOnDeniedOnAFormulaGate(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "change", Kind: "pr", ID: "f"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("change", "pr", "f"), entity.Obj{}.Payload())
 	castBallot(t, store, "merge", "approvals", merged, "alice", "reject")
 	castBallot(t, store, "merge", "approvals", merged, "bob", "reject")
 
@@ -101,7 +101,7 @@ func TestOnDeniedOnAFormulaGate(t *testing.T) {
 func TestNoDecisionWritesNothing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, errResolver{})
-	pr := entity.Ref{System: "demo", Kind: "pr", ID: "2"}
+	pr := entity.RefAt("demo", "pr", "2")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "guard",
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},

@@ -36,7 +36,7 @@ const InstanceKind = "instance"
 
 // Ref addresses a binding.
 func Ref(kind, name string) entity.Ref {
-	return entity.Ref{System: System, Kind: kind, ID: name}
+	return entity.RefAt(System, kind, name)
 }
 
 // InstanceRef addresses one binding watching one origin — a run, for now.
@@ -51,7 +51,7 @@ func Ref(kind, name string) entity.Ref {
 // `resolvers:instance:security-review@guard@demo:pr:1`. Splitting on the first is the same
 // rule a question id follows for `~`, and a name may not contain `@` for that reason.
 func InstanceRef(name, origin string) entity.Ref {
-	return entity.Ref{System: System, Kind: InstanceKind, ID: name + "@" + origin}
+	return entity.RefAt(System, InstanceKind, name+"@"+origin)
 }
 
 // Resolver is a binding: what it supervises, how it answers, and under what envelope.
@@ -321,7 +321,7 @@ func unwrap(n *ir.Node) *ir.Node {
 func List(r entity.Reader) []Resolver {
 	var out []Resolver
 	for _, ent := range r.List(func(ref entity.Ref) bool {
-		return ref.System == System && ref.Kind != InstanceKind
+		return ref.System() == System && ref.Kind() != InstanceKind
 	}) {
 		var res Resolver
 		if codec.FromNode(ent.Payload, &res) != nil {

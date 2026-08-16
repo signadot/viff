@@ -30,8 +30,8 @@ func TestPostHintCarriesTheRefsAndNoBody(t *testing.T) {
 		t.Fatalf("hint url %q", url)
 	}
 	err := source.PostHint(context.Background(), url,
-		entity.Ref{System: "git", Kind: "head", ID: "verse"},
-		entity.Ref{System: "git", Kind: "head", ID: "tony"})
+		entity.RefAt("git", "head", "verse"),
+		entity.RefAt("git", "head", "tony"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestHintsLogsWhatItCouldNotDeliver(t *testing.T) {
 	h := source.Hints(srv.URL+"/hint", func(f string, a ...any) {
 		logged = append(logged, f)
 	})
-	h(context.Background(), entity.Ref{System: "git", Kind: "head", ID: "verse"})
+	h(context.Background(), entity.RefAt("git", "head", "verse"))
 	if len(logged) != 1 {
 		t.Fatalf("logged %v, want one line", logged)
 	}

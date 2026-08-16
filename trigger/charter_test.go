@@ -46,7 +46,7 @@ func TestCharterSurvivesARestart(t *testing.T) {
 
 	_, store := restart(t, addr)
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "reviewed")
 }
@@ -66,7 +66,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 	// Down: nothing is observing. The PR opens anyway.
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, first, ref, entity.Obj{"stage": "open"}.Payload())
 
 	_, store := restart(t, addr)
@@ -95,7 +95,7 @@ func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	if got := back.Triggers(); len(got) != 0 {
 		t.Fatalf("charter after restart = %v; a removed rule came back", got)
 	}
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if e, _, _ := store.Get(ref); entity.ToObj(e.Payload)["stage"] != "open" {
@@ -328,7 +328,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 	// And it still means what it said: absent selects, present does not.
 	m := loaded[0].Condition.Subject
 	absent := entity.Event{
-		Ref: entity.Ref{System: "drift", Kind: "head", ID: "verse"},
+		Ref: entity.RefAt("drift", "head", "verse"),
 		To:  entity.Obj{"sha": "abc"}.Payload(),
 	}
 	present := entity.Event{

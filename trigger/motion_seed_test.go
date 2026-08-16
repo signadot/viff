@@ -15,7 +15,7 @@ import (
 // across two calls in the same process (tony-format item 16), and this test is what caught
 // it.
 func TestProviderSpecSeedIsStable(t *testing.T) {
-	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	subj := entity.RefAt("demo", "pr", "1")
 	spec := func() *launch.Provider {
 		return &launch.Provider{
 			Eligible:   []string{"gpt", "claude"},
@@ -42,7 +42,7 @@ func TestProviderSpecSeedIsStable(t *testing.T) {
 	if providerSpecSeed(subj, other) == first {
 		t.Error("a different eligibility set produced the same seed")
 	}
-	if providerSpecSeed(entity.Ref{System: "demo", Kind: "pr", ID: "2"}, spec()) == first {
+	if providerSpecSeed(entity.RefAt("demo", "pr", "2"), spec()) == first {
 		t.Error("a different subject produced the same seed")
 	}
 }

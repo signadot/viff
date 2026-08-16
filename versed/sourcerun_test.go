@@ -62,7 +62,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	waitForRef(t, srv.Store, entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)})
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, "head", baseOf(dir)))
 
 	// …and removing it STOPS the reflector. A reflector outliving its registration is a writer
 	// on a slice nothing claims — the second writer the install check exists to prevent,
@@ -100,7 +100,7 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	head := entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)}
+	head := entity.RefAt(source.GitSystem, "head", baseOf(dir))
 	waitForRef(t, store, head)
 	ts.Close()
 	first.stopSource(source.Ref("git", "local"))
@@ -125,9 +125,8 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	}
 	// And it is really reflecting rather than merely running: the restored reflector's own
 	// first pass picks up what happened while it was gone.
-	waitForRef(t, store, entity.Ref{
-		System: source.GitSystem, Kind: "ref", ID: baseOf(dir) + "/while-down",
-	})
+	waitForRef(t, store, entity.RefAt(
+		source.GitSystem, "ref", baseOf(dir)+"/while-down"))
 }
 
 // What a pass writes about ITSELF, and what it deliberately does not.
@@ -152,7 +151,7 @@ func TestAPassRecordsItselfWithoutChurn(t *testing.T) {
 	defer srv.stopSource(ref)
 
 	// The first pass wrote the repo, so it stamps the cursor.
-	waitForRef(t, srv.Store, entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)})
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, "head", baseOf(dir)))
 	deadline := time.Now().Add(5 * time.Second)
 	var stamped string
 	for time.Now().Before(deadline) && stamped == "" {
@@ -319,7 +318,7 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	waitForRef(t, srv.Store, entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)})
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, "head", baseOf(dir)))
 
 	gitIn(t, dir, "branch", "hinted")
 	hint := ts.URL + "/sources/git/local/hint?ref=" +
@@ -331,9 +330,8 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("hint = %s, want 204", resp.Status)
 	}
-	waitForRef(t, srv.Store, entity.Ref{
-		System: source.GitSystem, Kind: "ref", ID: baseOf(dir) + "/hinted",
-	})
+	waitForRef(t, srv.Store, entity.RefAt(
+		source.GitSystem, "ref", baseOf(dir)+"/hinted"))
 
 	// A hint naming nothing is a full resync, which is what a delivery that could not say which
 	// slice asks for.
@@ -342,9 +340,8 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 		resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bare hint = %v (%v)", resp.Status, err)
 	}
-	waitForRef(t, srv.Store, entity.Ref{
-		System: source.GitSystem, Kind: "ref", ID: baseOf(dir) + "/resynced",
-	})
+	waitForRef(t, srv.Store, entity.RefAt(
+		source.GitSystem, "ref", baseOf(dir)+"/resynced"))
 }
 
 // What a hint may NOT do, and what it must not do silently.
@@ -420,7 +417,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	}
 
 	install("local")
-	head := entity.Ref{System: source.GitSystem, Kind: "head", ID: baseOf(dir)}
+	head := entity.RefAt(source.GitSystem, "head", baseOf(dir))
 	waitForRef(t, srv.Store, head)
 
 	// Bare: refused, and the message names both flags, because neither default survives
@@ -488,8 +485,8 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 		"name": "a", "system": "git", "url": e.URL, "owns": e.Owns,
 	}.Payload())
 
-	mine := entity.Ref{System: "git", Kind: "ref", ID: "A/main"}
-	theirs := entity.Ref{System: "git", Kind: "ref", ID: "B/main"}
+	mine := entity.RefAt("git", "ref", "A/main")
+	theirs := entity.RefAt("git", "ref", "B/main")
 	entitytest.Set(t, srv.Store, mine, entity.Obj{"repo": "A"}.Payload())
 	entitytest.Set(t, srv.Store, theirs, entity.Obj{"repo": "B"}.Payload())
 
@@ -514,7 +511,7 @@ func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 		"name": "eng", "system": "linear", "url": e.URL, "owns": e.Owns,
 	}.Payload())
 
-	shared := entity.Ref{System: "linear", Kind: "project", ID: "p1"}
+	shared := entity.RefAt("linear", "project", "p1")
 	entitytest.Set(t, srv.Store, shared, entity.Obj{"owners": map[string]any{
 		"ENG": map[string]any{"name": "Migration"},
 		"OPS": map[string]any{"name": "Migration"},

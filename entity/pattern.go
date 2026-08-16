@@ -121,8 +121,8 @@ func (p Pattern) MatchEntity(e Entity) bool {
 // that lost its system must not quietly become a whole-verse sweep. Here an empty dimension
 // is an operator declining to filter, which is the opposite intent.
 func (p Pattern) MatchRef(ref Ref) bool {
-	return (p.System == "" || p.System == ref.System) &&
-		(p.Kind == "" || p.Kind == ref.Kind)
+	return (p.System == "" || p.System == ref.System()) &&
+		(p.Kind == "" || p.Kind == ref.Kind())
 }
 
 // Select returns the refs of every stored entity the pattern picks: entities of
@@ -139,7 +139,7 @@ func (p Pattern) MatchRef(ref Ref) bool {
 // name a retiring entity, you meant that one.
 func (p Pattern) Select(r Reader) []Ref {
 	ents := r.List(func(ref Ref) bool {
-		return ref.System == p.System && (p.Kind == "" || ref.Kind == p.Kind)
+		return ref.System() == p.System && (p.Kind == "" || ref.Kind() == p.Kind)
 	})
 	skipVanishing := !namesVanishing(p.Predicate)
 	out := make([]Ref, 0, len(ents))

@@ -30,7 +30,7 @@ func same(a, b Payload) bool { return mergeop.RawEqual(a, b) }
 // grammar, could not be written into the verse at all before the escape existed.
 func TestRawStoresOperatorsAsData(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "trigger", Kind: "rule", ID: "hotfix"}
+	ref := RefAt("trigger", "rule", "hotfix")
 	rule := doc(t, `{id: !glob "hotfix-*", patch: {tmp: !delete null, stage: reviewed}}`)
 
 	set(t, store, ref, Obj{"spec": Raw(rule)}.Payload())
@@ -49,7 +49,7 @@ func TestRawStoresOperatorsAsData(t *testing.T) {
 // in the version after, which for a rule means a condition nobody wrote.
 func TestRawReplacesRatherThanMerges(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "trigger", Kind: "rule", ID: "hotfix"}
+	ref := RefAt("trigger", "rule", "hotfix")
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{id: "a", gates: [approval]}`))}.Payload())
 
 	next := doc(t, `{id: "a"}`)
@@ -66,7 +66,7 @@ func TestRawReplacesRatherThanMerges(t *testing.T) {
 // anything else about it changes — the probe that established this deleted the entity.
 func TestModifyDoesNotExecuteWhatItStores(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "goal", Kind: "instance", ID: "ship"}
+	ref := RefAt("goal", "instance", "ship")
 	spec := doc(t, `{doneWhen: !fact {facts: {system: ci}}, patch: {tmp: !delete null}}`)
 	set(t, store, ref, Obj{"spec": Raw(spec), "status": "active"}.Payload())
 
@@ -100,7 +100,7 @@ func TestModifyDoesNotExecuteWhatItStores(t *testing.T) {
 // lose each other.
 func TestModifyRetriesOverAStoredOperator(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "goal", Kind: "instance", ID: "ship"}
+	ref := RefAt("goal", "instance", "ship")
 	spec := doc(t, `{patch: {tmp: !delete null}}`)
 	set(t, store, ref, Obj{"spec": Raw(spec), "n": 0}.Payload())
 
@@ -137,7 +137,7 @@ func TestModifyRetriesOverAStoredOperator(t *testing.T) {
 // Absence is `!delete` on the way in now, and a null is a null.
 func TestBothKindsOfNullAreDataInAStoredSpec(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "trigger", Kind: "rule", ID: "hotfix"}
+	ref := RefAt("trigger", "rule", "hotfix")
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{tmp: !delete null, gone: null, stage: open}`))}.Payload())
 
 	e, _, _ := store.Get(ref)
@@ -160,7 +160,7 @@ func TestBothKindsOfNullAreDataInAStoredSpec(t *testing.T) {
 // one: a field the caller removed would come back as a null standing in the record.
 func TestAsDataLeavesRemovalsExecutable(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, store, ref, Obj{"stage": "open", "tmp": "x"}.Payload())
 
 	if err := Modify(t.Context(), store, ref, func(cur Payload) Payload {
@@ -207,7 +207,7 @@ func TestAsDataReadsAComposedTag(t *testing.T) {
 // reason the escape is about every tag rather than only the operations.
 func TestTagIsNotComposedByRepeatedWrites(t *testing.T) {
 	store := openStore(t)
-	ref := Ref{System: "goal", Kind: "instance", ID: "ship"}
+	ref := RefAt("goal", "instance", "ship")
 	spec := doc(t, `{doneWhen: !fact {facts: {system: ci}}}`)
 	set(t, store, ref, Obj{"spec": Raw(spec), "n": 0}.Payload())
 

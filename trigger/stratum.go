@@ -47,7 +47,7 @@ const (
 
 // StrataRef names the entity holding one stratum.
 func StrataRef(name string) entity.Ref {
-	return entity.Ref{System: StrataSystem, Kind: StrataKind, ID: name}
+	return entity.RefAt(StrataSystem, StrataKind, name)
 }
 
 // Stratum is one level of the ordering: what it owns, and where it sits.
@@ -497,7 +497,7 @@ func (e *Engine) persistStratum(s Stratum) error {
 func (e *Engine) LoadStrata() error {
 	var errs []error
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
-		return r.System == StrataSystem && r.Kind == StrataKind
+		return r.System() == StrataSystem && r.Kind() == StrataKind
 	}) {
 		s, err := stratumOf(ent)
 		if err != nil {
@@ -523,7 +523,7 @@ func stratumOf(ent entity.Entity) (Stratum, error) {
 	if err := s.FromTonyIR(doc); err != nil {
 		return Stratum{}, fmt.Errorf("stratum %s: %w", ent.Ref, err)
 	}
-	if s.Name != ent.Ref.ID {
+	if s.Name != ent.Ref.ID() {
 		return Stratum{}, fmt.Errorf("stratum %s: it names itself %q; a stratum is addressed by "+
 			"its name, so it would install as one and be removed as another", ent.Ref, s.Name)
 	}

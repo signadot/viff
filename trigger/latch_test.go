@@ -280,7 +280,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 
-	ref := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := entity.RefAt("demo", "pr", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name: "review",
 		// Latches through its onDone — but the task blocks forever, so the latch never
@@ -322,7 +322,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 	// Now stir the subtree while the task runs. The subject still matches — the latch is
 	// waiting on a completion that never comes — so every one of these re-selects it.
 	for i := range 4 {
-		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "other"},
+		entitytest.Set(t, store, entity.RefAt("demo", "pr", "other"),
 			entity.Obj{"stage": "closed", "n": i}.Payload())
 	}
 	time.Sleep(500 * time.Millisecond)

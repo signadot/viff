@@ -38,7 +38,7 @@ func TestDenialsDoNotCountAsFirings(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 	for i := 0; i < 5; i++ {
-		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)}, entity.Obj{}.Payload())
+		entitytest.Set(t, store, entity.RefAt("demo", "x", fmt.Sprint(i)), entity.Obj{}.Payload())
 	}
 	time.Sleep(100 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
@@ -90,7 +90,7 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	subj := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, subj, entity.Obj{"stage": "open"}.Payload()) // ignite
 
 	waitStage(t, store, subj, "deployed")
@@ -127,14 +127,14 @@ func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 	eng.Start(ctx)
 
 	// A task:* change is not in anything this trigger reads, so it never reaches it.
-	entitytest.Set(t, store, entity.Ref{System: "task", Kind: "instance", ID: "p1"}, entity.Obj{"status": "running"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("task", "instance", "p1"), entity.Obj{"status": "running"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired on a task:* change it does not read (fired=%d)", f)
 	}
 
 	// A change to what it does read wakes it.
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: "1"}, entity.Obj{}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "x", "1"), entity.Obj{}.Payload())
 	deadline := time.After(time.Second)
 	for eng.Fired() < 1 {
 		select {
@@ -177,7 +177,7 @@ func TestRunawayOscillationIsStoppedByTheThrottle(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx) // versed's production path (per-trigger subtree watch)
 
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"phase": "a"}.Payload()) // ignite
+	entitytest.Set(t, store, entity.RefAt("demo", "loop", "1"), entity.Obj{"phase": "a"}.Payload()) // ignite
 
 	// It must settle, and settle because the throttle saw the cycle.
 	time.Sleep(300 * time.Millisecond)
@@ -208,7 +208,7 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	defer cancel()
 	eng.ObserveScoped(ctx)
 
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "loop", ID: "1"}, entity.Obj{"tick": true}.Payload()) // ignite
+	entitytest.Set(t, store, entity.RefAt("demo", "loop", "1"), entity.Obj{"tick": true}.Payload()) // ignite
 
 	time.Sleep(300 * time.Millisecond)
 	if f := eng.Fired(); f != 1 {

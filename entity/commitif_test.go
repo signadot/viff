@@ -13,13 +13,13 @@ func TestConditionalCommitRevoke(t *testing.T) { conditionalCommitRevoke(t, open
 // open, and terminal-once holds — a second commit fails once status flips to closed.
 func conditionalCommit(t *testing.T, s Store) {
 	t.Helper()
-	ch := Ref{System: "motion", Kind: "channel", ID: "d1"}
+	ch := RefAt("motion", "channel", "d1")
 	set(t, s, ch, Obj{"status": "open", "gate": "approvals"}.Payload())
-	set(t, s, Ref{System: "vote", Kind: "d1", ID: "alice"}, Obj{"choice": "approve"}.Payload())
-	set(t, s, Ref{System: "vote", Kind: "d1", ID: "bob"}, Obj{"choice": "approve"}.Payload())
+	set(t, s, RefAt("vote", "d1", "alice"), Obj{"choice": "approve"}.Payload())
+	set(t, s, RefAt("vote", "d1", "bob"), Obj{"choice": "approve"}.Payload())
 
 	stillOpen := Require{Pattern: Obj{"status": "open"}.Payload()} // about the write's own path
-	witness := Require{At: Path{Ref: Ref{System: "vote", Kind: "d1"}}, Pattern: Obj{
+	witness := Require{At: Path{Ref: RefAt("vote", "d1")}, Pattern: Obj{
 		"alice": map[string]any{"choice": "approve"},
 		"bob":   map[string]any{"choice": "approve"},
 	}.Payload()}
@@ -58,12 +58,12 @@ func conditionalCommit(t *testing.T, s Store) {
 // the cross-entity precondition (vote subtree) is what makes the commit revocable.
 func conditionalCommitRevoke(t *testing.T, s Store) {
 	t.Helper()
-	ch := Ref{System: "motion", Kind: "channel", ID: "d2"}
+	ch := RefAt("motion", "channel", "d2")
 	set(t, s, ch, Obj{"status": "open"}.Payload())
-	set(t, s, Ref{System: "vote", Kind: "d2", ID: "alice"}, Obj{"choice": "approve"}.Payload())
+	set(t, s, RefAt("vote", "d2", "alice"), Obj{"choice": "approve"}.Payload())
 
 	stillOpen := Require{Pattern: Obj{"status": "open"}.Payload()}
-	witness := Require{At: Path{Ref: Ref{System: "vote", Kind: "d2"}}, Pattern: Obj{
+	witness := Require{At: Path{Ref: RefAt("vote", "d2")}, Pattern: Obj{
 		"alice": map[string]any{"choice": "approve"},
 		"bob":   map[string]any{"choice": "approve"}, // bob never voted → precondition fails
 	}.Payload()}
@@ -92,7 +92,7 @@ func TestClaimIsCreateOnly(t *testing.T) { claimCreateOnly(t, openStore(t)) }
 
 func claimCreateOnly(t *testing.T, store Store) {
 	t.Helper()
-	claim := Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}
+	claim := RefAt("run", "claim", "review@demo:pr:1")
 
 	won, _, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "first"}.Payload(), When: []Require{Created()}})
 	if err != nil || !won {
@@ -126,7 +126,7 @@ func claimCreateOnly(t *testing.T, store Store) {
 // absentPath ORed them. The second never existed; see absentPath.)
 func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 	store := openStore(t)
-	claim := Ref{System: "run", Kind: "claim", ID: "review@demo:pr:1"}
+	claim := RefAt("run", "claim", "review@demo:pr:1")
 	take := func() bool {
 		t.Helper()
 		won, _, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "runner"}.Payload(), When: []Require{Created()}})
@@ -150,9 +150,9 @@ func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 // NOT be satisfied by an entity that is not there.
 func TestPresencePatternDoesNotMatchAbsent(t *testing.T) {
 	store := openStore(t)
-	missing := Ref{System: "run", Kind: "claim", ID: "nothing-here"}
+	missing := RefAt("run", "claim", "nothing-here")
 	ok, _, err := store.Write(Write{
-		At: Ref{System: "x", Kind: "y", ID: "z"}.At(), Value: Obj{"a": 1}.Payload(),
+		At: RefAt("x", "y", "z").At(), Value: Obj{"a": 1}.Payload(),
 		When: []Require{{At: missing.At(), Pattern: Obj{"status": "open"}.Payload()}},
 	})
 	if err != nil {

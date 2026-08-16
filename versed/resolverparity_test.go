@@ -113,7 +113,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	})
 
 	askingRun(t, srv, ts, "watched", binding)
-	inst := resolver.InstanceRef("security-review", "watched").ID
+	inst := resolver.InstanceRef("security-review", "watched").ID()
 	byResolver := planeOf(t, ts, "watched", func(qid string) {
 		r := postTony(t, ts.URL+"/resolvers/instance/"+inst+"/verdicts",
 			api.Verdict{ID: qid, Verdict: "proceed"})
@@ -166,7 +166,7 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 
 	before := framesSoFar(t, ts.URL+"/tasks/watched/events?since=0")
 	for _, p := range []int64{3, 7, 11} {
-		r := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID+"/position",
+		r := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID()+"/position",
 			api.Position{Position: p, Notes: "still reading"})
 		r.Body.Close()
 	}

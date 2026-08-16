@@ -28,7 +28,7 @@ func asInt(v any) int64 {
 // reach n. Exercises the store's PatchIf CAS loop.
 func concurrentIncrement(t *testing.T, store Store) {
 	t.Helper()
-	ref := Ref{System: "demo", Kind: "counter", ID: "1"}
+	ref := RefAt("demo", "counter", "1")
 	set(t, store, ref, Obj{}.Payload())
 	const n = 25
 
@@ -118,7 +118,7 @@ func eventually(t *testing.T, why string, cond func() bool) {
 // preserved across the ir.Node encoding.
 func TestLogdStore_PutGet(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open", "num": int64(42), "ok": true}.Payload())
 
 	e, ok, _ := s.Get(ref)
@@ -128,7 +128,7 @@ func TestLogdStore_PutGet(t *testing.T) {
 	if ToObj(e.Payload)["stage"] != "open" || ToObj(e.Payload)["num"] != int64(42) || ToObj(e.Payload)["ok"] != true {
 		t.Fatalf("payload not preserved: %#v", e.Payload)
 	}
-	if _, ok, _ := s.Get(Ref{System: "demo", Kind: "pr", ID: "nope"}); ok {
+	if _, ok, _ := s.Get(RefAt("demo", "pr", "nope")); ok {
 		t.Fatal("Get of absent ref returned found")
 	}
 }
@@ -137,7 +137,7 @@ func TestLogdStore_PutGet(t *testing.T) {
 // round-trip as a single segment.
 func TestLogdStore_QuotedID(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "github", Kind: "pr", ID: "signadot/x#42"}
+	ref := RefAt("github", "pr", "signadot/x#42")
 	set(t, s, ref, Obj{"stage": "review"}.Payload())
 	e, ok, _ := s.Get(ref)
 	if !ok || ToObj(e.Payload)["stage"] != "review" {
@@ -148,7 +148,7 @@ func TestLogdStore_QuotedID(t *testing.T) {
 // Removing an entity makes it absent, and observers see a Delete for it.
 func TestLogdStore_Remove(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
 	ch, unsub := s.Observe()
@@ -168,7 +168,7 @@ func TestLogdStore_Remove(t *testing.T) {
 // isolated from baseline, and DeleteScope tears the overlay down.
 func TestLogdStore_ScopeIsolation(t *testing.T) {
 	base := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, base, ref, Obj{"stage": "open"}.Payload())
 
 	scoped, ok := base.Scope("me").(*LogdStore)
@@ -191,7 +191,7 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 	}
 
 	// A scope-only entity does not exist in baseline.
-	only := Ref{System: "demo", Kind: "pr", ID: "scope-only"}
+	only := RefAt("demo", "pr", "scope-only")
 	set(t, scoped, only, Obj{"x": "1"}.Payload())
 	if _, ok, _ := base.Get(only); ok {
 		t.Fatal("scope-only entity leaked into baseline")
@@ -229,7 +229,7 @@ func TestLogdStore_ScopeIsolation(t *testing.T) {
 // not reach baseline's value, and the scoped hide does not remove baseline's key.
 func TestLogdStore_ScopeHidesAnInheritedSlot(t *testing.T) {
 	base := openStore(t)
-	ref := Ref{System: "demo", Kind: "project", ID: "shared"}
+	ref := RefAt("demo", "project", "shared")
 	set(t, base, ref, Obj{"owners": map[string]any{
 		"ENG": map[string]any{"name": "baseline-eng"},
 		"OPS": map[string]any{"name": "baseline-ops"},
@@ -282,11 +282,11 @@ func TestLogdStore_ScopeHidesAnInheritedSlot(t *testing.T) {
 // scope would be stuck with baseline's set as a floor. See docs/sources.md.
 func TestLogdStore_ScopeHidesAnInheritedEntity(t *testing.T) {
 	base := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "inherited"}
+	ref := RefAt("demo", "pr", "inherited")
 	set(t, base, ref, Obj{"stage": "open"}.Payload())
 
 	scoped := base.Scope("me")
-	inDemo := func(r Ref) bool { return r.System == "demo" }
+	inDemo := func(r Ref) bool { return r.System() == "demo" }
 	if _, ok, _ := scoped.Get(ref); !ok {
 		t.Fatal("precondition: the scope should read the baseline entity through")
 	}
@@ -342,7 +342,7 @@ func TestLogdStore_ScopeCaching(t *testing.T) {
 func TestLogdStore_SinceIsPureSet(t *testing.T) {
 	s := openStore(t)
 	start := s.Rev()
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())      // would have been "create"
 	set(t, s, ref, Obj{"stage": "reviewing"}.Payload()) // would have been "update"
 
@@ -386,9 +386,9 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 		t.Helper()
 		start := s.Rev()
 		refs := []Ref{
-			{System: "demo", Kind: "pr", ID: "1"},
-			{System: "demo", Kind: "pr", ID: "2"},
-			{System: "demo", Kind: "pr", ID: "3"},
+			RefAt("demo", "pr", "1"),
+			RefAt("demo", "pr", "2"),
+			RefAt("demo", "pr", "3"),
 		}
 		for i, r := range refs {
 			set(t, s, r, Obj{"stage": "open", "i": int64(i)}.Payload())
@@ -453,8 +453,8 @@ func TestLogdStore_SinceReadsBeforeThisStoreOpened(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	set(t, s1, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
-	set(t, s1, Ref{System: "demo", Kind: "pr", ID: "2"}, Obj{"stage": "open"}.Payload())
+	set(t, s1, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
+	set(t, s1, RefAt("demo", "pr", "2"), Obj{"stage": "open"}.Payload())
 	eventually(t, "history to land", func() bool { return s1.Rev() >= 2 })
 	s1.Close()
 
@@ -489,9 +489,9 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 
 	start := s.Rev()
 	refs := []Ref{
-		{System: "demo", Kind: "pr", ID: "1"},
-		{System: "demo", Kind: "pr", ID: "2"},
-		{System: "demo", Kind: "pr", ID: "3"},
+		RefAt("demo", "pr", "1"),
+		RefAt("demo", "pr", "2"),
+		RefAt("demo", "pr", "3"),
 	}
 	for i, r := range refs {
 		set(t, s, r, Obj{"stage": "open", "i": int64(i)}.Payload())
@@ -507,7 +507,7 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 		select {
 		case c := <-ch:
 			for _, ev := range c.Changes {
-				if ev.Ref.ID != "" {
+				if ev.Ref.ID() != "" {
 					seen[ev.Ref.String()] = true
 				}
 			}

@@ -108,7 +108,7 @@ func TestAutoSupervisorRoutes(t *testing.T) {
 			}
 			eng.ObserveScoped(t.Context())
 
-			ref := entity.Ref{System: "change", Kind: "pr", ID: "1"}
+			ref := entity.RefAt("change", "pr", "1")
 			entitytest.Set(t, store, ref, entity.Obj{"stage": "proposed", "tests": tc.tests}.Payload())
 
 			review := entity.Get(awaitStage(t, store, ref, tc.stage), "review")

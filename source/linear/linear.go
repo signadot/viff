@@ -208,13 +208,13 @@ func slotOf(key string) []string { return []string{"owners", key} }
 // TeamRef is the ref that targets one team: a reconcile of it reconciles that team's issues
 // and cycles, which is what a hint names.
 func TeamRef(key string) entity.Ref {
-	return entity.Ref{System: System, Kind: "team", ID: key}
+	return entity.RefAt(System, "team", key)
 }
 
 // TeamRef is the same ref in THIS source's system, which is what the webhook must hint: a hint
 // at `linear:team:ENG` reaches nothing when the source writes `issues:team:ENG`.
 func (l *Linear) TeamRef(key string) entity.Ref {
-	return entity.Ref{System: l.system, Kind: "team", ID: key}
+	return entity.RefAt(l.system, "team", key)
 }
 
 // Reflect reads the configured teams and returns what `linear:*` should hold. A zero ref reads
@@ -239,17 +239,17 @@ func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 // makes for a repo: the team is what one query reads, so a finer target would cost the same
 // request.
 func (l *Linear) targets(ref entity.Ref) []string {
-	if ref.System != l.system || ref.ID == "" {
+	if ref.System() != l.system || ref.ID() == "" {
 		return l.teams
 	}
 	var key string
-	switch ref.Kind {
+	switch ref.Kind() {
 	case "team":
-		key = ref.ID
+		key = ref.ID()
 	case "issue":
-		key, _, _ = strings.Cut(ref.ID, "-") // ENG-123
+		key, _, _ = strings.Cut(ref.ID(), "-") // ENG-123
 	case "cycle":
-		key, _, _ = strings.Cut(ref.ID, "/") // ENG/42
+		key, _, _ = strings.Cut(ref.ID(), "/") // ENG/42
 	default:
 		return l.teams // a kind this build does not know: a full pass cannot be wrong
 	}
@@ -302,7 +302,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	if page.Description != "" {
 		t["description"] = page.Description
 	}
-	rn.Add(entity.Ref{System: l.system, Kind: "team", ID: key}, t)
+	rn.Add(entity.RefAt(l.system, "team", key), t)
 
 	for _, c := range page.Cycles.Nodes {
 		p := entity.Obj{"team": key, "id": c.ID, "number": c.Number}
@@ -314,12 +314,13 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 				p[k] = v
 			}
 		}
-		rn.Add(entity.Ref{System: l.system, Kind: "cycle",
-			ID: fmt.Sprintf("%s/%d", key, c.Number)}, p)
+		rn.Add(entity.RefAt(l.system, "cycle",
+			fmt.Sprintf("%s/%d", key, c.Number)),
+			p)
 	}
 
 	for _, i := range page.Issues.Nodes {
-		rn.Add(entity.Ref{System: l.system, Kind: "issue", ID: i.Identifier}, issuePayload(key, i))
+		rn.Add(entity.RefAt(l.system, "issue", i.Identifier), issuePayload(key, i))
 	}
 
 	// A project is written INTO THIS TEAM'S SLOT, which is what the answer's shape says: the
@@ -327,7 +328,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	// authoritative. A second team's source answers the same entity with its own slot, and
 	// neither can reach the other's.
 	for _, p := range page.Projects.Nodes {
-		rn.Add(entity.Ref{System: l.system, Kind: "project", ID: p.ID},
+		rn.Add(entity.RefAt(l.system, "project", p.ID),
 			entity.Obj{"owners": map[string]any{key: projectPayload(key, p)}})
 	}
 	return rn, nil

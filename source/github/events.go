@@ -213,10 +213,10 @@ func Sign(secret string, body []byte) string {
 
 // targetComment reads a ref as one comment: `<org>/<name>#<n>/<id>`.
 func (g *GitHub) targetComment(ref entity.Ref) (repo string, number int, id int64, ok bool) {
-	if ref.Kind != "comment" {
+	if ref.Kind() != "comment" {
 		return "", 0, 0, false
 	}
-	rest, num, found := strings.Cut(ref.ID, "#")
+	rest, num, found := strings.Cut(ref.ID(), "#")
 	if !found {
 		return "", 0, 0, false
 	}
@@ -265,14 +265,14 @@ func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id
 
 // targetRun reads a ref as one workflow run.
 func (g *GitHub) targetRun(ref entity.Ref) (repo string, id int64, ok bool) {
-	if ref.Kind != "run" {
+	if ref.Kind() != "run" {
 		return "", 0, false
 	}
-	slash := strings.LastIndex(ref.ID, "/")
+	slash := strings.LastIndex(ref.ID(), "/")
 	if slash < 0 {
 		return "", 0, false
 	}
-	repo, num := ref.ID[:slash], ref.ID[slash+1:]
+	repo, num := ref.ID()[:slash], ref.ID()[slash+1:]
 	n, err := strconv.ParseInt(num, 10, 64)
 	if err != nil || n <= 0 || !g.reflects(repo) {
 		return "", 0, false

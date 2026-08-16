@@ -741,8 +741,9 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 	//
 	// Deterministic, like the gate id beside it, so a re-firing re-monitors the SAME channel
 	// and re-uses the ballots already cast there instead of asking the room again.
-	channelRef := entity.Ref{System: motionSystem, Kind: motionChannelKind,
-		ID: motionChannelID(gateID(t.Name, gname, subjects))}
+	channelRef := entity.RefAt(motionSystem, motionChannelKind,
+		motionChannelID(gateID(t.Name, gname, subjects)))
+
 	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
 	// channel's vote log, and open a discoverable channel entity voters can find/observe.
 	// It is displayed under the same subject the channel is keyed by, for the same reason.
@@ -899,7 +900,7 @@ func (e *Engine) commitMotionAtomic(ref entity.Ref, outcome string, witness []en
 	// one. Treat it as a revoke — monitorGate re-monitors and we try again with a real read.
 	cur, _, err := e.store.Get(ref)
 	if err != nil {
-		e.tracef("commit %s: read failed: %v", ref.ID, err)
+		e.tracef("commit %s: read failed: %v", ref.ID(), err)
 		return "", true
 	}
 	if o := entity.Str(cur.Payload, "outcome"); o != "" {
@@ -912,7 +913,7 @@ func (e *Engine) commitMotionAtomic(ref entity.Ref, outcome string, witness []en
 		When:  when,
 	})
 	if err != nil {
-		e.tracef("commit %s: conditional commit error: %v", ref.ID, err)
+		e.tracef("commit %s: conditional commit error: %v", ref.ID(), err)
 		return "", true // treat as a revoke; monitorGate re-monitors
 	}
 	if !committed {
@@ -962,20 +963,20 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Requ
 	choice := fs.FieldString("choice")
 	sub := map[string]any{}
 	for _, w := range witness {
-		if w.System != system || w.Kind != kind {
+		if w.System() != system || w.Kind() != kind {
 			continue
 		}
 		ballot := map[string]any{}
 		if choice != "" {
 			ballot["choice"] = choice
 		}
-		sub[w.ID] = ballot
+		sub[w.ID()] = ballot
 	}
 	if len(sub) == 0 {
 		return nil, false
 	}
 	return []entity.Require{{
-		At:      entity.Path{Ref: entity.Ref{System: system, Kind: kind}}, // the whole vote subtree
+		At:      entity.Path{Ref: entity.RefAt(system, kind)}, // the whole vote subtree
 		Pattern: entity.Obj(sub).Payload(),
 	}}, true
 }
@@ -1070,8 +1071,9 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		return fragmentFor(frags, options[0]), true
 	}
 
-	channelRef := entity.Ref{System: motionSystem, Kind: motionChannelKind,
-		ID: motionChannelID(providerSpecSeed(subject, p))}
+	channelRef := entity.RefAt(motionSystem, motionChannelKind,
+		motionChannelID(providerSpecSeed(subject, p)))
+
 	// The chain rides the SPEC (launchSpawn stamps it before the selection), so the motion
 	// records which action it is blocking without this needing an argument of its own.
 	m := e.compileProvider(p, subject, channelRef, options, frags, spawn.Chain)
@@ -1086,7 +1088,7 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 	for {
 		winner, witness, ok := e.awaitMotion(ctx, m)
 		if !ok {
-			e.tracef("select %s: %s ended before the motion closed", channelRef.ID, p.Select)
+			e.tracef("select %s: %s ended before the motion closed", channelRef.ID(), p.Select)
 			return launch.Fragment{}, false
 		}
 		if winner == "" { // no pick (deadline default) — record it, do not spawn
@@ -1095,7 +1097,7 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		}
 		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
 		if revoked {
-			e.tracef("select %s: revoked before commit → re-monitoring", channelRef.ID)
+			e.tracef("select %s: revoked before commit → re-monitoring", channelRef.ID())
 			continue
 		}
 		return fragmentFor(frags, eff), true
@@ -1181,13 +1183,13 @@ func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
 		if len(p.Match) > 0 {
 			pattern, _ = gomap.ToTonyIR(p.Match)
 		}
-		ents := e.store.List(func(r entity.Ref) bool { return r.System == "provider" && r.Kind == p.Capability })
-		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.ID < ents[j].Ref.ID })
+		ents := e.store.List(func(r entity.Ref) bool { return r.System() == "provider" && r.Kind() == p.Capability })
+		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.ID() < ents[j].Ref.ID() })
 		for _, en := range ents {
 			if pattern != nil && !providerMatches(en.Payload, pattern) {
 				continue
 			}
-			add(en.Ref.ID, providerFragment(en.Ref, en.Payload), en.Payload)
+			add(en.Ref.ID(), providerFragment(en.Ref, en.Payload), en.Payload)
 		}
 	}
 	return out
@@ -1256,7 +1258,7 @@ func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
 		Tools:  entity.Strs(payload, "tools"),
 	}
 	if f.Driver == "" {
-		f.Driver = ref.ID
+		f.Driver = ref.ID()
 	}
 	return f
 }
@@ -1283,7 +1285,7 @@ func (e *Engine) whyNoEligible(spawn launch.Spec) string {
 	// Registered-but-excluded and not-registered-at-all look the same from the caller and
 	// are fixed in opposite places, so count the registry before the match is applied.
 	registered := len(e.store.List(func(r entity.Ref) bool {
-		return r.System == "provider" && r.Kind == p.Capability
+		return r.System() == "provider" && r.Kind() == p.Capability
 	}))
 	if registered == 0 {
 		return fmt.Sprintf("no provider:%s:* is registered (register one, e.g. "+
@@ -1711,14 +1713,14 @@ func (e *Engine) ResumeFlow(m Match) int {
 // none of the "never filter in place" hazard the per-subject slices used to carry (the
 // control ops copied a slice header under the lock and iterated it unlocked).
 func (e *Engine) reap(ev entity.Event) {
-	if ev.Ref.System != mirror.System {
+	if ev.Ref.System() != mirror.System {
 		return
 	}
 	status := entity.Str(ev.To, "status")
 	if !task.TerminalStatus(status) {
 		return
 	}
-	if fp, ok := e.retire(ev.Ref.ID); ok {
+	if fp, ok := e.retire(ev.Ref.ID()); ok {
 		e.applyHook(fp, task.Status(status), ev)
 	}
 }
@@ -1744,7 +1746,7 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 				if !task.TerminalStatus(status) {
 					continue
 				}
-				if fp, ok := e.retire(ev.Ref.ID); ok {
+				if fp, ok := e.retire(ev.Ref.ID()); ok {
 					e.applyHook(fp, task.Status(status), ev)
 				}
 			}
@@ -1766,7 +1768,7 @@ func (e *Engine) ReconcileOrphans() int {
 	// mirror.RunKind). A run whose runtime died IS orphaned, and its record is the only place
 	// that fact can still be told; leaving it saying `running` forever would make the history
 	// less honest than the live view beside it. Claims carry no status and fall through.
-	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System == mirror.System }) {
+	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System() == mirror.System }) {
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || task.TerminalStatus(status) {
 			continue

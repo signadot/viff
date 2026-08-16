@@ -60,7 +60,7 @@ func (w *watch) quiet(t *testing.T, why string) {
 // the match and the agent's prompt.
 func TestWatchSubtreeLevelsFieldsWrittenBeforeTheWatch(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open", "note": "ship it"}.Payload())
 
 	ch, unsub, err := s.WatchSubtree("demo", "pr")
@@ -101,7 +101,7 @@ func TestWatchSubtreeLevelsFieldsWrittenBeforeTheWatch(t *testing.T) {
 // and not two views of one.
 func TestWatchSubtreeLevelsAcrossSeveralDeepWrites(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "task", ID: "t1"}
+	ref := RefAt("demo", "task", "t1")
 	set(t, s, ref, Obj{"note": "write the doc"}.Payload())
 
 	ch, unsub, err := s.WatchSubtree("demo", "task")
@@ -131,7 +131,7 @@ func TestWatchSubtreeLevelsAcrossSeveralDeepWrites(t *testing.T) {
 // A whole-system watch (kind "") seeds the same way — one level shallower.
 func TestWatchSubtreeSystemWideLevelsFromInitialState(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "7"}
+	ref := RefAt("demo", "pr", "7")
 	set(t, s, ref, Obj{"stage": "open", "note": "keep me"}.Payload())
 
 	ch, unsub, err := s.WatchSubtree("demo", "")
@@ -162,7 +162,7 @@ func TestWatchSubtreeSystemWideLevelsFromInitialState(t *testing.T) {
 // teardown-on-removal trigger never ran).
 func TestWatchSubtreeAppearAndDeleteAfterSeeding(t *testing.T) {
 	s := openStore(t)
-	seeded := Ref{System: "demo", Kind: "pr", ID: "1"}
+	seeded := RefAt("demo", "pr", "1")
 	set(t, s, seeded, Obj{"stage": "open"}.Payload())
 
 	ch, unsub, err := s.WatchSubtree("demo", "pr")
@@ -176,7 +176,7 @@ func TestWatchSubtreeAppearAndDeleteAfterSeeding(t *testing.T) {
 		t.Fatalf("replayed event = %s %v, want %s set", ev.Ref, ev.Op, seeded)
 	}
 
-	fresh := Ref{System: "demo", Kind: "pr", ID: "2"}
+	fresh := RefAt("demo", "pr", "2")
 	set(t, s, fresh, Obj{"stage": "open"}.Payload())
 	if ev := r.next(t, "the new entity"); ev.Ref != fresh || ev.Op != Set {
 		t.Fatalf("event = %s %v, want %s set", ev.Ref, ev.Op, fresh)
@@ -197,7 +197,7 @@ func TestWatchSubtreeAppearAndDeleteAfterSeeding(t *testing.T) {
 // snapshot taken at its revision are then two views of one moment rather than two moments.
 func TestSubtreeWatchStampsTheCommit(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
 	ch, unsub, err := s.WatchSubtree("demo", "pr")
@@ -256,7 +256,7 @@ func TestSubtreeWatchStampsTheCommit(t *testing.T) {
 // deltas queued when it wakes, which is precisely the case the coalescing existed for.
 func TestWatchSubtreeDoesNotCoalesceCommits(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 
 	ch, unsub, err := s.WatchSubtree("demo", "pr")
 	if err != nil {
@@ -313,12 +313,12 @@ func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
 	defer unsub()
 	r := reader(ch)
 
-	set(t, s, Ref{System: "demo", Kind: "task", ID: "a"}, Obj{"n": 1}.Payload())
-	set(t, s, Ref{System: "other", Kind: "pr", ID: "b"}, Obj{"n": 2}.Payload())
+	set(t, s, RefAt("demo", "task", "a"), Obj{"n": 1}.Payload())
+	set(t, s, RefAt("other", "pr", "b"), Obj{"n": 2}.Payload())
 	r.quiet(t, "writes to slices this watch does not cover")
 
-	set(t, s, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
-	if ev := r.next(t, "a write to the watched slice"); ev.Ref.ID != "1" {
+	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
+	if ev := r.next(t, "a write to the watched slice"); ev.Ref.ID() != "1" {
 		t.Fatalf("event = %s, want demo:pr:1", ev.Ref)
 	}
 }
@@ -333,7 +333,7 @@ func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
 // no longer has must reach that scope's rules. See docs/sources.md.
 func TestScopedWatchSeesADeleteOfAnInheritedEntity(t *testing.T) {
 	base := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "inherited"}
+	ref := RefAt("demo", "pr", "inherited")
 	set(t, base, ref, Obj{"stage": "open"}.Payload())
 
 	scoped, ok := base.Scope("me").(*LogdStore)
@@ -365,7 +365,7 @@ func TestScopedWatchSeesADeleteOfAnInheritedEntity(t *testing.T) {
 // second, which is the compatibility the variadic signature is carrying.
 func TestWatchSubtreeTakesAPrefix(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "9"}
+	ref := RefAt("demo", "pr", "9")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
 	for _, prefix := range [][]string{{"demo"}, {"demo", ""}} {

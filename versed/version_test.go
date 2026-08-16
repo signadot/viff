@@ -60,7 +60,7 @@ func TestAnIncompatibleClientIsRefusedBeforeItWrites(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("POST /entity from a v2 client to a v1 server = %s, want 409", resp.Status)
 	}
-	if _, ok, err := srv.Store.Get(entity.Ref{System: "demo", Kind: "pr", ID: "1"}); ok || err != nil {
+	if _, ok, err := srv.Store.Get(entity.RefAt("demo", "pr", "1")); ok || err != nil {
 		t.Errorf("the refused write happened anyway (ok=%v err=%v)", ok, err)
 	}
 }

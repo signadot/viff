@@ -134,8 +134,8 @@ func TestStringFormWhenConstrains(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`"demo:pr:1"`), &m, codec.JSON); err != nil {
 		t.Fatal(err)
 	}
-	named := entity.Event{Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"}, Op: entity.Set}
-	other := entity.Event{Ref: entity.Ref{System: "totally", Kind: "unrelated", ID: "9"}, Op: entity.Set}
+	named := entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set}
+	other := entity.Event{Ref: entity.RefAt("totally", "unrelated", "9"), Op: entity.Set}
 	if !m.MatchEvent(named) {
 		t.Error(`"demo:pr:1" did not match demo:pr:1`)
 	}
@@ -149,8 +149,8 @@ func TestStringFormWhenConstrains(t *testing.T) {
 // never `set` an entity literally called "*".
 func TestMatchNames(t *testing.T) {
 	yes := map[string]entity.Ref{
-		`{"system":"demo","kind":"pr","id":"1"}`: {System: "demo", Kind: "pr", ID: "1"},
-		`"demo:pr:1"`:                            {System: "demo", Kind: "pr", ID: "1"},
+		`{"system":"demo","kind":"pr","id":"1"}`: entity.RefAt("demo", "pr", "1"),
+		`"demo:pr:1"`:                            entity.RefAt("demo", "pr", "1"),
 	}
 	for in, want := range yes {
 		var m Match
@@ -258,7 +258,7 @@ func TestMatchFieldString(t *testing.T) {
 // empty match matches everything (as an empty pattern list did).
 func TestMatchEventDimensions(t *testing.T) {
 	ev := entity.Event{
-		Ref: entity.Ref{System: "demo", Kind: "pr", ID: "1"},
+		Ref: entity.RefAt("demo", "pr", "1"),
 		Op:  entity.Set, To: entity.Obj{"stage": "open"}.Payload(),
 	}
 	yes := []Match{
@@ -293,10 +293,10 @@ func TestMatchEventDimensions(t *testing.T) {
 // wildcard that flow addressing will use.
 func TestMatchSelect(t *testing.T) {
 	store := entitytest.Store(t)
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "2"}, entity.Obj{"stage": "reviewed"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "pr", ID: "3"}, entity.Obj{"stage": "open"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "other", Kind: "pr", ID: "1"}, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"), entity.Obj{"stage": "reviewed"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "3"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("other", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
 
 	count := func(m Match) int { return len(m.Select(store)) }
 
@@ -314,7 +314,7 @@ func TestMatchSelect(t *testing.T) {
 	}
 	// system+kind pins the slice: a same-id entity in another system is not picked.
 	refs := Match{"system": "demo", "kind": "pr", "id": "1"}.Select(store)
-	if len(refs) != 1 || refs[0].System != "demo" {
+	if len(refs) != 1 || refs[0].System() != "demo" {
 		t.Errorf("id selection crossed systems: %v", refs)
 	}
 	// An invalid match selects nothing rather than everything — fail closed.

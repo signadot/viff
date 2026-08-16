@@ -119,8 +119,8 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
-	waitField(t, store, entity.Ref{System: "audit", Kind: "record", ID: "latest"}, "stage", "noted")
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
+	waitField(t, store, entity.RefAt("audit", "record", "latest"), "stage", "noted")
 }
 
 // A failing patch must fail the FIRING, not just the write. Spawning a task about a state

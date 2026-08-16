@@ -31,7 +31,7 @@ func (c *counted) Reflect(_ context.Context, ref entity.Ref) (source.Reflection,
 		return source.Reflection{}, c.err
 	}
 	rn := source.Reflection{Covers: []entity.Pattern{{System: "demo"}}}
-	rn.Add(entity.Ref{System: "demo", Kind: "thing", ID: "1"},
+	rn.Add(entity.RefAt("demo", "thing", "1"),
 		entity.Obj{"calls": len(c.calls)})
 	return rn, nil
 }
@@ -49,8 +49,8 @@ func TestThrottleAnswersFromTheLastReflectionPerRef(t *testing.T) {
 	src := &counted{}
 	th := source.Throttle(src, time.Minute)
 
-	a := entity.Ref{System: "demo", Kind: "thing", ID: "a"}
-	b := entity.Ref{System: "demo", Kind: "thing", ID: "b"}
+	a := entity.RefAt("demo", "thing", "a")
+	b := entity.RefAt("demo", "thing", "b")
 	for range 3 {
 		if _, err := th.Reflect(ctx, a); err != nil {
 			t.Fatal(err)

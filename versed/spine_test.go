@@ -70,13 +70,13 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 		action: {patch: {stage: reviewed}},
 	}`)
 
-	subject := entity.Ref{System: "change", Kind: "pr", ID: "1"}
+	subject := entity.RefAt("change", "pr", "1")
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments", "stage": "draft"}.Payload())
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments", "stage": "proposed"}.Payload())
 	waitOwner(t, srv, "guard")
 
 	inst := resolver.InstanceRef("payments-review", subject.String())
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID+"/events?since=0")
+	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
 	if len(got) < 2 {
 		t.Fatalf("the spine carried %d commits, want the subject's history: %+v", len(got), got)
 	}
@@ -88,7 +88,7 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 		switch {
 		case ev.Ref == subject:
 			own++
-		case ev.Ref.System == mirror.QuestionSystem, ev.Ref.System == mirror.System:
+		case ev.Ref.System() == mirror.QuestionSystem, ev.Ref.System() == mirror.System:
 		default:
 			t.Fatalf("the spine carried a commit about %s", ev.Ref)
 		}
@@ -100,11 +100,11 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 	// And it answers the firing's gate through its own instance.
 	var qid string
 	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.System == mirror.QuestionSystem && ref.Kind == mirror.QuestionKind
+		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
 	}) {
-		qid = ent.Ref.ID
+		qid = ent.Ref.ID()
 	}
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.ID+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed", Why: "read the history first"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
@@ -135,7 +135,7 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 
-	subject := entity.Ref{System: "change", Kind: "pr", ID: "1"}
+	subject := entity.RefAt("change", "pr", "1")
 	mirror.Watch(srv.Store, "resolvers:security:payments-review", "payments-review", subject)
 	inst := resolver.InstanceRef("payments-review", subject.String())
 	before, _, _ := srv.Store.Get(inst)
@@ -149,7 +149,7 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	}
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
 
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID+"/events?since=0")
+	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
 	if len(got) != 4 {
 		t.Fatalf("a whole life came through as %d commits, want 4: %+v", len(got), got)
 	}
@@ -198,7 +198,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 
-	subject := entity.Ref{System: "change", Kind: "pr", ID: "1"}
+	subject := entity.RefAt("change", "pr", "1")
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
 	mirror.Watch(srv.Store, "resolvers:security:payments-review", "payments-review", subject)
 
@@ -206,7 +206,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	waitQuestion(t, srv, "run-1")
 
 	inst := resolver.InstanceRef("payments-review", subject.String())
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID+"/events?since=0")
+	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
 
 	var anchor entity.Event
 	for _, ev := range got {
@@ -214,7 +214,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 			anchor = ev
 		}
 	}
-	if anchor.Ref.ID == "" {
+	if anchor.Ref.ID() == "" {
 		t.Fatalf("no run appeared on the subject's spine, so a resolver reading it would not "+
 			"know there was work to watch: %+v", got)
 	}
@@ -223,11 +223,11 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	}
 
 	// And a commit about somebody ELSE's run is not on this spine.
-	other := entity.Ref{System: "change", Kind: "pr", ID: "2"}
+	other := entity.RefAt("change", "pr", "2")
 	entitytest.Set(t, srv.Store, other, entity.Obj{"area": "payments"}.Payload())
 	spawnFor(t, ts, "run-2", other.String(), "")
 	waitQuestion(t, srv, "run-2")
-	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID+"/events?since=0") {
+	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0") {
 		if ev.Ref == mirror.Ref("run-2") {
 			t.Fatalf("another subject's run is on this spine: %+v", ev)
 		}
@@ -238,7 +238,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	if _, ok, _ := srv.Store.Get(fine); !ok {
 		t.Fatal("the run the spine anchored has no instance to read it through")
 	}
-	if len(framesSoFar(t, ts.URL+"/resolvers/instance/"+fine.ID+"/events?since=0")) == 0 {
+	if len(framesSoFar(t, ts.URL+"/resolvers/instance/"+fine.ID()+"/events?since=0")) == 0 {
 		t.Fatal("the run instance served no frames")
 	}
 }

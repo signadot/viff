@@ -22,7 +22,7 @@ const System = "runners"
 
 // Ref addresses an installed runner.
 func Ref(kind, name string) entity.Ref {
-	return entity.Ref{System: System, Kind: kind, ID: name}
+	return entity.RefAt(System, kind, name)
 }
 
 // Entity is one installed runner: an address and somewhere to reach it.
@@ -148,7 +148,7 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 // List reads every installed runner, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
 	var out []Entity
-	for _, ent := range r.List(func(ref entity.Ref) bool { return ref.System == System }) {
+	for _, ent := range r.List(func(ref entity.Ref) bool { return ref.System() == System }) {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue

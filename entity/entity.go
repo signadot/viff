@@ -19,9 +19,44 @@ import (
 // Ref is a concrete, org-addressable entity: <system, kind, id>, e.g.
 // "linear:issue:1090". A generic reference ("linear:issue:$id") lives a level up,
 // in trigger templates; here a Ref always names one concrete thing.
-type Ref struct{ System, Kind, ID string }
+//
+// ITS SEGMENTS ARE UNEXPORTED, and that is the whole point of this step. A ref is an ADDRESS,
+// and an address is a sequence of segments that happens to be three long today; every caller
+// that reached into the struct was writing that arity down again. They go through RefAt and
+// the three readers below, so the day the representation becomes a path this file changes and
+// they do not.
+//
+// It stays a comparable struct rather than becoming a slice: a Ref is a map key and an
+// equality test in a hundred places (`ev.Ref == subj`, `map[Ref]Payload`), and a slice is
+// neither.
+type Ref struct{ system, kind, id string }
 
-func (r Ref) String() string { return r.System + ":" + r.Kind + ":" + r.ID }
+// RefAt builds the ref standing at these segments.
+//
+// Fewer than Depth segments names a PREFIX — a subtree rather than an entity — and it is
+// padded, which is exactly what `Ref{System: s, Kind: k}` did when it was written by hand: a
+// precondition over a whole vote log addresses `vote:<motion>` and the empty third segment is
+// what makes the store path end there. Padding is the bridge, not the destination: when the
+// representation becomes a path, a short address is short.
+func RefAt(segs ...string) Ref {
+	var r Ref
+	for i, dst := range []*string{&r.system, &r.kind, &r.id} {
+		if i < len(segs) {
+			*dst = segs[i]
+		}
+	}
+	return r
+}
+
+// System, Kind and ID are the three-segment reading of an address, and they are true while
+// every address has three segments. What is asking is usually "which namespace is this" —
+// `ref.System == mirror.System` — and that question survives the representation changing;
+// this is where it will be answered differently when it does.
+func (r Ref) System() string { return r.system }
+func (r Ref) Kind() string   { return r.kind }
+func (r Ref) ID() string     { return r.id }
+
+func (r Ref) String() string { return r.system + ":" + r.kind + ":" + r.id }
 
 // MarshalText / UnmarshalText spell a Ref as its address, which is how it is written
 // everywhere else — a charter, a CLI argument, `ref: demo:pr:1` on the wire. Without them a
@@ -48,7 +83,7 @@ func ParseRef(s string) (Ref, error) {
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return Ref{}, fmt.Errorf("invalid ref %q: want system:kind:id", s)
 	}
-	return Ref{System: parts[0], Kind: parts[1], ID: parts[2]}, nil
+	return RefAt(parts[0], parts[1], parts[2]), nil
 }
 
 // Segs is a ref's segments, in order — the form everything that WALKS an address speaks,
@@ -59,7 +94,7 @@ func ParseRef(s string) (Ref, error) {
 // used to say so by naming system, kind and id — which is how the arity came to be stated in
 // a dozen places instead of one. They ask here now, so the arity is `Depth`'s business and
 // theirs is the walk.
-func (r Ref) Segs() []string { return []string{r.System, r.Kind, r.ID} }
+func (r Ref) Segs() []string { return []string{r.system, r.kind, r.id} }
 
 // RefOf is Segs' inverse: the ref standing at these segments.
 //
@@ -77,7 +112,7 @@ func RefOf(segs []string) (Ref, bool) {
 			return Ref{}, false
 		}
 	}
-	return Ref{System: segs[0], Kind: segs[1], ID: segs[2]}, true
+	return RefAt(segs...), true
 }
 
 // Depth is how many segments name an entity.

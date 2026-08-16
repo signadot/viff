@@ -235,7 +235,7 @@ func (tr *tier) stop() {
 func writeAt(s *LogdStore, id string) (time.Duration, error) {
 	start := time.Now()
 	_, _, err := s.Write(Write{
-		At:    Ref{System: "demo", Kind: "pr", ID: id}.At(),
+		At:    RefAt("demo", "pr", id).At(),
 		Value: Obj{"stage": "open"}.Payload(),
 	})
 	return time.Since(start), err
@@ -280,7 +280,7 @@ func TestStoreRecoversFromClosedConnection(t *testing.T) {
 
 	// A read too, since the evidence from the outage says the wedge was not write-specific:
 	// /status failed rather than answering with a stale revision, and /status is a read.
-	if _, ok, err := s.Get(Ref{System: "demo", Kind: "pr", ID: "before"}); err != nil || !ok {
+	if _, ok, err := s.Get(RefAt("demo", "pr", "before")); err != nil || !ok {
 		t.Fatalf("read after recovery: ok=%v err=%v — what was written before the cut is unreadable", ok, err)
 	}
 }
@@ -328,7 +328,7 @@ func TestStoreRecoversFromDarkConnection(t *testing.T) {
 	g.heal()
 	mustRecover(t, s, "after", 60*time.Second)
 
-	if _, ok, err := s.Get(Ref{System: "demo", Kind: "pr", ID: "before"}); err != nil || !ok {
+	if _, ok, err := s.Get(RefAt("demo", "pr", "before")); err != nil || !ok {
 		t.Fatalf("read after recovery: ok=%v err=%v — what was written before the blackout is unreadable", ok, err)
 	}
 }
@@ -421,7 +421,7 @@ func TestStoreRecoversFromReplacedPeer(t *testing.T) {
 	mustRecover(t, s, "after", 20*time.Second)
 
 	// The same volume, so the roll must not have cost anything that was written before it.
-	if _, ok, err := s.Get(Ref{System: "demo", Kind: "pr", ID: "before"}); err != nil || !ok {
+	if _, ok, err := s.Get(RefAt("demo", "pr", "before")); err != nil || !ok {
 		t.Fatalf("read after the roll: ok=%v err=%v — what was written before it is gone", ok, err)
 	}
 }

@@ -122,7 +122,7 @@ func (g *GitIssue) Owns() []Own {
 // adds a line to their OWN hook posting to the hint route with this ref. docs/reference/
 // sourced.md carries the line.
 func (g *GitIssue) RepoRef(id string) entity.Ref {
-	return entity.Ref{System: g.system, Kind: "repo", ID: id}
+	return entity.RefAt(g.system, "repo", id)
 }
 
 var _ Source = (*GitIssue)(nil)
@@ -152,12 +152,12 @@ func (g *GitIssue) Reflect(ctx context.Context, ref entity.Ref) (Reflection, err
 // the single repository the ref belongs to (the bare id of a git-issue:repo:<id>, or the
 // leading segment of a git-issue:issue:<id>/<xidr>).
 func (g *GitIssue) targets(ref entity.Ref) map[string]repo {
-	if ref.System != g.system || ref.ID == "" {
+	if ref.System() != g.system || ref.ID() == "" {
 		return g.repos.all()
 	}
-	id := ref.ID
-	if ref.Kind != "repo" {
-		id, _, _ = strings.Cut(ref.ID, "/")
+	id := ref.ID()
+	if ref.Kind() != "repo" {
+		id, _, _ = strings.Cut(ref.ID(), "/")
 	}
 	if r, ok := g.repos.get(id); ok {
 		return map[string]repo{id: r}
@@ -279,7 +279,7 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 		if g.bodies && body != "" {
 			p["body"] = body
 		}
-		rn.Add(entity.Ref{System: g.system, Kind: "issue", ID: id + "/" + xidr}, p)
+		rn.Add(entity.RefAt(g.system, "issue", id+"/"+xidr), p)
 	}
 
 	rn.Add(g.RepoRef(id), entity.Obj{

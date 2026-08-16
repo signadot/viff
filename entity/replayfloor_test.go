@@ -51,7 +51,7 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 	// can produce one.
 	from := s.Rev()
 	for i := range 5 {
-		set(t, s, Ref{System: "demo", Kind: "pr", ID: string(rune('a' + i))}, Obj{"stage": "open"}.Payload())
+		set(t, s, RefAt("demo", "pr", string(rune('a'+i))), Obj{"stage": "open"}.Payload())
 	}
 	eventually(t, "history to land", func() bool { return s.Rev() >= 5 })
 

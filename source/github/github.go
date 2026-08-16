@@ -223,12 +223,12 @@ func (g *GitHub) Owns() []source.Own {
 // RepoRef is the ref that targets one repository: a reconcile of it reconciles that repository
 // whole, which is what a hint about a push or a repository event names.
 func (g *GitHub) RepoRef(repo string) entity.Ref {
-	return entity.Ref{System: g.system, Kind: "repo", ID: repo}
+	return entity.RefAt(g.system, "repo", repo)
 }
 
 // RunRef is the ref of one workflow run.
 func (g *GitHub) RunRef(repo string, id int64) entity.Ref {
-	return entity.Ref{System: g.system, Kind: "run", ID: repo + "/" + strconv.FormatInt(id, 10)}
+	return entity.RefAt(g.system, "run", repo+"/"+strconv.FormatInt(id, 10))
 }
 
 // CommentRef is the ref of one comment: the item it is on, then GitHub's own id.
@@ -237,19 +237,20 @@ func (g *GitHub) RunRef(repo string, id int64) entity.Ref {
 // of one address rather than a payload predicate over the whole repository — and so the
 // ownership claim is the same `<org>/<name>#*` the numbered kinds already share.
 func (g *GitHub) CommentRef(repo string, number int, id int64) entity.Ref {
-	return entity.Ref{System: g.system, Kind: "comment",
-		ID: repo + "#" + strconv.Itoa(number) + "/" + strconv.FormatInt(id, 10)}
+	return entity.RefAt(g.system, "comment",
+		repo+"#"+strconv.Itoa(number)+"/"+strconv.FormatInt(id, 10))
+
 }
 
 // ItemRef is the ref of one issue or pull request.
 func (g *GitHub) ItemRef(kind, repo string, number int) entity.Ref {
-	return entity.Ref{System: g.system, Kind: kind, ID: repo + "#" + strconv.Itoa(number)}
+	return entity.RefAt(g.system, kind, repo+"#"+strconv.Itoa(number))
 }
 
 // Reflect reads what `<system>:*` should hold. A zero ref reads every repository; a repo ref
 // reads that repository whole; an issue or pull-request ref reads just that item.
 func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection, error) {
-	if ref.System != "" && ref.System != g.system {
+	if ref.System() != "" && ref.System() != g.system {
 		// Another source's slice. No targets means an empty reflection with NO covers, which
 		// claims nothing and so tombstones nothing.
 		return source.Reflection{}, nil
@@ -278,10 +279,10 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 // targetRepos reads a ref as "which repositories": all of them for a zero ref, else the one it
 // names, and none at all for a repository this source does not reflect.
 func (g *GitHub) targetRepos(ref entity.Ref) []string {
-	if ref.ID == "" {
+	if ref.ID() == "" {
 		return g.repos
 	}
-	repo := ref.ID
+	repo := ref.ID()
 	if i := strings.Index(repo, "#"); i >= 0 {
 		repo = repo[:i]
 	}
@@ -306,10 +307,10 @@ type targetedItem struct {
 }
 
 func (g *GitHub) targetItem(ref entity.Ref) (targetedItem, bool) {
-	if ref.Kind != "issue" && ref.Kind != "pr" {
+	if ref.Kind() != "issue" && ref.Kind() != "pr" {
 		return targetedItem{}, false
 	}
-	repo, num, ok := strings.Cut(ref.ID, "#")
+	repo, num, ok := strings.Cut(ref.ID(), "#")
 	if !ok {
 		return targetedItem{}, false
 	}
@@ -319,7 +320,7 @@ func (g *GitHub) targetItem(ref entity.Ref) (targetedItem, bool) {
 	}
 	for _, r := range g.repos {
 		if r == repo {
-			return targetedItem{kind: ref.Kind, repo: repo, number: n}, true
+			return targetedItem{kind: ref.Kind(), repo: repo, number: n}, true
 		}
 	}
 	return targetedItem{}, false

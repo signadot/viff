@@ -87,7 +87,7 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	// A bare remove is REFUSED once it has reflected something, and the flags reach the route
 	// the way a person types them — the half of a command that is silently unreachable when the
 	// client builds its request wrongly.
-	waitForCLI(t, store, entity.Ref{System: source.GitSystem, Kind: "head", ID: "verse"})
+	waitForCLI(t, store, entity.RefAt(source.GitSystem, "head", "verse"))
 	if _, err := runCLI(t, "source", "remove", "git:laptop"); err == nil {
 		t.Fatal("a bare remove with a reflected slice should be refused")
 	}

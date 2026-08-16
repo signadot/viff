@@ -57,7 +57,7 @@ func TestEmergentChainOverLogd(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	subj := entity.Ref{System: "demo", Kind: "pr", ID: "1"}
+	subj := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, subj, entity.Obj{"stage": "open"}.Payload()) // ignite
 
 	waitStage(t, store, subj, "deployed")

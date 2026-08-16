@@ -11,7 +11,7 @@ import (
 // it is read. Two reads of one snapshot are answers about ONE world.
 func TestSnapshotDoesNotSeeLaterWrites(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
 	at := s.Rev()
@@ -22,7 +22,7 @@ func TestSnapshotDoesNotSeeLaterWrites(t *testing.T) {
 
 	// The world moves on, twice, in ways a live read would see.
 	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
-	set(t, s, Ref{System: "demo", Kind: "pr", ID: "2"}, Obj{"stage": "open"}.Payload())
+	set(t, s, RefAt("demo", "pr", "2"), Obj{"stage": "open"}.Payload())
 
 	e, ok, err := snap.Get(ref)
 	if err != nil || !ok {
@@ -49,9 +49,9 @@ func TestSnapshotDoesNotSeeLaterWrites(t *testing.T) {
 // only fix when it was true.
 func TestSnapshotAtHeadAgreesWithLiveStore(t *testing.T) {
 	s := openStore(t)
-	set(t, s, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
-	set(t, s, Ref{System: "demo", Kind: "task", ID: "a"}, Obj{"n": 3}.Payload())
-	set(t, s, Ref{System: "other", Kind: "thing", ID: "z"}, ir.FromString("scalar"))
+	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
+	set(t, s, RefAt("demo", "task", "a"), Obj{"n": 3}.Payload())
+	set(t, s, RefAt("other", "thing", "z"), ir.FromString("scalar"))
 
 	snap, err := s.AsOf(s.Rev())
 	if err != nil {
@@ -78,7 +78,7 @@ func TestSnapshotAtHeadAgreesWithLiveStore(t *testing.T) {
 		}
 	}
 	// The pred is applied the same way, so a snapshot can stand in for the store in a select.
-	demo := snap.List(func(r Ref) bool { return r.System == "demo" })
+	demo := snap.List(func(r Ref) bool { return r.System() == "demo" })
 	if len(demo) != 2 {
 		t.Fatalf("snapshot List(demo) = %d, want 2", len(demo))
 	}
@@ -89,7 +89,7 @@ func TestSnapshotAtHeadAgreesWithLiveStore(t *testing.T) {
 // could have failed already happened, when the snapshot was taken.
 func TestSnapshotTombstoneIsAbsence(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "gone"}
+	ref := RefAt("demo", "pr", "gone")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 	remove(t, s, ref)
 
@@ -106,7 +106,7 @@ func TestSnapshotTombstoneIsAbsence(t *testing.T) {
 		}
 	}
 	// An entity that was never written at all reads the same way.
-	if _, ok, err := snap.Get(Ref{System: "demo", Kind: "pr", ID: "never"}); ok || err != nil {
+	if _, ok, err := snap.Get(RefAt("demo", "pr", "never")); ok || err != nil {
 		t.Fatalf("Get of a never-written ref: ok=%v err=%v, want false/nil", ok, err)
 	}
 }
@@ -117,7 +117,7 @@ func TestSnapshotTombstoneIsAbsence(t *testing.T) {
 // entire requirement.
 func TestSnapshotRefusesAnUnreachableRevision(t *testing.T) {
 	s := openStore(t)
-	set(t, s, Ref{System: "demo", Kind: "pr", ID: "1"}, Obj{"stage": "open"}.Payload())
+	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
 
 	if _, err := s.AsOf(s.Rev() + 10_000); err == nil {
 		t.Fatal("AsOf a future revision returned a snapshot; want an error")
@@ -128,7 +128,7 @@ func TestSnapshotRefusesAnUnreachableRevision(t *testing.T) {
 // edge, which is what asks "did this predicate only just become true".
 func TestSnapshotReadsBackPastAChange(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{System: "demo", Kind: "pr", ID: "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 	before := s.Rev()
 	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
@@ -159,11 +159,11 @@ func TestSnapshotReadsBackPastAChange(t *testing.T) {
 // never the other way round. A snapshot is a view fixed in time, not a different verse.
 func TestSnapshotOfAScopeSeesTheOverlay(t *testing.T) {
 	s := openStore(t)
-	base := Ref{System: "demo", Kind: "pr", ID: "base"}
+	base := RefAt("demo", "pr", "base")
 	set(t, s, base, Obj{"stage": "open"}.Payload())
 
 	sc := s.Scope("iso")
-	only := Ref{System: "demo", Kind: "pr", ID: "scoped"}
+	only := RefAt("demo", "pr", "scoped")
 	set(t, sc, only, Obj{"stage": "scoped"}.Payload())
 
 	snap, err := sc.AsOf(sc.Rev())

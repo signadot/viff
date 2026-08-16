@@ -42,7 +42,7 @@ func TestDropRecoveryViaReplay(t *testing.T) {
 	// committed, so the replay watch still has every one of them.
 	const n = 300
 	for i := 0; i < n; i++ {
-		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)},
+		entitytest.Set(t, store, entity.RefAt("demo", "x", fmt.Sprint(i)),
 			entity.Obj{"stage": "new"}.Payload())
 	}
 	last := store.Rev()
@@ -88,7 +88,7 @@ func TestReplayedCommitsFireTriggers(t *testing.T) {
 	eng.Pause() // nothing is dispatched live; these are recovered by the replay alone
 	const n = 5
 	for i := range n {
-		entitytest.Set(t, store, entity.Ref{System: "demo", Kind: "x", ID: fmt.Sprint(i)},
+		entitytest.Set(t, store, entity.RefAt("demo", "x", fmt.Sprint(i)),
 			entity.Obj{"stage": "new"}.Payload())
 	}
 	eng.Resume()
@@ -96,7 +96,7 @@ func TestReplayedCommitsFireTriggers(t *testing.T) {
 	deadline := time.After(30 * time.Second)
 	for {
 		seen := 0
-		for _, e := range store.List(func(r entity.Ref) bool { return r.Kind == "x" }) {
+		for _, e := range store.List(func(r entity.Ref) bool { return r.Kind() == "x" }) {
 			if entity.Str(e.Payload, "stage") == "seen" {
 				seen++
 			}
