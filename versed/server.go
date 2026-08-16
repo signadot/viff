@@ -134,6 +134,9 @@ func (s *Server) SetTripPace(d time.Duration) {
 type scopeEngine struct {
 	eng    *trigger.Engine
 	cancel context.CancelFunc
+	// restore runs the scope's durable charter back into eng, exactly once and off the
+	// scope lock — see scopeEngine (the method).
+	restore sync.Once
 }
 
 // NewWithStore assembles the server with the given task driver builder (scripted,
@@ -745,27 +748,60 @@ func (s *Server) engFor(scope string) *trigger.Engine {
 // scopeEngine returns the engine for a scope, creating and starting it on first use.
 // It observes store.Scope(scope) — one dev's copy-on-write federation — and spawns
 // into that same scope. Requires Start to have captured the lifetime ctx.
+//
+// The scope's own charter is RESTORED into it, which is what makes `verse trigger add
+// --scope me` durable in the sense the word usually carries: the rule was always written
+// down, and until this it was written down and then interpreted by nobody, because a scope's
+// engine is created on demand and restored nothing. A dev came back from a restart to a
+// scope whose charter listed fine and fired at nothing.
+//
+// Baseline's rules, which the scoped store reads through, are NOT installed here — see
+// Engine.LoadCharter. That is a decision about what a scope means and it is still open; what
+// is not open is that a scope's own rules must run.
 func (s *Server) scopeEngine(scope string) *trigger.Engine {
 	s.scopeMu.Lock()
-	defer s.scopeMu.Unlock()
-	if se, ok := s.scopeEngs[scope]; ok {
-		return se.eng
+	se, ok := s.scopeEngs[scope]
+	if !ok {
+		scoped := s.Store.Scope(scope)
+		eng := trigger.New(scoped, s.Reg)
+		eng.SetScope(scope) // before anything is installed: it is stamped on what this engine writes
+		if s.tripPaceSet {  // same throttle policy as the baseline it overlays (see SetTripPace)
+			eng.SetTripPace(s.tripPace)
+		}
+		// Scoped agents read file content through the verse (the connect content
+		// controller), so a validator isn't tied to the machine holding the files.
+		content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
+		eng.SetSpawner(s.spawnerFor(scoped, scope, content))
+		sctx, cancel := context.WithCancel(s.ctx)
+		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
+		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
+		eng.ObserveScoped(sctx)
+		se = &scopeEngine{eng: eng, cancel: cancel}
+		s.scopeEngs[scope] = se
 	}
-	scoped := s.Store.Scope(scope)
-	eng := trigger.New(scoped, s.Reg)
-	if s.tripPaceSet { // same throttle policy as the baseline it overlays (see SetTripPace)
-		eng.SetTripPace(s.tripPace)
+	s.scopeMu.Unlock()
+	// OFF THE LOCK, and once. Restoring reads the store and opens a watch per rule — network
+	// work — and holding scopeMu across it would stall every other scope's lookup behind one
+	// dev connecting. The sync.Once is what makes that safe to do unlocked: a second caller
+	// arriving mid-restore waits for the first rather than installing the charter twice.
+	se.restore.Do(func() { s.restoreScopeCharter(se.eng, scope) })
+	return se.eng
+}
+
+// restoreScopeCharter reinstalls the scope's own strata and rules, in that order and for the
+// reason Start gives: a rule names the stratum it lives in, and one restored before its
+// stratum is held rather than installed.
+//
+// Failures are logged rather than returned, as Start's are: the caller is a request that has
+// something else to do (installing a trigger, listing one), and a scope whose charter came
+// back incomplete is still a scope worth serving.
+func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
+	if err := eng.LoadStrata(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: strata (scope %s): %v\n", scope, err)
 	}
-	// Scoped agents read file content through the verse (the connect content
-	// controller), so a validator isn't tied to the machine holding the files.
-	content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
-	eng.SetSpawner(s.spawnerFor(scoped, scope, content))
-	sctx, cancel := context.WithCancel(s.ctx)
-	// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
-	// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
-	eng.ObserveScoped(sctx)
-	s.scopeEngs[scope] = &scopeEngine{eng: eng, cancel: cancel}
-	return eng
+	if err := eng.LoadCharter(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: charter (scope %s): %v\n", scope, err)
+	}
 }
 
 // Start begins the engine's reactive loop (observing the store). It returns
@@ -794,10 +830,14 @@ func (s *Server) Start(ctx context.Context) {
 	// shutdown that was supposed to stop it.
 	//
 	// A rule that could not be restored is reported and skipped, so one bad entity does not
-	// cost the rest of the charter. Scoped charters are not restored here: a scope's engine
-	// is created on demand (verse connect) and a scoped store reads baseline layered
-	// underneath, so restoring one means enumerating scopes and reading only the scope's own
-	// layer — the same gap scoped resume has (see reconcileClaims).
+	// cost the rest of the charter.
+	//
+	// This is BASELINE's charter. A scope's own is restored when its engine is built, which
+	// happens on demand — the first scoped request, i.e. the dev reconnecting (see
+	// scopeEngine). It cannot happen here, because a restart cannot enumerate the scopes that
+	// have one: a scope's layer is invisible from baseline and nothing registers a scope's
+	// existence. So a federation nobody has reconnected to sits inert, which is the remaining
+	// half of the gap scoped resume also has (see reconcileClaims).
 	// The ORDERING first: a rule names the stratum it lives in, and one restored before its
 	// stratum is held rather than installed — correct, and it would then only start firing when
 	// something happened to touch the stratum again. Loading strata first makes the restart what

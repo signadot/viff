@@ -481,7 +481,7 @@ func (e *Engine) persistStratum(s Stratum) error {
 	ref := StrataRef(s.Name)
 	if _, _, err := e.store.Write(entity.Write{
 		At:    ref.At(),
-		Value: entity.Obj{specField: entity.Raw(doc)}.Payload(),
+		Value: e.record(doc),
 	}); err != nil {
 		return fmt.Errorf("%w: stratum %q: writing %s: %w", ErrCharter, s.Name, ref, err)
 	}
@@ -494,11 +494,19 @@ func (e *Engine) persistStratum(s Stratum) error {
 // A stratum that cannot be decoded or installed is reported and skipped, as a rule is: the rest
 // of the ordering is still worth having, and the rules that named the broken one are then held
 // rather than lost.
+//
+// In a scope it restores the scope's own strata, for the reason LoadCharter gives. A scoped rule
+// naming an inherited stratum is therefore HELD rather than installed — which is the existing
+// answer for a rule whose stratum has not arrived, and the right one here too: the ordering it
+// asked to be checked against is not in force in this federation.
 func (e *Engine) LoadStrata() error {
 	var errs []error
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
 		return r.System == StrataSystem && r.Kind == StrataKind
 	}) {
+		if !e.ownRecord(ent) {
+			continue
+		}
 		s, err := stratumOf(ent)
 		if err != nil {
 			errs = append(errs, err)

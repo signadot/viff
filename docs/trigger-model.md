@@ -199,10 +199,15 @@ So it was removed rather than carried. The finding and the three shapes a better
 might take are in [Goals: what is left](working/goals-residual.md); where it is headed is
 [a charter authored per change](roadmap/dynamic-charter.md).
 
-One thing is deliberately not restored. A **scoped charter** (`verse trigger add --scope`) is
-written into its scope, but a scope's engine is created on demand by `verse connect`, and a
-scoped store reads baseline layered underneath — so restoring one means enumerating scopes and
-reading only the scope's own layer. That is the same gap scoped resume has.
+A **scoped charter** (`verse trigger add --scope`) is restored the same way, when the scope's
+engine is next built — which is on demand, so in practice when the dev reconnects. Its record
+carries `scope: <name>`, which is what makes it restorable at all: a scoped store reads
+baseline layered underneath, so a listing in a scope returns baseline's rules and the scope's
+own, and only the record says which is which. Baseline's are passed over — a scope runs what
+was installed into it (see [connect](reference/connect.md#the-charter-a-scope-runs)).
+
+What a restart still cannot do is bring back a scope nobody has reconnected to: enumerating
+the scopes that have a charter needs a scope to be a listable thing, and it is not one yet.
 
 The charter is an observable slice like any other, so a trigger can watch the charter
 (`subject: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `task:*`

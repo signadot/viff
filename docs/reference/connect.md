@@ -86,5 +86,31 @@ does, and `disconnect --scope` asks it to drop one. A store without real scopes 
 The scope's engine observes via per-trigger subtree watches, each watching exactly the
 `system.kind` it matches rather than a root.
 
+## The charter a scope runs
+
+A scope runs **the rules installed into it**, and only those. `verse trigger add --scope me`
+writes the rule into the scope's own layer, where it is durable and addressable
+(`verse state get trigger:rule:x --scope me`); the record carries `scope: me`, which is what
+says whose it is.
+
+Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store
+layers baseline underneath, so listing the charter in a scope returns both, and the `scope`
+field is what tells them apart. Whether a federation *should* inherit baseline's program is
+open, and the reason it is open is cost rather than taste — a scoped subtree watch is seeded
+with the entities the scope inherits, so installing baseline's charter into a scope would
+replay all of it over everything the scope can see, privately, per connected dev, and then
+fire again in every scope on every baseline change.
+
+To run a baseline rule's behaviour in your scope, install it there. To **replace** one, remove
+it in the scope and add your own under that name: the removal is a copy-on-write tombstone
+that hides the inherited rule from this scope alone, and the install lands in your layer.
+Baseline is untouched either way.
+
+A scope's charter comes back after a verse restart when the scope's engine is next built —
+that is, when you reconnect. Until something asks for the scope, its engine does not exist and
+its rules are not running, because a restart cannot enumerate the scopes that have a charter:
+a scope's layer is invisible from baseline and nothing registers one.
+
 *Left to do: a scope is not yet a first-class, listable, durable thing — see
-[scope lifecycle](../roadmap/scope-lifecycle.md).*
+[scope lifecycle](../roadmap/scope-lifecycle.md). That is the missing piece above: a registry
+would let a restart bring every scope's charter back without waiting for a reconnect.*
