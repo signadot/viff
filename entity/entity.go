@@ -229,6 +229,23 @@ func RefOf(segs []string) (Ref, bool) {
 	return RefAt(segs...), true
 }
 
+// RefOfAny is RefOf without the arity: the segments name a place at whatever depth, and what is
+// refused is an empty one — a segment is a name, and a nameless level addresses nothing.
+//
+// RefOf keeps asking about the three an address has always had, because a walk at a FIXED depth
+// is still what most callers want and "is this an entity" is exactly that question for them.
+func RefOfAny(segs []string) (Ref, bool) {
+	if len(segs) == 0 {
+		return Ref{}, false
+	}
+	for _, s := range segs {
+		if s == "" {
+			return Ref{}, false
+		}
+	}
+	return RefAt(segs...), true
+}
+
 // Depth is how many segments name an entity BELOW its root — system, kind, id.
 //
 // It is the ONE place the arity is written down. Everything else asks Segs, RefOf or this

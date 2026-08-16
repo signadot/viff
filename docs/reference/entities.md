@@ -228,9 +228,14 @@ is not quite true. Unioning the second read is a real decision, not a detail.
 
 ## Writing
 
-A put **merges**: fields it does not name are left alone. That is why it answers with the
-entity as it now stands rather than an echo of what you sent, and why two writers advancing
-one entity do not clobber each other.
+A put **merges**: fields it does not name are left alone. That is why it answers with what
+stands AT THE ADDRESS YOU WROTE rather than an echo of what you sent, and why two writers
+advancing one entity do not clobber each other.
+
+The address may be as deep as the tree: `verse state put verse-dev drift head abc '{sha: …}'`
+writes there, and the answer is that place. A write is a value at a path, so where an entity
+"ends" is not a question a write has to answer — see
+[working/entity-tree.md](../working/entity-tree.md).
 
 ```sh
 verse state put demo pr 1 '{stage: open}'             # as steps: nothing needs quoting

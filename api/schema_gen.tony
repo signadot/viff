@@ -75,6 +75,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   field: .[array(string)]
+  path: .[array(string)]
   payload: .[tony-base:ir]
   ref: .[string]
   when: .[array(verse-condition)]

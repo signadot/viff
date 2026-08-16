@@ -1440,7 +1440,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ref, err := entity.ParseRef(body.Ref)
+	ref, err := writeAddress(body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1464,12 +1464,30 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "write refused: a condition did not hold", http.StatusConflict)
 		return
 	}
+	// The ENTITY as it now stands, which is what makes a merge visible: a write that named one
+	// field answers with the whole thing, so a caller sees what it did not send. The address it
+	// answers about is the one the write named — a path of any depth, now that a client can say
+	// one — rather than a three-segment ancestor of it.
 	e, ok, err := store.Get(ref)
 	if err != nil || !ok {
 		w.WriteHeader(http.StatusNoContent) // it landed; we just cannot show it back
 		return
 	}
 	writeOut(w, r, http.StatusOK, e)
+}
+
+// writeAddress reads the address a write names, in either spelling: a `path` of whatever depth,
+// or the three-segment `ref` every write carried before addresses became trees.
+func writeAddress(body api.PutEntity) (entity.Ref, error) {
+	if len(body.Path) > 0 {
+		ref, ok := entity.RefOfAny(body.Path)
+		if !ok {
+			return entity.Ref{}, fmt.Errorf("path %v does not name a place: a segment is a name, "+
+				"and none of them may be empty", body.Path)
+		}
+		return ref, nil
+	}
+	return entity.ParseRef(body.Ref)
 }
 
 // conditions maps the wire's preconditions onto the store's. A condition that asks nothing

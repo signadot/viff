@@ -82,9 +82,19 @@ Each lands with the suite green.
    first. Everything above the entity must be literal, for the reason it always was — the level
    check asks whether a read lands at or below the rule's own stratum, and it can only ask that
    of segments known at install.
-5. **Writes and watches.** `ParsePath` stops splitting an address into three-plus-a-field: a
-   write is a value at a path, which is what the store does anyway. A watch is told its depth by
-   whoever opens it (`WatchSubtree(prefix, depth)`), which is where §2's patterns arrive.
+5. **Writes.** Done. `api.PutEntity` carries a `path` beside `ref`, because the ref spelling
+   stops at three (`a:b:c:d` re-reads as three plus an id holding a colon) — so a write four
+   segments down is an ordinary write, and the CLI sends the whole address it was given rather
+   than splitting it at three. The answer is what stands at the address written, which keeps a
+   merge visible wherever the address IS an entity.
+
+   `verse state --paths --depth N` lists at a depth, through `Doc.EntitiesAt`; unset answers at
+   the depth an address has always had, which is what every listing written before this wants.
+
+   **Watches** are what is left here: `WatchSubtree` emits at the fixed depth, so a live change
+   four segments down is reported as a change to its three-segment ancestor. A deep rule still
+   fires — the seeded replay and the pattern's own Select see it — but the delta path has not
+   been taught the depth, and that is the next thing to do.
 6. **The charter tree, whole.** `at:` at any depth, writing where it lives. No `writes:`
    override until that is true — an address that cannot write where it is has not earned a way
    to write elsewhere.

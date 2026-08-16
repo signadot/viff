@@ -813,9 +813,20 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("state put: %w", err)
 	}
+	// THE WHOLE ADDRESS AS A PATH, which is what a write at any depth needs: `state put
+	// verse-dev drift head abc` names a place four segments down, and a ref can spell three.
+	// The field path rides along as it did — a write may still address inside a payload.
+	// THE WHOLE ADDRESS IS THE PLACE. `state put verse-dev drift head abc '{…}'` writes there,
+	// and so does `state put demo.pr.1.labels.urgent true` — a write is a value at a path, and
+	// where the entity "ends" is a question this command does not have to answer. The answer
+	// comes back from the address written, so a put still shows the merge wherever the address
+	// IS an entity, which is the ordinary case.
+	//
+	// `ref` rides along for a server that predates `path`, carrying the first three segments as
+	// it always did.
 	resp, err := httpPost("/entity", api.PutEntity{
 		Ref:     at.Ref.String(),
-		Field:   at.Field,
+		Path:    append(at.Ref.Segs(), at.Field...),
 		Payload: payload,
 		When:    when,
 	})
@@ -879,6 +890,11 @@ type stateConfig struct {
 	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
 	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
 	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
+	// Depth says how deep an address is, for a listing of them. It exists because nothing else
+	// knows: `{a: {b: {c: {stage: open}}}}` holds an entity at `a.b.c` or at `a.b`, and which
+	// one is a property of the question (docs/working/entity-tree.md). Unset answers at the
+	// depth an address has always had, which is what every listing written before this wants.
+	Depth int `cli:"name=depth desc='with --paths: how many segments an address has (default: 3, or 4 under verse)'"`
 }
 
 // stateCmd is `verse state`: the verse's state at a path.
@@ -971,7 +987,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("state: %w", err)
 	}
 	if cfg.Paths {
-		return printPaths(cc, resp, kp)
+		return printPaths(cc, resp, kp, cfg.Depth)
 	}
 	return printDoc(cc, resp, kp)
 }
@@ -1019,7 +1035,7 @@ func stateAt(at string) ([]entity.Entity, error) {
 // token inside a rendered ref, so the server would only be sending back what the document
 // already says. It is the `ls -1` of a read — what a script uses instead of grepping `ref:` out
 // of a listing, which is what scripts had to do while the answer was a table.
-func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
+func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -1039,7 +1055,12 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
 	// needs quoting the moment an id holds a dot and the dotted form the moment it holds one
 	// too. The colon form stays what a ref renders as inside a DOCUMENT, which is read by a
 	// parser rather than by a shell.
-	for _, e := range (entity.Doc{Node: node}).Entities(at) {
+	doc := entity.Doc{Node: node}
+	ents := doc.Entities(at)
+	if depth > 0 {
+		ents = doc.EntitiesAt(at, depth)
+	}
+	for _, e := range ents {
 		fmt.Fprintln(cc.Out, strings.Join(e.Ref.Segs(), " "))
 	}
 	return nil

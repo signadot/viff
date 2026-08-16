@@ -271,6 +271,52 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 	return out
 }
 
+// EntitiesAt is Entities at a depth the CALLER names, counted in segments from the root — which
+// is the only way to ask once an address may be as deep as the tree it lives in.
+//
+// `Entities` answers at the depth an address has always had (three, four in verse's own half),
+// which is what every listing written before this wants. This one answers "what stands at depth
+// N under the path I read", and the caller has that number: a pattern from its own path, a
+// person from `--depth`.
+//
+// A node shallower than N contributes nothing rather than being reported short: the question was
+// about a depth, and a half-address is not an answer to it.
+func (d Doc) EntitiesAt(at *kpath.KPath, depth int) []Entity {
+	prefix, err := pathPrefix(at)
+	if err != nil || depth < len(prefix) {
+		return nil
+	}
+	var out []Entity
+	var rec func(n *ir.Node, segs []string)
+	rec = func(n *ir.Node, segs []string) {
+		if len(segs) == depth {
+			out = append(out, Entity{Ref: RefAt(segs...), Payload: n})
+			return
+		}
+		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+			return
+		}
+		for i, f := range n.Fields {
+			rec(n.Values[i], append(append([]string{}, segs...), f.String))
+		}
+	}
+	rec(d.Node, prefix)
+	return out
+}
+
+// pathPrefix is the literal segments a read path fixes — what the document below it hangs from.
+// A wildcard has no literal, so a path carrying one fixes nothing past it.
+func pathPrefix(at *kpath.KPath) ([]string, error) {
+	var out []string
+	for kp := at; kp != nil; kp = kp.Next {
+		if kp.Field == nil {
+			return out, nil // a wildcard: the document carries the rest
+		}
+		out = append(out, *kp.Field)
+	}
+	return out, nil
+}
+
 // levels splits a path into the entity levels it fixes and the number it leaves for the
 // document to carry. ok is false for a path that cannot address entities at all.
 func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {

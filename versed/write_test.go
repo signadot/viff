@@ -218,3 +218,41 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 		resp.Body.Close()
 	}
 }
+
+// A WRITE NAMES A PLACE, at whatever depth. The ref spelling stops at three segments — `a:b:c:d`
+// re-reads as three plus an id holding a colon — so the wire carries a `path` beside it, and a
+// write four segments down is an ordinary write.
+//
+// The answer is what stands at the address written, which is what makes a merge visible: a
+// second write mentioning one field leaves the others alone and shows them back.
+func TestAWriteMayNameAPlaceAtAnyDepth(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	deep := []string{"verse-dev", "drift", "head", "abc"}
+	if code, got := post(t, ts, api.PutEntity{
+		Path:    deep,
+		Payload: entity.Obj{"sha": "deadbeef"}.Payload(),
+	}); code != 200 || got["sha"] != "deadbeef" {
+		t.Fatalf("a four-segment write: %d %+v", code, got)
+	}
+	code, got := post(t, ts, api.PutEntity{Path: deep, Payload: entity.Obj{"reviewed": "done"}.Payload()})
+	if code != 200 || got["reviewed"] != "done" || got["sha"] != "deadbeef" {
+		t.Fatalf("the merge at depth: %d %+v", code, got)
+	}
+
+	// It is one entity, four segments down — not a field of a three-segment one.
+	if ents := srv.Store.ListAt([]string{"verse-dev", "drift", "head"}, 4, nil); len(ents) != 1 {
+		t.Errorf("the store holds %d entities at depth 4, want the one written", len(ents))
+	}
+
+	// A path with an empty segment names no place, and is refused rather than written somewhere
+	// close to what was meant.
+	if code, _ := post(t, ts, api.PutEntity{
+		Path:    []string{"verse-dev", "", "head"},
+		Payload: entity.Obj{"x": 1}.Payload(),
+	}); code != 400 {
+		t.Errorf("an empty segment was accepted (%d)", code)
+	}
+}

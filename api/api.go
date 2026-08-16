@@ -55,7 +55,17 @@ import (
 //
 //tony:schemagen=verse-put-entity,notag
 type PutEntity struct {
-	Ref     string         `tony:"field=ref"`
+	// Ref is the address as a REF — three segments, which is what the colon spelling names and
+	// what every write before addresses became trees carried.
+	Ref string `tony:"field=ref"`
+	// Path is the address as a PATH, of whatever depth, and it is what a client sends when the
+	// address is deeper than a ref can spell (`verse-dev.drift.head.abc`). When it is set it is
+	// the address and Ref is ignored.
+	//
+	// Two fields rather than a deeper Ref because the ref spelling cannot carry it: `a:b:c:d`
+	// re-reads as `a:b:` plus an id holding a colon, so a fourth segment has no unambiguous
+	// colon form. The path does, and the colons move last (docs/working/entity-tree.md).
+	Path    []string       `tony:"field=path,omitzero"`
 	Field   []string       `tony:"field=field,omitzero"`
 	Payload entity.Payload `tony:"field=payload,omitzero"`
 	// When are preconditions, ALL of which must hold. They are checked WITH the write, in
