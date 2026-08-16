@@ -75,20 +75,14 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 // It runs after the baseline charter is loaded, and takes only the records stamped with an
 // address; the baseline load takes only the unstamped ones (Engine.ownRecord).
 func (s *Server) restorePackages() {
-	ats := map[string]bool{}
-	for _, ent := range s.Store.List(trigger.IsCharterRule) {
-		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
-			ats[at] = true
-		}
-	}
-	if len(ats) == 0 {
+	// EVERY ADDRESS THAT HAS RECORDS, not only those with rules: a package whose levels are
+	// installed and whose rules were refused is still a package, and one that did not come back
+	// at a restart would be a set of levels nobody could see or remove. packagesSeen is the one
+	// answer to "which packages exist", asked here too.
+	names := s.packagesSeen()
+	if len(names) == 0 {
 		return
 	}
-	names := make([]string, 0, len(ats))
-	for at := range ats {
-		names = append(names, at)
-	}
-	sort.Strings(names) // one order, so a restart reads the same way twice
 	s.scopeMu.Lock()
 	engs := make([]*trigger.Engine, 0, len(names))
 	for _, at := range names {
@@ -123,9 +117,19 @@ func (s *Server) restorePackages() {
 // packagesSeen is the addresses that currently have a charter package, for the status surface.
 func (s *Server) packagesSeen() []string {
 	var out []string
-	for _, ent := range s.Store.List(trigger.IsCharterRule) {
-		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
-			out = append(out, at)
+	// ALL THREE KINDS OF RECORD, because any one of them makes a package exist: its rules, its
+	// levels, and the declaration of what it imports. Reading only the rules made a package
+	// with levels and no rules INVISIBLE — which is not an exotic state, it is what a
+	// half-applied file leaves behind (the levels install, a rule is refused) and exactly when
+	// somebody needs to list it and take it down. `verse charter uninstall` answered "no
+	// charter is installed" about a charter whose records were sitting in the store.
+	for _, pred := range []func(entity.Ref) bool{
+		trigger.IsCharterRule, trigger.IsStratum, trigger.IsCharterPackage,
+	} {
+		for _, ent := range s.Store.List(pred) {
+			if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
+				out = append(out, at)
+			}
 		}
 	}
 	sort.Strings(out)

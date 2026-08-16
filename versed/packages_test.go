@@ -442,3 +442,32 @@ func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
 		t.Errorf("the refusal says neither why nor where: %s", msg)
 	}
 }
+
+// A PACKAGE WITH LEVELS AND NO RULES IS STILL A PACKAGE. That is what a half-applied charter
+// leaves behind — the levels install, a rule is refused — and it was invisible to everything
+// that lists or removes one, because "which packages exist" was answered by walking the RULES.
+//
+// So `verse charter uninstall` said "no charter is installed" about a charter whose records were
+// sitting in the store, and a restart would not have brought it back to be removed either.
+func TestAPackageWithNoRulesIsStillAPackage(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {system: git}}`); code != 201 {
+		t.Fatalf("installing a level = %d: %s", code, msg)
+	}
+	if got := srv.packagesSeen(); len(got) != 1 || got[0] != "notes" {
+		t.Fatalf("packagesSeen = %v, want the package its levels belong to", got)
+	}
+	if err := srv.removePackage("notes", false); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if got := srv.packagesSeen(); len(got) != 0 {
+		t.Errorf("the package is still listed after uninstall: %v", got)
+	}
+	if _, ok, _ := srv.Store.Get(trigger.StrataRefAt("notes", "lvl")); ok {
+		t.Error("the level outlived the package")
+	}
+}
