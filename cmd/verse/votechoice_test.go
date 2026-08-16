@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -129,5 +131,37 @@ func TestChoicesMirrorsTheDocketListing(t *testing.T) {
 		if got := strings.Join(choices(tc.opts), " "); got != tc.want {
 			t.Errorf("%s: choices = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// A refused ballot says so. This printed "voted" on any answer the server gave, including a
+// refusal — so a vote that was never recorded reported itself cast, and the only way to notice
+// was that the tally never moved.
+func TestVoteReportsARefusal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/entity":
+			if r.Method == http.MethodPost {
+				http.Error(w, "the store said no", http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound) // checkChoice: unreadable motion is not its call
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	defer func(addr string) { testAddr = addr }(testAddr)
+	testAddr = strings.TrimPrefix(srv.URL, "http://")
+	out, err := runCLI(t, "vote", "m1", "approve", "--as", "scott")
+	if err == nil {
+		t.Fatalf("a refused ballot reported success: %q", out)
+	}
+	if !strings.Contains(err.Error(), "the store said no") {
+		t.Errorf("the error does not carry the refusal: %v", err)
+	}
+	if strings.Contains(out, "voted") {
+		t.Errorf("it printed success anyway: %q", out)
 	}
 }
