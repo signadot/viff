@@ -3,7 +3,10 @@ package trigger
 import (
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // AN ADDRESS AS DEEP AS THE TREE, which is what a charter installed at `verse-dev.drift` needs:
@@ -81,5 +84,48 @@ func TestTheThreeDimensionsAreStillTheFirstThreeSegments(t *testing.T) {
 	sys, _ := ParseSteps([]string{"demo"})
 	if !sys.MatchRef(entity.RefAt("demo", "pr", "1")) {
 		t.Error("a system alone stopped covering what is under it")
+	}
+}
+
+// THE WHOLE LOOP AT FOUR SEGMENTS, which is what a charter installed at `verse-dev.drift`
+// needs: entities live at `verse-dev.drift.head.<id>`, a rule selects them by path, and the
+// store answers at the depth the pattern asks for rather than at the three it always had.
+func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
+	store := entitytest.Store(t)
+	deep := entity.RefAt("verse-dev", "drift", "head", "abc")
+	entitytest.Set(t, store, deep, entity.Obj{"reviewed": "pending"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "head", "xyz"),
+		entity.Obj{"reviewed": "done"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "finding", "abc"),
+		entity.Obj{"status": "open"}.Payload())
+
+	// Read back: a four-segment address is an ordinary read.
+	if e, ok, err := store.Get(deep); err != nil || !ok || entity.Str(e.Payload, "reviewed") != "pending" {
+		t.Fatalf("a four-segment entity did not read back: %v %v %v", e, ok, err)
+	}
+
+	// Select by path, at the pattern's own depth.
+	m, err := ParseSteps([]string{"verse-dev", "drift", "head", "*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m[mKeyValue] = ir.FromMap(map[string]*ir.Node{"reviewed": ir.FromString("pending")})
+	pat, err := m.pattern()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := pat.Select(store)
+	if len(got) != 1 || got[0] != deep {
+		t.Fatalf("selected %v, want just %s — the predicate and the depth both apply", got, deep)
+	}
+
+	// The sibling kind is a different path, and is not swept in by a wildcard at the leaf.
+	all, err := ParseSteps([]string{"verse-dev", "drift", "head", "*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pat, _ = all.pattern()
+	if len(pat.Select(store)) != 2 {
+		t.Errorf("a leaf wildcard selected %d, want the two under `head`", len(pat.Select(store)))
 	}
 }

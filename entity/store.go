@@ -83,6 +83,8 @@ type Store interface {
 	// cross-boundary query cannot stay a closure — but it is what the CLI's listings
 	// are written against today.
 	List(pred func(Ref) bool) []Entity
+	// ListAt enumerates the nodes at a depth the caller names — see Reader.ListAt.
+	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// WatchSubtree observes exactly the slice standing at a prefix of an address — one
 	// (system, kind), or a whole system given the system alone — rather than the whole store.
 	// It is what a scoped trigger watches, so that observation is precisely what the trigger

@@ -15,8 +15,18 @@ type Reader interface {
 	// Get returns an entity by ref: ok reports whether it exists, err reports whether the
 	// read could be performed at all. See Store.Get — the distinction is the point.
 	Get(ref Ref) (Entity, bool, error)
-	// List enumerates the stored entities whose ref satisfies pred (nil = all).
+	// List enumerates the stored entities whose ref satisfies pred (nil = all), at the depth an
+	// address has had all along — three segments, four in verse's own half.
 	List(pred func(Ref) bool) []Entity
+	// ListAt enumerates the nodes at a STATED depth under a prefix, which is how a caller asks
+	// about entities deeper than three.
+	//
+	// The depth is the caller's because nothing else knows it: a document holding `{a: {b: {c:
+	// {stage: open}}}}` has an entity at `a.b.c` or at `a.b`, and which one is a property of
+	// the question rather than of the store (docs/working/entity-tree.md). `at` is the literal
+	// prefix to read under and `depth` counts segments from the root, so `ListAt([verse-dev,
+	// drift, head], 4, …)` answers the entities one level below that path.
+	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 }
 
 // Snapshot is a Reader fixed at one revision: every read answers as of that commit, and no
@@ -70,6 +80,22 @@ func (s docSnapshot) List(pred func(Ref) bool) []Entity {
 			out = append(out, e)
 		}
 	}
+	return out
+}
+
+// ListAt is List at a depth the caller names, over the document already in hand.
+func (s docSnapshot) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
+	node := childByKey(s.doc, s.root)
+	for _, seg := range at {
+		node = childByKey(node, seg)
+	}
+	var out []Entity
+	walkLeaves(node, depth-len(at), func(segs []string, v *ir.Node) {
+		ref := RefAt(append(append([]string{}, at...), segs...)...)
+		if pred == nil || pred(ref) {
+			out = append(out, Entity{Ref: ref, Payload: nodeToPayload(v)})
+		}
+	})
 	return out
 }
 

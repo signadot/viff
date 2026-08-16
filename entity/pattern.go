@@ -161,6 +161,17 @@ func (p Pattern) pathCovers(ref Ref) bool {
 	return true
 }
 
+// literalPrefix is the leading segments of the path that name a place rather than a wildcard —
+// the deepest subtree a read can be narrowed to before the pattern has to do the picking.
+func (p Pattern) literalPrefix() []string {
+	for i, seg := range p.Path {
+		if seg == "*" {
+			return p.Path[:i]
+		}
+	}
+	return p.Path[:len(p.Path)-1] // the leaf is what is being selected, not read under
+}
+
 // Depth is how many segments the pattern names, which is the depth of the entities it selects.
 // Zero means it names none, and the three-dimension reading decides.
 func (p Pattern) Depth() int { return len(p.Path) }
@@ -181,10 +192,14 @@ func (p Pattern) Select(r Reader) []Ref {
 	pick := func(ref Ref) bool {
 		return ref.System() == p.System && (p.Kind == "" || ref.Kind() == p.Kind)
 	}
+	var ents []Entity
 	if len(p.Path) > 0 {
-		pick = p.pathCovers
+		// THE PATTERN'S OWN DEPTH is what the store is asked for: a path of four segments
+		// selects entities four deep, and the literal head of it is the prefix to read under.
+		ents = r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
+	} else {
+		ents = r.List(pick)
 	}
-	ents := r.List(pick)
 	skipVanishing := !namesVanishing(p.Predicate)
 	out := make([]Ref, 0, len(ents))
 	for _, e := range ents {

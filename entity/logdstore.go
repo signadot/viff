@@ -841,6 +841,41 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 	return out
 }
 
+// ListAt enumerates the nodes at a stated depth under a prefix — see Reader.ListAt for why the
+// depth is the caller's.
+//
+// It reads the SUBTREE rather than the root: a question about `verse-dev.drift.head` has no
+// business materializing the whole verse, and the prefix is exactly the path the substrate
+// routes on.
+func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
+	if depth < len(at) {
+		return nil
+	}
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	path := seg(s.root)
+	for _, sg := range at {
+		path += "." + seg(sg)
+	}
+	node, err := s.sess.Match(ctx, path)
+	s.noteRead(err)
+	if err != nil || node == nil {
+		return nil
+	}
+	// Match answers the content AT the path it was given — not a document wrapped in it — so the
+	// walk starts here and the remaining depth is what is left to descend. (List asks at the
+	// root and walks the system keys directly, which is the same fact one level up.)
+	var out []Entity
+	walkLeaves(node, depth-len(at),
+		func(segs []string, v *ir.Node) {
+			ref := RefAt(append(append([]string{}, at...), segs...)...)
+			if pred == nil || pred(ref) {
+				out = append(out, Entity{Ref: ref, Payload: nodeToPayload(v)})
+			}
+		})
+	return out
+}
+
 // WatchSubtree observes one (system,kind) slice — the kinded subtree
 // <root>.<system>.<kind> — or, when kind is "", a whole system (<root>.<system>, all
 // its kinds), streaming a change Event per entity and carrying this store's scope. This
