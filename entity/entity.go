@@ -37,9 +37,17 @@ import (
 // so `system` is still `task` and the code asking "is this a task" is asking about the same
 // segment it always was.
 type Ref struct {
-	root             string // "" = the world's, VerseRoot = verse's own
-	system, kind, id string
+	root string // "" = the world's, VerseRoot = verse's own
+	// key is the segments BELOW the root, joined by sep — a STRING because a Ref is a map key
+	// and an equality test in a hundred places, and a slice is neither comparable nor a key.
+	// sep is a byte no address can hold: every segment comes from a path, a ref or a document
+	// key, all of which are text somebody typed.
+	key string
 }
+
+// sep joins a ref's segments internally. It never reaches a rendering: String writes the
+// address, Segs hands back the parts.
+const sep = "\x00"
 
 // VerseRoot is the one reserved first segment: everything verse writes about its own running
 // lives under it, and nothing else may.
@@ -63,11 +71,14 @@ func RefAt(segs ...string) Ref {
 	if len(segs) > 0 && segs[0] == VerseRoot {
 		r.root, segs = VerseRoot, segs[1:]
 	}
-	for i, dst := range []*string{&r.system, &r.kind, &r.id} {
-		if i < len(segs) {
-			*dst = segs[i]
-		}
+	// Trailing empties are dropped rather than kept, because a SHORT ADDRESS IS SHORT: two
+	// segments name a subtree, and padding it to three with an empty made every walk render a
+	// level nobody named. It is what `Ref{System: s, Kind: k}` meant when it was written by
+	// hand, said once here instead of at each caller.
+	for len(segs) > 0 && segs[len(segs)-1] == "" {
+		segs = segs[:len(segs)-1]
 	}
+	r.key = strings.Join(segs, sep)
 	return r
 }
 
@@ -90,15 +101,46 @@ func (r Ref) Reserved() bool { return r.root == VerseRoot }
 // every address has three segments. What is asking is usually "which namespace is this" —
 // `ref.System == mirror.System` — and that question survives the representation changing;
 // this is where it will be answered differently when it does.
-func (r Ref) System() string { return r.system }
-func (r Ref) Kind() string   { return r.kind }
-func (r Ref) ID() string     { return r.id }
+func (r Ref) System() string { return r.seg(0) }
+func (r Ref) Kind() string   { return r.seg(1) }
+func (r Ref) ID() string     { return r.seg(2) }
+
+// seg is the nth segment below the root, or "" — the positional reading the three above are.
+func (r Ref) seg(n int) string {
+	for i, from := 0, 0; from <= len(r.key); i++ {
+		to := strings.Index(r.key[from:], sep)
+		if to < 0 {
+			if i == n {
+				return r.key[from:]
+			}
+			return ""
+		}
+		if i == n {
+			return r.key[from : from+to]
+		}
+		from += to + len(sep)
+	}
+	return ""
+}
+
+// Len is how many segments the address has below its root.
+func (r Ref) Len() int {
+	if r.key == "" {
+		return 0
+	}
+	return strings.Count(r.key, sep) + 1
+}
 
 func (r Ref) String() string {
-	if r.root == "" {
-		return r.system + ":" + r.kind + ":" + r.id
+	segs := r.Segs()
+	// THE COLON FORM NAMES THREE SEGMENTS, which is what every stored ref, every charter and
+	// every command line holds — so an address of that shape renders exactly as it always did.
+	// A deeper one has no colon spelling that can be read back (an id may contain colons, so
+	// `a:b:c:d` is already `a:b:` + an id), and renders as the dotted path, which can.
+	if r.Len() == Depth {
+		return strings.Join(segs, ":")
 	}
-	return r.root + ":" + r.system + ":" + r.kind + ":" + r.id
+	return JoinSegs(segs)
 }
 
 // MarshalText / UnmarshalText spell a Ref as its address, which is how it is written
@@ -149,10 +191,14 @@ func ParseRef(s string) (Ref, error) {
 // a dozen places instead of one. They ask here now, so the arity is `Depth`'s business and
 // theirs is the walk.
 func (r Ref) Segs() []string {
-	if r.root == "" {
-		return []string{r.system, r.kind, r.id}
+	var out []string
+	if r.root != "" {
+		out = append(out, r.root)
 	}
-	return []string{r.root, r.system, r.kind, r.id}
+	if r.key == "" {
+		return out
+	}
+	return append(out, strings.Split(r.key, sep)...)
 }
 
 // RefOf is Segs' inverse: the ref standing at these segments.

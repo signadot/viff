@@ -57,7 +57,7 @@
 # and the one thing it reads from anybody else is declared. The gate half below declares its own
 # and imports this one, which makes the two a graph verse checks for a cycle at install
 # (trigger/imports.go). One file, two packages, installed by the one command at the top.
-at: drift
+at: verse-dev.drift
 imports: [ !verse-path [git] ]
 ---
 # The reflected slice: the git source's, and nobody else writes it.
@@ -105,14 +105,15 @@ imports: [ !verse-path [git] ]
     subject: git:head:verse
   action:
     derive:
-      drift:
-        head:
-          repo: $subject.value.repo
-          sha: $subject.value.sha
-          reviewed: pending
-          result: !delete null
-          err: !delete null
-          outstanding: !delete null
+      verse-dev:
+        drift:
+          head:
+            repo: $subject.value.repo
+            sha: $subject.value.sha
+            reviewed: pending
+            result: !delete null
+            err: !delete null
+            outstanding: !delete null
 ---
 # 2. Before the review, the ledger is read onto the subject.
 #
@@ -353,16 +354,17 @@ imports: [ !verse-path [git] ]
       # carries where the attempt was made, so a finding still open with a proposedAt behind it
       # is a fix that did not land — visible in the ledger rather than lost with the branch.
       derive:
-        drift:
-          finding: !each
-            over: $data.findings
-            key: $item.symbol
-            value:
-              symbol: $item.symbol
-              status: $item.status
-              says: $item.says
-              at: $item.at
-              proposedAt: $item.proposedAt
+        verse-dev:
+          drift:
+            finding: !each
+              over: $data.findings
+              key: $item.symbol
+              value:
+                symbol: $item.symbol
+                status: $item.status
+                says: $item.says
+                at: $item.at
+                proposedAt: $item.proposedAt
     onFailed:
       patch:
         reviewed: failed
@@ -437,7 +439,7 @@ imports: [ !verse-path [git] ]
 # below carries the review's report onto the proposal). So the edge is merge → drift, and the
 # graph is a chain rather than a loop — which is what verse checks, and what would refuse this
 # file if the review ever came to read `merge:*` back.
-at: merge
+at: verse-dev.merge
 imports: [git, drift]
 ---
 # The same reflected slice, declared again because STRATA ARE PER PACKAGE: two packages each
@@ -496,11 +498,12 @@ imports: [git, drift]
     # `base` is pinned once by proposal-based below; `state` is written only by the rules that
     # decide, and its ABSENCE is what undecided means.
     derive:
-      merge:
-        proposal:
-          repo: $subject.value.repo
-          branch: $subject.value.name
-          sha: $subject.value.sha
+      verse-dev:
+        merge:
+          proposal:
+            repo: $subject.value.repo
+            branch: $subject.value.name
+            sha: $subject.value.sha
 ---
 # 1b. …and the commit it was cut from is pinned, once.
 #
