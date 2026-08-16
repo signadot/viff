@@ -634,7 +634,9 @@ past.
 
 A motion is an ordinary entity (`motion:channel:<id>`), so the docket is a view of the store:
 you can watch it, get one, and write a rule that reacts to it. It stays live until it
-commits — if alice retracts first, the tally drops and the gate re-blocks.
+commits — if alice retracts first, the tally drops and the gate re-blocks — and it is checked
+against the world on the way out: if the subject has moved out of what the rule selects, the
+question is moot and the motion is withdrawn rather than carried.
 
 It also survives verse going down. The channel and the ballots are entities; what dies is the
 goroutine watching the tally, and a start gives it back — so a vote cast a day and a restart

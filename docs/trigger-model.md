@@ -559,6 +559,35 @@ spawn.** The channel is closed, so nothing resumes it. The resume does not intro
 is the window `patch` then `spawn` already has inside one action. An action is not atomic, and
 a crash in the middle of one leaves the half that landed.
 
+### A gate's answer applies to the world it was asked in
+
+A motion is not settled the moment it is satisfied. Between reaching its threshold and
+committing, the verdict is rechecked — and until this it was rechecked against the wrong thing.
+
+The **revoke guard** covers the ballots: the witness that carried a `proceed` must still stand
+at the commit, so a retracted approval aborts it and the motion goes back to monitoring. That
+is the right rule for the answer. It says nothing about the *question*.
+
+So the commit also asks whether the rule would still select the subject. If it would not, the
+question is moot: the motion is **withdrawn** — `status: orphaned` with a `why`, no `outcome`,
+no action, and no `onDenied`, because a moot question is not a refusal. The ballots stay in the
+log, and a rule that selects that subject again reopens the same channel over them.
+
+This is not a hypothetical tidiness. A merge proposal was swept to `state: stale` while its
+gate stood open; the motion, watching only its vote log, reached quorum on the approval already
+cast, committed `proceed`, and merged a branch the sweep had retired — losing the work on it
+(see [merge-gate-residual](working/merge-gate-residual.md)). A gate that can only be answered
+about a world that has moved on is a gate answered by reflex, which is the failure gates exist
+to prevent.
+
+Two limits worth knowing. The check runs **at the commit**, not continuously, so a motion whose
+subject has already left the selection stays listed until somebody votes or the verse restarts
+— it is honest about the answer, not yet prompt about the listing. And it asks only about the
+SUBJECT, not the cause: a rule fired by an `on` edge may still select its subject and never see
+that edge again. When it cannot tell — an unreadable store, a predicate whose read fails — it
+lets the motion stand, because a stale docket entry costs a reader a moment while a wrongly
+withdrawn one takes a live question away from the people it is in front of.
+
 ## `action` — what fires
 
 Data, not code. An action needs no target of its own: it acts on the condition's subject.

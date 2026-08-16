@@ -134,10 +134,10 @@ func checkChoice(motion, choice string) error {
 // Two ways a motion stops taking ballots, and they are worth telling apart. A COMMITTED one is
 // decided — terminal-once, so a later ballot cannot move it, and saying so beside the outcome
 // is what stops somebody voting on last week's question. An ORPHANED one was never decided:
-// what waited on the answer did not survive a restart and the verse could find nothing to
-// resume it into, so it says why. It is not final — a rule reinstalled over it reopens the same
-// channel with the same ballots — which is exactly why the refusal names the cause rather than
-// declaring the question closed.
+// nothing is reading the answer (a restart it could not be resumed into), or the question
+// stopped applying (its rule no longer selects the subject it is about). It is not final — a
+// rule that selects that subject again reopens the same channel with the same ballots — which
+// is why the refusal repeats the `why` off the motion rather than declaring the question closed.
 func checkOpen(motion string, payload map[string]any) error {
 	if outcome, _ := payload["outcome"].(string); outcome != "" {
 		return fmt.Errorf("%w: motion %s is already decided (%s) — a ballot cannot move a "+
@@ -148,7 +148,7 @@ func checkOpen(motion string, payload map[string]any) error {
 		if why == "" {
 			why = "nothing is waiting on it"
 		}
-		return fmt.Errorf("%w: motion %s is not being read: %s", cli.ErrUsage, motion, why)
+		return fmt.Errorf("%w: motion %s is not taking ballots: %s", cli.ErrUsage, motion, why)
 	}
 	return nil
 }

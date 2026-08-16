@@ -758,6 +758,25 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 			e.tracef("temporal gate %s/%s: monitor ended before commit", t.Name, gname)
 			return false, false
 		}
+		// THE WORLD, alongside the ballots. The revoke guard below rechecks the facts the
+		// verdict rests on and says nothing about the state that raised the question — so a
+		// motion whose subject left the rule's selection while it stood open still reached
+		// quorum, still committed, and still ran the action. That is not hypothetical: a merge
+		// proposal was swept to `state: stale`, the gate carried on the ballot already cast,
+		// and the branch was merged out from under the sweep that had retired it
+		// (docs/working/merge-gate-residual.md).
+		//
+		// So a gate asks its question of a world, and the answer applies to that world. When
+		// the rule would no longer select the subject, the question is moot: the motion is
+		// withdrawn rather than committed, and this returns "not decided" — a moot question is
+		// not a refusal, so no `onDenied` runs. Nothing is latched, so a rule that selects the
+		// subject again reopens the same channel over the same ballots.
+		if len(subjects) > 0 && !e.stillSelects(t, subject) {
+			e.orphanMotion(channelRef, fmt.Sprintf(
+				"%s no longer selects %s, so the question it asked is moot", t.Name, subject))
+			e.tracef("temporal gate %s/%s: %s left the selection → withdrawn", t.Name, gname, subject)
+			return false, false
+		}
 		// The winning option's formula is the revoke guard (nil for a deadline-default deny).
 		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
 		if revoked {
