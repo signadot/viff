@@ -107,23 +107,6 @@ func TestAWriteOutsideTheConfinementIsRefusedAtTheWrite(t *testing.T) {
 	}
 }
 
-// A stratum is about the charter's own addresses. One reaching outside is refused rather than
-// left standing as an ordering no rule inside the confinement could ever satisfy.
-func TestAConfinedCharterRefusesAStratumReachingOutside(t *testing.T) {
-	eng := New(entitytest.Store(t), denyResolver{})
-	eng.Confine(Subtree{"", "drift", ""})
-
-	if err := eng.AddStratum(Stratum{Name: "mine", Level: 10,
-		Match: []Match{{"system": "drift", "kind": "finding"}}}); err != nil {
-		t.Fatalf("a stratum inside the confinement was refused: %v", err)
-	}
-	err := eng.AddStratum(Stratum{Name: "theirs", Level: 20,
-		Match: []Match{{"system": "other", "kind": "thing"}}})
-	if err == nil || !strings.Contains(err.Error(), "outside") {
-		t.Fatalf("a stratum owning another charter's addresses installed: %v", err)
-	}
-}
-
 // Two charters at disjoint addresses do not see each other's writes — the isolation the whole
 // mechanism is for, end to end rather than by construction.
 func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
@@ -174,5 +157,80 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 			}
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A PACKAGE READS A SOURCE AS ITS SUBJECT, which is the case that decides whether packages are
+// usable at all: two charters both reacting to `git:*` is the ordinary arrangement, not an
+// exotic one, and a source is nobody's package to be inside.
+//
+// comment-drift's own `head-moved` is the shape, reduced: select `git:head:verse`, derive into
+// `drift:head`. It reads its subject and writes somewhere else, so the subject's address is a
+// READ and only the derive is confined.
+func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	eng.Confine(Subtree{"", "drift", ""})
+
+	// The levels as the real charter writes them: the SOURCE slice at the bottom — which is
+	// what a package's lowest level owns, since its rules select from what they read — and the
+	// package's own above it, because that is the only direction a derive may go.
+	if err := eng.AddStratum(Stratum{Name: "reflected", Level: 0,
+		Match: []Match{{"system": "git"}}}); err != nil {
+		t.Fatalf("stratum: %v", err)
+	}
+	if err := eng.AddStratum(Stratum{Name: "ours", Level: 10,
+		Match: []Match{{"system": "drift"}}}); err != nil {
+		t.Fatalf("stratum: %v", err)
+	}
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: head-moved
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+      drift:
+        head:
+          repo: $subject.value.repo
+`)); err != nil {
+		t.Fatalf("a rule deriving from a source it reads was refused: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"),
+		entity.Obj{"repo": "verse", "sha": "abc"}.Payload())
+	// The derived entity lands under the package's own address, keyed by the derive's own id.
+	deadline := time.After(3 * time.Second)
+	for {
+		found := false
+		for _, e := range store.List(func(r entity.Ref) bool {
+			return r.System() == "drift" && r.Kind() == "head"
+		}) {
+			if entity.Str(e.Payload, "repo") == "verse" {
+				found = true
+			}
+		}
+		if found {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the derive never landed in the package's own address")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	// And the same subject with a PATCH is still refused: that one writes the source.
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: touch-the-source
+  condition:
+    subject: git:head:verse
+  action:
+    patch: {touched: "yes"}
+`)); err == nil {
+		t.Fatal("a rule patching a source outside the package installed")
 	}
 }

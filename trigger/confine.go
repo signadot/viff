@@ -31,6 +31,15 @@ import (
 //     and a static check over templates is best-effort, which stratum.go's own opening comment
 //     already names as the wrong shape for a promise.
 //
+// IT BOUNDS DAMAGE, NOT INTERFERENCE, and that limit is filed rather than fixed: two packages
+// can still feed each other through the store — A reads what B writes while B reads what A
+// writes — and neither charter's author can see the loop in their own charter. Nothing catches
+// it today, because the level discipline is per package and the cycle throttle bounds a chain
+// within one engine. The shape of an answer is an acyclic import graph between packages, where
+// a package declares what it reads and the graph is checked at install. See git-issue
+// dpz3jxzdh12ksb6mg5n0; it needs two packages deliberately arranged to feed each other, which is
+// not what anybody hits on the way in.
+//
 // What it does NOT confine is a spawn. A rule's task acts in the world under its `grant`, and
 // store confinement is not world confinement — see docs/provider-selection.md for the dial that
 // is. Nor does it confine what the ENGINE writes about its own running (a task's mirror, a
@@ -76,8 +85,17 @@ func (s Subtree) String() string {
 
 // checkConfined refuses a rule that would write outside this engine's confinement.
 //
-// It asks about WRITES only: the subject, because a `patch` writes it, and every derive target,
-// because a derive writes one. `on` and `when` are reads and are not asked about.
+// It asks about WRITES only, and the subject is a write ONLY WHEN THE ACTION PATCHES IT. That
+// distinction is the difference between a useful package and a useless one, and the charter we
+// run is what says so: comment-drift's `head-moved` selects `git:head:verse` and derives into
+// `drift:head` — it reads a source as its subject and writes somewhere else entirely. A rule
+// like that belongs to the `drift` package, and a check that asked only "is the subject inside"
+// would refuse it, leaving packages unable to react to any source — which two charters both
+// reading `git:*` is the ordinary case for, not the exotic one.
+//
+// So: a `derive` target is always checked, since a derive writes one; the subject is checked
+// when the action, one of its completion hooks, a sequence element or a gate's `onDenied`
+// carries a `patch`, since that is what writes the subject.
 //
 // A subject that NAMES one entity is checked the same way a selecting one is — the containment
 // question is about the address, and naming does not make it somebody else's to write.
@@ -86,9 +104,10 @@ func (e *Engine) checkConfined(t Trigger) error {
 		return nil
 	}
 	outer := Matches{e.confine.match()}
-	if !outer.contains(t.Condition.Subject) {
+	if t.writesSubject() && !outer.contains(t.Condition.Subject) {
 		return fmt.Errorf("subject %s is outside %s: a charter installed at an address may only "+
-			"write inside it, and its action patches the subject it selects",
+			"write inside it, and this rule patches the subject it selects (a rule that only "+
+			"READS its subject — deriving elsewhere from it — may select anywhere)",
 			subjectText(t.Condition.Subject), e.confine)
 	}
 	for _, d := range t.Action.allDerives() {
@@ -100,25 +119,14 @@ func (e *Engine) checkConfined(t Trigger) error {
 	return nil
 }
 
-// checkConfinedStratum refuses a stratum whose patterns reach outside the confinement.
+// A STRATUM IS NOT CONFINED, and the charter we run is why: comment-drift's lowest level,
+// `reflected`, owns `system: git` — the source slice its rules select from and never write. A
+// stratum says which subjects a level OWNS for ordering purposes, and a package's rules select
+// from what they read, so a stratum naming a source is the ordinary case rather than a reach.
 //
-// A stratum says which subjects it owns, and a rule's subject must fall inside its stratum's
-// pattern (checkLevels). A stratum reaching outside would therefore be either inert — no rule
-// inside the confinement can satisfy it — or a claim about somebody else's addresses, and both
-// are better refused than left standing as an ordering nothing can use.
-func (e *Engine) checkConfinedStratum(st Stratum) error {
-	if !e.confine.confined() {
-		return nil
-	}
-	outer := Matches{e.confine.match()}
-	for _, m := range st.Match {
-		if !outer.contains(m) {
-			return fmt.Errorf("stratum %q owns %s, which is outside %s: a charter's levels are "+
-				"about its own addresses", st.Name, matchesText(st.Match), e.confine)
-		}
-	}
-	return nil
-}
+// Nothing is lost by leaving it open. What a stratum governs is the DIRECTION of a derive
+// (strictly higher), and where a derive may land is checked against the confinement on its own
+// — so a level naming somebody else's slice cannot become a write into it.
 
 // mayWrite is the run-time half: the refusal that makes the confinement a guarantee rather than
 // a check somebody's template can walk past.
@@ -179,4 +187,40 @@ func ParseAt(at string) (Subtree, error) {
 		out[i+1] = sg // [0] is the root, which a charter's address never names
 	}
 	return out, nil
+}
+
+// writesSubject reports whether a rule writes the entity it selects — which is what makes the
+// subject's address a write rather than a read.
+//
+// A `patch` is the only thing that writes the subject: a `derive` writes the address it names,
+// a `spawn` writes a task record in verse's own half, and neither is the subject. The walk goes
+// through the same places `allDerives` looks — hooks, sequence elements — plus a gate's
+// `onDenied`, which is an action about the same subjects and is how a refusal is recorded.
+func (t Trigger) writesSubject() bool {
+	if t.Action.writesSubject() {
+		return true
+	}
+	for _, g := range t.AllGates() {
+		if g.OnDenied != nil && g.OnDenied.writesSubject() {
+			return true
+		}
+	}
+	return false
+}
+
+func (a Action) writesSubject() bool {
+	if a.Patch != nil {
+		return true
+	}
+	for _, el := range a.Seq {
+		if el.writesSubject() {
+			return true
+		}
+	}
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+		if h != nil && h.writesSubject() {
+			return true
+		}
+	}
+	return false
 }

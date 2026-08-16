@@ -118,20 +118,50 @@ verse trigger add charter.tony                     # baseline: may write anywher
 
 That is what lets two groups keep rules in one verse without arranging not to collide. Isolation
 by convention holds until somebody edits a rule; a package's holds because the confinement is a
-property of the ENGINE rather than of the rules currently installed in it — a rule whose subject
-or `derive` falls outside does not install, and a write that resolves outside at fire time is
-refused (which is the half that matters, since a derive's address can be templated).
+property of the ENGINE rather than of the rules currently installed in it — a `derive` landing
+outside does not install, and a write that resolves outside at fire time is refused (which is
+the half that matters, since a derive's address can be templated).
+
+**A rule may SELECT anywhere it only reads.** The subject is a write when the action patches it,
+and a read otherwise — so a package's rule can select a source and derive from it, which is what
+most of them do:
+
+```tony
+- name: reflected           # the level the source sits at
+  level: 0
+  match: {system: git}
+- name: ours
+  level: 10
+  match: {system: drift}
+- name: head-moved          # in the `drift` package
+  stratum: reflected
+  condition: {subject: git:head:verse}    # a source: read, never written
+  action: {derive: {drift: {head: {repo: $subject.value.repo}}}}
+```
+
+Two packages both reacting to `git:*` is the ordinary arrangement, not an exotic one. What each
+may do about it is write in its own address.
 
 **Reads are not confined.** A package's rules see the whole verse — "react to what happened over
 there, record what it means over here" is the shape most real rules have, and a read moves
 nothing. What isolation needs is that nobody else's state changes.
 
-**Its levels are its own.** A package's strata are confined the same way, and that is what makes
-per-package levels coherent: with no cross-package write there is no cross-package derive, so
-there is no cross-package ordering to define. Two packages may both declare a level 10 and mean
-nothing to each other.
+**Its levels are its own**, and they are not confined — a package's lowest level owns the slice
+it READS. comment-drift's `reflected` owns `system: git`: its rules select from the source and
+derive above it, which is the ordinary shape. What makes per-package levels coherent is the
+write confinement rather than a second check on the strata: with no cross-package write there is
+no cross-package derive, so there is no cross-package ordering to define, and two packages may
+both declare a level 10 and mean nothing to each other.
 
-**Two things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
+**It bounds damage, not interference.** Two packages can still feed each other through the
+store — `a` reads what `b` writes while `b` reads what `a` writes — and neither charter's author
+can see the loop in their own charter. Nothing catches that today: the level discipline is per
+package, and the cycle throttle bounds a chain within one engine. The shape of an answer is an
+acyclic import graph between packages, where a package declares what it reads and the graph is
+checked at install; it is filed (`git issue show dpz3jxzd`) rather than done, because it takes
+two packages deliberately arranged to feed each other and packages are useful without it.
+
+**Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
 a task acts in the world under its `grant`, and store confinement is not world confinement (see
 [provider selection](provider-selection.md)). And verse's own records — a task's mirror, a
 motion, a posed question — which are written by the engine into
