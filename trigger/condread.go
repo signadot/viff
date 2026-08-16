@@ -93,7 +93,7 @@ func conditionReads(m Match) []Subtree {
 	}
 	out := make([]Subtree, 0, len(specs))
 	for _, s := range specs {
-		out = append(out, SubtreeAt(s.System, s.Kind))
+		out = append(out, SubtreeAt(s.place().Segs()...)) // the read's place, at whatever depth
 	}
 	return out
 }

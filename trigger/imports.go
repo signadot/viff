@@ -150,7 +150,11 @@ func (t Trigger) importReads() []Subtree {
 		specs, err := readTargets(doc)
 		if err == nil {
 			for _, sp := range specs {
-				add(SubtreeAt(sp.System, sp.Kind))
+				// The read's PLACE, which is its address minus the entity it names — and which
+				// a path read carries as a path rather than as two dimensions. Reading
+				// System/Kind here answered "" for an `at:` read, so a declared read of
+				// `verse-dev.drift.finding` looked like a read of everything.
+				add(SubtreeAt(sp.place().Segs()...))
 			}
 		}
 	}

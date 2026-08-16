@@ -70,8 +70,7 @@ imports: [ !verse-path [git] ]
 - name: drift
   level: 10
   match:
-    system: drift
-    kind: head
+    path: [verse-dev, drift, head]
 
 # The ledger. Strictly above `drift`, because that is the only direction a derive may go — and
 # split by KIND rather than into another system, so the whole drive stays one slice a person can
@@ -79,8 +78,7 @@ imports: [ !verse-path [git] ]
 - name: ledger
   level: 20
   match:
-    system: drift
-    kind: finding
+    path: [verse-dev, drift, finding]
 ---
 # 1. Main's tip, as a fact this charter owns — outstanding again the moment it moves.
 #
@@ -105,15 +103,14 @@ imports: [ !verse-path [git] ]
     subject: git:head:verse
   action:
     derive:
-      verse-dev:
-        drift:
-          head:
-            repo: $subject.value.repo
-            sha: $subject.value.sha
-            reviewed: pending
-            result: !delete null
-            err: !delete null
-            outstanding: !delete null
+    - path: [verse-dev, drift, head]
+      value:
+        repo: $subject.value.repo
+        sha: $subject.value.sha
+        reviewed: pending
+        result: !delete null
+        err: !delete null
+        outstanding: !delete null
 ---
 # 2. Before the review, the ledger is read onto the subject.
 #
@@ -134,17 +131,14 @@ imports: [ !verse-path [git] ]
   stratum: drift
   condition:
     subject:
-      system: drift
-      kind: head
+      path: [verse-dev, drift, head, "*"]
       value:
         reviewed: pending
   action:
     patch:
       reviewed: gathered
       outstanding: !list-paths
-        system: drift
-        kind: finding
-        id: "*"
+        at: [verse-dev, drift, finding, "*"]
         value:
           status: open
 ---
@@ -157,8 +151,7 @@ imports: [ !verse-path [git] ]
   stratum: drift
   condition:
     subject:
-      system: drift
-      kind: head
+      path: [verse-dev, drift, head, "*"]
       value:
         reviewed: gathered
   action:
@@ -354,17 +347,16 @@ imports: [ !verse-path [git] ]
       # carries where the attempt was made, so a finding still open with a proposedAt behind it
       # is a fix that did not land — visible in the ledger rather than lost with the branch.
       derive:
-        verse-dev:
-          drift:
-            finding: !each
-              over: $data.findings
-              key: $item.symbol
-              value:
-                symbol: $item.symbol
-                status: $item.status
-                says: $item.says
-                at: $item.at
-                proposedAt: $item.proposedAt
+      - path: [verse-dev, drift, finding]
+        value: !each
+          over: $data.findings
+          key: $item.symbol
+          value:
+            symbol: $item.symbol
+            status: $item.status
+            says: $item.says
+            at: $item.at
+            proposedAt: $item.proposedAt
     onFailed:
       patch:
         reviewed: failed
@@ -440,7 +432,7 @@ imports: [ !verse-path [git] ]
 # graph is a chain rather than a loop — which is what verse checks, and what would refuse this
 # file if the review ever came to read `merge:*` back.
 at: verse-dev.merge
-imports: [git, drift]
+imports: [git, verse-dev.drift]
 ---
 # The same reflected slice, declared again because STRATA ARE PER PACKAGE: two packages each
 # name their own levels, and the records are addressed by package so the two `reflected`s are
@@ -461,7 +453,7 @@ imports: [git, drift]
 - name: merge
   level: 30
   match:
-    system: merge
+    path: [verse-dev, merge, proposal]
 ---
 # 1. A delivered branch becomes a proposal, with the tip it was cut against RECORDED.
 #
@@ -498,12 +490,11 @@ imports: [git, drift]
     # `base` is pinned once by proposal-based below; `state` is written only by the rules that
     # decide, and its ABSENCE is what undecided means.
     derive:
-      verse-dev:
-        merge:
-          proposal:
-            repo: $subject.value.repo
-            branch: $subject.value.name
-            sha: $subject.value.sha
+    - path: [verse-dev, merge, proposal]
+      value:
+        repo: $subject.value.repo
+        branch: $subject.value.name
+        sha: $subject.value.sha
 ---
 # 1b. …and the commit it was cut from is pinned, once.
 #
@@ -519,12 +510,11 @@ imports: [git, drift]
   stratum: merge
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [verse-dev, merge, proposal, "*"]
       value: !not.has-path base
   action:
     patch:
-      base: !get-path { system: git, kind: head, id: verse, path: sha }
+      base: !get-path {at: [git, head, verse], path: sha}
 ---
 # 2. …and somebody decides it.
 #
@@ -550,8 +540,7 @@ imports: [git, drift]
   stratum: merge
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [verse-dev, merge, proposal, "*"]
       # ONLY WHILE IT CAN STILL LAND. A branch fast-forwards onto main exactly while main is
       # where it was cut from, so `base == tip` is the same predicate rule 3 uses negated —
       # and asking it HERE is what lets the task below be a call list.
@@ -565,7 +554,7 @@ imports: [git, drift]
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
         in: {base: .[tip]}
   gates:
   - name: merge-to-main
@@ -650,12 +639,11 @@ imports: [git, drift]
   stratum: merge
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [verse-dev, merge, proposal, "*"]
       value: !not.has-path state
   action:
     patch:
-      says: !get-path { system: drift, kind: head, id: "head-moved@git:head:verse", path: result.report }
+      says: !get-path {at: [verse-dev, drift, head, "head-moved@git:head:verse"], path: result.report}
 ---
 # 2b, 2c ARE GONE, and their absence is the point.
 #
@@ -701,12 +689,11 @@ imports: [git, drift]
   stratum: merge
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [verse-dev, merge, proposal, "*"]
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch:

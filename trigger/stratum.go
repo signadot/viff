@@ -387,11 +387,20 @@ func (e *Engine) InstallStratum(s Stratum) error {
 		if x.Level == s.Level && matchesText(x.Match) == matchesText(s.Match) {
 			return nil // the same level, declared again: the file has been applied twice
 		}
-		return fmt.Errorf("stratum %q is installed with a different definition (level %d %s, "+
-			"not level %d %s): the rules in it were checked against the one that stands, so "+
-			"changing it under them would leave an ordering nobody has verified. Uninstall the "+
-			"charter and install it again", s.Name, x.Level, matchesText(x.Match),
-			s.Level, matchesText(s.Match))
+		// WHICH CHARTER holds it, because that is what an operator has to uninstall — and with
+		// packages there are several, so "the charter" names nothing on its own. A half-applied
+		// file lands here: the levels installed, a rule was refused, and the next attempt meets
+		// the levels its own earlier attempt left standing.
+		where, undo := "the baseline charter", "remove the stratum"
+		if at := e.confine.Stamp(); at != "" {
+			where = "the charter at " + at
+			undo = "`verse charter uninstall " + at + "`"
+		}
+		return fmt.Errorf("stratum %q is installed in %s with a different definition (level %d "+
+			"%s, not level %d %s): the rules in it were checked against the one that stands, so "+
+			"changing it under them would leave an ordering nobody has verified. %s, then install "+
+			"again", s.Name, where, x.Level, matchesText(x.Match), s.Level, matchesText(s.Match),
+			undo)
 	}
 	return e.addStratum(s, true)
 }
@@ -960,6 +969,19 @@ func derivePathTarget(el *ir.Node) (deriveTarget, bool) {
 	return t, true
 }
 
+// deriveContentNode is the `value` of one list-form derive entry — what goes at the address.
+func deriveContentNode(el *ir.Node) *ir.Node {
+	if el == nil || el.Type != ir.ObjectType {
+		return nil
+	}
+	for i, key := range el.Fields {
+		if key != nil && key.Type == ir.StringType && key.String == "value" {
+			return unwrap(el.Values[i])
+		}
+	}
+	return nil
+}
+
 // addressSegs reads an address written as a list of names — `[verse-dev, drift, head]`, or the
 // same under `!verse-path`. A derive TARGET is a place to write, so its segments are names: an
 // operator selects, and there is nothing to select when the question is where to put something.
@@ -1024,7 +1046,9 @@ func (a Action) validateDerive() error {
 					"path is where it writes and the value is what goes there", i)
 			}
 			if t.Each != nil {
-				if err := validateEach(unwrap(el)); err != nil {
+				// The `!each` NODE, not the entry holding it: the entry carries `path` and
+				// `value`, and the fan-out's closed keyspace is over/key/value.
+				if err := validateEach(deriveContentNode(unwrap(el))); err != nil {
 					return fmt.Errorf("action.derive[%d]: %w", i, err)
 				}
 				continue
