@@ -154,10 +154,13 @@ something able to carry one:
 | `action:`, `spawn:`, a gate entry | yes | those values are structs that carry it |
 | a `patch:` or `derive:` body | yes | the value is stored as-is, so nothing can drop it |
 | `condition:`, `subject:` | no | their codecs are hand-written and do not carry comments yet |
-| `gates:` itself | no | the value is a LIST, and there is no list to carry it |
+| `gates:` itself | no | the directive is per-STRUCT, and a list is not one — see below |
 
-The `gates:` row is a limit rather than a gap to fill: a comment is carried by whatever its
-value decodes into, and a list decodes into no such thing. Put it on the entry instead.
+The `gates:` row is a gap upstream rather than a property of comments. What carries a comment
+today is a struct saying it does, so a comment above a value that decodes into one is kept and a
+comment above a LIST has nowhere to go. go-tony declares the per-field hook that would close it
+(`gomap.FieldInfo`'s comment fields) and never populates it, so asking for one in a field tag is
+silently ignored — filed as `xvexrbthh12ksrahg5n0`. Until then, put the comment on the entry.
 
 **The first item of any list is the exception, and it applies everywhere** — to the rules in a
 charter file and to the entries of a `gates:` alike. Everything written before a list's first

@@ -238,6 +238,11 @@ condition:
 name: r                     3, above the action, is dropped
 ```
 
+A third case is neither: a comment above a LIST-valued field (`gates:`) has nowhere to live,
+because what carries one is a struct saying it does. The per-field hook that would fix it is
+declared upstream and never populated, so a field-level `comment=` is silently ignored
+(`xvexrbthh12ksrahg5n0`).
+
 So the remaining work is two piles of very different size. The GENERATED types (`Action`,
 `Gate`, `Gating`) need one annotation each and a regenerate. The CUSTOM-codec ones
 (`Condition`, `Match`, `Formula`, `Requirement`, `Stratum`) cannot use the annotation at all —
