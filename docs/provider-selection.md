@@ -211,6 +211,26 @@ of them.
 **`verse provider`** lists the registry with every attribute beside the driver, which is where
 an operator answers "what would this doer be allowed to do" before voting.
 
+## Across a restart
+
+A `vote` or `ask` selection is a question with no deadline of its own: the spawn waits until
+somebody picks. So it has to survive verse going down, and the who-axis is the harder of the
+two motions to bring back — it opens from *inside* the action, after that action has written
+its latch, so the subject no longer matches its rule and nothing re-fires it.
+
+What makes it resumable is the `chain` a who-motion now carries: the address of the action the
+ballot is holding up (`review`, `review.onDone`, `review.seq[2]`). A start navigates that chain
+back into the charter and re-enters the selection, so the pick made afterwards decides who runs,
+exactly as it would have. It is on the docket entry too — a who-motion names a subject and a
+capability, and neither of those answers "which rule is waiting on this ballot".
+
+Two things the resumed spawn cannot recover, both deliberate: `$references` resolve against the
+subject as it stands *now* (a re-read, not a guess), and the run names no `occurrence`, because
+a restart is the world coming back rather than a commit causing something. A selection whose
+rule or action has left the charter, or whose subject is gone, is settled `orphaned` with a
+`why` instead — a ballot nobody reads is worse than an empty docket. See [a motion outlives the
+verse](trigger-model.md#a-motion-outlives-the-verse-that-opened-it).
+
 ## Corners
 
 - **A human cannot be selected.** A brokered doer is not a driver name — the runner is a

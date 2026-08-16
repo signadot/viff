@@ -112,6 +112,9 @@ func checkChoice(motion, choice string) error {
 		Payload map[string]any `tony:"field=payload"`
 	}
 	decodeClose(resp, &ent)
+	if err := checkOpen(motion, ent.Payload); err != nil {
+		return err
+	}
 	want := choices(ent.Payload["options"])
 	if len(want) == 0 {
 		return nil
@@ -123,6 +126,32 @@ func checkChoice(motion, choice string) error {
 	}
 	return fmt.Errorf("%w: motion %s takes %s, not %q — see `verse docket`",
 		cli.ErrUsage, motion, strings.Join(want, " or "), choice)
+}
+
+// checkOpen refuses a ballot into a motion that is not taking any, for the reason checkChoice
+// refuses one no tally could count: the store accepts the write either way, so a voter who is
+// not told learns it from a tally that never moves.
+//
+// Two ways a motion stops taking ballots, and they are worth telling apart. A COMMITTED one is
+// decided — terminal-once, so a later ballot cannot move it, and saying so beside the outcome
+// is what stops somebody voting on last week's question. An ORPHANED one was never decided:
+// what waited on the answer did not survive a restart and the verse could find nothing to
+// resume it into, so it says why. It is not final — a rule reinstalled over it reopens the same
+// channel with the same ballots — which is exactly why the refusal names the cause rather than
+// declaring the question closed.
+func checkOpen(motion string, payload map[string]any) error {
+	if outcome, _ := payload["outcome"].(string); outcome != "" {
+		return fmt.Errorf("%w: motion %s is already decided (%s) — a ballot cannot move a "+
+			"committed motion", cli.ErrUsage, motion, outcome)
+	}
+	if status, _ := payload["status"].(string); status == "orphaned" {
+		why, _ := payload["why"].(string)
+		if why == "" {
+			why = "nothing is waiting on it"
+		}
+		return fmt.Errorf("%w: motion %s is not being read: %s", cli.ErrUsage, motion, why)
+	}
+	return nil
 }
 
 // choices lists the ballots a motion's options can be answered with: the `choice` a

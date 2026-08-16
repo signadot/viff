@@ -22,6 +22,14 @@ import (
 // that unified representation and the two compilers (Formula → motion, Provider →
 // motion); the engine resolves it via openChannel / awaitMotion / commitMotion.
 
+// Where a motion stands: motion:channel:<id>. Named once because a channel is written by
+// two compilers, read by the docket, and walked by the resume — and an address spelled out
+// at each of those is one that drifts at one of them.
+const (
+	motionSystem      = "motion"
+	motionChannelKind = "channel"
+)
+
 // motion is the engine-internal, reified governed question, built from a charter surface
 // (a gate Formula or a launch.Provider) and resolved over the store.
 type motion struct {
@@ -32,6 +40,11 @@ type motion struct {
 	deadline *motionDeadline
 	// provenance for the channel entity (verse docket):
 	trigger, gate, capability string
+	// chain is the kpath of the ACTION this motion belongs to, and it is provenance with a
+	// second job: it is the lookup key back into the charter that lets a restart find the
+	// continuation a who-motion is blocking — see ResumeMotions. Empty on a whether-motion,
+	// whose continuation is the firing itself and comes back with the rule's own replay.
+	chain string
 }
 
 // motionOption is one choosable outcome. It is satisfied when its formula holds (a vote quorum
@@ -168,7 +181,7 @@ func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname
 // is a vote with threshold 1; `within` arms a no-pick deadline. (`auto` short-circuits in
 // the caller — it never awaits.)
 func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref, options []string,
-	frags map[string]launch.Fragment) *motion {
+	frags map[string]launch.Fragment, chain string) *motion {
 	need := p.Need
 	if p.Select == "ask" {
 		need = 1
@@ -178,7 +191,7 @@ func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref
 	}
 	m := &motion{
 		channel: channel, subject: subject.String(), axis: "select",
-		capability: p.Capability,
+		capability: p.Capability, chain: chain,
 	}
 	for _, opt := range options {
 		f := frags[opt]
@@ -257,6 +270,13 @@ func (e *Engine) openChannel(m *motion) {
 		}
 		if m.capability != "" {
 			p["capability"] = m.capability
+		}
+		// The action this motion blocks, written down because nothing else on the channel
+		// says it: a who-motion names a subject and a capability, and neither answers "which
+		// rule is waiting on this ballot". It is what ResumeMotions navigates back through,
+		// and what a docket reader follows to the words that asked.
+		if m.chain != "" {
+			p["chain"] = m.chain
 		}
 		return p.Payload()
 	})

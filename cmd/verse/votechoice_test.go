@@ -78,6 +78,49 @@ func TestVoteAcceptsASelectOption(t *testing.T) {
 	}
 }
 
+// A motion that has stopped taking ballots says so, both ways it can stop.
+//
+// A COMMITTED one is decided and terminal-once, so a ballot cast into it counts for nothing
+// and reads as though it might. An ORPHANED one is the restart case: nothing is waiting on the
+// answer, and the refusal has to carry the reason, because "settled" would be a lie about a
+// question nobody ever decided.
+func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		id      string
+		payload entity.Obj
+		says    string
+	}{
+		{"committed", "m3", entity.Obj{
+			"axis": "whether", "status": "closed", "outcome": "proceed", "tally": int64(2),
+			"options": []any{entity.Obj{"id": "proceed", "choice": "approve"}},
+		}, "proceed"},
+		{"orphaned", "m4", entity.Obj{
+			"axis": "select", "status": "orphaned",
+			"why":     "the rule that opened it is no longer in the charter",
+			"options": []any{entity.Obj{"id": "gpt", "choice": "gpt"}},
+		}, "no longer in the charter"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := serve(t)
+			entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "channel", ID: tc.id},
+				tc.payload.Payload())
+
+			choice, _ := tc.payload["options"].([]any)[0].(entity.Obj)["choice"].(string)
+			_, err := runCLI(t, "vote", tc.id, choice, "--as", "alice")
+			if err == nil {
+				t.Fatalf("a ballot into a %s motion was accepted; nothing will ever read it", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.says) {
+				t.Errorf("error %q does not say why the ballot is refused", err)
+			}
+			if p := payloadOf(t, store, entity.Ref{System: "vote", Kind: tc.id, ID: "alice"}); p != nil {
+				t.Errorf("a refused ballot was still written: %v", p)
+			}
+		})
+	}
+}
+
 // A motion the client cannot read is not grounds to refuse. The check exists to catch the
 // certainly-wrong case, not to become a second authority on what the server will accept — so
 // an unknown motion still reaches it, exactly as before.

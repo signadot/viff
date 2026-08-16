@@ -770,10 +770,40 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	if a.Spawn == nil {
 		return nil, nil
 	}
+	return e.launchSpawn(a, chain, subj, root, oc.commit.Rev)
+}
+
+// launchSpawn is the spawn half of an action: bind the spec, resolve the who-axis, and start
+// the task under its deterministic id.
+//
+// It is its own function rather than the tail of applyOne because a who-motion outlives the
+// firing that opened it: ResumeMotions re-enters HERE after a restart, and a second copy of
+// these lines is how a resumed selection would come to launch something subtly different from
+// the run it is finishing.
+//
+// root is what $references read (the cause's payload for a hook, the subject's own
+// otherwise); occurrence is the store revision this run is about, 0 when nothing caused it.
+func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entity.Payload,
+	occurrence int64) (task.Handle, error) {
 	spec := a.Spawn.Bind(bindingFor(root, subj))
 	// The subject is the engine's to set, not the charter's: a task is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()
+	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the task
+	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
+	// would be clobbered. Engine-owned, like Subject above.
+	//
+	// Set BEFORE the selection below, not after: a who-motion is opened by that selection and
+	// outlives the firing, so the chain is what it records to be resumable by — the same
+	// lookup key a resumed task's hooks are rehydrated from (AdoptChain).
+	spec.Chain = chain
+	// And WHICH RUN this is. The id names the work — chain plus subject, so a re-fire is
+	// idempotent — and nothing named the occurrence, so a second run overwrote the first
+	// record: staging held one that read `ended` fifty minutes before its `started`. The
+	// causing commit is in hand here and is what an operator is holding when they ask which
+	// run they are looking at. Engine-owned, and it rides to the record only — a DERIVE that
+	// referenced its cause is the cycle deriveMayReference exists to refuse.
+	spec.Occurrence = occurrence
 	// who-axis: if the spawn declares a governed provider selection, resolve it and overlay
 	// what the chosen doer contributes — driver, frame, tools, grant — before spawn. No live
 	// swap (reassign = cancel+respawn). Orthogonal to the runner that then transports Driver.
@@ -797,17 +827,6 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		}
 		spec = overlaid
 	}
-	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the task
-	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
-	// would be clobbered. Engine-owned, like Subject above.
-	spec.Chain = chain
-	// And WHICH RUN this is. The id names the work — chain plus subject, so a re-fire is
-	// idempotent — and nothing named the occurrence, so a second run overwrote the first
-	// record: staging held one that read `ended` fifty minutes before its `started`. The
-	// causing commit is in hand here and is what an operator is holding when they ask which
-	// run they are looking at. Engine-owned, and it rides to the record only — a DERIVE that
-	// referenced its cause is the cycle deriveMayReference exists to refuse.
-	spec.Occurrence = oc.commit.Rev
 	// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject is
 	// idempotent (and, under fan-out, each member gets its own deterministic id). The action
 	// carries its own completion hooks (onX): they ride the spawned task's flowTask and

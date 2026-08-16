@@ -808,6 +808,14 @@ func (s *Server) Start(ctx context.Context) {
 	if err := s.Eng.LoadCharter(); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
 	}
+	// And the docket. A motion is durable and the goroutine awaiting it is not, so an open
+	// motion left by the previous verse has nobody reading its ballots: this gives each one
+	// its awaiter back, and settles the ones no charter can answer any more.
+	//
+	// AFTER the charter, which is what it navigates back into to find what a ballot is
+	// holding up; and after reconcileTasks, so a resumed selection sees the live registry
+	// rather than starting a second run beside work that outlived us.
+	s.Eng.ResumeMotions()
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.

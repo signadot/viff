@@ -741,7 +741,7 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 	//
 	// Deterministic, like the gate id beside it, so a re-firing re-monitors the SAME channel
 	// and re-uses the ballots already cast there instead of asking the room again.
-	channelRef := entity.Ref{System: "motion", Kind: "channel",
+	channelRef := entity.Ref{System: motionSystem, Kind: motionChannelKind,
 		ID: motionChannelID(gateID(t.Name, gname, subjects))}
 	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
 	// channel's vote log, and open a discoverable channel entity voters can find/observe.
@@ -1051,8 +1051,11 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		return fragmentFor(frags, options[0]), true
 	}
 
-	channelRef := entity.Ref{System: "motion", Kind: "channel", ID: motionChannelID(providerSpecSeed(subject, p))}
-	m := e.compileProvider(p, subject, channelRef, options, frags)
+	channelRef := entity.Ref{System: motionSystem, Kind: motionChannelKind,
+		ID: motionChannelID(providerSpecSeed(subject, p))}
+	// The chain rides the SPEC (launchSpawn stamps it before the selection), so the motion
+	// records which action it is blocking without this needing an argument of its own.
+	m := e.compileProvider(p, subject, channelRef, options, frags, spawn.Chain)
 	e.openChannel(m)
 
 	// vote/ask: resolve over the vote log, bounded by the engine lifetime, with the revoke

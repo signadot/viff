@@ -113,9 +113,10 @@ that entity; and a start reads them back before anything observes. So the progra
 comes back up running is the one it went down with.
 
 Everything else a restart needs is durable in the same way — a task is mirrored, a
-sequence's position is a fact on its subject, a claim is a lease in the store, and resume
-rehydrates a chain's hooks from it. The program has to be too, or a verse comes back with its
-work in progress intact and nothing left to react to it.
+sequence's position is a fact on its subject, a claim is a lease in the store, an open motion
+is a channel with its ballots beside it, and resume rehydrates a chain's hooks and a motion's
+awaiter from them. The program has to be too, or a verse comes back with its work in progress
+intact and nothing left to react to it.
 
 One entity per rule, because that is what the operations already are: an install writes one,
 a removal deletes one, and neither reads the others — so two installs cannot lose each
@@ -517,6 +518,42 @@ without changing the subject's own state, the vanishing-marker shape works:
 ```
 
 Removing the marker is then what re-opens the question.
+
+### A motion outlives the verse that opened it
+
+The channel, its options and every ballot cast into it are entities, so a restart finds the
+motion exactly where it stood. What does not survive is the *awaiter* — the goroutine watching
+the tally was inside the firing — and a motion with no awaiter is the worst kind of docket
+entry: it lists a decision, somebody makes it, and nothing moves.
+
+Startup gives the awaiter back, by the route the axis makes available:
+
+- A **whether-gate** motion blocks the firing itself, and the firing comes back on its own.
+  The action never ran — that is what the gate is holding — so the subject still matches, the
+  rule's replay re-monitors the same channel, and the ballots already cast still count.
+- A **who-select** motion (a `spawn` with a `provider`) opens *after* the action has written
+  its latch, so nothing re-fires it. It records the `chain` of the action it is blocking, and
+  startup navigates that chain back into the charter and re-enters the selection — the same
+  lookup key a resumed task's hooks are rehydrated from.
+
+A motion nothing can answer any more is *settled* rather than left standing: its rule left the
+charter, its action moved, or its subject is gone. It is stamped `status: orphaned` with a
+`why` and a `when`, keeping the trail while taking it off the list of things a person can act
+on. That is not a verdict — the channel carries no `outcome`, because nobody decided anything —
+so a rule reinstalled later reopens the same channel over the same ballots.
+
+The resume is idempotent by construction, which is what lets it run beside a rule that also
+re-fires: the channel id is derived from the subject and the spec, the commit is terminal-once
+under a revoke guard, and the spawn id is deterministic per (chain, subject). One motion, one
+task, however many paths reach it.
+
+**A scoped verse (`verse connect`) is not covered.** Its motions live in the scope's own store,
+which nothing enumerates at startup — the same gap scoped charters and scoped claims have.
+
+**A verse that dies between committing a motion and starting the work it decided loses that
+spawn.** The channel is closed, so nothing resumes it. The resume does not introduce this: it
+is the window `patch` then `spawn` already has inside one action. An action is not atomic, and
+a crash in the middle of one leaves the half that landed.
 
 ## `action` — what fires
 

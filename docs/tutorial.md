@@ -618,6 +618,13 @@ A motion is an ordinary entity (`motion:channel:<id>`), so the docket is a view 
 you can watch it, get one, and write a rule that reacts to it. It stays live until it
 commits — if alice retracts first, the tally drops and the gate re-blocks.
 
+It also survives verse going down. The channel and the ballots are entities; what dies is the
+goroutine watching the tally, and a start gives it back — so a vote cast a day and a restart
+later lands on the same motion and carries it. A motion nothing can answer any more (its rule
+left the charter, its subject is gone) is settled `orphaned`, with a `why`, rather than left on
+the docket looking answerable. See [a motion outlives the
+verse](trigger-model.md#a-motion-outlives-the-verse-that-opened-it).
+
 ### "No" is a real outcome
 
 A vote you can only win isn't a vote. `!until` reads as *this, unless that gets there first*:
