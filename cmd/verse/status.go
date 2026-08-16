@@ -8,7 +8,7 @@ import (
 
 // statusCmd prints a one-shot summary of the running verse.
 func statusCmd() *cli.Command {
-	return leaf("status", "status — summarize the running verse: store rev, triggers, flows, gates, tasks",
+	return listing("status", "status — summarize the running verse: store rev, triggers, flows, gates, tasks",
 		func(cc *cli.Context, args []string) error {
 			resp, err := httpGet("/status", nil)
 			if err != nil {

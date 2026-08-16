@@ -159,6 +159,14 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 	if err != nil {
 		return fmt.Errorf("decoding the response: %w", err)
 	}
+	// --if / --trim, where every listing already passes: which items, and how much of each.
+	f, err := readFilters()
+	if err != nil {
+		return err
+	}
+	if node, err = f.apply(node); err != nil {
+		return err
+	}
 	if in != out {
 		// The response's layout (brackets, block literals) describes how the SERVER wrote
 		// it, not the value. Asking for tony and getting `[ { name: x } ]` back — JSON's
@@ -174,6 +182,52 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 	return nil
 }
 
+// printDoc prints a `state` answer: printBody, with the filters applied to ENTITIES rather than
+// to the document as one item — see filters.applyDoc.
+func printDoc(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
+	defer resp.Body.Close()
+	body, err := okBody(resp)
+	if err != nil {
+		return err
+	}
+	out, err := outFmt()
+	if err != nil {
+		return err
+	}
+	in := respFmt(resp)
+	node, err := codec.ParseNode(body, in)
+	if err != nil {
+		return fmt.Errorf("decoding the response: %w", err)
+	}
+	f, err := readFilters()
+	if err != nil {
+		return err
+	}
+	if node, err = f.applyDoc(node, at); err != nil {
+		return err
+	}
+	if in != out {
+		node = codec.StripLayout(node)
+	}
+	if colorize(cc.Out) {
+		return codec.EncodeNodeColor(cc.Out, node, out)
+	}
+	return codec.EncodeNode(cc.Out, node, out)
+}
+
+// okBody reads a response body, turning a 4xx/5xx into the error it carries.
+func okBody(resp *http.Response) ([]byte, error) {
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return nil, errors.New(msg)
+	}
+	return body, nil
+}
+
 // printNode writes a value this CLI COMPUTED, under the same rules a passed-through response
 // gets: the configured output format (`-o`, then VERSE_FORMAT/config), and colour when the
 // terminal takes it. printBody is for a body the server wrote; this is for one we assembled —
@@ -186,6 +240,15 @@ func printNode(cc *cli.Context, v any) error {
 	node, err := gomap.ToTonyIR(v)
 	if err != nil {
 		return fmt.Errorf("encoding: %w", err)
+	}
+	// The docket is assembled here rather than passed through, and it filters like every other
+	// listing: one funnel per direction, both asking the same two questions.
+	f, err := readFilters()
+	if err != nil {
+		return err
+	}
+	if node, err = f.apply(node); err != nil {
+		return err
 	}
 	if colorize(cc.Out) {
 		return codec.EncodeNodeColor(cc.Out, node, out)
@@ -403,7 +466,9 @@ func watchCmd() *cli.Command {
 	}
 	return cli.NewCommandAt(&cfg.Command, "watch").
 		WithSynopsis("watch — stream store changes (cursored): watch [<path>] [--if <pattern>]").
-		WithOpts(opts...).
+		// --trim only: watch's own --if is the SERVER's selector, which narrows what crosses
+		// the wire rather than what is printed of it.
+		WithOpts(append(opts, trimOpt()...)...).
 		WithRun(cfg.run)
 }
 
@@ -459,6 +524,12 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	}
 	in := streamFmt(resp)
 	color := colorize(cc.Out)
+	// --trim applies per FRAME, which is what a stream lists one of. (--if is watch's own and
+	// is answered at the server, so a filtered stream costs nothing on the wire.)
+	f, err := readFilters()
+	if err != nil {
+		return err
+	}
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for sc.Scan() {
@@ -466,7 +537,14 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 		if !ok {
 			continue
 		}
-		fmt.Fprintln(cc.Out, renderFrame(data, in, out, color))
+		line, keep, err := f.frame(data, in)
+		if err != nil {
+			return err
+		}
+		if !keep {
+			continue
+		}
+		fmt.Fprintln(cc.Out, renderFrame(line, in, out, color))
 	}
 	return nil
 }
@@ -597,6 +675,7 @@ type entityGetConfig struct{ *cli.Command }
 func entityGetCmd() *cli.Command {
 	cfg := &entityGetConfig{}
 	return cli.NewCommandAt(&cfg.Command, "get").
+		WithOpts(filterOpts()...).
 		WithSynopsis("get one place: get <path> (demo:pr:1 · demo.pr.1.labels · merge.proposal.X.votes(scott))").
 		WithRun(cfg.run)
 }
@@ -807,7 +886,9 @@ func stateCmd() *cli.Command {
 	}
 	return cli.NewCommandAt(&cfg.Command, "state").WithAliases("s").
 		WithSynopsis("state — the verse at a path: state [--if <pattern>] [--paths] [<path>]; get|put|rm one by <ref>").
-		WithOpts(opts...).
+		// --trim only, for the reason watch takes only that: `state --if` is the server's
+		// selector, and it names WHICH ENTITIES rather than what to print of them.
+		WithOpts(append(opts, trimOpt()...)...).
 		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd()).
 		WithRun(cfg.run)
 }
@@ -877,7 +958,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	if cfg.Paths {
 		return printPaths(cc, resp, kp)
 	}
-	return printBody(cc, resp)
+	return printDoc(cc, resp, kp)
 }
 
 // stateAt reads the verse at a path and hands back the entities standing there.

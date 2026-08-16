@@ -54,6 +54,21 @@ verse
   answers one. The plural is an alias of that same command — `verse gates`, `verse tasks`
   — so both spellings do the same thing. `verse gate list` is an error: bare it lists.
 
+  EVERY LISTING FILTERS, with the same two flags: `--if <match>` keeps the items that match,
+  `--trim <match>` writes only the parts its document names. They compose, and an empty result
+  is an answer rather than an error (exit 0).
+
+    verse ps --if '{status: running}' --trim '{id: null, status: null}'
+    verse docket --if '{axis: whether}'
+    verse state demo.pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
+    verse watch demo --trim '{ref: null, to: null}'
+
+  On `state` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
+  about, before any of them cross the wire — so those two take `--trim` alone. On `state put`,
+  `--if` is a write precondition, which is its own thing again.
+
+  Comments need no flag: verse reads and writes them everywhere (`o list` needs `-c`).
+
   `state` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
   so there is no plural to alias and its positional is an address rather than a verb.
 

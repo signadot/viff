@@ -133,6 +133,12 @@ func main() {
 }
 
 func rootCmd() *cli.Command {
+	// A FRESH filter binding per tree, and it has to be here — before the builders below bind
+	// their options to it. One command runs per process, so nothing in a shell notices; a
+	// process that builds the tree twice (every test) would otherwise have the second command
+	// filtering by what the first was asked for, which reads as a listing that lost its
+	// contents.
+	flt = &filterFlags{}
 	// Config precedence: /etc ← ~/.config ← env ← CLI. Load the file+env layers, use
 	// them as the flag defaults, and let an explicit flag win.
 	c, err := config.Load()
@@ -214,6 +220,10 @@ func collection(name, plural, route, synopsis string, subs ...*cli.Command) *cli
 	return cli.NewCommandAt(&cfg.Command, name).
 		WithAliases(plural).
 		WithSynopsis(synopsis).
+		// Every collection filters. It is on the BUILDERS rather than on each command so that
+		// the next listing cannot be added without them — which is how `verse ps` came to be a
+		// thing people pipe through `o list` in the first place.
+		WithOpts(filterOpts()...).
 		WithSubs(subs...).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
@@ -245,7 +255,9 @@ func filteredCollection(name, plural, route, synopsis string, opts []*cli.Opt,
 	return cli.NewCommandAt(&cfg.Command, name).
 		WithAliases(plural).
 		WithSynopsis(synopsis).
-		WithOpts(opts...).
+		// The collection's own flags, plus --if/--trim: every listing filters, and adding them
+		// at the two builders is what stops the next one being added without them.
+		WithOpts(append(opts, filterOpts()...)...).
 		WithSubs(subs...).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
@@ -313,6 +325,13 @@ func noArgs(cmd *cli.Command, name string, args []string) error {
 // "No positionals of its own" is now enforced rather than assumed: these commands used to
 // discard whatever they were handed, so `verse status demo:pr:1` printed the status of the
 // whole verse and looked like it had answered the question asked.
+// listing is leaf for a command that ANSWERS A COLLECTION — it carries --if/--trim, where a
+// leaf that prints a line (`down`, `disconnect`) does not. A flag that silently does nothing is
+// worse than one the parser refuses, which is the whole reason the two are separate builders.
+func listing(name, synopsis string, fn func(cc *cli.Context, args []string) error) *cli.Command {
+	return leaf(name, synopsis, fn).WithOpts(filterOpts()...)
+}
+
 func leaf(name, synopsis string, fn func(cc *cli.Context, args []string) error) *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	return cli.NewCommandAt(&cfg.Command, name).

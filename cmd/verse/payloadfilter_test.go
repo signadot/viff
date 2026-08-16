@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -215,5 +217,78 @@ func TestStateRejectsAPathWithoutAPredicate(t *testing.T) {
 	serve(t)
 	if _, err := runState(t, "--if-at", "labels"); !errors.Is(err, cli.ErrUsage) {
 		t.Fatalf("--if-at alone gave %v, want a usage error", err)
+	}
+}
+
+// --if AND --trim ON A LISTING, which is the pipeline the state-ergonomics note asks to be
+// lifted: `verse ps | o list -if … -trim … '[*]'` becomes `verse ps --if … --trim …`.
+//
+// Asserted on `trigger`, because it is a listing whose items are documents a test can seed
+// exactly — the same funnel every collection prints through.
+func TestAListingFiltersAndProjects(t *testing.T) {
+	serve(t)
+	for _, src := range []string{
+		`{name: alpha, condition: {subject: {system: demo, kind: pr}}, action: {patch: {seen: "yes"}}}`,
+		`{name: beta, condition: {subject: {system: other, kind: thing}}, action: {patch: {seen: "yes"}}}`,
+	} {
+		f := filepath.Join(t.TempDir(), "rule.tony")
+		if err := os.WriteFile(f, []byte(src), 0o600); err != nil {
+			t.Fatalf("write charter: %v", err)
+		}
+		if _, err := runCLI(t, "trigger", "add", f); err != nil {
+			t.Fatalf("install: %v", err)
+		}
+	}
+
+	// --if names WHICH rules, over the same match language a charter's `value:` takes.
+	out, err := runCLI(t, "trigger", "--if", `{name: alpha}`)
+	if err != nil {
+		t.Fatalf("trigger --if: %v", err)
+	}
+	if !strings.Contains(out, "alpha") || strings.Contains(out, "beta") {
+		t.Errorf("--if did not select: %s", out)
+	}
+	// --trim says how much of each, and the two compose.
+	out, err = runCLI(t, "trigger", "--if", `{name: alpha}`, "--trim", `{name: null}`)
+	if err != nil {
+		t.Fatalf("trigger --if --trim: %v", err)
+	}
+	if !strings.Contains(out, "alpha") || strings.Contains(out, "condition") {
+		t.Errorf("--trim did not project: %s", out)
+	}
+	// NOTHING KEPT IS NOT AN ERROR: an empty answer is a true answer to the question asked.
+	out, err = runCLI(t, "trigger", "--if", `{name: nobody}`)
+	if err != nil {
+		t.Errorf("an empty result was an error: %v", err)
+	}
+	if strings.Contains(out, "alpha") || strings.Contains(out, "beta") {
+		t.Errorf("--if kept what it should not: %s", out)
+	}
+}
+
+// `state`'s items are ENTITIES, not the document's top-level keys: a trim names payload fields
+// and applies to each entity standing at the path, whatever depth the path reaches.
+func TestStateTrimsEachEntitysPayload(t *testing.T) {
+	serve(t)
+	for _, e := range [][]string{
+		{"demo", "pr", "1", `{stage: open, owner: ana}`},
+		{"demo", "pr", "2", `{stage: merged, owner: dee}`},
+	} {
+		if _, err := runCLI(t, append([]string{"state", "put"}, e...)...); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	// Through the state command itself: the harness walks subcommands by name, so a path
+	// positional has to go to the command rather than through the walk.
+	out, err := runState(t, "demo.pr", "--trim", `{stage: null}`)
+	if err != nil {
+		t.Fatalf("state --trim: %v", err)
+	}
+	if !strings.Contains(out, "stage") || strings.Contains(out, "owner") {
+		t.Errorf("--trim did not project each payload: %s", out)
+	}
+	// Both entities survive: --trim says how much, not which.
+	if !strings.Contains(out, `"1"`) || !strings.Contains(out, `"2"`) {
+		t.Errorf("--trim dropped an entity: %s", out)
 	}
 }

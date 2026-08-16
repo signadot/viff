@@ -185,7 +185,7 @@ func choices(v any) []string {
 // act through: the rule an operator learns is "the command is the singular", and one listing
 // that answers only to the plural is one exception to remember.
 func providerCmd() *cli.Command {
-	return leaf("provider", "provider — the provider registry (provider:<capability>:<id>)",
+	return listing("provider", "provider — the provider registry (provider:<capability>:<id>)",
 		func(cc *cli.Context, args []string) error {
 			// The capability is the KIND, read out of the document rather than sliced back off
 			// the front of a rendered ref.
@@ -215,7 +215,7 @@ func providerCmd() *cli.Command {
 // is written by the engine when a governed motion opens (motion:channel:<id>), across both
 // axes: a whether-gate (options proceed/deny) and a who-select (options = the eligible doers).
 func docketCmd() *cli.Command {
-	return leaf("docket", "docket — list open motions (votes/selects and their outcomes)",
+	return listing("docket", "docket — list open motions (votes/selects and their outcomes)",
 		func(cc *cli.Context, args []string) error {
 			ents, err := stateAt("motion.channel")
 			if err != nil {
