@@ -88,7 +88,7 @@ var _ Source = (*Client)(nil)
 // The system is passed rather than discovered, and that is not a shortcut. `Source.System()`
 // cannot fail — it is asked on every converge — while discovering it costs a call that can,
 // so a client that learned it lazily would have to answer the question wrongly or block on a
-// network at an unrelated moment. The registration names the system (`sources:<system>:<name>`
+// network at an unrelated moment. The registration names the system (`verse:sources:<system>:<name>`
 // is the address), so verse always has it; whether the far side AGREES is a separate question,
 // asked once at install by Probe, where an operator is present to hear the answer.
 //

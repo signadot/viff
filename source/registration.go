@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed sources live: `sources:<system>:<name>`.
+// System is where installed sources live: `verse:sources:<system>:<name>`.
 //
 // The first segment after the system is the SLICE REFLECTED, unlike a runner's kind, which is
 // the operator's own category (pool, host, broker). The difference is not cosmetic: a runner's
@@ -85,12 +85,12 @@ func (e Entity) Check() error {
 		return fmt.Errorf("source %q: system is required — it is the other half of the address, "+
 			"and it is the SLICE this source reflects and is the single writer of", e.Name)
 	}
-	// The system is the kind segment of `sources:<system>:<name>` and a segment of the route
+	// The system is the kind segment of `verse:sources:<system>:<name>` and a segment of the route
 	// that serves it, so neither punctuation survives. The name is the id, which may carry a
 	// colon (ParseRef splits three ways and the rest is the id) but not a slash.
 	if strings.ContainsAny(e.System, ":/") {
 		return fmt.Errorf("source %q: system %q may not contain : or / — it is a segment of the "+
-			"address (sources:<system>:<name>) and of the route that serves it", e.Name, e.System)
+			"address (verse:sources:<system>:<name>) and of the route that serves it", e.Name, e.System)
 	}
 	if strings.Contains(e.Name, "/") {
 		return fmt.Errorf("source %q: a name may not contain / — it is a path segment on the "+
@@ -215,9 +215,10 @@ func ownsAreDocuments(node *ir.Node) error {
 	return nil
 }
 
-// Find reads one installed source by the ref a CLI argument names, accepting it with or without
-// the `sources:` prefix — an operator reading `verse entity` and one typing `verse source
-// show` should not have to know two spellings of one thing.
+// Find reads one installed source by the ref a CLI argument names, accepting it as it is
+// stored (`verse:sources:<system>:<name>`) or as the bare pair — an operator reading `verse
+// state` and one typing `verse source show` should not have to know two spellings of one
+// thing. The middle form is refused; trimAddress says why.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	parts := strings.SplitN(trimAddress(ref), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {

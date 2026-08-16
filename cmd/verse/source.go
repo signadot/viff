@@ -43,7 +43,7 @@ func sourceCmd() *cli.Command {
 func sourcePath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:sources:"), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("%w: want a ref like sources:git:laptop (or git:laptop), got %q",
+		return "", fmt.Errorf("%w: want a ref like verse:sources:git:laptop (or git:laptop), got %q",
 			cli.ErrUsage, ref)
 	}
 	return "/sources/" + parts[0] + "/" + parts[1], nil

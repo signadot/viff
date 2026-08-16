@@ -42,7 +42,7 @@ func runnerCmd() *cli.Command {
 func runnerPath(ref string) (string, error) {
 	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:runners:"), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("%w: want a ref like runners:pool:gpu (or pool:gpu), got %q",
+		return "", fmt.Errorf("%w: want a ref like verse:runners:pool:gpu (or pool:gpu), got %q",
 			cli.ErrUsage, ref)
 	}
 	return "/runners/" + parts[0] + "/" + parts[1], nil

@@ -22,8 +22,8 @@ Then, against a verse:
 
 ```sh
 verse runner add pool:gpu http://localhost:9800
-verse task run --runner runners:pool:gpu "fetch the data; retrain; report"
-verse ps --runner runners:pool:gpu
+verse task run --runner verse:runners:pool:gpu "fetch the data; retrain; report"
+verse ps --runner verse:runners:pool:gpu
 ```
 
 It is a placeholder driver — it splits the prompt on semicolons and does each part — so you can
@@ -44,7 +44,7 @@ may reach — and a spawn names one:
 
 ```sh
 verse runner add pool:code http://localhost:9802
-verse task run --runner runners:pool:code --environment local --as "$USER" "add a test for firstLine"
+verse task run --runner verse:runners:pool:code --environment local --as "$USER" "add a test for firstLine"
 ```
 
 ### A workspace per task

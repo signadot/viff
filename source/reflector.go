@@ -96,6 +96,15 @@ func (r Reflection) Check(system string) error {
 		}
 	}
 	for _, e := range r.Entities {
+		// The reserved half FIRST, because `System()` does not say which half a ref is in: a
+		// source registered as `task` answering `verse:task:instance:x` passes the check below,
+		// and converge writes to the store directly — under the refusal that guards `POST
+		// /entity`. A source reflects the world; what verse keeps about its own running is
+		// written by the verbs that own it.
+		if e.Ref.Reserved() {
+			return fmt.Errorf("reflection: entity %s is in verse's own half, which no source "+
+				"reflects — a source writes what the world is about, beside it", e.Ref)
+		}
 		if e.Ref.System() != system {
 			return fmt.Errorf("reflection: entity %s is outside %q, the slice this source owns",
 				e.Ref, system)
@@ -405,7 +414,11 @@ func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 		systems[e.Ref.System()] = true
 	}
 	out := map[entity.Ref]entity.Payload{}
-	for _, e := range rf.store.List(func(ref entity.Ref) bool { return systems[ref.System()] }) {
+	// Not verse's own half, for the reason Claimed says at length: a system name is not a half,
+	// and this map is what `covered` decides tombstones from.
+	for _, e := range rf.store.List(func(ref entity.Ref) bool {
+		return !ref.Reserved() && systems[ref.System()]
+	}) {
 		out[e.Ref] = e.Payload
 	}
 	return out

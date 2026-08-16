@@ -462,7 +462,7 @@ export VERSE_ADDR=localhost:19797
 # report `open pool:code: no such file or directory`.
 ./verse runner add pool:code http://localhost:9802
 
-./verse task run --runner runners:pool:code --environment verse-docs \
+./verse task run --runner verse:runners:pool:code --environment verse-docs \
   --as "$USER" --name docsdrift --attach \
   --answer docs/working/verse-dev/docs-drift.answer \
   "$(sed 's|@FILE@|docs/runners.md|' docs/working/verse-dev/docs-drift.prompt)"

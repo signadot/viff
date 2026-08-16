@@ -446,7 +446,11 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 		systems[c.System] = true
 	}
 	var out []entity.Path
-	for _, ent := range r.List(func(ref entity.Ref) bool { return wildcard || systems[ref.System()] }) {
+	// `!Reserved()` says at the enumeration what `source.Claimed` also refuses at the point:
+	// verse's own half is not a slice a source can own, so a removal cannot tombstone it.
+	for _, ent := range r.List(func(ref entity.Ref) bool {
+		return !ref.Reserved() && (wildcard || systems[ref.System()])
+	}) {
 		out = append(out, source.Claimed(claims, ent.Ref)...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })

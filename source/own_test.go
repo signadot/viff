@@ -277,3 +277,32 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 		}
 	}
 }
+
+// A claim carries three segments and no root, so `task:*:*` — and the wildcard `*:*:*`, which
+// a source may register when nothing else is installed — asks about `verse:task:instance:x` as
+// readily as about the world's `task:instance:x`. It must own neither: the caller that deletes
+// (`verse source remove --forget`) writes straight to the store, below the refusal that guards
+// the HTTP face, so this was the one client-reachable path to a tombstone over verse's charter.
+func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
+	for _, spell := range []string{"*:*:*", "task:*:*", "trigger:rule:*", "sources:git:verse"} {
+		claims, err := source.ParseOwns([]source.Own{{Ref: spell}})
+		if err != nil {
+			t.Fatalf("%s: %v", spell, err)
+		}
+		for _, ref := range []entity.Ref{
+			entity.VerseRef("task", "instance", "run-1"),
+			entity.VerseRef("trigger", "rule", "review"),
+			entity.VerseRef("sources", "git", "verse"),
+		} {
+			if got := source.Claimed(claims, ref); len(got) > 0 {
+				t.Errorf("owns %q claims %s → %v, want nothing in verse's half", spell, ref, got)
+			}
+		}
+		// And the world's half is unchanged: the same claim still owns what it is for.
+		if spell == "task:*:*" {
+			if got := source.Claimed(claims, entity.RefAt("task", "instance", "run-1")); len(got) != 1 {
+				t.Errorf("owns %q lost its own slice: %v", spell, got)
+			}
+		}
+	}
+}

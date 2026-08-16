@@ -306,6 +306,16 @@ func Disjoint(a, b []Own) (bool, error) {
 // inside it is asked to delete the entity once rather than twice. Deleting the deeper one after
 // the shallower would write into an entity that is already gone.
 func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
+	// NOTHING IN VERSE'S OWN HALF, whatever a claim says. A claim is three segments and carries
+	// no root, so `task:*:*` — or the wildcard `*:*:*`, which a source with no other source
+	// installed may register — asks about `verse:task:instance:x` and `verse:trigger:rule:y` as
+	// readily as about the world's. The caller that deletes writes straight to the store, below
+	// the refusal that guards the HTTP face, so `verse source remove --forget` was the one
+	// client-reachable path that could tombstone the charter. A source reflects the world; the
+	// half verse keeps about itself is not a slice anybody may claim.
+	if ref.Reserved() {
+		return nil
+	}
 	point := Claim{System: ref.System(), Kind: ref.Kind(), ID: ref.ID()}
 	var out []entity.Path
 	for _, c := range claims {

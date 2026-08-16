@@ -138,7 +138,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 	// bad `-system` fails the program rather than the install.
 	if strings.ContainsAny(g.system, ":/") {
 		return nil, fmt.Errorf("github: system %q may not contain : or / — it is a segment of "+
-			"the address (sources:<system>:<name>) and of the route that serves it", g.system)
+			"the address (verse:sources:<system>:<name>) and of the route that serves it", g.system)
 	}
 	if g.settled <= 0 {
 		g.settled = DefaultSettled

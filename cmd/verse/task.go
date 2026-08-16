@@ -343,7 +343,7 @@ type taskRunConfig struct {
 	// Self-asserted, like every other `--as` here.
 	As       string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
 	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (resolvers:<kind>:<name>)'"`
-	Runner   string `cli:"name=runner desc='where this run runs: an installed runner (runners:<kind>:<name>); default: the verse default'"`
+	Runner   string `cli:"name=runner desc='where this run runs: an installed runner (verse:runners:<kind>:<name>, or the bare <kind>:<name>); default: the verse default'"`
 	// The shape this run's final message must have — a tony match pattern in a file, the
 	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model
 	// stopped calling tools, which is also what a model narrating its next step looks like.
@@ -488,7 +488,7 @@ func waitForResult(cc *cli.Context, id string, timeout time.Duration) error {
 // ── list / get ───────────────────────────────────────────────────────────────
 
 type tasksConfig struct {
-	Runner string `cli:"name=runner desc='only the tasks on this runner (runners:<kind>:<name>, or local for the ones that named none)'"`
+	Runner string `cli:"name=runner desc='only the tasks on this runner (verse:runners:<kind>:<name>, or local for the ones that named none)'"`
 }
 
 var psFlags = &tasksConfig{}

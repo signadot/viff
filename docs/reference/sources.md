@@ -22,9 +22,14 @@ A source is an entity at `verse:sources:<system>:<name>`:
 `Reflect` is the same call down all three. Unlike a runner, absence means nothing here — the
 field present says which it is.
 
-The system is the first segment of the address because it is a question verse already asks:
-who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not contain `:` —
-both are segments of the address and of the route that serves them.
+The system is what the address is keyed on (`verse:sources:<system>:<name>`, under the
+reserved root like everything verse keeps about its own running) because it is a question verse
+already asks: who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not
+contain `:` — both are segments of the address and of the route that serves them.
+
+A source reflects the WORLD's half and only that: a reflection naming an address under `verse:`
+is refused, and no `owns` claim reaches there however wide it is written — `*:*:*` claims every
+entity the world is about and none of verse's own.
 
 ## Ownership
 

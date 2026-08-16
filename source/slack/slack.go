@@ -109,7 +109,7 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 	}
 	if strings.ContainsAny(s.system, ":/") {
 		return nil, fmt.Errorf("slack: system %q may not contain : or / — it is a segment of "+
-			"the address (sources:<system>:<name>) and of the route that serves it", s.system)
+			"the address (verse:sources:<system>:<name>) and of the route that serves it", s.system)
 	}
 	if s.depth <= 0 {
 		s.depth = DefaultDepth
