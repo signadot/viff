@@ -541,6 +541,15 @@ func (r *Requirement) fromNode(node *ir.Node) error {
 
 // unwrap steps past a comment wrapper. A charter file is exactly where a human writes
 // comments, and a commented value is a CommentType node holding the real one.
+// headLines is the comment written above a value, or nil — the half of unwrap that unwrap
+// throws away. A head comment WRAPS its value, so the lines live on the wrapper.
+func headLines(n *ir.Node) []string {
+	if n == nil || n.Type != ir.CommentType {
+		return nil
+	}
+	return n.Lines
+}
+
 func unwrap(n *ir.Node) *ir.Node {
 	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
 		n = n.Values[0]
@@ -586,21 +595,21 @@ func (c Condition) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("condition.subject: %w", err)
 	}
-	kvs = append(kvs, ir.KeyVal{Key: ir.FromString("subject"), Val: s})
+	kvs = append(kvs, ir.KeyVal{Key: ir.FromString("subject"), Val: gomap.ApplyComments(s, c.SubjectDoc, nil)})
 	// `on` before `when`: cause then condition, which is the order they are read in.
 	if c.On != nil {
 		o, err := c.On.ToTonyIR(opts...)
 		if err != nil {
 			return nil, fmt.Errorf("condition.on: %w", err)
 		}
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("on"), Val: o})
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("on"), Val: gomap.ApplyComments(o, c.OnDoc, nil)})
 	}
 	if c.When != nil {
 		w, err := c.When.ToTonyIR(opts...)
 		if err != nil {
 			return nil, fmt.Errorf("condition.when: %w", err)
 		}
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("when"), Val: w})
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("when"), Val: gomap.ApplyComments(w, c.WhenDoc, nil)})
 	}
 	return ir.FromKeyVals(kvs), nil
 }
@@ -614,6 +623,11 @@ func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	if node.Type != ir.ObjectType {
 		return fmt.Errorf("condition: want an object, got %v", node.Type)
 	}
+	// The comment BEFORE unwrapping, since unwrapping is what discards it. A field absent from
+	// the document has no node and so no comment, which is why each read is guarded the same
+	// way the value's is.
+	c.SubjectDoc, c.OnDoc, c.WhenDoc = headLines(ir.Get(node, "subject")),
+		headLines(ir.Get(node, "on")), headLines(ir.Get(node, "when"))
 	if o := unwrap(ir.Get(node, "on")); o != nil && o.Type != ir.NullType {
 		var f Formula
 		if err := f.FromTonyIR(o, opts...); err != nil {

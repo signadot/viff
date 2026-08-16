@@ -244,12 +244,14 @@ comment for a field whose own type cannot — a list, a scalar, or a struct with
 codec. `condition:` and `gates:` are kept that way, and neither Condition nor Match had to
 change.
 
-What is left is one level further down. A comment above one of the custom-codec types is
-carried by whichever field holds it. A comment above a field OF one — `subject:` inside a
-`condition:` — is not, and cannot be: the annotation is emitted by codegen, and codegen writes no
-codec for those, so `Condition`, `Match`, `Formula`, `Requirement` and `Stratum` would each have
-to capture and rebuild in their hand-written ones. For `Match` that is probably not worth it: its
-commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a head comment.
+Nothing is left: the last position — a comment above a field OF a hand-written codec, such as
+`subject:` inside `condition:` — is carried by that codec, by hand. Condition does it in five
+lines, and the other four custom-codec types can do the same if a charter ever wants it there. A comment above one of the custom-codec types is
+carried by whichever field holds it, and a comment above a field OF one is carried by that
+codec — Condition does it for `subject:`, `on:` and `when:`. `Match`, `Formula`, `Requirement`
+and `Stratum` could do the same and have not needed to; for `Match` it would probably never pay,
+since its commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a
+head comment.
 
 ## What breaks## What breaks
 

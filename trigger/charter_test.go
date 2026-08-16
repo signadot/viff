@@ -574,3 +574,50 @@ func TestARuleKeepsItsComments(t *testing.T) {
 		t.Fatalf("the rule itself did not survive: %+v", back)
 	}
 }
+
+// A comment above a field OF a hand-written codec survives too, which is the last position in a
+// charter that nothing carried.
+//
+// `subject:`, `on:` and `when:` are fields of Condition, whose codec is written by hand — so
+// codegen emits no `comment=` for them and the annotation that covers every other position
+// cannot reach here. Condition's own codec captures and re-emits them instead.
+//
+// WHICHEVER FIELD COMES FIRST is carried by the CONDITION rather than by itself: a comment
+// before a container's first entry heads the container. So the test asks that every comment
+// survives, not that a particular carrier holds it — the carrier is a function of layout, and
+// pinning it would pin the author's field order.
+func TestAConditionKeepsItsFieldComments(t *testing.T) {
+	for _, order := range []string{
+		"  # about the subject\n  subject: { system: demo, kind: pr }\n" +
+			"  # about the when\n  when: { system: ci, kind: status }\n",
+		"  # about the when\n  when: { system: ci, kind: status }\n" +
+			"  # about the subject\n  subject: { system: demo, kind: pr }\n",
+	} {
+		src := "name: r\ncondition:\n" + order + "action:\n  patch: { stage: x }\n"
+		node, err := codec.ParseNode([]byte(src), codec.Tony)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		var tr Trigger
+		if err := tr.FromTonyIR(node); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		back, err := tr.ToTonyIR()
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		out, err := codec.NodeBytes(back, codec.Tony)
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		for _, want := range []string{"# about the subject", "# about the when"} {
+			if !strings.Contains(string(out), want) {
+				t.Errorf("lost %q from\n%s\ngot\n%s", want, src, out)
+			}
+		}
+		// …and the condition itself still decodes to what it says.
+		if tr.Condition.Subject.Kind() != "pr" || tr.Condition.When == nil {
+			t.Errorf("the condition did not survive carrying its comments: %+v", tr.Condition)
+		}
+	}
+}
