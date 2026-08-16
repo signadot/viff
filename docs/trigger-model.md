@@ -196,31 +196,37 @@ the arrangement above, is not a loop.
 through it is not a loop between packages and this cannot see it — which is the same reason
 baseline is unconfined in what it writes.
 
-`verse trigger tree` is the whole charter at once — baseline and each package, what it writes,
-what it imports, and how much it holds. It is a listing like any other, so `--trim` cuts it to
-the columns you are asking about:
+`verse trigger` is the whole charter as a TREE, which is what an address makes it: the baseline
+charter at the root, and each package under the segments of the address it writes in.
 
 ```sh
-verse trigger tree --trim '{at: null, writes: null, imports: null, rules: null}'
-# - at: (baseline)
-#   rules: 0
-#   writes: anywhere
-# - at: drift
-#   imports:
-#   - git
-#   rules: 3
-#   writes: drift.*
-# - at: merge
-#   imports:
-#   - git
-#   - drift
-#   rules: 5
-#   writes: merge.*
+verse trigger
+# writes: anywhere            ← baseline: no address, so it may write anywhere
+# rules: []
+# children:
+#   drift:
+#     writes: drift.*
+#     imports: [git]
+#     rules: [comment-drift, gather, head-moved]
+#     strata: [drift, ledger, reflected]
+#   merge:
+#     writes: merge.*
+#     imports: [git, drift]
+#     rules: [merge-proposal, proposal-appeared, proposal-based, proposal-outrun, proposal-says]
+#     strata: [merge, reflected]
 ```
 
-That is comment-drift installed: the review at `drift`, the gate at `merge` importing it, and
-a baseline nobody has put anything in. `verse trigger` still answers ONE engine's rules —
-baseline by default, `--at merge` for a package's — which is why the tree exists.
+That is comment-drift installed: the review at `drift`, the gate at `merge` importing it, and a
+baseline nobody has put anything in. A package at `demo.pr` would nest under a `demo` that holds
+only `children:`, since nothing is installed at `demo` itself.
+
+BY NAME rather than by body, because this is the answer to "what is installed" — and a rule's
+name is what every other command takes. The rules themselves are one charter at a time:
+
+```sh
+verse trigger --at merge        # that package's rules, in full
+verse trigger show merge-proposal
+```
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
 a task acts in the world under its `grant`, and store confinement is not world confinement (see

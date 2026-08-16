@@ -1817,10 +1817,22 @@ func (s *CharterPackage) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	}
 
 	// Field: Rules
-	irMap["rules"] = ir.FromInt(int64(s.Rules))
+	{
+		slice := make([]*ir.Node, len(s.Rules))
+		for i, v := range s.Rules {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["rules"] = ir.FromSlice(slice)
+	}
 
 	// Field: Strata
-	irMap["strata"] = ir.FromInt(int64(s.Strata))
+	if len(s.Strata) > 0 {
+		slice := make([]*ir.Node, len(s.Strata))
+		for i, v := range s.Strata {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["strata"] = ir.FromSlice(slice)
+	}
 
 	return ir.FromMap(irMap), nil
 }
@@ -1886,16 +1898,38 @@ func (s *CharterPackage) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) er
 			}
 		case "rules":
 			// Field: Rules
-			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "rules", fieldNodeUnwrapped.Type)
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Rules = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"rules\"", fieldNodeUnwrapped.Type)
 			}
-			s.Rules = int(*fieldNodeUnwrapped.Int64)
 		case "strata":
 			// Field: Strata
-			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "strata", fieldNodeUnwrapped.Type)
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Strata = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"strata\"", fieldNodeUnwrapped.Type)
 			}
-			s.Strata = int(*fieldNodeUnwrapped.Int64)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for CharterPackage", fieldName.String)

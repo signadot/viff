@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -16,90 +18,162 @@ import (
 // with packages installed there are several — so the two flags are how a reader says which, and
 // `--tree` is how they see that there are several at all.
 type triggerFlags struct {
-	At string `cli:"name=at desc='the charter package at this address, rather than baseline'"`
+	At    string `cli:"name=at desc='the rules of the charter package at this address, in full'"`
+	Rules bool   `cli:"name=rules desc='the rules in full rather than the tree — baseline, or --at'"`
 }
 
 var trig = &triggerFlags{}
 
 func triggerCmd() *cli.Command {
+	cfg := &struct{ *cli.Command }{}
 	trig = &triggerFlags{} // per-invocation, like the filter flags: one command runs per process
-	return filteredCollectionPost("trigger", "triggers", "/triggers",
-		"trigger — the installed charter; add|show|remove one rule, tree for all of them",
-		mustOpts(trig),
-		func() url.Values {
-			q := url.Values{}
-			if trig.At != "" {
-				q.Set("at", trig.At)
+	return cli.NewCommandAt(&cfg.Command, "trigger").
+		WithAliases("triggers").
+		WithSynopsis("trigger — the installed charter as a tree; add|show|remove one rule").
+		WithOpts(append(mustOpts(trig), filterOpts()...)...).
+		WithSubs(triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd()).
+		WithRun(func(cc *cli.Context, args []string) error {
+			args, err := cfg.Parse(cc, args)
+			if err != nil {
+				return err
 			}
-			return q
-		},
-		[]postPrint{elsewhereInPackages},
-		triggerAddCmd(), triggerShowCmd(), triggerRemoveCmd(), triggerTreeCmd())
+			if handled, err := dispatch(cfg.Command, cc, args); handled {
+				return err
+			}
+			if err := noArgs(cfg.Command, "trigger", args); err != nil {
+				return err
+			}
+			// ONE CHARTER'S RULES when the question named one, the whole tree otherwise.
+			// `--at drift`, `--scope me` and `--rules` are specific questions and get the
+			// rules themselves — which is also where `--if`/`--trim` mean what they always
+			// did, since a rule is the item there. Bare, the answer is what is installed and
+			// where, and there is no rule document in it to filter.
+			if trig.At != "" || trig.Rules || g.Scope != "" {
+				q := url.Values{}
+				if trig.At != "" {
+					q.Set("at", trig.At)
+				}
+				resp, err := httpGet("/triggers", q)
+				if err != nil {
+					return fmt.Errorf("trigger: %w", err)
+				}
+				return printBody(cc, resp)
+			}
+			return printCharterTree(cc)
+		})
 }
 
-// AN EMPTY BASELINE IS NOT AN EMPTY CHARTER once packages exist, and this says so.
+// printCharterTree renders the whole charter as a TREE, which is what an address makes it: the
+// baseline charter at the root, and each package under the segments of the address it writes in.
 //
-// `verse trigger` lists ONE engine's rules, and a charter installed at an address is another
-// engine's — so installing comment-drift (two packages, eight rules) and then typing `verse
-// trigger` answers `[]`, which reads as "nothing installed" and is the second thing anybody
-// does. It cost two rounds of "the install said 3 and 5 and the listing says none".
+//	writes: anywhere              # baseline: no address, so it may write anywhere
+//	rules: [land-auto, land-ask]
+//	children:
+//	  drift:
+//	    writes: drift.*
+//	    imports: [git]
+//	    rules: [comment-drift, gather, head-moved]
+//	  demo:
+//	    children:                 # nothing is installed at `demo` itself
+//	      pr:
+//	        writes: demo.pr.*
+//	        rules: [review]
 //
-// The note goes to STDERR so the listing stays a document: `verse trigger | o list …` keeps
-// working, and a person at a terminal reads the line. It says nothing when the answer is not
-// empty (there is a charter to read) or when `--at`/`--scope` asked about a particular engine
-// (the question was specific, and an empty answer to it is an answer).
-func elsewhereInPackages(cc *cli.Context) {
-	if trig.At != "" || g.Scope != "" || !lastPrintEmpty {
-		return
-	}
+// BY NAME rather than by body, because this is the answer to "what is installed": a name is what
+// every other command takes, and comment-drift's rules are pages long. `verse trigger --at
+// drift` is the rules themselves, one charter at a time, and `trigger show <name>` is one rule.
+//
+// It answers the tree even when there are no packages at all, where it is baseline's rules under
+// `rules:` and no `children:` — one shape, so a reader who learns it once does not meet a
+// different one the first time somebody installs a package.
+//
+// Assembled here rather than served, for the reason the docket is: the wire carries the flat
+// rows (one per charter, each naming its address) and the shape is a rendering of them. A tree
+// on the wire would be a second, recursive type for the same facts.
+func printCharterTree(cc *cli.Context) error {
 	resp, err := httpGet("/packages", nil)
 	if err != nil {
-		return
+		return fmt.Errorf("trigger: %w", err)
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return printBody(cc, resp) // a 503 from an unreadable store says so in its own words
 	}
 	var rows []api.CharterPackage
 	decodeClose(resp, &rows)
-	rules, pkgs := 0, 0
+	root := &charterNode{}
 	for _, row := range rows {
-		if row.At == api.BaselinePackage {
-			continue
+		node := root
+		if row.At != api.BaselinePackage {
+			for _, seg := range strings.Split(row.At, ".") {
+				node = node.child(seg)
+			}
 		}
-		rules += row.Rules
-		pkgs++
+		node.row, node.here = row, true
 	}
-	if rules == 0 {
-		return
-	}
-	fmt.Fprintf(cc.Err, "(baseline holds no rules; %d in %d charter package(s) — "+
-		"`verse trigger tree`, or `verse trigger --at <address>`)\n", rules, pkgs)
+	return printIR(cc, root.node())
 }
 
-type triggerTreeConfig struct{ *cli.Command }
+// charterNode is one place in the address tree: a charter installed there (or not, for a
+// segment that only leads somewhere) and whatever is installed below it.
+type charterNode struct {
+	row      api.CharterPackage
+	here     bool // a charter is installed AT this address, rather than only under it
+	kids     map[string]*charterNode
+	kidOrder []string
+}
 
-// The charter as a TREE, which is the view a package makes necessary: `verse trigger` answers
-// ONE engine's rules, so with packages installed there was no way to see that there were
-// several, what each may write, or the import graph between them.
-//
-// A listing like any other — an array, filtered by `--if`/`--trim` — rather than drawn glyphs:
-// the shape is three fields wide, and a document is what a person can grep, diff and pipe.
-func triggerTreeCmd() *cli.Command {
-	cfg := &triggerTreeConfig{}
-	return cli.NewCommandAt(&cfg.Command, "tree").
-		WithSynopsis("tree — every charter: baseline and each package, what it writes and imports").
-		WithOpts(filterOpts()...).
-		WithRun(func(cc *cli.Context, args []string) error {
-			args, err := cfg.Parse(cc, args) // its own --if/--trim, like every other listing
-			if err != nil {
-				return err
-			}
-			if err := noArgs(cfg.Command, "trigger tree", args); err != nil {
-				return err
-			}
-			resp, err := httpGet("/packages", nil)
-			if err != nil {
-				return fmt.Errorf("trigger tree: %w", err)
-			}
-			return printBody(cc, resp)
-		})
+func (n *charterNode) child(seg string) *charterNode {
+	if n.kids == nil {
+		n.kids = map[string]*charterNode{}
+	}
+	if c, ok := n.kids[seg]; ok {
+		return c
+	}
+	c := &charterNode{}
+	n.kids[seg] = c
+	n.kidOrder = append(n.kidOrder, seg)
+	return c
+}
+
+// node renders the subtree in a DELIBERATE field order — what it may write, what it reads, what
+// it holds, then what is under it. Alphabetical (which is what a map gives) would put `children`
+// first and `writes` last, so the shallowest fact about a charter would be the one furthest down
+// every entry.
+func (n *charterNode) node() *ir.Node {
+	fields := []*ir.Node{}
+	values := []*ir.Node{}
+	add := func(key string, v *ir.Node) {
+		fields = append(fields, ir.FromString(key))
+		values = append(values, v)
+	}
+	if n.here {
+		add("writes", ir.FromString(n.row.Writes))
+		if n.row.Imports != nil {
+			add("imports", strs(n.row.Imports))
+		}
+		add("rules", strs(n.row.Rules))
+		if len(n.row.Strata) > 0 {
+			add("strata", strs(n.row.Strata))
+		}
+	}
+	if len(n.kidOrder) > 0 {
+		sort.Strings(n.kidOrder)
+		kf, kv := []*ir.Node{}, []*ir.Node{}
+		for _, seg := range n.kidOrder {
+			kf = append(kf, ir.FromString(seg))
+			kv = append(kv, n.kids[seg].node())
+		}
+		add("children", &ir.Node{Type: ir.ObjectType, Fields: kf, Values: kv})
+	}
+	return &ir.Node{Type: ir.ObjectType, Fields: fields, Values: values}
+}
+
+func strs(in []string) *ir.Node {
+	out := make([]*ir.Node, 0, len(in))
+	for _, s := range in {
+		out = append(out, ir.FromString(s))
+	}
+	return ir.FromSlice(out)
 }
 
 type triggerShowConfig struct{ *cli.Command }
@@ -272,7 +346,7 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 	// is an empty list. The listing says so too (elsewhereInPackages); saying it here as well is
 	// what keeps somebody from having to be surprised first.
 	if packaged {
-		fmt.Fprintln(cc.Out, "`verse trigger tree` lists every charter; `verse trigger` alone is baseline's")
+		fmt.Fprintln(cc.Out, "`verse trigger` shows every charter and where each may write")
 	}
 	return nil
 }

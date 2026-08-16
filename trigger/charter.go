@@ -58,6 +58,10 @@ func CharterRefAt(at, name string) entity.Ref {
 	return entity.VerseRef(CharterSystem, CharterKind, recordID(at, name))
 }
 
+// RecordName is recordName for a reader outside the package — the server lists a charter by the
+// names its records carry, and the package half of the id is not part of a rule's name.
+func RecordName(id string) string { return recordName(id) }
+
 // recordName is the name inside a record id — the tail after the package address, and the whole
 // id for baseline. The split is on the LAST colon: an address may hold none (`drift`) or one
 // (`demo.pr` is dotted, so still none), and a rule's name may not hold one, so the last colon

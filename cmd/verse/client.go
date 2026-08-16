@@ -242,13 +242,19 @@ func okBody(resp *http.Response) ([]byte, error) {
 // terminal takes it. printBody is for a body the server wrote; this is for one we assembled —
 // the docket, which is a list of motions with each subject's own summary folded in.
 func printNode(cc *cli.Context, v any) error {
-	out, err := outFmt()
-	if err != nil {
-		return err
-	}
 	node, err := gomap.ToTonyIR(v)
 	if err != nil {
 		return fmt.Errorf("encoding: %w", err)
+	}
+	return printIR(cc, node)
+}
+
+// printIR is printNode for a caller that BUILT the document rather than converting one — the
+// charter tree, whose field order is part of what it says and which a map would alphabetise.
+func printIR(cc *cli.Context, node *ir.Node) error {
+	out, err := outFmt()
+	if err != nil {
+		return err
 	}
 	// The docket is assembled here rather than passed through, and it filters like every other
 	// listing: one funnel per direction, both asking the same two questions.

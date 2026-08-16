@@ -371,35 +371,46 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 	}
 }
 
-// `verse trigger` lists ONE engine's rules, so a charter installed into packages leaves it
-// answering `[]` — which reads as "nothing installed" and is the second thing anybody types
-// after an install that just said 3 and 5. The listing says where the rules are, on STDERR, so
-// the document on stdout stays a document.
-func TestAnEmptyBaselineSaysWhereTheRulesAre(t *testing.T) {
+// `verse trigger` answers the charter as a TREE — baseline at the root and each package under
+// the address it writes in — which is what makes an installed package visible at all. It listed
+// one engine's rules before, so installing comment-drift (two packages, eight rules) and typing
+// `verse trigger` answered `[]`, which reads as a failed install and did, twice.
+func TestTheCharterListsAsATree(t *testing.T) {
 	serve(t)
-	if _, err := runCLI(t, "trigger", "add", "--at", "notes", "--file", "-"); err == nil {
-		t.Fatal("a charter add with no input was accepted")
-	}
-	// Installed through the CLI, which is the path a person takes.
 	if err := installPackageRule(t); err != nil {
 		t.Fatalf("installing a package: %v", err)
 	}
 
-	out, errOut, err := runCLIStreams(t, "trigger")
+	out, err := runCLI(t, "trigger")
 	if err != nil {
 		t.Fatalf("trigger: %v", err)
 	}
-	if strings.TrimSpace(out) != "[]" {
-		t.Errorf("stdout is not the listing: %q", out)
+	for _, want := range []string{
+		"writes: anywhere", // baseline, at the root
+		"children:",
+		"notes:",         // the package, under the address it writes in
+		"writes: notes.", // …and what it may write
+		"note",           // its rule, BY NAME
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the tree does not show %q:\n%s", want, out)
+		}
 	}
-	if !strings.Contains(errOut, "charter package") || !strings.Contains(errOut, "tree") {
-		t.Errorf("nothing said where the rules are:\nstderr: %q", errOut)
+
+	// And the rules themselves are one charter at a time, which is where a filter has items.
+	rules, err := runCLI(t, "trigger", "--at", "notes", "--trim", `{name: null}`)
+	if err != nil {
+		t.Fatalf("trigger --at: %v", err)
+	}
+	if !strings.Contains(rules, "name: note") {
+		t.Errorf("--at did not answer the package's rules: %s", rules)
 	}
 }
 
 // installPackageRule installs one rule into a package, by posting it the way `trigger add` does.
 func installPackageRule(t *testing.T) error {
 	t.Helper()
+	g.Addr = testAddr // runCLI does this on its way in; this posts before any command runs
 	node, err := codec.ParseNode([]byte(`{
 		name: note,
 		condition: {subject: {system: notes, kind: seen, id: head}},

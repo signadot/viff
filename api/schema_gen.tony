@@ -4,8 +4,8 @@ context:
 define:
   at: .[string]
   imports: .[array(string)]
-  rules: .[int]
-  strata: .[int]
+  rules: .[array(string)]
+  strata: .[array(string)]
   writes: .[string]
 signature:
   name: verse-charter-package

@@ -403,8 +403,15 @@ type CharterPackage struct {
 	// Imports is what this package declares it reads outside its own address. Empty on a
 	// package means it reads only inside it; absent on baseline, which is unconfined.
 	Imports []string `tony:"field=imports,omitzero"`
-	Rules   int      `tony:"field=rules"`
-	Strata  int      `tony:"field=strata"`
+	// Rules and Strata are what stands in this charter, BY NAME rather than by count.
+	//
+	// Names because this is the answer to "what is installed" — a count says a charter is there
+	// and nothing about what it does, and a rule's name is what every other command takes
+	// (`trigger show <name>`, `stratum remove <name>`). The rules themselves are a listing away
+	// (`verse trigger --at <address>`), which is the right depth for a charter whose rules are
+	// pages long.
+	Rules  []string `tony:"field=rules"`
+	Strata []string `tony:"field=strata,omitzero"`
 }
 
 //tony:schemagen=verse-status,notag

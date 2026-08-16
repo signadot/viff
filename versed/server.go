@@ -1298,7 +1298,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 //
 // A LISTING CANNOT SAY THIS ITSELF: `Store.List` answers a slice, so a store that cannot be read
 // answers the empty one, indistinguishable from a verse holding nothing. That is how a store
-// with an unreplayable patch in its log presents — `verse state` empty, `verse trigger tree` a
+// with an unreplayable patch in its log presents — `verse state` empty, `verse trigger` a
 // charter of no rules, every write still reporting success. Asking the store turns it into an
 // answer somebody can act on.
 func storeUnreadable(st entity.Reader) error {

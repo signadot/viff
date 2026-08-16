@@ -255,13 +255,15 @@ func (s *Server) restorePackageImports() {
 // engines, because a package whose rules are all dormant is still a package, and a record is
 // what a restart brings back.
 func (s *Server) packageTree() []api.CharterPackage {
-	rules := map[string]int{}
-	strata := map[string]int{}
+	rules := map[string][]string{}
+	strata := map[string][]string{}
 	for _, ent := range s.Store.List(trigger.IsCharterRule) {
-		rules[entity.Str(ent.Payload, trigger.AtField)]++
+		at := entity.Str(ent.Payload, trigger.AtField)
+		rules[at] = append(rules[at], trigger.RecordName(ent.Ref.ID()))
 	}
 	for _, ent := range s.Store.List(trigger.IsStratum) {
-		strata[entity.Str(ent.Payload, trigger.AtField)]++
+		at := entity.Str(ent.Payload, trigger.AtField)
+		strata[at] = append(strata[at], trigger.RecordName(ent.Ref.ID()))
 	}
 	ats := map[string]bool{"": true} // baseline is always a row, even with no rules yet
 	for at := range rules {
@@ -281,7 +283,12 @@ func (s *Server) packageTree() []api.CharterPackage {
 	sort.Strings(names) // baseline first, then by address, so two readers see one order
 	out := make([]api.CharterPackage, 0, len(names))
 	for _, at := range names {
+		sort.Strings(rules[at]) // one order, so two readers see one charter
+		sort.Strings(strata[at])
 		row := api.CharterPackage{At: at, Rules: rules[at], Strata: strata[at]}
+		if row.Rules == nil {
+			row.Rules = []string{} // an empty charter is empty, not absent
+		}
 		if at == "" {
 			row.At = api.BaselinePackage
 			row.Writes = "anywhere"

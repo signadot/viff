@@ -94,16 +94,16 @@ verse
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
-  trigger (triggers) [--at <address>]        the installed charter — baseline's rules, or
-                                             the package's at <address>
+  trigger (triggers)                         the installed charter as a TREE: baseline at
+                                             the root, each package under the address it
+                                             writes in, rules and strata BY NAME
+          [--at <address>]                   …that charter's rules in full, instead
+          [--scope <name>]                   …a federation's own charter, instead
           add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md
           add --scope <name>                 …into a federation's own charter instead
-          tree                               EVERY charter at once: baseline and each
-                                             package, what it writes, what it imports, and
-                                             how many rules and strata it holds
           A charter file may open a package with a `---` document of its own — `at: drift`
           is where its rules write, `imports: [git, other]` what they may read besides, in
           either address spelling (`!verse-path [demo pr]` too). A package reads inside its

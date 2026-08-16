@@ -240,8 +240,10 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 		}
 	}
 
-	// --if names WHICH rules, over the same match language a charter's `value:` takes.
-	out, err := runCLI(t, "trigger", "--if", `{name: alpha}`)
+	// --if names WHICH rules, over the same match language a charter's `value:` takes. On
+	// `--rules`, where the items ARE rules: bare, `verse trigger` answers the charter TREE, in
+	// which there is no rule document to filter.
+	out, err := runCLI(t, "trigger", "--rules", "--if", `{name: alpha}`)
 	if err != nil {
 		t.Fatalf("trigger --if: %v", err)
 	}
@@ -249,7 +251,7 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 		t.Errorf("--if did not select: %s", out)
 	}
 	// --trim says how much of each, and the two compose.
-	out, err = runCLI(t, "trigger", "--if", `{name: alpha}`, "--trim", `{name: null}`)
+	out, err = runCLI(t, "trigger", "--rules", "--if", `{name: alpha}`, "--trim", `{name: null}`)
 	if err != nil {
 		t.Fatalf("trigger --if --trim: %v", err)
 	}
@@ -257,7 +259,7 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 		t.Errorf("--trim did not project: %s", out)
 	}
 	// NOTHING KEPT IS NOT AN ERROR: an empty answer is a true answer to the question asked.
-	out, err = runCLI(t, "trigger", "--if", `{name: nobody}`)
+	out, err = runCLI(t, "trigger", "--rules", "--if", `{name: nobody}`)
 	if err != nil {
 		t.Errorf("an empty result was an error: %v", err)
 	}
