@@ -1,8 +1,10 @@
 package trigger
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -341,4 +343,117 @@ func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 	if back.Condition.Subject.MatchRef(entity.RefAt("demo", "pr", "anything")) {
 		t.Error("it reads as a wildcard now")
 	}
+}
+
+// THE CASE THAT STARTED THIS. A charter installed at `verse-dev.drift` writes only inside that
+// address — so its tip fact and its ledger of findings cannot be two SYSTEMS, and under the old
+// two-level derive they could not be two kinds either: the address ended at `<system>.<kind>`
+// and the confinement was the whole of it.
+//
+// With an address as deep as the tree they are two levels UNDER it, each with a stratum of its
+// own, and the ordering that makes a derive finite still holds.
+func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	eng.Confine(SubtreeAt("verse-dev", "drift"))
+	eng.SetImports([]Subtree{SubtreeAt("git")})
+
+	for _, st := range []Stratum{
+		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}},
+		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, finding]}`)}},
+	} {
+		if err := eng.AddStratum(st); err != nil {
+			t.Fatalf("stratum %q: %v", st.Name, err)
+		}
+	}
+
+	// The tip: reads the source it imports, writes one level under its own address.
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: head-moved
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [verse-dev, drift, head]
+      value: {sha: $subject.value.sha}
+`)); err != nil {
+		t.Fatalf("the tip rule did not install: %v", err)
+	}
+
+	// The ledger: one level higher, under the same address — which is what two kinds under one
+	// package needs, and what a two-level derive could not express.
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: gather
+  stratum: tip
+  condition:
+    subject: !verse-path [verse-dev, drift, head, "*"]
+  action:
+    derive:
+    - path: [verse-dev, drift, finding]
+      value: {noted: true}
+`)); err != nil {
+		t.Fatalf("the ledger rule did not install: %v", err)
+	}
+
+	// And the confinement still bites: the same charter may not write outside its address.
+	err := eng.AddTrigger(mustParseCharter(t, `
+- name: reach
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [somebody-else, notes]
+      value: {tampered: true}
+`))
+	if err == nil {
+		t.Fatal("a derive outside the package's address installed")
+	}
+	// The level check happens to speak first — a derive with nowhere to land is refused before
+	// anyone asks whose address it is — and either refusal is the right one. What matters is
+	// that it NAMES THE ADDRESS, which a path rendering as a Go map did not.
+	if !strings.Contains(err.Error(), "somebody-else") {
+		t.Errorf("the refusal does not name the address it refused: %v", err)
+	}
+	if strings.Contains(err.Error(), "0x") {
+		t.Errorf("the refusal renders pointers instead of an address: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+
+	// The tip lands four segments deep, and the ledger lands beside it — the cascade crossing a
+	// level inside one package.
+	waitDeep(t, store, []string{"verse-dev", "drift", "head"}, 4)
+	waitDeep(t, store, []string{"verse-dev", "drift", "finding"}, 4)
+}
+
+// waitDeep waits until something stands at a depth under an address.
+func waitDeep(t *testing.T, store entity.Store, at []string, depth int) {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if len(store.ListAt(at, depth, nil)) > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("nothing stands under %v at depth %d", at, depth)
+}
+
+// mustPathMatch parses one match written in tony, for a test that wants a path pattern.
+func mustPathMatch(t *testing.T, src string) Match {
+	t.Helper()
+	node, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse %s: %v", src, err)
+	}
+	var m Match
+	if err := m.FromTonyIR(node); err != nil {
+		t.Fatalf("match %s: %v", src, err)
+	}
+	return m
 }

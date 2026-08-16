@@ -66,8 +66,19 @@ Each lands with the suite green.
    the pattern's own path and the read narrowed to its literal head. A watch stops at the first
    segment that is not a literal — an operator constrains a level without naming it, so it
    cannot narrow a subtree, and the pattern does the rest.
-4. **Derive targets and path reads.** `derive: {a: {b: {c: …}}}` is already nested, so a target
-   is a path; `!get-path`/`!list-paths` take one.
+4. **Derive targets.** Done. A derive may be a LIST whose entries name their address as a path
+   — `- {path: [verse-dev, drift, head], value: {…}}` — with the nested map staying the
+   shorthand for the two-level case. Strata compare as paths (`pathContains`/`pathOverlap`), so
+   a package can keep two levels under one address, which is the case this whole note is for.
+
+   `path:` in the OBJECT form always means a path, at every length; `!verse-path [a b c]` folds
+   three segments into the dimensions for the sake of every charter written before this. The
+   difference matters exactly once, and a stratum is where: `[verse-dev, drift, head]` is a
+   PLACE that derived entities land under, not an entity whose id is `head`.
+
+   Still to do here: `!get-path`/`!list-paths`. The string form (`!get-path a.b.c.d`) reads at a
+   path already — a read wants a VALUE and needs no entity boundary at all — so what is left is
+   the object form's address, where `path:` is taken by the field path inside the payload.
 5. **Writes and watches.** `ParsePath` stops splitting an address into three-plus-a-field: a
    write is a value at a path, which is what the store does anyway. A watch is told its depth by
    whoever opens it (`WatchSubtree(prefix, depth)`), which is where §2's patterns arrive.

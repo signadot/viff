@@ -699,6 +699,35 @@ func (m Match) SegNodes() []*ir.Node {
 // Deep reports whether the match names an address deeper than the three dimensions can hold.
 func (m Match) Deep() bool { _, ok := m[mKeyPath].([]*ir.Node); return ok }
 
+// PathMatch is an address read as a PATH, whatever its length — the reading `path:` asks for
+// explicitly, where `!verse-path [a b c]` folds three segments into the dimensions for the sake
+// of every charter that was written before addresses were trees.
+//
+// The difference matters exactly once, and a stratum is where: `[verse-dev, drift, head]` is a
+// PLACE that derived entities land under, not an entity whose id is `head`. The dimensions have
+// no way to say that — their third position IS the id — so the spelling that means "a path" has
+// to mean it at every length.
+func PathMatch(steps []*ir.Node) (Match, error) {
+	segs := make([]*ir.Node, 0, len(steps))
+	for i, n := range steps {
+		u := unwrap(n)
+		if u == nil {
+			return nil, fmt.Errorf("match: segment %d of a path is empty", i+1)
+		}
+		if u.Tag == "" {
+			if _, ok := stepText(u); !ok {
+				return nil, fmt.Errorf("match: a path segment is a name or a match over one; got %v",
+					u.Type)
+			}
+		}
+		segs = append(segs, u)
+	}
+	if len(segs) == 0 {
+		return nil, fmt.Errorf("match: a path names no segments")
+	}
+	return Match{mKeyPath: segs}, nil
+}
+
 // ParseStepNodes is ParseSteps over steps that may carry an OPERATOR — `!verse-path [demo pr
 // !glob "hot-*"]`. A step is a node, so a tag survives to the dimension or the path that holds
 // it, where the string form had to drop it.

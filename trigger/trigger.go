@@ -738,7 +738,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 					return nil, err
 				}
-				ref := entity.RefAt(d.System, d.Kind, eachID(chainID(chain), subj, key))
+				ref := d.refFor(eachID(chainID(chain), subj, key))
 				payload, err := e.eachContent(d.Each, chain, oc, subj, item)
 				if err != nil {
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
@@ -751,7 +751,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			}
 			continue
 		}
-		ref := entity.RefAt(d.System, d.Kind, deriveID(chainID(chain), subj))
+		ref := d.refFor(deriveID(chainID(chain), subj))
 		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
 		if err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)

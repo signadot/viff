@@ -222,6 +222,9 @@ func (ms Matches) overlaps(other []Match) bool {
 // anything; an unset dimension on the INNER is the case that must fail, since "any system"
 // is not contained by "system gh".
 func matchContains(outer, inner Match) bool {
+	if outer.Deep() || inner.Deep() {
+		return pathContains(outer.Segs(), inner.Segs())
+	}
 	if s := outer.System(); s != "" && s != inner.System() {
 		return false
 	}
@@ -231,14 +234,57 @@ func matchContains(outer, inner Match) bool {
 	return true
 }
 
+// pathContains reports whether every address the inner path names is one the outer path names.
+//
+// SEGMENT BY SEGMENT, and the outer may be SHORTER: `[verse-dev, drift]` contains
+// `[verse-dev, drift, head]`, which is the same statement as a system containing its kinds. An
+// outer segment of `*` contains anything at that position; a literal has to be matched by the
+// same literal, because an inner `*` there could be something else.
+//
+// An outer LONGER than the inner cannot contain it: `[verse-dev, drift, head]` does not contain
+// `[verse-dev, drift]`, whose entities include things that are not under `head`.
+func pathContains(outer, inner []string) bool {
+	if len(outer) > len(inner) {
+		return false
+	}
+	for i, want := range outer {
+		if want == "*" {
+			continue
+		}
+		if inner[i] != want {
+			return false
+		}
+	}
+	return true
+}
+
 // matchOverlap reports whether some ref could satisfy both. Unset is a wildcard on either side,
 // so it overlaps everything at that dimension.
 func matchOverlap(a, b Match) bool {
+	if a.Deep() || b.Deep() {
+		return pathOverlap(a.Segs(), b.Segs())
+	}
 	if x, y := a.System(), b.System(); x != "" && y != "" && x != y {
 		return false
 	}
 	if x, y := a.Kind(), b.Kind(); x != "" && y != "" && x != y {
 		return false
+	}
+	return true
+}
+
+// pathOverlap reports whether two paths could name one address: as far as the SHORTER goes,
+// each position must be compatible — a `*` on either side is, and two literals only if equal.
+// Past the shorter one there is nothing to disagree about, since one path is then a prefix of
+// the other and a prefix contains what extends it.
+func pathOverlap(a, b []string) bool {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] == "*" || b[i] == "*" {
+			continue
+		}
+		if a[i] != b[i] {
+			return false
+		}
 	}
 	return true
 }
@@ -270,6 +316,13 @@ func (s Stratum) validate() error {
 		// that constrained the id would make that question undecidable at exactly the moment
 		// the whole proposal is bought for. Disjointness has the same shape: over two segments
 		// it is a comparison, over payload predicates it is not decidable at all.
+		// A PATH NAMES A PLACE, not an entity: it is the derive target's own spelling, and a
+		// derive lands one segment below it under an id the engine chooses. So the question
+		// this refuses cannot arise there — there is no id position in `[verse-dev, drift,
+		// head]`, and the containment check compares two prefixes.
+		if m.Deep() {
+			continue
+		}
 		if m.ID() != "" || m.dim(mKeyID) != nil {
 			return fmt.Errorf("stratum %q match[%d] constrains `id`: a stratum's pattern may "+
 				"name a system and a kind and nothing below, because a derived entity's id is "+
@@ -641,7 +694,7 @@ func (e *Engine) checkLevels(t Trigger) (bool, error) {
 	}
 	above := e.strataAbove(st.Level)
 	for _, d := range t.Action.allDerives() {
-		target := Match{mKeySystem: d.System, mKeyKind: d.Kind}
+		target := d.match()
 		var landed *Stratum
 		for i := range above {
 			if Matches(above[i].Match).contains(target) {
@@ -691,16 +744,46 @@ func (e *Engine) stratumFor(target Match) *Stratum {
 	return nil
 }
 
-// deriveTarget is one derive's address and content: <system>.<kind>, then the payload.
+// deriveTarget is one derive's address and content: the place it writes, then the payload.
 type deriveTarget struct {
 	System, Kind string
-	Payload      entity.Payload
+	// Path is the address as a PATH when the derive was written with one, and is what the two
+	// above are a reading of. It exists for the same reason a Match has one: a charter
+	// installed at `verse-dev.drift` writes `verse-dev.drift.head.<id>`, and two names cannot
+	// hold four segments.
+	Path    []string
+	Payload entity.Payload
 	// Each is set when this target fans out: one derived entity per element of `over`,
 	// addressed by `key`. Payload is nil then, and vice versa.
 	Each *eachSpec
 }
 
-func (d deriveTarget) addr() string { return d.System + ":" + d.Kind }
+// segs is the target's address, whichever way it was written.
+func (d deriveTarget) segs() []string {
+	if len(d.Path) > 0 {
+		return d.Path
+	}
+	return []string{d.System, d.Kind}
+}
+
+// refFor is the entity this derive writes, given the id the engine derived for it.
+func (d deriveTarget) refFor(id string) entity.Ref {
+	return entity.RefAt(append(append([]string{}, d.segs()...), id)...)
+}
+
+// match is the target as the pattern the level and confinement checks compare against.
+func (d deriveTarget) match() Match {
+	if len(d.Path) > 0 {
+		segs := make([]*ir.Node, 0, len(d.Path))
+		for _, sg := range d.Path {
+			segs = append(segs, ir.FromString(sg))
+		}
+		return Match{mKeyPath: segs}
+	}
+	return Match{mKeySystem: d.System, mKeyKind: d.Kind}
+}
+
+func (d deriveTarget) addr() string { return strings.Join(d.segs(), ":") }
 
 // eachSpec is `!each {over, key, value}` — the fan-out form of a derive.
 //
@@ -800,7 +883,24 @@ func (a Action) derives() []deriveTarget {
 	// and the install refused a rule that was written correctly. A comment is not a container:
 	// asking what a value's structure IS means stepping past what was said about it (ir/nav.go).
 	d := unwrap(a.Derive)
-	if d == nil || d.Type != ir.ObjectType {
+	if d == nil {
+		return nil
+	}
+	// THE LIST FORM names its address as a path, which is what an address deeper than two
+	// levels needs: `- {path: [verse-dev, drift, head], value: {…}}`. The nested map stays the
+	// shorthand for the two-level case, which is what most derives are.
+	if d.Type == ir.ArrayType {
+		var out []deriveTarget
+		for _, el := range d.Values {
+			t, ok := derivePathTarget(unwrap(el))
+			if !ok {
+				continue // refused by validate; nothing to walk
+			}
+			out = append(out, t)
+		}
+		return out
+	}
+	if d.Type != ir.ObjectType {
 		return nil
 	}
 	var out []deriveTarget
@@ -823,6 +923,66 @@ func (a Action) derives() []deriveTarget {
 		}
 	}
 	return out
+}
+
+// derivePathTarget reads one entry of the list form: an address as a path, and the content —
+// a literal `value`, or an `!each` fan-out, exactly as the map form takes.
+func derivePathTarget(el *ir.Node) (deriveTarget, bool) {
+	if el == nil || el.Type != ir.ObjectType {
+		return deriveTarget{}, false
+	}
+	var t deriveTarget
+	var content *ir.Node
+	for i, key := range el.Fields {
+		if key == nil || key.Type != ir.StringType {
+			continue
+		}
+		val := unwrap(el.Values[i])
+		switch key.String {
+		case "path", "at":
+			segs, ok := addressSegs(val)
+			if !ok {
+				return deriveTarget{}, false
+			}
+			t.Path = segs
+		case "value":
+			content = val
+		}
+	}
+	if len(t.Path) == 0 {
+		return deriveTarget{}, false
+	}
+	if isEach(content) {
+		t.Each, _ = readEach(content)
+	} else {
+		t.Payload = content
+	}
+	return t, true
+}
+
+// addressSegs reads an address written as a list of names — `[verse-dev, drift, head]`, or the
+// same under `!verse-path`. A derive TARGET is a place to write, so its segments are names: an
+// operator selects, and there is nothing to select when the question is where to put something.
+func addressSegs(n *ir.Node) ([]string, bool) {
+	if n == nil {
+		return nil, false
+	}
+	if n.Type == ir.StringType {
+		segs, err := entity.PathSegs(n.String)
+		return segs, err == nil && len(segs) > 0
+	}
+	if n.Type != ir.ArrayType {
+		return nil, false
+	}
+	out := make([]string, 0, len(n.Values))
+	for _, v := range n.Values {
+		text, ok := stepText(unwrap(v))
+		if !ok || text == "" {
+			return nil, false
+		}
+		out = append(out, text)
+	}
+	return out, len(out) > 0
 }
 
 // allDerives reads the derives of this action AND everything below it — a sequence's elements,
@@ -850,8 +1010,34 @@ func (a Action) validateDerive() error {
 	// Past the comment wrapper before asking what the shape is — see derives(), which walks the
 	// same block and refused a correctly written rule for the same reason.
 	d := unwrap(a.Derive)
+	// THE LIST FORM, whose entries name their address as a path — the spelling an address
+	// deeper than two levels needs. Each entry is checked the way a map entry is: the address
+	// is names, the content is a literal payload or an `!each`.
+	if d.Type == ir.ArrayType {
+		if len(d.Values) == 0 {
+			return fmt.Errorf("action.derive is empty: it names where to write and what goes there")
+		}
+		for i, el := range d.Values {
+			t, ok := derivePathTarget(unwrap(el))
+			if !ok {
+				return fmt.Errorf("action.derive[%d] must be {path: [<segments>], value: …}: the "+
+					"path is where it writes and the value is what goes there", i)
+			}
+			if t.Each != nil {
+				if err := validateEach(unwrap(el)); err != nil {
+					return fmt.Errorf("action.derive[%d]: %w", i, err)
+				}
+				continue
+			}
+			if err := checkLiteralDerive(t.Payload, strings.Join(t.Path, ".")); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if d.Type != ir.ObjectType {
-		return fmt.Errorf("action.derive must be an object addressed <system>.<kind>, got %v", d.Type)
+		return fmt.Errorf("action.derive must be an object addressed <system>.<kind>, or a list "+
+			"of {path, value} entries for an address of any depth, got %v", d.Type)
 	}
 	if len(d.Fields) == 0 {
 		return fmt.Errorf("action.derive is empty: it addresses <system>.<kind> and writes what " +
@@ -871,26 +1057,8 @@ func (a Action) validateDerive() error {
 				}
 				continue
 			}
-			if payload == nil || payload.Type != ir.ObjectType {
-				// The engine writes the subject linkage into the derived entity, and there is
-				// nowhere to put it on a scalar. That linkage is what makes literal content
-				// sufficient — `do:approve` says "approve the thing this is about", and the
-				// linkage says which — so a payload that cannot carry it is not a derive.
-				return fmt.Errorf("action.derive.%s.%s must be an object: the engine writes the "+
-					"subject this derivation is about into it, which a scalar has nowhere to hold",
-					sysName.String, kindName.String)
-			}
-			if ref := firstBadRef(payload); ref != "" {
-				return fmt.Errorf("action.derive.%s.%s carries the reference %q: a derive may "+
-					"reference the firing's IDENTITY and never its STATE, and $%s is the only "+
-					"reference that is identity. The distinction is what the whole ordering rests "+
-					"on: a derived entity's address is a function of (rule, subject), so a derive "+
-					"whose content is also fixed by (rule, subject) writes the same bytes to the "+
-					"same address on every re-fire — a no-op the store ends by itself, which is why "+
-					"a rule may read a HIGHER level without that read becoming a cycle. A value read "+
-					"from a payload changes as rules fire, so a derive carrying one would make "+
-					"exactly that read live",
-					sysName.String, kindName.String, ref, refSubject)
+			if err := checkLiteralDerive(payload, sysName.String+"."+kindName.String); err != nil {
+				return err
 			}
 		}
 	}
@@ -1167,7 +1335,17 @@ func subjectText(m Match) string {
 	if s, ok := m.address(); ok {
 		return s
 	}
-	return fmt.Sprintf("%v", map[string]any(m))
+	// A PATH renders as the address it is. Without this a message about one printed the Go map
+	// holding it — `map[path:[0x14000…]]` — which names nothing a reader can act on, and is how
+	// a refusal about an address came to be unreadable exactly where the address mattered.
+	if m.Deep() {
+		out := strings.Join(m.Segs(), ".")
+		if p := m.Predicate(); p != nil {
+			out += " " + matchText(map[string]any{mKeyValue: p})
+		}
+		return out
+	}
+	return matchText(map[string]any(m))
 }
 
 func matchesText(ms []Match) string {
@@ -1187,4 +1365,25 @@ func strataText(all []Stratum) string {
 		parts = append(parts, fmt.Sprintf("%s=%d %s", s.Name, s.Level, matchesText(s.Match)))
 	}
 	return fmt.Sprintf("%v", parts)
+}
+
+// checkLiteralDerive is the content check both derive spellings share: an object (the engine
+// writes the subject linkage into it, and a scalar has nowhere to hold that), and IDENTITY
+// references only.
+func checkLiteralDerive(payload entity.Payload, where string) error {
+	if payload == nil || payload.Type != ir.ObjectType {
+		return fmt.Errorf("action.derive.%s must be an object: the engine writes the subject this "+
+			"derivation is about into it, which a scalar has nowhere to hold", where)
+	}
+	if ref := firstBadRef(payload); ref != "" {
+		return fmt.Errorf("action.derive.%s carries the reference %q: a derive may reference the "+
+			"firing's IDENTITY and never its STATE, and $%s is the only reference that is "+
+			"identity. The distinction is what the whole ordering rests on: a derived entity's "+
+			"address is a function of (rule, subject), so a derive whose content is also fixed by "+
+			"(rule, subject) writes the same bytes to the same address on every re-fire — a no-op "+
+			"the store ends by itself, which is why a rule may read a HIGHER level without that "+
+			"read becoming a cycle. A value read from a payload changes as rules fire, so a derive "+
+			"carrying one would make exactly that read live", where, ref, refSubject)
+	}
+	return nil
 }

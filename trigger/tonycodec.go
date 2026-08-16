@@ -200,7 +200,7 @@ func matchFromObject(node *ir.Node) (Match, error) {
 				return nil, fmt.Errorf("match: `%s` is a list of segments (`[demo, pr, \"*\"]`); "+
 					"got %v", mKeyPath, valType(val))
 			}
-			got, err := ParseStepNodes(val.Values)
+			got, err := PathMatch(val.Values)
 			if err != nil {
 				return nil, err
 			}

@@ -118,7 +118,7 @@ func (e *Engine) checkConfined(t Trigger) error {
 			subjectText(t.Condition.Subject), e.confine)
 	}
 	for _, d := range t.Action.allDerives() {
-		if !outer.contains(Match{mKeySystem: d.System, mKeyKind: d.Kind}) {
+		if !outer.contains(d.match()) {
 			return fmt.Errorf("derive into %s is outside %s: a charter installed at an address "+
 				"may only write inside it", d.addr(), e.confine)
 		}
