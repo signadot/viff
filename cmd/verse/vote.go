@@ -11,7 +11,6 @@ import (
 	"github.com/scott-cotton/cli"
 
 	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
 
@@ -155,9 +154,10 @@ func checkOpen(motion string, payload map[string]any) error {
 }
 
 // choices lists the ballots a motion's options can be answered with: the `choice` a
-// whether-gate tallies (approve/reject), or the option id a select is picked by. It mirrors
-// what optionLabels shows after the "=", so the words a voter is told to type and the words
-// accepted here cannot drift apart.
+// whether-gate tallies (approve/reject), or the option id a select is picked by. It
+// reads the motion's own options rather than a fixed vocabulary, which is what lets one check
+// serve both axes — and what keeps the words a voter is told to type and the words accepted
+// here from drifting apart, since the docket prints those same options.
 func choices(v any) []string {
 	opts, ok := v.([]any)
 	if !ok {
@@ -298,64 +298,4 @@ func subjectSays(ref string) string {
 	// match, not a reader piping it somewhere narrower. Truncating is the renderer's job, and
 	// the renderer is whoever is looking.
 	return strings.TrimSpace(ent.Payload.Says)
-}
-
-// optionLabels renders a motion's options as "id(need) …" (the threshold shown only when
-// > 1), across both axes: "proceed(2) deny" for a whether-gate, "gpt(2) claude(2)" for a
-// select. Where the ballot that counts differs from the option's name — a whether-motion
-// tallies approve/reject, not proceed/deny — it is shown as "id=choice", so the listing
-// tells a voter what to actually type. Returns "" when there are no options.
-//
-// An option that would run under its own envelope shows it: "fixer[no-delegate +run_bash]".
-// A who-motion's options stopped being interchangeable when a doer could bring its own grant
-// and tools — picking between two names became picking between two authorities — and a
-// listing that showed only the names would ask a voter to authorise a capability nobody put
-// in front of them. Only what DIFFERS from a plain name is added, so a ballot between doers
-// that vary by nothing but model reads exactly as it did before.
-func optionLabels(v any) string {
-	opts, ok := v.([]any)
-	if !ok || len(opts) == 0 {
-		return ""
-	}
-	names := make([]string, 0, len(opts))
-	for _, o := range opts {
-		om, _ := o.(map[string]any)
-		id, _ := om["id"].(string)
-		if choice, _ := om["choice"].(string); choice != "" && choice != id {
-			id = id + "=" + choice
-		}
-		// A threshold read out of a decoded payload has no guaranteed Go type — it is
-		// float64 from encoding/json, int64 from tony — so it goes through codec.
-		if n, ok := codec.AsInt64(om["need"]); ok && n > 1 {
-			id = fmt.Sprintf("%s(%d)", id, n)
-		}
-		if env := optionEnvelope(om); env != "" {
-			id += "[" + env + "]"
-		}
-		names = append(names, id)
-	}
-	return strings.Join(names, " ")
-}
-
-// optionEnvelope renders what a select option would run AS: its grant, and the tools it is
-// narrowed to. The tools are prefixed "+" so a reader can tell a tool list from a grant name
-// without knowing the grant vocabulary by heart. "" when the option carries neither, which is
-// every whether-gate option and every doer that only names a driver.
-func optionEnvelope(om map[string]any) string {
-	var parts []string
-	if g, _ := om["grant"].(string); g != "" {
-		parts = append(parts, g)
-	}
-	if ts, ok := om["tools"].([]any); ok && len(ts) > 0 {
-		tools := make([]string, 0, len(ts))
-		for _, t := range ts {
-			if name, ok := t.(string); ok {
-				tools = append(tools, name)
-			}
-		}
-		if len(tools) > 0 {
-			parts = append(parts, "+"+strings.Join(tools, ","))
-		}
-	}
-	return strings.Join(parts, " ")
 }
