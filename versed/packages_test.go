@@ -398,3 +398,47 @@ func TestUninstallingRefusesToSweepUpWhatIsUnderIt(t *testing.T) {
 		t.Errorf("--recurse left charters behind: %v", srv.packagesSeen())
 	}
 }
+
+// A CHARTER MAY BE INSTALLED AT ANY DEPTH, and writes where it is. That is the whole point of
+// the entity tree: `verse-dev.drift` keeps its tip fact and its ledger of findings as two levels
+// UNDER its own address, which a two-segment address could not hold — the address ended at
+// `<system>.<kind>` and the confinement was the whole of it.
+func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if code, msg := declareImports(t, ts.URL, "verse-dev.drift", "git"); code != 201 {
+		t.Fatalf("declaring = %d: %s", code, msg)
+	}
+	for _, def := range []string{
+		`{name: reflected, level: 0, match: {system: git}}`,
+		`{name: tip, level: 10, match: {path: [verse-dev, drift, head]}}`,
+		`{name: head-moved, stratum: reflected, condition: {subject: "git:head:verse"},
+		  action: {derive: [{path: [verse-dev, drift, head], value: {sha: $subject.value.sha}}]}}`,
+	} {
+		if code, msg := installAt(t, ts.URL, "verse-dev.drift", def); code != 201 {
+			t.Fatalf("installing %s = %d: %s", def[:24], code, msg)
+		}
+	}
+
+	entitytest.Set(t, srv.Store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	waitUntil(t, "the deep package to derive", func() bool {
+		return len(srv.Store.ListAt([]string{"verse-dev", "drift", "head"}, 4, nil)) > 0
+	})
+
+	// And the confinement holds at that depth: a derive outside the address does not install,
+	// however deep the address is.
+	code, msg := installAt(t, ts.URL, "verse-dev.drift", `{
+		name: reach, stratum: tip,
+		condition: {subject: !verse-path [verse-dev, drift, head, "*"]},
+		action: {derive: [{path: [somewhere, else], value: {x: 1}}]},
+	}`)
+	if code == 201 {
+		t.Fatal("a derive outside a deep address installed")
+	}
+	if !strings.Contains(msg, "outside") && !strings.Contains(msg, "stratum") {
+		t.Errorf("the refusal says neither why nor where: %s", msg)
+	}
+}

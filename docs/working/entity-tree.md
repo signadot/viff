@@ -97,8 +97,17 @@ Each lands with the suite green.
    is a test for exactly this). So the depth is a matter of PRECISION here, not correctness: a
    deep rule wakes on any change under its literal head and then selects. Teaching
    `WatchSubtree` a depth is worth doing when the waking becomes measurable, not before.
-6. **The charter tree, whole.** `at:` at any depth, writing where it lives. No `writes:`
-   override until that is true — an address that cannot write where it is has not earned a way
-   to write elsewhere.
+6. **The charter tree, whole.** Done. `at:` is a place of any depth and a charter writes where
+   it is: `at: verse-dev.drift` keeps its tip fact at `verse-dev.drift.head.<id>` and its ledger
+   at `verse-dev.drift.finding.<id>`, two levels under one address, each with a stratum of its
+   own. The confinement compares as a path, so it neither widens nor truncates at depth.
+
+   No `writes:` override, still — an address that can write where it is has not needed one.
 7. **The colons.** Last, deliberately: the ref spelling is in every stored record, every task id
-   and every charter written so far, so it moves when the rest is standing.
+   and every charter written so far, so it moves when the rest is standing. What is left of it:
+   `api.PutEntity.Ref` beside `path`, `Ref.String()` picking a spelling by depth, `ParseRef`
+   itself, and the `system:kind:id` prose across the docs.
+
+   Also left, and smaller: `Doc.Entities` (the fixed-depth walk every listing still uses),
+   `WatchSubtree`'s reporting depth (precision, see §5), and `verse state --paths` defaulting to
+   three.

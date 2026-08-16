@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 )
 
@@ -68,8 +70,18 @@ func (s Subtree) confined() bool { return s != Subtree{} }
 // truncation: it is refused where it is parsed (ParseAt), so nothing reaches here that this
 // cannot say.
 func (s Subtree) match() Match {
-	m := Match{}
 	segs := s.Path()
+	// DEEPER THAN THE DIMENSIONS is a path, and it must be: truncating to system-and-kind here
+	// would make a charter installed at `verse-dev.drift.head` compare as one installed at
+	// `verse-dev.drift`, so its confinement would silently widen by a level.
+	if len(segs) > 2 || (len(segs) > 0 && segs[0] == entity.VerseRoot && len(segs) > 3) {
+		nodes := make([]*ir.Node, 0, len(segs))
+		for _, sg := range segs {
+			nodes = append(nodes, ir.FromString(sg))
+		}
+		return Match{mKeyPath: nodes}
+	}
+	m := Match{}
 	if len(segs) > 0 && segs[0] == entity.VerseRoot {
 		m[mKeyRoot] = entity.VerseRoot
 		segs = segs[1:]
@@ -169,8 +181,13 @@ func (s Subtree) stamp() string {
 // ParseAt reads a charter's address — the subtree a package is installed at — from the kinded
 // path an operator types or a record stamps.
 //
-// One or two segments below a root: `demo`, `demo.pr`, `verse.task` — except that last one is
-// refused, since verse's own half is not somebody's to install a charter into.
+// A PLACE OF ANY DEPTH: `demo`, `demo.pr`, `verse-dev.drift.head`. It used to be one or two
+// segments, because a charter writes where it is installed and an address was three deep — so a
+// third segment named an entity rather than a place. An address is as deep as the tree now
+// (docs/working/entity-tree.md), and so is a charter's.
+//
+// `verse` is still refused as the first segment: verse's own half is not somebody's to install a
+// charter into.
 func ParseAt(at string) (Subtree, error) {
 	if at == "" {
 		return Subtree{}, nil
@@ -180,11 +197,6 @@ func ParseAt(at string) (Subtree, error) {
 		return Subtree{}, fmt.Errorf("a charter may not be installed at %s: %s is verse's own "+
 			"half of the tree, and a charter installed there could write the records verse "+
 			"keeps about its own running", at, entity.VerseRoot)
-	}
-	if len(segs) > 2 {
-		return Subtree{}, fmt.Errorf("a charter's address is a system and optionally a kind "+
-			"(`demo`, `demo.pr`); %q names %d segments, which is an entity rather than a place "+
-			"to install a charter", at, len(segs))
 	}
 	for _, sg := range segs {
 		if sg == "" {
