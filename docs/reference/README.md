@@ -97,6 +97,7 @@ verse
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md
+          add --scope <name>                 …into a federation's own charter instead
   task (tasks, ps) [--runner <ref>]          every task, whatever runs it
           run <prompt…> [--attach] [--wait] [--driver scripted|calls|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default
@@ -124,7 +125,9 @@ verse
           show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
-  docket                                     list open motions (votes + provider selections)
+  docket                                     the motions on the docket (votes + provider
+                                             selections), open and settled — a settled one
+                                             carries its outcome, or `orphaned` and a `why`
   vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
   provider (providers)                       the provider registry (provider:<capability>:<id>)
 

@@ -153,9 +153,10 @@ verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-�
 ```
 
 **A charter gate carrying a `formula:` is not here.** It becomes a MOTION instead — a different
-entity (`motion:channel`), a different list (`verse docket`), a different verb (`verse vote`),
-settled by a tally rather than by an answer. So `verse gate` is not the whole of what is waiting
-on a person, and asking for one and looking in the other answers *404: no such question*.
+entity (`verse:motion:channel`), a different list (`verse docket`), a different verb (`verse
+vote`), settled by a tally rather than by an answer. So `verse gate` is not the whole of what
+is waiting on a person, and asking for one and looking in the other answers *404: no such
+question*.
 
 That split is a known defect rather than a design: the fork is on whether a formula is PRESENT,
 when the distinction it needs is whether the gate asks somebody or waits for something — so
@@ -195,12 +196,12 @@ the permission *should* come from is [authority](../roadmap/authority.md).
 
 ## The mirror
 
-Every task is reflected into the store as `task:instance:<id>`, so observing the fleet
+Every task is reflected into the store as `verse:task:instance:<id>`, so observing the fleet
 is observing entities — and a completion is an entity change, which is what lets a rule react
 to it.
 
 ```sh
-verse watch task
+verse watch verse.task
 verse state get verse:task:instance:<id>
 ```
 
@@ -228,7 +229,7 @@ A task id names the WORK, not the run: it is derived from the spawning action an
 so a rule that fires twice about one subject spawns the same id twice — which is what makes a
 re-fire idempotent and what `verse flow demo:pr:1` addresses.
 
-`task:instance:<id>` is therefore the LATEST run, and each run has a record of its own:
+`verse:task:instance:<id>` is therefore the LATEST run, and each run has a record of its own:
 
 ```sh
 verse state get 'verse:task:run:<id>@<occurrence>'
@@ -250,8 +251,8 @@ events, and removing them is `verse state rm`, or a charter that marks the old o
 
 ## The question record
 
-A gate that stops for an answer is published as its own entity, `gate:question:<id>`, and the
-task points at it (`pending: verse:gate:question:<id>`).
+A gate that stops for an answer is published as its own entity, `verse:gate:question:<id>`, and
+the task points at it (`pending: verse:gate:question:<id>`).
 
 ```tony
 payload:
@@ -367,8 +368,8 @@ Three backends, one handle. `verse task` and
 | broker | `verse up --broker --broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
 
 Those three are the verse-wide DEFAULT, set at startup. A spawn can also name its own place —
-`runner: verse:runners:pool:gpu` on a charter, `--runner` on `verse task run` — so a drive can run
-part of the work somewhere the rest of the deployment knows nothing about. See
+`runner: verse:runners:pool:gpu` on a charter, `--runner` on `verse task run` — so a drive can
+run part of the work somewhere the rest of the deployment knows nothing about. See
 [runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.
 
 Nothing inverts under a broker: both verse and the worker are clients of it, so a laptop or a
@@ -412,7 +413,7 @@ verse task approve "$ID" deploy-approval-a1b2c3d4 --as human:lead   # …from so
 verse task do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
 ```
 
-The task is now `done`, with your result on its `task:instance` entity, so a completion
+The task is now `done`, with your result on its `verse:task:instance` entity, so a completion
 hook or a rule reacts to it exactly as if an agent had finished. A *human* did the work; the
 flow moves on.
 

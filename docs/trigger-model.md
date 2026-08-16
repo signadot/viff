@@ -176,9 +176,9 @@ address is a stamp anyone can list.
 
 ### The charter is durable
 
-Installing a trigger writes it into the verse as `trigger:rule:<name>`; removing one deletes
-that entity; and a start reads them back before anything observes. So the program a verse
-comes back up running is the one it went down with.
+Installing a trigger writes it into the verse as `verse:trigger:rule:<name>`; removing one
+deletes that entity; and a start reads them back before anything observes. So the program a
+verse comes back up running is the one it went down with.
 
 Everything else a restart needs is durable in the same way — a task is mirrored, a
 sequence's position is a fact on its subject, a claim is a lease in the store, an open motion
@@ -341,7 +341,7 @@ charter and `verse flow demo:pr:*` on the command line mean the same set, as the
 they should.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
-whose cause is a `task:instance` change and which acts on PRs acts on the PRs its own
+whose cause is a `verse:task:instance` change and which acts on PRs acts on the PRs its own
 `subject` selects — every one of them — not on the one the completed task happened to name.
 
 In particular, a `flow` field on the changed payload does not short-circuit that. Letting it
@@ -1118,7 +1118,7 @@ action:
 ```
 
 The alternative is a *decoupled* completion trigger — a separate rule that fires on the
-`task:instance` change and names the PR by pattern (`reviewed`, below). That is the tool
+`verse:task:instance` change and names the PR by pattern (`reviewed`, below). That is the tool
 when a completion should fan into several reactions, advance a different subject, or be
 authored separately; the hook is the tool for a linear chain owned by one trigger, with the
 task step visible inline.

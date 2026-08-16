@@ -4,7 +4,7 @@ The surface. For what a source *is* and why it is shaped this way, see
 [../sources.md](../sources.md). To build one, copy
 [examples/source](examples/source/main.go).
 
-A source is an entity at `sources:<system>:<name>`:
+A source is an entity at `verse:sources:<system>:<name>`:
 
 | | |
 |---|---|
@@ -88,7 +88,9 @@ verse source add <system>:<name> <url>       install one, probing the url first
               [--keep]                       …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `sources:git:laptop` or `git:laptop` — the prefix is optional everywhere.
+A `<ref>` is `verse:sources:git:laptop` or `git:laptop` — the whole address or the bare pair;
+the middle form (`sources:git:laptop`) is not accepted, since that was the whole address before
+verse's own half of the tree had a name.
 
 `verse status` names the installed sources — refs only, health left to `verse source`. It is
 there because it is the one line of a status that says anything is *arriving*: every counter

@@ -23,7 +23,7 @@ anything can fulfil:
   `EvPending` gate-waits, `EvStatus` lifecycle, `EvBoundary` cursor);
 - a control plane applies steering at boundaries — `Pause`/`Resume`/`Cancel`/
   `Say`/`SetVector` — "stop between actions, never undo one";
-- the task is mirrored into the verse as a `task:instance:*` entity, and ends
+- the task is mirrored into the verse as a `verse:task:instance:*` entity, and ends
   with a terminal outcome + result.
 
 None of that says *where* the driver or executor run. So "external task" is not a
@@ -126,7 +126,7 @@ pushes events, pulls control over one live connection. *Rich, live, unix-native
 dies with the socket. Good as the attachment layer.
 
 C. Detached claim-and-report over entities. The work item is an entity
-(`proc:task:<id>` or the extended `task:instance`); claim = CAS on a claim field;
+(`proc:task:<id>` or the extended `verse:task:instance`); claim = CAS on a claim field;
 report = append to a journal + write a result; control = poll a `cancel`/`say`
 field. *Maximally uniform — human and agent are byte-identical; offline; restart-proof;
 permission-legible; needs nothing new (entities + gates + CAS + scopes).* But coarse:
@@ -197,7 +197,7 @@ data-model change.
 
 Build D, detached-core-first:
 
-1. Extend the `task:instance` mirror into the full durable contract — add
+1. Extend the `verse:task:instance` mirror into the full durable contract — add
    `claim {by, identity, at}`, a channel-tagged journal (the durable output stream),
    `pending` gates, and a terminal `{status, code?, result}`. This *is* the external
    task's API; it needs only entities + CAS you already have.

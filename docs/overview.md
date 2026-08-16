@@ -23,10 +23,12 @@ admitted, and everything below follows from it.
 
 The entire system is one feedback loop:
 
-```
-   entity change ──▶ trigger matches ──▶ gate resolves ──▶ action fires
-        ▲                                                      │
-        └───────────── actions write entities ◀───────────────┘
+```mermaid
+flowchart LR
+  change["an entity changes"] --> match["a trigger matches<br/>condition holds at that commit"]
+  match --> gate["its gates resolve<br/>auto · ask · park · a formula"]
+  gate --> act["the action fires<br/>patch · derive · spawn"]
+  act -->|"writes entities"| change
 ```
 
 A task completing is itself an entity change — its state is mirrored into the store — so a
@@ -36,7 +38,7 @@ store, not through a scheduler.
 ## The model, in five nouns
 
 An *entity* is anything the SDLC refers to, named by a `system:kind:id` triple (`demo:pr:1`,
-`github:pr:org/repo#42`, `task:instance:review-1`) and carrying an arbitrary payload
+`github:pr:org/repo#42`, `verse:task:instance:review-1`) and carrying an arbitrary payload
 value. The entity store is the shared, observable, cursored log of these.
 
 A *trigger* is one charter rule: when the condition holds and its gates resolve, an action
@@ -54,7 +56,7 @@ target of its own; template bindings — `$subject`, and every field of the chan
 parameterize it.
 
 A *task* is a governed unit of agentic work, hosted by a runtime, observable and
-steerable. Tasks are themselves entities (`task:instance:<id>`), so the fleet's
+steerable. Tasks are themselves entities (`verse:task:instance:<id>`), so the fleet's
 lifecycle is visible by watching the store.
 
 Two derived notions matter, and *derived* is meant literally — neither is a record anything
@@ -119,15 +121,15 @@ mirrors it back.
 the per-task autonomy defaults. It emits a cursored, ring-buffered, resumable event stream
 and posts gate decisions to a registry. `taskd` is the HTTP daemon face of that runtime.
 
-`mirror` projects a task's ephemeral read plane onto its durable `task:instance:<id>`
+`mirror` projects a task's ephemeral read plane onto its durable `verse:task:instance:<id>`
 entity: status, a `say` preview, last tool output, final `result`, the resume `cursor`, the
 `runner`, and a broker's `dialURL`. It is one-way, and an index rather than a warehouse. This
 is the bridge that lets task completion drive the next trigger.
 
 An id names the work rather than the run — it is derived, so a re-fire reuses it — so that
-entity holds the LATEST run, and each run also writes `task:run:<id>@<occurrence>` of its own
-(see [tasks](reference/tasks.md)). Ask the instance what the work is doing; ask the runs what
-happened the other times.
+entity holds the LATEST run, and each run also writes `verse:task:run:<id>@<occurrence>` of its
+own (see [tasks](reference/tasks.md)). Ask the instance what the work is doing; ask the runs
+what happened the other times.
 
 `runner` and `broker` are the two off-box task-control backends, described below.
 
@@ -172,7 +174,7 @@ leaves behind: verse observes and requests, so there is no position in a plan fo
 and an orchestrator is a component with nowhere to live rather than a component left out.
 
 Nothing sequences "review, then reviewed." The review task completing becomes a
-`task:instance` change, and either the trigger's own `onDone` hook or a separate
+`verse:task:instance` change, and either the trigger's own `onDone` hook or a separate
 `reviewed` trigger reacts to it and advances the subject. Composition is triggers reacting to
 shared state, which is why the model scales to many concurrent, independent flows with no
 central plan. Triggers must opt in to `task:*` matches, so the loop cannot ignite on its
@@ -186,7 +188,7 @@ No one of the three is sufficient, which is why none of them is the plan.
 ### Tasks are entities
 
 Because `mirror` projects the read plane into the store, the whole fleet is observable by
-watching `task:instance:*`, completions are ordinary change events, and a task's
+watching `verse:task:instance:*`, completions are ordinary change events, and a task's
 outcome survives its ephemeral runtime.
 
 ### How a task runs is a seam
@@ -228,7 +230,7 @@ for resume. Nothing assumes dense or gap-free numbering, and everything reconcil
 land in the scope only. Local-dev federation and a dev's in-flight flows live in a private
 scope, isolated from baseline and from other devs, and dropped in one `DeleteScope`.
 
-*The charter is durable.* An installed trigger is an entity (`trigger:rule:<name>`) carrying
+*The charter is durable.* An installed trigger is an entity (`verse:trigger:rule:<name>`) carrying
 the definition it was installed from, so a restart reinstalls the rules standing in the verse
 before anything observes — the program comes back with the state it acts on. Restoring
 replays, exactly as installing does: a change that arrived while verse was down is acted on. See [the trigger model](trigger-model.md#the-charter-is-durable).

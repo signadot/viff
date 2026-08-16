@@ -16,7 +16,7 @@ program that compiles with the tree, and the two functions you change are marked
 
 ## Installing one
 
-A runner lives at `runners:<kind>:<name>` and carries a url — the verse-facing
+A runner lives at `verse:runners:<kind>:<name>` and carries a url — the verse-facing
 [task-control](task-control.md) base. `kind` is the operator's own category, what this
 runner *is*, the way a resolver's kind is what it is *for*.
 
@@ -137,16 +137,17 @@ whether a runner is well, the next ask is that it act on one.
 keeps answering for a runner that has since been removed — which is when an operator most wants
 it, that being exactly the case `verse runner` does not show.
 
-`verse ps` reads the `task:instance` mirror rather than asking each installed runner, so one
-runner being down costs live detail and not rows. A fan-out would let a single dead runner take
-out the whole list, in a feature whose point is that runners come and go.
+`verse ps` reads the `verse:task:instance` mirror rather than asking each installed runner, so
+one runner being down costs live detail and not rows. A fan-out would let a single dead runner
+take out the whole list, in a feature whose point is that runners come and go.
 
 ## What a restart does
 
-`task:instance` records both the resolved **url** and the **name** the spawn used. The url is
-what a restart reconstructs the runner from, so work outlives the verse that started it *and*
-outlives the entity that named its runner: removing a runner entity cannot orphan work by making
-it unreconstructible. The name is what a person reads and what `verse ps --runner` selects on.
+`verse:task:instance` records both the resolved **url** and the **name** the spawn used. The
+url is what a restart reconstructs the runner from, so work outlives the verse that started it
+*and* outlives the entity that named its runner: removing a runner entity cannot orphan work by
+making it unreconstructible. The name is what a person reads and what `verse ps --runner`
+selects on.
 
 That split is the one place this design can go quietly wrong. Stamping only the name would make
 a restart depend on the runner entity still existing, so removing one would orphan work that is
@@ -237,9 +238,9 @@ second vocabulary for. What crosses back is an ordinary action with a typed effe
 vector like anything else, so nothing about the arrangement is private to the runner.
 
 **Running work cannot be moved.** Named because the entity model invites the assumption: entities
-are level truth, so writing a different runner onto a `task:instance` looks like it should move
-the task. It does not. That field is a record of where the work went, not an instruction about
-where it should go.
+are level truth, so writing a different runner onto a `verse:task:instance` looks like it
+should move the task. It does not. That field is a record of where the work went, not an
+instruction about where it should go.
 
 ## What holds by convention
 

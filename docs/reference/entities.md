@@ -9,13 +9,17 @@ the corners that section leaves out.
 
 ```
 demo:pr:1                     system=demo   kind=pr      id=1
-github:pr:org/repo#42         only the first two colons split, so an id may hold one
-verse:task:instance:run-a1b2     what verse writes about its own tasks
+github:pr:org/repo#42         only the leading colons split, so an id may hold one
+verse:task:instance:run-a1b2  a leading `verse` is the reserved root, and the three follow it
 ```
 
-Three segments, in one grammar shared by the CLI and the charter wire: `*` is a wildcard per
-segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow demo:pr:*` and a charter's
-`"subject": "demo:pr:*"` mean the same set.
+Three segments, under an optional reserved root — one grammar shared by the CLI and the charter
+wire: `*` is a wildcard per segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow
+demo:pr:*` and a charter's `"subject": "demo:pr:*"` mean the same set.
+
+The same address is typed as steps wherever a command's address is its last positional —
+`verse state get demo pr 1` — which is what `--paths` prints, and it needs no quoting for an id
+holding a dot or a slash. In a charter, `!verse-path [demo pr 1]` is the same vector.
 
 ## Two halves, one tree
 

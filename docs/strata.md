@@ -284,9 +284,9 @@ the ordering exists to remove. Declaring a stratum is what buys a derive.
 
 ## Installing, and the order it does not depend on
 
-A stratum is one entity (`trigger:strata:<name>`) as a rule is one (`trigger:rule:<name>`), for
-the same reasons: installing writes one and removing deletes one, so there is no
-read-modify-write and two concurrent installs cannot lose each other.
+A stratum is one entity (`verse:trigger:strata:<name>`) as a rule is one
+(`verse:trigger:rule:<name>`), for the same reasons: installing writes one and removing deletes
+one, so there is no read-modify-write and two concurrent installs cannot lose each other.
 
 The **name addresses** and the **level orders**. A rule says `stratum: sdlc`, which reads as what
 it means where `10` does not. Two strata may not share a level — the number is the whole ordering

@@ -7,7 +7,7 @@ verbs an operator types. Why it is shaped this way is
 
 ## The binding
 
-Installed as `resolvers:<kind>:<name>`.
+Installed as `verse:resolvers:<kind>:<name>`.
 
 ```tony
 name:      security-review
@@ -46,8 +46,8 @@ first binding *by name* owns the questions they both cover.
 
 | ref | what it is |
 |---|---|
-| `resolvers:<kind>:<name>` | the binding — what is installed |
-| `resolvers:instance:<name>@<origin>` | who is *reading*, one per (binding, origin) |
+| `verse:resolvers:<kind>:<name>` | the binding — what is installed |
+| `verse:resolvers:instance:<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
 One `verse state resolvers` shows both, which is why the instance is a reserved
 *kind* inside the system rather than a second system with a singular/plural pair to mistype.
@@ -58,8 +58,8 @@ An instance carries `binding`, `origin`, `position`, and `notes` if any.
 
 ## The question record
 
-A gate awaiting an answer is `gate:question:<id>`, and the fields a resolver puts there or reads
-from there:
+A gate awaiting an answer is `verse:gate:question:<id>`, and the fields a resolver puts there
+or reads from there:
 
 | field | |
 |---|---|
@@ -141,9 +141,9 @@ verse gate                                      # the docket, resolver-owned que
 verse gate approve <id> --as <who> [--override] # answer, or answer over an exclusive owner
 ```
 
-A resolver ref is typed the way it is stored — `resolvers:security:review` — because an operator
-reading `verse state` and one typing `verse resolver show` should not have to know two
-spellings of one thing. The leading `resolvers:` may be dropped.
+A resolver ref is typed the way it is stored — `verse:resolvers:security:review` — because an
+operator reading `verse state` and one typing `verse resolver show` should not have to know two
+spellings of one thing. The leading `verse:resolvers:` may be dropped, leaving `<kind>:<name>`.
 
 ## Binding one to work
 

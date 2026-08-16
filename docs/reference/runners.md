@@ -5,7 +5,7 @@ The surface. For what a runner *is* and why it is shaped this way, see
 [../task-control.md](../task-control.md). To build one, copy
 [examples/runner](examples/runner/main.go).
 
-A runner is an entity at `runners:<kind>:<name>` carrying one field:
+A runner is an entity at `verse:runners:<kind>:<name>` carrying one field:
 
 | | |
 |---|---|
@@ -30,8 +30,10 @@ verse runner add <kind>:<name> <url>       install one, probing the url first
               [--leave]                    …the place stays: leave it running
 ```
 
-A `<ref>` is `runners:pool:gpu` or `pool:gpu` — the prefix is optional everywhere, so an
-operator reading `verse state` and one typing `verse runner show` need not know two spellings.
+A `<ref>` is `verse:runners:pool:gpu` or `pool:gpu` — the whole address as it is listed and
+stored, or the bare pair typed on a command line. The middle form (`runners:pool:gpu`) is not
+accepted: it was the whole address before verse's own half of the tree had a name, and keeping
+it would leave two ways to say one thing.
 
 On the task side:
 
@@ -65,12 +67,12 @@ the flow. It is never quietly run somewhere else.
 
 ## On the task
 
-`task:instance` carries both:
+`verse:task:instance` carries both:
 
 | | |
 |---|---|
 | `runner` | the resolved url (or `local`) — what a restart re-attaches with |
-| `runnerName` | the `runners:<kind>:<name>` the spawn named, when it named one |
+| `runnerName` | the `verse:runners:<kind>:<name>` the spawn named, when it named one |
 | `startedAt` | when the task began; carried across a re-attach rather than re-stamped |
 
 Both, deliberately: the url is what a restart can act on with nothing else present, so removing

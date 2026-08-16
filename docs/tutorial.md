@@ -56,11 +56,12 @@ as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 ```sh
 verse state                                         # the whole verse, one document
 verse state demo.pr                                 # by where it lives
-verse state demo.pr.1                               # one of them
+verse state demo pr 1                               # …or as steps, which need no quoting
 verse state 'demo.pr.*.stage'                       # one field of each, keyed by id
 verse state --if '{stage: open}'                    # by what it says
 verse state --if '{stage: !or [open, merged]}'      # …an operator, not just equality
 verse state --if '{urgent: true}' --if-at labels    # …rooted inside the payload
+verse state demo.pr --trim '{stage: null}'          # …and how much of each entity to print
 verse state --paths demo.pr                         # just the addresses
 verse state get demo:pr:1                           # …or by ref, which is the same address
 ```
@@ -69,6 +70,14 @@ A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse sta
 path, so the same address works at every depth and the answer is the subtree standing there.
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
 for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take one.
+
+AN ADDRESS MAY BE TYPED AS STEPS, which is what `--paths` answers with — so a listing pipes
+back into a read, and nothing needs escaping on the way:
+
+```sh
+verse state --paths demo.pr | xargs -L1 verse state get
+verse state get demo pr a.b labels urgent           # an id with a dot in it, unquoted
+```
 
 Flags go on either side of the path — `verse state --paths demo.pr` and
 `verse state demo.pr --paths` are the same command.
@@ -204,12 +213,14 @@ which of the two rules applies when you hand verse a *command* and it satisfies 
 
 ### A task is an entity too
 
-This is the join between the two halves of the verse. Every task is mirrored into the
-store as `task:instance:<id>`, so observing the fleet is observing entities:
+This is the join between entities and tasks. Every task is mirrored into the store as
+`verse:task:instance:<id>` — in verse's own half of the tree, since it is a record verse keeps
+about its own running — so observing the fleet is observing entities:
 
 ```sh
-verse watch task                      # the whole fleet's lifecycle
-verse state get verse:task:instance:<id>    # its result, still there after it finished
+verse watch verse.task                        # the whole fleet's lifecycle
+verse state get verse:task:instance:<id>      # its result, still there after it finished
+verse state verse.task --trim '{status: null}'   # …or just where everything got to
 ```
 
 ```tony
@@ -573,11 +584,10 @@ verse trigger remove shape-latch
 verse stratum                     # and `verse stratum show|remove` for one of them
 ```
 
-A charter is durable — each rule is an entity (`trigger:rule:<name>`), and each stratum is one
-too (`trigger:strata:<name>`), so the program a verse comes back up running is the one it went
-down with. Every field, both grammars, the answer
-contract a spawn can demand of an agent, chains and ids, and what a match can say are in
-[the trigger model](trigger-model.md).
+A charter is durable — each rule is an entity (`verse:trigger:rule:<name>`), and each stratum
+is one too (`verse:trigger:strata:<name>`), so the program a verse comes back up running is the
+one it went down with. Every field, both grammars, the answer contract a spawn can demand of an
+agent, chains and ids, and what a match can say are in [the trigger model](trigger-model.md).
 
 ---
 
@@ -632,8 +642,8 @@ The motion then reads `status: closed`, `outcome: proceed`, `tally: 2` and a `wi
 the ballots that carried it — the audit trail, on the entity, rather than a line that scrolled
 past.
 
-A motion is an ordinary entity (`motion:channel:<id>`), so the docket is a view of the store:
-you can watch it, get one, and write a rule that reacts to it. It stays live until it
+A motion is an ordinary entity (`verse:motion:channel:<id>`), so the docket is a view of the
+store: you can watch it, get one, and write a rule that reacts to it. It stays live until it
 commits — if alice retracts first, the tally drops and the gate re-blocks — and it is checked
 against the world on the way out: if the subject has moved out of what the rule selects, the
 question is moot and the motion is withdrawn rather than carried.

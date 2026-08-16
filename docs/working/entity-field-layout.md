@@ -263,8 +263,8 @@ is three levels deep today (`verse.meta.vanishing`) and one after this. A charte
 `--if '{stage: open}'` roots at the payload today and would need to root at `value`, which is a
 default to change in one place (`Pattern.At`).
 
-The migration is a rewrite of every payload, so it wants the same wipe-and-reseed
-[the state branch already needs](../../scripts/staging-reseed.sh) rather than a second one.
+The migration is a rewrite of every payload, so it wants the same wipe-and-reseed the state
+branch already needs (`scripts/staging-reseed.sh`) rather than a second one.
 
 ## Open questions
 

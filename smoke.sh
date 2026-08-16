@@ -433,7 +433,7 @@ for _ in $(seq 1 60); do
 	fi
 	sleep 0.5
 done
-[ -n "$val" ] || { v --scope "$SCOPE" state task >&2; die "the per-file validator never validated a.txt"; }
+[ -n "$val" ] || { v --scope "$SCOPE" state verse.task >&2; die "the per-file validator never validated a.txt"; }
 ok "the validator ran and latched: a.txt is marked validated"
 # And it LATCHES: a validated file is not selected again, which is the whole reason the
 # subject says what is outstanding rather than what exists.

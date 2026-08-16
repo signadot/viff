@@ -210,8 +210,8 @@ tombstone what the install proved this source was the single writer of.
 `lastReflect` and `lastError` go on the registration. `lastError` is written on **transition**,
 so a source failing every minute writes once and the write that clears it is the one that says
 it recovered. `lastReflect` is written only when a pass actually **wrote** something — it is
-the poll cursor, and stamping it every pass would put a write on `sources:*` once per resync
-interval forever, so anything watching that slice would fire on a verse where nothing is
+the poll cursor, and stamping it every pass would put a write on `verse:sources:*` once per
+resync interval forever, so anything watching that slice would fire on a verse where nothing is
 happening.
 
 That cursor cannot catch a source that has *wedged* — alive, answering, reflecting nothing new
