@@ -137,12 +137,15 @@ func runState(t *testing.T, args ...string) (string, error) {
 // questions about one selector: what is true now, and what becomes true next.
 func TestStateFiltersOnThePayload(t *testing.T) {
 	serve(t)
+	// Written as STEPS, which is also what --paths answers with: the write and the listing
+	// speak the one spelling a command line takes.
 	for _, e := range []struct{ ref, payload string }{
-		{"demo:pr:1", `{stage: open, labels: {urgent: true}}`},
-		{"demo:pr:2", `{stage: merged, labels: {urgent: false}}`},
-		{"demo:pr:3", `{stage: open}`},
+		{"demo pr 1", `{stage: open, labels: {urgent: true}}`},
+		{"demo pr 2", `{stage: merged, labels: {urgent: false}}`},
+		{"demo pr 3", `{stage: open}`},
 	} {
-		if _, err := runCLI(t, "state", "put", e.ref, e.payload); err != nil {
+		args := append([]string{"state", "put"}, strings.Fields(e.ref)...)
+		if _, err := runCLI(t, append(args, e.payload)...); err != nil {
 			t.Fatalf("put %s: %v", e.ref, err)
 		}
 	}
@@ -154,10 +157,10 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state --if: %v", err)
 	}
-	if !strings.Contains(out, "demo:pr:1") || !strings.Contains(out, "demo:pr:3") {
+	if !strings.Contains(out, "demo pr 1") || !strings.Contains(out, "demo pr 3") {
 		t.Errorf("--if {stage: open} did not name the open PRs:\n%s", out)
 	}
-	if strings.Contains(out, "demo:pr:2") {
+	if strings.Contains(out, "demo pr 2") {
 		t.Errorf("--if {stage: open} named the merged PR:\n%s", out)
 	}
 
@@ -166,10 +169,10 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state --if-at: %v", err)
 	}
-	if !strings.Contains(out, "demo:pr:1") {
+	if !strings.Contains(out, "demo pr 1") {
 		t.Errorf("--if-at labels did not name the urgent PR:\n%s", out)
 	}
-	if strings.Contains(out, "demo:pr:2") || strings.Contains(out, "demo:pr:3") {
+	if strings.Contains(out, "demo pr 2") || strings.Contains(out, "demo pr 3") {
 		t.Errorf("--if-at labels named an entity that does not satisfy it:\n%s", out)
 	}
 }
@@ -185,13 +188,13 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 func TestStatePutKeepsItsOwnIf(t *testing.T) {
 	store := serve(t)
 	ref := entity.RefAt("demo", "pr", "1")
-	if _, err := runCLI(t, "state", "put", "demo:pr:1", `{stage: open}`); err != nil {
+	if _, err := runCLI(t, "state", "put", "demo", "pr", "1", `{stage: open}`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	// A precondition that does NOT hold. Through the collection, with the flag after the
 	// positionals, exactly as someone would type it.
-	if _, err := runState(t, "put", "demo:pr:1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
+	if _, err := runState(t, "put", "demo", "pr", "1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
 		t.Error("a put whose --if does not hold was reported as succeeding")
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "open" {
@@ -199,7 +202,7 @@ func TestStatePutKeepsItsOwnIf(t *testing.T) {
 	}
 
 	// And one that does hold still writes, so the pin is not just "everything fails".
-	if _, err := runState(t, "put", "demo:pr:1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
+	if _, err := runState(t, "put", "demo", "pr", "1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
 		t.Fatalf("a put whose --if holds was refused: %v", err)
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "reviewed" {

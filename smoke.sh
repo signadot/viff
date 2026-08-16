@@ -113,7 +113,15 @@ ok "demo:pr:1 = {stage:open}"
 # token inside a rendered ref, and `stage` is what stands under it.
 haskv "$(v state demo.pr.1)" stage open || die "state demo.pr.1 did not answer the payload"
 has "$(v state demo.pr)" '"1":' || die "state demo.pr did not key by id"
-[ "$(v state --paths demo.pr)" = "demo:pr:1" ] || die "--paths did not name the entity"
+# AS STEPS, which is what this CLI takes on the way in — so the listing pipes back into a read.
+[ "$(v state --paths demo.pr)" = "demo pr 1" ] || die "--paths did not name the entity"
+haskv "$(v state --paths demo.pr | xargs -L1 "$BIN" --addr "$ADDR" state get)" stage open ||
+	die "--paths did not round-trip back into a read"
+# And an address may be typed as steps, which is the point: no quoting for an id with a dot.
+v state put demo pr a.b '{stage: open}' >/dev/null || die "state put as steps failed"
+haskv "$(v state get demo pr a.b)" stage open || die "state get as steps did not roundtrip"
+v state rm demo.pr."a.b" >/dev/null || die "state rm of the dotted id failed"
+ok "an address may be written as steps (demo pr a.b), and --paths answers that way"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
 # renderings frame one differently — tony writes `open`, yaml writes it as a block scalar
 # (`|` then the line). The value is verse's answer; the framing is the encoder's.
@@ -431,9 +439,9 @@ ok "the validator ran and latched: a.txt is marked validated"
 # subject says what is outstanding rather than what exists.
 # Counted with --paths, one address per line, rather than by grepping `ref:` out of a
 # rendering: the answer is a document now, and an id is a key in it.
-before=$(v --scope "$SCOPE" state --paths task | grep -c . || true)
+before=$(v --scope "$SCOPE" state --paths verse.task | grep -c . || true)
 sleep 3
-after=$(v --scope "$SCOPE" state --paths task | grep -c . || true)
+after=$(v --scope "$SCOPE" state --paths verse.task | grep -c . || true)
 [ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
 ok "a validated file is not validated again ($after tasks)"
 
@@ -494,7 +502,7 @@ v state put smokegh:issue:1 '{"label":"urgent"}' >/dev/null || die "state put fa
 derived=
 for _ in $(seq 1 100); do
 	out=$(v state --paths 2>/dev/null || true)
-	if has "$out" 'smokesd:feature:'; then
+	if has "$out" 'smokesd feature '; then
 		derived=1
 		break
 	fi
@@ -504,15 +512,20 @@ done
 ok "a rule at level 0 wrote an entity at level 10"
 
 # The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
+# UNQUOTED on purpose: --paths answers in steps, so the shell's own word splitting is what
+# hands the address to `state get` — which is the round trip the spelling exists for.
 dref=$(v state --paths smokesd.feature | head -1)
-haskv "$(v state get "$dref")" priority urgent || die "the derived entity lost its literal content"
-has "$(v state get "$dref")" 'smokegh:issue:1' || die "the derived entity does not record its subject"
+# shellcheck disable=SC2086
+haskv "$(v state get $dref)" priority urgent || die "the derived entity lost its literal content"
+# shellcheck disable=SC2086
+has "$(v state get $dref)" 'smokegh:issue:1' || die "the derived entity does not record its subject"
 ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
 
 # And the level above acted on it, which is the whole point of the ordering.
 crossed=
 for _ in $(seq 1 100); do
-	if haskv "$(v state get "$dref" 2>/dev/null || true)" stage awaiting-approval; then
+	# shellcheck disable=SC2086
+	if haskv "$(v state get $dref 2>/dev/null || true)" stage awaiting-approval; then
 		crossed=1
 		break
 	fi

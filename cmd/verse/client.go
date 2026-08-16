@@ -426,12 +426,9 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(args) > 1 {
-		return fmt.Errorf("%w: watch takes one path", cli.ErrUsage)
-	}
-	at := ""
-	if len(args) == 1 {
-		at = args[0]
+	at, err := address(args) // one token, or a vector of steps
+	if err != nil {
+		return err
 	}
 	if _, err := entity.ParseAt(at); err != nil {
 		return fmt.Errorf("watch: %w", err)
@@ -616,7 +613,11 @@ func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("%w: state get wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
 	}
-	at, kp, err := readAt(args[0])
+	addr, err := address(args)
+	if err != nil {
+		return err
+	}
+	at, kp, err := readAt(addr)
 	if err != nil {
 		return fmt.Errorf("%w: state get: %s", cli.ErrUsage, err)
 	}
@@ -633,24 +634,9 @@ func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
 	return printBody(cc, resp)
 }
 
-// readAt renders a command-line address as the kinded path a read takes.
-//
-// A ref is the same grammar with `:` for a delimiter, so it is normalized here — the one place
-// that has to know the two spellings were ever two. Anything else is already a kinded path and
-// passes through whole, array reach included: a read can follow `votes(scott)` where a write
-// cannot, so this is deliberately more permissive than entity.ParsePath.
-func readAt(s string) (string, *kpath.KPath, error) {
-	if ref, err := entity.ParseRef(s); err == nil {
-		at := ref.At().KPath()
-		kp, err := entity.ParseAt(at)
-		return at, kp, err
-	}
-	kp, err := entity.ParseAt(s)
-	if err != nil {
-		return "", nil, err
-	}
-	return s, kp, nil
-}
+// readAt is entity.ReadPath — the one grammar decision, made where the two spellings are
+// defined rather than here.
+func readAt(s string) (string, *kpath.KPath, error) { return entity.ReadPath(s) }
 
 type entityPutConfig struct {
 	*cli.Command
@@ -705,7 +691,16 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	// `--at labels.urgent` used to spell. The wire keeps {ref, field[]} — it has no reason to
 	// re-parse what the CLI has already split, and the structured form is what the store's
 	// writePath consumes — so this is the one parser, and Path.String is its inverse.
-	at, err := entity.ParsePath(args[0])
+	//
+	// The PAYLOAD IS LAST, which is what lets the address be a vector of steps here too:
+	// `state put demo pr 1 '{stage: open}'`. It is the one command where the address is not
+	// the end of the line, and the rule that keeps it unambiguous is positional rather than
+	// syntactic — everything up to the final argument is the address.
+	addr, err := address(args[:len(args)-1])
+	if err != nil {
+		return err
+	}
+	at, err := entity.ParsePath(addr)
 	if err != nil {
 		return fmt.Errorf("%w: state put: %s", cli.ErrUsage, err)
 	}
@@ -716,7 +711,7 @@ func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
 	// Parsed to a NODE rather than a map: a payload is any tony value, so `42`, `true` and
 	// `[a, b]` are payloads too, and decoding into a map would reject them at the CLI even
 	// though the store and the wire both accept them.
-	payload, err := codec.ParseNode([]byte(args[1]), inFmt())
+	payload, err := codec.ParseNode([]byte(args[len(args)-1]), inFmt())
 	if err != nil {
 		return fmt.Errorf("state put: payload: %w", err)
 	}
@@ -753,7 +748,11 @@ func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("%w: state rm wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
 	}
-	at, err := entity.ParsePath(args[0])
+	addr, err := address(args)
+	if err != nil {
+		return err
+	}
+	at, err := entity.ParsePath(addr)
 	if err != nil {
 		return fmt.Errorf("%w: state rm: %s", cli.ErrUsage, err)
 	}
@@ -832,15 +831,31 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	// nothing after it belongs to anyone else. Parsing the tail is the whole fix, and it runs
 	// up the command tree exactly as the first pass did — `verse state lineage --scope m` picks
 	// up a root option as readily as one of ours.
+	// EVERY positional is the address: one token, or a vector of steps (`state demo pr 1`).
+	// The flags are parsed off first — the tail parse below is what lets them sit on either
+	// side of it — and what is left is the path.
 	at := ""
 	if len(args) > 0 {
-		at, args = args[0], args[1:]
+		var addr []string
+		addr, args = args, nil
+		// A flag among the positionals ends the address: everything from it belongs to the
+		// command, and the parse below is what claims it.
+		for i, a := range addr {
+			if strings.HasPrefix(a, "-") {
+				addr, args = addr[:i], addr[i:]
+				break
+			}
+		}
+		if at, err = address(addr); err != nil {
+			return err
+		}
 		if args, err = cfg.Parse(cc, args); err != nil {
 			return err
 		}
-	}
-	if len(args) > 0 {
-		return fmt.Errorf("%w: state takes one path, and %q is a second", cli.ErrUsage, args[0])
+		if len(args) > 0 {
+			return fmt.Errorf("%w: state takes one path (as one token or as steps), and %q is "+
+				"after it", cli.ErrUsage, args[0])
+		}
 	}
 	// Parsed HERE as well as at the server, so a malformed path is a usage error against the
 	// command the operator typed rather than a 400 from a route they did not.
@@ -922,8 +937,73 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
 	if err != nil {
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
-	for _, p := range (entity.Doc{Node: node}).Paths(at) {
-		fmt.Fprintln(cc.Out, p)
+	// AS STEPS, which is the spelling this command line takes on the way in: `verse state
+	// --paths | xargs -L1 verse state get` round-trips, and no address in the listing needs
+	// quoting to be usable — a step is a whole word whatever is inside it, where the colon form
+	// needs quoting the moment an id holds a dot and the dotted form the moment it holds one
+	// too. The colon form stays what a ref renders as inside a DOCUMENT, which is read by a
+	// parser rather than by a shell.
+	for _, e := range (entity.Doc{Node: node}).Entities(at) {
+		fmt.Fprintln(cc.Out, strings.Join(e.Ref.Segs(), " "))
 	}
 	return nil
+}
+
+// address reads the address positionals a read command takes: ONE token in either delimiter
+// (`demo:pr:1`, `demo.pr.1`) or a VECTOR OF STEPS (`demo pr 1`).
+//
+// The vector is the ergonomic half of the addressing model — `' '` as the delimiter a person
+// types, since a shell already knows how to quote a word and nobody should be escaping dots
+// inside a path they typed. `demo.pr."a.b".labels` is `demo pr a.b labels`, and the shell's
+// own quoting is the only quoting anybody does.
+//
+// It is accepted where the address is the LAST thing on the line, which is every read; a
+// command that takes something after it (`state put <addr…> <payload>`) takes the address as
+// everything before that.
+//
+// A STEP ABOVE THE ID MAY NOT HOLD A DELIMITER, and that is the ref grammar's own rule rather
+// than a new one: a system and a kind may not contain `:` while an id may. So a dot or a colon
+// in one of those steps means the two spellings have been mixed — `verse state demo.pr 1` — and
+// the address somebody typed is not the one that would be read.
+//
+// From the id down, anything goes: an id holds dots and colons (`x@git:ref:y`), and the field
+// path below it is a person's own key names. That is the whole ergonomic win — `demo pr a.b
+// labels urgent` needs no quoting anywhere, where the one-token forms need it twice.
+func address(args []string) (string, error) {
+	switch len(args) {
+	case 0:
+		return "", nil
+	case 1:
+		return args[0], nil // one token: the delimiter rule decides which spelling it is
+	}
+	// Where the id sits: one deeper in verse's own half, whose root is a step of its own.
+	id := entity.Depth - 1
+	if args[0] == entity.VerseRoot {
+		id++
+	}
+	for i, a := range args {
+		if i >= id {
+			break
+		}
+		if strings.ContainsAny(a, ".:") {
+			return "", fmt.Errorf("%w: %q names the %s of an address written as steps, and that "+
+				"holds no `.` or `:` — the two spellings have been mixed. Write it as one token "+
+				"(%s), or as steps with none above the id", cli.ErrUsage, a, stepName(i, id),
+				strings.Join(args, "."))
+		}
+	}
+	return entity.JoinSegs(args), nil
+}
+
+// stepName is what a step at this position is called, so a refusal can say which one is wrong.
+func stepName(i, id int) string {
+	switch {
+	case id == entity.Depth && i == 0:
+		return "root"
+	case i == id-2:
+		return "system"
+	case i == id-1:
+		return "kind"
+	}
+	return "prefix"
 }

@@ -7,6 +7,8 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/entity"
+
 	"github.com/signadot/verse/codec"
 )
 
@@ -272,5 +274,66 @@ func TestStateTakesFlagsAfterThePath(t *testing.T) {
 	// A second POSITIONAL is still an error: one path is what it takes.
 	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "demo.other"}); !errors.Is(err, cli.ErrUsage) {
 		t.Errorf("two paths gave %v, want a usage error", err)
+	}
+}
+
+// AN ADDRESS AS STEPS is the spelling this CLI takes on the way in, and `--paths` is what it
+// answers with — so a listing pipes back into a read without anybody quoting anything.
+//
+// What is asserted is the ROUND TRIP rather than the rendering: the steps go in, the path comes
+// out, and parsing it back yields the same steps. How each one is quoted along the way is
+// kpath's business (a numeric-looking id is quoted, a colon-bearing one is not) and pinning it
+// here would be pinning somebody else's decision.
+func TestAnAddressMayBeWrittenAsSteps(t *testing.T) {
+	for _, steps := range [][]string{
+		{"demo", "pr", "1"},
+		{"demo", "pr", "a.b"},
+		{"demo", "pr", "a.b", "labels", "urgent"},
+		{"git", "ref", "x@git:ref:y"},
+		{"verse", "task", "instance", "run-1"},
+	} {
+		at, err := address(steps)
+		if err != nil {
+			t.Errorf("address(%q): %v", steps, err)
+			continue
+		}
+		p, err := entity.ParsePath(at)
+		if err != nil {
+			t.Errorf("address(%q) = %q, which does not parse: %v", steps, at, err)
+			continue
+		}
+		got := append(p.Ref.Segs(), p.Field...)
+		if strings.Join(got, "\x00") != strings.Join(steps, "\x00") {
+			t.Errorf("address(%q) = %q → %q, want the steps back", steps, at, got)
+		}
+	}
+	// One token stays one token, in either delimiter, and the whole verse is no token at all.
+	for _, tc := range []struct{ in, want string }{
+		{"demo.pr.1", "demo.pr.1"},
+		{"demo:pr:1", "demo:pr:1"},
+	} {
+		if got, err := address([]string{tc.in}); err != nil || got != tc.want {
+			t.Errorf("address([%q]) = (%q, %v), want %q", tc.in, got, err, tc.want)
+		}
+	}
+	if got, err := address(nil); err != nil || got != "" {
+		t.Errorf("address(nil) = (%q, %v), want the empty path", got, err)
+	}
+}
+
+// Mixing the spellings is refused rather than read as something else: `verse state demo.pr 1`
+// would otherwise address a system literally called `demo.pr`, which is not what anybody typed.
+// The refusal names the step and offers the one-token form.
+func TestMixingTheAddressSpellingsIsRefused(t *testing.T) {
+	for _, args := range [][]string{
+		{"demo.pr", "1"},
+		{"demo:pr", "1"},
+		{"demo", "pr.x", "1"},
+		{"verse", "task.instance", "run-1"},
+	} {
+		got, err := address(args)
+		if !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("address(%q) = (%q, %v), want a usage error", args, got, err)
+		}
 	}
 }

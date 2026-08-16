@@ -333,7 +333,9 @@ func MatchesAt(ref Ref, at *kpath.KPath) bool {
 // Paths spells one address per entity in the answer — the `ls -1` of a read.
 //
 // A ref IS a kinded path, spelled with `:` (see the package comment), so these go straight back
-// into the commands that take one.
+// into the commands that take one. How a COMMAND LINE spells them is the CLI's own decision and
+// is made there (cmd/verse: printPaths renders them as steps, which is what a shell can pass
+// back without quoting).
 func (d Doc) Paths(at *kpath.KPath) []string {
 	ents := d.Entities(at)
 	out := make([]string, 0, len(ents))

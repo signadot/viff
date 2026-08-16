@@ -431,3 +431,49 @@ func withRemovals(next, old Payload) Payload {
 	}
 	return out
 }
+
+// JoinSegs renders a VECTOR OF STEPS as the kinded path they name, quoting each segment as
+// kpath needs it.
+//
+// It is what lets an address be typed as separate words — `verse state demo pr 1` — and it is
+// more than a convenience: a segment handed over whole never has to be escaped by the person
+// typing it. `demo.pr."a.b"` and `git.ref."x@git:ref:y"` are what the quoting is FOR, and both
+// are exactly the addresses that are hardest to type correctly in one token. As a vector they
+// are `demo pr a.b` and `git ref x@git:ref:y`, and the shell's own quoting is the only quoting
+// anybody does.
+func JoinSegs(segs []string) string {
+	var out string
+	for _, s := range segs {
+		if out != "" {
+			out += "."
+		}
+		out += seg(s)
+	}
+	return out
+}
+
+// ReadPath renders a command-line address as the kinded path a READ takes, and the kpath it
+// parsed to — a ref spelled with `:` normalized into the one grammar the read routes speak.
+//
+// IT APPLIES THE DELIMITER RULE rather than trying a ref first, and that is the whole reason it
+// exists here instead of at the call site. `ParseRef` succeeds on `smokesd.feature.x@gh:issue:1`
+// — three colon-delimited parts, the first holding dots — so a caller that tries it first reads
+// a dotted path as a ref whose system is `smokesd.feature.x@gh`, and answers about an entity
+// nobody named. Whichever delimiter comes FIRST is the one in use, which is what ParsePath
+// already says and what this now says too.
+func ReadPath(s string) (string, *kpath.KPath, error) {
+	if colonFirst(s) {
+		ref, err := ParseRef(s)
+		if err != nil {
+			return "", nil, err
+		}
+		at := ref.At().KPath()
+		kp, err := ParseAt(at)
+		return at, kp, err
+	}
+	kp, err := ParseAt(s)
+	if err != nil {
+		return "", nil, err
+	}
+	return s, kp, nil
+}
