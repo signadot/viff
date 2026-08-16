@@ -214,9 +214,29 @@ a rule that is its own document (`---`-separated, which `trigger add` accepts) k
 Filed upstream as `8rr738ffh12kr3t8g5n0`; when it lands, the list form starts working with no
 change here.
 
-Nested comments are a separate gap and a smaller one: `Condition`, `Match`, `Formula` and
-`Stratum` have hand-written codecs (`codec=custom`), so a comment above `subject:` needs each of
-those to carry the annotation itself.
+Nested comments are a separate matter, and nothing about them is broken — every position
+decodes, and a head-commented patch still fires and applies, because `tony.Patch` sees through
+the wrapper. They are only LOST, and the rule for which is simple: **a comment attaches to a
+value, and it survives iff whatever that value decodes into can carry it.**
+
+```
+# 1 above the rule          survives — Trigger declares comment=Doc
+action:
+  patch:
+    # 4 above the patch     survives — Action.Patch is a raw node, so the wrapper rides inside it
+    stage: x
+condition:
+  subject: demo:pr          2, above the subject, is dropped
+name: r                     3, above the action, is dropped
+```
+
+So the remaining work is two piles of very different size. The GENERATED types (`Action`,
+`Gate`, `Gating`) need one annotation each and a regenerate. The CUSTOM-codec ones
+(`Condition`, `Match`, `Formula`, `Requirement`, `Stratum`) cannot use the annotation at all —
+codegen writes no codec for them, so their hand-written `FromTonyIR`/`ToTonyIR` would each have
+to capture `node.Lines` and rebuild the wrapper themselves. For `Match` that is probably not
+worth it: its commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a
+head comment.
 
 ## What breaks## What breaks
 
