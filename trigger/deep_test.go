@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -8,6 +9,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/task"
 )
 
 // AN ADDRESS AS DEEP AS THE TREE, which is what a charter installed at `verse-dev.drift` needs:
@@ -236,5 +238,107 @@ func TestEveryPathSegmentIsAMatch(t *testing.T) {
 		if got := c.Subject.MatchRef(entity.RefAt("demo", "pr", tc.id)); got != tc.want {
 			t.Errorf("[demo pr %s] vs id %q = %v, want %v", tc.seg, tc.id, got, tc.want)
 		}
+	}
+}
+
+// A RULE WITH OPERATORS IN ITS ADDRESS HAS TO BE STORABLE, which is a different question from
+// whether it parses: a charter record is a WRITE, a write is a tony patch, and a patch carrying
+// `!glob` is executed rather than stored — the failure that has cost staging a wipe three times
+// (entity/raw.go). The charter is persisted under `!raw` for exactly this reason; a path segment
+// is one more place operators now appear, so this is the check that the escape covers it.
+func TestARuleWithOperatorsInItsPathIsDurable(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: deep-glob
+  condition:
+    subject: !verse-path [verse-dev, drift, !glob "head-*", "*"]
+  action:
+    patch: {seen: true}
+`)); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// It is in the store, and reading it back does not fail — which is what an unescaped
+	// operator would have broken, for this entity and every later read of it.
+	ent, ok, err := store.Get(CharterRef("deep-glob"))
+	if err != nil || !ok {
+		t.Fatalf("the rule was not written down: ok=%v err=%v", ok, err)
+	}
+	stored, err := codec.NodeBytes(ent.Payload, codec.Tony)
+	if err != nil {
+		t.Fatalf("rendering the stored rule: %v", err)
+	}
+	// The escape is CONSUMED by the read — `!raw` is an operation, and applying it is what
+	// leaves the data behind — so what comes back is the document, glob and all.
+	if !strings.Contains(string(stored), "!glob") {
+		t.Errorf("the stored rule lost its operator:\n%s", stored)
+	}
+
+	// AND THE ESCAPE IS WHAT MADE THAT POSSIBLE: the same document written unescaped is refused,
+	// because a write is a patch and `!glob` is not a patch operation. This is the check that
+	// says the charter's `entity.Raw` is load-bearing for a path segment too, rather than
+	// happening to work.
+	spec := entity.Get(ent.Payload, "spec")
+	if spec == nil {
+		t.Fatal("the record has no spec")
+	}
+	if _, _, err := store.Write(entity.Write{
+		At:    entity.RefAt("demo", "unescaped", "rule").At(),
+		Value: spec,
+	}); err == nil {
+		t.Error("an unescaped charter document was accepted; the store would be unreadable after it")
+	}
+
+	// And it comes back as the rule it was: a fresh engine loading the durable charter selects
+	// what the glob names and nothing else.
+	second := New(store, task.AutoResolver{})
+	if err := second.LoadCharter(); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	back, ok := second.Trigger("deep-glob")
+	if !ok {
+		t.Fatal("the rule did not come back")
+	}
+	if !back.Condition.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "head-main", "abc")) {
+		t.Error("the restored rule lost its glob")
+	}
+	if back.Condition.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "finding", "abc")) {
+		t.Error("the restored rule matches past its glob")
+	}
+}
+
+// THE ID THAT IS AN ASTERISK is nameable without an escape of verse's own, which is what keeps
+// `!raw` where it belongs — it is the STORE's escape, added when a charter is written down and
+// consumed when it is read back, and a charter never writes one.
+//
+// A bare `*` is the wildcard; inside an operator it is an ordinary character. So the grammar
+// already says both things, and this pins that it survives being stored.
+func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: literal-star
+  condition:
+    subject: !verse-path [demo, pr, !glob "[*]"]
+  action:
+    patch: {seen: true}
+`)); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	second := New(store, task.AutoResolver{})
+	if err := second.LoadCharter(); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	back, ok := second.Trigger("literal-star")
+	if !ok {
+		t.Fatal("the rule did not come back")
+	}
+	if !back.Condition.Subject.MatchRef(entity.RefAt("demo", "pr", "*")) {
+		t.Error("the restored rule no longer names the id that IS an asterisk")
+	}
+	if back.Condition.Subject.MatchRef(entity.RefAt("demo", "pr", "anything")) {
+		t.Error("it reads as a wildcard now")
 	}
 }

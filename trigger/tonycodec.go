@@ -42,6 +42,27 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if addr, ok := m.address(); ok {
 		return ir.FromString(addr), nil
 	}
+	// A PATH GOES BACK OUT AS `!verse-path`, which is the spelling it came in as and the only
+	// one that can hold it: the three dimensions have nowhere to put a fourth segment, and a
+	// segment carrying an operator has no string form at all. Without this a deep rule rendered
+	// as `{}` — it installed, was written down as a match on everything, and came back from a
+	// restart with no subject.
+	if m.Deep() {
+		segs := m.SegNodes()
+		vals := make([]*ir.Node, 0, len(segs)+1)
+		vals = append(vals, segs...)
+		out := ir.FromSlice(vals)
+		out.Tag = "!" + VersePathTag
+		if node, ok := predicateNode(m[mKeyValue]); ok {
+			// A predicate cannot ride on a tagged list, so the pair is written as the object
+			// form: the path under `path`, the predicate beside it.
+			return ir.FromKeyVals([]ir.KeyVal{
+				{Key: ir.FromString(mKeyPath), Val: out},
+				{Key: ir.FromString(mKeyValue), Val: node},
+			}), nil
+		}
+		return out, nil
+	}
 	// Canonical dimension order, not map order: ir.FromMap sorts, and
 	// {fields, id, kind, system} reads worse than the order people write.
 	var kvs []ir.KeyVal
@@ -171,6 +192,20 @@ func matchFromObject(node *ir.Node) (Match, error) {
 		k := key.String
 		val := unwrap(node.Values[i])
 		switch k {
+		case mKeyPath:
+			// `path:` is the object spelling of `!verse-path`, and the two are one dimension:
+			// a list of segments, each a match. It is what an address deeper than the three
+			// dimensions is carried as, and what a rendering of one comes back in.
+			if val == nil || val.Type != ir.ArrayType {
+				return nil, fmt.Errorf("match: `%s` is a list of segments (`[demo, pr, \"*\"]`); "+
+					"got %v", mKeyPath, valType(val))
+			}
+			got, err := ParseStepNodes(val.Values)
+			if err != nil {
+				return nil, err
+			}
+			at = got
+
 		case mKeyAt: //nolint:dupl // the conflict is checked once, after the loop
 			// `at:` is the whole address prefix as ONE covering path — `at: demo.pr` for
 			// `{system: demo, kind: pr}`, `at: verse.gate.question` for the same three in
@@ -776,4 +811,12 @@ func stepText(n *ir.Node) (string, bool) {
 		return "", false
 	}
 	return scalarText(n)
+}
+
+// valType names a node's type for a message, and says "nothing" for an absent one.
+func valType(n *ir.Node) string {
+	if n == nil {
+		return "nothing"
+	}
+	return n.Type.String()
 }

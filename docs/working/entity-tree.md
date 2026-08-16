@@ -53,8 +53,11 @@ Each lands with the suite green.
    `!glob "hot-*"`, `!or [hot, cold]`, `!and [!glob "h*", !not hold]`, or a bare name for
    equality. Nothing in verse enumerates the operators — `tony.Match` owns them, which is what
    keeps a segment as expressive as a payload predicate and stops a second grammar growing here.
-   Two conveniences sit above that and only two: `*` is any segment, and `!raw` says a segment
-   is a NAME, so an id that IS `*` (or is named after an operator) can still be addressed.
+   ONE CONVENTION sits above that: a bare `*` is any segment, because that is what every other
+   address spelling in verse means by it. Inside an operator a `*` is an ordinary character, so
+   the id that IS an asterisk is named in the grammar rather than by an escape — `!glob "[*]"`,
+   `!or ["*"]`. (`!raw` is the STORE's escape, added when a charter is written down and consumed
+   when it is read back; a charter never writes one, and a segment does not borrow it.)
 
    A `*` is a POSITION, which is the difference a path forces: an unset `kind` means "and
    nothing below it", where `[demo, "*", 1]` means "any one segment, then this".

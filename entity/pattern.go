@@ -1,8 +1,6 @@
 package entity
 
 import (
-	"strings"
-
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
@@ -177,16 +175,17 @@ func (p Pattern) pathCovers(ref Ref) bool {
 // else. Nothing here enumerates the operators — tony.Match owns them, which is what keeps a
 // path segment as expressive as a payload predicate and stops this growing a second grammar.
 //
-// Two conveniences sit above that, and only two. `*` is any segment, because it is what every
-// other address spelling in verse means by it. And an untagged scalar is compared as its TEXT,
-// so `!verse-path [demo pr 1]` matches the id `1` — an address segment is a name, whatever it
-// was written as.
+// ONE CONVENTION sits above that: a BARE `*` is any segment, because that is what every other
+// address spelling in verse means by it. It is the untagged case only — inside an operator a
+// `*` is an ordinary character, which is how an id that IS an asterisk is named: `!glob "[*]"`,
+// `!glob "\\*"` or `!or ["*"]` all say it, in the grammar rather than in an escape of verse's
+// own. (`!raw` is the STORE's escape and belongs to it; a charter never writes one.)
+//
+// An untagged scalar is compared as its TEXT, so `!verse-path [demo pr 1]` matches the id `1` —
+// an address segment is a name, whatever it was written as.
 func SegMatches(want *ir.Node, seg string) bool {
 	if want == nil {
 		return true
-	}
-	if lit, raw := rawSeg(want); raw {
-		return lit == seg // `!raw` is the escape: this is a NAME, not an operator over one
 	}
 	if want.Tag == "" {
 		text, ok := segText(want)
@@ -194,26 +193,6 @@ func SegMatches(want *ir.Node, seg string) bool {
 	}
 	ok, err := tony.Match(ir.FromString(seg), want)
 	return err == nil && ok
-}
-
-// rawSeg reads a segment written as DATA — `!raw "*"` for an address whose segment is literally
-// named `*`, `!raw "!glob"` for one named after an operator.
-//
-// It is the same escape a payload takes, at the one other place verse reads a document as a
-// pattern: without it a name that happens to look like an operator (or like the wildcard) could
-// not be addressed at all, and the grammar would have a hole exactly where somebody's id is.
-func rawSeg(n *ir.Node) (string, bool) {
-	first, rest, _ := strings.Cut(n.Tag, ".")
-	if first != rawName {
-		return "", false
-	}
-	inner := *n
-	inner.Tag = rest
-	if inner.Tag != "" {
-		return "", false // `!raw.glob` is data that still carries a tag; not a plain name
-	}
-	text, ok := segText(&inner)
-	return text, ok
 }
 
 // segText is an untagged scalar as the name it spells, and whether it spells one at all.
@@ -236,14 +215,7 @@ func segText(n *ir.Node) (string, bool) {
 // narrow on. An operator has no literal: it constrains the level without naming it, so a watch
 // stops there and the pattern does the rest.
 func PathLiteral(want *ir.Node) (string, bool) {
-	if want == nil {
-		return "", false
-	}
-	// `!raw` names a segment, so a watch CAN narrow on it — it is data, and data is a literal.
-	if lit, raw := rawSeg(want); raw {
-		return lit, true
-	}
-	if want.Tag != "" {
+	if want == nil || want.Tag != "" {
 		return "", false
 	}
 	text, ok := segText(want)
