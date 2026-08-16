@@ -750,18 +750,24 @@ func soleRef(n entity.Payload) (string, bool) {
 // of nesting and everything below is payload, so there is no boundary to find — which is what
 // lets the form be read without a delimiter.
 func (a Action) derives() []deriveTarget {
-	if a.Derive == nil || a.Derive.Type != ir.ObjectType {
+	// UNWRAPPED AT EVERY LEVEL, because a charter is where people write comments and a head
+	// comment WRAPS the value it precedes. `# one entity per symbol` above `derive:` made this
+	// walk see a Comment where the address should be, so the block read as no derives at all
+	// and the install refused a rule that was written correctly. A comment is not a container:
+	// asking what a value's structure IS means stepping past what was said about it (ir/nav.go).
+	d := unwrap(a.Derive)
+	if d == nil || d.Type != ir.ObjectType {
 		return nil
 	}
 	var out []deriveTarget
-	for i, sysName := range a.Derive.Fields {
-		sys := a.Derive.Values[i]
+	for i, sysName := range d.Fields {
+		sys := unwrap(d.Values[i])
 		if sys == nil || sys.Type != ir.ObjectType {
 			continue // refused by validate; nothing to walk
 		}
 		for j, kindName := range sys.Fields {
 			t := deriveTarget{System: sysName.String, Kind: kindName.String}
-			if v := sys.Values[j]; isEach(v) {
+			if v := unwrap(sys.Values[j]); isEach(v) {
 				// A malformed one is refused at install (validateDerive), so anything reaching
 				// here parses; a reader that cannot is left as a target with neither half set,
 				// which the firing path refuses rather than treating as an empty payload.
@@ -797,21 +803,24 @@ func (a Action) validateDerive() error {
 	if a.Derive == nil {
 		return nil
 	}
-	if a.Derive.Type != ir.ObjectType {
-		return fmt.Errorf("action.derive must be an object addressed <system>.<kind>, got %v", a.Derive.Type)
+	// Past the comment wrapper before asking what the shape is — see derives(), which walks the
+	// same block and refused a correctly written rule for the same reason.
+	d := unwrap(a.Derive)
+	if d.Type != ir.ObjectType {
+		return fmt.Errorf("action.derive must be an object addressed <system>.<kind>, got %v", d.Type)
 	}
-	if len(a.Derive.Fields) == 0 {
+	if len(d.Fields) == 0 {
 		return fmt.Errorf("action.derive is empty: it addresses <system>.<kind> and writes what " +
 			"goes there")
 	}
-	for i, sysName := range a.Derive.Fields {
-		sys := a.Derive.Values[i]
+	for i, sysName := range d.Fields {
+		sys := unwrap(d.Values[i])
 		if sys == nil || sys.Type != ir.ObjectType || len(sys.Fields) == 0 {
 			return fmt.Errorf("action.derive.%s must be an object of kinds: the address is exactly "+
 				"two levels — <system>.<kind> — and everything below is the payload", sysName.String)
 		}
 		for j, kindName := range sys.Fields {
-			payload := sys.Values[j]
+			payload := unwrap(sys.Values[j])
 			if isEach(payload) {
 				if err := validateEach(payload); err != nil {
 					return fmt.Errorf("action.derive.%s.%s: %w", sysName.String, kindName.String, err)

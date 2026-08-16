@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
@@ -355,6 +358,66 @@ func TestDeriveShapeIsTwoLevels(t *testing.T) {
 		})
 		if err == nil {
 			t.Errorf("installed a derive that is %s", why)
+		}
+	}
+}
+
+// A DERIVE WITH A COMMENT ABOVE IT INSTALLS AND FIRES. A head comment WRAPS the value it
+// precedes, so `# why this ledger entry exists` above `derive:` makes the block a CommentType
+// node holding the object — and the walks that read a derive's address asked the wrapper what
+// shape it was, got Comment, and refused the rule.
+//
+// It refused a rule that is written correctly, and it refused it at INSTALL, which is where the
+// charter staging runs stopped being installable from its own file: those rules carry a
+// paragraph each saying why they derive what they do. A comment is not a container — asking what
+// a value IS means stepping past what was said about it (ir/nav.go).
+func TestADeriveKeepsItsComment(t *testing.T) {
+	eng, store := newEng(t)
+	withStrata(t, eng, demoStrata()...)
+	src := "name: commented-derive\n" +
+		"stratum: observe\n" +
+		"condition:\n  subject: {system: gh, kind: issue}\n" +
+		// `patch:` first, deliberately: a comment before a container's FIRST entry heads the
+		// container, so above `derive:` here it would land on the action and never wrap the
+		// value. Second, it wraps — which is the shape a real charter has, and the one that
+		// refused to install.
+		"action:\n" +
+		"  patch: {seen: true}\n" +
+		"  # WHY THIS LEDGER ENTRY EXISTS, in the author's words — and the rule still installs.\n" +
+		"  derive:\n    signadot:\n      feature:\n        urgent: true\n"
+	node, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var tr Trigger
+	if err := tr.FromTonyIR(node); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if tr.Action.Derive == nil || tr.Action.Derive.Type != ir.CommentType {
+		t.Fatalf("the derive is not comment-wrapped, so this test proves nothing: %v", tr.Action.Derive)
+	}
+	if err := eng.AddTrigger(tr); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	// …and it fires: the walk that reads the address is the one validate shares.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	entitytest.Set(t, store, entity.Ref{System: "gh", Kind: "issue", ID: "1"},
+		entity.Obj{"state": "open"}.Payload())
+	deadline := time.After(3 * time.Second)
+	for {
+		for _, e := range store.List(func(r entity.Ref) bool {
+			return r.System == "signadot" && r.Kind == "feature"
+		}) {
+			if entity.ToObj(e.Payload)["urgent"] == true {
+				return
+			}
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the commented derive never wrote its entity")
+		case <-time.After(5 * time.Millisecond):
 		}
 	}
 }

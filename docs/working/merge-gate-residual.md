@@ -1,9 +1,9 @@
 # Merging an agent's branch: what the charter cannot say yet
 
-Status: residual, and the blocker it was written about is GONE. The charter is
-[merge-gate.tony](merge-gate.tony) — which belongs on `use/verse-dev` beside comment-drift.tony
-and is here only because that is where it was written — and every rule in it now runs on today's
-grammar. What is kept below is the reasoning that got there, because the ask it named turned out
+Status: residual, and the blocker it was written about is GONE. The charter is the merge-gate
+half of [comment-drift.tony](comment-drift.tony) — the two were separate files on separate
+branches until the whole verse-dev charter was collected into one on main — and every rule in it
+now runs on today's grammar. What is kept below is the reasoning that got there, because the ask it named turned out
 to be the wrong one twice over and that is worth reading once; and what is still missing, which
 is smaller than it was.
 
@@ -20,8 +20,8 @@ that exists to declare it.
 
 Rule 4 RUNS, and what stopped it moved twice on the way there. The delete it
 needs LANDED — a destination may declare `delete: true`, which derives `Verb: Delete` rather than
-`Verb: Push` so a charter can gate retiring separately from delivering, and `merge-gate.tony`'s
-sweep already names the `retire` destination. The task half is no longer an LLM either: since the
+`Verb: Push` so a charter can gate retiring separately from delivering, and the sweep in
+[comment-drift.tony](comment-drift.tony) already names the `retire` destination. The task half is no longer an LLM either: since the
 [calls driver](calls-driver-plan.md), a sweep's actions are a list the charter writes, and a
 refusal it can survive is `fatal: []`.
 

@@ -242,7 +242,7 @@ func docketCmd() *cli.Command {
 // subjectSays is the one line a motion's subject offers about itself, or "" when it offers none.
 //
 // A CONVENTION rather than a schema: an entity that wants to be decidable puts a `says` on
-// itself, and a charter fills it from whatever produced the fact — merge-gate.tony carries the
+// itself, and a charter fills it from whatever produced the fact — comment-drift.tony carries the
 // review's own report onto the proposal it derives. Nothing requires it and nothing breaks
 // without it, which is why this is silent about every failure: a docket that refused to list a
 // motion because its subject was unreadable would be worse than one that lists it bare.

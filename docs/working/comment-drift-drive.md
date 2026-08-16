@@ -10,7 +10,7 @@ terse and missing are fine. It fixes what it finds in place, and the runner deli
 as a branch under `verse/auto/<sha>/<task>`. Findings are facts in a ledger, so the next review
 reads its own memory rather than re-auditing whole files.
 
-[merge-gate.tony](merge-gate.tony) picks it up from there: a delivered branch becomes a
+The merge-gate half of [comment-drift.tony](comment-drift.tony) picks it up from there: a delivered branch becomes a
 **proposal**, the proposal carries a gate with a 24-hour deadline that defaults to deny, and a
 yes merges `--ff-only` to main. Staleness needs no comparison operator — a branch fast-forwards
 exactly while main is still where it was cut from.

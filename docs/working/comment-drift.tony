@@ -1,0 +1,708 @@
+# THE VERSE-DEV DRIVE: the charter staging runs.
+#
+# Two halves, four strata and eight rules, in one file because they are one program: the REVIEW
+# reads main's tip against itself and remembers what it found, and the MERGE GATE turns what the
+# review's fixes deliver into a proposal somebody decides. Install it whole —
+#
+#     verse trigger add --file docs/working/comment-drift.tony
+#
+# — which installs the strata first whatever order they appear in (cmd/verse: "STRATA FIRST"),
+# so the ordering is in force before a rule names it.
+#
+# IT WAS TWO FILES ON TWO BRANCHES, and that is worth a sentence because it is the failure this
+# fixes rather than a tidying. The review half lived only on `use/verse-dev` and the merge half
+# only on `main`, so nothing anywhere held the charter staging was actually running: reseeding
+# meant dumping the store and trusting the dump, and scripts/staging-reseed.sh said so in as many
+# words. One file on main, and a wipe costs nothing that is not written down.
+#
+# The two halves keep their own numbering — the review's rules are 1..3, the gate's are 1..3 with
+# a 1b apiece — because the prose in each refers to its own by number.
+
+# ── THE REVIEW ──────────────────────────────────────────────────────────────────
+
+# verse-dev drive: `main` moves, and the comments on every Go symbol the commit touched get read
+# against the code under them — the ones that disagree get fixed, on a branch, and what is left
+# over is remembered.
+#
+#   docs/working/verse-dev/comment-drift-install.sh — on `use/verse-dev`, and it predates this
+#   file: it removes the review's three rules and three strata before re-adding them, because
+#   `verse trigger add` refuses what is already installed. Re-installing all eight needs the
+#   same treatment for the gate's five and `merge`.
+#
+# THREE rules and three strata, where the obvious shape is one rule. Each of the three is a wall
+# this drive walked into, and the note has them at length
+# (docs/working/verse-dev-comment-drift.md):
+#
+# ONE — a spawning action must take its subject out of its own selection, and a subject in a
+# REFLECTED slice cannot hold the marker that would do it: a source is the single writer of what
+# it reflects, so a latch written onto `git:*` is gone on the next pass that mentions the entity.
+# Hence `head-moved`: the fact is copied into a slice this charter owns, and the spawn latches
+# there — which is what buys the derive, and so the strata.
+#
+# TWO — a subject is a SELECTION, so a rule over `git:commit` is as wide as the reflected
+# history: 131 commits on staging, all 131 firings timing out inside the store, every derive
+# lost. `git:head:verse` is one entity carrying main's tip and it changes exactly when main
+# moves. Width one, same event.
+#
+# THREE — the review used to re-audit whole files on every push, because nothing remembered what
+# had already been checked: seventeen boundaries and forty-one shell calls to conclude that a
+# 1500-line file was fine. So findings are FACTS now. `gather` reads the outstanding ones onto
+# the subject before the task starts, the prompt carries them, and the answer becomes one entity
+# per symbol (`!each`, docs/strata.md). A review reads its own memory and looks at what changed.
+
+# The reflected slice: the git source's, and nobody else writes it.
+- name: reflected
+  level: 0
+  match:
+    system: git
+
+# Ours: the tip, as a fact this charter owns and latches on.
+- name: drift
+  level: 10
+  match:
+    system: drift
+    kind: head
+
+# The ledger. Strictly above `drift`, because that is the only direction a derive may go — and
+# split by KIND rather than into another system, so the whole drive stays one slice a person can
+# list with `verse entity --system drift`.
+- name: ledger
+  level: 20
+  match:
+    system: drift
+    kind: finding
+---
+# 1. Main's tip, as a fact this charter owns — outstanding again the moment it moves.
+#
+# It spawns nothing, so it needs no latch: a derive's address is a function of (rule, subject),
+# so a re-fire writes the same bytes to the same address and the store ends it as a no-op.
+#
+# `reviewed: pending` is the latch's other half, and it is a STATE rather than an absence for a
+# reason that cost this drive an evening. The documented spelling of "not yet reviewed" is
+# absence — `!not {reviewed: null}` — and verse cannot store one: `entity/logdstore.go` spells
+# absence by WRITING a bare null and hiding every bare null it reads, at any depth, so the
+# durable rule comes back as `!not {}` and selects nothing. The charter works until the first
+# restart and then silently stops. (Not the substrate's doing: logd holds `b: null` across
+# restart and compaction, and tony's patch sets null rather than deleting.) A state needs no
+# null, and this one re-arms itself: a derive MERGES, so writing `pending` puts the fact back in
+# rule 2's selection whenever the sha moves.
+#
+# The deletes are tagged operators rather than bare nulls, which is why THEY survive the same
+# round trip: they clear the last review so a new one cannot merge with the one before it.
+- name: head-moved
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+      drift:
+        head:
+          repo: $subject.value.repo
+          sha: $subject.value.sha
+          reviewed: pending
+          result: !delete null
+          err: !delete null
+          outstanding: !delete null
+---
+# 2. Before the review, the ledger is read onto the subject.
+#
+# A separate rule rather than a line in the next one, and the reason is ordering: a spawn's
+# strings bind against the payload that FIRED the action, so an action that patched `outstanding`
+# and then spawned would hand the task the payload from before its own write. Two firings, two
+# commits, and the second one sees the first.
+#
+# It reads UPWARD — the findings are a stratum above — which a patch may do freely. Only a path
+# read inside a DERIVE is confined to its own level or below, because that is the read that could
+# make a derive's content depend on what the level above wrote.
+#
+# `!list-paths` with no `path:` yields whole payloads, so the prompt carries what each finding
+# SAYS rather than a list of names. `status: open` is the narrowing, and it is also the human
+# override: set a finding's status to anything else and it stops being handed to the agent, with
+# no charter change and nothing to argue with.
+- name: gather
+  stratum: drift
+  condition:
+    subject:
+      system: drift
+      kind: head
+      value:
+        reviewed: pending
+  action:
+    patch:
+      reviewed: gathered
+      outstanding: !list-paths
+        system: drift
+        kind: finding
+        id: "*"
+        value:
+          status: open
+---
+# 3. …and the tip is reviewed, once, against what is already known.
+#
+# The latch is `reviewed: gathered`, which rule 2 writes and all three terminal hooks write past.
+# A hook that did not would leave that ending unlatched, and the next thing to touch this entity
+# would spawn again.
+- name: comment-drift
+  stratum: drift
+  condition:
+    subject:
+      system: drift
+      kind: head
+      value:
+        reviewed: gathered
+  action:
+    spawn:
+      runner: runners:pool:code
+      # That environment pushes `refs/heads/verse/auto/$task`, so the deliverable is a diff
+      # rather than prose about a diff. Delivery is the runner's act and the task only proposes
+      # it, at the end; a run that changed nothing proposes nothing and leaves no branch. It is
+      # also the only environment on this runner with a shell — see the ConfigMap for what that
+      # buys and what it costs.
+      environment: verse-fix
+      driver: llm
+      # `all` because there is no smaller name that permits delegation: `read-only` is reads
+      # alone, and `no-delegate` is defined by excluding CallAgent. The floor that actually
+      # bounds this task is the environment's tool list and bwrap, not this word.
+      grant: all
+      # The firing answered its own gates — it has none — so the task does not re-ask per
+      # action. Nothing here reaches outside the sandbox.
+      vector: auto
+      prompt: |
+        Commit $sha is the tip of main on the verse repository, checked out at ./verse with its
+        full history. Review THAT commit, and answer with `at: $sha` — the tip can move while you
+        work, so your answer has to say which commit it is about rather than leaving a reader to
+        assume it was the latest.
+
+        WHAT IS ALREADY KNOWN. These findings are outstanding from earlier reviews. Each is a
+        claim that some Go symbol's comments disagree with its code, and each is either still
+        true or fixed by what has landed since:
+
+        $outstanding
+
+        WHAT CHANGED. The Go files this commit touched:
+
+            git -C verse show --name-only --format= $sha -- '*.go'
+
+        YOU DO NOT READ SOURCE FILES YOURSELF. Your whole job is to list what changed, hand each
+        file to one agent, and assemble what they answer. A file you open is a file being
+        reviewed twice, by the one reader who cannot see the others.
+
+        For EACH of those files, call_agent once — one agent per file, running concurrently.
+        Give each of them the path, the outstanding findings naming a symbol in it, and this job:
+
+            Read `git -C verse show $sha -- <path>` and the declarations it changed.
+
+            Judge the comments on those declarations, and on any symbol an outstanding finding
+            names in this file. A comment is STALE when it disagrees with the code it is
+            attached to: a parameter that is gone, a rationale for a branch that was deleted, a
+            "returns X" that returns Y, an algorithm described that was replaced under it.
+            Terse, unfashionable and MISSING are not stale — staleness is a disagreement, not a
+            gap.
+
+            FIX each stale one in place with write_file: rewrite the comment to say what the
+            code now does, in the voice of the comments around it. Change nothing else — not
+            the code, not the formatting, not a comment that is merely unlovely. Run no git
+            command that writes: the working tree is the handoff, and delivery is the runner's.
+
+            WHAT YOU DO NOT DO, because the working tree IS the deliverable and every file you
+            leave behind is committed: do not write a test, do not run one, do not build, and
+            do not add a file. You are judging whether a comment disagrees with the code beside
+            it — never whether the code is right. A test you write to satisfy yourself lands in
+            somebody's branch as though a reviewer had asked for it.
+
+            READ EACH THING ONCE. Re-reading a file you have read does not make a verdict
+            truer, and the second read costs a turn the first one already bought. When every
+            symbol you were given has a verdict, answer — a conclusion you have reached and are
+            still checking is a conclusion you are spending money to keep.
+
+            Report an entry ONLY for a symbol that has something to say. A symbol you judged
+            and found ACCURATE is not an entry. Say the symbol, the status, what the comment
+            gets wrong (or got wrong), `at: $sha`, and `proposedAt` per below.
+
+            `status: resolved` IS A CLAIM ABOUT THE COMMIT YOU ARE REVIEWING, and only that:
+            the comments were wrong before and are right in what you are reading now. Something
+            landed.
+
+            A FIX YOU JUST WROTE RESOLVES NOTHING. Your edits are in a working tree that becomes
+            a branch, and a branch is a PROPOSAL — somebody has to approve it, and it can be
+            declined, or superseded, or retired unmerged while main moves on. So a symbol you
+            fixed is still `status: open`, because it is still wrong in the commit under review,
+            and you say where you proposed the fix: `proposedAt: $sha`. The review that comes
+            after the fix lands reads main, finds the comment accurate, and resolves it. That is
+            what makes the ledger a record of MAIN rather than of what agents believe they did.
+
+            This is not hypothetical bookkeeping. A review fixed `task.Fatals`, marked it
+            resolved, and its branch was retired before the merge; main kept the wrong comment
+            while the ledger said somebody had dealt with it, and nothing re-examined it,
+            because a resolved finding is not handed to anybody again.
+
+            A finding you are handed that already carries `proposedAt` and is STILL WRONG means
+            that fix did not land. Fix it again and say `proposedAt: $sha` for this attempt: the
+            work is cheap and idempotent, where a comment nobody corrects is permanent.
+
+        When every agent has reported, ANSWER. Do not go and check their work: you dispatched
+        one reader per file precisely so that no one reader has to hold all of it, and reading
+        the files yourself to confirm them undoes that and costs the run twice over.
+
+        Then answer for all of them together. `findings` is what CHANGED, not an inventory: an
+        outstanding finding you did not touch stays outstanding on its own and will be handed to
+        you again, so leaving it out is correct and re-listing it costs everyone tokens for no
+        fact. What you must not do is mark one resolved on the strength of your own edits — that
+        is the lie the next reader inherits, and it is the one the ledger cannot catch, because
+        a resolved finding is never handed to anybody again.
+
+        The two entries above are the two cases: the first was wrong and is right in the commit
+        being reviewed, with no fix of yours behind it (`proposedAt: ""`); the second is still
+        wrong there, and you have proposed a fix for it.
+
+        Name each symbol the way Go does, repo-relative: `entity.nodeToPayload`,
+        `source/github.Reflect`, `entity.(*LogdStore).Get`. That identity survives the comment
+        being rewritten and the declaration moving between files, which a line number does not.
+        `go doc ./<pkg> <Name>` says whether you have it right.
+
+        YOUR FINAL MESSAGE IS THE ANSWER — a JSON document, nothing before it and nothing
+        after it. JSON because it is the shape you are most reliable at, and because verse takes
+        it everywhere an answer is taken: valid JSON is valid tony, so it parses on the way in.
+        Every key and every string is quoted, which is the whole of what has gone wrong before.
+
+            {
+              "files": 2,
+              "fixed": 1,
+              "findings": [
+                {"symbol": "entity.nodeToPayload",
+                 "status": "resolved",
+                 "says": "claimed logd spells a tombstone as a bare null; the convention is verse's",
+                 "at": "$sha",
+                 "proposedAt": ""},
+                {"symbol": "source/github.Reflect",
+                 "status": "open",
+                 "says": "says it returns the live set; it returns the set plus a settled tail",
+                 "at": "$sha",
+                 "proposedAt": "$sha"}
+              ],
+              "report": "one paragraph on what you changed and why",
+              "at": "$sha"
+            }
+
+        `"findings": []` is the ORDINARY answer, not a failure: a commit whose comments are all
+        accurate has nothing to add to the ledger, and so is one that changed no Go file at all —
+        `{"files": 0, "fixed": 0, "findings": [], "report": "…", "at": "$sha"}`.
+
+      # Checked when the model stops. `findings` is what the fan-out below walks, so a task that
+      # narrated instead of answering fails HERE, before any derive, rather than at patch time
+      # with the tokens already spent.
+      answer:
+        files: !irtype 0
+        fixed: !irtype 0
+        # `!all` constrains EVERY element, which is the only way an element's shape is stated at
+        # all — and it has to be stated here, because the derive below dereferences all four
+        # fields. An element missing `says` fails the FIRING, after the reading and the edits are
+        # done: one completed review lost its findings that way. In the contract, the same
+        # omission is a repair the agent can still make.
+        #
+        # The exemplars are meaningful because they cost nothing to make so: `!irtype` reads only
+        # the TYPE of what it is written with, so writing a real symbol name instead of "text"
+        # makes the example the repair renders an instance somebody can copy.
+        findings: !all
+          symbol: !irtype "entity.nodeToPayload"
+          status: !or [open, resolved]
+          says: !irtype "what the comment claims, against what the code does"
+          at: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
+          # WHERE A FIX WAS PROPOSED, and "" when none was. `!irtype` reads the type alone, so
+          # one exemplar admits both — the field is required and its emptiness is the answer,
+          # which is what keeps the derive below total.
+          proposedAt: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
+        report: !irtype "one paragraph on what changed and why"
+        # WHICH COMMIT this answer is about, and it is not redundant with the subject's `sha`.
+        # The tip moves while a review runs: `head-moved` re-derives, the subject's sha becomes
+        # the newer one, and a result landing afterwards sits on a fact naming a commit the task
+        # never read. Observed on the first run of this shape — a report about 068cc5bb on an
+        # entity saying feedeef6. The answer carrying its own sha is what makes the fact
+        # self-describing rather than merely recent.
+        at: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
+    onDone:
+      patch:
+        reviewed: done
+        result: $data
+        # Read from the ANSWER, not from the subject: `$subject.value` is not available in a
+        # hook at all, and the whole point is that the two can disagree.
+        reviewedSha: $data.at
+        err: !delete null
+      # One entity per SYMBOL — not per comment. A claim about a symbol is re-checkable against
+      # exactly one declaration, and it dissolves the sub-symbol case rather than extending it:
+      # a comment on a loop is part of what the claim about that symbol says. Per-comment
+      # identity would churn at the worst moment, since fixing a comment is what changes it.
+      #
+      # Append-only, deliberately (docs/strata.md): a finding this answer stopped mentioning
+      # keeps its entity. Resolution is a fact somebody wrote — `status: resolved` here, or by
+      # hand — never an absence inferred from a model going quiet.
+      #
+      # AND IT IS A FACT ABOUT MAIN. `resolved` means the comment is right in the commit that
+      # was reviewed, not that an agent fixed it somewhere: a fix lives on a branch until it is
+      # approved and merged, and branches are declined, superseded and retired. `proposedAt`
+      # carries where the attempt was made, so a finding still open with a proposedAt behind it
+      # is a fix that did not land — visible in the ledger rather than lost with the branch.
+      derive:
+        drift:
+          finding: !each
+            over: $data.findings
+            key: $item.symbol
+            value:
+              symbol: $item.symbol
+              status: $item.status
+              says: $item.says
+              at: $item.at
+              proposedAt: $item.proposedAt
+    onFailed:
+      patch:
+        reviewed: failed
+        err: $err
+        result: !delete null
+    onCancelled:
+      patch:
+        reviewed: cancelled
+        result: !delete null
+        err: !delete null
+
+---
+
+# ── THE MERGE GATE ──────────────────────────────────────────────────────────────
+
+# verse-dev drive: an agent's branch is a PROPOSAL, and somebody decides it.
+#
+# The coding runner delivers to `verse/auto/<task>` (coderunner/workspace.go: that prefix is
+# chosen so a developer who pulls and finds a commit nobody wrote can tell which system made it
+# from the first two segments). Today those branches accumulate and nothing consumes them —
+# three on this repository, all abandoned. This is the other half: the branch becomes a fact,
+# the fact carries a gate, and a yes merges it.
+#
+# TWO STRATA AND FOUR RULES of its own, and the shape is borrowed wholesale from the review
+# above, which paid for it. `reflected` is that half's, and this half has been moved in beside
+# it — which is what the note here used to ask for, and why there is one `reflected` in this file
+# rather than a second one the install would refuse.
+#
+# WHAT DECIDES THE DESIGN is staleness. A `verse/auto/*` branch is cut from whatever main was
+# when its task started, so by the time anybody answers, main may have moved — and then
+# `--ff-only` fails and something has to resolve a conflict nobody watched. The decision here is
+# to REFUSE rather than resolve, and it is cheap precisely because the review that produced the
+# branch is idempotent by construction: findings are facts, the ledger remembers, and a second
+# pass reads its own memory and looks at what changed. Re-running a review costs a minute;
+# rebasing an agent's work costs a second agent action and a second gate.
+#
+# THE MERGE RUNS NOW, AND THE SWEEP STILL DOES NOT. Both used to spawn a task that ran `git
+# push`, and a task on the code runner could not reach a remote at all — which is what
+# reference/examples/README.md now documents as landed.
+#
+# What landed: an environment declares DESTINATIONS by name, a task names one and never a ref,
+# the vector gates the ref it resolves to, and approval is what releases the credential. So rule
+# 2 below merges LOCALLY and then calls the runner's `push` tool naming `main`. Its prerequisite
+# is in deploy/coderunner/coderunner.yaml, and it is a SEPARATE ENVIRONMENT rather than two more
+# lines on `verse-fix`: `verse-merge` declares `main` and nothing else, offers `push`, and both
+# rules below spawn into it. That matters because verse-fix is shared with comment-drift, which
+# spawns with `vector: auto` — so had the destination gone there, what stopped a fix task pushing
+# main would have been every charter remembering to narrow its own `tools:`. Split, a charter
+# that has not been pointed at verse-merge cannot reach main however its vector is set.
+#
+# What did not: rule 4's DISCOVERY. Its delete landed (a destination declaring `delete: true`,
+# which this rule names as `retire`) and its task need not be an LLM any more (a call list), but
+# nothing here can yet say WHICH proposals are stale: that is `base` differing from a value held
+# by another entity, and a match compares against literals. See merge-gate-residual.md.
+#
+# `--ff-only` stays a prompt-level instruction on purpose, backed by
+# `receive.denyNonFastForwards` at the receiving end: `where` scopes onto a credential and `how`
+# does not, so a model that ignores the instruction gets refused by the remote rather than
+# merging some other way. That refusal is now an ANSWER rather than an error — the task completes
+# and says it could not, which is what rule 2's `onDone` branches on.
+#
+# That decision buys two things worth noticing. The merge ATTEMPT is the staleness test — no
+# comparison operator is needed anywhere, because `git merge --ff-only` either works or does
+# not, and rule 2's `onFailed` is what "it went stale under us" means. And the sweep below needs
+# no clock: a branch's mergeability changes exactly when main moves, and main moving is already
+# an event this verse reflects. A periodic check would be asking a question whose answer only
+# changes on an edge we already have.
+
+# Ours: one entity per delivered branch, and one for the sweep. Strictly above `reflected`,
+# because that is the only direction a derive may go.
+# LEVEL 30, not 10, and the number is the one thing here that is not free to choose. The review
+# above holds 0/10/20 (reflected, drift, ledger), and a level is the ordering — two strata at one level do not say which comes first, so installing
+# them together is REFUSED until one moves. Found by installing it: `stratum "merge" wants level
+# 10, which "drift" already holds`.
+- name: merge
+  level: 30
+  match:
+    system: merge
+---
+# 1. A delivered branch becomes a proposal, with the tip it was cut against RECORDED.
+#
+# `base` is the whole design. `!get-path` copies and does not track — read once, at the commit
+# that caused the firing — which is exactly what is wanted here and would be a defect anywhere
+# else: it freezes what main was when this branch appeared, so the proposal carries its own
+# answer to "could this still fast-forward" without anything having to watch.
+#
+# It spawns nothing, so it needs no latch: a derive's address is a function of (rule, subject),
+# so a re-fire writes the same bytes to the same address and the store ends it as a no-op. A
+# force-push to the branch moves `sha`, re-fires this, and re-reads `base` — which is right, a
+# redelivered branch is a new proposal.
+- name: proposal-appeared
+  stratum: reflected
+  condition:
+    subject:
+      system: git
+      kind: ref
+      value:
+        # TWO segments, not one: the runner's push target is `refs/heads/verse/auto/$sha/$task`
+        # and `!glob` is filepath.Match, where `*` does NOT cross `/`. Written as
+        # `verse/auto/*` this matched nothing at all — the charter predates the `$sha` segment,
+        # and a selector that silently selects nothing is the failure this whole drive keeps
+        # finding. Verified against a real delivered branch.
+        name: !glob "verse/auto/*/*"
+  action:
+    # FACTS ONLY, and that is the whole of the rule this got wrong. A derive MERGES its literal
+    # fields every time it runs — which this charter relies on elsewhere — so any field named
+    # here is restated on every re-derive. `state: open` dragged a merged proposal back to
+    # undecided and `base` tracked main's current tip, which is the left side of the staleness
+    # test comparing itself against the thing it is compared to.
+    #
+    # What is left is a function of the subject alone, so re-deriving cannot change an answer.
+    # `base` is pinned once by proposal-based below; `state` is written only by the rules that
+    # decide, and its ABSENCE is what undecided means.
+    derive:
+      merge:
+        proposal:
+          repo: $subject.value.repo
+          branch: $subject.value.name
+          sha: $subject.value.sha
+---
+# 1b. …and the commit it was cut from is pinned, once.
+#
+# `base` reads main's tip, so it is time-dependent and cannot come from a derive that re-runs.
+# This is the latch the rest of the charter runs on, applied to a field: it selects the proposals
+# nobody has pinned, and writing one takes that proposal out of its own selection. The derive
+# above never names `base`, so nothing restates it afterwards.
+#
+# A proposal is briefly baseless — between the derive and this — which is why every rule that
+# compares against `base` asks for it by comparing, and a comparison against an absent field does
+# not match.
+- name: proposal-based
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value: !not.has-path base
+  action:
+    patch:
+      base: !get-path { system: git, kind: head, id: verse, path: sha }
+---
+# 2. …and somebody decides it.
+#
+# The gate carries a formula rather than waiting on a person indefinitely, and that is not
+# ceremony: a question whose only discharge is somebody choosing to look is the wait
+# `task/contract.go` property 5 forbids one level down, and it does not become acceptable by
+# moving up a layer. `!until [!quorum 1, !deadline "24h"]` is the tutorial's documented shape and
+# it defaults to DENY when the clock runs out, which is the safe direction for the one action in
+# this repository with a consequence nobody can quietly undo.
+#
+# (A contract notice wants the INVERSE — carry on the clock, an objection interrupts — which is
+# verse-dev step 2's open question. A merge is the case the documented form was written for, so
+# it gets it, and the two genuinely differ rather than one being a bug.)
+#
+# `onDenied` is required by what a deny does: a refused firing writes nothing, so without this
+# the subject is left in the exact state that asked, and the next commit re-poses the same
+# question to somebody who already answered it.
+#
+# The task's own vector is `auto`. The decision has been made HERE, by a person, about the thing
+# that matters; making the task re-ask per action would be asking the same question twice in two
+# vocabularies.
+#
+# ONLY WHILE IT CAN STILL LAND, which is what `value:` below says. A branch fast-forwards onto
+# main exactly while main is where it was cut from, so `base == tip` is the same predicate rule 3
+# uses negated — and asking it HERE is what lets the task below be a call list.
+#
+# It used to be the task's job: an agent ran `--ff-only`, was refused, and reported
+# `merged: false` through an answer contract, because "main moved" is the ORDINARY outcome of
+# this gate and routing it through failure would have lost the difference between that and a
+# credential expiring. A call list has no answer to say it with. So the charter asks the question
+# instead, and what is left for the task to fail at is infrastructure — which is what failure
+# should mean.
+#
+# (Those two paragraphs belong immediately above `value:` and are up here instead because verse
+# cannot yet install them there: a head comment on a key whose value is TAGGED — `value: !and
+# […]` — is re-rendered with the value detached from its key, and the document verse posts to
+# itself no longer parses. Minimal case: `# note` above `b: !and [x, y]`. It is the encoder, and
+# it is filed as tony-format jjthyd92h12ks8c1g5n0. Move them back when that is fixed; nothing
+# else in this file is placed around it.)
+- name: merge-proposal
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value: !and
+      - !not.has-path state
+      - !let
+        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        in: {base: .[tip]}
+  gates:
+  - name: merge-to-main
+    mode: ask
+    formula: !until [ !quorum 1, !deadline "24h" ]
+    onDenied:
+      patch:
+        state: declined
+  action:
+    spawn:
+      runner: runners:pool:code
+      environment: verse-merge
+      grant: no-delegate
+      vector: auto
+      # Four git commands were what this always was. The model was rediscovering them every
+      # firing, and when the branch went out from under it — retired by rule 3 while its motion
+      # was open — it went looking for the objects on the filesystem instead of stopping.
+      #
+      # No `fatal:` on either call: the default is that anything ends the list, which is what
+      # is wanted. If the merge does not fast-forward the push must not happen, and the whole
+      # reason it might is now selected against above.
+      calls:
+      # THE MIRROR, not origin, and no fetch at all. The task's clone is made FROM the runner's
+      # local mirror (`RemoteName: "mirror"`), which the runner refreshes when it opens the
+      # workspace — so every delivered branch is already here as a remote-tracking ref, and
+      # `origin` is a config entry pointing at a forge this sandbox has no route to fetch from.
+      #
+      # `fetch origin` is what the PROMPT said when this was an agent, and the agent quietly
+      # adapted: it read the failure and used what was there. A call list cannot, which is the
+      # trade — it does exactly what it is told, so what it is told has to be true. This one cost
+      # a `exited 128` and is the clearest argument in the charter for why the list is worth it:
+      # the instruction was wrong for as long as a model was papering over it.
+      - tool: run_bash
+        input:
+          command: "git -C verse merge --ff-only refs/remotes/mirror/$branch"
+      - tool: push
+        input: {destination: main}
+    onDone:
+      patch:
+        state: merged
+        err: !delete null
+    # What is left to fail is infrastructure, or main moving between this firing and the push —
+    # which the remote refuses with `denyNonFastForwards` rather than accepting quietly.
+    #
+    # It lands on `failed` and STAYS there. Undecided is the absence of this field, and a patch
+    # cannot unwrite one — `!delete` would, and using it here would put the proposal back in
+    # front of the same gate on the next commit, asking a person to answer again for a run that
+    # broke rather than for a decision that changed. A failure is a fact somebody looks at.
+    onFailed:
+      patch:
+        state: failed
+        err: $err
+    # A cancel decided NOTHING, so the proposal goes back to undecided — which is now the
+    # absence of the field, and `!delete` is what unwrites one. This is the case that earns the
+    # operator: somebody stopped the run, so the gate should be asked again, where a FAILED run
+    # should not re-ask anybody anything.
+    onCancelled:
+      patch:
+        state: !delete null
+        err: !delete null
+---
+# 1b. …and the proposal says what it is about, so the docket can ask a real question.
+#
+# WITHOUT THIS a person is asked `whether open` about
+# `merge:proposal:proposal-appeared@git:ref:verse_verse_auto_…` and nothing else. To answer they
+# must fetch the subject, read a branch name and two shas out of it, and go find the diff
+# somewhere else — which is a gate answered by reflex, and the gate is the load-bearing part of
+# this whole design. `verse docket` shows a subject's `says` when it has one, so putting the
+# review's own report there is the whole fix.
+#
+# A PATCH rather than part of rule 1's derive, and the engine is what taught me: a derive may
+# read at or below its own level and no higher, because reading upward lets a level above change
+# what a derive writes and a derive that writes something new every lap wakes that level again.
+# Rule 1 lives in `reflected` (0) because its subject is a git ref; the report lives in `drift`
+# (10). So the read happens HERE, in `merge` (30), where it is a read downward and a patch —
+# which the refusal itself points at: "A `patch` may read it".
+#
+# It needs no latch: patching the same value is a no-op the store ends, so this converges after
+# one lap. And it races rule 2 harmlessly — the docket reads the subject when it RENDERS, not
+# when the motion opens, so a `says` that lands a moment later is still there when somebody looks.
+- name: proposal-says
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value: !not.has-path state
+  action:
+    patch:
+      says: !get-path { system: drift, kind: head, id: "head-moved@git:head:verse", path: result.report }
+---
+# 2b, 2c ARE GONE, and their absence is the point.
+#
+# They read the merge task's ANSWER — `decided` plus `merged: true|false` — and turned it into
+# a state, because a patch derefs and does not branch. With the merge as a call list there is
+# no answer to read: the task either did it or did not, so `onDone` writes `merged` and
+# `onFailed` writes `open`, and the intermediate `decided` state nobody could act on stops
+# existing. Two rules and one state, deleted by a driver change.
+#
+# (Their prose sits above rule 3 rather than in a document of its own: a `---` section holding
+# only comments is an EMPTY DOCUMENT, and the parser refuses one — which is why this file could
+# not be installed whole while these two paragraphs stood apart.)
+#
+# 3. Main moved, so the proposals cut from where it used to be can no longer land — and each
+# one's branch is retired.
+#
+# TWO RULES COLLAPSED INTO THIS ONE. There used to be a `sweep-armed` rule whose whole job was to
+# re-arm a `merge:sweep` entity every time the sha moved, and a `sweep` task that fetched the
+# remote, ran `merge-base --is-ancestor` per branch and decided. Neither is needed: the charter
+# already knows, because a proposal records the `base` it was cut from and main moving IS the
+# staleness test. `base != <main's tip>` is the whole predicate — no ancestry walk, no remote
+# asked anything, no model.
+#
+# What made it sayable is a condition that can read another entity. `!get-path` reads main's tip
+# from the same snapshot this condition is evaluated against, `!let` binds it, and `!not` compares
+# the subject's own field against it. The read joins what this trigger READS, so main moving
+# re-evaluates the rule — which is the level-triggering the old rule 3 was hand-rolling with a
+# derive.
+#
+# One firing per stale proposal, each with its own branch, so the retirement is one call and not
+# a task that has to discover anything. `driver: calls` is implied by `calls:` itself.
+#
+# Ungated, deliberately, and it is the one call here worth arguing with. Deleting a
+# `verse/auto/*` branch destroys nothing that cannot be remade: the work was proposed by a review
+# that is idempotent by construction, and a branch that cannot fast-forward is a proposal about a
+# main that no longer exists. Against that, a gate on every stale branch fills the docket with
+# questions whose only honest answer is yes, and a docket nobody can keep up with is one nobody
+# reads — which is the failure the whole gate mechanism is for.
+#
+# What it still cannot see is a question standing on the proposal it is retiring; see
+# merge-gate-residual.md.
+- name: proposal-outrun
+  stratum: merge
+  condition:
+    subject:
+      system: merge
+      kind: proposal
+      value: !and
+      - !not.has-path state
+      - !let
+        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        in: {base: !not .[tip]}
+  action:
+    patch:
+      state: stale
+    spawn:
+      runner: runners:pool:code
+      environment: verse-merge
+      grant: no-delegate
+      vector: auto
+      calls:
+      - tool: push
+        input: {destination: retire, ref: $branch}
+      # No `answer:`, and that is the driver rather than an omission: a call list has no model
+      # to repair a contract with, so a spawn carrying one is refused. What used to be read out
+      # of the answer — which branches went — is the LIST ITSELF, and the ref is in the record
+      # before the task starts.
+    #
+    # The patch above already wrote `stale`, so a failed retirement lands on `stale` with an
+    # `err` beside it: the proposal IS stale whether or not its branch could be removed, and the
+    # branch outliving it is a ref nobody reads rather than a decision anybody is waiting on.
+    onFailed:
+      patch:
+        err: $err
