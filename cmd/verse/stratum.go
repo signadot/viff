@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/scott-cotton/cli"
@@ -213,8 +214,14 @@ func charterDefs(data []byte, srcFmt codec.Format) ([]*ir.Node, error) {
 
 // postDefs installs each definition at one route, stopping at the first refusal.
 func postDefs(cc *cli.Context, route string, defs []*ir.Node) error {
+	return postDefsTo(cc, route, nil, defs)
+}
+
+// postDefsTo is postDefs with query parameters — `?at=` for a charter package, which the
+// install routes read to pick the engine a definition lands in.
+func postDefsTo(cc *cli.Context, route string, q url.Values, defs []*ir.Node) error {
 	for _, def := range defs {
-		resp, err := httpPostNode(route, def)
+		resp, err := httpPostNodeTo(route, q, def)
 		if err != nil {
 			return err
 		}

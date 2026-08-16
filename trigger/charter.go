@@ -32,6 +32,12 @@ const (
 	CharterKind   = "rule"
 )
 
+// IsCharterRule reports whether an address is a durable rule's — the namespace's own question,
+// asked by anything that lists the charter.
+func IsCharterRule(r entity.Ref) bool {
+	return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
+}
+
 // CharterRef names the entity holding one rule.
 func CharterRef(name string) entity.Ref {
 	return entity.VerseRef(CharterSystem, CharterKind, name)
@@ -62,6 +68,19 @@ const specField = "spec"
 // in a scope returns both, and only the record can say which is which. See Engine.SetScope.
 const scopeField = "scope"
 
+// atField is the ADDRESS a charter was installed at — the subtree its rules may write in,
+// absent for the baseline charter, which may write anywhere.
+//
+// It is the same idea as `scope` one axis over. A scope says whose COPY of the verse a rule
+// acts in; an address says which part of the verse it acts on. Both are stamped for the same
+// reason: the records live in one listing, and only the record can say which charter a rule
+// belongs to.
+const atField = "at"
+
+// AtField is atField for a reader outside the package — the server groups the charter by it to
+// bring every package back at a restart.
+const AtField = atField
+
 // ownRecord reports whether a charter record belongs to THIS engine's federation: the scope
 // stamped on it is the scope the engine acts in.
 //
@@ -70,7 +89,8 @@ const scopeField = "scope"
 // charter into one dev's federation — which is a decision about what a scope means, not a
 // restore detail, and is not this function's to make (docs/reference/connect.md).
 func (e *Engine) ownRecord(ent entity.Entity) bool {
-	return entity.Str(ent.Payload, scopeField) == e.scope
+	return entity.Str(ent.Payload, scopeField) == e.scope &&
+		entity.Str(ent.Payload, atField) == e.confine.stamp()
 }
 
 // record builds a declaration's durable payload: the spec, plus the scope when this engine
@@ -79,6 +99,9 @@ func (e *Engine) record(doc *ir.Node) entity.Payload {
 	p := entity.Obj{specField: entity.Raw(doc)}
 	if e.scope != "" {
 		p[scopeField] = e.scope
+	}
+	if at := e.confine.stamp(); at != "" {
+		p[atField] = at
 	}
 	return p.Payload()
 }

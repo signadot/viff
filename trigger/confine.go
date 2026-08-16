@@ -135,3 +135,48 @@ func (e *Engine) mayWrite(ref entity.Ref) error {
 	return fmt.Errorf("%s is outside %s: this charter may only write inside the address it was "+
 		"installed at", ref, e.confine)
 }
+
+// stamp is the confinement as a charter record writes it down — the address a package was
+// installed at, empty for a charter that may write anywhere.
+//
+// It is the kinded-path spelling (`demo.pr`) rather than the ref one, because it names a
+// SUBTREE rather than an entity, and the two grammars already split that way: a colon address
+// names a thing, a dotted path names a place.
+func (s Subtree) Stamp() string { return s.stamp() }
+
+func (s Subtree) stamp() string {
+	if !s.confined() {
+		return ""
+	}
+	return strings.Join(s.Path(), ".")
+}
+
+// ParseAt reads a charter's address — the subtree a package is installed at — from the kinded
+// path an operator types or a record stamps.
+//
+// One or two segments below a root: `demo`, `demo.pr`, `verse.task` — except that last one is
+// refused, since verse's own half is not somebody's to install a charter into.
+func ParseAt(at string) (Subtree, error) {
+	if at == "" {
+		return Subtree{}, nil
+	}
+	segs := strings.Split(at, ".")
+	if segs[0] == entity.VerseRoot {
+		return Subtree{}, fmt.Errorf("a charter may not be installed at %s: %s is verse's own "+
+			"half of the tree, and a charter installed there could write the records verse "+
+			"keeps about its own running", at, entity.VerseRoot)
+	}
+	if len(segs) > 2 {
+		return Subtree{}, fmt.Errorf("a charter's address is a system and optionally a kind "+
+			"(`demo`, `demo.pr`); %q names %d segments, which is an entity rather than a place "+
+			"to install a charter", at, len(segs))
+	}
+	var out Subtree
+	for i, sg := range segs {
+		if sg == "" {
+			return Subtree{}, fmt.Errorf("a charter's address has an empty segment: %q", at)
+		}
+		out[i+1] = sg // [0] is the root, which a charter's address never names
+	}
+	return out, nil
+}

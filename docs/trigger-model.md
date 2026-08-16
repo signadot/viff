@@ -106,6 +106,44 @@ Latch, or run at every commit; a spawning action that cannot latch is refused at
 A trigger is fully declarative, so a charter can be installed over the wire, persisted, or
 reflected as an entity, and the engine interprets it directly — there is no compiled form.
 
+### A charter can be installed AT an address
+
+A charter installed with `--at` is a **package**: it runs in an engine of its own, and it may
+write only inside the address it was installed at.
+
+```sh
+verse trigger add --at notes notes-charter.tony    # its rules write under notes:*
+verse trigger add charter.tony                     # baseline: may write anywhere
+```
+
+That is what lets two groups keep rules in one verse without arranging not to collide. Isolation
+by convention holds until somebody edits a rule; a package's holds because the confinement is a
+property of the ENGINE rather than of the rules currently installed in it — a rule whose subject
+or `derive` falls outside does not install, and a write that resolves outside at fire time is
+refused (which is the half that matters, since a derive's address can be templated).
+
+**Reads are not confined.** A package's rules see the whole verse — "react to what happened over
+there, record what it means over here" is the shape most real rules have, and a read moves
+nothing. What isolation needs is that nobody else's state changes.
+
+**Its levels are its own.** A package's strata are confined the same way, and that is what makes
+per-package levels coherent: with no cross-package write there is no cross-package derive, so
+there is no cross-package ordering to define. Two packages may both declare a level 10 and mean
+nothing to each other.
+
+**Two things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
+a task acts in the world under its `grant`, and store confinement is not world confinement (see
+[provider selection](provider-selection.md)). And verse's own records — a task's mirror, a
+motion, a posed question — which are written by the engine into
+[verse's half of the tree](reference/entities.md#two-halves-one-tree), where no charter may be
+installed and no charter may write.
+
+A package is the same shape as a `verse connect` scope one axis over: a scope says whose COPY of
+the verse a charter acts in, an address says which PART of the verse it acts on. Both stamp
+their records so a restore takes only its own — and where a scope waits for its dev to
+reconnect (its layer cannot be enumerated), a package comes back at every start, because its
+address is a stamp anyone can list.
+
 ### The charter is durable
 
 Installing a trigger writes it into the verse as `trigger:rule:<name>`; removing one deletes

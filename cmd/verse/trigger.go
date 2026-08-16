@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -74,6 +75,10 @@ type triggerAddConfig struct {
 	// the alias: this was `-f` here and `--file` on vector, so the same idea had more than
 	// one spelling and knowing one told you nothing about the next.
 	File string `cli:"name=file aliases=f desc='read the charter from FILE (- = stdin); also accepts a positional [file]'"`
+	// A charter installed at an address is a PACKAGE: it runs in an engine of its own and may
+	// write only inside that address. Empty installs into the baseline charter, which may
+	// write anywhere — see docs/trigger-model.md.
+	At string `cli:"name=at desc='install as a charter package at this address (demo, demo.pr) — its rules may write only inside it'"`
 }
 
 func triggerAddCmd() *cli.Command {
@@ -134,10 +139,16 @@ func (cfg *triggerAddConfig) run(cc *cli.Context, args []string) error {
 				"a stratum has a `level` and a `match`", defUnknown)
 		}
 	}
-	if err := postDefs(cc, "/strata", strata); err != nil {
+	q := url.Values{}
+	if cfg.At != "" {
+		q.Set("at", cfg.At)
+	}
+	// The strata first, for the reason `up` restores them first: a rule naming a stratum that
+	// is not installed yet is HELD rather than refused, and a package's levels are its own.
+	if err := postDefsTo(cc, "/strata", q, strata); err != nil {
 		return fmt.Errorf("trigger add: installing strata: %w", err)
 	}
-	if err := postDefs(cc, "/triggers", rules); err != nil {
+	if err := postDefsTo(cc, "/triggers", q, rules); err != nil {
 		return fmt.Errorf("trigger add: %w", err)
 	}
 	switch {

@@ -79,6 +79,9 @@ verse
           approve: y, yes · deny: n, no · --say: -s
   trigger (triggers)                         the installed charter
           add [--file <f>|-] [file] · show <name> · remove <name>  (add rejects a duplicate name)
+          add --at <address>                 install as a PACKAGE: its own engine, and its
+                                             rules may write only inside <address>
+                                             (`notes`, `demo.pr`) — see ../trigger-model.md
   task (tasks, ps) [--runner <ref>]          every task, whatever runs it
           run <prompt…> [--attach] [--wait] [--driver scripted|calls|llm]  (honors the runner; mirrored)
           run [--runner <ref>]               …on an installed runner, not the verse default

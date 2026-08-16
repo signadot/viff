@@ -848,6 +848,12 @@ func (s *Server) Start(ctx context.Context) {
 	if err := s.Eng.LoadCharter(); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
 	}
+	// The charter PACKAGES, each into an engine of its own: a package is a stamp on records
+	// anyone can list, so unlike a scope a restart can bring every one of them back rather than
+	// waiting for somebody to reconnect. It follows the baseline load because the two split the
+	// same listing between them — baseline takes the unstamped records, a package its own.
+	s.restorePackages()
+
 	// And the docket. A motion is durable and the goroutine awaiting it is not, so an open
 	// motion left by the previous verse has nobody reading its ballots: this gives each one
 	// its awaiter back, and settles the ones no charter can answer any more.
@@ -3083,6 +3089,21 @@ func (s *Server) addTrigger(w http.ResponseWriter, r *http.Request) {
 		}
 		eng = s.scopeEngine(scope)
 	}
+	// ?at=<kpath> installs it into the CHARTER PACKAGE at that address: its own engine, which
+	// may write only inside the address (trigger/confine.go). No `at` → the baseline charter,
+	// which may write anywhere.
+	if at := r.URL.Query().Get("at"); at != "" {
+		if s.ctx == nil {
+			http.Error(w, "engine not started", http.StatusServiceUnavailable)
+			return
+		}
+		got, err := s.packageEngine(at)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		eng = got
+	}
 	if err := eng.AddTrigger(d); err != nil {
 		// A rule the store would not record is not a bad request: the trigger is fine and
 		// the client cannot fix it by sending a better one. Saying 400 there sends someone
@@ -3162,6 +3183,16 @@ func (s *Server) addStratum(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		eng = s.scopeEngine(scope)
+	}
+	// ?at=<kpath>: a package's levels are its own, and are confined the same way its rules are
+	// (a stratum reaching outside the address is refused).
+	if at := r.URL.Query().Get("at"); at != "" {
+		got, err := s.packageEngine(at)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		eng = got
 	}
 	if err := eng.AddStratum(st); err != nil {
 		code := http.StatusBadRequest
