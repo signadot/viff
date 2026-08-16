@@ -51,7 +51,7 @@ const motionOrphaned = "orphaned"
 func (e *Engine) ResumeMotions() int {
 	resumed := 0
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
-		return r.System() == motionSystem && r.Kind() == motionChannelKind
+		return r.Reserved() && r.System() == motionSystem && r.Kind() == motionChannelKind
 	}) {
 		p := ent.Payload
 		if entity.Str(p, "outcome") != "" {
@@ -165,7 +165,7 @@ func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload) {
 // its subject and never see that edge again. So a motion this keeps is not a promise that the
 // rule will re-fire — only that nothing about the subject says it cannot.
 func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
-	now, err := e.store.AsOf(e.store.Rev(), t.reads()...)
+	now, err := e.store.AsOf(e.store.Rev(), paths(t.reads())...)
 	if err != nil {
 		return true
 	}

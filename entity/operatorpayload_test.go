@@ -36,13 +36,13 @@ func TestAnOperatorTagInAPayloadDoesNotPoisonTheStore(t *testing.T) {
 		"says":   ir.FromString("what the comment claims, against what the code does").WithTag("!irtype"),
 	})
 
-	set(t, s, RefAt("task", "instance", "run-1"), Obj{
+	set(t, s, VerseRef("task", "instance", "run-1"), Obj{
 		"status": "done",
 		"data":   AsData(answer), // the fix: what a projection stores is data
 	}.Payload())
 
 	// The entity itself round-trips.
-	e, ok, err := s.Get(RefAt("task", "instance", "run-1"))
+	e, ok, err := s.Get(VerseRef("task", "instance", "run-1"))
 	if err != nil || !ok {
 		t.Fatalf("get the entity that was written: ok=%v err=%v", ok, err)
 	}

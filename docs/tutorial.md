@@ -209,7 +209,7 @@ store as `task:instance:<id>`, so observing the fleet is observing entities:
 
 ```sh
 verse watch task                      # the whole fleet's lifecycle
-verse state get task:instance:<id>    # its result, still there after it finished
+verse state get verse:task:instance:<id>    # its result, still there after it finished
 ```
 
 ```tony
@@ -258,8 +258,8 @@ name it, and that work runs there while every spawn that names none goes to the 
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
 verse runner add pool:demo http://localhost:9800      # `reach: a runner` — the install probes it
-verse task run --runner runners:pool:demo "fetch the data; retrain; report"
-verse ps --runner runners:pool:demo
+verse task run --runner verse:runners:pool:demo "fetch the data; retrain; report"
+verse ps --runner verse:runners:pool:demo
 ```
 
 That is its own subject: [runners](runners.md) for installing one, naming it on a spawn, and

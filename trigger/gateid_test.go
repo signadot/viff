@@ -22,7 +22,7 @@ func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
 	if gateID("ship", "ok", a) != gateID("ship", "ok", a) {
 		t.Fatal("the same firing produced two ids")
 	}
-	for _, pair := range [][2]string{
+	for _, pair := range []Subtree{
 		{gateID("ship", "ok", a), gateID("ship", "ok", b)},    // subject
 		{gateID("ship", "ok", a), gateID("hold", "ok", a)},    // trigger
 		{gateID("ship", "ok", a), gateID("ship", "sec", a)},   // gate

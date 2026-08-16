@@ -35,6 +35,7 @@ define:
   at: .[array(string)]
   kind: .[string]
   op: .[string]
+  root: .[string]
   slot: .[array(string)]
   system: .[string]
   value: .[tony-base:ir]

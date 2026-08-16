@@ -29,7 +29,7 @@ func TestAnAnswerEchoingItsContractLandsAsData(t *testing.T) {
 	// Stored, and then read back — the read is the assertion, since an operator that reached
 	// the log takes every later read with it, not only this entity's.
 	s := entitytest.Store(t)
-	ref := entity.RefAt(System, InstanceKind, "run-1")
+	ref := entity.VerseRef(System, InstanceKind, "run-1")
 	entitytest.Set(t, s, ref, entity.Obj{"status": "done", "data": d}.Payload())
 
 	if _, ok, err := s.Get(ref); err != nil || !ok {

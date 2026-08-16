@@ -689,12 +689,19 @@ func nestPattern(root patTree, at Path, pattern Payload) {
 	t[segs[len(segs)-1]] = pattern
 }
 
-// segments is the path as document field names: system, kind, id, then each field, stopping
-// at the first empty one. A ref with no ID addresses a whole kind subtree (a motion's vote
-// log), which is why the tail may be short rather than invalid.
+// segments is the path as document field names: the address's own segments — its reserved root
+// included, since that is a level of the document like any other — then each field, stopping at
+// the first empty one. A ref with no ID addresses a whole kind subtree (a motion's vote log),
+// which is why the tail may be short rather than invalid.
+//
+// Asking the REF for its segments rather than naming three is what keeps a precondition about
+// verse's own half pointed at it: built from (system, kind, id) alone, an absence check for
+// `verse:resolvers:instance:x` asked about `resolvers.instance.x`, where nothing ever stands —
+// so create-only writes always fired, and a resolver's read position reset every time a
+// question was posed.
 func (p Path) segments() []string {
-	out := make([]string, 0, 3+len(p.Field))
-	for _, seg := range append([]string{p.System(), p.Kind(), p.ID()}, p.Field...) {
+	out := make([]string, 0, Depth+1+len(p.Field))
+	for _, seg := range append(p.Ref.Segs(), p.Field...) {
 		if seg == "" {
 			return out
 		}
@@ -1081,7 +1088,11 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string) map[Ref]Payload
 	}
 	// What the watch fixed, plus what the document still carries below it, is the address —
 	// so the remaining depth is a subtraction rather than a case per watch shape.
-	walkLeaves(node, Depth-len(prefix), func(segs []string, v *ir.Node) {
+	full := Depth
+	if len(prefix) > 0 && prefix[0] == VerseRoot {
+		full++
+	}
+	walkLeaves(node, full-len(prefix), func(segs []string, v *ir.Node) {
 		// A missing leaf is nothing; a null one is an entity holding null. The document here is
 		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
 		// `!delete` by removing the key — so absence never reaches this as a value.
@@ -1310,7 +1321,7 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 // carries every commit it needs. Here there is nothing to make up the difference: a
 // snapshot that quietly read current state instead would be indistinguishable from one that
 // worked, at exactly the moment being at the right commit is the whole requirement.
-func (s *LogdStore) AsOf(rev int64, within ...[2]string) (Snapshot, error) {
+func (s *LogdStore) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	if len(within) == 0 {
@@ -1331,9 +1342,12 @@ func (s *LogdStore) AsOf(rev int64, within ...[2]string) (Snapshot, error) {
 	// note in docs/working/firing-residual.md.
 	verse := map[string]*ir.Node{}
 	for _, st := range within {
-		path := seg(s.root) + "." + seg(st[0])
-		if st[1] != "" {
-			path += "." + seg(st[1])
+		if len(st) == 0 {
+			continue
+		}
+		path := seg(s.root)
+		for _, sg := range st {
+			path += "." + seg(sg)
 		}
 		node, err := s.matchAt(ctx, path, rev)
 		if err != nil {
@@ -1369,21 +1383,22 @@ func nodeOrEmpty(n *ir.Node) *ir.Node {
 	return n
 }
 
-// graftAt places a subtree read at (system, kind) — or at (system, "") — into the verse map
-// being assembled, merging with a sibling kind already grafted under the same system.
-func graftAt(verse map[string]*ir.Node, st [2]string, node *ir.Node) {
-	if st[1] == "" {
-		verse[st[0]] = node
+// graftAt places a subtree read at a PREFIX into the verse map being assembled, merging with a
+// sibling already grafted beside it — a second kind under one system, or the world's half
+// beside verse's own.
+func graftAt(verse map[string]*ir.Node, prefix []string, node *ir.Node) {
+	if len(prefix) == 1 {
+		verse[prefix[0]] = node
 		return
 	}
-	kinds := map[string]*ir.Node{}
-	if cur, ok := verse[st[0]]; ok && cur != nil && cur.Type == ir.ObjectType {
+	under := map[string]*ir.Node{}
+	if cur, ok := verse[prefix[0]]; ok && cur != nil && cur.Type == ir.ObjectType {
 		for i, f := range cur.Fields {
-			kinds[f.String] = cur.Values[i]
+			under[f.String] = cur.Values[i]
 		}
 	}
-	kinds[st[1]] = node
-	verse[st[0]] = ir.FromMap(kinds)
+	graftAt(under, prefix[1:], node)
+	verse[prefix[0]] = ir.FromMap(under)
 }
 
 // docAt reads the whole watched document as it stood at commit, root key and all — the base
@@ -1497,8 +1512,16 @@ func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
 // payloadIn reads one entity's whole payload out of a root-rooted document, or nil if it does
 // not stand there — which is a MISSING KEY, not a null value: the document is materialized, so
 // an entity holding null is present and answers with null.
+//
+// It walks the ref's OWN segments. Naming three of them descended one level too few in verse's
+// own half, so an entity there was never found and its change went out as the delta it was
+// written as rather than as the level it stands at — which reads, to anything asking a change
+// what the entity now says, as an entity that suddenly holds only the field somebody touched.
 func payloadIn(doc *ir.Node, root string, ref Ref) Payload {
-	n := childByKey(childByKey(childByKey(childByKey(doc, root), ref.System()), ref.Kind()), ref.ID())
+	n := childByKey(doc, root)
+	for _, seg := range ref.Segs() {
+		n = childByKey(n, seg)
+	}
 	if n == nil {
 		return nil
 	}
@@ -1655,11 +1678,25 @@ func childByKey(node *ir.Node, key string) *ir.Node {
 // structure it finds, so "the thing at this depth" and "an address" are two claims, and only
 // RefOf makes the second one.
 func walkEntityLeaves(node *ir.Node, fn func(ref Ref, n *ir.Node)) {
-	walkLeaves(node, Depth, func(segs []string, v *ir.Node) {
-		if ref, ok := RefOf(segs); ok {
-			fn(ref, v)
+	// One level at a time from the top, because the two halves of the verse are different
+	// depths: what the world is about is three levels down, what verse writes about its own
+	// running is four, under the one reserved key.
+	node = ir.Uncomment(node)
+	if node == nil || node.Type != ir.ObjectType {
+		return
+	}
+	for i, f := range node.Fields {
+		top := fieldName(f)
+		depth := Depth - 1 // the top level is this segment; the rest are below it
+		if top == VerseRoot {
+			depth = Depth
 		}
-	})
+		walkLeaves(node.Values[i], depth, func(segs []string, v *ir.Node) {
+			if ref, ok := RefOf(append([]string{top}, segs...)); ok {
+				fn(ref, v)
+			}
+		})
+	}
 }
 
 // walkEntityDoc reads the entities out of a MATERIALIZED verse subtree — what Match returns,

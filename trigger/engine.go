@@ -273,7 +273,7 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 		return fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
 	}
 	for _, st := range subtrees {
-		if st[0] == "" {
+		if st[1] == "" { // the system: a root alone is the whole of a half, which is not watchable
 			return fmt.Errorf("subtree trigger %q needs a system in its `on`, its `when` or its "+
 				"`subject` (kind optional); a scoped engine opens no root watch, so there is "+
 				"nothing to watch without one", t.Name)
@@ -281,11 +281,10 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 	}
 	ctx, cancel := context.WithCancel(e.bgctx)
 	for _, st := range subtrees {
-		system, kind := st[0], st[1]
-		ch, unsub, err := e.store.WatchSubtree(system, kind)
+		ch, unsub, err := e.store.WatchSubtree(st.Path()...)
 		if err != nil {
 			cancel() // stop this trigger's already-opened watchers; none of it is installed
-			return fmt.Errorf("scoped trigger %q: watch %s:%s: %w", t.Name, system, kind, err)
+			return fmt.Errorf("scoped trigger %q: watch %s: %w", t.Name, strings.Join(st.Path(), ":"), err)
 		}
 		go func() {
 			defer unsub()
@@ -670,7 +669,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 		wg.Add(1)
 		go func(g Gate, d task.GateQuestion, gname string) {
 			defer wg.Done()
-			res, err := e.resolver.Resolve(ctx, d, task.ToolUse{Name: "trigger:" + t.Name})
+			res, err := e.resolver.Resolve(ctx, d, task.ToolUse{Name: "verse:trigger:" + t.Name})
 			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
 			if err == nil && res.Proceed {
 				return
@@ -741,7 +740,7 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 	//
 	// Deterministic, like the gate id beside it, so a re-firing re-monitors the SAME channel
 	// and re-uses the ballots already cast there instead of asking the room again.
-	channelRef := entity.RefAt(motionSystem, motionChannelKind,
+	channelRef := entity.VerseRef(motionSystem, motionChannelKind,
 		motionChannelID(gateID(t.Name, gname, subjects)))
 
 	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
@@ -1071,7 +1070,7 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		return fragmentFor(frags, options[0]), true
 	}
 
-	channelRef := entity.RefAt(motionSystem, motionChannelKind,
+	channelRef := entity.VerseRef(motionSystem, motionChannelKind,
 		motionChannelID(providerSpecSeed(subject, p)))
 
 	// The chain rides the SPEC (launchSpawn stamps it before the selection), so the motion
@@ -1713,7 +1712,7 @@ func (e *Engine) ResumeFlow(m Match) int {
 // none of the "never filter in place" hazard the per-subject slices used to carry (the
 // control ops copied a slice header under the lock and iterated it unlocked).
 func (e *Engine) reap(ev entity.Event) {
-	if ev.Ref.System() != mirror.System {
+	if !mirror.IsTaskish(ev.Ref) {
 		return
 	}
 	status := entity.Str(ev.To, "status")
@@ -1768,7 +1767,7 @@ func (e *Engine) ReconcileOrphans() int {
 	// mirror.RunKind). A run whose runtime died IS orphaned, and its record is the only place
 	// that fact can still be told; leaving it saying `running` forever would make the history
 	// less honest than the live view beside it. Claims carry no status and fall through.
-	for _, ent := range e.store.List(func(r entity.Ref) bool { return r.System() == mirror.System }) {
+	for _, ent := range e.store.List(mirror.IsTaskish) {
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || task.TerminalStatus(status) {
 			continue

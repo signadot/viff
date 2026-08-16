@@ -95,7 +95,7 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 	// work, one node per task, and a run record is history about a node already in it (see
 	// mirror.RunKind). Including them would double every node that has run more than once.
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
-		return r.System() == mirror.System && r.Kind() == mirror.InstanceKind
+		return mirror.IsTask(r)
 	}) {
 		subj := entity.Str(ent.Payload, "flow")
 		if subj == "" {

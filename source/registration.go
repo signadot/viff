@@ -23,7 +23,7 @@ const System = "sources"
 
 // Ref addresses an installed source.
 func Ref(system, name string) entity.Ref {
-	return entity.RefAt(System, system, name)
+	return entity.VerseRef(System, system, name)
 }
 
 // Entity is one installed source: an address, somewhere to reach it, and what it claims.
@@ -219,7 +219,7 @@ func ownsAreDocuments(node *ir.Node) error {
 // the `sources:` prefix — an operator reading `verse entity` and one typing `verse source
 // show` should not have to know two spellings of one thing.
 func Find(r entity.Reader, ref string) (Entity, bool) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, System+":"), ":", 2)
+	parts := strings.SplitN(trimAddress(ref), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return Entity{}, false
 	}
@@ -237,7 +237,7 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 // List reads every installed source, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
 	var out []Entity
-	for _, ent := range r.List(func(ref entity.Ref) bool { return ref.System() == System }) {
+	for _, ent := range r.List(IsRegistration) {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue
@@ -251,4 +251,19 @@ func List(r entity.Reader) []Entity {
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+// IsRegistration reports whether an address is an installed source's — the namespace's own
+// question, since the reserved root rather than the system is what makes it verse's.
+func IsRegistration(ref entity.Ref) bool { return ref.Reserved() && ref.System() == System }
+
+// trimAddress takes the two segments that name one of these, from either spelling an operator
+// has in front of them: the whole address as it is listed and stored
+// (`verse:sources:<kind>:<name>`), or the bare pair typed on a command line.
+//
+// The middle form — the address without its reserved root — is deliberately NOT accepted. It
+// was the whole spelling before verse's own half of the tree had a name, and keeping it would
+// leave two ways to say one address, which is the mush the reserved root exists to end.
+func trimAddress(ref string) string {
+	return strings.TrimPrefix(ref, entity.VerseRoot+":"+System+":")
 }

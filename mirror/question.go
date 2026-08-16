@@ -26,7 +26,7 @@ const (
 
 // QuestionRef addresses one question.
 func QuestionRef(id string) entity.Ref {
-	return entity.RefAt(QuestionSystem, QuestionKind, id)
+	return entity.VerseRef(QuestionSystem, QuestionKind, id)
 }
 
 // Question status, monotonic: a question is posed once and settles once.
@@ -214,7 +214,7 @@ func answerRecord(res task.Resolution) entity.Obj {
 // for the same fact — the party who could have answered no longer exists.
 func OrphanQuestions(store entity.Store, taskID string) {
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System() == QuestionSystem && ref.Kind() == QuestionKind
+		return IsQuestion(ref)
 	}) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] != taskID || p["status"] != QuestionPending {
@@ -379,4 +379,10 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 
 func writeAt(store entity.Store, ref entity.Ref, o entity.Obj) {
 	_, _, _ = store.Write(entity.Write{At: ref.At(), Value: o.Payload()})
+}
+
+// IsQuestion reports whether an address is a posed question's — see IsTask on why a namespace
+// answers this for itself now.
+func IsQuestion(ref entity.Ref) bool {
+	return ref.Reserved() && ref.System() == QuestionSystem && ref.Kind() == QuestionKind
 }

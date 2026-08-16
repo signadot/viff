@@ -314,7 +314,7 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 	sub, cancel := context.WithCancel(ctx)
 	defer cancel()
 	events := make(chan entity.Commit, 64)
-	seen := map[[2]string]bool{} // one watch per distinct subtree (options often share the vote log)
+	seen := map[Subtree]bool{} // one watch per distinct subtree (options often share the vote log)
 	for _, o := range m.options {
 		if o.formula == nil {
 			continue
@@ -324,7 +324,7 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 				continue
 			}
 			seen[st] = true
-			ch, unsub, err := e.store.WatchSubtree(st[0], st[1])
+			ch, unsub, err := e.store.WatchSubtree(st.Path()...)
 			if err != nil {
 				continue
 			}

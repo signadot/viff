@@ -46,7 +46,7 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	// read cheaper: a read costs the log replay to that commit whatever path it names (see
 	// LogdStore.AsOf). The cost of evaluating per commit is the read itself.
 	reads := t.reads()
-	now, err := e.store.AsOf(c.Rev, reads...)
+	now, err := e.store.AsOf(c.Rev, paths(reads)...)
 	if err != nil {
 		e.tracef("%s: cannot read the verse at rev %d (%v); not firing", t.Name, c.Rev, err)
 		return
@@ -59,7 +59,7 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 		// this is the state as of the commit before C whether or not C-1 is itself a commit.
 		// Deriving the edge from the store instead of from engine memory is what makes a
 		// replayed commit (a catch-up, a restart) reach the same verdict as the live one.
-		before, err := e.store.AsOf(c.Rev-1, reads...)
+		before, err := e.store.AsOf(c.Rev-1, paths(reads)...)
 		if err != nil {
 			e.tracef("%s: cannot read the verse at rev %d (%v); not firing", t.Name, c.Rev-1, err)
 			return
@@ -120,10 +120,10 @@ func (e *Engine) firstSight(name string, rev int64) bool {
 // condition, and the set it acts on. It is both what a scoped engine watches and what the
 // commit skip is asked about — the same list, because a trigger's verdict can only change when
 // something it reads does.
-func (t Trigger) reads() [][2]string {
-	seen := map[[2]string]bool{}
-	var out [][2]string
-	add := func(sts [][2]string) {
+func (t Trigger) reads() []Subtree {
+	seen := map[Subtree]bool{}
+	var out []Subtree
+	add := func(sts []Subtree) {
 		for _, st := range sts {
 			if !seen[st] {
 				seen[st] = true
@@ -155,13 +155,12 @@ func (t Trigger) touches(c entity.Commit) bool {
 	reads := t.reads()
 	for _, ev := range c.Changes {
 		for _, st := range reads {
-			if st[0] != "" && st[0] != ev.Ref.System() {
-				continue
+			// Segment by segment against the address's own, so the two halves of the verse are
+			// told apart here as everywhere else: a rule about `demo:pr:*` is not woken by the
+			// task record of the run reviewing it.
+			if st.covers(ev.Ref) {
+				return true
 			}
-			if st[1] != "" && st[1] != ev.Ref.Kind() {
-				continue
-			}
-			return true
 		}
 	}
 	return false

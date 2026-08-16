@@ -1,6 +1,9 @@
 package trigger
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // advise returns the notes a charter earns without being wrong: shapes that install and run,
 // and that an author may not have meant.
@@ -89,13 +92,13 @@ func adviseSampling(t Trigger) string {
 	if t.Condition.On == nil {
 		return "" // no cause named: every commit re-evaluates, so nothing is sampled
 	}
-	covered := map[[2]string]bool{}
+	covered := map[Subtree]bool{}
 	for _, st := range t.Condition.On.Subtrees() {
 		covered[st] = true
 	}
-	var missed [][2]string
+	var missed []Subtree
 	for _, st := range append(t.Condition.When.Subtrees(), matchFormula(t.Condition.Subject).Subtrees()...) {
-		if !covered[st] && !covered[[2]string{st[0], ""}] {
+		if !covered[st] && !covered[Subtree{st[0], st[1], ""}] {
 			missed = append(missed, st)
 		}
 	}
@@ -110,16 +113,13 @@ func adviseSampling(t Trigger) string {
 }
 
 // subtreeList renders (system, kind) pairs for a diagnostic.
-func subtreeList(sts [][2]string) string {
+func subtreeList(sts []Subtree) string {
 	out := ""
 	for i, st := range sts {
 		if i > 0 {
 			out += ", "
 		}
-		out += st[0]
-		if st[1] != "" {
-			out += ":" + st[1]
-		}
+		out += strings.Join(st.Path(), ":")
 	}
 	return out
 }

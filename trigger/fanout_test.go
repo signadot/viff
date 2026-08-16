@@ -449,7 +449,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"), // acts on demo:pr, whatever the cause carries
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -461,7 +461,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed task whose payload names `other` — which the subject does not select.
-	entitytest.Set(t, store, entity.RefAt("task", "instance", "rev-1"),
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "rev-1"),
 		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })

@@ -18,7 +18,7 @@ func motions(t *testing.T, srv *Server) map[string]entity.Obj {
 	t.Helper()
 	out := map[string]entity.Obj{}
 	for _, e := range srv.Store.List(func(r entity.Ref) bool {
-		return r.System() == "motion" && r.Kind() == "channel"
+		return r.Reserved() && r.System() == "motion" && r.Kind() == "channel"
 	}) {
 		out[e.Ref.ID()] = entity.ToObj(e.Payload)
 	}
@@ -97,7 +97,7 @@ func TestARestartResumesAWhoMotion(t *testing.T) {
 	// claim, since a motion that closes and spawns nothing has resumed only on paper.
 	waitUntil(t, "the picked doer to be spawned", func() bool {
 		for _, e := range second.Store.List(func(r entity.Ref) bool {
-			return r.System() == mirror.System && r.Kind() == mirror.InstanceKind
+			return r.Reserved() && r.System() == mirror.System && r.Kind() == mirror.InstanceKind
 		}) {
 			if entity.Str(e.Payload, "doer") == "claude" {
 				return true

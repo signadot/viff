@@ -540,7 +540,7 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 // follow-on; this keeps the entity truthful.
 func (s *Server) reconcileTasks() {
 	var resumed []resumedRun
-	for _, ent := range s.Store.List(func(r entity.Ref) bool { return r.System() == mirror.System }) {
+	for _, ent := range s.Store.List(mirror.IsTaskish) {
 		if ent.Ref.Kind() == mirror.RunKind {
 			// A record of a run that HAPPENED, not a task that is running. Named explicitly
 			// for the reason the claim below is: it carries a `status` like an instance does,
@@ -678,7 +678,7 @@ type resumedRun struct{ subject, chain string }
 // worth fixing when scoped resume is, since both are the same gap.
 func (s *Server) reconcileClaims(resumed []resumedRun) {
 	for _, ent := range s.Store.List(func(r entity.Ref) bool {
-		return r.System() == mirror.System && r.Kind() == mirror.ClaimKind
+		return r.Reserved() && r.System() == mirror.System && r.Kind() == mirror.ClaimKind
 	}) {
 		if claimIsLive(ent, resumed) {
 			continue
@@ -1119,11 +1119,11 @@ func (s selector) matchRef(ref entity.Ref) bool { return entity.MatchesAt(ref, s
 // matchEntity is the whole question about a stored entity, and matchEvent the whole question
 // about a change.
 func (s selector) matchEntity(e entity.Entity) bool {
-	return s.matchRef(e.Ref) && s.pat.MatchEntity(e)
+	return s.matchRef(e.Ref) && s.pat.MatchesPayload(e)
 }
 
 func (s selector) matchEvent(ev entity.Event) bool {
-	return s.matchRef(ev.Ref) && s.pat.MatchEvent(ev)
+	return s.matchRef(ev.Ref) && s.pat.MatchesChange(ev)
 }
 
 // watch streams store changes as SSE, catching up from ?since=<rev> first, then
@@ -1301,11 +1301,38 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 // deleteEntity removes whatever stands at a ref — or, with ?field=a&field=b, at one place
 // inside it. Removing what is not there is not an error: the request says what should stand
 // there afterwards, and nothing already does.
+// reservedWrite refuses a client write into verse's own half of the tree.
+//
+// The entity routes are the GENERIC write, and before the boundary had a name anyone who could
+// reach them could write a rule, stamp a task record, or answer a question on verse's behalf —
+// with no route saying no, because there was nothing in an address to say no about. Now there
+// is: `verse:*` is what verse writes about its own running, and it is written by the engine,
+// not through here.
+//
+// It is not a lock on the DATA. A reader still reads it (that is the point of it being
+// entities), the engine still writes it, and a scope's own copy still layers over it. What is
+// refused is one path — the generic write — because every legitimate change to verse's own
+// state has a verb: `verse trigger add`, `verse resolver add`, `verse gate approve`. A ballot
+// is not among them, deliberately: `vote:*` is the world's half, since casting one is an act
+// somebody takes rather than a record verse keeps.
+func reservedWrite(ref entity.Ref) error {
+	if !ref.Reserved() {
+		return nil
+	}
+	return fmt.Errorf("%s is verse's own: the entity write is for what the world is about, and "+
+		"what verse writes about its own running is written by the verbs that own it "+
+		"(trigger add, resolver add, runner add, source add, gate approve)", ref)
+}
+
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	ref, err := entity.ParseRef(q.Get("ref"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := reservedWrite(ref); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(q["field"]...)}); err != nil {
@@ -1331,6 +1358,10 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	ref, err := entity.ParseRef(body.Ref)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := reservedWrite(ref); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 	when, err := conditions(body.When)
@@ -1479,9 +1510,7 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 // several.
 func pendingQuestions(store entity.Store) []entity.Entity {
 	var out []entity.Entity
-	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
-	}) {
+	for _, ent := range store.List(mirror.IsQuestion) {
 		if p := entity.ToObj(ent.Payload); p != nil && p["status"] == mirror.QuestionPending {
 			out = append(out, ent)
 		}
@@ -1598,7 +1627,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 // finding it; the fields are what the checks below compare, and a check that re-derives its
 // inputs from a string is one that can disagree with what is stored.
 func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool) {
-	ref := entity.RefAt(resolver.System, resolver.InstanceKind, r.PathValue("id"))
+	ref := entity.VerseRef(resolver.System, resolver.InstanceKind, r.PathValue("id"))
 	e, found, err := s.scopedStore(r).Get(ref)
 	if err != nil || !found {
 		return "", entity.Ref{}, false
@@ -1617,7 +1646,7 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 // stored beside it: a run's fine grain hangs off the spine, and which one you are reading is
 // a property of what you are watching rather than a flag that could disagree with it.
 func watchesARun(origin entity.Ref) bool {
-	return origin.System() == mirror.System && origin.Kind() == mirror.InstanceKind
+	return mirror.IsTask(origin)
 }
 
 // resolverEvents hands a resolver the stream of the run it watches — the task's OWN read
@@ -1751,10 +1780,10 @@ func spineCarries(ev entity.Event, subject entity.Ref) bool {
 	// polled for: a transfer writes the question, and the layer above is reading here. The
 	// design says the question "appears in the stream of the layer above" and that there is
 	// no second path anywhere, `⊤` included.
-	if ev.Ref.System() == mirror.QuestionSystem && ev.Ref.Kind() == mirror.QuestionKind {
+	if mirror.IsQuestion(ev.Ref) {
 		return entity.Str(ev.To, "subject") == subject.String()
 	}
-	if ev.Ref.System() != mirror.System || ev.Ref.Kind() != "instance" {
+	if !mirror.IsTask(ev.Ref) {
 		return false
 	}
 	return entity.Str(ev.To, "flow") == subject.String()
@@ -1967,7 +1996,7 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 	if p.Notes != "" {
 		rec["notes"] = p.Notes
 	}
-	ref := entity.RefAt(resolver.System, resolver.InstanceKind, r.PathValue("id"))
+	ref := entity.VerseRef(resolver.System, resolver.InstanceKind, r.PathValue("id"))
 	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2081,7 +2110,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 		// Bindings only. An instance shares the system deliberately — one `--system
 		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
-		return ref.System() == resolver.System && ref.Kind() != resolver.InstanceKind
+		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() != resolver.InstanceKind
 	}) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -2216,7 +2245,7 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
+		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
 	}) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
@@ -2554,7 +2583,7 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 	}
 	out := make([]task.Instance, 0)
 	for _, ent := range store.List(func(r entity.Ref) bool {
-		return r.System() == mirror.System && r.Kind() == mirror.InstanceKind
+		return mirror.IsTask(r)
 	}) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -2622,7 +2651,7 @@ func instanceFromRecord(id string, rec map[string]any) task.Instance {
 func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	ids := map[string]bool{}
 	for _, e := range store.List(func(ref entity.Ref) bool {
-		return ref.System() == mirror.System && ref.Kind() == "instance"
+		return mirror.IsTask(ref)
 	}) {
 		ids[e.Ref.ID()] = true
 	}

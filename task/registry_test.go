@@ -95,7 +95,7 @@ func TestChildModeFromAskAnswer(t *testing.T) {
 // docket with copies of it.
 func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	r := NewRegistry()
-	const id = "trigger:ship:ship~deadbeef"
+	const id = "verse:trigger:ship:ship~deadbeef"
 	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask, Gate: "ship", Subject: "demo:pr:1"}
 
 	var posts atomic.Int32
@@ -105,7 +105,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	res := make(chan Resolution, n)
 	for range n {
 		go func() {
-			got, err := r.Resolve(context.Background(), q, ToolUse{Name: "trigger:ship"})
+			got, err := r.Resolve(context.Background(), q, ToolUse{Name: "verse:trigger:ship"})
 			if err != nil {
 				t.Errorf("Resolve: %v", err)
 			}
@@ -150,7 +150,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 // would wait forever on something no longer answerable.
 func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 	r := NewRegistry()
-	const id = "trigger:ship:ship~cafe"
+	const id = "verse:trigger:ship:ship~cafe"
 	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask}
 
 	stay := make(chan Resolution, 1)

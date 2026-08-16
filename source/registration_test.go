@@ -158,7 +158,7 @@ func TestRegistrationFindAndList(t *testing.T) {
 		t.Fatalf("List order = %+v", got)
 	}
 
-	for _, spelling := range []string{"git:laptop", "sources:git:laptop"} {
+	for _, spelling := range []string{"git:laptop", "verse:sources:git:laptop"} {
 		e, ok := source.Find(store, spelling)
 		if !ok {
 			t.Fatalf("Find(%q) found nothing", spelling)

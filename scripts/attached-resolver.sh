@@ -3,8 +3,8 @@
 # attached-resolver.sh — a service that answers a run's gates, one act each, so you can watch
 # supervision happen instead of reading about it.
 #
-# A resolver is a BINDING (`resolvers:<kind>:<name>`) plus whatever is currently reading for
-# it (`resolvers:instance:<name>@<origin>`). It is not a callback verse invokes: the service
+# A resolver is a BINDING (`verse:resolvers:<kind>:<name>`) plus whatever is currently reading for
+# it (`verse:resolvers:instance:<name>@<origin>`). It is not a callback verse invokes: the service
 # dials IN, reads the run's own stream, and posts a verdict — which is why the two commands
 # that ACT as the resolver here use curl, and everything else is `verse`.
 #
@@ -110,18 +110,18 @@ setup() {
 	case "$1" in
 	named)
 		binding_named | v resolver add - >/dev/null
-		bound=resolvers:security:reviewer
+		bound=verse:resolvers:security:reviewer
 		;;
 	standing) binding_standing | v resolver add - >/dev/null ;;
 	layered)
 		binding_named | v resolver add - >/dev/null
 		binding_standing | v resolver add - >/dev/null
-		bound=resolvers:security:reviewer
+		bound=verse:resolvers:security:reviewer
 		;;
 	deadline)
 		binding_deadline | v resolver add - >/dev/null
 		binding_standing | v resolver add - >/dev/null
-		bound=resolvers:security:reviewer
+		bound=verse:resolvers:security:reviewer
 		;;
 	exclusive) binding_exclusive | v resolver add - >/dev/null ;;
 	esac
@@ -161,7 +161,7 @@ setup() {
 # about the subject — sometimes one already finished, whose question never came and never would.
 run_id() {
 	v state --paths --if "{flow: \"$SUBJECT\", pending: null}" task.instance |
-		sed -n 's|^task:instance:||p' | head -1
+		sed -n 's|^verse:task:instance:||p' | head -1
 }
 
 # Whatever this subject was left holding from an earlier act. One act at a time is the whole
@@ -198,7 +198,7 @@ question_id() {
 	done
 }
 
-field() { v state get "gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
+field() { v state get "verse:gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
 
 state() {
 	step "the bindings — who may answer, and for what"
@@ -214,7 +214,7 @@ state() {
 		return
 	fi
 	step "the question — an entity, and it knows who owns it"
-	v state get "gate:question:$q"
+	v state get "verse:gate:question:$q"
 	printf '\n  resolver:      the owner. absent means ⊤, the docket a person reads.\n'
 	printf '  escalatesAt:   its clock, if the owner has a deadline. absolute, so a restart cannot slide it.\n'
 	printf '  reownedFrom/Why: the handover, once it has changed hands.\n'
@@ -247,7 +247,7 @@ instance_of() {
 # invisibly — which is a claim worth seeing rather than being told.
 #
 #   {kind: pending,  id: …~d1, mode: ASK, tool: run_bash}
-#   {kind: decision, by: resolvers:security:reviewer, proceed: true}
+#   {kind: decision, by: verse:resolvers:security:reviewer, proceed: true}
 #   {kind: exec,     tool: run_bash, text: reviewing}
 #   {kind: status,   text: done}
 attach() {

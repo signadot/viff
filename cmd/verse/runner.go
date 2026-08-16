@@ -40,7 +40,7 @@ func runnerCmd() *cli.Command {
 // or without the `runners:` prefix — an operator reading `verse state` and one typing
 // `verse runner show` should not have to know two spellings of one thing.
 func runnerPath(ref string) (string, error) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, "runners:"), ":", 2)
+	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:runners:"), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("%w: want a ref like runners:pool:gpu (or pool:gpu), got %q",
 			cli.ErrUsage, ref)
@@ -185,7 +185,7 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) == 2 {
 		ref, rawURL := args[0], args[1]
-		parts := strings.SplitN(strings.TrimPrefix(ref, "runners:"), ":", 2)
+		parts := strings.SplitN(strings.TrimPrefix(ref, "verse:runners:"), ":", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return fmt.Errorf("%w: want `runner add <kind>:<name> <url>`, got %q",
 				cli.ErrUsage, ref)

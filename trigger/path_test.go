@@ -284,7 +284,7 @@ type countingStore struct {
 	n  int
 }
 
-func (c *countingStore) AsOf(rev int64, within ...[2]string) (entity.Snapshot, error) {
+func (c *countingStore) AsOf(rev int64, within ...[]string) (entity.Snapshot, error) {
 	c.mu.Lock()
 	c.n++
 	c.mu.Unlock()

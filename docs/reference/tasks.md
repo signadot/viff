@@ -201,7 +201,7 @@ to it.
 
 ```sh
 verse watch task
-verse state get task:instance:<id>
+verse state get verse:task:instance:<id>
 ```
 
 ```tony
@@ -231,7 +231,7 @@ re-fire idempotent and what `verse flow demo:pr:1` addresses.
 `task:instance:<id>` is therefore the LATEST run, and each run has a record of its own:
 
 ```sh
-verse state get 'task:run:<id>@<occurrence>'
+verse state get 'verse:task:run:<id>@<occurrence>'
 verse state --if '{flow: "demo:pr:1"}' task.run
 ```
 
@@ -251,7 +251,7 @@ events, and removing them is `verse state rm`, or a charter that marks the old o
 ## The question record
 
 A gate that stops for an answer is published as its own entity, `gate:question:<id>`, and the
-task points at it (`pending: gate:question:<id>`).
+task points at it (`pending: verse:gate:question:<id>`).
 
 ```tony
 payload:
@@ -367,7 +367,7 @@ Three backends, one handle. `verse task` and
 | broker | `verse up --broker --broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
 
 Those three are the verse-wide DEFAULT, set at startup. A spawn can also name its own place —
-`runner: runners:pool:gpu` on a charter, `--runner` on `verse task run` — so a drive can run
+`runner: verse:runners:pool:gpu` on a charter, `--runner` on `verse task run` — so a drive can run
 part of the work somewhere the rest of the deployment knows nothing about. See
 [runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.
 

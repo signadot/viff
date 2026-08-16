@@ -120,7 +120,7 @@ intact and nothing left to react to it.
 
 One entity per rule, because that is what the operations already are: an install writes one,
 a removal deletes one, and neither reads the others — so two installs cannot lose each
-other, and a rule is addressable (`verse state get trigger:rule:review`).
+other, and a rule is addressable (`verse state get verse:trigger:rule:review`).
 
 **A rule is stored as structure, under the `!raw` escape.** The escape is what makes that
 possible, and it is worth saying why it is needed. A write is a tony *patch* — the property
@@ -139,7 +139,7 @@ its own operators the moment anything else about it changed). Raw also *replaces
 merging, so re-installing a rule cannot leave a field of the version before it standing in the
 version after.
 
-The gain is that the record is the rule: `verse state get trigger:rule:review` shows a
+The gain is that the record is the rule: `verse state get verse:trigger:rule:review` shows a
 document to read field by field, a charter change is an observable fact about a shape rather
 than about a string, and nothing has to re-parse to ask a question about it.
 
@@ -402,6 +402,21 @@ tony can write the tag directly.
 name the subtree verse watches and the set it lists — they become a docd watch path
 (`Formula.Subtrees`) and the store's `List` prefilter — and a watch path cannot be a
 predicate. Write the whole segment as `*` for "any", and put the operator on `id`.
+
+`root` names which half of the verse the match is about, and an unwritten one is the world's:
+
+```tony
+# a rule about PRs — the ordinary case, and it cannot see verse's own records
+subject: { system: demo, kind: pr }
+# a rule about what verse writes: a posed question, a task's mirror, an installed rule
+subject: { root: verse, system: gate, kind: question, value: {status: pending} }
+```
+
+The default is the point rather than a convenience. `verse:` holds what verse writes about its
+own running ([entities](reference/entities.md#two-halves-one-tree)), and a rule that
+did not ask for it must not select it by omission — otherwise `{system: task}` on a charter
+about the world's tasks would quietly match the mirror of every run in the verse. Like `system`
+and `kind`, it takes no operator: it is the first segment of a watch path.
 
 The payload predicate takes operators too. It is `value`, one dimension: the same tony match,
 evaluated against the payload instead of the id.
@@ -718,7 +733,7 @@ and wrong for anything that branches.
 
 ```tony
 gating:
-  resolver: resolvers:security:security-review
+  resolver: verse:resolvers:security:security-review
   gates:    [{name: ship, mode: ask}]
 ```
 

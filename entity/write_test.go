@@ -291,9 +291,9 @@ func TestAbsentReadsAreNotFailures(t *testing.T) {
 	mustWrite(t, s, Write{At: RefAt("demo", "pr", "1").At(), Value: Obj{"a": "1"}.Payload()})
 
 	for _, ref := range []Ref{
-		RefAt("demo", "pr", "2"),        // the id has never been written
-		RefAt("demo", "issue", "1"),     // nor the kind
-		RefAt("motion", "channel", "x"), // nor the system
+		RefAt("demo", "pr", "2"),           // the id has never been written
+		RefAt("demo", "issue", "1"),        // nor the kind
+		VerseRef("motion", "channel", "x"), // nor the system
 	} {
 		e, ok, err := s.Get(ref)
 		if err != nil {
@@ -477,19 +477,19 @@ func TestParsePathIsStringInverted(t *testing.T) {
 		want  Path
 		spell string // what String gives back
 	}{
-		{"demo:pr:1", Ref{"demo", "pr", "1"}.At(), "demo:pr:1"},
-		{"demo.pr.1", Ref{"demo", "pr", "1"}.At(), "demo:pr:1"},
+		{"demo:pr:1", RefAt("demo", "pr", "1").At(), "demo:pr:1"},
+		{"demo.pr.1", RefAt("demo", "pr", "1").At(), "demo:pr:1"},
 		// A numeric id comes back QUOTED — `."1"` — which is the kpath printer being conservative
 		// rather than a second meaning: `.1` parses as the field named 1 either way.
-		{"demo.pr.1.labels.urgent", Ref{"demo", "pr", "1"}.At("labels", "urgent"), `demo.pr."1".labels.urgent`},
+		{"demo.pr.1.labels.urgent", RefAt("demo", "pr", "1").At("labels", "urgent"), `demo.pr."1".labels.urgent`},
 		// An id carrying colons, `@` and `+` needs no quoting in either spelling.
-		{"git:ref:x@git:ref:y", Ref{"git", "ref", "x@git:ref:y"}.At(), "git:ref:x@git:ref:y"},
-		{"git.ref.x@git:ref:y", Ref{"git", "ref", "x@git:ref:y"}.At(), "git:ref:x@git:ref:y"},
+		{"git:ref:x@git:ref:y", RefAt("git", "ref", "x@git:ref:y").At(), "git:ref:x@git:ref:y"},
+		{"git.ref.x@git:ref:y", RefAt("git", "ref", "x@git:ref:y").At(), "git:ref:x@git:ref:y"},
 		// A DOTTED id: the colon spelling gives it to the id, the dot spelling needs quotes —
 		// and that is the whole reason the two spellings are not one.
-		{"demo:pr:a.b", Ref{"demo", "pr", "a.b"}.At(), "demo:pr:a.b"},
-		{`demo.pr."a.b"`, Ref{"demo", "pr", "a.b"}.At(), "demo:pr:a.b"},
-		{`demo.pr."a.b".labels`, Ref{"demo", "pr", "a.b"}.At("labels"), `demo.pr."a.b".labels`},
+		{"demo:pr:a.b", RefAt("demo", "pr", "a.b").At(), "demo:pr:a.b"},
+		{`demo.pr."a.b"`, RefAt("demo", "pr", "a.b").At(), "demo:pr:a.b"},
+		{`demo.pr."a.b".labels`, RefAt("demo", "pr", "a.b").At("labels"), `demo.pr."a.b".labels`},
 	} {
 		got, err := ParsePath(tc.in)
 		if err != nil {

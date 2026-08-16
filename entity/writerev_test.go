@@ -20,7 +20,7 @@ func TestWriteReportsTheRevisionTheStreamCarries(t *testing.T) {
 	ch, unsub := s.Observe()
 	defer unsub()
 
-	ref := Ref{"demo", "pr", "1"}
+	ref := RefAt("demo", "pr", "1")
 	var last int64
 	for i, w := range []Write{
 		{At: ref.At(), Value: Obj{"stage": "open"}.Payload()},
@@ -50,7 +50,7 @@ func TestWriteReportsTheRevisionTheStreamCarries(t *testing.T) {
 // write the engine makes under a claim or a CAS is the conditional one.
 func TestConditionalWriteReportsItsRevision(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{"demo", "pr", "1"}
+	ref := RefAt("demo", "pr", "1")
 
 	committed, rev, err := s.Write(Write{
 		At: ref.At(), Value: Obj{"stage": "open"}.Payload(), When: []Require{Created()},
@@ -69,7 +69,7 @@ func TestConditionalWriteReportsItsRevision(t *testing.T) {
 // number as its own commit would attribute somebody else's write to itself.
 func TestRefusedWriteReportsNoRevision(t *testing.T) {
 	s := openStore(t)
-	claim := Ref{"run", "claim", "review@demo:pr:1"}
+	claim := RefAt("run", "claim", "review@demo:pr:1")
 
 	if committed, rev, err := s.Write(Write{
 		At: claim.At(), Value: Obj{"by": "first"}.Payload(), When: []Require{Created()},
@@ -95,7 +95,7 @@ func TestRefusedWriteReportsNoRevision(t *testing.T) {
 // trigger.evaluate), asked of a revision the writer supplied rather than one it observed.
 func TestReportedRevisionIsReadableAsOf(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{"demo", "pr", "1"}
+	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"stage": "open"}.Payload()})
 
 	committed, rev, err := s.Write(Write{At: ref.At("stage"), Value: Val("reviewed")})

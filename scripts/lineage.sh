@@ -376,7 +376,7 @@ ok "#43 is traced but absent: it went onto next, and this release asked for its 
 step "the flow, which is keyed by exactly one of them"
 # If this is what fails, the release is a subject the engine already had a task for — see the
 # loop above, which exists to make that impossible.
-until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse state get task:instance:lin-release-manifest@$REL)" \
+until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse state get verse:task:instance:lin-release-manifest@$REL)" \
 	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL'"
 v flow
 ok "the flow's subject is $REL — one id, not a merged one"

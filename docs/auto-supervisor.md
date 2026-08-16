@@ -240,7 +240,7 @@ decision re-reached is the same question rather than a second one.
 
 With credentials, `verse state put change:pr:9 '{stage: proposed, tests: green}'` runs the
 real thing: `verse flow` shows the assessment in flight, `verse state get
-task:instance:assess@change:pr:9` shows what the supervisor read and said, and the change
+verse:task:instance:assess@change:pr:9` shows what the supervisor read and said, and the change
 ends `landed`, `closed`, or waiting at a gate.
 
 ## Where this stops

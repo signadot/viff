@@ -22,7 +22,7 @@ func resolverCmd() *cli.Command {
 // reading `verse entity` and one typing `verse resolver show` should not have to know two
 // spellings of one thing.
 func resolverPath(ref string) (string, error) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, "resolvers:"), ":", 2)
+	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:resolvers:"), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("%w: want a ref like resolvers:security:security-review "+
 			"(or security:security-review), got %q", cli.ErrUsage, ref)

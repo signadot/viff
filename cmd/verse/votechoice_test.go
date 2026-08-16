@@ -14,7 +14,7 @@ import (
 // the option's `choice`, not its id, which is the gap a voter falls into.
 func whetherMotion(t *testing.T, s entity.Store, id string) {
 	t.Helper()
-	entitytest.Set(t, s, entity.RefAt("motion", "channel", id), entity.Obj{
+	entitytest.Set(t, s, entity.VerseRef("motion", "channel", id), entity.Obj{
 		"axis": "whether", "status": "open", "gate": "approvals",
 		"options": []any{
 			entity.Obj{"id": "proceed", "choice": "approve", "need": int64(2)},
@@ -62,7 +62,7 @@ func TestVoteAcceptsWhatTheMotionNames(t *testing.T) {
 // rather than a fixed vocabulary, which is the whole reason it can serve both axes.
 func TestVoteAcceptsASelectOption(t *testing.T) {
 	store := serve(t)
-	entitytest.Set(t, store, entity.RefAt("motion", "channel", "m2"), entity.Obj{
+	entitytest.Set(t, store, entity.VerseRef("motion", "channel", "m2"), entity.Obj{
 		"axis": "who", "status": "open",
 		"options": []any{
 			entity.Obj{"id": "gpt", "choice": "gpt", "need": int64(2)},
@@ -103,7 +103,7 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := serve(t)
-			entitytest.Set(t, store, entity.RefAt("motion", "channel", tc.id),
+			entitytest.Set(t, store, entity.VerseRef("motion", "channel", tc.id),
 				tc.payload.Payload())
 
 			choice, _ := tc.payload["options"].([]any)[0].(entity.Obj)["choice"].(string)

@@ -51,9 +51,12 @@ func (p Path) String() string {
 // which is why it exists beside String — String picks the spelling a reader expects for the
 // depth, and this one picks the grammar the wire takes.
 func (p Path) KPath() string {
-	out := seg(p.System()) + "." + seg(p.Kind()) + "." + seg(p.ID())
-	for _, f := range p.Field {
-		out += "." + seg(f)
+	var out string
+	for _, s := range append(p.Ref.Segs(), p.Field...) {
+		if out != "" {
+			out += "."
+		}
+		out += seg(s)
 	}
 	return out
 }
@@ -119,15 +122,19 @@ func ParsePath(s string) (Path, error) {
 				"nothing here can tell. Address the field that holds the array", s)
 		}
 	}
-	if len(segs) < Depth {
+	want := Depth
+	if len(segs) > 0 && segs[0] == VerseRoot {
+		want++ // verse's own half is one level deeper: verse.task.instance.<id>
+	}
+	if len(segs) < want {
 		return Path{}, fmt.Errorf("path %q: an address starts with system.kind.id (or the ref "+
-			"system:kind:id), and this names %d of the %d", s, len(segs), Depth)
+			"system:kind:id), and this names %d of the %d", s, len(segs), want)
 	}
-	ref, ok := RefOf(segs[:Depth])
+	ref, ok := RefOf(segs[:want])
 	if !ok {
-		return Path{}, fmt.Errorf("path %q: its first %d segments do not name an entity", s, Depth)
+		return Path{}, fmt.Errorf("path %q: its first %d segments do not name an entity", s, want)
 	}
-	return Path{Ref: ref, Field: segs[Depth:]}, nil
+	return Path{Ref: ref, Field: segs[want:]}, nil
 }
 
 // colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.

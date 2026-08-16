@@ -32,7 +32,7 @@ const System = "task"
 const InstanceKind = "instance"
 
 // Ref is the entity that mirrors task id.
-func Ref(id string) entity.Ref { return entity.RefAt(System, InstanceKind, id) }
+func Ref(id string) entity.Ref { return entity.VerseRef(System, InstanceKind, id) }
 
 // RunKind is the kind ONE RUN lives under, as against the id's latest state.
 //
@@ -49,7 +49,7 @@ const RunKind = "run"
 
 // RunRef addresses one run: the task's id and the revision that run is about.
 func RunRef(id string, occurrence int64) entity.Ref {
-	return entity.RefAt(System, RunKind, id+"@"+strconv.FormatInt(occurrence, 10))
+	return entity.VerseRef(System, RunKind, id+"@"+strconv.FormatInt(occurrence, 10))
 }
 
 // writeRun records this run at its own address — at creation, so a run that never finishes
@@ -478,7 +478,7 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 		// address carries the whole ref.
 		id = name + "@" + origin.String()
 	}
-	ref := entity.RefAt(resolverSystem, resolverInstance, id)
+	ref := entity.VerseRef(resolverSystem, resolverInstance, id)
 	_, _, _ = store.Write(entity.Write{
 		At: ref.At(),
 		Value: entity.Obj{
@@ -619,4 +619,18 @@ const ClaimKind = "claim"
 
 // ClaimRef is the entity a run is claimed at. The id is the spawn id, so the claim and the
 // task it guards share one address — there is nothing to keep in step.
-func ClaimRef(id string) entity.Ref { return entity.RefAt(System, ClaimKind, id) }
+func ClaimRef(id string) entity.Ref { return entity.VerseRef(System, ClaimKind, id) }
+
+// IsTask and IsTaskish answer "is this address one of mine" — the question that used to be
+// asked as `ref.System == mirror.System`, and cannot be any more.
+//
+// The first segment of a verse-owned address is the reserved root, so a comparison against
+// `System` alone would be true of a `task:instance:x` in the world's half — an entity anybody
+// may write — and the caller would be reading somebody's fixture as the mirror of a running
+// task. Each namespace answers for itself, here, where the address is built.
+func IsTask(ref entity.Ref) bool {
+	return ref.Reserved() && ref.System() == System && ref.Kind() == InstanceKind
+}
+
+// IsTaskish is the whole task namespace: an instance, its run record, its claim.
+func IsTaskish(ref entity.Ref) bool { return ref.Reserved() && ref.System() == System }

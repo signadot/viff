@@ -13,7 +13,7 @@ func TestConditionalCommitRevoke(t *testing.T) { conditionalCommitRevoke(t, open
 // open, and terminal-once holds — a second commit fails once status flips to closed.
 func conditionalCommit(t *testing.T, s Store) {
 	t.Helper()
-	ch := RefAt("motion", "channel", "d1")
+	ch := VerseRef("motion", "channel", "d1")
 	set(t, s, ch, Obj{"status": "open", "gate": "approvals"}.Payload())
 	set(t, s, RefAt("vote", "d1", "alice"), Obj{"choice": "approve"}.Payload())
 	set(t, s, RefAt("vote", "d1", "bob"), Obj{"choice": "approve"}.Payload())
@@ -58,7 +58,7 @@ func conditionalCommit(t *testing.T, s Store) {
 // the cross-entity precondition (vote subtree) is what makes the commit revocable.
 func conditionalCommitRevoke(t *testing.T, s Store) {
 	t.Helper()
-	ch := RefAt("motion", "channel", "d2")
+	ch := VerseRef("motion", "channel", "d2")
 	set(t, s, ch, Obj{"status": "open"}.Payload())
 	set(t, s, RefAt("vote", "d2", "alice"), Obj{"choice": "approve"}.Payload())
 

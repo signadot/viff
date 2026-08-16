@@ -54,7 +54,7 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runner add: %v", err)
 	}
-	if !strings.Contains(out, "runners:pool:demo") {
+	if !strings.Contains(out, "verse:runners:pool:demo") {
 		t.Fatalf("add printed %q, want the ref it installed", out)
 	}
 	// The probe ran and said what it found — which is the half of `add` that only happens on
@@ -92,7 +92,7 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 		!strings.Contains(out, face.URL) {
 		t.Fatalf("show = %q, %v; want the url", out, err)
 	}
-	if out, err := runCLI(t, "runner", "check", "runners:pool:demo"); err != nil ||
+	if out, err := runCLI(t, "runner", "check", "verse:runners:pool:demo"); err != nil ||
 		!strings.Contains(out, "a runner") {
 		t.Fatalf("check = %q, %v; want a live verdict", out, err)
 	}
@@ -108,7 +108,7 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 
 	// Removal, with work on it: refused until told which, and the message names both flags.
 	writeInstance(t, store, "w1", entity.Obj{
-		"status": "running", "runner": face.URL, "runnerName": "runners:pool:demo",
+		"status": "running", "runner": face.URL, "runnerName": "verse:runners:pool:demo",
 	})
 	_, err := runCLI(t, "runner", "remove", "pool:demo")
 	if err == nil {
@@ -120,7 +120,7 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 		}
 	}
 	if out, err := runCLI(t, "runner", "remove", "pool:demo", "--leave"); err != nil ||
-		!strings.Contains(out, "runners:pool:demo") {
+		!strings.Contains(out, "verse:runners:pool:demo") {
 		t.Fatalf("remove --leave = %q, %v; want it to succeed and say so", out, err)
 	}
 	if payloadOf(t, store, runner.Ref("pool", "demo")) != nil {

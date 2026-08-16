@@ -82,10 +82,10 @@ func TestAPatternSelectsByResolver(t *testing.T) {
 	store := entitytest.Store(t)
 	pose(t, store, "run-a~d1", "write-guard", "run-a")
 	pose(t, store, "run-a~d2", "write-guard", "run-a")
-	writeAt(store, QuestionRef("run-a~d2"), entity.Obj{"resolver": "resolvers:llm:reviewer"})
+	writeAt(store, QuestionRef("run-a~d2"), entity.Obj{"resolver": "verse:resolvers:llm:reviewer"})
 
 	only(t, ids(t, store, entity.Pattern{
-		Predicate: entity.Obj{"resolver": "resolvers:llm:reviewer"}.Payload(),
+		Predicate: entity.Obj{"resolver": "verse:resolvers:llm:reviewer"}.Payload(),
 	}), "run-a~d2")
 
 	// The unaddressed one is not addressed to "": the key is absent, which is what a later

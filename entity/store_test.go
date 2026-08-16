@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseRefRoundTrip(t *testing.T) {
-	cases := []string{"linear:issue:1090", "github:pr:signadot/hack#12", "task:instance:p1"}
+	cases := []string{"linear:issue:1090", "github:pr:signadot/hack#12", "verse:task:instance:p1"}
 	for _, s := range cases {
 		r, err := ParseRef(s)
 		if err != nil {
@@ -31,7 +31,7 @@ func TestParseRefRoundTrip(t *testing.T) {
 // insist, with Created() or Updated().)
 func TestCreateThenUpdate(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{"linear", "issue", "1090"}
+	ref := RefAt("linear", "issue", "1090")
 
 	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"stage": "open"}.Payload()})
 	if got, ok, _ := s.Get(ref); !ok || Str(got.Payload, "stage") != "open" {
@@ -46,7 +46,7 @@ func TestCreateThenUpdate(t *testing.T) {
 
 func TestWriteClonesPayload(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{"x", "y", "z"}
+	ref := RefAt("x", "y", "z")
 	p := Obj{"n": 1}.Payload()
 	mustWrite(t, s, Write{At: ref.At(), Value: p})
 	*ir.Get(p, "n") = *ir.FromInt(999) // mutate the caller's node after the write
@@ -61,7 +61,7 @@ func TestWriteClonesPayload(t *testing.T) {
 // already holds nothing.
 func TestRemoveAndMissing(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{"x", "y", "z"}
+	ref := RefAt("x", "y", "z")
 	mustWrite(t, s, Write{At: ref.At()}) // nothing is there; still not an error
 
 	mustWrite(t, s, Write{At: ref.At(), Value: Obj{"a": 1}.Payload()})
@@ -79,7 +79,7 @@ func TestObserveDeliversChanges(t *testing.T) {
 	ch, unsub := s.Observe()
 	defer unsub()
 
-	ref := Ref{"linear", "issue", "1"}
+	ref := RefAt("linear", "issue", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
 	remove(t, s, ref)
@@ -97,9 +97,9 @@ func TestListPredicate(t *testing.T) {
 	s := openStore(t)
 	// An entity with no fields is an EMPTY OBJECT: a nil value means "nothing stands here",
 	// which is a removal, not a blank entity.
-	set(t, s, Ref{"linear", "issue", "1"}, Obj{}.Payload())
-	set(t, s, Ref{"github", "pr", "2"}, Obj{}.Payload())
-	set(t, s, Ref{"linear", "issue", "3"}, Obj{}.Payload())
+	set(t, s, RefAt("linear", "issue", "1"), Obj{}.Payload())
+	set(t, s, RefAt("github", "pr", "2"), Obj{}.Payload())
+	set(t, s, RefAt("linear", "issue", "3"), Obj{}.Payload())
 
 	linear := s.List(func(r Ref) bool { return r.System() == "linear" })
 	if len(linear) != 2 {
@@ -116,7 +116,7 @@ func TestListPredicate(t *testing.T) {
 func TestRevAndSince(t *testing.T) {
 	s := openStore(t)
 	start := s.Rev()
-	ref := Ref{"demo", "pr", "1"}
+	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 	mid := s.Rev()
 	set(t, s, ref, Obj{"stage": "reviewed"}.Payload())
@@ -163,7 +163,7 @@ func TestRevAndSince(t *testing.T) {
 func TestSinceIsAboutTheStoreNotThisProcess(t *testing.T) {
 	addr := startLogd(t)
 	first := openStoreAt(t, addr)
-	ref := Ref{"demo", "x", "1"}
+	ref := RefAt("demo", "x", "1")
 	for i := range 5 {
 		set(t, first, ref, Obj{"n": i}.Payload())
 	}
@@ -189,7 +189,7 @@ func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 	ch, unsub := s.Observe()
 	defer unsub()
 
-	ref := Ref{"x", "y", "z"}
+	ref := RefAt("x", "y", "z")
 	for i := range 300 { // overflow the 256 buffer without draining
 		set(t, s, ref, Obj{"n": i}.Payload())
 	}
@@ -224,8 +224,8 @@ func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 // selection needs no separate construct in v0.
 func TestNamespaceIsAQuery(t *testing.T) {
 	s := openStore(t)
-	set(t, s, Ref{"github", "pr", "1"}, Obj{"env": "prod"}.Payload())
-	set(t, s, Ref{"github", "pr", "2"}, Obj{"env": "staging"}.Payload())
+	set(t, s, RefAt("github", "pr", "1"), Obj{"env": "prod"}.Payload())
+	set(t, s, RefAt("github", "pr", "2"), Obj{"env": "staging"}.Payload())
 	prodTouching := s.List(func(r Ref) bool {
 		e, _, _ := s.Get(r)
 		return ToObj(e.Payload)["env"] == "prod"

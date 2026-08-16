@@ -24,7 +24,7 @@ func TestAResolverReadsARunAndAnswersIt(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const binding = "resolvers:security:security-review"
+	const binding = "verse:resolvers:security:security-review"
 
 	askingRun(t, srv, ts, "watched", binding)
 	qid := waitQuestion(t, srv, "watched")
@@ -96,8 +96,8 @@ func TestAResolverCannotAnswerAQuestionItDoesNotOwn(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	askingRun(t, srv, ts, "watched", "resolvers:security:security-review")
-	askingRun(t, srv, ts, "elsewhere", "resolvers:cost:budget")
+	askingRun(t, srv, ts, "watched", "verse:resolvers:security:security-review")
+	askingRun(t, srv, ts, "elsewhere", "verse:resolvers:cost:budget")
 	mine := waitQuestion(t, srv, "watched")
 	theirs := waitQuestion(t, srv, "elsewhere")
 
@@ -123,7 +123,7 @@ func TestAResolverReportsItsPosition(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	askingRun(t, srv, ts, "watched", "resolvers:security:security-review")
+	askingRun(t, srv, ts, "watched", "verse:resolvers:security:security-review")
 	waitQuestion(t, srv, "watched")
 	ref := resolver.InstanceRef("security-review", "watched")
 

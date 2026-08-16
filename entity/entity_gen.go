@@ -264,6 +264,11 @@ func (s *Pattern) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
+	// Field: Root
+	if s.Root != "" {
+		irMap["root"] = ir.FromString(string(s.Root))
+	}
+
 	// Field: System
 	irMap["system"] = ir.FromString(string(s.System))
 
@@ -335,6 +340,12 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
+		case "root":
+			// Field: Root
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "root", fieldNodeUnwrapped.Type)
+			}
+			s.Root = string(fieldNodeUnwrapped.String)
 		case "system":
 			// Field: System
 			if fieldNodeUnwrapped.Type != ir.StringType {

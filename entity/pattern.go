@@ -15,6 +15,15 @@ import (
 //
 //tony:schemagen=verse-pattern,notag
 type Pattern struct {
+	// Root is which half of the verse to select from: `verse` for what verse writes about its
+	// own running, empty for what the world is about. It is a dimension of its own because it
+	// answers a different question from System — whose half, rather than which namespace.
+	//
+	// EMPTY MEANS THE WORLD'S HALF, not "either", and that is the whole point: a rule about
+	// `demo:pr:*` must not quietly select the task records of the runs reviewing them, and a
+	// charter that wants verse's own state says `root: verse`. A read that means "either" says
+	// so by not asking a pattern about the address at all — the path is what narrows a read.
+	Root   string `tony:"field=root,omitzero"`
 	System string `tony:"field=system"`
 	Kind   string `tony:"field=kind,omitzero"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
@@ -121,7 +130,8 @@ func (p Pattern) MatchEntity(e Entity) bool {
 // that lost its system must not quietly become a whole-verse sweep. Here an empty dimension
 // is an operator declining to filter, which is the opposite intent.
 func (p Pattern) MatchRef(ref Ref) bool {
-	return (p.System == "" || p.System == ref.System()) &&
+	return (p.Root == ref.Root()) &&
+		(p.System == "" || p.System == ref.System()) &&
 		(p.Kind == "" || p.Kind == ref.Kind())
 }
 
@@ -190,4 +200,22 @@ func descend(payload Payload, field []string) Payload {
 		}
 	}
 	return payload
+}
+
+
+// MatchesPayload and MatchesChange are the pattern MINUS its address dimensions — what a READ
+// asks, where the path has already said which entities are in question.
+//
+// They exist because the address dimensions do not mean the same thing on both faces. A rule's
+// pattern selects: an unnamed root is the world's half, deliberately, so a charter cannot reach
+// into verse's own by omission. A read's pattern filters what a path already chose, and a path
+// that named both halves means both — so asking the pattern about the address again would
+// answer a question the reader did not ask.
+func (p Pattern) MatchesPayload(e Entity) bool { return p.matchPayload(e.Payload) }
+
+func (p Pattern) MatchesChange(ev Event) bool {
+	if p.Op != "" && p.Op != ev.Op {
+		return false
+	}
+	return p.matchPayload(ev.To)
 }

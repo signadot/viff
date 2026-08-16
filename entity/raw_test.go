@@ -30,7 +30,7 @@ func same(a, b Payload) bool { return mergeop.RawEqual(a, b) }
 // grammar, could not be written into the verse at all before the escape existed.
 func TestRawStoresOperatorsAsData(t *testing.T) {
 	store := openStore(t)
-	ref := RefAt("trigger", "rule", "hotfix")
+	ref := VerseRef("trigger", "rule", "hotfix")
 	rule := doc(t, `{id: !glob "hotfix-*", patch: {tmp: !delete null, stage: reviewed}}`)
 
 	set(t, store, ref, Obj{"spec": Raw(rule)}.Payload())
@@ -49,7 +49,7 @@ func TestRawStoresOperatorsAsData(t *testing.T) {
 // in the version after, which for a rule means a condition nobody wrote.
 func TestRawReplacesRatherThanMerges(t *testing.T) {
 	store := openStore(t)
-	ref := RefAt("trigger", "rule", "hotfix")
+	ref := VerseRef("trigger", "rule", "hotfix")
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{id: "a", gates: [approval]}`))}.Payload())
 
 	next := doc(t, `{id: "a"}`)
@@ -137,7 +137,7 @@ func TestModifyRetriesOverAStoredOperator(t *testing.T) {
 // Absence is `!delete` on the way in now, and a null is a null.
 func TestBothKindsOfNullAreDataInAStoredSpec(t *testing.T) {
 	store := openStore(t)
-	ref := RefAt("trigger", "rule", "hotfix")
+	ref := VerseRef("trigger", "rule", "hotfix")
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{tmp: !delete null, gone: null, stage: open}`))}.Payload())
 
 	e, _, _ := store.Get(ref)

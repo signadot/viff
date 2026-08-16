@@ -99,7 +99,7 @@ func TestStatusSources(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	if got := sources(); len(got) != 1 || got[0] != "sources:git:laptop" {
+	if got := sources(); len(got) != 1 || got[0] != "verse:sources:git:laptop" {
 		t.Fatalf("sources = %v, want [sources:git:laptop]", got)
 	}
 }

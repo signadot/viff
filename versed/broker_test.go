@@ -56,7 +56,7 @@ func TestTaskRunHonorsRunner(t *testing.T) {
 	}
 
 	// mirrored: it is a task:instance entity like any other task.
-	if _, ok, _ := srv.Store.Get(entity.RefAt("task", "instance", sp.ID)); !ok {
+	if _, ok, _ := srv.Store.Get(entity.VerseRef("task", "instance", sp.ID)); !ok {
 		t.Fatal("task run was not mirrored as a task:instance entity")
 	}
 }

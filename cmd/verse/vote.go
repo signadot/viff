@@ -103,7 +103,7 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 // the case that is certainly wrong — the motion is right there, its options are known, and the
 // choice is none of them.
 func checkChoice(motion, choice string) error {
-	resp, err := httpGet("/entity", url.Values{"ref": {"motion:channel:" + motion}})
+	resp, err := httpGet("/entity", url.Values{"ref": {"verse:motion:channel:" + motion}})
 	if err != nil {
 		return nil // cannot read it: not our call to make
 	}

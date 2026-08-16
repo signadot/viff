@@ -61,7 +61,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("a person answered an exclusive question: %s %s", resp.Status, body)
 	}
 	// Named, so the refusal says who to go and ask rather than only that this was not allowed.
-	if !strings.Contains(body, "resolvers:security:payments-review") {
+	if !strings.Contains(body, "verse:resolvers:security:payments-review") {
 		t.Fatalf("the refusal does not name the owner: %s", body)
 	}
 	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
@@ -77,7 +77,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("the owner could not answer its own question: %s", ok.Status)
 	}
 	q := question(t, srv, qid)
-	if q["by"] != "resolvers:security:payments-review" || q["overrode"] != nil {
+	if q["by"] != "verse:resolvers:security:payments-review" || q["overrode"] != nil {
 		t.Fatalf("the owner's own answer was recorded as an override: %+v", q)
 	}
 }
@@ -100,7 +100,7 @@ func TestOverrideNamesBothParties(t *testing.T) {
 		t.Fatalf("the override was refused: %s", resp.Status)
 	}
 	q := question(t, srv, qid)
-	if q["by"] != "human:scott" || q["overrode"] != "resolvers:security:payments-review" {
+	if q["by"] != "human:scott" || q["overrode"] != "verse:resolvers:security:payments-review" {
 		t.Fatalf("the record does not name both parties: %+v", q)
 	}
 	if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" {

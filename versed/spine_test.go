@@ -88,7 +88,7 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 		switch {
 		case ev.Ref == subject:
 			own++
-		case ev.Ref.System() == mirror.QuestionSystem, ev.Ref.System() == mirror.System:
+		case ev.Ref.System() == mirror.QuestionSystem, ev.Ref.Reserved() && ev.Ref.System() == mirror.System:
 		default:
 			t.Fatalf("the spine carried a commit about %s", ev.Ref)
 		}
@@ -136,7 +136,7 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 
 	subject := entity.RefAt("change", "pr", "1")
-	mirror.Watch(srv.Store, "resolvers:security:payments-review", "payments-review", subject)
+	mirror.Watch(srv.Store, "verse:resolvers:security:payments-review", "payments-review", subject)
 	inst := resolver.InstanceRef("payments-review", subject.String())
 	before, _, _ := srv.Store.Get(inst)
 	startedAt := entity.ToObj(before.Payload)["position"]
@@ -200,7 +200,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 
 	subject := entity.RefAt("change", "pr", "1")
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
-	mirror.Watch(srv.Store, "resolvers:security:payments-review", "payments-review", subject)
+	mirror.Watch(srv.Store, "verse:resolvers:security:payments-review", "payments-review", subject)
 
 	spawnFor(t, ts, "run-1", subject.String(), "")
 	waitQuestion(t, srv, "run-1")

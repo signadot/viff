@@ -48,12 +48,12 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	defer ts.Close()
 
 	// Raise a gate the way the engine does, and block on it as the engine would.
-	const id = "trigger:review:review~1"
+	const id = "verse:trigger:review:review~1"
 	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
-			task.ToolUse{Name: "trigger:review"})
+			task.ToolUse{Name: "verse:trigger:review"})
 		answered <- res
 	}()
 	waitPending(t, srv, id)

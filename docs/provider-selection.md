@@ -190,7 +190,7 @@ this whole feature serves, so a task showing only `llm` would report quite diffe
 as the same agent.
 
 ```sh
-verse state get task:instance:<id>
+verse state get verse:task:instance:<id>
 # doer: provider:treat:fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 

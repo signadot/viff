@@ -209,7 +209,7 @@ sequenceDiagram
     B-->>W: queued control: say · pause · cancel
     W->>B: POST /tasks/{id}/report (frames, gates, result)
     B->>V: the same frames an attached observer sees
-    V->>S: mirrored to task:instance:{id}
+    V->>S: mirrored to verse:task:instance:{id}
   end
   Note over B: first terminal report wins — later ones are frozen no-ops
 ```

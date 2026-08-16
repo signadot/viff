@@ -86,14 +86,14 @@ func conditionRoot() entity.Payload { return ir.FromMap(map[string]*ir.Node{}) }
 // System and kind are always literal in a path read — path.go turns the level check on that —
 // so the subtree is knowable without firing anything, which is what lets a read participate in
 // the skip rather than defeating it.
-func conditionReads(m Match) [][2]string {
+func conditionReads(m Match) []Subtree {
 	specs, err := readTargets(m.Predicate())
 	if err != nil {
 		return nil // a malformed read is refused at install; here it simply reads nothing
 	}
-	out := make([][2]string, 0, len(specs))
+	out := make([]Subtree, 0, len(specs))
 	for _, s := range specs {
-		out = append(out, [2]string{s.System, s.Kind})
+		out = append(out, Subtree{"", s.System, s.Kind})
 	}
 	return out
 }

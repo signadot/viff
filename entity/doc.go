@@ -56,35 +56,42 @@ func Nest(ents []Entity, at *kpath.KPath) (Doc, error) {
 	return Doc{Node: node}, nil
 }
 
-// nestAll builds the whole {system: {kind: {id: payload}}} document.
+// nestAll builds the whole {system: {kind: {id: payload}}} document — one level per segment,
+// so an address in verse's own half nests one deeper and lands under the one reserved key.
 func nestAll(ents []Entity) *ir.Node {
-	systems := map[string]map[string]map[string]*ir.Node{}
+	tree := map[string]any{} // each level: map[string]any, leaves *ir.Node
 	for _, e := range ents {
-		kinds, ok := systems[e.Ref.System()]
-		if !ok {
-			kinds = map[string]map[string]*ir.Node{}
-			systems[e.Ref.System()] = kinds
-		}
-		ids, ok := kinds[e.Ref.Kind()]
-		if !ok {
-			ids = map[string]*ir.Node{}
-			kinds[e.Ref.Kind()] = ids
+		segs := e.Ref.Segs()
+		at := tree
+		for _, s := range segs[:len(segs)-1] {
+			next, ok := at[s].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				at[s] = next
+			}
+			at = next
 		}
 		// A payload that is Go-nil still occupies its key: the entity stands there, and what it
 		// holds is null. Absence is the key not being here at all.
 		if e.Payload == nil {
-			ids[e.Ref.ID()] = ir.Null()
+			at[segs[len(segs)-1]] = ir.Null()
 			continue
 		}
-		ids[e.Ref.ID()] = clone(e.Payload)
+		at[segs[len(segs)-1]] = clone(e.Payload)
 	}
-	out := make(map[string]*ir.Node, len(systems))
-	for system, kinds := range systems {
-		km := make(map[string]*ir.Node, len(kinds))
-		for kind, ids := range kinds {
-			km[kind] = ir.FromMap(ids)
+	return treeNode(tree)
+}
+
+// treeNode turns the nested map nestAll builds into a document.
+func treeNode(tree map[string]any) *ir.Node {
+	out := make(map[string]*ir.Node, len(tree))
+	for k, v := range tree {
+		switch t := v.(type) {
+		case map[string]any:
+			out[k] = treeNode(t)
+		case *ir.Node:
+			out[k] = t
 		}
-		out[system] = ir.FromMap(km)
 	}
 	return ir.FromMap(out)
 }
@@ -228,21 +235,29 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 	var out []Entity
 	var rec func(n *ir.Node, seen []string)
 	rec = func(n *ir.Node, seen []string) {
-		if len(seen) == wild {
-			// The path fixed some segments and the document carries the rest, in order:
-			// interleaving them is what turns a leaf into the address it stands at.
-			segs := make([]string, 0, len(fixed))
-			next := 0
-			for _, f := range fixed {
-				if f == "" {
-					f = seen[next]
-					next++
+		// The path fixed some segments and the document carries the rest, in order:
+		// interleaving them is what turns a leaf into the address it stands at.
+		segs := make([]string, 0, len(fixed))
+		next := 0
+		for _, f := range fixed {
+			if f == "" {
+				if next >= len(seen) {
+					break
 				}
-				segs = append(segs, f)
+				f = seen[next]
+				next++
 			}
-			if ref, ok := RefOf(segs); ok {
-				out = append(out, Entity{Ref: ref, Payload: n})
-			}
+			segs = append(segs, f)
+		}
+		// AT EACH DEPTH, not at one: the two halves of the verse are different depths, so a
+		// read that spans both — the whole verse, or a wildcard at the top — reaches an address
+		// three levels down on one side and four on the other. RefOf is what says which, and
+		// asking it here rather than counting levels is what lets one walk serve both.
+		if ref, ok := RefOf(segs); ok {
+			out = append(out, Entity{Ref: ref, Payload: n})
+			return
+		}
+		if len(seen) >= wild {
 			return
 		}
 		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
@@ -259,10 +274,15 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 // levels splits a path into the entity levels it fixes and the number it leaves for the
 // document to carry. ok is false for a path that cannot address entities at all.
 func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {
-	fixed = make([]string, Depth)
+	fixed = make([]string, atDepth(at))
+	// A path that has not said which half it is in — the whole verse, or a wildcard at the top
+	// — must leave room for the deeper one, and Entities stops at whichever depth is an address.
+	if at == nil || at.Field == nil {
+		fixed = make([]string, Depth+1)
+	}
 	depth := 0
 	for kp := at; kp != nil; kp = kp.Next {
-		if depth >= Depth {
+		if depth >= len(fixed) {
 			return nil, 0, false // inside a payload: no entities down here
 		}
 		switch {
@@ -360,4 +380,17 @@ func AtDepth(at *kpath.KPath) int {
 		n++
 	}
 	return n
+}
+
+// atDepth is how many segments an address under this path has: one more in verse's own half,
+// where the reserved root is a level of its own.
+//
+// It reads the path's FIRST segment, which is the only thing that can say which half a read is
+// about before anything has been walked. A path that names no segment at all (the whole verse)
+// spans both halves, and the walks handle that by asking again at each top-level key.
+func atDepth(at *kpath.KPath) int {
+	if at != nil && at.Field != nil && *at.Field == VerseRoot {
+		return Depth + 1
+	}
+	return Depth
 }

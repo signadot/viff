@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -175,5 +176,45 @@ func TestRemoveEntityAndField(t *testing.T) {
 	// Removing what is not there is not an error.
 	if code := rm(url.Values{"ref": {"demo:pr:1"}}); code != http.StatusNoContent {
 		t.Fatalf("remove an absent entity = %d, want 204", code)
+	}
+}
+
+// The generic entity write is for what the world is about. What verse writes about its own
+// running is refused there, because before the boundary had a name anyone who could reach the
+// store could install a rule, stamp a task record, or answer a question on verse's behalf.
+//
+// A BALLOT IS NOT REFUSED, and that is the line rather than an exception to it: casting one is
+// an act somebody takes, so `vote:*` is the world's half — while the motion it answers is
+// verse's, and cannot be written from here.
+func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, ref := range []string{
+		"verse:trigger:rule:sneaky",
+		"verse:task:instance:run-1",
+		"verse:gate:question:run-1~d1",
+		"verse:motion:channel:abcd",
+		"verse:resolvers:security:mine",
+	} {
+		resp := postTony(t, ts.URL+"/entity", api.PutEntity{Ref: ref, Payload: entity.Obj{"x": 1}.Payload()})
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("writing %s = %s, want 403: %s", ref, resp.Status, strings.TrimSpace(string(body)))
+		}
+		if _, ok, _ := srv.Store.Get(mustRef(t, ref)); ok {
+			t.Errorf("%s was written anyway", ref)
+		}
+	}
+
+	// And the two halves of a vote: the ballot lands, the motion does not.
+	if resp := postTony(t, ts.URL+"/entity", api.PutEntity{
+		Ref: "vote:abcd:scott", Payload: entity.Obj{"choice": "approve"}.Payload(),
+	}); resp.StatusCode >= http.StatusBadRequest {
+		t.Errorf("casting a ballot = %s, want it accepted", resp.Status)
+	} else {
+		resp.Body.Close()
 	}
 }

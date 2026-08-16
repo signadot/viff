@@ -189,9 +189,9 @@ func (f *Formula) quorumNeed() int {
 
 // Subtrees returns the distinct (system, kind) fact subtrees this formula reads — what a
 // Monitor watches to know when to re-evaluate. Kind may be "" (a whole-system watch).
-func (f *Formula) Subtrees() [][2]string {
-	seen := map[[2]string]bool{}
-	var out [][2]string
+func (f *Formula) Subtrees() []Subtree {
+	seen := map[Subtree]bool{}
+	var out []Subtree
 	var walk func(*Formula)
 	walk = func(n *Formula) {
 		if n == nil {
@@ -200,7 +200,7 @@ func (f *Formula) Subtrees() [][2]string {
 		if n.Op == OpAtom {
 			// a deadline is a time derivation, not a store fact — it has no subtree to watch.
 			if n.Req != nil && n.Req.Kind != ReqDeadline {
-				k := [2]string{n.Req.Facts.System(), n.Req.Facts.Kind()}
+				k := subtreeOf(n.Req.Facts)
 				if !seen[k] {
 					seen[k] = true
 					out = append(out, k)

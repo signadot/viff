@@ -15,7 +15,7 @@ import (
 // channel writes an open motion channel by hand — a motion the previous verse left behind.
 func channel(t *testing.T, s entity.Store, id string, payload entity.Obj) entity.Ref {
 	t.Helper()
-	ref := entity.RefAt(motionSystem, motionChannelKind, id)
+	ref := entity.VerseRef(motionSystem, motionChannelKind, id)
 	entitytest.Set(t, s, ref, payload.Payload())
 	return ref
 }

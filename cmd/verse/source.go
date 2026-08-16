@@ -41,7 +41,7 @@ func sourceCmd() *cli.Command {
 // or without the `sources:` prefix — an operator reading `verse state` and one typing
 // `verse source show` should not have to know two spellings of one thing.
 func sourcePath(ref string) (string, error) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, "sources:"), ":", 2)
+	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:sources:"), ":", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", fmt.Errorf("%w: want a ref like sources:git:laptop (or git:laptop), got %q",
 			cli.ErrUsage, ref)
@@ -191,7 +191,7 @@ func (cfg *sourceAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) >= 1 && (len(args) == 2 || cfg.Dir != "") {
 		ref := args[0]
-		parts := strings.SplitN(strings.TrimPrefix(ref, "sources:"), ":", 2)
+		parts := strings.SplitN(strings.TrimPrefix(ref, "verse:sources:"), ":", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return fmt.Errorf("%w: want `source add <system>:<name> <url>`, got %q",
 				cli.ErrUsage, ref)

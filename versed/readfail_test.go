@@ -122,7 +122,7 @@ func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, ref := range []string{"demo:pr:2", "demo:issue:1", "motion:channel:x"} {
+	for _, ref := range []string{"demo:pr:2", "demo:issue:1", "verse:motion:channel:x"} {
 		resp, err := http.Get(ts.URL + "/entity?" + url.Values{"ref": {ref}}.Encode())
 		if err != nil {
 			t.Fatalf("get %s: %v", ref, err)

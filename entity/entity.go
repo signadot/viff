@@ -29,7 +29,27 @@ import (
 // It stays a comparable struct rather than becoming a slice: a Ref is a map key and an
 // equality test in a hundred places (`ev.Ref == subj`, `map[Ref]Payload`), and a slice is
 // neither.
-type Ref struct{ system, kind, id string }
+//
+// THE ROOT is which half of the verse the address is in: empty for everything the world is
+// about — a PR, a build, a person, a doer somebody registered — and `verse` for what verse
+// writes about its own running. It is a segment like the others (it renders, it is walked, it
+// is a level in the document) and it is not one of the three: a task is `verse:task:instance:x`,
+// so `system` is still `task` and the code asking "is this a task" is asking about the same
+// segment it always was.
+type Ref struct {
+	root             string // "" = the world's, VerseRoot = verse's own
+	system, kind, id string
+}
+
+// VerseRoot is the one reserved first segment: everything verse writes about its own running
+// lives under it, and nothing else may.
+//
+// Two things come from the boundary being an address rather than a convention. A reader gets
+// `verse state` back — the top of the tree is the systems the world is about, with one key
+// beside them holding the machinery — and a WRITER can be refused: the entity routes turn away
+// a write under this segment (versed.reservedWrite), where before, anyone who could reach the
+// store could write a rule, a task record or somebody else's answer.
+const VerseRoot = "verse"
 
 // RefAt builds the ref standing at these segments.
 //
@@ -40,6 +60,9 @@ type Ref struct{ system, kind, id string }
 // representation becomes a path, a short address is short.
 func RefAt(segs ...string) Ref {
 	var r Ref
+	if len(segs) > 0 && segs[0] == VerseRoot {
+		r.root, segs = VerseRoot, segs[1:]
+	}
 	for i, dst := range []*string{&r.system, &r.kind, &r.id} {
 		if i < len(segs) {
 			*dst = segs[i]
@@ -47,6 +70,21 @@ func RefAt(segs ...string) Ref {
 	}
 	return r
 }
+
+// VerseRef builds an address in verse's own half of the tree: `VerseRef("task", "instance", id)`
+// is `verse:task:instance:<id>`. It is a separate constructor rather than a flag on RefAt so
+// that reading a call says which half it is in.
+func VerseRef(segs ...string) Ref {
+	return RefAt(append([]string{VerseRoot}, segs...)...)
+}
+
+// Root is which half of the verse the address is in — empty for the world's, VerseRoot for
+// verse's own. It is what a pattern compares against, and what Segs puts first.
+func (r Ref) Root() string { return r.root }
+
+// Reserved reports whether the address is in verse's own half — what the write refusal asks,
+// and what a namespace's own predicate (mirror.IsTask and friends) asks first.
+func (r Ref) Reserved() bool { return r.root == VerseRoot }
 
 // System, Kind and ID are the three-segment reading of an address, and they are true while
 // every address has three segments. What is asking is usually "which namespace is this" —
@@ -56,7 +94,12 @@ func (r Ref) System() string { return r.system }
 func (r Ref) Kind() string   { return r.kind }
 func (r Ref) ID() string     { return r.id }
 
-func (r Ref) String() string { return r.system + ":" + r.kind + ":" + r.id }
+func (r Ref) String() string {
+	if r.root == "" {
+		return r.system + ":" + r.kind + ":" + r.id
+	}
+	return r.root + ":" + r.system + ":" + r.kind + ":" + r.id
+}
 
 // MarshalText / UnmarshalText spell a Ref as its address, which is how it is written
 // everywhere else — a charter, a CLI argument, `ref: demo:pr:1` on the wire. Without them a
@@ -76,12 +119,23 @@ func (r *Ref) UnmarshalText(b []byte) error {
 	return nil
 }
 
-// ParseRef parses "system:kind:id". The id may itself contain colons; system and
-// kind may not.
+// ParseRef parses "system:kind:id", or "verse:system:kind:id" for verse's own half. The id may
+// itself contain colons; the segments before it may not.
+//
+// THE RESERVED SEGMENT IS A PREFIX, not a fourth dimension, and that is what keeps the grammar
+// decidable. `a:b:c:d` is ambiguous the moment an address can be four segments — an id may hold
+// colons, and `verse:task:instance:review@demo:pr:1` is a real one — so exactly one leading
+// segment is read as a root, by name, and everything after it is the three an address has had
+// all along. An arbitrary-depth address has a spelling of its own coming (`!verse-path [a b c]`,
+// a vector rather than a string); this is not it, and does not pretend to be.
 func ParseRef(s string) (Ref, error) {
-	parts := strings.SplitN(s, ":", 3)
+	rest, reserved := strings.CutPrefix(s, VerseRoot+":")
+	parts := strings.SplitN(rest, ":", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return Ref{}, fmt.Errorf("invalid ref %q: want system:kind:id", s)
+	}
+	if reserved {
+		return VerseRef(parts[0], parts[1], parts[2]), nil
 	}
 	return RefAt(parts[0], parts[1], parts[2]), nil
 }
@@ -94,7 +148,12 @@ func ParseRef(s string) (Ref, error) {
 // used to say so by naming system, kind and id — which is how the arity came to be stated in
 // a dozen places instead of one. They ask here now, so the arity is `Depth`'s business and
 // theirs is the walk.
-func (r Ref) Segs() []string { return []string{r.system, r.kind, r.id} }
+func (r Ref) Segs() []string {
+	if r.root == "" {
+		return []string{r.system, r.kind, r.id}
+	}
+	return []string{r.root, r.system, r.kind, r.id}
+}
 
 // RefOf is Segs' inverse: the ref standing at these segments.
 //
@@ -104,7 +163,12 @@ func (r Ref) Segs() []string { return []string{r.system, r.kind, r.id} }
 // ParseRef to take apart again is how an id containing a colon comes back as a different
 // entity than the one that was found.
 func RefOf(segs []string) (Ref, bool) {
-	if len(segs) != Depth {
+	// One leading `verse` is the root, and what follows it is the three an address has.
+	want := Depth
+	if len(segs) > 0 && segs[0] == VerseRoot {
+		want++
+	}
+	if len(segs) != want {
 		return Ref{}, false
 	}
 	for _, s := range segs {
@@ -115,11 +179,12 @@ func RefOf(segs []string) (Ref, bool) {
 	return RefAt(segs...), true
 }
 
-// Depth is how many segments name an entity.
+// Depth is how many segments name an entity BELOW its root — system, kind, id.
 //
 // It is the ONE place the arity is written down. Everything else asks Segs, RefOf or this
 // constant, which is what makes an address of another depth a change to this line and its
-// grammar rather than to every walk in the tree.
+// grammar rather than to every walk in the tree. An address in verse's own half is one segment
+// deeper, and `Segs` is what says so.
 const Depth = 3
 
 // Entity is a Ref plus its payload — one node of the verse. The payload is the small

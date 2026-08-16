@@ -173,7 +173,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			func(f *Formula) bool { return f.Req.Kind == ReqQuorum && f.Req.N == 2 },
 		},
 		{
-			"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "motion:deadline"}]}`, codec.JSON,
+			"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "verse:motion:deadline"}]}`, codec.JSON,
 			func(f *Formula) bool { return f.Op == OpUntil && len(f.Args) == 2 },
 		},
 		{

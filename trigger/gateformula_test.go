@@ -114,8 +114,8 @@ func TestTemporalUntilDefaultsOnDeadline(t *testing.T) {
 
 	entitytest.Set(t, store, entity.RefAt("change", "pr", "b"), entity.Obj{}.Payload())
 	// one vote (short of quorum), then the deadline fires first → default deny.
-	entitytest.Set(t, store, entity.RefAt("motion", "vote", "x"), entity.Obj{"choice": "approve"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("motion", "deadline", "b"), entity.Obj{"at": "now"}.Payload())
+	entitytest.Set(t, store, entity.VerseRef("motion", "vote", "x"), entity.Obj{"choice": "approve"}.Payload())
+	entitytest.Set(t, store, entity.VerseRef("motion", "deadline", "b"), entity.Obj{"at": "now"}.Payload())
 	if existsWithin(store, merged, 300*time.Millisecond) {
 		t.Fatal("fired despite deadline reached before quorum")
 	}
@@ -179,7 +179,7 @@ func TestMotionChannelNamesTheSubject(t *testing.T) {
 
 	// The channel is keyed by (trigger, gate, subjects) — the same id the ballots are cast
 	// into — so finding it at all is half the assertion; what it SAYS is the other half.
-	channel := entity.RefAt("motion", "channel",
+	channel := entity.VerseRef("motion", "channel",
 		motionChannelID(gateID("merge", "approvals", []entity.Ref{merged})))
 
 	if !existsWithin(store, channel, 2*time.Second) {
@@ -207,8 +207,8 @@ func quorumUntilDeadline(n int) *Formula {
 func TestCommitMotionTerminalOnce(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	ref := entity.RefAt("motion", "commit", "t1")
-	witness := []entity.Ref{entity.RefAt("motion", "vote", "a"), entity.RefAt("motion", "vote", "b")}
+	ref := entity.VerseRef("motion", "commit", "t1")
+	witness := []entity.Ref{entity.VerseRef("motion", "vote", "a"), entity.VerseRef("motion", "vote", "b")}
 
 	if eff, revoked := eng.commitMotion(ref, nil, "proceed", witness); revoked || eff != "proceed" {
 		t.Fatalf("first commit: eff=%q revoked=%v, want proceed/false", eff, revoked)
@@ -233,7 +233,7 @@ func TestCommitMotionTerminalOnce(t *testing.T) {
 func TestCommitMotionRevokeGuard(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
-	ref := entity.RefAt("motion", "commit", "t2")
+	ref := entity.VerseRef("motion", "commit", "t2")
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "motion", "kind": "vote"}, N: 2}}
 
 	// The witness was captured, but the facts have since dropped (0 votes now) → revoked.
@@ -254,7 +254,7 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	const did = "dtest"
-	channel := entity.RefAt("motion", "channel", did)
+	channel := entity.VerseRef("motion", "channel", did)
 	quorum := &Formula{Op: OpAtom, Req: &Requirement{
 		Kind:  ReqQuorum,
 		Facts: Match{"system": "vote", "kind": did, "value": map[string]any{"choice": "approve"}},
@@ -279,7 +279,7 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 
 	// Fresh motion, a witness ballot retracted before commit → revoked, nothing written.
 	const did2 = "dtest2"
-	ch2 := entity.RefAt("motion", "channel", did2)
+	ch2 := entity.VerseRef("motion", "channel", did2)
 	q2 := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "vote", "kind": did2, "value": map[string]any{"choice": "approve"}}, N: 2}}
 	a2 := entity.RefAt("vote", did2, "alice")
 	b2 := entity.RefAt("vote", did2, "bob")
@@ -302,7 +302,7 @@ func TestDeadlineAtStampAndReuse(t *testing.T) {
 	eng := New(store, denyResolver{})
 	base := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 	eng.SetClock(func() time.Time { return base })
-	ref := entity.RefAt("motion", "channel", "z")
+	ref := entity.VerseRef("motion", "channel", "z")
 
 	at1 := eng.deadlineAt(ref, time.Hour)
 	if !at1.Equal(base.Add(time.Hour)) {
@@ -339,7 +339,7 @@ func TestUntilDeadlineDefaults(t *testing.T) {
 	}
 	// the motion should have closed by deadline default (deny).
 	did := motionChannelID(gateID("merge", "g", []entity.Ref{merged}))
-	ch, _, _ := store.Get(entity.RefAt("motion", "channel", did))
+	ch, _, _ := store.Get(entity.VerseRef("motion", "channel", did))
 	if entity.ToObj(ch.Payload)["outcome"] != "deny" {
 		t.Fatalf("motion outcome = %v, want deny (deadline default)", entity.ToObj(ch.Payload)["outcome"])
 	}

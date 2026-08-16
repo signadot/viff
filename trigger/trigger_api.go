@@ -416,7 +416,7 @@ func gateID(trigger, gate string, subjects []entity.Ref) string {
 		_, _ = h.Write([]byte(s.String()))
 		_, _ = h.Write([]byte{0}) // a separator no ref can hold, so [ab,c] and [a,bc] differ
 	}
-	return fmt.Sprintf("trigger:%s:%s%s%08x",
+	return fmt.Sprintf("verse:trigger:%s:%s%s%08x",
 		safeSeg(trigger), safeSeg(gate), task.GateSep, h.Sum32())
 }
 

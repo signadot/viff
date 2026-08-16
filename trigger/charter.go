@@ -32,7 +32,7 @@ const (
 
 // CharterRef names the entity holding one rule.
 func CharterRef(name string) entity.Ref {
-	return entity.RefAt(CharterSystem, CharterKind, name)
+	return entity.VerseRef(CharterSystem, CharterKind, name)
 }
 
 // specField is where a durable record keeps the declaration it was installed from — the rule
@@ -109,7 +109,7 @@ func (e *Engine) forget(name string) { e.write(CharterRef(name).At(), nil) }
 func (e *Engine) LoadCharter() error {
 	var errs []error
 	for _, ent := range e.store.List(func(r entity.Ref) bool {
-		return r.System() == CharterSystem && r.Kind() == CharterKind
+		return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
 	}) {
 		t, err := ruleOf(ent)
 		if err != nil {

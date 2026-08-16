@@ -13,9 +13,9 @@ func TestScalarAndListPayloadsRoundTrip(t *testing.T) {
 		val  any
 		want string // how Str/Strs/ToObj should read it back, per kind
 	}{
-		{"int", Ref{"demo", "count", "1"}, 42, ""},
-		{"bool", Ref{"demo", "flag", "1"}, true, ""},
-		{"string", Ref{"demo", "name", "1"}, "open", ""},
+		{"int", RefAt("demo", "count", "1"), 42, ""},
+		{"bool", RefAt("demo", "flag", "1"), true, ""},
+		{"string", RefAt("demo", "name", "1"), "open", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -34,7 +34,7 @@ func TestScalarAndListPayloadsRoundTrip(t *testing.T) {
 		})
 	}
 
-	list := Ref{"demo", "list", "1"}
+	list := RefAt("demo", "list", "1")
 	set(t, s, list, Val([]any{"a", "b"}))
 	got, _, _ := s.Get(list)
 	if IsObj(got.Payload) {
@@ -87,7 +87,7 @@ func TestFieldPredicateDoesNotMatchANonObjectPayload(t *testing.T) {
 // memory — the docd store always normalized. Both stores now agree.
 func TestStrsReadsAListWrittenAsGoStrings(t *testing.T) {
 	s := openStore(t)
-	ref := Ref{"demo", "motion", "1"}
+	ref := RefAt("demo", "motion", "1")
 	set(t, s, ref, Obj{"witness": []string{"a", "b"}}.Payload())
 	got, _, _ := s.Get(ref)
 	w := Strs(got.Payload, "witness")

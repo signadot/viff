@@ -50,7 +50,7 @@ func TestAMotionIsWithdrawnWhenItsSubjectLeavesTheSelection(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("vote", mid, "me"),
 		entity.Obj{"choice": "approve", "by": "me"}.Payload())
 
-	ref := entity.RefAt(motionSystem, motionChannelKind, mid)
+	ref := entity.VerseRef(motionSystem, motionChannelKind, mid)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if statusOf(t, store, ref)["status"] == motionOrphaned {
@@ -112,7 +112,7 @@ func TestAMotionStillCarriesWhileItsSubjectHolds(t *testing.T) {
 	}
 	t.Fatalf("the gate did not carry: subject = %+v, motion = %+v",
 		statusOf(t, store, subj),
-		statusOf(t, store, entity.RefAt(motionSystem, motionChannelKind, mid)))
+		statusOf(t, store, entity.VerseRef(motionSystem, motionChannelKind, mid)))
 }
 
 // waitMotion waits for a motion channel to open and returns its id.
@@ -121,7 +121,7 @@ func waitMotion(t *testing.T, store entity.Store) string {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		for _, e := range store.List(func(r entity.Ref) bool {
-			return r.System() == motionSystem && r.Kind() == motionChannelKind
+			return r.Reserved() && r.System() == motionSystem && r.Kind() == motionChannelKind
 		}) {
 			return e.Ref.ID()
 		}

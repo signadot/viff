@@ -28,6 +28,7 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 		name: escalate-writes,
 		condition: {
 			subject: {
+				root:   verse,
 				system: gate,
 				kind:   question,
 				value:  {status: pending, effects: {verbs: [write]}},

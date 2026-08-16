@@ -49,7 +49,7 @@ func TestSubtreeWatchSurvivesABurst(t *testing.T) {
 	// The burst: enough to outrun the watcher and get it dropped.
 	for i := range 2000 {
 		if ok, _, err := s.Write(Write{
-			At: Ref{"bench", "k", strconv.Itoa(i)}.At(), Value: Obj{"n": i}.Payload(),
+			At: RefAt("bench", "k", strconv.Itoa(i)).At(), Value: Obj{"n": i}.Payload(),
 		}); err != nil || !ok {
 			t.Fatalf("write %d: ok=%v err=%v", i, ok, err)
 		}
@@ -72,7 +72,7 @@ func TestSubtreeWatchSurvivesABurst(t *testing.T) {
 		}
 	}
 
-	want := Ref{"bench", "k", marker}
+	want := RefAt("bench", "k", marker)
 	if ok, _, err := s.Write(Write{At: want.At(), Value: Obj{"n": -1}.Payload()}); err != nil || !ok {
 		t.Fatalf("marker write: ok=%v err=%v", ok, err)
 	}

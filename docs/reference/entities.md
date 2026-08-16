@@ -10,22 +10,56 @@ the corners that section leaves out.
 ```
 demo:pr:1                     system=demo   kind=pr      id=1
 github:pr:org/repo#42         only the first two colons split, so an id may hold one
-task:instance:run-a1b2     what verse writes about its own tasks
+verse:task:instance:run-a1b2     what verse writes about its own tasks
 ```
 
 Three segments, in one grammar shared by the CLI and the charter wire: `*` is a wildcard per
 segment, and an id may glob (`demo:pr:hotfix-*`). So `verse flow demo:pr:*` and a charter's
 `"subject": "demo:pr:*"` mean the same set.
 
-Systems verse itself writes into: `task:instance:*` (the mirror of every running task),
-`task:run:*` (the record of a run that happened) and `task:claim:*` (a sequence's run claim),
-`gate:question:*` (every gate awaiting an answer), `resolvers:*` (who answers them, and
-`resolvers:instance:*` for who is watching one run — see [resolvers.md](resolvers.md)),
-`trigger:rule:*` (the installed charter) and `trigger:strata:*` (its declared levels),
-`motion:channel:*` and `vote:*` (the docket and its ballots), `runners:*` (where work can run)
-and `sources:*` (what reflects an external system in), `local:*` (a federated working tree).
-None of them are special — they are entities, so you can `get`, `watch` and write
-rules about them.
+## Two halves, one tree
+
+The root has one reserved key. Everything **verse writes about its own running** lives under
+`verse:`; everything **the world is about** lives beside it, at whatever address you choose.
+
+```sh
+verse state --paths
+# demo:pr:1                          the world's half: yours
+# verse:task:instance:run-a1b2       verse's own
+# verse:trigger:rule:review
+```
+
+Under `verse:` are `task:instance:*` (the mirror of every running task), `task:run:*` (the
+record of a run that happened) and `task:claim:*` (a sequence's run claim); `gate:question:*`
+(every gate awaiting an answer); `resolvers:*` (who answers them, and `resolvers:instance:*`
+for who is watching one run — see [resolvers.md](resolvers.md)); `trigger:rule:*` (the
+installed charter) and `trigger:strata:*` (its declared levels); `motion:channel:*` (the
+docket); `runners:*` (where work can run) and `sources:*` (what reflects an external system
+in).
+
+Two things are deliberately NOT in verse's half. `vote:*` — a ballot is an act somebody takes,
+not a record verse keeps, which is why casting one is an ordinary write. And `provider:*` — the
+registry of doers is written by whoever runs the verse.
+
+**The reserved half is read like anything else and written only through the verbs that own
+it.** `verse state get verse:trigger:rule:review` reads a rule; `verse state put` at any
+`verse:` address is refused, and says which verb to use instead (`verse trigger add`,
+`verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
+boundary had a name, anyone who could reach the store could install a rule, stamp a task record
+or answer a question on verse's behalf — with no route positioned to say no.
+
+A charter that wants to react to verse's own state says which half it means:
+
+```tony
+condition:
+  subject: {root: verse, system: gate, kind: question, value: {status: pending}}
+```
+
+An unwritten `root:` is the world's half, so a rule about `demo:pr:*` cannot quietly select the
+task records of the runs reviewing them.
+
+`local:*` (a federated working tree) is a third thing again: it is mount-owned and lives under
+its own root with no history — see below.
 
 ## Reading
 

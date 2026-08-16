@@ -23,8 +23,8 @@ runner *is*, the way a resolver's kind is what it is *for*.
 ```sh
 verse runner add pool:gpu http://runner-gpu.verse.svc:9797
 verse runner
-verse runner check runners:pool:gpu
-verse runner show runners:pool:gpu
+verse runner check verse:runners:pool:gpu
+verse runner show verse:runners:pool:gpu
 ```
 
 `add` also reads a document, which is what a deployment writes:
@@ -77,7 +77,7 @@ condition:
 action:
   spawn:
     prompt:   "retrain the ranker on $subject"
-    runner: runners:pool:gpu          # ← where it runs
+    runner: verse:runners:pool:gpu          # ← where it runs
     driver: scripted                  # ← what runs it
     vector: auto                      # ← how much it may decide alone
     grant:  no-delegate               # ← what it may do
@@ -88,7 +88,7 @@ action:
 and so does an ad-hoc run:
 
 ```sh
-verse task run --runner runners:pool:gpu "retrain the ranker"
+verse task run --runner verse:runners:pool:gpu "retrain the ranker"
 ```
 
 A **name**, not a url, and the indirection is the point: a url on the spawn would spread the
@@ -117,7 +117,7 @@ entity per (doer, place) pair.
 
 ```sh
 verse ps                           # each task names its runner; the default reads `local`
-verse ps --runner runners:pool:gpu # only that runner's work
+verse ps --runner verse:runners:pool:gpu # only that runner's work
 verse runner                       # what is installed, and what each is carrying
 verse runner --probe               # …and what each of them says right now
 ```
@@ -159,12 +159,12 @@ difference is an intent it cannot read from a delete. So **removal with work on 
 until told which**:
 
 ```
-$ verse runner remove runners:pool:gpu
-refused: 3 task(es) are running on runners:pool:gpu, and removing it means one of two
+$ verse runner remove verse:runners:pool:gpu
+refused: 3 task(es) are running on verse:runners:pool:gpu, and removing it means one of two
   things this cannot tell apart:
     --cancel "<why>"   the place is going away; end them with a reason their charters see
     --leave            the place stays; they keep running on the url already stamped on them
-$ verse runner remove runners:pool:gpu --cancel "gpu pool retired"
+$ verse runner remove verse:runners:pool:gpu --cancel "gpu pool retired"
 ```
 
 Neither default survives the motivating use. *Leave* looks safe and is not: the lifecycle this

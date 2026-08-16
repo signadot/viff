@@ -59,7 +59,7 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("source add: %v", err)
 	}
-	if !strings.Contains(out, "sources:git:laptop") {
+	if !strings.Contains(out, "verse:sources:git:laptop") {
 		t.Fatalf("add printed %q, want the ref it installed", out)
 	}
 	// The probe ran and said what it found — the half of `add` that only happens on the way
@@ -72,7 +72,7 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	}
 
 	// It is listed, shown, and checked by the same address the operator typed.
-	if out, err := runCLI(t, "sources"); err != nil || !strings.Contains(out, "sources:git:laptop") {
+	if out, err := runCLI(t, "sources"); err != nil || !strings.Contains(out, "verse:sources:git:laptop") {
 		t.Fatalf("sources = %q (%v)", out, err)
 	}
 	if out, err := runCLI(t, "source", "show", "git:laptop"); err != nil ||
@@ -80,7 +80,7 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 		t.Fatalf("source show = %q (%v)", out, err)
 	}
 	// check asks it NOW, and reports what it says beside what was recorded.
-	if out, err := runCLI(t, "source", "check", "sources:git:laptop"); err != nil ||
+	if out, err := runCLI(t, "source", "check", "verse:sources:git:laptop"); err != nil ||
 		!strings.Contains(out, "a source") {
 		t.Fatalf("source check = %q (%v)", out, err)
 	}
@@ -168,7 +168,7 @@ func TestSourceAddFromAFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out, err := runCLI(t, "source", "add", "--file", path); err != nil ||
-		!strings.Contains(out, "sources:git:laptop") {
+		!strings.Contains(out, "verse:sources:git:laptop") {
 		t.Fatalf("source add --file = %q (%v)", out, err)
 	}
 

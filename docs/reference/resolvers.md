@@ -112,7 +112,7 @@ a hidden answerer — `verse task attach <run>` shows the whole exchange in orde
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
-{kind: decision, id: "review-bff7…~d1", by: resolvers:security:reviewer, proceed: true}
+{kind: decision, id: "review-bff7…~d1", by: verse:resolvers:security:reviewer, proceed: true}
 {kind: exec,     tool: run_bash, text: reviewing}
 {kind: status,   text: done}
 ```
@@ -133,8 +133,8 @@ moment.
 ```sh
 verse resolver                                  # list the bindings
 verse resolver add <file>                       # install one (- = stdin)
-verse resolver show   resolvers:security:review # or security:review
-verse resolver remove resolvers:security:review
+verse resolver show   verse:resolvers:security:review # or security:review
+verse resolver remove verse:resolvers:security:review
 
 verse state resolvers.instance                  # who is watching what
 verse gate                                      # the docket, resolver-owned questions included
@@ -151,7 +151,7 @@ spellings of one thing. The leading `resolvers:` may be dropped.
 verse task run 'check the migration' \
   --subject change:pr:1 \
   --vector ask \
-  --resolver resolvers:security:review
+  --resolver verse:resolvers:security:review
 ```
 
 `--vector ask` is what makes the run stop and ask; without it the run is `auto` and a bound
@@ -162,11 +162,11 @@ In a charter, the same two doors:
 
 ```tony
 gating:
-  resolver: resolvers:security:review    # answers this rule's own gates
+  resolver: verse:resolvers:security:review    # answers this rule's own gates
   gates: [{ name: ship, mode: ask }]
 action:
   spawn:
-    resolver: resolvers:security:review  # answers this run's gates
+    resolver: verse:resolvers:security:review  # answers this run's gates
 ```
 
 ## Not built

@@ -109,6 +109,7 @@ type Match map[string]any
 // The match dimensions. `value` is the payload predicate, and the only one of the four that
 // is not a string dimension — see the note on Match.
 const (
+	mKeyRoot   = "root" // which half of the verse: empty is the world's, `verse` is verse's own
 	mKeySystem = "system"
 	mKeyKind   = "kind"
 	mKeyID     = "id"
@@ -120,7 +121,7 @@ const (
 // (docs/trigger-model.md), an object is classified as a match or as a formula tag
 // by its keys, so the two namespaces must not collide.
 var matchKeys = map[string]bool{
-	mKeySystem: true, mKeyKind: true, mKeyID: true, mKeyValue: true,
+	mKeyRoot: true, mKeySystem: true, mKeyKind: true, mKeyID: true, mKeyValue: true,
 }
 
 // removedKeys are dimensions a match once had, named so a charter carrying one fails with an
@@ -213,6 +214,11 @@ func (m Match) Validate() error {
 // consulted: an operator is a selection over what exists, never a name, so `Names` must
 // decline it and `Selects` must not depend on it. The one place "" would be wrong — the id
 // filter itself — goes through matchDim, which looks at the node first.
+// Root names the half of the verse a match is about: empty selects what the world is about,
+// `verse` what verse writes about its own running (a task's mirror, a posed question, a rule).
+// A charter that wants to react to verse's own state says so, which is what keeps a rule about
+// PRs from quietly selecting the records of the tasks reviewing them.
+func (m Match) Root() string   { return m.str(mKeyRoot) }
 func (m Match) System() string { return m.str(mKeySystem) }
 func (m Match) Kind() string   { return m.str(mKeyKind) }
 func (m Match) ID() string     { return m.str(mKeyID) }
@@ -263,7 +269,7 @@ func (m Match) FieldString(key string) string {
 // publishes a fact nothing has written before. A glob in any segment makes it a selection
 // over what exists instead, so it can only ever act on entities that are really there.
 func (m Match) Names() (entity.Ref, bool) {
-	r := entity.RefAt(m.System(), m.Kind(), m.ID())
+	r := entity.RefAt(append(m.prefix(), m.ID())...)
 	if r.System() == "" || r.Kind() == "" || r.ID() == "" {
 		return entity.Ref{}, false
 	}
@@ -371,6 +377,7 @@ func (m Match) pattern() (entity.Pattern, error) {
 		return entity.Pattern{}, err
 	}
 	return entity.Pattern{
+		Root:      m.Root(),
 		System:    m.System(),
 		Kind:      m.Kind(),
 		Predicate: m.Predicate(),
@@ -589,4 +596,63 @@ func ParseExpr(s string) (Match, error) {
 		m[key] = seg
 	}
 	return m, nil
+}
+
+// prefix is the address levels a match fixes above the id: its root when it names one, then
+// system and kind. It is what a watch path and a store prefilter are built from, so the two
+// halves of the verse are watched at the depth each one has.
+func (m Match) prefix() []string {
+	var out []string
+	if r := m.Root(); r != "" {
+		out = append(out, r)
+	}
+	return append(out, m.System(), m.Kind())
+}
+
+// Subtree is a watched slice of the verse: the address levels above an entity's id, root
+// included. It is an ARRAY rather than a slice because it is a map key in half the places it
+// is used — one watch per distinct subtree — and a slice is not comparable.
+//
+// The root is first and is usually empty: a rule is about what the world is about. A rule that
+// says `root: verse` watches verse's own half, one level deeper, and `Path` is what turns
+// either shape into the segments a watch takes.
+type Subtree [3]string
+
+// Path is the subtree as segments, with the empty levels dropped — the form WatchSubtree and
+// AsOf take.
+func (s Subtree) Path() []string {
+	out := make([]string, 0, len(s))
+	for _, seg := range s {
+		if seg == "" {
+			continue
+		}
+		out = append(out, seg)
+	}
+	return out
+}
+
+// subtreeOf is the subtree a match reads.
+func subtreeOf(m Match) Subtree { return Subtree{m.Root(), m.System(), m.Kind()} }
+
+// paths renders subtrees as the segment lists a read or a watch takes.
+func paths(sts []Subtree) [][]string {
+	out := make([][]string, 0, len(sts))
+	for _, st := range sts {
+		out = append(out, st.Path())
+	}
+	return out
+}
+
+// covers reports whether an address falls in this subtree: each level the subtree names must
+// match, and a level it leaves empty is a wildcard. The root is a level like the others, which
+// is what keeps a subtree in the world's half from covering verse's own.
+func (s Subtree) covers(ref entity.Ref) bool {
+	for i, want := range [...]string{ref.Root(), ref.System(), ref.Kind()} {
+		if s[i] != "" && s[i] != want {
+			return false
+		}
+	}
+	// A subtree naming no root is about the world's half, and an address in verse's own is
+	// not in it — a rule that did not ask for verse's records does not read them.
+	return s[0] != "" || !ref.Reserved()
 }

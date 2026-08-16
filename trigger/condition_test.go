@@ -37,7 +37,7 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo:pr:*"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -83,7 +83,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When: MatchWhen(Match{"system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When: MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
 			// A predicate the action advances past, so the rule has an end state.
 			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewing"}},
 		},
@@ -137,7 +137,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "needs-flow",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "task", "kind": "instance"}),
+			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance"}),
 			Subject: mm("demo:pr:*"),
 		},
 		Gates:  []Gate{{Mode: "ask"}},

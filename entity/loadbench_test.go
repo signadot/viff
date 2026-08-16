@@ -75,7 +75,7 @@ func TestLoadUnderWatches(t *testing.T) {
 		report = 1
 	}
 	for i := range writes {
-		ref := Ref{"bench", "k" + strconv.Itoa(i%watches), strconv.Itoa(i / watches)}
+		ref := RefAt("bench", "k"+strconv.Itoa(i%watches), strconv.Itoa(i/watches))
 		ok, _, err := s.Write(Write{At: ref.At(), Value: Obj{"n": i}.Payload()})
 		if err != nil || !ok {
 			t.Fatalf("write %d: ok=%v err=%v", i, ok, err)

@@ -25,7 +25,7 @@ func TestSelectProviderAuto(t *testing.T) {
 	if !ok || frag.Driver != "gpt" {
 		t.Fatalf("auto select = (%+v, %v), want driver gpt, true", frag, ok)
 	}
-	if _, found, _ := store.Get(entity.RefAt("motion", "channel", motionChannelID(providerSpecSeed(subj, p)))); found {
+	if _, found, _ := store.Get(entity.VerseRef("motion", "channel", motionChannelID(providerSpecSeed(subj, p)))); found {
 		t.Fatal("auto select opened a motion; the docket is for questions someone is asked")
 	}
 }
@@ -40,7 +40,7 @@ func TestSelectProviderDefaultIsSilentAuto(t *testing.T) {
 	if frag, ok := eng.selectProvider(launch.Spec{Provider: p}, subj); !ok || frag.Driver != "gpt" {
 		t.Fatalf("default select = (%+v, %v), want driver gpt, true", frag, ok)
 	}
-	if _, found, _ := store.Get(entity.RefAt("motion", "channel", motionChannelID(providerSpecSeed(subj, p)))); found {
+	if _, found, _ := store.Get(entity.VerseRef("motion", "channel", motionChannelID(providerSpecSeed(subj, p)))); found {
 		t.Fatal("an unset select opened a motion; it defaults to auto, which poses nothing")
 	}
 }
@@ -143,7 +143,7 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 		t.Fatalf("deadline select = (%+v, %v), want (zero, false) — no pick by the deadline", frag, ok)
 	}
 	// The channel records when it closes, so `verse docket` can show it.
-	ch, _, _ := store.Get(entity.RefAt("motion", "channel", motionChannelID(providerSpecSeed(subj, p))))
+	ch, _, _ := store.Get(entity.VerseRef("motion", "channel", motionChannelID(providerSpecSeed(subj, p))))
 	if _, stamped := entity.ToObj(ch.Payload)["deadline_at"]; !stamped {
 		t.Fatalf("select channel missing deadline_at: %+v", ch.Payload)
 	}

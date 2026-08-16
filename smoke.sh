@@ -373,7 +373,7 @@ ok "task vector → ask (as human:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v state get "task:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
+	if haskv "$(v state get "verse:task:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
 		observed=1
 		break
 	fi
@@ -538,7 +538,7 @@ v stratum remove smoke-observe >/dev/null 2>&1 && die "removed a stratum still h
 ok "removing a stratum with rules in it is refused"
 
 # ── restart: the charter is durable ──────────────────────────────────────────
-# The rules installed above are entities (trigger:rule:<name>), so a second `up` over the
+# The rules installed above are entities (verse:trigger:rule:<name>), so a second `up` over the
 # same data dir comes back running the same program. This is the one check that exercises
 # the real path end to end — down, up, and a change that arrives only afterwards.
 step "restart (the charter survives)"

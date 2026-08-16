@@ -31,8 +31,8 @@ func TestDocsCharterCarriesRunner(t *testing.T) {
 				continue
 			}
 			found = true
-			if got := tr.Action.Spawn.Runner; got != "runners:pool:gpu" {
-				t.Fatalf("%s: spawn.runner parsed as %q, want runners:pool:gpu — the docs teach "+
+			if got := tr.Action.Spawn.Runner; got != "verse:runners:pool:gpu" {
+				t.Fatalf("%s: spawn.runner parsed as %q, want verse:runners:pool:gpu — the docs teach "+
 					"a field the grammar drops", tr.Name, got)
 			}
 		}

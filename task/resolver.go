@@ -14,7 +14,7 @@ type Resolver interface {
 // resolution is attributable) and to drive proceed/deny at the boundary.
 type Resolution struct {
 	Proceed  bool
-	By       string // who resolved: "auto", "human:scott", "task:ci", ...
+	By       string // who resolved: "auto", "human:scott", "verse:task:ci", ...
 	Note     string
 	Question GateQuestion
 	// ChildMode: for a CallAgent ASK, how the child is supervised (default

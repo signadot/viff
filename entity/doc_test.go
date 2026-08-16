@@ -17,12 +17,12 @@ import (
 // (`.1` is the FIELD named 1, not an index), a non-object payload and a null one.
 func fixture() []Entity {
 	return []Entity{
-		{Ref: Ref{"demo", "pr", "1"}, Payload: Obj{"stage": "open"}.Payload()},
-		{Ref: Ref{"demo", "pr", "2"}, Payload: Obj{"stage": "reviewed"}.Payload()},
-		{Ref: Ref{"demo", "pr", "a.b"}, Payload: Obj{"stage": "open"}.Payload()},
-		{Ref: Ref{"git", "ref", "proposal-appeared@git:ref:x+2a6c8212"}, Payload: Obj{"sha": "2a6c"}.Payload()},
-		{Ref: Ref{"count", "n", "hits"}, Payload: ir.FromInt(42)},
-		{Ref: Ref{"count", "n", "nothing"}, Payload: ir.Null()},
+		{Ref: RefAt("demo", "pr", "1"), Payload: Obj{"stage": "open"}.Payload()},
+		{Ref: RefAt("demo", "pr", "2"), Payload: Obj{"stage": "reviewed"}.Payload()},
+		{Ref: RefAt("demo", "pr", "a.b"), Payload: Obj{"stage": "open"}.Payload()},
+		{Ref: RefAt("git", "ref", "proposal-appeared@git:ref:x+2a6c8212"), Payload: Obj{"sha": "2a6c"}.Payload()},
+		{Ref: RefAt("count", "n", "hits"), Payload: ir.FromInt(42)},
+		{Ref: RefAt("count", "n", "nothing"), Payload: ir.Null()},
 	}
 }
 
@@ -174,7 +174,7 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
 	}).WithTag("!key(voter)")
 	ents := []Entity{{
-		Ref:     Ref{"merge", "proposal", "X"},
+		Ref:     RefAt("merge", "proposal", "X"),
 		Payload: ir.FromMap(map[string]*ir.Node{"votes": votes}),
 	}}
 
@@ -193,7 +193,7 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 // cannot be asked, not one whose answer is nothing.
 func TestAKeyOnAnUnkeyedArrayIsAnError(t *testing.T) {
 	ents := []Entity{{
-		Ref:     Ref{"merge", "proposal", "X"},
+		Ref:     RefAt("merge", "proposal", "X"),
 		Payload: ir.FromMap(map[string]*ir.Node{"votes": ir.FromSlice([]*ir.Node{ir.FromString("scott")})}),
 	}}
 	if _, err := Nest(ents, at(t, "merge.proposal.X.votes(scott)")); err == nil {
