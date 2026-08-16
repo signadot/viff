@@ -9,7 +9,7 @@ import (
 // Formula is the TEMPORAL grammar: matches composed with operators over the verse's
 // evolution. A Trigger's Condition.When and a Gate's Formula are both
 // Formulas, differing only in consequence — a satisfied When *fires*, a satisfied gate
-// *proceeds*, a satisfied doneWhen *latches*.
+// *proceeds*.
 //
 // Its leaves are Requirements, and a Requirement is A MATCH PLUS HOW IT IS EVALUATED
 // (see RequirementKind): `match` is an edge on a change, `fact` is presence, `quorum` is a

@@ -387,7 +387,7 @@ func published(t *testing.T, ts *httptest.Server, path string) *ir.Node {
 	return doc
 }
 
-// All eight steer routes answer in ONE shape carrying the verb, rather than four shapes whose
+// All four steer routes answer in ONE shape carrying the verb, rather than four shapes whose
 // key names what happened. The key used to do double duty — `paused: 2` was both the name of
 // the act and the count of it — so a reader had to know which endpoint produced a document to
 // know what its second key meant.
