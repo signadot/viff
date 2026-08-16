@@ -328,3 +328,25 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 		}
 	}
 }
+
+// drain forwards one subtree's commits onto the shared event channel, so a motion whose
+// options read several subtrees waits on ONE channel rather than a select over N. It moved
+// here from monitor.go, whose only other caller was a goal's doneWhen — a fan-in helper
+// belongs with whoever still fans in.
+func drain(ctx context.Context, in <-chan entity.Commit, out chan<- entity.Commit) {
+	for {
+		select {
+		case c, ok := <-in:
+			if !ok {
+				return
+			}
+			select {
+			case out <- c:
+			case <-ctx.Done():
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}

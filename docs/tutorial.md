@@ -672,10 +672,6 @@ not share a filesystem with you. *Left to do: file reads are still truncated.*
 [task control](task-control.md), [external tasks](external-tasks.md),
 [reference/tasks.md](reference/tasks.md). *Left to do: the inbox long-poll.*
 
-**Goals** — [reference/goals.md](reference/goals.md). An explicit target over the reactive
-substrate: a `doneWhen` formula, a deadline, and a bundle of owned triggers, latching `done`
-or `unachievable`. *Being redesigned — read it as what runs today, not as where it lands.*
-
 **Reflecting external systems** — [sources](sources.md). Git, GitHub, Linear into an owned
 slice of the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
 and install, the way a runner is: `verse source add git:laptop <url>`.

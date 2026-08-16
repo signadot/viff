@@ -115,7 +115,7 @@ you install a four-line shell script.
 
 The `verse` CLI, a script, or `curl` dials versed. Everything an operator does crosses here,
 and the surface keeps two planes apart on purpose: **observation** — `watch`, `entities`,
-`gates`, `flows` — may lag, while **control** — `gate resolve`, `flow` and `goal` steering,
+`gates`, `flows` — may lag, while **control** — `gate resolve`, `flow` steering,
 task `cancel`/`say` — is serviced ahead of it. An intervention that queues behind a backlog
 of observations is an intervention defeated ([deployment and steering](deployment-and-steering.md)).
 

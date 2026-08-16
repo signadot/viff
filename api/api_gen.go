@@ -1180,110 +1180,6 @@ func (s *SetVector) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
-// ToTonyIR converts GoalSteer to a Tony IR node.
-func (s *GoalSteer) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
-	if s == nil {
-		return ir.Null(), nil
-	}
-	// Create IR object map
-	irMap := make(map[string]*ir.Node)
-
-	// Field: Name
-	irMap["name"] = ir.FromString(string(s.Name))
-
-	// Field: Text
-	if s.Text != "" {
-		irMap["text"] = ir.FromString(string(s.Text))
-	}
-
-	// Field: By
-	if s.By != "" {
-		irMap["by"] = ir.FromString(string(s.By))
-	}
-
-	return ir.FromMap(irMap), nil
-}
-
-// FromTonyIR populates GoalSteer from a Tony IR node.
-func (s *GoalSteer) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	if node == nil {
-		return nil
-	}
-
-	// Unwrap CommentType nodes to get the actual data node
-	if node.Type == ir.CommentType {
-		if len(node.Values) > 0 {
-			node = node.Values[0]
-		} else {
-			return nil
-		}
-	}
-
-	if node.Type == ir.NullType {
-		return nil
-	}
-	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for GoalSteer, got %v", node.Type)
-	}
-
-	for i, fieldName := range node.Fields {
-		fieldNode := node.Values[i]
-		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
-		fieldNodeUnwrapped := fieldNode
-		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
-			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
-		}
-		switch fieldName.String {
-		case "name":
-			// Field: Name
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
-			}
-			s.Name = string(fieldNodeUnwrapped.String)
-		case "text":
-			// Field: Text
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "text", fieldNodeUnwrapped.Type)
-			}
-			s.Text = string(fieldNodeUnwrapped.String)
-		case "by":
-			// Field: By
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "by", fieldNodeUnwrapped.Type)
-			}
-			s.By = string(fieldNodeUnwrapped.String)
-		default:
-			if gomap.IsStrict(opts...) {
-				return fmt.Errorf("unknown field %q for GoalSteer", fieldName.String)
-			}
-		}
-	}
-
-	return nil
-}
-
-// ToTony converts GoalSteer to Tony format bytes.
-func (s *GoalSteer) ToTony(opts ...gomap.MapOption) ([]byte, error) {
-	node, err := s.ToTonyIR(opts...)
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// FromTony parses Tony format bytes and populates GoalSteer.
-func (s *GoalSteer) FromTony(data []byte, opts ...gomap.UnmapOption) error {
-	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
-	if err != nil {
-		return err
-	}
-	return s.FromTonyIR(node, opts...)
-}
-
 // ToTonyIR converts FlowSteer to a Tony IR node.
 func (s *FlowSteer) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
@@ -1631,11 +1527,6 @@ func (s *Steered) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["subject"] = ir.FromString(string(s.Subject))
 	}
 
-	// Field: Goal
-	if s.Goal != "" {
-		irMap["goal"] = ir.FromString(string(s.Goal))
-	}
-
 	// Field: Verb
 	irMap["verb"] = ir.FromString(string(s.Verb))
 
@@ -1681,12 +1572,6 @@ func (s *Steered) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
 			s.Subject = string(fieldNodeUnwrapped.String)
-		case "goal":
-			// Field: Goal
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "goal", fieldNodeUnwrapped.Type)
-			}
-			s.Goal = string(fieldNodeUnwrapped.String)
 		case "verb":
 			// Field: Verb
 			if fieldNodeUnwrapped.Type != ir.StringType {

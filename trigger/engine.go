@@ -158,11 +158,6 @@ type Engine struct {
 	// — which is the property one-entity-per-rule exists to avoid. Promoted by addStratum.
 	pending []Trigger
 
-	// goals: named goal aggregates, each owning a bundle of triggers + a done/fail
-	// lifecycle monitor (see goal.go). Guarded independently of the charter.
-	goalsMu sync.Mutex
-	goals   map[string]*Goal
-
 	// Per-trigger (subtree) observation mode. A scoped engine (a verse connect
 	// federation) opens NO root watch; instead each trigger added gets a watch on exactly
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
@@ -191,7 +186,6 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 		live:     map[string]flowTask{},
 		causes:   map[int64]link{},
 		tripPace: DefaultTripPace,
-		goals:    map[string]*Goal{},
 		shapes:   map[string]string{},
 		watchers: map[string]func(){},
 	}
@@ -973,7 +967,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Requ
 //
 // Field by field as NODES, not through entity.ToObj: a map[string]any has nowhere to put a
 // tag, so reading a payload back through Go values silently rewrites what it carries — a
-// goal's stored definition losing `!glob "hotfix-*"` down to the string, and its
+// stored rule losing `!glob "hotfix-*"` down to the string, and its
 // `tmp: !delete null` down to a null, which the write would then apply as a tombstone. A
 // record that holds a document has to survive being extended by one field. Each node is
 // cloned because the builder's result is parented into a fresh document, and the copy it came
@@ -981,7 +975,7 @@ func witnessPreconditions(recheck *Formula, witness []entity.Ref) ([]entity.Requ
 //
 // What is built from one of these is data on its way back in. Through Modify that is taken
 // care of (it escapes what it writes); a builder written STRAIGHT back has to say so itself,
-// with entity.AsData — closedMotion and commitGoal are the two that do.
+// with entity.AsData — closedMotion is the one that does.
 func clonePayload(p entity.Payload) entity.Obj {
 	out := entity.Obj{}
 	for k, v := range entity.Fields(p) {
@@ -1771,8 +1765,8 @@ func (e *Engine) modify(ref entity.Ref, fn func(entity.Payload) entity.Payload) 
 }
 
 // modifyErr is modify with the failure RETURNED. A reaction has nobody to return one to, so
-// modify logs; a request does (installing a goal), and a caller that can refuse the whole
-// operation should not have to read the log to find out that it half-happened.
+// modify logs; a request does (an install), and a caller that can refuse the whole operation
+// should not have to read the log to find out that it half-happened.
 func (e *Engine) modifyErr(ref entity.Ref, fn func(entity.Payload) entity.Payload) error {
 	return e.modifyOn(e.store, ref, fn)
 }

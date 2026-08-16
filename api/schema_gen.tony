@@ -29,15 +29,6 @@ signature:
 ---
 context:
 - tony-format/context
-define:
-  by: .[string]
-  name: .[string]
-  text: .[string]
-signature:
-  name: verse-goal-steer
----
-context:
-- tony-format/context
 - task: github.com/signadot/verse/task
 define:
   by: .[string]
@@ -196,7 +187,6 @@ context:
 - tony-format/context
 define:
   affected: .[int]
-  goal: .[string]
   subject: .[string]
   verb: .[string]
 signature:

@@ -71,7 +71,7 @@ as stated, because verse has no client-side decode of a charter.**
 `verse stratum add` reads bytes (`codec.ReadSource`), parses them to nodes, classifies each by
 which fields it has *without decoding it* (`defKind` — a rule has a `condition`, a stratum has
 a `level` and a `match`), and forwards each node verbatim (`postDefs` → `httpPostNode`,
-`cmd/verse/client.go:88`). `verse trigger add` and `verse goal add` do the same. The only place
+`cmd/verse/client.go:88`). `verse trigger add` does the same. The only place
 a charter becomes a Go value is `addStratum`/`addTrigger` in versed.
 
 That is deliberate and worth keeping. A CLI that decoded charters would be a CLI that refuses
@@ -81,7 +81,7 @@ that has no business having an opinion.
 So the boundary that matters is not file-versus-wire. It is **which plane of the API a body
 belongs to**:
 
-- **Charter installation** — `POST /strata`, `POST /triggers`, `POST /goals`. Not a message
+- **Charter installation** — `POST /strata`, `POST /triggers`. Not a message
   between running parts: an authoring interface, whose body is a document a person wrote and a
   CLI forwarded unread. → **strict**. This is exactly upstream's config-file case; it just
   arrives over HTTP.

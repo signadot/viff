@@ -130,9 +130,9 @@ func (e *Engine) evictCausesLocked() {
 
 // chainCap is the depth bound: the number of installed triggers, floored at 1.
 //
-// Read LATE — at the check rather than at install — because the charter moves at runtime: goals
-// install triggers of their own (see goal.go), and a rule added or removed changes how long a
-// chain can legitimately be. The count now is the count the pigeonhole argument is about.
+// Read LATE — at the check rather than at install — because the charter moves at runtime: a
+// rule added or removed changes how long a chain can legitimately be. The count now is the
+// count the pigeonhole argument is about.
 func (e *Engine) chainCap() int {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()

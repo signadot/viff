@@ -190,32 +190,3 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 		t.Fatalf("two subjects yielded %d live tasks, want 2", n)
 	}
 }
-
-// Goal steering is the flow query at its narrowest setting, so it must still reach exactly
-// the goal subject's work after the registry change.
-func TestGoalSteeringUsesTheFlowQuery(t *testing.T) {
-	store := entitytest.Store(t)
-	eng := New(store, task.AutoResolver{})
-	if err := eng.AddGoal(GoalDef{
-		Name:     "ship",
-		Subject:  "change:pr:42",
-		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "never", "kind": "x"}}},
-	}); err != nil {
-		t.Fatalf("AddGoal: %v", err)
-	}
-	t.Cleanup(func() { eng.RemoveGoal("ship") })
-
-	spawnFP(t, eng, "g1", "change:pr:42")
-	spawnFP(t, eng, "g2", "change:pr:42")
-	spawnFP(t, eng, "other", "change:pr:99")
-
-	if n := eng.PauseGoal("ship"); n != 2 {
-		t.Fatalf("PauseGoal reached %d tasks, want 2 (its subject's work only)", n)
-	}
-	if n := eng.SteerGoal("ship", "hurry", "human:scott"); n != 2 {
-		t.Fatalf("SteerGoal reached %d, want 2", n)
-	}
-	if n := eng.CancelGoal("nope"); n != 0 {
-		t.Fatalf("an unknown goal steered %d tasks", n)
-	}
-}

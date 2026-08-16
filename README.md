@@ -104,7 +104,7 @@ is not built live in [docs/roadmap/](docs/roadmap/README.md). Start with:
   [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
   [sources](docs/reference/sources.md) and [the three that ship](docs/reference/sourced.md),
-  [connect and scopes](docs/reference/connect.md), [goals](docs/reference/goals.md),
+  [connect and scopes](docs/reference/connect.md),
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a
   cluster.

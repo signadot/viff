@@ -46,8 +46,8 @@ counts *commits*, so that rule never reaches depth 2 while a runaway commits eve
 `>=` and the healthy second firing is refused and reported as a runaway; the cost of `>` is
 letting a real cycle run one further hop, which is one no-op write.
 
-The cap is read at the check rather than at install, because the charter moves: goals install
-triggers of their own, and a rule added or removed changes how long a chain can legitimately be.
+The cap is read at the check rather than at install, because the charter moves: a rule added
+or removed changes how long a chain can legitimately be.
 
 ### A chain is per subject
 

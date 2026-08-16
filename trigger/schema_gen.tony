@@ -93,6 +93,15 @@ signature:
 context:
 - tony-format/context
 define:
+  level: .[int]
+  match: .[array(object)]
+  name: .[string]
+signature:
+  name: verse-stratum
+---
+context:
+- tony-format/context
+define:
   action: !verse-action null
   condition: !verse-condition null
   gates: .[array(verse-trigger-gate)]
@@ -101,23 +110,3 @@ define:
   stratum: .[string]
 signature:
   name: verse-trigger
----
-context:
-- tony-format/context
-define:
-  deadline: .[string]
-  doneWhen: .[nullable(verse-formula)]
-  name: .[string]
-  subject: .[string]
-  triggers: .[array(verse-trigger)]
-signature:
-  name: verse-goal
----
-context:
-- tony-format/context
-define:
-  level: .[int]
-  match: .[array(object)]
-  name: .[string]
-signature:
-  name: verse-stratum

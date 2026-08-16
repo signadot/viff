@@ -1,8 +1,7 @@
 package trigger
 
 // The charter is durable: an installed trigger is written into the verse as a
-// trigger:rule:<name> entity, and read back at startup. A goal is durable the same way,
-// carrying its definition on its own record — see goal.go's LoadGoals.
+// trigger:rule:<name> entity, and read back at startup.
 //
 // Before this, a charter lived only in the engine's memory. Everything else a restart needs
 // was already durable — a task is mirrored, a sequence's position is a fact on its
@@ -36,8 +35,9 @@ func CharterRef(name string) entity.Ref {
 	return entity.Ref{System: CharterSystem, Kind: CharterKind, ID: name}
 }
 
-// specField is where a durable record keeps the declaration it was installed from: the rule
-// on trigger:rule, the goal on goal:instance. One name, because it is one idea.
+// specField is where a durable record keeps the declaration it was installed from — the rule
+// on trigger:rule. One name for it across record kinds, because it is one idea: a goal kept
+// its own definition under this same key while goals existed.
 //
 // It holds the declaration as STRUCTURE, written under entity.Raw. A charter is full of
 // operator tags — `id: !glob "hotfix-*"`, `patch: {tmp: !delete null}` — and a write is a
@@ -87,10 +87,9 @@ func (e *Engine) persist(t Trigger) error {
 // firing whatever the store says, so the removal has already taken effect — but an
 // operator has to know that the rule will come back at the next start.
 //
-// Deleting an address nothing ever wrote is a clean no-op in the store, which is what lets
-// a goal's (deliberately non-durable) triggers take this same removal path without a
-// second one, and without a Warn on every reap. No durable rule can be caught by it either:
-// a name is unique across the whole charter, goal-owned rules included.
+// Deleting an address nothing ever wrote is a clean no-op in the store, which is what lets a
+// deliberately non-durable rule take this same removal path without a second one, and without
+// a Warn. No durable rule can be caught by it either: a name is unique across the charter.
 func (e *Engine) forget(name string) { e.write(CharterRef(name).At(), nil) }
 
 // LoadCharter installs the rules standing in the verse — the durable charter — into this

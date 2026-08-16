@@ -8,8 +8,8 @@
 //	Match   — POINT-IN-TIME: which entities satisfy this right now. The atom, and the
 //	          leaf of every Formula. A Subject and a flow address are bare Matches.
 //	Formula — TEMPORAL: matches composed with operators (quorum/fact/until/deadline)
-//	          over the verse's evolution. A Condition's When, a Gate's Formula, and a
-//	          Goal's DoneWhen are Formulas, differing only in consequence.
+//	          over the verse's evolution. A Condition's When and a Gate's Formula are
+//	          Formulas, differing only in consequence.
 //
 // Name entities at an instant → a Match; relate the verse over time → a Formula. See
 // docs/trigger-model.md.
@@ -260,8 +260,7 @@ func (c Condition) validate() error {
 		return fmt.Errorf("condition.when carries temporal operators, which are not evaluated " +
 			"yet: a temporal when has no change to dispatch on, so it needs a long-lived monitor " +
 			"over the subtrees it reads (see docs/trigger-model.md). Use a point-in-time " +
-			"match here; temporal composition works today in a gate's `formula` and a goal's " +
-			"`doneWhen`")
+			"match here; temporal composition works today in a gate's `formula`")
 	}
 	if err := c.When.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.when: %w", err)
@@ -280,7 +279,7 @@ func (c Condition) validateOn() error {
 		return fmt.Errorf("condition.on carries temporal operators, which are not evaluated " +
 			"yet: `on` is a store predicate asked at two revisions, so it has to be answerable " +
 			"at one. Use a point-in-time match; temporal composition works in a gate's " +
-			"`formula` and a goal's `doneWhen`")
+			"`formula`")
 	}
 	if err := c.On.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.on: %w", err)

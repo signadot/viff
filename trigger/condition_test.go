@@ -129,39 +129,6 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	}
 }
 
-// A goal latch publishes `flow` alongside `subject`. It no longer redirects a reacting
-// trigger's subject — nothing does, see TestCompletionWhenSweepsItsSubject — but it is still
-// the goal's own subject, readable as $flow by an action and by the flow query.
-func TestGoalLatchPublishesFlowForBinding(t *testing.T) {
-	store := entitytest.Store(t)
-	eng := New(store, task.AutoResolver{})
-	if err := eng.AddGoal(GoalDef{
-		Name:     "ship",
-		Subject:  "change:pr:42",
-		DoneWhen: &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: Match{"system": "ci", "kind": "status"}}},
-	}); err != nil {
-		t.Fatalf("AddGoal: %v", err)
-	}
-	entitytest.Set(t, store, entity.Ref{System: "ci", Kind: "status", ID: "build"}, entity.Obj{"state": "green"}.Payload())
-
-	var latch entity.Payload
-	deadline := time.After(2 * time.Second)
-	for latch == nil {
-		if e, ok, _ := store.Get(goalDoneRef("ship")); ok && entity.ToObj(e.Payload)["goal"] == "ship" {
-			latch = e.Payload
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatal("goal:done never latched")
-		case <-time.After(5 * time.Millisecond):
-		}
-	}
-	if entity.Str(latch, "flow") != "change:pr:42" {
-		t.Fatalf("goal:done must carry `flow` for a reacting trigger's subject: %#v", latch)
-	}
-}
-
 // A Subject that cannot resolve makes the firing a no-op — and, because it is resolved before
 // any gate, it never poses one either.
 func TestUnresolvableSubjectDoesNotFire(t *testing.T) {

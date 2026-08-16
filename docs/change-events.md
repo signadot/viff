@@ -245,7 +245,7 @@ above it → it descends to each `id` and still yields one event apiece. The "on
 change" grain is imposed *here*, at the logd↔store seam, not assumed by the engine.
 
 This is what makes a trigger's subject well-defined: a firing is driven by one event,
-which carries one `Ref`, so `$subject` — and hence the flow, and a goal keyed on it — is
+which carries one `Ref`, so `$subject` — and hence the flow keyed on it — is
 always exactly one entity. Not because a match *pattern* is constrained to one entity (it
 isn't; `{system:"demo"}` matches every demo entity), but because dispatch is
 per-entity-edge. A broad pattern simply fans out to one independent firing per matching

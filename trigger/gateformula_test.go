@@ -294,45 +294,6 @@ func TestCommitMotionAtomicWitnessRevoke(t *testing.T) {
 	}
 }
 
-// The Monitor is revocable: it emits true → false → true as quorum is reached, a vote is
-// retracted, and it is reached again (safety — the answer stays live until commit).
-func TestMonitorRevocable(t *testing.T) {
-	store := entitytest.Store(t)
-	quorum := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Facts: Match{"system": "motion", "kind": "vote"}, N: 2}}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	states := NewMonitor(quorum, store).Watch(ctx)
-
-	if st := recvState(t, states); st.True {
-		t.Fatal("initial state should be false (no votes)")
-	}
-	entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "vote", ID: "a"}, entity.Obj{"choice": "approve"}.Payload())
-	entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Obj{"choice": "approve"}.Payload())
-	if st := recvState(t, states); !st.True || len(st.Witness) != 2 {
-		t.Fatalf("expected true with witness 2 after quorum, got %+v", st)
-	}
-	entitytest.Remove(t, store, entity.Ref{System: "motion", Kind: "vote", ID: "b"})
-	if st := recvState(t, states); st.True {
-		t.Fatal("expected false after a vote was retracted (revocable)")
-	}
-	entitytest.Set(t, store, entity.Ref{System: "motion", Kind: "vote", ID: "b"}, entity.Obj{"choice": "approve"}.Payload())
-	if st := recvState(t, states); !st.True {
-		t.Fatal("expected true again after quorum re-reached")
-	}
-}
-
-// recvState reads the next monitor state within a short deadline.
-func recvState(t *testing.T, ch <-chan State) State {
-	t.Helper()
-	select {
-	case st := <-ch:
-		return st
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for a monitor state")
-		return State{}
-	}
-}
-
 // deadlineAt stamps an absolute close time on first open and reuses it (never slides it
 // forward) on a re-fire — proven deterministically with an injected clock.
 func TestDeadlineAtStampAndReuse(t *testing.T) {

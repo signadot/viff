@@ -16,7 +16,6 @@ deliberately skips. For what a charter's fields *mean*, see
 | [sources.md](sources.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
 | [sourced.md](sourced.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
-| [goals.md](goals.md) | goals — a target over the reactive substrate (being redesigned) |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why that is asymmetric |
 
@@ -107,11 +106,6 @@ verse
           show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
           <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
-  goal (goals)                               status / waitingOn / outcome, per goal
-          add <name> --done-when <formula> [--subject <ref>] [--deadline <dur>]
-          add --file <f> (full record incl. owned triggers) · remove <name>
-          pause|resume|cancel <name> · say <name> <text…>
-
   docket                                     list open motions (votes + provider selections)
   vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
   provider (providers)                       the provider registry (provider:<capability>:<id>)

@@ -67,7 +67,7 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 // rather than a verb it must refuse. See TestStateTakesAPath.
 var collections = map[string]string{
 	"gate": "gates", "task": "tasks",
-	"flow": "flows", "trigger": "triggers", "goal": "goals",
+	"flow": "flows", "trigger": "triggers",
 	"resolver": "resolvers", "runner": "runners", "source": "sources",
 	"stratum": "strata",
 }
@@ -111,7 +111,7 @@ func TestCollectionsAreOneSingularCommand(t *testing.T) {
 }
 
 // A listing that IGNORES positionals turns a wrong command into a plausible answer:
-// `verse goal add-it ship` would print the goals rather than say the verb is not one.
+// `verse trigger add-it review` would print the charter rather than say the verb is not one.
 // `list` is called out by name, because it is the mistake a bare-listing collection invites
 // and it must not become a second way to list.
 func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {

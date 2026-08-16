@@ -2,7 +2,7 @@
 
 One noun and two grammars carry the whole model. An entity is a node `system:kind:id`
 with a small payload. A match names entities at an instant; a formula relates the
-verse over time. Every trigger concept — `when`, `subject`, gates, goals, flows — lands on
+verse over time. Every trigger concept — `when`, `subject`, gates, flows — lands on
 exactly one of those two, and knowing which is the thing to be unambiguous about.
 
 This is also the field-by-field reference for a charter rule: the [tutorial](tutorial.md)
@@ -29,14 +29,13 @@ matches.
 | `on` | formula — temporal | the **cause**: fire at the commit where this first holds, having not held before |
 | `when` | formula — temporal | the **condition**: this must hold at that commit for the firing to proceed |
 | gate | formula — temporal | proceed at a threshold — `quorum`/`fact`/`until`/`deadline` |
-| goal `doneWhen` | formula — temporal | done, latched, when the witness appears |
 
 The cut is: name entities at an instant and you want a match; relate the verse over time and
 you want a formula. `subject` and flow-addressing are point-in-time — a subject is selected at
 the commit a firing happens at, never accumulated — so they are plain matches, and giving them
 a `deadline` or an `until` would be a category error.
 
-`on`, `when`, gates and `doneWhen` all relate the verse's evolution, so they are formulas. `on`
+`on`, `when` and gates all relate the verse's evolution, so they are formulas. `on`
 and `when` are the SAME predicate asked at different moments — `on` at C-1 and C, firing on
 ¬P → P; `when` at C, gating — which is why they share a grammar and a type. Cause and
 condition, told apart by edge and level.
@@ -192,21 +191,13 @@ what arrived while verse was down. A restart is then just an install over a vers
 moved on, which is the same property described above, and the same reason to write a latch
 rather than an edge.
 
-A **goal** is durable the same way — the same `spec` field, the same escape — and its record
-is the goal: `goal:instance:<name>` holds the definition it was installed from, next to the
-live status and the terminal latch it already carried. A start reinstalls every goal still being pursued, which brings back both
-halves — the doing (its owned triggers) and the watching (its monitor). Three properties make
-that a re-install rather than a reconstruction: the deadline's absolute instant is stamped on
-the record, so it does not slide forward; `doneWhen` is evaluated before the monitor waits, so
-a goal *reached while verse was down* latches on the way back up; and the terminal commit is a
-CAS on `terminal=false`, so nothing can latch twice. A **settled** goal is not restored — its
-outcome stands and its charter was reaped, so reinstalling it would recreate the doing for a
-goal that is over.
-
-This is why a goal's owned triggers are not *also* written out as standalone rules: they
-travel in the goal's record and come back with it. Written separately they would have two
-owners and two lifetimes, and the standalone copy would survive the reap that ends the goal —
-still firing for something nobody is pursuing.
+**Goals are gone.** A goal was a target over this substrate — a `doneWhen` witness, a deadline
+fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal outcome — durable the
+same way a rule is. Nothing installed one: every use case tried against the definition fell
+short of it, and it cost a top-level concept in a model whose whole claim is that it is small.
+So it was removed rather than carried. The finding and the three shapes a better definition
+might take are in [Goals: what is left](working/goals-residual.md); where it is headed is
+[a charter authored per change](roadmap/dynamic-charter.md).
 
 One thing is deliberately not restored. A **scoped charter** (`verse trigger add --scope`) is
 written into its scope, but a scope's engine is created on demand by `verse connect`, and a
@@ -291,7 +282,7 @@ engine scopes a hook to *that* spawn's task, a correlation the store cannot fake
 engine is what spawned it. Reach for a hook when you mean "this task, this subject"; reach
 for an `on` when you mean "when this becomes true, act on that set".
 
-`flow` remains a convention published by `mirror.Reflect` and by a goal latch — the field IS
+`flow` remains a convention published by `mirror.Reflect` — the field IS
 the task's subject — read by the flow query, and by a rule whose subject carries it as
 `$subject.value.flow`. It is kept distinct from the reserved `$subject` binding, which is the
 firing's own resolved subject.
@@ -1116,10 +1107,6 @@ to add later — they are broader subject-matches. `verse flow` is the distinct 
 live tasks; steering applies the match and acts on the matched tasks. A query, not a
 maintained index.
 
-Goals sit here too, and split the same way: a goal is a subject (a point-in-time match — the
-flow it owns and steers) plus a `doneWhen` (a temporal formula that latches). One of each
-layer, no new machinery.
-
 ## Two rules, read out loud
 
 ```json
@@ -1234,8 +1221,8 @@ to reap. A charter says when, and what grace period, and whether anything should
 
 A temporal `on` or `when` is not evaluated yet, and is rejected at install with an error that
 says so: both are asked of the store at a revision, so they have to be answerable at one. Use a
-point-in-time match; temporal composition works today in a gate's `formula` and a goal's
-`doneWhen`.
+point-in-time match; temporal composition works today in a gate's `formula`, which the motion
+compiler reads (`quorum`, `fact`, `until`, `deadline`).
 
 A rule may declare the STRATUM it lives in, and then its subject must fall inside that stratum's
 pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer:

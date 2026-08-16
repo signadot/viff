@@ -1,14 +1,13 @@
 package trigger
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/signadot/verse/entity"
 )
 
 // Formula is the TEMPORAL grammar: matches composed with operators over the verse's
-// evolution. A Trigger's Condition.When, a Gate's Formula, and a Goal's DoneWhen are all
+// evolution. A Trigger's Condition.When and a Gate's Formula are both
 // Formulas, differing only in consequence — a satisfied When *fires*, a satisfied gate
 // *proceeds*, a satisfied doneWhen *latches*.
 //
@@ -142,62 +141,6 @@ func (f *Formula) Eval(r entity.Reader) (bool, []entity.Ref) {
 		return f.Req.eval(r)
 	default:
 		return false, nil // temporal operators arrive in later steps
-	}
-}
-
-// Unmet returns the leaf requirements that do NOT currently hold — the "waiting on"
-// complement of Eval's witness. A satisfied formula yields none; mirrors Eval/Subtrees.
-// An atom contributes itself iff its requirement is unsatisfied; temporal operators recurse
-// into their operands. A `deadline` leaf is a time derivation, not a store fact a producer
-// makes true, so it is omitted (as Subtrees omits it) — you don't "wait on" the clock as
-// unmet work. This is what a goal projects as its `waitingOn` status.
-func (f *Formula) Unmet(r entity.Reader) []*Requirement {
-	if f == nil {
-		return nil
-	}
-	switch f.Op {
-	case OpAtom:
-		if f.Req == nil || f.Req.Kind == ReqDeadline {
-			return nil
-		}
-		if ok, _ := f.Req.eval(r); ok {
-			return nil
-		}
-		return []*Requirement{f.Req}
-	default:
-		var out []*Requirement
-		for _, a := range f.Args {
-			out = append(out, a.Unmet(r)...)
-		}
-		return out
-	}
-}
-
-// Label renders a requirement as a short, human/machine-readable tag for a goal's
-// `waitingOn` list — a fact's `system:kind`, a quorum's threshold/choice, etc.
-func (r *Requirement) Label() string {
-	switch r.Kind {
-	case ReqMatch:
-		if r.Facts.Kind() != "" {
-			return "match:" + r.Facts.System() + ":" + r.Facts.Kind()
-		}
-		if r.Facts.System() != "" {
-			return "match:" + r.Facts.System()
-		}
-		return "match:*"
-	case ReqQuorum:
-		choice := r.Choice
-		if choice == "" {
-			choice = "approve"
-		}
-		return fmt.Sprintf("quorum(%d %s)", r.N, choice)
-	case ReqFact:
-		if r.Facts.Kind() != "" {
-			return "fact:" + r.Facts.System() + ":" + r.Facts.Kind()
-		}
-		return "fact:" + r.Facts.System()
-	default:
-		return string(r.Kind)
 	}
 }
 

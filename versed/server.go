@@ -789,9 +789,9 @@ func (s *Server) Start(ctx context.Context) {
 	// restored trigger should see a task entity that tells the truth about the restart
 	// rather than the `running` a dead runtime left behind.
 	//
-	// And why it follows ObserveScoped, which is what binds ctx to the engine: a goal
-	// restored before that would run its monitor under a context nothing cancels, so it
-	// would outlive the shutdown that was supposed to stop it.
+	// And why it follows ObserveScoped, which is what binds ctx to the engine: anything
+	// restored before that runs under a context nothing cancels, so it would outlive the
+	// shutdown that was supposed to stop it.
 	//
 	// A rule that could not be restored is reported and skipped, so one bad entity does not
 	// cost the rest of the charter. Scoped charters are not restored here: a scope's engine
@@ -807,12 +807,6 @@ func (s *Server) Start(ctx context.Context) {
 	}
 	if err := s.Eng.LoadCharter(); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
-	}
-	// Then the goals still being pursued, each reinstalling the charter it owns. After the
-	// standalone charter, deliberately: the two share one name space, so a collision leaves
-	// the rule somebody installed directly holding its name.
-	if err := s.Eng.LoadGoals(); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: goals: %v\n", err)
 	}
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
@@ -840,7 +834,6 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /triggers/{name}", s.getTrigger, "", one("verse-trigger"))
 	rt.handle("GET /strata", s.listStrata, "", list("verse-stratum"))
 	rt.handle("GET /strata/{name}", s.getStratum, "", one("verse-stratum"))
-	rt.handle("GET /goals", s.listGoals, "", list("verse-goal"))
 	// the API describing itself: the route table, and the schema its entries name
 	rt.handle("GET /api", s.serveAPI, "", one("verse-routes"))
 	rt.handle("GET /schema", s.serveSchema, "", nothing)
@@ -883,12 +876,6 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
 	rt.handle("POST /strata", s.addStratum, "verse-stratum", nothing)
 	rt.handle("DELETE /strata/{name}", s.removeStratum, "", nothing)
-	rt.handle("POST /goals", s.addGoal, "verse-goal", nothing)
-	rt.handle("DELETE /goals/{name}", s.removeGoal, "", nothing)
-	rt.handle("POST /goal/pause", s.goalPause, "verse-goal-steer", one("verse-steered"))
-	rt.handle("POST /goal/resume", s.goalResume, "verse-goal-steer", one("verse-steered"))
-	rt.handle("POST /goal/cancel", s.goalCancel, "verse-goal-steer", one("verse-steered"))
-	rt.handle("POST /goal/say", s.goalSay, "verse-goal-steer", one("verse-steered"))
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
 	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", one("verse-steered"))
@@ -2850,7 +2837,7 @@ func (s *Server) taskInbox(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// The bare list, not {items: [...]}. Every other collection this server serves is a
-	// bare array — triggers, gates, goals, flows, tasks, flow trees — and the wrapper
+	// bare array — triggers, gates, flows, tasks, flow trees — and the wrapper
 	// here was a JSON habit rather than a decision. Nothing decoded it structurally:
 	// `verse task inbox` re-renders the document.
 	writeOut(w, r, http.StatusOK, items)
@@ -3128,100 +3115,6 @@ func (s *Server) removeStratum(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, err.Error(), http.StatusConflict)
 	}
-}
-
-// ── goals: an owning aggregate (owned triggers + done/fail latches + status) ──────
-
-// listGoals returns the live goal roster read from the goal:instance entities — name,
-// subject, status, waitingOn, deadline, and (once terminal) outcome — the `verse goal` view.
-func (s *Server) listGoals(w http.ResponseWriter, r *http.Request) {
-	ents := s.Store.List(func(ref entity.Ref) bool { return ref.System == "goal" && ref.Kind == "instance" })
-	out := make([]map[string]any, 0, len(ents))
-	for _, e := range ents {
-		row := map[string]any{"name": e.Ref.ID}
-		fields := entity.ToObj(e.Payload)
-		for _, k := range []string{"subject", "status", "waitingOn", "deadline", "outcome", "terminal"} {
-			if v, ok := fields[k]; ok {
-				row[k] = v
-			}
-		}
-		out = append(out, row)
-	}
-	writeOut(w, r, http.StatusOK, out)
-}
-
-func (s *Server) addGoal(w http.ResponseWriter, r *http.Request) {
-	var d trigger.GoalDef
-	if err := codec.Read(r, &d); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if d.Name == "" {
-		http.Error(w, "goal name required", http.StatusBadRequest)
-		return
-	}
-	if err := s.Eng.AddGoal(d); err != nil {
-		code := http.StatusBadRequest // a goal the store would not record is not a bad request
-		if errors.Is(err, trigger.ErrCharter) {
-			code = http.StatusServiceUnavailable
-		}
-		http.Error(w, err.Error(), code)
-		return
-	}
-	w.WriteHeader(http.StatusCreated)
-}
-
-func (s *Server) removeGoal(w http.ResponseWriter, r *http.Request) {
-	if !s.Eng.RemoveGoal(r.PathValue("name")) {
-		http.NotFound(w, r)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// goalPause/Resume/Cancel/Say steer a goal by delegating to its flow (a goal is a flow with a
-// destination) — the same control surface, keyed by the goal name.
-func (s *Server) goalPause(w http.ResponseWriter, r *http.Request) {
-	s.goalSteer(w, r, func(name string) api.Steered {
-		return api.Steered{Goal: name, Verb: "pause", Affected: s.Eng.PauseGoal(name)}
-	})
-}
-
-func (s *Server) goalResume(w http.ResponseWriter, r *http.Request) {
-	s.goalSteer(w, r, func(name string) api.Steered {
-		return api.Steered{Goal: name, Verb: "resume", Affected: s.Eng.ResumeGoal(name)}
-	})
-}
-
-func (s *Server) goalCancel(w http.ResponseWriter, r *http.Request) {
-	s.goalSteer(w, r, func(name string) api.Steered {
-		return api.Steered{Goal: name, Verb: "cancel", Affected: s.Eng.CancelGoal(name)}
-	})
-}
-
-func (s *Server) goalSay(w http.ResponseWriter, r *http.Request) {
-	var body api.GoalSteer
-	if err := codec.Read(r, &body); err != nil || body.Name == "" || body.Text == "" {
-		http.Error(w, "name and text required", http.StatusBadRequest)
-		return
-	}
-	by := body.By
-	if by == "" {
-		by = "human:cli"
-	}
-	writeOut(w, r, http.StatusOK, api.Steered{
-		Goal: body.Name, Verb: "say",
-		Affected: s.Eng.SteerGoal(body.Name, body.Text, by),
-	})
-}
-
-func (s *Server) goalSteer(w http.ResponseWriter, r *http.Request, act func(name string) api.Steered) {
-	var body api.GoalSteer
-	if err := codec.Read(r, &body); err != nil || body.Name == "" {
-		http.Error(w, "name required", http.StatusBadRequest)
-		return
-	}
-	writeOut(w, r, http.StatusOK, act(body.Name))
 }
 
 // ── flow: engine steering (control plane) ────────────────────────────────────

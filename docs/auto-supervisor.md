@@ -247,9 +247,8 @@ ends `landed`, `closed`, or waiting at a gate.
 
 - **Silence has no clock — for THIS shape.** A supervisor task that never terminates leaves
   its change at `stage: assessing` forever. `onFailed` covers failing; it does not cover
-  hanging. The clocks nearby still do not fit: a gate's `!deadline` guards a firing that has not
-  happened, and a goal's `deadline` is per goal, not per firing. Promote-on-silence wants a
-  deadline on a spawn, and there isn't one. A [resolver](attached-resolvers.md) that owns a gate
+  hanging. The clock nearby still does not fit: a gate's `!deadline` guards a firing that has
+  not happened. Promote-on-silence wants a deadline on a spawn, and there isn't one. A [resolver](attached-resolvers.md) that owns a gate
   does have one — `deadline: {within, then}`, and silence past it escalates to the layer above —
   but that is a clock on an unanswered QUESTION, not on a task that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor

@@ -93,7 +93,7 @@ type Condition struct {
 type Resolve struct {
 	ID      string `tony:"field=id"`
 	Approve bool   `tony:"field=approve"`
-	// By is who answered. It rides the wire the same way GoalSteer.By and a say's By do,
+	// By is who answered. It rides the wire the same way FlowSteer.By and a say's By do,
 	// and for the same reason: a resolution is an act, and an act has an actor.
 	//
 	// REQUIRED. The server used to default it to "human:cli", which published a name
@@ -254,16 +254,6 @@ type SetVector struct {
 	By     string       `tony:"field=by,omitzero"` // who slid it, for the record
 }
 
-// GoalSteer addresses one goal by name: pause, resume, cancel (name alone), or say
-// (name plus text).
-//
-//tony:schemagen=verse-goal-steer,notag
-type GoalSteer struct {
-	Name string `tony:"field=name"`
-	Text string `tony:"field=text,omitzero"`
-	By   string `tony:"field=by,omitzero"`
-}
-
 // FlowSteer addresses a flow — every live task whose subject matches — and pauses,
 // resumes, cancels, or says to all of them as a unit. Subject is an address or a
 // pattern, so one call can steer a subject, a kind, or a whole system.
@@ -331,7 +321,7 @@ type Routes struct {
 	Routes []Route `tony:"field=routes"`
 }
 
-// Steered is the result of steering a flow or a goal: pause, resume, cancel, or say.
+// Steered is the result of steering a flow: pause, resume, cancel, or say.
 //
 // ONE type with a verb field rather than four types keyed by verb. The routes used to answer
 // `{subject, paused: 2}`, `{subject, resumed: 2}`, `{subject, cancelled: 2}`, `{subject,
@@ -343,18 +333,12 @@ type Routes struct {
 // says what was done without reference to the route that did it. And a consumer parses one
 // shape for all eight routes instead of eight.
 //
-// Affected is a count for both, because a goal steer IS a flow steer — Engine.PauseGoal and
-// friends delegate to the flow methods over the goal's own tasks.
-//
 //tony:schemagen=verse-steered,notag
 type Steered struct {
-	// Subject and Goal are the two ways the same operation is addressed: a flow by the
-	// entity address (or pattern) its tasks are about, a goal by name. Exactly one is
-	// set — they are kept as distinct fields rather than collapsed into a `target` because
-	// "subject" is a first-class word in this model and a synonym would cost more than the
-	// uniformity it buys.
+	// Subject is what was steered: the entity address (or pattern) the flow's tasks are
+	// about. A `goal` field stood beside it while a goal could be steered by name — one
+	// operation addressed two ways — and went with goals.
 	Subject string `tony:"field=subject,omitzero"`
-	Goal    string `tony:"field=goal,omitzero"`
 	// Verb is what was done: pause | resume | cancel | say.
 	Verb string `tony:"field=verb"`
 	// Affected is how many live tasks it reached. Zero is a normal answer — an address

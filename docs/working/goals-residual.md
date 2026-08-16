@@ -1,11 +1,20 @@
 # Goals: what is left
 
-Status: residual of a landed feature whose abstraction has not settled.
-[Goals](../reference/goals.md) run — a target, a deadline fail-latch, a live `waitingOn`, and
-owned triggers reaped on a terminal outcome — and nothing here is a plan to change what runs.
-What is here is the finding that every use case tried against the *current definition* has fallen
-short, and the shapes a better definition might take. It will take some iterations to arrive at a
-good answer, and where it is headed is [dynamic-charter.md](../roadmap/dynamic-charter.md).
+Status: REMOVED, and this is the record of why. Goals ran — a target, a deadline fail-latch, a
+live `waitingOn`, and owned triggers reaped on a terminal outcome — and nothing was wrong with
+what ran. What was wrong is below: every use case tried against the *current definition* fell
+short of it, so the feature was a top-level charter concept nobody installed, in a model whose
+whole claim is that it is small. It was removed rather than carried; the finding and the shapes
+a better definition might take are what this page keeps. It will take some iterations to arrive
+at a good answer, and where it is headed is
+[dynamic-charter.md](../roadmap/dynamic-charter.md).
+
+The code is one `git show` away — the removal commit's parent has `trigger/goal.go`,
+`trigger/monitor.go` and the routes — and one thing there is worth reading before rebuilding
+any of it: `Monitor`, the reactive re-evaluate-on-change wrapper a `doneWhen` waited on. The
+temporal OPERATORS it composed (`until`/`eventually`/`always`/`sequence`) were never evaluated
+by anything — `Formula.Eval` handles the atom and returns false for the rest — so a better
+design starts from what should evaluate them, not from restoring the old file.
 
 From a reply to [Ani's question](questions.md) about whether flows advance toward goals by
 executing tasks.
@@ -13,9 +22,9 @@ executing tasks.
 ## The finding
 
 Every (toy) use case for the current definition has fallen quite short. That is the whole of
-it, and it is not a defect in what runs: the latch, the deadline and the reaping all do what
-[the reference](../reference/goals.md) says they do. It is the definition failing to earn its
-place on any concrete thing tried against it.
+it, and it was not a defect in what ran: the latch, the deadline and the reaping all did what
+the reference said they did. It is the definition failing to earn its place on any concrete
+thing tried against it.
 
 ## Three shapes, none of them settled
 

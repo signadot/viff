@@ -62,8 +62,8 @@ Two ideas rather than designs.
   is state, not a thread. The gap is the middle of those three.
 - [A charter authored per change](dynamic-charter.md) — a prompt and a diff spawn an agent
   that writes the rules for *that* change, which the engine installs and runs. The substrate
-  is mostly there — a charter is data, a goal already owns and reaps a bundle of triggers,
-  a scope isolates them. What is not there is any account of governing an agent that writes
+  is mostly there — a charter is data, and a scope isolates a bundle of rules. What owns and
+  reaps such a bundle is open (see [goals: what is left](../working/goals-residual.md)). What is not there is any account of governing an agent that writes
   the rules the system will then run on itself.
 
 ## Rough order

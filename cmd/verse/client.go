@@ -522,7 +522,7 @@ func gateCmd() *cli.Command {
 // `gate resolve <id> --approve|--deny`, a flag pair that could be left empty or set both
 // ways and so needed a runtime check to police two states the grammar should never have
 // allowed. Every other verb in this CLI is already a subcommand (flow pause/resume/cancel,
-// goals pause/resume/cancel, task cancel/say); the gate's answer was the one that had
+// task cancel/say); the gate's answer was the one that had
 // been demoted into a flag, mirroring api.Resolve's `Approve bool` rather than the operator.
 //
 // `vote <motion> <choice>` deliberately stays a positional: a select motion's choice is an
@@ -558,7 +558,7 @@ func gateAnswerCmd(approve bool) *cli.Command {
 	}
 	// The aliases are named in the SYNOPSIS because cli's usage never prints them — it
 	// renders a child as (first word of synopsis, synopsis) and never reads Aliases, which
-	// is why `ps`, `e` and `goal` are invisible in the help today.
+	// is why `ps` and `e` are invisible in the help today.
 	return cli.NewCommandAt(&cfg.Command, name).WithAliases(aliases...).
 		WithSynopsis(syn).
 		WithOpts(opts...).

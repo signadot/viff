@@ -417,8 +417,5 @@ func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 		if got.Subject != "demo:pr:*" {
 			t.Errorf("%s subject = %q, want the address it was asked about", c.path, got.Subject)
 		}
-		if got.Goal != "" {
-			t.Errorf("%s set goal on a flow steer: %q", c.path, got.Goal)
-		}
 	}
 }

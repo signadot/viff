@@ -50,8 +50,8 @@ materializing a scope registry out of the same substrate as everything else: ent
   does. Recording on first write mirrors the store's own materialization point — the registry entry
   is born exactly when the overlay is.
 - Because it is just an entity, scope lifecycle becomes reactive like the rest of the verse: a
-  reaper trigger can drop nonce scopes whose lease has lapsed; a goal can own a scope for the length
-  of a task. (Mind the ignition guard — a `scope:*` registry should not accidentally self-trigger.)
+  reaper trigger can drop nonce scopes whose lease has lapsed, and something with a lifetime can
+  own a scope for the length of a task. (Mind the ignition guard — a `scope:*` registry should not accidentally self-trigger.)
 
 ## An API + CLI on top
 

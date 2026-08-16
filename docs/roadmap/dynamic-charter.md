@@ -19,17 +19,19 @@ Nothing here needs a new mechanism, which is what makes it worth writing down.
 A charter is *data*, so an agent can emit one — a trigger is a tony document, and
 `verse trigger add` is how it lands. Installation is already a runtime act, not a deploy.
 
-A [goal](../reference/goals.md) already owns a bundle of triggers,
-holds a live status, and reaps them on a terminal. That is exactly the lifetime a
-per-change charter wants: authored for this change, alive while the change is, gone when it
-lands. The tutorial already names the missing piece as "an optional plan that generates the
-owned triggers" — this is that, with an agent as the generator.
+A [goal](../working/goals-residual.md) owned a bundle of triggers, held a live status, and
+reaped them on a terminal. That is exactly the lifetime a per-change charter wants: authored
+for this change, alive while the change is, gone when it lands — and it is the one thing the
+goal shape got right, which is why it is worth reading now that goals themselves are gone. The
+missing piece was always the generator: something that AUTHORS the owned triggers rather than
+taking them by hand. That is this, with an agent as the generator.
 
 A [scope](scope-lifecycle.md) isolates it, so a charter authored for one change cannot
 fire on another, and dropping the scope drops the whole program.
 
 So the shape is roughly: a change arrives, a trigger fires an authoring agent, the agent
-writes a charter into a scope, a goal owns it, and the goal's terminal reaps it.
+writes a charter into a scope, and something with the change's own lifetime reaps it when the
+change lands. What plays that last part is open — it is the piece goals were reaching for.
 
 ## What is actually open
 

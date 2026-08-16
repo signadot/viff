@@ -23,11 +23,13 @@ func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true) }
 
 // addTrigger installs a trigger, writing it to the durable charter when durable.
 //
-// Two callers pass false, for the same reason: the rule is already written down elsewhere.
-// LoadCharter's rules came out of the store. A GOAL's owned triggers are carried in the
-// goal's own record and reinstalled with it (LoadGoals), so writing them out again would
-// give one rule two owners and two lifetimes — the standalone copy would survive the reap
-// that ends the goal, and keep firing for something nobody is pursuing any more.
+// A caller passes false when the rule is already written down elsewhere: LoadCharter's rules
+// came out of the store, so writing them back would be a no-op with a revision attached.
+//
+// It is also what an OWNING record needs, should one return — a rule carried inside another
+// entity's definition and reinstalled with it. Writing it out again would give one rule two
+// owners and two lifetimes, and the standalone copy would outlive the owner that reaped it.
+// Goals were the case that motivated the flag; see docs/working/goals-residual.md.
 func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := validTriggerName(t.Name); err != nil {
 		return err
@@ -499,8 +501,8 @@ func bindText(n entity.Payload) (string, bool) {
 //
 // $subject is set LAST, deliberately: it is the one reserved binding, and a payload field
 // happening to be called "subject" must not shadow it. (It used to be set first and
-// overwritten, which is why a goal:done fact carrying a `subject` field silently redirected
-// $subject — see goal.go, which now also publishes `flow` for that job.)
+// overwritten, which is why a fact carrying a `subject` field of its own silently redirected
+// $subject; a producer that means the flow publishes `flow`, which is read as $flow.)
 func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	b := payloadBinding(payload)
 	b[refSubject] = subject.String()
