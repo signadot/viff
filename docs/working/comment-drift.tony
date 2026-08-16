@@ -514,30 +514,22 @@
 # The task's own vector is `auto`. The decision has been made HERE, by a person, about the thing
 # that matters; making the task re-ask per action would be asking the same question twice in two
 # vocabularies.
-#
-# ONLY WHILE IT CAN STILL LAND, which is what `value:` below says. A branch fast-forwards onto
-# main exactly while main is where it was cut from, so `base == tip` is the same predicate rule 3
-# uses negated — and asking it HERE is what lets the task below be a call list.
-#
-# It used to be the task's job: an agent ran `--ff-only`, was refused, and reported
-# `merged: false` through an answer contract, because "main moved" is the ORDINARY outcome of
-# this gate and routing it through failure would have lost the difference between that and a
-# credential expiring. A call list has no answer to say it with. So the charter asks the question
-# instead, and what is left for the task to fail at is infrastructure — which is what failure
-# should mean.
-#
-# (Those two paragraphs belong immediately above `value:` and are up here instead because verse
-# cannot yet install them there: a head comment on a key whose value is TAGGED — `value: !and
-# […]` — is re-rendered with the value detached from its key, and the document verse posts to
-# itself no longer parses. Minimal case: `# note` above `b: !and [x, y]`. It is the encoder, and
-# it is filed as tony-format jjthyd92h12ks8c1g5n0. Move them back when that is fixed; nothing
-# else in this file is placed around it.)
 - name: merge-proposal
   stratum: merge
   condition:
     subject:
       system: merge
       kind: proposal
+      # ONLY WHILE IT CAN STILL LAND. A branch fast-forwards onto main exactly while main is
+      # where it was cut from, so `base == tip` is the same predicate rule 3 uses negated —
+      # and asking it HERE is what lets the task below be a call list.
+      #
+      # It used to be the task's job: an agent ran `--ff-only`, was refused, and reported
+      # `merged: false` through an answer contract, because "main moved" is the ORDINARY
+      # outcome of this gate and routing it through failure would have lost the difference
+      # between that and a credential expiring. A call list has no answer to say it with. So
+      # the charter asks the question instead, and what is left for the task to fail at is
+      # infrastructure — which is what failure should mean.
       value: !and
       - !not.has-path state
       - !let
