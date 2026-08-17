@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"fmt"
+
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
@@ -168,6 +170,30 @@ func (p Pattern) pathCovers(ref Ref) bool {
 	return true
 }
 
+// SafeMatch is tony.Match with a floor under it: a predicate that PANICS comes back as an
+// error, not as a dead process.
+//
+// A charter is user input, and a predicate in one is evaluated on the engine's watch goroutine
+// at every commit that lands under its rule. go-tony indexes a `let` binding without checking
+// it has one, so `!let {let: [{}], in: …}` — an empty binding, which is what a typo leaves —
+// takes the whole daemon down at the first change under that subtree. Nothing else in verse
+// lets a written rule do that: an unparseable one is refused at install, a malformed operator
+// is a non-match, a read that cannot resolve fails its firing. This is the same promise for the
+// case where the failure is a panic rather than an error.
+//
+// It does NOT make the rule right — a predicate that panics is broken and its refusal to answer
+// is reported as an error by every caller, which then treats it as a non-match. What it buys is
+// that the OTHER rules go on running, and that the operator finds out from a log line rather
+// than from a restart.
+func SafeMatch(value, pattern *ir.Node) (ok bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ok, err = false, fmt.Errorf("the predicate could not be evaluated: %v", r)
+		}
+	}()
+	return tony.Match(value, pattern)
+}
+
 // SegMatches reports whether one address segment satisfies one path segment.
 //
 // EVERY ELEMENT OF A PATH IS A MATCH, in tony's own grammar, asked of that one segment: `demo`
@@ -191,7 +217,7 @@ func SegMatches(want *ir.Node, seg string) bool {
 		text, ok := segText(want)
 		return ok && (text == "*" || text == seg)
 	}
-	ok, err := tony.Match(ir.FromString(seg), want)
+	ok, err := SafeMatch(ir.FromString(seg), want)
 	return err == nil && ok
 }
 
@@ -302,7 +328,7 @@ func (p Pattern) matchPayload(payload Payload) bool {
 	if at == nil {
 		return false // nothing to match against — a deleted entity, an absent one, or no such field
 	}
-	ok, err := tony.Match(at, p.Predicate)
+	ok, err := SafeMatch(at, p.Predicate)
 	return err == nil && ok
 }
 

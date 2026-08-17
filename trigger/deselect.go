@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 
-	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/verse/entity"
@@ -255,7 +254,7 @@ func eval(s *post, pat *ir.Node) tri {
 		// descending into the pattern.
 		return triFalse
 	case postKnown:
-		ok, err := tony.Match(s.node, pat)
+		ok, err := entity.SafeMatch(s.node, pat)
 		if err != nil {
 			return triMaybe
 		}

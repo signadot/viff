@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
@@ -188,7 +187,7 @@ func (m Match) Validate() error {
 		if err := checkOps(n); err != nil {
 			return fmt.Errorf("match: %q: %w", k, err)
 		}
-		if _, err := tony.Match(ir.FromString(""), n); err != nil {
+		if _, err := entity.SafeMatch(ir.FromString(""), n); err != nil {
 			return fmt.Errorf("match: %q: %w", k, err)
 		}
 	}
@@ -410,7 +409,7 @@ func (m Match) matchID(id string) bool { return m.matchDim(mKeyID, id) }
 // while `id: !glob "a*"` means the stricter thing the author asked for.
 func (m Match) matchDim(key, s string) bool {
 	if n := m.dim(key); n != nil {
-		ok, err := tony.Match(ir.FromString(s), n)
+		ok, err := entity.SafeMatch(ir.FromString(s), n)
 		return err == nil && ok
 	}
 	want := m.str(key)

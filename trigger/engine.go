@@ -1355,7 +1355,7 @@ func matchText(m map[string]any) string {
 func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
 	// A payload IS a node, so there is nothing to convert — this used to marshal the map
 	// through gomap first. Same call, one fewer representation.
-	ok, err := tony.Match(attrs, pattern)
+	ok, err := entity.SafeMatch(attrs, pattern)
 	return err == nil && ok
 }
 
