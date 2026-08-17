@@ -391,37 +391,146 @@ func (e *Engine) stratum(name string) (Stratum, bool) {
 // AddStratum installs a stratum — durably, as its trigger:strata:<name> entity.
 func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true) }
 
-// InstallStratum is AddStratum for a CHARTER FILE: a level that is already installed EXACTLY as
-// declared is a no-op, so re-applying a file works.
+// InstallStratum is AddStratum for a CHARTER FILE: a level already installed EXACTLY as declared
+// is a no-op, and one that DIFFERS is REPLACED — the same answer InstallTrigger gives a rule,
+// because the file is what the operator means and re-applying an edited one is the ordinary way
+// to change a charter.
 //
-// A level that differs is still refused, and that is not timidity: the rules in it were checked
-// against it when they installed (checkLevels), so changing it under them would leave a charter
-// whose ordering nobody has verified. Taking the package down and putting it back is what
-// re-checks them, and the refusal says so.
+// It used to be REFUSED, and what the refusal protected was real: the rules in a stratum were
+// checked against it when they installed (checkLevels), so moving it under them would leave a
+// charter whose ordering nobody has verified. What was wrong was the price it charged — uninstall
+// the whole package, which takes its rules down with it — for editing a level beside a rule in one
+// file, where the rule is replaced without ceremony. The same command meant two things in one
+// file, and that is what this settles.
+//
+// So the check is RE-RUN rather than the change refused. Every rule standing in this charter faces
+// the level discipline again against the new ordering, and one that no longer fits refuses the
+// CHANGE, naming itself. Nothing is left standing unchecked — the property the refusal bought —
+// and nothing has to be taken down to get it. It is RecheckReads one axis over, which is what an
+// operator NARROWING an `imports:` declaration already gets.
 func (e *Engine) InstallStratum(s Stratum) error {
-	for _, x := range e.Strata() {
-		if x.Name != s.Name {
+	old, ok := e.stratum(s.Name)
+	if !ok {
+		return e.addStratum(s, true)
+	}
+	if old.Level == s.Level && matchesText(old.Match) == matchesText(s.Match) {
+		return nil // the same level, declared again: the file has been applied twice
+	}
+	return e.replaceStratum(old, s)
+}
+
+// replaceStratum swaps an installed level for an edited one, and puts the old one back if the
+// rules standing in this charter do not survive the change.
+//
+// The order is addStratum's, for addStratum's reasons: the set-properties first (against the other
+// strata — the level being replaced is not its own neighbour), then the swap in memory, then the
+// re-check, and the durable record LAST, so a level the engine would not accept is not one a
+// restart brings back.
+//
+// The re-check runs OFF trigMu, so a firing in flight can see the edited level before the check
+// that puts it back has finished. checkLevels takes the lock itself and holding it across them
+// would deadlock, and the window is the one addStratum already has between appending a level and
+// promoting the rules held for it — install-time, and bounded by a syntactic check.
+func (e *Engine) replaceStratum(old, s Stratum) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	e.trigMu.Lock()
+	if err := e.checkStrataSetLocked(s, s.Name); err != nil {
+		e.trigMu.Unlock()
+		return err
+	}
+	e.swapStratumLocked(s)
+	e.trigMu.Unlock()
+	if err := e.recheckLevels(); err != nil {
+		e.swapStratum(old)
+		return fmt.Errorf("stratum %q cannot become level %d %s (it is level %d %s): %w",
+			s.Name, s.Level, matchesText(s.Match), old.Level, matchesText(old.Match), err)
+	}
+	// DELETED AND WRITTEN rather than written over, because a store write MERGES at its path: a
+	// match that lost a dimension or an element of its union would keep it, and the level standing
+	// in the store would not be the level the engine is running. It is what RemoveTrigger does for
+	// the rule InstallTrigger replaces, one layer down.
+	e.write(StrataRefAt(e.confine.stamp(), s.Name).At(), nil)
+	if err := e.persistStratum(s); err != nil {
+		e.swapStratum(old)
+		if back := e.persistStratum(old); back != nil {
+			e.logger.Error("the level that stood could not be written back",
+				"stratum", old.Name, "err", back,
+				"note", "the engine is running the old one; the store has none, so a restart would lose it")
+		}
+		return err
+	}
+	return nil
+}
+
+// recheckLevels asks the level discipline of every rule already installed, which is what an
+// operator EDITING a level needs — exactly as RecheckReads is what one narrowing an `imports:`
+// needs. A rule that fitted the ordering that stands and does not fit the edited one must refuse
+// the CHANGE rather than be quietly left at a level nothing checked it against.
+//
+// A rule that comes back DORMANT is not a failure: that is checkLevels saying the rule names a
+// stratum which is not installed, and the one being replaced keeps its name, so no installed rule
+// can lose the level it declared here.
+func (e *Engine) recheckLevels() error {
+	for _, t := range e.Triggers() {
+		if _, err := e.checkLevels(t); err != nil {
+			return fmt.Errorf("rule %q no longer fits: %w — it is installed, so change the level to "+
+				"keep it, or remove the rule first", t.Name, err)
+		}
+	}
+	return nil
+}
+
+// checkStrataSetLocked asks the two properties that are about the ORDERING s is joining rather
+// than about s itself: a name already taken, a level already held, and an overlap. Called with
+// trigMu HELD, so the check and the append or swap that follows it are one step.
+//
+// `replacing` names the stratum s stands in for, and is skipped: an edited level is not its own
+// neighbour, so comparing it with what it replaces would report every edit as a duplicate level.
+// Empty for a fresh install, where a name already there is the refusal.
+func (e *Engine) checkStrataSetLocked(s Stratum, replacing string) error {
+	for _, x := range e.strata {
+		if replacing != "" && x.Name == replacing {
 			continue
 		}
-		if x.Level == s.Level && matchesText(x.Match) == matchesText(s.Match) {
-			return nil // the same level, declared again: the file has been applied twice
+		if x.Name == s.Name {
+			return fmt.Errorf("stratum %q already exists (remove it first)", s.Name)
 		}
-		// WHICH CHARTER holds it, because that is what an operator has to uninstall — and with
-		// packages there are several, so "the charter" names nothing on its own. A half-applied
-		// file lands here: the levels installed, a rule was refused, and the next attempt meets
-		// the levels its own earlier attempt left standing.
-		where, undo := "the baseline charter", "remove the stratum"
-		if at := e.confine.Stamp(); at != "" {
-			where = "the charter at " + at
-			undo = "`verse charter uninstall " + at + "`"
+		// The level is the ordering, and two strata holding one have not said which comes
+		// first. Refused rather than resolved: neither answer is the author's, and "strictly
+		// higher" stops being a question with one answer the moment it is ambiguous.
+		if x.Level == s.Level {
+			return fmt.Errorf("stratum %q wants level %d, which %q already holds: the level IS "+
+				"the ordering, so two strata at one level do not say which comes first. Give it "+
+				"its own (the gaps are there to be used)", s.Name, s.Level, x.Name)
 		}
-		return fmt.Errorf("stratum %q is installed in %s with a different definition (level %d "+
-			"%s, not level %d %s): the rules in it were checked against the one that stands, so "+
-			"changing it under them would leave an ordering nobody has verified. %s, then install "+
-			"again", s.Name, where, x.Level, matchesText(x.Match), s.Level, matchesText(s.Match),
-			undo)
+		// Without disjointness the ordering is vacuous: an entity landing in the intersection
+		// of two strata is both above and at, and a derive into it has two answers.
+		if Matches(x.Match).overlaps(s.Match) {
+			return fmt.Errorf("stratum %q overlaps %q: an entity matching both would be at two "+
+				"levels at once, and \"strictly higher\" would have two answers for it. Strata "+
+				"must be pairwise disjoint", s.Name, x.Name)
+		}
 	}
-	return e.addStratum(s, true)
+	return nil
+}
+
+// swapStratum puts s in place of the installed stratum of the same name.
+func (e *Engine) swapStratum(s Stratum) {
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	e.swapStratumLocked(s)
+}
+
+// swapStratumLocked is swapStratum for a caller already holding trigMu.
+func (e *Engine) swapStratumLocked(s Stratum) {
+	for i := range e.strata {
+		if e.strata[i].Name == s.Name {
+			e.strata[i] = s
+			return
+		}
+	}
 }
 
 // addStratum installs a stratum, writing it to the store when durable.
@@ -433,28 +542,9 @@ func (e *Engine) addStratum(s Stratum, durable bool) error {
 		return err
 	}
 	e.trigMu.Lock()
-	for _, x := range e.strata {
-		if x.Name == s.Name {
-			e.trigMu.Unlock()
-			return fmt.Errorf("stratum %q already exists (remove it first)", s.Name)
-		}
-		// The level is the ordering, and two strata holding one have not said which comes
-		// first. Refused rather than resolved: neither answer is the author's, and "strictly
-		// higher" stops being a question with one answer the moment it is ambiguous.
-		if x.Level == s.Level {
-			e.trigMu.Unlock()
-			return fmt.Errorf("stratum %q wants level %d, which %q already holds: the level IS "+
-				"the ordering, so two strata at one level do not say which comes first. Give it "+
-				"its own (the gaps are there to be used)", s.Name, s.Level, x.Name)
-		}
-		// Without disjointness the ordering is vacuous: an entity landing in the intersection
-		// of two strata is both above and at, and a derive into it has two answers.
-		if Matches(x.Match).overlaps(s.Match) {
-			e.trigMu.Unlock()
-			return fmt.Errorf("stratum %q overlaps %q: an entity matching both would be at two "+
-				"levels at once, and \"strictly higher\" would have two answers for it. Strata "+
-				"must be pairwise disjoint", s.Name, x.Name)
-		}
+	if err := e.checkStrataSetLocked(s, ""); err != nil {
+		e.trigMu.Unlock()
+		return err
 	}
 	e.strata = append(e.strata, s)
 	e.trigMu.Unlock()

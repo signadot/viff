@@ -115,6 +115,37 @@ func httpPostNodeTo(path string, q url.Values, node *ir.Node) (*http.Response, e
 	return verse.Do(req)
 }
 
+// httpPostNodesTo posts SEVERAL documents in one request, `---` separated — the multi-document
+// spelling a charter file is already written in, and what codec.ReadNodes reads back.
+//
+// NOT AN ARRAY of them, and the difference is not cosmetic: a definition at document top level is
+// the node the file wrote, where making it an element of a list re-renders it one indent in — and
+// a comment beside a flow map does not survive that trip through the parser. A charter carries its
+// author's reasons, so the shape that keeps them is the shape to send.
+func httpPostNodesTo(path string, q url.Values, nodes []*ir.Node) (*http.Response, error) {
+	f := wireFmt()
+	var body bytes.Buffer
+	for i, n := range nodes {
+		if i > 0 {
+			body.WriteString("---\n")
+		}
+		b, err := codec.NodeBytes(n, f)
+		if err != nil {
+			return nil, err
+		}
+		body.Write(b)
+		if !bytes.HasSuffix(b, []byte("\n")) {
+			body.WriteByte('\n') // a separator on the same line as a value would be part of it
+		}
+	}
+	req, err := http.NewRequest(http.MethodPost, urlFor(path, q), bytes.NewReader(body.Bytes()))
+	if err != nil {
+		return nil, err
+	}
+	setFormatHeaders(req, f)
+	return verse.Do(req)
+}
+
 // setFormatHeaders declares what is being sent and what is wanted back. The Accept lists
 // tony as a fallback so a server that cannot produce the preferred format still answers
 // with something this client can read, rather than failing the negotiation.

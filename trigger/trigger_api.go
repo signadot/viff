@@ -28,10 +28,13 @@ func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true) }
 // AddTrigger keeps its refusal, and should: it is one rule at a time, where a name already in
 // use is a collision somebody has not noticed. A file naming a rule twice is a different thing
 // from a file being applied twice.
+//
+// INSTALLED OR HELD, both, which is why the removal is unconditional. A rule waiting for its
+// stratum is still a rule of this name, and asking only Trigger left it standing — so re-applying
+// an edited file met nameTaken's "is already held" and was refused, which is the one act this
+// function exists to allow.
 func (e *Engine) InstallTrigger(t Trigger) error {
-	if _, ok := e.Trigger(t.Name); ok {
-		e.RemoveTrigger(t.Name)
-	}
+	e.RemoveTrigger(t.Name)
 	return e.addTrigger(t, true)
 }
 
@@ -237,6 +240,25 @@ func (e *Engine) Trigger(name string) (Trigger, bool) {
 	for _, t := range e.triggers {
 		if t.Name == name {
 			return t, true
+		}
+	}
+	return Trigger{}, false
+}
+
+// Rule returns one rule of the charter by name, INSTALLED OR HELD.
+//
+// Trigger answers only the first, which is the question a firing asks. This is the question an
+// INSTALLER asks — what stands under this name, so that an install which has to be undone can put
+// it back — and there "it is not running" and "it is not there" are different answers: a held rule
+// is written down, occupies its name, and installs the moment its stratum arrives.
+func (e *Engine) Rule(name string) (Trigger, bool) {
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	for _, set := range [][]Trigger{e.triggers, e.pending} {
+		for _, t := range set {
+			if t.Name == name {
+				return t, true
+			}
 		}
 	}
 	return Trigger{}, false

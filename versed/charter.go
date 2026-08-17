@@ -301,67 +301,222 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addCharter installs one definition — a rule, a level, or a package's `imports:` declaration —
-// into the charter at an address. The classification is the SERVER's, so a client posting a
-// charter file does not have to know which of three things each document is.
+// addCharter installs a charter — a rule, a level, a package's `imports:` declaration, or a whole
+// file of them — into the charter at an address. The classification is the SERVER's, so a client
+// posting a charter file does not have to know which of three things each document is, nor which
+// order the three have to be installed in.
+//
+// A REQUEST IS ONE STEP. Either every definition in it installs or none does, which is what makes
+// `charter add` atomic per package: the CLI posts a file's worth of one address in one request
+// (cmd/verse/charter.go), and a refusal anywhere puts back what stood before it. Applied one
+// document at a time, a file whose first document installed and whose second was refused left the
+// first standing — a charter nobody wrote down, and (once the levels were in and the rules were
+// not) a package an operator could not remove by correcting the file.
 func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
-	node, err := codec.ReadNode(r)
+	docs, err := codec.ReadNodes(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	at := r.URL.Query().Get("at")
-	switch charterKind(node) {
-	case "imports":
-		subs, err := trigger.ImportsFromNode(node)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err := s.setPackageImports(at, subs); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	case "stratum":
-		var st trigger.Stratum
-		if err := codec.FromNode(node, &st); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		eng, err := s.charterEngine(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err := eng.InstallStratum(st); err != nil {
-			http.Error(w, err.Error(), charterCode(err))
-			return
-		}
-	default:
-		if err := trigger.CheckFields(node); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		var t trigger.Trigger
-		if err := codec.FromNode(node, &t); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if t.Name == "" {
-			http.Error(w, "a rule needs a name", http.StatusBadRequest)
-			return
-		}
-		eng, err := s.charterEngine(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err := eng.InstallTrigger(t); err != nil {
-			http.Error(w, err.Error(), charterCode(err))
-			return
-		}
+	defs := charterDocs(docs)
+	if len(defs) == 0 {
+		http.Error(w, "there is no charter in the request: a rule, a level, an `imports:` "+
+			"declaration, or a `---` separated file of them", http.StatusBadRequest)
+		return
+	}
+	if code, err := s.installCharter(r, defs); err != nil {
+		http.Error(w, err.Error(), code)
+		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// charterDocs flattens a request's documents into the definitions they hold: one apiece, or a LIST
+// of them, which is how a charter file spells several rules under one `---`.
+//
+// UNWRAPPED TO LOOK AT, KEPT AS IT WAS TO INSTALL: a comment wraps the definition it precedes, and
+// that comment is the author's reason for the rule — the record is meant to be the rule as they
+// left it (trigger.Trigger's Doc field). A `!key(name)` tag on a list is carried through and
+// ignored: it is an array either way, and the tag is what makes re-sending an edited file merge by
+// name rather than by position.
+func charterDocs(docs []*ir.Node) []*ir.Node {
+	var out []*ir.Node
+	for _, doc := range docs {
+		inner := codec.Unwrap(doc)
+		if inner == nil || inner.Type == ir.NullType {
+			continue // a trailing `---`, or an empty document
+		}
+		if inner.Type != ir.ArrayType {
+			out = append(out, doc)
+			continue
+		}
+		for _, v := range inner.Values {
+			if el := codec.Unwrap(v); el != nil && el.Type != ir.NullType {
+				out = append(out, v)
+			}
+		}
+	}
+	return out
+}
+
+// installCharter applies a charter file's worth of one address as ONE STEP, answering the status
+// code a refusal should carry.
+//
+// THE ORDER IS THE SERVER'S, whatever order the file wrote them in: the declaration first, because
+// a rule is checked against what its package imports as it installs; then the levels, because a
+// rule naming a stratum that is not installed yet is HELD rather than refused, and a file whose
+// author wrote both should not leave half its rules dormant because of how it was laid out; then
+// the rules.
+func (s *Server) installCharter(r *http.Request, defs []*ir.Node) (int, error) {
+	var imports, strata, rules []*ir.Node
+	for _, def := range defs {
+		switch charterKind(def) {
+		case "imports":
+			imports = append(imports, def)
+		case "stratum":
+			strata = append(strata, def)
+		default:
+			rules = append(rules, def)
+		}
+	}
+	at := r.URL.Query().Get("at")
+	// THE DECLARATION'S ADDRESS FIRST, before any engine is asked for, because asking creates one:
+	// `imports:` belongs to a package, and a refusal reached on the way there would leave an engine
+	// running for a charter that was never installed.
+	if len(imports) > 0 && at == "" {
+		return http.StatusBadRequest, errors.New("imports: a charter with no address has nothing " +
+			"to import into — `imports:` belongs to a package, installed with " +
+			"`verse charter add --at <address>`")
+	}
+	// FRESH BEFORE THE ENGINE, for the same reason: an install that is wholly refused must leave
+	// the address as it found it, and a package engine standing at an address nothing is installed
+	// at is a charter that lists as nothing and runs as nothing.
+	tx := &charterTx{s: s, at: at, fresh: at != "" && !s.packagesSeenAt(at)}
+	eng, err := s.charterEngine(r)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+	tx.eng = eng
+	for _, def := range imports {
+		if code, err := tx.imports(def); err != nil {
+			return tx.refuse(code, err)
+		}
+	}
+	for _, def := range strata {
+		if code, err := tx.stratum(def); err != nil {
+			return tx.refuse(code, err)
+		}
+	}
+	for _, def := range rules {
+		if code, err := tx.rule(def); err != nil {
+			return tx.refuse(code, err)
+		}
+	}
+	return http.StatusCreated, nil
+}
+
+// charterTx is one request's worth of installs and how to put back what each replaced. It is not
+// a transaction over the store — the writes have committed — but an UNDO of them in reverse, which
+// is as much as an engine holding live watches can offer and is what "the file is either the
+// charter or it is not" needs.
+type charterTx struct {
+	s     *Server
+	at    string
+	eng   *trigger.Engine
+	fresh bool // no charter stood at this address before this request
+	undo  []func() error
+}
+
+func (tx *charterTx) push(f func() error) { tx.undo = append(tx.undo, f) }
+
+// imports installs a package's declaration of what it reads, remembering the one it replaced.
+func (tx *charterTx) imports(def *ir.Node) (int, error) {
+	subs, err := trigger.ImportsFromNode(def)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+	before := tx.eng.Imports()
+	prev, had, err := tx.s.packageDecl(tx.at)
+	if err != nil {
+		return http.StatusServiceUnavailable, err
+	}
+	if err := tx.s.setPackageImports(tx.at, subs); err != nil {
+		return http.StatusBadRequest, err
+	}
+	tx.push(func() error {
+		tx.eng.SetImports(before)
+		return tx.s.putPackageDecl(tx.at, prev, had)
+	})
+	return http.StatusCreated, nil
+}
+
+// stratum installs one level, remembering the one it replaced.
+func (tx *charterTx) stratum(def *ir.Node) (int, error) {
+	var st trigger.Stratum
+	if err := codec.FromNode(def, &st); err != nil {
+		return http.StatusBadRequest, err
+	}
+	old, had := tx.eng.Stratum(st.Name)
+	if err := tx.eng.InstallStratum(st); err != nil {
+		return charterCode(err), err
+	}
+	tx.push(func() error {
+		if had {
+			return tx.eng.InstallStratum(old)
+		}
+		return tx.eng.RemoveStratum(st.Name)
+	})
+	return http.StatusCreated, nil
+}
+
+// rule installs one rule, remembering the one it replaced — held or installed, since either
+// occupies the name.
+func (tx *charterTx) rule(def *ir.Node) (int, error) {
+	if err := trigger.CheckFields(def); err != nil {
+		return http.StatusBadRequest, err
+	}
+	var t trigger.Trigger
+	if err := codec.FromNode(def, &t); err != nil {
+		return http.StatusBadRequest, err
+	}
+	if t.Name == "" {
+		return http.StatusBadRequest, errors.New("a rule needs a name")
+	}
+	old, had := tx.eng.Rule(t.Name)
+	if err := tx.eng.InstallTrigger(t); err != nil {
+		return charterCode(err), err
+	}
+	tx.push(func() error {
+		tx.eng.RemoveTrigger(t.Name)
+		if had {
+			return tx.eng.AddTrigger(old)
+		}
+		return nil
+	})
+	return http.StatusCreated, nil
+}
+
+// refuse unwinds what this request installed and dresses the refusal that caused it.
+//
+// The unwind's own failures are REPORTED alongside it rather than swallowed. The operator asked
+// for a file to be applied and is being told it was not; the only thing worse than a half-applied
+// charter is a half-applied charter nobody mentioned, which is the state this whole path exists to
+// retire.
+func (tx *charterTx) refuse(code int, err error) (int, error) {
+	err = fmt.Errorf("%w\nnothing was installed: a charter file is applied as one step, so a "+
+		"refusal anywhere puts back what stood before it", err)
+	for i := len(tx.undo) - 1; i >= 0; i-- {
+		if back := tx.undo[i](); back != nil {
+			err = fmt.Errorf("%w\n— except this, which could not be put back: %v", err, back)
+		}
+	}
+	// The ENGINE last, and only when this request is what brought the address into being: an
+	// engine left running at an address with nothing installed observes on behalf of no charter,
+	// and a later install at the same address would find it rather than make one.
+	if tx.fresh {
+		tx.s.dropPackageEngine(tx.at)
+	}
+	return code, err
 }
 
 // deleteCharter uninstalls the charter package at an address — see Server.removePackage.

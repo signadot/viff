@@ -176,7 +176,7 @@ func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
 	}
 	if confine.Stamp() == "" {
 		return fmt.Errorf("imports: a charter with no address has nothing to import into — " +
-			"`imports:` belongs to a package, installed with `trigger add --at <address>`")
+			"`imports:` belongs to a package, installed with `verse charter add --at <address>`")
 	}
 	graph := s.packageImports()
 	graph[confine.Stamp()] = subs
@@ -208,6 +208,66 @@ func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
 		return fmt.Errorf("imports: recording the declaration: %w", err)
 	}
 	return nil
+}
+
+// packageDecl reads the record standing for a package's declaration, so an install that has to be
+// undone can put back exactly what was there — including nothing, which is what a package that
+// never declared anything has and is a different state from one that declared it imports nothing.
+func (s *Server) packageDecl(at string) (entity.Payload, bool, error) {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return nil, false, err
+	}
+	ent, ok, err := s.Store.Get(trigger.PackageRef(confine.Stamp()))
+	if err != nil {
+		return nil, false, fmt.Errorf("reading the declaration at %s: %w", at, err)
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	return ent.Payload, true, nil
+}
+
+// putPackageDecl writes a declaration back as it was — or removes it, when there was none.
+//
+// REMOVED AND WRITTEN rather than written over, because a store write MERGES at its path: putting
+// back a declaration that had fewer imports than the one it replaces would leave the wider list
+// standing, and the next restart would restore a package reading where its charter says it does
+// not (restorePackageImports).
+func (s *Server) putPackageDecl(at string, was entity.Payload, had bool) error {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return err
+	}
+	ref := trigger.PackageRef(confine.Stamp())
+	if _, _, err := s.Store.Write(entity.Write{At: entity.Path{Ref: ref}}); err != nil {
+		return fmt.Errorf("removing the declaration at %s: %w", at, err)
+	}
+	if !had {
+		return nil
+	}
+	if _, _, err := s.Store.Write(entity.Write{At: entity.Path{Ref: ref}, Value: was}); err != nil {
+		return fmt.Errorf("putting the declaration at %s back: %w", at, err)
+	}
+	return nil
+}
+
+// dropPackageEngine stops the engine at an address and forgets it, leaving nothing running for a
+// charter that is not there. It is uninstallOne's last step on its own, for the caller that has
+// already taken the records down — an install that was refused whole, at an address that had no
+// charter before it.
+func (s *Server) dropPackageEngine(at string) {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return
+	}
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	key := "at:" + confine.Stamp()
+	if pe, ok := s.scopeEngs[key]; ok {
+		pe.cancel()
+		delete(s.scopeEngs, key)
+	}
 }
 
 // packageImports reads the declared graph out of the store: every package that has a record,
@@ -352,12 +412,6 @@ func (s *Server) uninstallOne(at string) error {
 	// The engine LAST, and dropped from the registry as well as cancelled: a package installed
 	// again at the same address gets a new one, and a cancelled engine left in the map would be
 	// found first and observe nothing.
-	s.scopeMu.Lock()
-	key := "at:" + confine.Stamp()
-	if pe, ok := s.scopeEngs[key]; ok {
-		pe.cancel()
-		delete(s.scopeEngs, key)
-	}
-	s.scopeMu.Unlock()
+	s.dropPackageEngine(at)
 	return nil
 }

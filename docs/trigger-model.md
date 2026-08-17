@@ -164,7 +164,9 @@ down.
 One file may hold SEVERAL packages: a `---` document carrying `at:` opens one, and everything
 after it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is
 two — a `drift` package that reviews and a `merge` package that gates what the review delivers —
-installed by one `verse charter add --file`.
+installed by one `verse charter add --file`. Each package goes in **as one step**: its declaration,
+its levels and its rules install together or not at all, so a refusal anywhere puts back what stood
+before it (see [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
 
 **Its levels are its own**, and so are its records: a package's rules and strata are addressed
 by package (`verse:trigger:rule:drift:head-moved`), so two packages may each declare a

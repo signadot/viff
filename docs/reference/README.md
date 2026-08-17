@@ -109,10 +109,13 @@ verse
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
           add [--file <f>|-] [file]          install one: triggers, strata and `imports:`
-                                             from one file, in the order that works.
-                                             Re-applying a file is fine — a rule is replaced,
-                                             a level that already stands as declared is a
-                                             no-op, and one that differs is refused
+                                             from one file, in the order that works, and as
+                                             ONE STEP per package — a refusal anywhere puts
+                                             back what stood before it. Re-applying an edited
+                                             file is how a charter changes: a rule is
+                                             replaced, and so is a level (every rule faces the
+                                             ordering again, and one that no longer fits
+                                             refuses the change)
           add --at <address>                 install as a PACKAGE: its own engine, and its
                                              rules may write only inside <address>
                                              (`notes`, `demo.pr`) — see ../trigger-model.md

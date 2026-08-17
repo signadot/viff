@@ -184,6 +184,27 @@ func ReadNode(r *http.Request) (*ir.Node, error) {
 	return StripBrackets(node), nil
 }
 
+// ReadNodes is ReadNode for a body holding SEVERAL documents — `---` separated, which is the
+// tony spelling a charter file already uses and the one thing a handler taking a file's worth in
+// one request needs to read.
+//
+// A body holding one document answers a list of one, so a route that accepts either does not have
+// to ask which it got.
+func ReadNodes(r *http.Request) ([]*ir.Node, error) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading the request body: %w", err)
+	}
+	nodes, err := ParseNodes(data, RequestFormat(r))
+	if err != nil {
+		return nil, err
+	}
+	for i, n := range nodes {
+		nodes[i] = StripBrackets(n)
+	}
+	return nodes, nil
+}
+
 // HTTPError writes an error response.
 //
 // The body is PLAIN TEXT, deliberately. Callers already read a non-2xx body as a message

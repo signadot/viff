@@ -379,6 +379,21 @@ verse charter                        # what they are waiting for
 Read together those two say it, and nothing says it for you. What is missing is a state on the
 rule itself — held, and waiting for what — since the engine already models exactly that.
 
+**Editing a level is re-applying the file.** A stratum already installed exactly as declared is a
+no-op, and one that differs is **replaced** — the same answer a rule of the same name gets, because
+the file is what the operator means and re-applying an edited one is how a charter changes. What
+the change is checked against is every rule standing in that charter: they were checked against the
+level when they installed, so they face the ordering again, and a rule that no longer fits refuses
+the *change*, naming itself. Nothing is left at a level nothing checked it against — which is what
+the old refusal bought, at the price of taking the whole package down to edit one line.
+
+**And a file is applied as one step.** `verse charter add` sends a package's worth of a file in one
+request, and a refusal anywhere puts back what stood before it: the declaration, the levels and the
+rules are all the charter or none of them are. Sent document by document, a file whose levels
+installed and whose rule was refused left the levels standing while reporting that the command had
+failed — a charter in a state nobody wrote down, holding a level that the corrected file could then
+not replace.
+
 **Removing a stratum is refused while rules still name it.** Those rules were checked against a
 pattern that would no longer exist, and nothing re-runs a check — they would go on firing,
 unstratified, having been told they were ordered. Remove the rules first, or move them.

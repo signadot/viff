@@ -431,26 +431,13 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 		if g.at != "" {
 			q.Set("at", g.at)
 		}
-		// THE DECLARATION FIRST, before either: a rule is checked against what its package
-		// imports as it installs, so sending it after would refuse the rules it is there to
-		// allow. Then the strata, for the reason `up` restores them first — a rule naming a
-		// stratum that is not installed yet is HELD rather than refused, and a package's levels
-		// are its own.
-		if g.imports != nil {
-			if g.at == "" {
-				return fmt.Errorf("charter add: `imports:` belongs to a charter package — give " +
-					"it an address (`at:` in the declaration, or `--at`), or drop it: the " +
-					"baseline charter may write anywhere, so there is no graph an import would " +
-					"be an edge in")
-			}
-			if err := postDefsTo(cc, "/charter", q, []*ir.Node{g.imports}); err != nil {
-				return fmt.Errorf("charter add: declaring what %s imports: %w", g.at, err)
-			}
+		if g.imports != nil && g.at == "" {
+			return fmt.Errorf("charter add: `imports:` belongs to a charter package — give " +
+				"it an address (`at:` in the declaration, or `--at`), or drop it: the " +
+				"baseline charter may write anywhere, so there is no graph an import would " +
+				"be an edge in")
 		}
-		if err := postDefsTo(cc, "/charter", q, g.strata); err != nil {
-			return fmt.Errorf("charter add: installing strata: %w", err)
-		}
-		if err := postDefsTo(cc, "/charter", q, g.rules); err != nil {
+		if err := postGroup("/charter", q, g.defs()); err != nil {
 			return fmt.Errorf("charter add: %w", err)
 		}
 		where := "baseline"
@@ -553,25 +540,24 @@ func charterDefs(data []byte, srcFmt codec.Format) ([]*ir.Node, error) {
 	return defs, nil
 }
 
-// postDefs installs each definition at one route, stopping at the first refusal.
-func postDefs(cc *cli.Context, route string, defs []*ir.Node) error {
-	return postDefsTo(cc, route, nil, defs)
-}
-
-// postDefsTo is postDefs with query parameters — `?at=` for a charter package, which the
-// install routes read to pick the engine a definition lands in.
-func postDefsTo(cc *cli.Context, route string, q url.Values, defs []*ir.Node) error {
-	for _, def := range defs {
-		resp, err := httpPostNodeTo(route, q, def)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode != http.StatusCreated {
-			msg, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
-		}
-		resp.Body.Close()
+// postGroup installs a package's worth of a charter in ONE request, which is what makes it one
+// step: the server applies the whole file or none of it, in the order the three kinds have to go
+// in (versed/charter.go). `q` carries `?at=`, which is what picks the engine they land in.
+//
+// Sent one document at a time, this is what left a file HALF-APPLIED: the first document installed,
+// the second was refused, and the operator was told the command failed while some of the file
+// stood. Worse where the half that stood was the levels — a package with levels and no rules is a
+// package, its stratum could not be removed by re-applying a corrected file, and `charter
+// uninstall` was the only way out of a state nobody wrote down.
+func postGroup(route string, q url.Values, defs []*ir.Node) error {
+	resp, err := httpPostNodesTo(route, q, defs)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	return nil
 }
@@ -583,6 +569,22 @@ type charterGroup struct {
 	imports *ir.Node // the declaration document, nil when there is none
 	strata  []*ir.Node
 	rules   []*ir.Node
+}
+
+// defs is the group as one list, in the order the three kinds install: the declaration, because a
+// rule is checked against what its package imports as it installs; then the levels, because a rule
+// naming a stratum that is not here yet is HELD rather than refused; then the rules.
+//
+// The server sorts them again and does not depend on this order — a client posting a charter says
+// what it has by writing it, not by choosing an order — but sending them the right way round is
+// what keeps the two ends agreeing about what a charter file is.
+func (g charterGroup) defs() []*ir.Node {
+	out := make([]*ir.Node, 0, len(g.strata)+len(g.rules)+1)
+	if g.imports != nil {
+		out = append(out, g.imports)
+	}
+	out = append(out, g.strata...)
+	return append(out, g.rules...)
 }
 
 // charterGroups splits a charter file into the packages it installs.
