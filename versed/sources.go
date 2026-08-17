@@ -665,7 +665,7 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 	}
 	run.mu.Lock()
 	changed := run.lastErr != errText
-	run.lastPass, run.lastErr = now, errText
+	run.lastPass = now
 	run.mu.Unlock()
 
 	if changed {
@@ -675,8 +675,26 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 		if errText != "" {
 			w.Value = entity.Val(errText)
 		}
+		// THE MEMORY FOLLOWS THE STORE, and only if the store took it. `changed` is a
+		// comparison against what this run believes is RECORDED, so advancing it before the
+		// write means a write that fails is never retried: the next pass compares equal, finds
+		// nothing changed, and writes nothing — leaving the registration carrying an error it
+		// has recovered from, for good.
+		//
+		// That is not hypothetical. Staging recorded an error, recovered on the next pass, and
+		// the clearing write timed out (`recording error: … context deadline exceeded`, which
+		// is this very line). Two passes later `verse source` still reported the source in
+		// error while the entity it had failed on was present and correct — the one field an
+		// operator reads to decide whether a source is healthy, stuck on a transient.
 		if _, _, err := store.Write(w); err != nil {
+			// Leave lastErr alone — the store still says what it said, so the next pass sees a
+			// change again and retries. Everything below still runs: a failed status write is
+			// no reason to skip the rest of the report.
 			fmt.Fprintf(os.Stderr, "verse: source %s: recording error: %v\n", ref, err)
+		} else {
+			run.mu.Lock()
+			run.lastErr = errText
+			run.mu.Unlock()
 		}
 	}
 	if p.Err == nil && p.Wrote > 0 {

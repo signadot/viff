@@ -569,3 +569,63 @@ func TestACleanShutdownIsNotRecordedAsAFailure(t *testing.T) {
 		t.Fatalf("a cancelled pass should record nothing, got %v", entity.ToObj(reg.Payload))
 	}
 }
+
+// failWritesTo fails writes AT one path and passes everything else through — a store that is
+// struggling exactly where the status write lands.
+type failWritesTo struct {
+	entity.Store
+	at   string
+	fail bool
+}
+
+func (f *failWritesTo) Write(w entity.Write) (bool, int64, error) {
+	if f.fail && w.At.String() == f.at {
+		return false, 0, errFor("context deadline exceeded")
+	}
+	return f.Store.Write(w)
+}
+
+// A CLEARING WRITE THAT FAILS IS RETRIED, rather than being remembered as done.
+//
+// lastError is written on transition, and the transition is measured against what this run
+// believes is RECORDED. Advancing that belief before the store accepts the write means a
+// failed write is never retried: the next pass compares equal, writes nothing, and the
+// registration carries an error it recovered from for good.
+//
+// Staging did exactly this — recovered, failed to clear (`recording error: … context deadline
+// exceeded`), and reported the source in error two passes later with the entity it had failed
+// on present and correct.
+func TestAFailedClearingWriteIsRetried(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "flaky")
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "flaky", "system": "git", "url": "http://127.0.0.1:1",
+	}.Payload())
+
+	fs := &failWritesTo{Store: srv.Store, at: ref.At("lastError").String()}
+	run := &sourceRun{}
+
+	// A failure, recorded.
+	srv.recordPass(t.Context(), fs, ref, run, source.Pass{Err: errFor("unreachable")})
+	reg, _, _ := srv.Store.Get(ref)
+	if entity.Str(reg.Payload, "lastError") == "" {
+		t.Fatal("a failing pass should record why")
+	}
+
+	// The recovery — but the clearing write fails.
+	fs.fail = true
+	srv.recordPass(t.Context(), fs, ref, run, source.Pass{})
+	reg, _, _ = srv.Store.Get(ref)
+	if entity.Str(reg.Payload, "lastError") == "" {
+		t.Fatal("the clearing write was supposed to fail; the fixture is not testing anything")
+	}
+
+	// The store recovers, and the NEXT pass must try again rather than believe it already did.
+	fs.fail = false
+	srv.recordPass(t.Context(), fs, ref, run, source.Pass{})
+	reg, _, _ = srv.Store.Get(ref)
+	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
+		t.Fatalf("lastError stuck after the store recovered: %v — a source reporting an error "+
+			"it is not having is the one an operator acts on", entity.ToObj(reg.Payload))
+	}
+}
