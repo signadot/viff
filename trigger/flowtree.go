@@ -101,7 +101,7 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 		if subj == "" {
 			continue // a task about nothing is in no flow
 		}
-		ref, err := entity.ParseRef(subj)
+		ref, err := entity.ParseAddr(subj)
 		if err != nil || !m.MatchRef(ref) {
 			continue
 		}
@@ -333,7 +333,7 @@ type seqProgress struct {
 
 // seqProgressFor reads verse.<trigger> off the subject.
 func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
-	ref, err := entity.ParseRef(subject)
+	ref, err := entity.ParseAddr(subject)
 	if err != nil {
 		return seqProgress{}
 	}
@@ -390,7 +390,7 @@ func (e *Engine) gateNameOf(pendingRef string) string {
 	if pendingRef == "" {
 		return ""
 	}
-	ref, err := entity.ParseRef(pendingRef)
+	ref, err := entity.ParseAddr(pendingRef)
 	if err != nil {
 		return ""
 	}

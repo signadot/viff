@@ -108,6 +108,20 @@ Each lands with the suite green.
    `api.PutEntity.Ref` beside `path`, `Ref.String()` picking a spelling by depth, `ParseRef`
    itself, and the `system:kind:id` prose across the docs.
 
+   **The round trip came early, because it was load-bearing.** `entity.ParseAddr` reads back what
+   `String` writes at any depth, and everything that RECOVERS a ref from text uses it — a task's
+   subject, a motion's subject, a flow, a question's origin. It had to: `applyHook` recovered its
+   subject with `ParseRef`, which reads exactly three segments and takes everything past the
+   second colon as the id, so a subject four segments deep whose id is itself an address came back
+   as a different ref with no error, and the package's confinement refused the patch. Staging
+   showed it as a comment review that did its work and could not record that it had.
+
+   The discriminator is where the colons are: `String` only ever puts one in the last segment, so
+   a dotted string whose FIRST segment holds a colon is `system:kind:<id with dots>` and nothing
+   else. `ParseRef` is deliberately unchanged — a charter and a command line write the colon form,
+   and a dotted string there is an address followed by a payload path (`demo.pr.1.stage`), which
+   reading as a four-segment entity would swallow.
+
    Also left, and smaller: `Doc.Entities` (the fixed-depth walk every listing still uses),
    `WatchSubtree`'s reporting depth (precision, see §5), and `verse state --paths` defaulting to
    three.

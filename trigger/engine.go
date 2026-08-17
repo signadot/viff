@@ -1501,7 +1501,7 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
 // completed task:instance payload, so the hook's templates can read $status/$flow/$result.
 func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
-	subject, serr := entity.ParseRef(fp.subject)
+	subject, serr := entity.ParseAddr(fp.subject)
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only
 	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so
@@ -1674,7 +1674,7 @@ func (e *Engine) matchFlow(m Match) []flowTask {
 	hasPredicate := m.HasPredicate()
 	out := make([]flowTask, 0, len(all))
 	for _, fp := range all {
-		ref, err := entity.ParseRef(fp.subject)
+		ref, err := entity.ParseAddr(fp.subject)
 		if err != nil || !m.MatchRef(ref) {
 			continue
 		}

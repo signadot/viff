@@ -186,6 +186,57 @@ func ParseRef(s string) (Ref, error) {
 	return RefAt(parts[0], parts[1], parts[2]), nil
 }
 
+// ParseAddr reads back exactly what String wrote, AT ANY DEPTH — and it exists because
+// ParseRef cannot, which is not a gap in ParseRef but the point of it.
+//
+// The two spellings serve different readers. `system:kind:id` is what a person types, what a
+// charter holds and what every stored record from before paths carries, and its id may hold
+// colons — so it is read with a fixed arity and everything past the second colon is the id. The
+// dotted path is what an address DEEPER than that renders as, because `a:b:c:d` re-reads as
+// three segments plus an id holding a colon. Neither can be read as the other without knowing
+// which was written.
+//
+// SO THE DISCRIMINATOR IS WHERE THE COLONS ARE. String only ever puts a colon in the LAST
+// segment (system and kind are names; an id may hold anything), so a dotted string whose first
+// segment holds a colon is `system:kind:<id with dots>` and nothing else. That is the whole
+// rule, and it is decidable without a marker:
+//
+//	verse-dev.drift.head.head-moved@git:head:verse   → 4 segments (the colons are in the id)
+//	demo:pr:a.b.c.d                                  → system demo, kind pr, id a.b.c.d
+//
+// USE IT WHERE A REF IS BEING RECOVERED, not where one is being typed: a task's subject, a
+// motion's subject, a flow. Charter and CLI input keep ParseRef, because there a dotted string
+// is an address FOLLOWED BY A PAYLOAD PATH (`demo.pr.1.stage`, splitAddress) and reading it as a
+// four-segment entity would silently swallow the field.
+//
+// It was a completion hook that found this. `applyHook` recovered its subject with ParseRef, so
+// a rule whose subject was four segments deep patched — through the mangled ref — outside its own
+// package, and the confinement refused the write. The review that had just done its work could
+// not record that it had: docs/working/entity-tree.md §7.
+func ParseAddr(s string) (Ref, error) {
+	if segs, ok := dottedAddr(s); ok {
+		return RefAt(segs...), nil
+	}
+	return ParseRef(s)
+}
+
+// dottedAddr reads the path spelling, or reports that this is not one.
+func dottedAddr(s string) ([]string, bool) {
+	if !strings.Contains(s, ".") {
+		return nil, false // no dots: the colon form, or nothing
+	}
+	segs, err := PathSegs(s)
+	if err != nil || len(segs) < 2 {
+		return nil, false
+	}
+	// A colon in the first segment says the dots are inside an ID: `demo:pr:a.b.c.d` splits on
+	// dots into four fields and is three segments.
+	if strings.Contains(segs[0], ":") {
+		return nil, false
+	}
+	return segs, true
+}
+
 // Segs is a ref's segments, in order — the form everything that WALKS an address speaks,
 // as against the three names a caller writes.
 //

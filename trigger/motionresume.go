@@ -87,7 +87,7 @@ func (e *Engine) ResumeMotions() int {
 			e.orphanMotion(ent.Ref, "the action that opened it is no longer in the charter")
 			continue
 		}
-		subj, err := entity.ParseRef(entity.Str(p, "subject"))
+		subj, err := entity.ParseAddr(entity.Str(p, "subject"))
 		if err != nil {
 			e.orphanMotion(ent.Ref, "it does not name a subject this verse can read")
 			continue
@@ -142,7 +142,7 @@ func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload) {
 		}
 		return
 	}
-	subj, err := entity.ParseRef(entity.Str(p, "subject"))
+	subj, err := entity.ParseAddr(entity.Str(p, "subject"))
 	if err != nil {
 		return
 	}

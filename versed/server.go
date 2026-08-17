@@ -170,7 +170,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		if q.BoundTo != "" || q.Subject == "" {
 			return
 		}
-		ref, err := entity.ParseRef(q.Subject)
+		ref, err := entity.ParseAddr(q.Subject)
 		if err != nil {
 			return
 		}
@@ -179,7 +179,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		}
 	}
 	standingOwner := func(subject string) string {
-		ref, err := entity.ParseRef(subject)
+		ref, err := entity.ParseAddr(subject)
 		if err != nil {
 			return ""
 		}
@@ -198,7 +198,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		if q.BoundTo == "" {
 			return
 		}
-		origin, err := entity.ParseRef(q.Subject)
+		origin, err := entity.ParseAddr(q.Subject)
 		if taskID != "" {
 			origin, err = mirror.Ref(taskID), nil // a run's questions are watched over the run
 		}
@@ -1738,7 +1738,7 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 	p := entity.ToObj(e.Payload)
 	binding, _ = p["binding"].(string)
 	got, _ := p["origin"].(string)
-	origin, err = entity.ParseRef(got)
+	origin, err = entity.ParseAddr(got)
 	if err != nil {
 		return "", entity.Ref{}, false
 	}
@@ -2065,7 +2065,7 @@ func questionOrigin(q map[string]any, subject string) entity.Ref {
 	if p, _ := q["task"].(string); p != "" {
 		return mirror.Ref(p)
 	}
-	ref, _ := entity.ParseRef(subject)
+	ref, _ := entity.ParseAddr(subject)
 	return ref
 }
 
@@ -2286,7 +2286,7 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	}
 	binding := ""
 	if subject != "" {
-		if ref, err := entity.ParseRef(subject); err == nil {
+		if ref, err := entity.ParseAddr(subject); err == nil {
 			if next, ok := resolver.Next(store, ref, from); ok {
 				binding = resolver.Ref(next.Kind, next.Name).String()
 				rec["resolver"] = binding
