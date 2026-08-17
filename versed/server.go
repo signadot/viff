@@ -1371,7 +1371,11 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := s.scopedStore(r)
-	ents := store.List(sel.matchRef)
+	// AT THE PATH, not at the root. This read used to be List(matchRef) — the whole verse
+	// across the wire, filtered here — whatever `at` said, which made every read cost the same
+	// as reading everything: 0.74s for one registration on a 6900-entity store, against under
+	// 50ms for the narrow form the substrate already answers. See entity.AtPrefix.
+	ents := listAt(store, sel)
 	if unreadable(w, r, store) {
 		return
 	}
@@ -1395,6 +1399,17 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		doc.Node = ir.FromMap(map[string]*ir.Node{})
 	}
 	writeOut(w, r, http.StatusOK, doc)
+}
+
+// listAt reads the entities a selector can pick, under the narrowest prefix its path allows.
+// A path that names nothing falls back to the root read, because the whole verse spans both
+// halves and their entities sit at different depths.
+func listAt(store entity.Store, sel selector) []entity.Entity {
+	prefix, depth, ok := entity.AtPrefix(sel.at)
+	if !ok {
+		return store.List(sel.matchRef)
+	}
+	return store.ListAt(prefix, depth, sel.matchRef)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {

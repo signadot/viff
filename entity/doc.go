@@ -430,6 +430,39 @@ func AtDepth(at *kpath.KPath) int {
 	return n
 }
 
+// AtPrefix answers how a read at this path may be NARROWED: the literal segments it can be
+// asked under, and the depth entities beneath it sit at (Store.ListAt's two arguments).
+//
+// It exists because a read at a path was reading the whole verse and filtering. `ListAt`
+// narrows and `List` does not, and the difference is not small — a read of one registration
+// took 0.74s where the substrate answers the narrow form in under 50ms, and the time barely
+// moved with the path because the work never did.
+//
+// The prefix stops at the first segment that is not a literal name (`*`, an index, a keyed
+// element): nothing below a wildcard is a literal to read under. It is capped at the entity
+// depth, because a path may reach INSIDE a payload (`demo.pr.1.labels.urgent`) and the entity
+// to read is still `demo:pr:1` — the rest is what Nest trims afterwards.
+//
+// ok is false for a path that names nothing, and the caller must fall back to List there:
+// the whole verse spans both halves, whose entities sit at different depths, and one ListAt
+// answers for only one depth.
+func AtPrefix(at *kpath.KPath) (prefix []string, depth int, ok bool) {
+	if at == nil {
+		return nil, 0, false
+	}
+	depth = atDepth(at)
+	for kp := at; kp != nil && len(prefix) < depth; kp = kp.Next {
+		if kp.FieldAll || kp.Field == nil {
+			break
+		}
+		prefix = append(prefix, *kp.Field)
+	}
+	if len(prefix) == 0 {
+		return nil, 0, false
+	}
+	return prefix, depth, true
+}
+
 // atDepth is how many segments an address under this path has: one more in verse's own half,
 // where the reserved root is a level of its own.
 //

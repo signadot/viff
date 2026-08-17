@@ -904,6 +904,16 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 		path += "." + seg(sg)
 	}
 	node, err := s.sess.Match(ctx, path)
+	// NOT_FOUND IS AN ANSWER, not an outage: it says the path is empty, and a read that FAILS
+	// says the store could not be read (libctl's own distinction). They are only ever confused
+	// upward: `unreadable` turns a recorded read error into a 503, so a read at a path nothing
+	// stands at — `verse state other`, an install listing a slice no source has written yet —
+	// reported the verse as unavailable. List at the ROOT never met this, because the root
+	// always exists; asking at a path is what makes it reachable.
+	if isNotFound(err) {
+		s.noteRead(nil)
+		return nil
+	}
 	s.noteRead(err)
 	if err != nil || node == nil {
 		return nil
