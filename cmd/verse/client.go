@@ -32,16 +32,22 @@ func urlFor(path string, q url.Values) string {
 		}
 		q.Set("scope", g.Scope)
 	}
-	// Ask for the output format on every request, as a query parameter rather than an
-	// Accept header. An SSE response must answer Accept: text/event-stream, so the header
-	// cannot say anything about what is INSIDE the frames — the parameter is the one lever
-	// that works the same on a streaming and a non-streaming route.
-	if out, err := outFmt(); err == nil {
-		if q == nil {
-			q = url.Values{}
-		}
-		q.Set(codec.FormatParam, out.String())
+	// THE WIRE IS TONY, said explicitly on every request. The parameter governs how the
+	// server reads a body as well as how it writes a response, so sending the OPERATOR's
+	// output preference here made `-o yaml` an instruction to parse tony as YAML — and the
+	// endpoints do not accept YAML. It cost a silent corruption rather than an error: the
+	// body went out as tony with `formula: !quorum 3` in it, and what landed in the store was
+	// `!quorum "3"`, a quorum whose threshold had become a string. `make smoke-all`'s second
+	// pass sets VERSE_OUTPUT_FORMAT=yaml, which is how it was reachable at all.
+	//
+	// -o is not lost by this, because it was never what the parameter bought: printBody and
+	// the watch renderer both decode the response by its Content-Type and re-render with
+	// outFmt() on this side. So the operator's format is a rendering decision here, and the
+	// exchange with the API stays in one dialect.
+	if q == nil {
+		q = url.Values{}
 	}
+	q.Set(codec.FormatParam, wireFmt().String())
 	// Build the URL rather than concatenating it, so the path gets ESCAPED. Ids reach here
 	// straight from the command line, so they may contain anything a shell will pass along.
 	// A "#" is the one that punishes concatenation: it starts a URL fragment, which silently
