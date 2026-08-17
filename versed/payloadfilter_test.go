@@ -320,7 +320,15 @@ func TestWatchRefusesACursorItCannotAnswer(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
 		t.Errorf("the refusal went out as a stream (%s)", ct)
 	}
-	if msg := string(body); !strings.Contains(msg, "retained window") || !strings.Contains(msg, "since") {
+	// WHAT TO DO INSTEAD is what the refusal owes; WHY is only claimed when it can be
+	// established. This store cannot say which commit it still retains, so "below the retained
+	// window" would be a diagnosis nobody checked — the handler used to make it anyway, and
+	// then advised asking for exactly the cursor it had refused.
+	msg := string(body)
+	if !strings.Contains(msg, "since") {
+		t.Errorf("the refusal does not name the cursor it refused: %q", msg)
+	}
+	if !strings.Contains(msg, "retained window") && !strings.Contains(msg, "stream from now") {
 		t.Errorf("the refusal does not say what to ask for instead: %q", msg)
 	}
 }
