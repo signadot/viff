@@ -341,10 +341,25 @@ the next.
 - `rev` is an opaque cursor. Revisions are monotonic but **sparse**, so treat one as a
   bookmark to hand back to `--since`, never as a count.
 
-A watch **replays**: it is level-triggered at the open, so what already matches arrives
-before anything new does. That is the same property that makes an installed trigger act on
-the backlog, and it is why a long hold costs a cursor rather than a buffer. See
+**A watch with a cursor replays**: `--since <rev>` delivers what the store still holds from
+that revision before it streams anything new, so a reader that was away can catch up rather
+than guess. With no cursor there is nothing to catch up from and the stream starts at the
+moment it opens. The same level-triggered property is what makes an INSTALLED TRIGGER act on
+the backlog — a rule is a statement about the world, not about what happens next — and it is
+why a long hold costs a cursor rather than a buffer. See
 [change events](../change-events.md).
+
+**A change deeper than an address is reported against the address above it.** Watching
+`verse-dev.drift` while something is written at `verse-dev.drift.head.abc` gives
+
+```tony
+{op: set ref: verse-dev:drift:head rev: 152 to: {abc: {sha: aaa}}}
+```
+
+— the entity that changed is `abc`, nested inside `to`. The stream reports at the depth an
+address has always had, which is a matter of PRECISION rather than correctness: nothing is
+missed, and a rule watching that subtree still selects the deep entity, because it
+re-evaluates against the store rather than against the event's ref alone.
 
 A `delete` carries no payload, so a `--if` filter does not match one: there is nothing left
 to ask about. An entity on its way out is also marked *vanishing* before removal, which is
