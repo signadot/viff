@@ -2452,6 +2452,15 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	out := api.Status{
+		// Rev, and it costs a sync — deliberately. Head is free and is what /healthz reports,
+		// but it is what this PROCESS has been told, so on a verse where nothing has committed
+		// since it started it is 0: staging, with its sources scaled off, answered `head: 0`
+		// over a store holding 7262 commits. That is correct for readiness (quiet is not
+		// unready) and wrong for a census — storeRev is the number an operator reads to judge
+		// whether anything is moving, and one that says 0 about a full store is worse than one
+		// that takes a second.
+		//
+		// Nothing polls this any more, which is what makes the second affordable.
 		StoreRev: s.Store.Rev(),
 		Triggers: len(s.Eng.Triggers()),
 		Flows:    len(s.Eng.Flows()),
