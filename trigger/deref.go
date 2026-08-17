@@ -303,6 +303,17 @@ func expandString(s string, root entity.Payload) (entity.Payload, error) {
 // inventing one (JSON? tony?) would make `"saw $result"` mean something different depending
 // on what the task happened to return, and the whole-value form already says it exactly.
 func scalarText(n entity.Payload) (string, bool) {
+	// PAST THE COMMENT WRAPPER, for the reason the walks around it do it: a head comment makes
+	// the value under it a wrapper node, and asking a wrapper for its type answers CommentType —
+	// so a scalar somebody wrote a note above rendered as "no text at all". That is not a
+	// rendering nit here: this is what interpolates `$sha` into a prompt, what reads a fan-out
+	// element's `key`, and what a keyed derive's address is made of, and each of those treats
+	// "no text" as a failure of the firing. A comment must not decide whether a rule can name
+	// its own subject.
+	n = unwrap(n)
+	if n == nil {
+		return "", false
+	}
 	switch n.Type {
 	case ir.StringType:
 		return n.String, true

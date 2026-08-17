@@ -131,3 +131,25 @@ func TestACommentDoesNotHideAReference(t *testing.T) {
 		}
 	}
 }
+
+// AND IN THE LEAF RENDERER, which is what a prompt's `$sha`, a fan-out's `key` and a keyed
+// derive's address are all made of. A comment-wrapped scalar answered "no text at all", and each
+// of those callers reads that as a failed firing — so a note written above a value could stop a
+// rule from being able to name its own subject.
+func TestACommentDoesNotHideAScalar(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"plain", "{a: hello}", "hello"},
+		{"the value under a comment", "{a: \n# why\n  hello}", "hello"},
+		{"the document under a comment", "# why\n{a: hello}", "hello"},
+	} {
+		n, err := codec.ParseNode([]byte(tc.src), codec.Tony)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		got, ok := scalarText(ir.Get(unwrap(n), "a"))
+		if !ok || got != tc.want {
+			t.Errorf("%s: scalarText = %q, %v — a firing that needs this text fails", tc.name, got, ok)
+		}
+	}
+}
