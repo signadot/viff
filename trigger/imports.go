@@ -61,13 +61,10 @@ import (
 
 // SetImports declares the subtrees this engine's charter may read outside its own confinement.
 //
-// Set before the rules are installed, like the confinement itself. Re-setting ACCUMULATES rather
-// than replacing, so an operator widens a package by declaring only what is new; narrowing one
-// means tearing the engine down and building it again from the smaller set.
-//
-// It returns an error when the declaration would close a cycle over the packages installed so
-// far, which is the check this file exists for — so a caller that ignores the result has left
-// the graph unchecked.
+// Set before the rules are installed, like the confinement itself. Re-setting REPLACES the
+// declared set rather than accumulating into it, so an operator narrows a package by setting a
+// smaller list; it does not itself check what is already installed against the new set —
+// checkImports does that, at install.
 func (e *Engine) SetImports(in []Subtree) {
 	e.imports = append([]Subtree(nil), in...)
 }
