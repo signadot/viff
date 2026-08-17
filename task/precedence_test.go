@@ -296,3 +296,69 @@ func (d *waitThenDone) Next(ctx context.Context, _ StepResult) (ToolUse, bool, e
 	}
 	return ToolUse{}, false, nil
 }
+
+// AND THE QUESTION COMES BACK when the hold lifts, which is the half a withdrawal alone gets
+// wrong.
+//
+// A pause is not an answer. The other interventions REDIRECT — a say gives the driver something
+// new, a cancel ends the run — so telling the driver "the action you proposed was refused" is
+// right for them. A pause says "stop here and carry on later", and the action it was asking
+// about is the same action afterwards: nobody declined it and nobody withdrew it.
+//
+// Read as a refusal it was FATAL for any driver that cannot re-plan. Driven against a live
+// verse: a scripted task parked on its question, `verse flow pause`, `verse flow resume`, and
+//
+//	stage: broke
+//	err: "call 1 of 1 (run_bash): refused: the question about this action was withdrawn:
+//	      the task was paused while this was being asked about"
+//
+// — for a control the tutorial describes as "freeze its tasks at their next boundary".
+func TestAPausedQuestionIsAskedAgainOnResume(t *testing.T) {
+	d := &scriptDriver{steps: []ToolUse{tool("A")}}
+	ex := &recExec{}
+	reg := NewRegistry()
+
+	var mu sync.Mutex
+	var asked []string
+	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, ex)
+	p.SetLog(io.Discard)
+
+	reg.OnPost(func(pd Pending) {
+		mu.Lock()
+		n := len(asked)
+		asked = append(asked, pd.Question.ID)
+		mu.Unlock()
+		go func() {
+			if n == 0 {
+				// The first asking is interrupted by a pause, which withdraws it. Resume, and
+				// the same action must be asked about again rather than reported as refused.
+				p.Pause()
+				time.Sleep(50 * time.Millisecond)
+				p.Resume()
+				return
+			}
+			reg.Answer(pd.Question.ID, Resolution{Proceed: true, By: "human:test"})
+		}()
+	})
+
+	out, err := p.Run(context.Background())
+	if err != nil || out.Reason != string(Done) {
+		t.Fatalf("reason=%q err=%v, want done — a pause ended the run", out.Reason, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 2 {
+		t.Fatalf("the question was posed %d time(s), want 2: withdrawn by the pause and asked "+
+			"again when the hold lifted", len(asked))
+	}
+	// And the action it was about actually ran, on the answer somebody gave the second time.
+	var ran bool
+	for _, r := range ex.order {
+		if r == "A" {
+			ran = true
+		}
+	}
+	if !ran {
+		t.Fatal("the action never ran: the approval was given to a question nothing was waiting on")
+	}
+}

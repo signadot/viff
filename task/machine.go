@@ -120,6 +120,11 @@ type state struct {
 	// What is in flight.
 	action  ToolUse // the action a pending gate is about, or the one executing
 	closing bool    // that action is the finisher's, not the driver's
+	// regate: a PAUSE withdrew the question about `action`, and the same one is posed again
+	// when the hold lifts. A pause is not an answer — see inPause — so the alternative was
+	// telling the driver its action had been refused, which ends any driver that cannot
+	// re-plan.
+	regate bool
 
 	// What this quiescence has already done. Both reset when the input reopens, which is what
 	// makes delivery per-quiescence rather than once-ever.
@@ -362,6 +367,26 @@ func (s *state) fold(in input) []effect {
 		if s.winding() {
 			return nil
 		}
+		// A PAUSE IS NOT AN ANSWER, and it used to read as one. The other interventions
+		// REDIRECT — a say gives the driver something new, a cancel ends the run — so telling
+		// it the action was refused is right for them. A pause says "stop here and carry on
+		// later", and the action it was asking about is the same action afterwards: nobody
+		// declined it, nobody withdrew it, the task was simply held.
+		//
+		// Read as a refusal it was fatal for any driver that cannot re-plan: a scripted or
+		// calls task died on `flow pause` + `flow resume`, with its charter's onFailed firing,
+		// for a control the tutorial describes as "freeze its tasks at their next boundary".
+		//
+		// So the question is withdrawn (a held task must not leave one in front of somebody)
+		// and asked AGAIN when the hold lifts. `s.action` is untouched, `s.prev` is not made
+		// into a refusal, and `s.closing` stands — a closing act that was being asked about is
+		// still the closing act.
+		if s.ph == phGate {
+			s.regate = true
+			return append([]effect{effDropGate{
+				why: "the task was paused; the same question is asked again when it resumes"}},
+				s.hinge()...)
+		}
 		return s.interrupt("the task was paused while this was being asked about")
 
 	case inResume:
@@ -519,9 +544,22 @@ func (s *state) atBoundary() []effect {
 		return s.exit(s.exitStatus)
 	}
 	var effs []effect
-	if msgs := s.drainConversation(); len(msgs) > 0 {
+	msgs := s.drainConversation()
+	if len(msgs) > 0 {
 		s.reopen()
 		effs = append(effs, effConverse{msgs: msgs})
+	}
+	// A QUESTION WITHDRAWN BY A PAUSE IS ASKED AGAIN HERE, which is what puts the task back
+	// where it was rather than telling its driver an action it proposed was refused.
+	//
+	// Unless something arrived while it was held: a say is an intervention that REDIRECTS, and
+	// re-posing the old question would ask about an action the operator may have just talked
+	// the task out of. Then the driver is asked, with the new context, and proposes afresh.
+	if s.regate {
+		s.regate = false
+		if len(msgs) == 0 {
+			return append(effs, effGate{tu: s.action, tok: s.await(phGate)})
+		}
 	}
 	if s.driverQuiet {
 		return append(effs, s.quiesce()...)
