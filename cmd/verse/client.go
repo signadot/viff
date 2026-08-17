@@ -462,9 +462,12 @@ func fieldPath(at string) []string {
 
 type watchConfig struct {
 	*cli.Command
-	// default= in the tag rather than a struct literal, so `verse watch --help` SAYS where
-	// the stream starts. A literal sets the same value and tells the reader nothing.
-	Since string `cli:"name=since default=0 desc='start from store revision (cursor); 0 = from the beginning'"`
+	// NO DEFAULT, because the default was a question nobody asked. `default=0` sent `since=0`
+	// on every watch — "replay the whole retained log" — so `verse watch <path>` on a store
+	// that cannot replay from 0 was refused, and the refusal advised dropping a flag the
+	// caller had never passed. An absent cursor streams from now; `--since N` is how somebody
+	// asks for history, and `--since 0` is still from the beginning.
+	Since string `cli:"name=since desc='replay from this store revision first (cursor); 0 = from the beginning. absent = stream from now'"`
 	// --if is the same predicate a charter's `when` carries in `value`, and means the same
 	// thing: a tony match over the payload, so it takes operators (`{stage: !or [open, merged]}`)
 	// and matches a payload that is not an object at all. A DELETE never matches one — there is
@@ -491,7 +494,10 @@ func watchCmd() *cli.Command {
 // rest is the selector every read-plane route takes, path included — `verse watch demo.pr` and
 // `verse state demo.pr` name the same entities and differ only in when they answer.
 func (cfg *watchConfig) query(at string) (url.Values, error) {
-	q := url.Values{"since": {cfg.Since}}
+	q := url.Values{}
+	if cfg.Since != "" {
+		q.Set("since", cfg.Since)
+	}
 	if at != "" {
 		q.Set("at", at)
 	}

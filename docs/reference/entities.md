@@ -314,10 +314,16 @@ write, the other what you read.
 ## Watching
 
 ```sh
-verse watch                                        # everything
+verse watch                                        # from now on
 verse watch --if '{stage: open}' demo              # the same selectors as a read
-verse watch --since 42                             # from a revision you already have
+verse watch --since 42                             # replay from a revision you already have
+verse watch --since 0                              # replay everything the store still holds
 ```
+
+**With no `--since` a watch starts from now.** A cursor is how you ask for history, and asking
+for it is a different act from watching: a replay of a long-lived store is a lot of lines
+nobody typed a flag for, and on a store that cannot replay from the beginning it is a refusal
+rather than a stream.
 
 ```tony
 {op: set ref: demo:pr:1 rev: 1 to: {stage: open owner: ana}}

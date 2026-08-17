@@ -373,3 +373,46 @@ func contains(refs []string, want string) bool {
 	}
 	return false
 }
+
+// AN ABSENT CURSOR IS NOT `since=0`, and the difference is what somebody asked for.
+//
+// A watch with no cursor says "show me what happens". The CLI defaulted it to 0 — "replay the
+// whole retained log" — so every plain `verse watch <path>` asked for history nobody wanted, and
+// on a store that could not replay from 0 it was REFUSED, with advice to "drop --since" the
+// caller had never passed. Unfollowable advice about a flag they did not type.
+//
+// So: absent streams from now; `since=0` still means from the beginning, for a caller who means
+// it. This asks the first half — that a plain watch is not refused and carries no replay.
+func TestAWatchWithNoCursorStreamsFromNow(t *testing.T) {
+	srv := testServer(t)
+	entitytest.Set(t, srv.Store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/watch?at=demo.pr")
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		t.Fatalf("a watch with no cursor was refused: %s: %s", resp.Status, body)
+	}
+
+	// Nothing has happened SINCE the watch opened, so the stream is quiet — where a replay
+	// would have delivered demo:pr:1 immediately.
+	done := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 512)
+		n, _ := resp.Body.Read(buf)
+		done <- buf[:n]
+	}()
+	select {
+	case got := <-done:
+		if strings.Contains(string(got), "demo:pr:1") {
+			t.Errorf("a watch with no cursor replayed history: %s", got)
+		}
+	case <-time.After(300 * time.Millisecond):
+		// Quiet, which is the answer.
+	}
+}

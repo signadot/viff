@@ -1187,7 +1187,22 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
-	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	// ABSENT MEANS FROM NOW, and it is not the same as `since=0`. A watch with no cursor is
+	// somebody saying "show me what happens", and answering that with a replay of the whole
+	// retained log — or, when the store cannot replay from 0, with a REFUSAL telling them to
+	// "drop --since" they never passed — is answering a question nobody asked. `since=0` still
+	// means from the beginning, for a caller that means it.
+	since, catchUp := int64(-1), false
+	if raw := q.Get("since"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			codec.HTTPError(w, r, http.StatusBadRequest, fmt.Sprintf(
+				"since=%q is not a revision: a cursor is a number, and an absent one streams "+
+					"from now", raw))
+			return
+		}
+		since, catchUp = n, true
+	}
 	match := sel.matchEvent
 
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
@@ -1209,16 +1224,29 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// "commits were dropped, recover them with Since", and Since is exactly what just could not
 	// answer. So this is a refusal that says what to ask for instead — the caller wanted history
 	// and has to decide whether to take what is retained or to stream from now.
-	catchUp, ok := store.Since(since)
+	var replay []entity.Commit
+	ok := true
+	if catchUp {
+		replay, ok = store.Since(since)
+	}
 	if !ok {
-		oldest := int64(0)
+		// WHY it could not answer, asked rather than assumed. `Since` reports one bit, and the
+		// handler used to read it as "your cursor is too old" and print the oldest commit the
+		// store still had — which produced `since=1 is below the retained window: the store
+		// still has commits from 1. Ask for --since 1`, advice to ask again for exactly what
+		// was just refused. A replay can fail for reasons that are not retention.
+		oldest, known := int64(0), false
 		if kept, keptOK := store.Since(0); keptOK && len(kept) > 0 {
-			oldest = kept[0].Rev
+			oldest, known = kept[0].Rev, true
 		}
-		codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
-			"since=%d is below the retained window: the store still has commits from %d. "+
-				"Ask for --since %d to replay what it kept, or drop --since to stream from now",
-			since, oldest, oldest))
+		msg := fmt.Sprintf("the store could not replay from since=%d, and it is not the "+
+			"cursor's age: drop --since to stream from now", since)
+		if known && oldest > since {
+			msg = fmt.Sprintf("since=%d is below the retained window: the store still has "+
+				"commits from %d. Ask for --since %d to replay what it kept, or drop --since "+
+				"to stream from now", since, oldest, oldest)
+		}
+		codec.HTTPError(w, r, http.StatusConflict, msg)
 		return
 	}
 
@@ -1233,7 +1261,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// this surface has never carried and nothing consuming it asks for. So a commit is
 	// flattened here, in commit order, and its Rev rides each event as it always did.
 	last := since
-	for _, c := range catchUp {
+	for _, c := range replay {
 		for _, ev := range c.Changes {
 			if match(ev) {
 				_ = sse.Send(ev)
