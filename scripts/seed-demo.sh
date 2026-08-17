@@ -106,7 +106,7 @@ fi
 # ── the charter ──────────────────────────────────────────────────────────────
 # Two rules, because one rule cannot show both halves of the dial: `demo-escalate` is
 # `auto` and has already fired by the time this script exits, and `demo-review` is `ask`
-# and is still waiting for you. Removing first makes a re-run idempotent — `trigger add`
+# and is still waiting for you. Removing first makes a re-run idempotent — `charter add`
 # refuses a duplicate name, which is right, and is not what a seed script should trip over.
 step "charter"
 for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
@@ -176,7 +176,7 @@ cat <<EOF
 seeded. What to type next:
 
   $BIN$scope_note state                        what is there (also: state demo)
-  $BIN$scope_note triggers                     the charter you just installed
+  $BIN$scope_note charter                      the charter you just installed
   $BIN$scope_note gates                        the decision demo-review is holding
   $BIN$scope_note gate approve ${GID:-<id>} --as you
                                         …and it spawns a 45s review task:
@@ -190,7 +190,7 @@ Watch it move (another terminal, before approving):
 
 Then drive it yourself — a put is how you speak to the verse:
 
-  $BIN$scope_note entity put demo:pr:2 '{stage: open}'    open the draft; demo-review fires again
+  $BIN$scope_note state put demo pr 2 '{stage: open}'     open the draft; demo-review fires again
 
 Undo it all with: $0 --clean
 EOF
