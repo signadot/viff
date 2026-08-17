@@ -59,6 +59,10 @@ type docSnapshot struct {
 
 func (s docSnapshot) Rev() int64 { return s.rev }
 
+// Head is Rev for a snapshot: it is fixed at one revision by construction, so "where is the
+// store as far as I know" and "what revision am I" are the same answer.
+func (s docSnapshot) Head() int64 { return s.rev }
+
 // Get reads one entity out of the snapshot. A missing path is absence — a key that is not
 // there, rather than a null value, which is a payload like any other — and the error is always
 // nil: the read that could have failed already happened, when the snapshot was taken.

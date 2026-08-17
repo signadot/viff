@@ -51,9 +51,16 @@ spec:
         # default is ONE SECOND and /status is not a constant-time read — it reports store
         # revision and engine counts, so it answers as fast as docd does. Measured on a k3s
         # deployment holding ~500 reflected entities: ~2s, which the default calls a failure.
+        # /healthz, not /status. /status is a CENSUS — it counts gates, runners, sources and
+        # tasks, and Rev syncs — so probing it asked docd for the whole verse every five
+        # seconds and made readiness a function of the STORE's load rather than of this
+        # process. On staging that was unsatisfiable: versed sat 0/1 for half an hour on a
+        # healthy store, and every attempt left a root watch behind (158 idle watchers in 26
+        # minutes), which is what kept the store busy. /healthz answers from this process
+        # alone and reads nothing (versed.healthz, pinned by TestHealthzReadsNothing).
         readinessProbe:
           httpGet:
-            path: /status
+            path: /healthz
             port: api
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -78,3 +85,10 @@ spec:
         # What would earn one back: an endpoint that answers from this process alone, without
         # asking docd anything. Then "is it alive" and "is the store fast" stop being the same
         # question, which is the whole problem here.
+        #
+        # THAT ENDPOINT NOW EXISTS (/healthz, above), so the objection is answered and the
+        # decision is open again. It is still not taken here, because the argument against was
+        # two things and only one of them was the endpoint: a restart also costs every source's
+        # initial reconcile, and a level-triggered pass does not repeat what it missed. So a
+        # liveness probe still trades lost change events for recovery from a wedge nobody has
+        # observed. Add it when a wedge is observed — on /healthz, never on /status.

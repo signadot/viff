@@ -56,8 +56,12 @@ type Store interface {
 	// older than the retained/durable window — the caller must resync from current state.
 	// This is the cursor-based catch-up (a docd query by revision).
 	Since(from int64) (commits []Commit, ok bool)
-	// Rev returns the current store revision.
+	// Rev returns the current store revision, syncing with the store if it must.
 	Rev() int64
+	// Head is the highest commit this PROCESS has been told about, with no round trip to
+	// learn of any others — see LogdStore.Head. Rev and Head answer different questions
+	// (last change vs where the store is), and a caller on a timer wants this one.
+	Head() int64
 	// AsOf returns a Snapshot: a read-only view fixed at one revision, so every read of it
 	// answers as of that commit and no later write is visible to any of them.
 	//

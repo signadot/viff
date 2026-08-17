@@ -886,6 +886,7 @@ func (s *Server) Handler() http.Handler {
 	// (or nothing), which is what the published table needs to be right about a listing and
 	// what the root schema is derived from — see rootSignature.
 	rt.handle("GET /status", s.status, "", one("verse-status"))
+	rt.handle("GET /healthz", s.healthz, "", nothing)
 	rt.handle("GET /watch", s.watch, "", stream("verse-event"))
 	rt.handle("GET /state", s.state, "", one("verse-state"))
 	rt.handle("GET /entity", s.getEntity, "", one("verse-entity"))
@@ -2428,6 +2429,27 @@ func (s *Server) engForRequest(r *http.Request) (*trigger.Engine, error) {
 // status is a one-shot summary of the running verse: the store's revision and the
 // live counts across the planes — the charter size, in-flight flows, pending gates,
 // hosted tasks, and total firings.
+// healthz answers from THIS PROCESS ALONE — no store call, at any load.
+//
+// It exists because `/status` was the only endpoint to probe, and `/status` is a census: it
+// counts gates, runners, sources and tasks, and each of those is a read. So a kubelet asking
+// "is versed up" every five seconds was asking docd for the whole verse, and the answer's
+// latency was a function of the STORE's load rather than of whether this process was alive.
+// On staging that made readiness unsatisfiable while the store was busy — versed sat 0/1 for
+// half an hour with logd perfectly healthy underneath — and every attempt left a watch behind
+// (Store.Rev's sync), which is what made the store busy in the first place.
+//
+// versed-deployment.yaml names this endpoint as the thing that would earn a liveness probe
+// back: "an endpoint that answers from this process alone, without asking docd anything. Then
+// 'is it alive' and 'is the store fast' stop being the same question." This is that.
+//
+// `head` is what the process has been TOLD the store's commit is — its own writes and any
+// commit a live watch delivered — read out of memory. It does not move while nothing is
+// happening, which is correct: quiet is not unready.
+func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
+	writeOut(w, r, http.StatusOK, map[string]any{"ok": true, "head": s.Store.Head()})
+}
+
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	out := api.Status{
 		StoreRev: s.Store.Rev(),
