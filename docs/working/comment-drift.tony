@@ -672,13 +672,37 @@ imports: [git, verse-dev.drift]
       # are not interpolated into the command, they are FOUND in the clone. The train's
       # `branches` field is for the person reading the docket; the task reads the refs it has.
       #
-      # `|| true` per branch is what makes a batch a batch: a branch cut from a tip main has
-      # passed cannot fast-forward, and skipping it is the correct outcome rather than a failure
-      # — rule 3 retires it and the review cuts a fresh one against the new tip.
+      # EACH CAR IS REBASED ONTO MAIN BEFORE IT IS FAST-FORWARDED IN, and without that the batch
+      # is nominal. The runner cuts `verse/auto/$sha/$task`, so concurrent tasks from one tip are
+      # SIBLINGS: the first `--ff-only` moves main, and every sibling after it is then neither
+      # ancestor nor descendant of main and is refused. A train of N landed exactly ONE; the push
+      # moved main; rule 3 saw `base != tip` for the rest and DELETED their branches. Work thrown
+      # away for a mechanical reason, and a person who approved a list of branches got whichever
+      # one happened to be first (issue ezh7m9akh12ksde5g9n0).
+      #
+      # The rebase is safe HERE rather than in general, and the difference is what these changes
+      # are: a comment fix is a textual edit localized to the symbol in the finding, so two cars
+      # touching different files rebase without conflict by construction. What the note above
+      # prices as "a second agent action and a second gate" is the JUDGMENT a conflict needs, and
+      # here there is none to make — a rebase that cannot apply is aborted and the car is skipped,
+      # which is what `|| true` already did for every sibling.
+      #
+      # `--ff-only` SURVIVES, which is why this is a rebase and not a looser merge: every merge
+      # is still a fast-forward, so `receive.denyNonFastForwards` at the far end still means what
+      # it means, `base != tip` is still the whole staleness predicate with no per-branch answer
+      # to read back, and only `main` is pushed — the rebases are local to this clone, so no
+      # `verse/auto/*` ref is rewritten and nothing needs a force.
+      #
+      # The identity is passed inline because the clone has none of its own: the runner commits
+      # through go-git with an explicit signature rather than through `.git/config`, and a rebase
+      # WRITES COMMITS where a fast-forward does not. Left to itself git does not stop — it guesses
+      # from the account and the hostname — so what a rebased car would carry is a container name,
+      # in a repository whose whole attribution rule is that the committer is the runner and says
+      # so. Naming it here is what keeps a rebased commit and a delivered one attributed alike.
       calls:
       - tool: run_bash
         input:
-          command: "for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*/*'); do git -C verse merge --ff-only \"$b\" || true; done"
+          command: "git -C verse checkout main; for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*/*'); do git -C verse checkout -B _car \"$b\" || continue; if git -C verse -c user.name='verse coderunner' -c user.email=coderunner@invalid rebase main; then git -C verse checkout main && git -C verse merge --ff-only _car; else git -C verse rebase --abort || true; git -C verse checkout main; fi; done"
       - tool: push
         input: {destination: main}
     onDone:
