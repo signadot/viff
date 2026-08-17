@@ -586,23 +586,15 @@ imports: [git, verse-dev.drift]
       # somebody decided the contents of, and reloading it afterwards rewrites what was agreed:
       # driven without this, the landing train silently swapped its branch list for the next
       # tip's proposals while its run was in flight.
-      #
-      # AND ONLY THE TRAIN FOR THE TIP THAT IS ACTUALLY THERE. A train is one entity per main and
-      # nothing retires the old ones, so without this every superseded train goes on collecting —
-      # and, since 2c gates on a loaded train, goes on ASKING. Driven on staging: two motions open
-      # at once, one about a batch on a main git had already passed.
       value: !and
       - !not.has-path decided
       - !let
         let:
-        - tip: !get-path {at: [git, head, verse], path: sha}
         - fresh: !list-paths
             at: [verse-dev, merge, proposal, "*"]
             value: !not.has-path state
             path: branch
-        in: !and
-        - {sha: .[tip]}
-        - !not {branches: .[fresh]}
+        in: !not {branches: .[fresh]}
   action:
     patch:
       branches: !list-paths
@@ -643,16 +635,10 @@ imports: [git, verse-dev.drift]
       # exactly the question this rule exists not to ask.
       - !has-path branches
       - !not {branches: []}
-      # UNDECIDED, which is the absence of `decided`.
+      # UNDECIDED, which is the absence of `decided`. The tip does not need comparing any more:
+      # the train's own address carries the sha, so a new main is a new train and a new question
+      # by construction.
       - !not.has-path decided
-      # AND ABOUT THE MAIN THAT IS ACTUALLY THERE. The address carries the sha, so a new main is a
-      # new train and a new question — but the OLD train is still a train, still undecided, and
-      # would still ask. It stops here. An open motion about one that has just been superseded
-      # goes moot the ordinary way: the subject stops selecting, so the firing is orphaned rather
-      # than left in front of somebody who would be answering about a main that is gone.
-      - !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
-        in: {sha: .[tip]}
   gates:
   - name: merge-to-main
     mode: ask
