@@ -347,7 +347,7 @@ func (cfg *charterRemoveConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("charter remove: no such trigger %q", name)
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("charter remove: %s", resp.Status)
+		return statusError(resp, "charter remove")
 	}
 	fmt.Fprintln(cc.Out, "removed", name)
 	return nil

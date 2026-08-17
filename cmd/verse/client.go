@@ -140,6 +140,25 @@ func setFormatHeaders(req *http.Request, in codec.Format) {
 // text (http.Error), so parsing it as a document fails and it would otherwise be swallowed
 // entirely, leaving a rejected command looking like it succeeded. Callers that handle a
 // specific status (404, 201, 204) check it before calling this, so they are unaffected.
+// statusError is the refusal a request came back with, in the words the server used.
+//
+// A verse refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
+// installed and unchecked" — written into the response body on purpose, and reporting only
+// `400 Bad Request` throws away the whole of what the server said. It was thrown away wherever
+// a command handled its own status code instead of going through printBody, which is every
+// command that has a 404 of its own to name: `verse charter remove <stratum>` answered a bare
+// 400 and left the operator with nothing to act on.
+//
+// The status is the FALLBACK, for a server that refused without saying anything.
+func statusError(resp *http.Response, what string) error {
+	body, _ := io.ReadAll(resp.Body)
+	msg := strings.TrimSpace(string(body))
+	if msg == "" {
+		msg = resp.Status
+	}
+	return fmt.Errorf("%s: %s", what, msg)
+}
+
 func printBody(cc *cli.Context, resp *http.Response) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)

@@ -483,6 +483,20 @@ func (e *Engine) RemoveStratum(name string) error {
 	for _, t := range e.triggers {
 		if t.Stratum == name {
 			users = append(users, t.Name)
+			continue
+		}
+		// A RULE THAT DERIVES INTO IT IS A USER TOO, and counting only the rules that LIVE in a
+		// stratum let the other kind through: `ledger` owns `verse-dev.drift.finding`, no rule
+		// declares `stratum: ledger`, and removing it left `comment-drift` deriving into a level
+		// that no longer existed. That is precisely the state install refuses ("derive into X
+		// matches no stratum: every derived entity has to belong to a level"), reached through
+		// the back door — and this refusal's own sentence, "installed and unchecked", is what
+		// it becomes.
+		for _, d := range t.Action.allDerives() {
+			if at := e.stratumForLocked(d.match()); at != nil && at.Name == name {
+				users = append(users, t.Name)
+				break
+			}
 		}
 	}
 	found := false
@@ -764,6 +778,16 @@ func (e *Engine) strataAbove(level int) []Stratum {
 // about a derive that landed in the wrong place.
 func (e *Engine) stratumFor(target Match) *Stratum {
 	all := e.Strata()
+	return stratumIn(all, target)
+}
+
+// stratumForLocked is stratumFor for a caller already holding trigMu — Strata takes it.
+func (e *Engine) stratumForLocked(target Match) *Stratum {
+	all := append([]Stratum(nil), e.strata...)
+	return stratumIn(all, target)
+}
+
+func stratumIn(all []Stratum, target Match) *Stratum {
 	for i := range all {
 		if Matches(all[i].Match).contains(target) {
 			return &all[i]

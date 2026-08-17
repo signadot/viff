@@ -84,7 +84,7 @@ func (cfg *resolverRemoveConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("resolver remove: no such resolver %q", ref)
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("resolver remove: %s", resp.Status)
+		return statusError(resp, "resolver remove")
 	}
 	fmt.Fprintln(cc.Out, "removed", ref)
 	return nil
