@@ -34,6 +34,14 @@ build:
     brokerFace: true
     storageSize: "10Gi"
 
+    # The logd snapshot policy. Off (`false`) takes upstream's DefaultConfig — a snapshot
+    # every 1000 commits or 4 MiB — which is the right default for a store nobody is bulk
+    # loading, and is what docd-statefulset.yaml argues for at length. Turn it on for a store
+    # whose write pattern is nothing like that guess: a source's first pass writes one entity
+    # per commit, so at 1000 the snapshots fire mid-burst and each rewrites the whole
+    # document. See deploy/logd-config/.
+    logdConfig: false
+
     # docd storage. The StatefulSet always uses a volumeClaimTemplate; only what BACKS the
     # PVC varies:
     #   default  — the cluster default StorageClass (dynamic).
@@ -188,6 +196,8 @@ build:
     dir: eks
   - if: '.[hostPV]'
     dir: hostpv
+  - if: '.[logdConfig]'
+    dir: logd-config
   - if: '.[gitSource]'
     dir: git-source
   - if: '.[gitIssueSource]'
@@ -627,6 +637,42 @@ build:
             containers: !key(name)
             - name: coderunner
               imagePullPolicy: $[imagePullPolicy]
+
+  # …and when it is on, docd is told to read it. A command is a list, so this re-emits the
+  # whole thing — there is nothing to append to — which is why it is a patch of its own rather
+  # than a flag added somewhere.
+  - if: '.[logdConfig]'
+    match:
+      kind: StatefulSet
+      metadata:
+        name: docd
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: docd
+              command:
+              - o
+              - sys
+              - up
+              - -data
+              - /data
+              - -config
+              - /config/logd.tony
+              - -logd-addr
+              - ":7070"
+              - -docd-addr
+              - ":7071"
+              - -docd-mount-addr
+              - ":7072"
+              volumeMounts: !key(name)
+              - name: config
+                mountPath: /config
+            volumes: !key(name)
+            - name: config
+              configMap:
+                name: logd-config
 
   # The source connectors. One image, three roles: these run `sourced`, versed runs `verse`,
   # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list
