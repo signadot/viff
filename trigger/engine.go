@@ -696,6 +696,10 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// rule did not. Empty leaves the question to the standing layer, and then to
 			// the docket a person reads.
 			BoundTo: t.GateResolver(),
+			// And WHICH federation is asking, for the same reason a spawn carries it: the
+			// question is about this engine's subject, which outside this scope is an entity
+			// that does not exist.
+			Scope: e.scope,
 		}
 		wg.Add(1)
 		go func(g Gate, d task.GateQuestion, gname string) {

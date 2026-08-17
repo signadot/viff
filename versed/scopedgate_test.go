@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 )
 
@@ -96,5 +97,64 @@ func spawnScoped(t *testing.T, ts *httptest.Server, id, scope string) {
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(resp.Body)
 		t.Fatalf("spawn %s: %s: %s", id, resp.Status, strings.TrimSpace(string(raw)))
+	}
+}
+
+// firingQuestions lists the pending questions a view can see that NO task raised — a
+// firing's gates, which are posed before anything is running and so carry no task.
+func firingQuestions(store entity.Store, origin string) []string {
+	var out []string
+	for _, ent := range store.List(func(ref entity.Ref) bool {
+		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
+	}) {
+		p := entity.ToObj(ent.Payload)
+		if p["task"] == nil && p["origin"] == origin && p["status"] == mirror.QuestionPending {
+			out = append(out, ent.Ref.ID())
+		}
+	}
+	return out
+}
+
+// The same property, one plane over: a scoped RULE's gate belongs to the scope too.
+//
+// The task seam above was fixed by carrying the scope on the launch. This one was left as it
+// was, on a rationale that reads true and is not — "the registry's own posts are baseline's:
+// this seam has no task and therefore no scope to be in". A firing's gate is posed BEFORE any
+// task exists, which is why there is no task; the trigger that posed it is nonetheless running
+// in a scope. So one registry, shared by baseline and every scoped engine, published every
+// dev's rule gates to baseline: `verse gate` in baseline listed a question about
+// `demo:ask2:1`, and `verse state get demo ask2 1` there answered nothing stands there.
+func TestAScopedRulesGateStaysInItsScope(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	const scope = "dev-b"
+	addScopedRule(t, ts, scope, `{
+		name: scoped-ask,
+		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
+		gates: [{name: approval, mode: ask, onDenied: {patch: {stage: rejected}}}],
+		action: {patch: {stage: reviewing}},
+	}`)
+
+	scoped := srv.Store.Scope(scope)
+	entitytest.Set(t, scoped, entity.RefAt("demo", "ask", "1"), entity.Obj{"stage": "open"}.Payload())
+
+	var ids []string
+	deadline := time.After(3 * time.Second)
+	for len(ids) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("the scope never saw its own rule's question")
+		case <-time.After(5 * time.Millisecond):
+		}
+		ids = firingQuestions(scoped, "scoped-ask")
+	}
+
+	// And baseline does not: the subject it names does not exist there, so the question is
+	// one its reader cannot answer for a reason they cannot see.
+	if got := firingQuestions(srv.Store, "scoped-ask"); len(got) != 0 {
+		t.Fatalf("a scoped rule's question reached baseline's docket: %v", got)
 	}
 }

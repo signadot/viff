@@ -228,8 +228,14 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		})
 	}
 	reg.OnPost(func(p task.Pending) {
-		// The registry's own posts are baseline's: this seam is the standing-gate path,
-		// which has no task and therefore no scope to be in.
+		// WHERE this one goes is the ASKER's to say, exactly as it is on the task seam
+		// below — one registry serves baseline and every scoped engine, so a publisher
+		// closed over the baseline store put every scope's firing gates on everybody's
+		// docket, each naming a subject only the scope that raised it can read. That was
+		// git-issue kwxxm8cth12ksn99fhn0 on the task side; a firing's gates are the same
+		// question asked one plane over, and "no task, therefore no scope" was never true
+		// of them: the TRIGGER has a scope whether or not a task exists yet.
+		store := s.storeForScope(p.Question.Scope)
 		owner(store, &p.Question)
 		watch(store, p.Question, "")
 		mirror.PostQuestion(store, p, "")
@@ -240,7 +246,11 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// a decision nothing is left to receive. The reason comes with it, because "the task died"
 	// and "an operator redirected the run" retire a question the same way and read to an
 	// answerer completely differently.
-	reg.OnDrop(func(q task.GateQuestion, why string) { mirror.DropQuestion(store, q.ID, why) })
+	// …and the retraction goes to the store the post went to, or a scope's question is
+	// published in one place and retired in another, leaving it `pending` forever.
+	reg.OnDrop(func(q task.GateQuestion, why string) {
+		mirror.DropQuestion(s.storeForScope(q.Scope), q.ID, why)
+	})
 	taskd.OnQuestion(func(taskID, scope string, p task.Pending) {
 		// WHERE this question goes is the task's to say, not this closure's. taskd is one
 		// runtime under baseline and every scoped engine, so a publisher registered once

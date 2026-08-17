@@ -58,6 +58,15 @@ type GateQuestion struct {
 	// declared and answered by whatever is currently watching. The instance is derivable from
 	// the two (binding, origin) and would be a second spelling of a pair already here.
 	BoundTo string
+	// Scope is the federation the asker acts in — "" for baseline. A question is published as
+	// a record, and a record goes in a store; without this, one registry serving baseline and
+	// every scoped engine has nothing to route by and publishes them all to baseline. The
+	// docket a reader sees is then not the world a reader sees: a question about an entity
+	// only one dev can read, on everybody's docket.
+	//
+	// Not written into the record — the store it lands in already says which federation it
+	// belongs to, the way a task's instance record does.
+	Scope string
 }
 
 // Evaluate returns the most restrictive matching gate's mode (Park > Ask >
