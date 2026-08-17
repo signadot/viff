@@ -127,7 +127,8 @@ func (r Ref) seg(n int) string {
 	return ""
 }
 
-// Len is how many segments the address has below its root.
+// Len is how many segments the address has, its root included — so a rooted ref is always one
+// longer than the same address written without one.
 func (r Ref) Len() int {
 	if r.key == "" {
 		return 0

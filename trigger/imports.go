@@ -61,10 +61,13 @@ import (
 
 // SetImports declares the subtrees this engine's charter may read outside its own confinement.
 //
-// Set before the rules are installed, like the confinement itself. Re-setting is how an operator
-// widens or narrows a package, and the caller is expected to re-check what is already installed
-// against the new set — versed does, because narrowing must not leave a rule standing that the
-// declaration no longer allows.
+// Set before the rules are installed, like the confinement itself. Re-setting ACCUMULATES rather
+// than replacing, so an operator widens a package by declaring only what is new; narrowing one
+// means tearing the engine down and building it again from the smaller set.
+//
+// It returns an error when the declaration would close a cycle over the packages installed so
+// far, which is the check this file exists for — so a caller that ignores the result has left
+// the graph unchecked.
 func (e *Engine) SetImports(in []Subtree) {
 	e.imports = append([]Subtree(nil), in...)
 }
