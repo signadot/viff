@@ -648,6 +648,13 @@ build:
               - git
               - -addr
               - ":9801"
+              # The SAME damping the github source has always had. A source with none answers a
+              # full reflection on every resync, and the resync is a constant — so what bounds
+              # the cost is the source's own floor, not verse's interval. It went unnoticed while
+              # this mirrored one small repository; a second one made the store the bottleneck
+              # and every request on the serialized session started timing out.
+              - -min-interval
+              - "1m"
               - -state
               - /repos
               - -mirror
@@ -673,6 +680,8 @@ build:
               - git-issue
               - -addr
               - ":9801"
+              - -min-interval
+              - "1m"
               - -state
               - /repos
               - -mirror
@@ -695,6 +704,8 @@ build:
               - git-issue
               - -addr
               - ":9801"
+              - -min-interval
+              - "1m"
               - -state
               - /repos
               - -mirror
