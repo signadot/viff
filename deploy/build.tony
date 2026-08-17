@@ -136,6 +136,14 @@ build:
     # names no set is unchanged by the split.
     gitIssueSource: false
     gitIssueMirror: ""
+    # Whether to reflect each issue's DESCRIPTION BODY. On is `sourced`'s own default and the
+    # shape a charter reacting to an issue's text needs; off keeps the tracker's structure —
+    # id, title, status, labels, links — without its prose.
+    #
+    # It is a knob rather than a default because the cost is per deployment: bodies are the
+    # bulk of what a tracker weighs, and every read of this store returns the whole document
+    # today, so a slice nobody reads still shows up in the latency of everything that does.
+    gitIssueBodies: true
 
     slackSource: false
     slackSourceName: "workspace"
@@ -682,6 +690,7 @@ build:
               - ":9801"
               - -min-interval
               - "1m"
+              - -bodies=$[gitIssueBodies]
               - -state
               - /repos
               - -mirror
@@ -706,6 +715,7 @@ build:
               - ":9801"
               - -min-interval
               - "1m"
+              - -bodies=$[gitIssueBodies]
               - -state
               - /repos
               - -mirror
