@@ -895,6 +895,14 @@ func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("state rm: %w", err)
 	}
 	defer resp.Body.Close()
+	// A REFUSAL IS NOT A REMOVAL, and this printed "removed" whatever came back. The one that
+	// matters is the reserved half: `verse state rm verse task instance <id>` is answered 403 —
+	// verse's own records are written by the verbs that own them — and the CLI said the record
+	// was gone while it stood there untouched. An operator reading that has been told the
+	// opposite of the truth about a store they are trying to clean up.
+	if resp.StatusCode != http.StatusNoContent {
+		return statusError(resp, "state rm")
+	}
 	// Nothing stands there now — which is all there is to say, and is equally true of a path
 	// that held nothing to begin with.
 	fmt.Fprintf(cc.Out, "removed %s\n", at)

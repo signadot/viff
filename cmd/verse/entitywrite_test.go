@@ -228,3 +228,39 @@ func TestEntityPutRefusesContradictoryGuards(t *testing.T) {
 		t.Fatalf("error should say why: %v", err)
 	}
 }
+
+// A REFUSED REMOVAL IS NOT A REMOVAL, and `state rm` said "removed" whatever came back.
+//
+// The case that matters is verse's own half: the entity routes refuse a write under `verse:*`
+// with 403 — those records are written by the verbs that own them — and the CLI printed
+// "removed verse:task:instance:<id>" while the record stood there untouched. An operator
+// cleaning up a store was told the opposite of the truth, and the store agreed with neither.
+func TestStateRmReportsARefusal(t *testing.T) {
+	serve(t)
+	out, err := runCLI(t, "state", "rm", "verse", "task", "instance", "run-nope")
+	if err == nil {
+		t.Fatalf("a removal in verse's own half was reported as done: %q", out)
+	}
+	if !strings.Contains(err.Error(), "verse's own") {
+		t.Errorf("the refusal does not say why: %v", err)
+	}
+	if strings.Contains(out, "removed") {
+		t.Errorf("it printed a removal anyway: %q", out)
+	}
+}
+
+// And an ordinary removal still reads as one — including of something that was not there, which
+// is the same state afterwards and the same sentence.
+func TestStateRmStillRemoves(t *testing.T) {
+	serve(t)
+	if _, err := runCLI(t, "state", "put", "demo", "rmme", "1", "{x: 1}"); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	out, err := runCLI(t, "state", "rm", "demo", "rmme", "1")
+	if err != nil || !strings.Contains(out, "removed") {
+		t.Fatalf("rm: %q %v", out, err)
+	}
+	if out, err := runCLI(t, "state", "rm", "demo", "rmme", "404"); err != nil || !strings.Contains(out, "removed") {
+		t.Fatalf("rm of an absent entity: %q %v", out, err)
+	}
+}
