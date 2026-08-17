@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // THE LOOP AS ONE MACHINE.
@@ -603,6 +604,36 @@ func (s *state) propose(tu ToolUse) []effect {
 	return []effect{effGate{tu: tu, tok: s.await(phGate)}}
 }
 
+// deniedNote says the action was DENIED, and by whom — not why it was ASKED.
+//
+// The note is what ends up in the run's `err` (calls.describe folds it as "refused: <note>"),
+// and it carried the QUESTION's reason, which is a different sentence entirely. A person denying
+// a `run_bash` with `--say "not now"` produced:
+//
+//	err: "call 1 of 1 (run_bash): refused: no gate matched"
+//
+// — "no gate matched" being why the vector asked in the first place. It reads as a configuration
+// problem, sends whoever finds it looking for a missing gate, and loses both the fact that a
+// person decided and the words they decided with. All of it was already on the answer.
+func deniedNote(res Resolution) string {
+	who := res.By
+	if who == "" {
+		who = "the gate"
+	}
+	if said := strings.TrimSpace(res.Note); said != "" {
+		return fmt.Sprintf("denied by %s: %s", who, said)
+	}
+	if say := strings.TrimSpace(strings.Join(res.Steer, "; ")); say != "" {
+		return fmt.Sprintf("denied by %s: %s", who, say)
+	}
+	if why := strings.TrimSpace(res.Question.Reason); why != "" {
+		// No words to carry, so the question's own reason is the most useful thing left —
+		// said AS the reason it was asked, which is what it is.
+		return fmt.Sprintf("denied by %s (it was asked because: %s)", who, why)
+	}
+	return "denied by " + who
+}
+
 // resolved folds a gate's answer.
 func (s *state) resolved(v inGate) []effect {
 	effs := record(s.action, v.res)
@@ -634,7 +665,7 @@ func (s *state) resolved(v inGate) []effect {
 		}
 		effs = append(effs, effLog{fmt.Sprintf("⛔ %s held by gate %q (%s)",
 			s.action.Name, v.res.Question.Gate, v.res.Question.Reason)})
-		s.prev = StepResult{Use: s.action, Blocked: true, Note: v.res.Question.Reason}
+		s.prev = StepResult{Use: s.action, Blocked: true, Note: deniedNote(v.res)}
 		return append(effs, s.hinge()...)
 	}
 	if !s.closing && s.action.CallAgent != nil { // uniformly async: spawn detached, join later

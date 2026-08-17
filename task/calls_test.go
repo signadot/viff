@@ -292,3 +292,50 @@ func TestParseCallsRefusals(t *testing.T) {
 		})
 	}
 }
+
+// A DENIAL SAYS WHO DENIED IT, and their words if they wrote any — not the reason the question
+// was asked, which is a different sentence about a different moment.
+//
+// The note ends up in the run's error, and it carried `Question.Reason`. A person denying a
+// `run_bash` with `--say "not now"` produced `refused: no gate matched` — "no gate matched"
+// being why the vector asked at all. It reads as a configuration problem, sends whoever finds it
+// looking for a missing gate, and loses both that a person decided and what they said. All of it
+// was already on the answer.
+func TestADenialNamesWhoDeniedIt(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		res  Resolution
+		want []string
+	}{
+		{"with words", Resolution{By: "human:scott", Note: "not now"},
+			[]string{"denied by human:scott", "not now"}},
+		{"with steer instead", Resolution{By: "human:dee", Steer: []string{"try the other branch"}},
+			[]string{"denied by human:dee", "try the other branch"}},
+		// Nothing said, so the question's own reason is the most useful thing left — carried
+		// AS the reason it was asked, which is what it is.
+		{"with nothing to say", Resolution{By: "human:dee"},
+			[]string{"denied by human:dee", "it was asked because"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &listExec{}
+			reg := NewRegistry()
+			reg.OnPost(func(pd Pending) {
+				res := tc.res
+				res.Proceed = false
+				res.Question = pd.Question
+				res.Question.Reason = "no gate matched"
+				reg.Answer(pd.Question.ID, res)
+			})
+			p := callsTask(t, []Call{call("only", nil)}, askOn("only"), reg, e)
+			_, err := p.Run(context.Background())
+			if err == nil {
+				t.Fatal("a denied call ended as a success")
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the error does not say %q: %v", want, err)
+				}
+			}
+		})
+	}
+}
