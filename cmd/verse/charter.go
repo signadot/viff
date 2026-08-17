@@ -349,6 +349,13 @@ func (cfg *charterRemoveConfig) run(cc *cli.Context, args []string) error {
 	if resp.StatusCode != http.StatusNoContent {
 		return statusError(resp, "charter remove")
 	}
+	// In a scope this is a TOMBSTONE hiding an inherited rule from this scope alone, and in
+	// baseline it is the rule going away — the same word for two different facts, told apart
+	// only by a flag the operator typed a while ago. So say which one happened.
+	if g.Scope != "" {
+		fmt.Fprintf(cc.Out, "removed %s in scope %s; baseline is untouched\n", name, g.Scope)
+		return nil
+	}
 	fmt.Fprintln(cc.Out, "removed", name)
 	return nil
 }
@@ -426,6 +433,11 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("charter add: %w", err)
 	}
 	packaged := false
+	// Read before the loop, whose `g` is a group and shadows the globals this lives on.
+	inScope := ""
+	if g.Scope != "" {
+		inScope = " in scope " + g.Scope
+	}
 	for _, g := range groups {
 		q := url.Values{}
 		if g.at != "" {
@@ -440,10 +452,16 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 		if err := postGroup("/charter", q, g.defs()); err != nil {
 			return fmt.Errorf("charter add: %w", err)
 		}
+		// WHERE, in both coordinates. "baseline" is the unpackaged charter — the one that may
+		// write anywhere — and it is also the word for the default SCOPE, so a scoped install
+		// that says only "baseline" reads as the one place it did not go. A scope is the
+		// coordinate somebody carries in a flag and forgets, which is exactly the one a report
+		// owes them back.
 		where := "baseline"
 		if g.at != "" {
 			where = "package " + g.at
 		}
+		where += inScope
 		switch {
 		case len(g.strata) == 0:
 			fmt.Fprintf(cc.Out, "%s: installed %d trigger(s)\n", where, len(g.rules))
