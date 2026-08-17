@@ -574,10 +574,33 @@ func requirementFromNode(kind RequirementKind, node *ir.Node) (*Requirement, err
 		if err != nil {
 			return nil, fmt.Errorf("requirement %q: %w", kind, err)
 		}
-		return &Requirement{Kind: kind, N: n}, nil
+		return quorumChecked(&Requirement{Kind: kind, N: n})
 	case ir.StringType:
 		if kind == ReqDeadline {
 			return &Requirement{Kind: kind, Within: node.String}, nil
+		}
+		// AND THE MIRROR OF THE DEADLINE CHECK ABOVE. A quorum's argument is a threshold, so a
+		// string here is the same class of mistake in the other direction — and the habit that
+		// produces it is one this grammar teaches, since a deadline must be quoted. It arrived
+		// by machine too: `?format=yaml` on a write parsed `!quorum 3` as `!quorum "3"`.
+		//
+		// Falling through cost more than a deadline's does. The string became a FACTS selector
+		// and left N at 0, and a quorum's eval is `len(refs) >= r.N` — so the gate carried on
+		// zero votes, with `outcome: proceed` and `tally: 0` on the motion while the docket
+		// displayed `need: 1`. A gate that can only pass, reading as one that asked.
+		if kind == ReqQuorum {
+			// The advice depends on what they wrote, because the two mistakes want opposite
+			// fixes: a quoted NUMBER wants its quotes off, and a ref wants a different
+			// requirement. Suggesting `!fact 2` for the first would be nonsense in the one
+			// place a reader is looking for the answer.
+			if strings.Contains(node.String, ":") {
+				return nil, fmt.Errorf("requirement %q: a quorum takes a threshold, not a "+
+					"reference — %s names facts rather than counting ballots. For \"one of "+
+					"these exists\" the requirement is !fact %s; for \"this many\", !quorum 2",
+					kind, node.String, node.String)
+			}
+			return nil, fmt.Errorf("requirement %q: a quorum takes a threshold, not a string "+
+				"— unquote it: !quorum %s", kind, node.String)
 		}
 		return &Requirement{Kind: kind, Facts: factSelFromRef(node.String)}, nil
 	case ir.ObjectType:
@@ -586,10 +609,31 @@ func requirementFromNode(kind RequirementKind, node *ir.Node) (*Requirement, err
 			return nil, err
 		}
 		r.Kind = kind // the tag names the kind; a `kind` field cannot override it
-		return &r, nil
+		return quorumChecked(&r)
 	}
 	return nil, fmt.Errorf("requirement %q: want a threshold, a \"system:kind\", or an object, got %v",
 		kind, node.Type)
+}
+
+// quorumChecked refuses a quorum that asks for nothing.
+//
+// `len(refs) >= r.N` is how a quorum evaluates, so N below 1 is satisfied by the empty set: the
+// motion opens, carries immediately with `tally: 0`, and the action it was guarding runs
+// unasked. Every way to reach it is a plausible thing to write — `!quorum {choice: reject}`
+// with the `n:` forgotten is the object form of it — and none of them are a quorum anybody
+// means, since a vote that needs no votes is not a gate.
+//
+// Refused where the requirement is BUILT rather than at install, so it covers both grammars
+// and the restore path with it: a rule already stored this way comes back refused and named,
+// instead of coming back and passing.
+func quorumChecked(r *Requirement) (*Requirement, error) {
+	if r.Kind == ReqQuorum && r.N < 1 {
+		return nil, fmt.Errorf("requirement %q: a quorum needs a threshold of at least 1, and "+
+			"this one asks for %d — which no ballot is needed to meet, so the gate would "+
+			"carry the moment it opened. Say how many: !quorum 2, or "+
+			"!quorum {choice: reject, n: 2}", r.Kind, r.N)
+	}
+	return r, nil
 }
 
 // fromNode fills a Requirement from its object form, in either spelling: `facts` is the

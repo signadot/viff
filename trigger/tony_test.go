@@ -285,3 +285,42 @@ func TestUnknownFormulaTagIsRejected(t *testing.T) {
 		t.Errorf("the error does not name the tag: %v", err)
 	}
 }
+
+// A QUORUM THAT ASKS FOR NOTHING IS REFUSED, in every spelling that can produce one.
+//
+// `len(refs) >= r.N` is how a quorum evaluates, so a threshold below 1 is met by the empty
+// set: the motion opens and carries at once with `tally: 0`, and the action it guarded runs
+// unasked. It read as a gate and could only pass.
+//
+// The string case is the one that was found in the wild, and it is the mirror of the check
+// that already refuses `!deadline 4` — the grammar teaches you to quote a duration, so
+// quoting a threshold is the habit it produces. A write under `?format=yaml` produced it by
+// machine as well, which is how `make smoke-all`'s second pass had a gate that never held.
+func TestAQuorumWithNoThresholdIsRefused(t *testing.T) {
+	for _, c := range []struct{ name, doc string }{
+		{"quoted threshold", `!quorum "2"`},
+		{"a ref where a threshold goes", `!quorum vote:x:*`},
+		{"object with no n", `!quorum {choice: reject}`},
+		{"object with n: 0", `!quorum {n: 0, choice: approve}`},
+		{"zero", `!quorum 0`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var got Formula
+			err := codec.Unmarshal([]byte(c.doc), &got, codec.Tony)
+			if err == nil {
+				t.Fatalf("%s decoded to %+v (req %+v); want a refusal — it would carry on no votes",
+					c.doc, got, got.Req)
+			}
+			if !strings.Contains(err.Error(), "quorum") {
+				t.Errorf("the refusal does not name the requirement: %v", err)
+			}
+		})
+	}
+	// And the well-formed ones still decode, which is the half a refusal is easy to break.
+	for _, doc := range []string{`!quorum 1`, `!quorum 2`, `!quorum {n: 2, choice: reject}`} {
+		var got Formula
+		if err := codec.Unmarshal([]byte(doc), &got, codec.Tony); err != nil {
+			t.Errorf("%s was refused: %v", doc, err)
+		}
+	}
+}
