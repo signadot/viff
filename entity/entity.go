@@ -127,7 +127,8 @@ func (r Ref) seg(n int) string {
 	return ""
 }
 
-// Len is how many segments the address has below its root.
+// Len is how many segments the address has below its root: the root is a separate field, not
+// one of these, so it is not counted here.
 func (r Ref) Len() int {
 	if r.key == "" {
 		return 0
