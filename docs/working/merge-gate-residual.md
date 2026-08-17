@@ -7,6 +7,15 @@ now runs on today's grammar. What is kept below is the reasoning that got there,
 to be the wrong one twice over and that is worth reading once; and what is still missing, which
 is smaller than it was.
 
+**One thing below has since been replaced rather than merely dated: the gate is per BATCH now,
+not per proposal.** `merge-proposal` — one motion per outstanding branch, each conditioned on
+main still being where the branch was cut from — is `train-cut`/`train-load`/`train-run`, one
+train per tip of main, collecting whatever is deliverable and asking once. The reason is in the
+charter and short: two outstanding proposals were two questions of which at most one could still
+be answered yes, so approving either mooted the other, and on a real afternoon both were moot
+before anybody looked. Read the `state`-on-a-proposal passages below as the reasoning that got
+there; what carries it now is `decided` on a train.
+
 ## The blocker, and the wrong turn worth keeping
 
 **The merge runs; the sweep does not.** Both rules used to spawn a task that ran `git push`, and a

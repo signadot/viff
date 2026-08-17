@@ -454,6 +454,14 @@ imports: [git, verse-dev.drift]
   level: 30
   match:
     path: [verse-dev, merge, proposal]
+
+# THE TRAIN: one entity per tip, and the batch decided about it. Strictly above the proposals,
+# because it is derived from the tip and READS them — and disjoint from them, which two paths
+# under one address are by construction.
+- name: train
+  level: 40
+  match:
+    path: [verse-dev, merge, train]
 ---
 # 1. A delivered branch becomes a proposal, with the tip it was cut against RECORDED.
 #
@@ -516,104 +524,162 @@ imports: [git, verse-dev.drift]
     patch:
       base: !get-path {at: [git, head, verse], path: sha}
 ---
-# 2. …and somebody decides it.
+# 2. THE TRAIN — one question about the batch, cut from the tip that is actually there.
+#
+# It replaced a gate per proposal, and the reason is what running it showed. A proposal can only
+# land while main is where it was cut from, so two outstanding proposals are two questions of
+# which AT MOST ONE can still be answered yes: approving either moves main and moots the other.
+# On a real afternoon both were moot before anybody looked — main had moved for other reasons —
+# and the docket held two questions whose honest answer was "ask me again about something else".
+#
+# So the batch is the unit. `train` is one entity per tip: derived from `git:head:verse`, it
+# re-arms whenever main moves (a derive MERGES, so `state: cut` is written again), collects what
+# is deliverable, and asks ONCE. Nothing here is orphaned by the answer to something else,
+# because there is only one question.
+#
+# WHAT IT COSTS, stated rather than discovered: a person approves a batch rather than a change.
+# `says` is what keeps that honest — the branches are listed on the entity the docket renders —
+# and the per-proposal record is untouched, so `verse state verse-dev.merge.proposal` still says
+# what each one is and what became of it.
+- name: train-cut
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [verse-dev, merge, train]
+      # ONE TRAIN PER TIP, which the key is what buys. A plain derive writes one entity per
+      # (rule, subject) — the same address at every tip — and a gate is identified by (trigger,
+      # gate, subject), so the second batch would have found the first batch's motion already
+      # settled and inherited its answer without asking anybody. Keying the address on the sha
+      # makes each main its own question.
+      key: $subject.value.sha
+      value:
+        sha: $subject.value.sha
+---
+# 2b. …loaded with whatever is deliverable, and RELOADED as that changes.
+#
+# No latch, and that is deliberate: the rule reads the proposals, so it wakes when they change,
+# and a patch writing the same list is a no-op the store ends. A proposal that appears while the
+# gate is open joins the batch rather than waiting for the next tip — which is the whole reason
+# the train is a train.
+#
+# `!not.has-path state` is "undecided", the same absence rule 2c writes into and rule 3 retires
+# out of. A proposal whose base has been outrun is listed while it stands: the merge is attempted
+# with `--ff-only`, one that cannot land is skipped, and that is what makes the batch safe to
+# assemble without comparing every base to the tip here.
+- name: train-load
+  stratum: train
+  condition:
+    subject:
+      path: [verse-dev, merge, train, "*"]
+      # THE READ IS IN THE CONDITION BECAUSE THAT IS WHAT WAKES IT. A rule watches what its
+      # CONDITION reads; a read in the action is resolved when the action fires and opens no
+      # watch. With the list only in the action, the train loaded once — when it was derived,
+      # with nothing outstanding — and a proposal appearing afterwards never reached it.
+      #
+      # So the condition says the thing that is actually wanted: the train's branches are not
+      # what is deliverable. Firing makes them so, and writing the same list is a no-op the
+      # store ends, which is what makes an unlatched rule converge.
+      #
+      # AND ONLY WHILE THE BATCH IS STILL OPEN. A train whose gate has been answered is a batch
+      # somebody decided the contents of, and reloading it afterwards rewrites what was agreed:
+      # driven without this, the landing train silently swapped its branch list for the next
+      # tip's proposals while its run was in flight.
+      value: !and
+      - !not.has-path decided
+      - !let
+        let:
+        - fresh: !list-paths
+            at: [verse-dev, merge, proposal, "*"]
+            value: !not.has-path state
+            path: branch
+        in: !not {branches: .[fresh]}
+  action:
+    patch:
+      branches: !list-paths
+        at: [verse-dev, merge, proposal, "*"]
+        value: !not.has-path state
+        path: branch
+---
+# 2c. …and somebody decides the batch, once per tip.
+#
+# THE ADDRESS IS THE LATCH between tips, and `decided` is the latch within one. A train is one
+# entity per main (2a keys it on the sha), so a new main is a new subject and therefore a new
+# gate id — asked once per main, and asked again the moment main moves, with no clock to compare
+# and no field to reset. A `dirty` flag flipping on the head entity re-fires 2a, which writes the
+# same bytes to the same address and is a no-op the store ends.
 #
 # The gate carries a formula rather than waiting on a person indefinitely, and that is not
 # ceremony: a question whose only discharge is somebody choosing to look is the wait
 # `task/contract.go` property 5 forbids one level down, and it does not become acceptable by
-# moving up a layer. `!until [!quorum 1, !deadline "24h"]` is the tutorial's documented shape and
-# it defaults to DENY when the clock runs out, which is the safe direction for the one action in
-# this repository with a consequence nobody can quietly undo.
+# moving up a layer. `!until [!quorum 1, !deadline "24h"]` defaults to DENY when the clock runs
+# out, which is the safe direction for the one action here with a consequence nobody can quietly
+# undo.
 #
-# (A contract notice wants the INVERSE — carry on the clock, an objection interrupts — which is
-# verse-dev step 2's open question. A merge is the case the documented form was written for, so
-# it gets it, and the two genuinely differ rather than one being a bug.)
+# AN EMPTY TRAIN ASKS NOTHING: `!not {branches: []}`. A tip that moves with nothing outstanding
+# re-arms the train and stops there, rather than putting a question about nothing on a docket.
 #
-# `onDenied` is required by what a deny does: a refused firing writes nothing, so without this
-# the subject is left in the exact state that asked, and the next commit re-poses the same
-# question to somebody who already answered it.
-#
-# The task's own vector is `auto`. The decision has been made HERE, by a person, about the thing
-# that matters; making the task re-ask per action would be asking the same question twice in two
-# vocabularies.
-- name: merge-proposal
-  stratum: merge
+# `onDenied` writes `decided` too, because a deny IS a decision about this main: without it the
+# refused firing writes nothing, the train stays undecided, and the next commit asks the same
+# person the same question about the same batch.
+- name: train-run
+  stratum: train
   condition:
     subject:
-      path: [verse-dev, merge, proposal, "*"]
-      # ONLY WHILE IT CAN STILL LAND. A branch fast-forwards onto main exactly while main is
-      # where it was cut from, so `base == tip` is the same predicate rule 3 uses negated —
-      # and asking it HERE is what lets the task below be a call list.
-      #
-      # It used to be the task's job: an agent ran `--ff-only`, was refused, and reported
-      # `merged: false` through an answer contract, because "main moved" is the ORDINARY
-      # outcome of this gate and routing it through failure would have lost the difference
-      # between that and a credential expiring. A call list has no answer to say it with. So
-      # the charter asks the question instead, and what is left for the task to fail at is
-      # infrastructure — which is what failure should mean.
+      path: [verse-dev, merge, train, "*"]
       value: !and
-      - !not.has-path state
-      - !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
-        in: {base: .[tip]}
+      # PRESENT AND NON-EMPTY, in that order, and the first half is not redundant: the train is
+      # derived with a `sha` and nothing else, so `!not {branches: []}` alone holds in the gap
+      # before 2b loads it — and a motion opened about a train with no branches at all, which is
+      # exactly the question this rule exists not to ask.
+      - !has-path branches
+      - !not {branches: []}
+      # UNDECIDED, which is the absence of `decided`. The tip does not need comparing any more:
+      # the train's own address carries the sha, so a new main is a new train and a new question
+      # by construction.
+      - !not.has-path decided
   gates:
   - name: merge-to-main
     mode: ask
     formula: !until [ !quorum 1, !deadline "24h" ]
     onDenied:
       patch:
-        state: declined
+        decided: declined
   action:
+    patch:
+      decided: landing
     spawn:
       runner: verse:runners:pool:code
       environment: verse-merge
       grant: no-delegate
       vector: auto
-      # Four git commands were what this always was. The model was rediscovering them every
-      # firing, and when the branch went out from under it — retired by rule 3 while its motion
-      # was open — it went looking for the objects on the filesystem instead of stopping.
+      # A STATIC LIST OVER A DYNAMIC SET, which is the shape a call list can hold: the branches
+      # are not interpolated into the command, they are FOUND in the clone. The train's
+      # `branches` field is for the person reading the docket; the task reads the refs it has.
       #
-      # No `fatal:` on either call: the default is that anything ends the list, which is what
-      # is wanted. If the merge does not fast-forward the push must not happen, and the whole
-      # reason it might is now selected against above.
+      # `|| true` per branch is what makes a batch a batch: a branch cut from a tip main has
+      # passed cannot fast-forward, and skipping it is the correct outcome rather than a failure
+      # — rule 3 retires it and the review cuts a fresh one against the new tip.
       calls:
-      # THE MIRROR, not origin, and no fetch at all. The task's clone is made FROM the runner's
-      # local mirror (`RemoteName: "mirror"`), which the runner refreshes when it opens the
-      # workspace — so every delivered branch is already here as a remote-tracking ref, and
-      # `origin` is a config entry pointing at a forge this sandbox has no route to fetch from.
-      #
-      # `fetch origin` is what the PROMPT said when this was an agent, and the agent quietly
-      # adapted: it read the failure and used what was there. A call list cannot, which is the
-      # trade — it does exactly what it is told, so what it is told has to be true. This one cost
-      # a `exited 128` and is the clearest argument in the charter for why the list is worth it:
-      # the instruction was wrong for as long as a model was papering over it.
       - tool: run_bash
         input:
-          command: "git -C verse merge --ff-only refs/remotes/mirror/$branch"
+          command: "for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*/*'); do git -C verse merge --ff-only \"$b\" || true; done"
       - tool: push
         input: {destination: main}
     onDone:
       patch:
-        state: merged
+        decided: landed
         err: !delete null
-    # What is left to fail is infrastructure, or main moving between this firing and the push —
-    # which the remote refuses with `denyNonFastForwards` rather than accepting quietly.
-    #
-    # It lands on `failed` and STAYS there. Undecided is the absence of this field, and a patch
-    # cannot unwrite one — `!delete` would, and using it here would put the proposal back in
-    # front of the same gate on the next commit, asking a person to answer again for a run that
-    # broke rather than for a decision that changed. A failure is a fact somebody looks at.
     onFailed:
       patch:
-        state: failed
+        decided: failed
         err: $err
-    # A cancel decided NOTHING, so the proposal goes back to undecided — which is now the
-    # absence of the field, and `!delete` is what unwrites one. This is the case that earns the
-    # operator: somebody stopped the run, so the gate should be asked again, where a FAILED run
-    # should not re-ask anybody anything.
+    # A cancel decided NOTHING, so `decided` is unwritten and the gate is asked again — where a
+    # FAILED run should not re-ask anybody anything, which is why onFailed leaves it written.
     onCancelled:
       patch:
-        state: !delete null
+        decided: !delete null
         err: !delete null
 ---
 # 1b. …and the proposal says what it is about, so the docket can ask a real question.
