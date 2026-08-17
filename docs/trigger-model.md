@@ -976,10 +976,17 @@ parts still means what it meant:
 | `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
 | `$subject.commit` | that commit's revision |
 
-A completion hook has no causing commit — it is woken by a task finishing rather than by a
-write — so `.value` and `.commit` fail there by name rather than resolving to a silent zero. In a
-spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no text
-form and its top-level fields are already bound by name.
+A completion hook reads at **the same commit its rule fired at**. It is woken by a task
+finishing rather than by a write, so it has no cause of its own; the one it takes is the firing's,
+carried on the task's record as `occurrence` — which is what makes it survive a restart, since the
+engine that runs the hook may never have seen the firing. So a rule is one statement about one
+moment: `$subject.value` in an `onDone` is the subject as the condition selected it, not as the
+action left it a step earlier, and a charter whose task does not write its own subject gets the
+reading its author meant. A task the charter did not start has no such commit, and `.value` and
+`.commit` fail there by name rather than resolving to a silent zero.
+
+In a spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no
+text form and its top-level fields are already bound by name.
 
 ### `!get-path` and `!list-paths` — reaching another entity
 

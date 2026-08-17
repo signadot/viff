@@ -227,12 +227,16 @@ func TestReadInAPatchIsUnconstrained(t *testing.T) {
 	}
 }
 
-// A read inside a completion hook has no causing commit to be answered at — the hook is woken by
-// a task finishing rather than by a write — so it fails by name rather than reading whatever
-// the store happens to hold now.
-func TestReadInAHookHasNoCommit(t *testing.T) {
+// A read with no causing commit to be answered at fails BY NAME rather than reading whatever
+// the store happens to hold now — which would be a different world from the one the rule was
+// evaluated against, silently.
+//
+// A completion hook is no longer such a firing: it reads at the commit that caused the firing
+// it belongs to, off its task's record (Engine.applyHook). What is left here is the case where
+// no record says — a task the charter did not start.
+func TestReadWithNoCauseHasNoCommit(t *testing.T) {
 	eng, _ := newEng(t)
-	oc := occasion{} // what applyHook builds: the task event, and no commit
+	oc := occasion{} // no cause: nothing to be as of
 	_, err := eng.resolveRead(get("git:repo:abc"), nil, oc)
 	if err == nil {
 		t.Fatal("a read resolved with no causing commit")

@@ -33,7 +33,14 @@ func startHookTask(store entity.Store, id string, spec launch.Spec) *task.Task {
 	} else {
 		p = task.NewTask(id, sup, immediate{}, noExec{})
 	}
-	mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt})
+	// Occurrence rides along exactly as the production spawner sends it (versed's spawnerFor):
+	// it is the commit that caused the firing, and a completion hook reads at it. A harness
+	// that dropped it would let the record fall back to the revision its own write landed at,
+	// which is a different number and would make the hook tests pass for the wrong reason.
+	mirror.Reflect(store, id, p, mirror.Meta{
+		Subject: spec.Subject, Runner: "local", Chain: spec.Chain,
+		Prompt: spec.Prompt, Occurrence: spec.Occurrence,
+	})
 	go p.Run(context.Background())
 	return p
 }
@@ -387,4 +394,96 @@ func entityField(t *testing.T, store entity.Store, ref entity.Ref, key string) s
 	t.Helper()
 	e, _, _ := store.Get(ref)
 	return entity.Str(e.Payload, key)
+}
+
+// A COMPLETION HOOK READS AT THE COMMIT THAT CAUSED ITS FIRING.
+//
+// It used to read at no commit at all: applyHook built an occasion with none, so
+// `$subject.value`, `$subject.commit`, `!get-path` and `!list-paths` were unresolvable in
+// every hook, and a rule that wanted to derive a release note from what shipped could not be
+// written down (git-issue hjxd56jy). Worse, it failed HALFWAY — a hook's `patch` lands before
+// its `derive`, so the subject latched to "finished" over a derivation that never happened.
+//
+// The commit offered is the firing's, taken from the task's own record. This test is the
+// decisive half of what that means: the action advances `stage` to `reviewing` BEFORE the task
+// starts, so the store says `reviewing` by the time the hook runs — and the hook still reads
+// `open`, the value at the commit the rule was evaluated against. One rule, one moment.
+func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		return startHookTask(store, id, spec)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: review
+  condition:
+    subject: {system: demo, kind: pr, value: {stage: open}}
+  action:
+    patch: {stage: reviewing}
+    spawn: {prompt: "review $subject"}
+    onDone:
+      patch:
+        stage: reviewed
+        was:  $subject.value.stage
+        area: $subject.value.area
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "area": "auth"}.Payload())
+	waitField(t, store, prRef("1"), "stage", "reviewed")
+
+	ent, _, _ := store.Get(prRef("1"))
+	if got := entity.Str(ent.Payload, "was"); got != "open" {
+		t.Errorf("the hook read stage = %q; want \"open\" — the value at the causing commit, "+
+			"not whatever the action had already written over it", got)
+	}
+	if got := entity.Str(ent.Payload, "area"); got != "auth" {
+		t.Errorf("the hook read area = %q; want \"auth\" — a field the firing never touched", got)
+	}
+}
+
+// The same commit reaches a SEQUENCE's carrier hook, which arrives by another road: a finished
+// element resumes its sequence (resumeSeq) rather than firing a hook, and the carrier's own
+// `onDone` runs at the end of that path. It was the shape that produced the original report —
+// two rollout steps and a release note derived from what shipped.
+func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		return startHookTask(store, id, spec)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: rollout
+  condition:
+    subject: {system: demo, kind: pr, value: {stage: open}}
+  action:
+    patch: {stage: deploying}
+    seq:
+    - spawn: {prompt: "canary $subject"}
+    - spawn: {prompt: "rollout $subject"}
+    onDone:
+      patch:
+        stage:   deployed
+        shipped: $subject.value.version
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "open", "version": "1.4.2"}.Payload())
+	waitField(t, store, prRef("2"), "stage", "deployed")
+
+	ent, _, _ := store.Get(prRef("2"))
+	if got := entity.Str(ent.Payload, "shipped"); got != "1.4.2" {
+		t.Errorf("the carrier's onDone read version = %q; want \"1.4.2\" — a sequence's hook "+
+			"reads at the same commit its rule fired at", got)
+	}
 }

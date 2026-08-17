@@ -447,9 +447,10 @@ func (e *Engine) subjectFor(oc occasion, subj entity.Ref, w subjectWants) (*ir.N
 	}
 	if w.commit {
 		if oc.commit.Rev == 0 {
-			return nil, fmt.Errorf("$%s.%s: this firing has no causing commit — a completion "+
-				"hook is woken by a task finishing rather than by a write, which is why its "+
-				"chain starts again (see causal.go). There is no revision to name",
+			return nil, fmt.Errorf("$%s.%s: this firing has no causing commit, so there is no "+
+				"revision to name. A completion hook takes the commit that caused the firing "+
+				"it belongs to, read off its task's record; one whose record does not say — a "+
+				"task nothing in the charter started — has nothing to offer here",
 				refSubject, subjPartCommit)
 		}
 		commit = oc.commit.Rev
@@ -467,9 +468,10 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 		}
 	}
 	if oc.commit.Rev == 0 {
-		return nil, fmt.Errorf("$%s.%s: this firing has no causing commit to read at — a "+
-			"completion hook is woken by a task finishing rather than by a write, so there "+
-			"is no revision at which to pin the subject's state",
+		return nil, fmt.Errorf("$%s.%s: this firing has no causing commit to read at, so there "+
+			"is no revision at which to pin the subject's state. A completion hook reads at "+
+			"the commit that caused the firing it belongs to, taken from its task's record; "+
+			"one whose record does not say — a task nothing in the charter started — has none",
 			refSubject, subjPartValue)
 	}
 	// A fan-out member the commit did not touch. THIS is the read that was silently at "now"

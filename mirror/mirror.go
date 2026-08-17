@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
@@ -515,6 +517,22 @@ func occurrenceOf(st entity.Obj) int64 {
 		return v
 	}
 	return 0
+}
+
+// OccurrenceOf is occurrenceOf for a record READ BACK — the payload rather than the object
+// on its way in. Same field, same answer, and 0 when the record does not say.
+//
+// It is exported because a completion hook needs it: the revision a run is about is the
+// commit that caused the firing the run belongs to, which is the revision the hook's own
+// references resolve at (Engine.applyHook). Reading it off the record rather than carrying
+// it in memory is what makes that work for a task resumed after a restart, whose engine
+// never saw the firing.
+func OccurrenceOf(p entity.Payload) int64 {
+	n := ir.Uncomment(entity.Get(p, "occurrence"))
+	if n == nil || n.Type != ir.NumberType || n.Int64 == nil {
+		return 0
+	}
+	return *n.Int64
 }
 
 // nowStamp is the one spelling of an instant on a task record. UTC, because a reader

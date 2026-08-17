@@ -152,9 +152,12 @@ late would write from a state nobody evaluated. It costs nothing when the causin
 the subject, which is the ordinary rule about the entity that changed; a fan-out member the commit
 did not touch is read at that revision, which the store answers by replaying its log.
 
-A completion hook has neither. It is woken by a task finishing rather than by a write — which
-is why its chain starts again — so there is no revision to read at or to name, and both fail by
-name rather than resolving to a silent zero.
+A completion hook reads at the commit **its rule fired at**. It is woken by a task finishing
+rather than by a write — which is why its chain starts again for the cycle throttle — but the
+revision it reads at is the firing's, carried on the task's record. So a `derive` in an `onDone`
+can name what the firing was about, which is what "derive a release note from what shipped"
+needs. A task the charter did not start has no such commit, and both parts fail by name there
+rather than resolving to a silent zero.
 
 In a spawn's strings the identity parts work too (`prompt: "approve $subject.id"`), because those
 are published as flat bindings. `.value` is not: a payload has no text form, and the subject's own

@@ -399,8 +399,9 @@ type snapCache struct {
 // snapshot returns the firing's view of the verse at the commit that caused it.
 func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 	if oc.commit.Rev == 0 {
-		return nil, fmt.Errorf("this firing has no causing commit to read at — it was woken by a " +
-			"task finishing rather than by a write, so there is no revision to be as of")
+		return nil, fmt.Errorf("this firing has no causing commit to read at, so there is no " +
+			"revision to be as of. A completion hook takes the one that caused the firing it " +
+			"belongs to, off its task's record; a task nothing in the charter started has none")
 	}
 	if oc.snap == nil {
 		return e.store.AsOf(oc.commit.Rev) // no cache wired: correct, just unshared

@@ -1506,12 +1506,36 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 // completed task:instance payload, so the hook's templates can read $status/$flow/$result.
 func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	subject, serr := entity.ParseAddr(fp.subject)
+	// WHAT COMMIT THIS READS AT: the one that caused the firing this task belongs to.
+	//
+	// A hook is woken by a task finishing rather than by a write, so it has no cause of its
+	// own — and for a while that was taken to mean it had no revision to read at either, which
+	// left `$subject.value`, `$subject.commit`, `!get-path` and `!list-paths` unresolvable in
+	// every onDone/onFailed/onCancelled/onOrphaned there has ever been. That is the whole read
+	// vocabulary, in the half of a rule where the interesting writes live: a `derive` of a
+	// release note from what shipped could not be written down (git-issue hjxd56jy).
+	//
+	// The firing's commit is the right one to offer, and not merely an available one. It is
+	// already what an action's path reads resolve at — "read at the commit that caused the
+	// firing, so a rule held at a gate for a day still writes what it was evaluated against"
+	// — so a hook reading there makes the rule ONE statement about one moment rather than two
+	// about different ones. A charter whose task does not write its own subject then has the
+	// author's intent exactly: that moment and the moment the task finished agree.
+	//
+	// It is read off the RECORD (`occurrence`, the revision a run is about) rather than
+	// carried in memory, which is what makes it survive a restart: a task resumed by
+	// AdoptChain is hooked by an engine that never saw the firing, and the record still says.
+	//
+	// This is the read only. The causal PARENT stays 0 — a hook does begin a fresh chain for
+	// the cycle throttle, which is causal.go's argument and a different question from which
+	// world the references see.
+	oc := occasion{ev: ev, commit: entity.Commit{Rev: mirror.OccurrenceOf(ev.To)}}
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only
 	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so
 	// the element's own onFailed/onCancelled can run and the sequence stops there (fail-stop).
 	if status == task.Done && serr == nil {
-		if e.resumeSeq(fp.chain, subject, ev) {
+		if e.resumeSeq(fp.chain, subject, oc) {
 			return
 		}
 	}
@@ -1546,11 +1570,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
-	// A hook has no causing commit — it is woken by a task finishing rather than by a
-	// write, which is exactly why its chain starts again (causal.go). So the occasion carries
-	// the task event for its references and nothing for $subject.value/$subject.commit,
-	// which then fail by name rather than resolving to a silent zero.
-	if err := hook.apply(chain, occasion{ev: ev}, []entity.Ref{subj}, e, fromCause); err != nil {
+	if err := hook.apply(chain, oc, []entity.Ref{subj}, e, fromCause); err != nil {
 		e.recordHookFailure(mirror.Ref(fp.id), chain, err)
 	}
 }

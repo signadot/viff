@@ -178,11 +178,12 @@ func (e *Engine) stopSeq(chain string, subj entity.Ref, status task.Status) {
 
 // resumeSeq continues the sequence a just-completed element belonged to. Returns false if the
 // chain does not address a sequence element, in which case the ordinary hook path applies.
-func (e *Engine) resumeSeq(chain string, subj entity.Ref, ev entity.Event) bool {
-	// A resumed element is downstream of a task completing, so — like a hook — it has no
-	// causing commit and begins a fresh chain. The occasion carries the task event for its
-	// references and nothing else.
-	oc := occasion{ev: ev}
+func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
+	// oc is the completion's occasion, built by applyHook: the finished task's event for its
+	// references, and the commit that caused the firing this sequence belongs to for reads at
+	// a revision. A resumed element begins a fresh causal chain (oc.parent is 0) and reads the
+	// world the rule was evaluated against, which is the same pair every element got from the
+	// element before it.
 	carrierChain, idx, ok := seqIndexOf(chain)
 	if !ok {
 		return false
