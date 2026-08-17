@@ -367,7 +367,18 @@ func expandInto(n entity.Payload, root entity.Payload, read readFn) error {
 		return nil
 	}
 	switch n.Type {
-	case ir.ObjectType, ir.ArrayType:
+	// A COMMENT IS A WRAPPER, and walking past it is not optional: a head comment above a list
+	// element makes that element (or the list) a CommentType node holding the real one, and a
+	// walk that switches on Object/Array alone stops there. Everything under a comment was then
+	// invisible to the expansion — so a `!get-path` written under one was left in the document,
+	// handed to tony.Match as an operator it does not know, and the match failed. Silently: a
+	// predicate that cannot be evaluated is a non-match, so the rule simply never selected.
+	//
+	// That is a comment CHANGING BEHAVIOUR, in a codebase whose charters are more comment than
+	// rule. It cost a live drive of the merge train and a long hunt (git-issue
+	// 5dfazxf5h12krxvtg9n0): the same predicate fired in a test with no comments in it and never
+	// fired in the file it was written in.
+	case ir.ObjectType, ir.ArrayType, ir.CommentType:
 		for _, v := range n.Values {
 			if err := expandInto(v, root, read); err != nil {
 				return err

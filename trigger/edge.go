@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"strings"
 
 	"github.com/signadot/verse/entity"
 )
@@ -32,6 +33,19 @@ import (
 // action whose write takes its subject out of the selection fires once and then selects
 // nothing, and one that writes the same value again produces no commit and so raises no next
 // evaluation. Latch, or run at every commit — see the install-time lint in AddTrigger.
+// subjectAddr is a subject's ADDRESS for a trace line — without the predicate, which
+// subjectText appends and which is a whole charter paragraph once a rule has comments in it.
+// A trace says which rule and where; the predicate is in `verse charter show`.
+func subjectAddr(m Match) string {
+	if s, ok := m.address(); ok {
+		return s
+	}
+	if m.Deep() {
+		return strings.Join(m.Segs(), ".")
+	}
+	return subjectText(m)
+}
+
 func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	if c.Rev <= 0 {
 		return // a synthesized commit with no revision cannot be asked "and as of when?"
@@ -84,7 +98,14 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	}
 	subjects := subject.Select(now)
 	if len(subjects) == 0 {
-		return // nothing to act on at this commit
+		// SAID, NOT SKIPPED. "Selected nothing" is the ordinary answer at most commits and is
+		// also what a rule that never fires looks like from outside, and the two were
+		// indistinguishable: the trace showed a firing and every failure PAST selection, and
+		// went quiet exactly where a charter author's question is. Debug-level, so it costs a
+		// level check when nobody is listening.
+		e.tracef("%s selected nothing at rev %d (subject %s)", t.Name, c.Rev,
+			subjectAddr(t.Condition.Subject))
+		return
 	}
 	e.tracef("fire %s at rev %d (%d subject(s))", t.Name, c.Rev, len(subjects))
 	// The commit stands in for the change an older firing carried: it names WHERE this

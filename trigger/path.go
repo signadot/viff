@@ -380,6 +380,11 @@ func (p pathSpec) validate() error {
 // eachPathRead walks a document and calls fn for every path read in it, reporting the first
 // fault.
 func eachPathRead(n entity.Payload, fn func(*ir.Node) error) error {
+	// PAST THE COMMENT WRAPPER FIRST. A head comment above a list element wraps it, and a walk
+	// that asks the type without unwrapping stops at the comment — so a read under one was not
+	// counted among what a rule reads, and the subtree it names was not in the snapshot the
+	// condition was evaluated against. Same reason derives() unwraps, and the same class of bug.
+	n = unwrap(n)
 	if n == nil {
 		return nil
 	}
