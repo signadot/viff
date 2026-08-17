@@ -13,6 +13,17 @@ To point a client at a non-default address, `export VERSE_ADDR=host:port` or pas
 `--addr host:port` to any command. `verse down` stops the verse on `--addr`, and it reaps the
 daemons it spawned.
 
+```sh
+VERSE_LOG=debug verse up            # the engine's trace: which rule fired, on what, and why not
+```
+
+**`VERSE_LOG` is what to reach for when a rule does not fire.** At `debug` the engine says which
+rules it evaluated at which commit, which subjects each selected, and — the useful half — why a
+firing stopped: a read that did not resolve, a write that was refused, a cycle it threw. Nothing
+else tells you the difference between a rule that is not selecting and a rule that is selecting
+and failing. It takes any slog level (`debug`, `info`, `warn`, `error`); anything else is refused
+at startup rather than ignored.
+
 `up` decides three things for the whole runtime, because it hosts the task runtime and the
 clients do not.
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/scott-cotton/cli"
@@ -77,6 +78,27 @@ func TestBrokerFace(t *testing.T) {
 	for in, want := range cases {
 		if got := brokerFace(in); got != want {
 			t.Errorf("brokerFace(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// VERSE_LOG turns the engine's trace on, and says so when it is asked for something that is not
+// a level. Every `tracef` in trigger/ is wired to slog Debug and nothing turned Debug on, so the
+// whole trace — which rule was evaluated at which commit, why a firing did not happen — was
+// unreachable from a running verse. A rule that silently does not fire is the hardest thing a
+// charter can do, and the tool for it was built and not connected.
+func TestVerseLogLevel(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool // parses
+	}{
+		{"debug", true}, {"DEBUG", true}, {"info", true}, {"warn", true}, {"error", true},
+		{"chatty", false}, {"", false},
+	} {
+		var l slog.Level
+		err := l.UnmarshalText([]byte(tc.in))
+		if (err == nil) != tc.want {
+			t.Errorf("VERSE_LOG=%q parsed=%v, want %v", tc.in, err == nil, tc.want)
 		}
 	}
 }

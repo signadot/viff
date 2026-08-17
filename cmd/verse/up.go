@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -106,6 +107,23 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	}
 	if err := cfg.validate(); err != nil {
 		return err
+	}
+
+	// THE ENGINE'S TRACE, off unless asked for. Every `tracef` in trigger/ — which rule was
+	// evaluated at which commit, why a firing did not happen, what a read resolved to — is
+	// wired to slog Debug, and nothing anywhere turned Debug on, so all of it was unreachable
+	// from a running verse. A rule that silently does not fire is the hardest thing a charter
+	// can do, and the tool for it was built and not connected.
+	//
+	// An env var rather than a flag: it is a property of the RUN, wanted mid-investigation and
+	// often on a verse somebody else started, and `VERSE_LOG=debug verse up` needs no charter,
+	// no restart argument and no config edit.
+	if lvl := os.Getenv("VERSE_LOG"); lvl != "" {
+		var l slog.Level
+		if err := l.UnmarshalText([]byte(lvl)); err != nil {
+			return fmt.Errorf("VERSE_LOG=%q: want debug, info, warn or error", lvl)
+		}
+		slog.SetLogLoggerLevel(l)
 	}
 
 	// The SERVER's default response format, from config/env (VERSE_WIRE_FORMAT, then
