@@ -149,7 +149,12 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 // List reads every installed runner, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
 	var out []Entity
-	for _, ent := range r.List(Is) {
+	// AT THE SUBTREE, not over the document. A List(pred) is a Match on the ROOT — the whole
+	// verse across the wire and filtered here — so a listing of a handful of runners cost a
+	// read of everything every source had ever reflected. On a store carrying two mirrored
+	// repositories that was 455 KB a call, and `verse status` (which lists runners, sources
+	// and questions) paid it three times per readiness probe.
+	for _, ent := range r.ListAt([]string{entity.VerseRoot, System}, entity.Depth+1, Is) {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue

@@ -238,7 +238,10 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 // List reads every installed source, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
 	var out []Entity
-	for _, ent := range r.List(IsRegistration) {
+	// At the subtree — see runner.List for why a List(pred) is the wrong read here: it is a
+	// Match on the root, so listing the sources read the whole verse, sources' own output
+	// included.
+	for _, ent := range r.ListAt([]string{entity.VerseRoot, System}, entity.Depth+1, IsRegistration) {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue

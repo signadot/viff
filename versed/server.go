@@ -1651,7 +1651,12 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 // several.
 func pendingQuestions(store entity.Store) []entity.Entity {
 	var out []entity.Entity
-	for _, ent := range store.List(mirror.IsQuestion) {
+	// At the questions subtree. This is on the READINESS path (`/status` reports the count),
+	// and a List(pred) is a Match on the root — so a probe every five seconds read the entire
+	// verse to count what was pending.
+	for _, ent := range store.ListAt(
+		[]string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind},
+		entity.Depth+1, mirror.IsQuestion) {
 		if p := entity.ToObj(ent.Payload); p != nil && p["status"] == mirror.QuestionPending {
 			out = append(out, ent)
 		}
