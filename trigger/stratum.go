@@ -760,7 +760,22 @@ type deriveTarget struct {
 	// above are a reading of. It exists for the same reason a Match has one: a charter
 	// installed at `verse-dev.drift` writes `verse-dev.drift.head.<id>`, and two names cannot
 	// hold four segments.
-	Path    []string
+	Path []string
+	// Key makes the derived id a function of (rule, subject, KEY) rather than of (rule,
+	// subject) — one entity per value of something, where a plain derive gives exactly one.
+	//
+	// It is `!each`'s key without the fan-out, and it exists because "one per tip" could not be
+	// said: a merge train needs a batch per main, and a derive re-firing at a new tip wrote the
+	// same address, so the SAME gate id was asked and the second batch inherited the first
+	// batch's answer. A gate is identified by (trigger, gate, subject); if the subject cannot
+	// vary, the question cannot be asked twice.
+	//
+	// It keys on STATE deliberately, which `!each` already does (`key: $item.symbol`), and the
+	// invariant is the one a fan-out rests on rather than an exception to it: a derive may carry
+	// state exactly when its address is a function of that same state. A re-fire reading the
+	// same subject computes the same key, writes the same bytes to the same address, and dies as
+	// the no-op that lets a rule read a higher level safely.
+	Key     entity.Payload
 	Payload entity.Payload
 	// Each is set when this target fans out: one derived entity per element of `over`,
 	// addressed by `key`. Payload is nil then, and vice versa.
@@ -956,6 +971,8 @@ func derivePathTarget(el *ir.Node) (deriveTarget, bool) {
 			t.Path = segs
 		case "value":
 			content = val
+		case "key":
+			t.Key = val
 		}
 	}
 	if len(t.Path) == 0 {
@@ -1053,7 +1070,11 @@ func (a Action) validateDerive() error {
 				}
 				continue
 			}
-			if err := checkLiteralDerive(t.Payload, strings.Join(t.Path, ".")); err != nil {
+			where := strings.Join(t.Path, ".")
+			if err := checkLiteralDerive(t.Payload, where); err != nil {
+				return err
+			}
+			if err := checkDeriveKey(t.Key, where); err != nil {
 				return err
 			}
 		}
@@ -1320,16 +1341,30 @@ func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj ent
 // where a refused firing is loud, is about the whole answer, and leaves the previous state
 // standing to be re-derived when the answer is fixed.
 func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
-	ref, _ := soleRef(spec.Key) // install-checked
+	s, err := keyText(spec.Key, root)
+	if err != nil {
+		return "", fmt.Errorf("!each key on element %d: %w", at, err)
+	}
+	return s, nil
+}
+
+// keyText resolves a key expression — a fan-out element's, or a single derive's — to the text
+// that goes in the address.
+//
+// An EMPTY key is a failure rather than a blank segment, in both spellings and for one reason:
+// an address that silently collapses to the unkeyed one is the fan-out deriving a single entity,
+// or the keyed derive re-asking a question it has already had answered. Both are the failure the
+// key was written to prevent, and neither is visible in what stands afterwards.
+func keyText(key entity.Payload, root entity.Payload) (string, error) {
+	ref, _ := soleRef(key) // install-checked
 	n, err := deref(root, ref)
 	if err != nil {
-		return "", fmt.Errorf("!each key $%s on element %d: %w", ref, at, err)
+		return "", fmt.Errorf("key $%s: %w", ref, err)
 	}
 	s, ok := scalarText(n)
 	if !ok || s == "" {
-		return "", fmt.Errorf("!each key $%s is empty on element %d: every element must carry "+
-			"the field its address is read from, and one that does not cannot be told apart "+
-			"from the next", ref, at)
+		return "", fmt.Errorf("key $%s is empty: an address read from a value only tells two "+
+			"of them apart while every one of them carries it", ref)
 	}
 	return s, nil
 }
@@ -1389,6 +1424,33 @@ func strataText(all []Stratum) string {
 		parts = append(parts, fmt.Sprintf("%s=%d %s", s.Name, s.Level, matchesText(s.Match)))
 	}
 	return fmt.Sprintf("%v", parts)
+}
+
+// checkDeriveKey checks a single derive's `key` — the same two questions `!each`'s key answers,
+// minus the one about the element.
+//
+// It must be a SOLE reference, for the reason a fan-out's must: one embedded in text
+// interpolates to a string, and an address assembled out of prose is not one anybody can predict
+// or find. And it may read only what the CONTENT may — the subject, including its state — since
+// the two are the same claim: the address is a function of the state, which is exactly what
+// makes carrying that state in the payload sound.
+func checkDeriveKey(key entity.Payload, where string) error {
+	if key == nil {
+		return nil
+	}
+	ref, ok := soleRef(key)
+	if !ok {
+		return fmt.Errorf("action.derive.%s `key` must be a single reference "+
+			"(`key: $%s.value.sha`): a reference embedded in a string interpolates to text, and "+
+			"an address is not something to assemble out of prose", where, refSubject)
+	}
+	if !deriveMayReference(ref) {
+		return fmt.Errorf("action.derive.%s `key` is %q: a keyed derive's address may be read "+
+			"from the firing's SUBJECT and nothing else — $%s.commit included, since a key that "+
+			"is a function of WHEN the rule fired writes a new entity on every lap",
+			where, "$"+ref, refSubject)
+	}
+	return nil
 }
 
 // checkLiteralDerive is the content check both derive spellings share: an object (the engine

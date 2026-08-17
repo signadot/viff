@@ -818,6 +818,11 @@ the key in the address rather than an exception to it, and it is where a task's 
 become twelve facts instead of eleven paragraphs: see
 [strata](strata.md#each--when-one-answer-holds-many-facts).
 
+A single derive may carry a `key:` too — `- {path: [verse-dev, merge, train], key:
+$subject.value.sha, value: …}` — which makes its address a function of (rule, subject, key)
+instead of (rule, subject). One entity per value of something, where the same subject keeps
+moving: see [strata](strata.md#a-key-on-a-single-derive).
+
 `spawn` launches a task from a `launch.Spec` — or, instead of a fixed `driver`, a governed
 `provider` selection of the doer. The spawned task is tagged with the subject, which is
 what makes it part of that subject's flow.

@@ -751,7 +751,24 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			}
 			continue
 		}
-		ref := d.refFor(deriveID(chainID(chain), subj))
+		id := deriveID(chainID(chain), subj)
+		if d.Key != nil {
+			// A KEYED derive: one entity per value, addressed the way a fan-out's elements are.
+			// The key is read from the same root the content is, so `key: $subject.value.sha`
+			// says "one of these per tip".
+			sn, err := e.subjectFor(oc, subj, wantsOf(d.Key))
+			if err != nil {
+				e.tracef("trigger %s: %v; not spawning", chain, err)
+				return nil, err
+			}
+			key, err := keyText(d.Key, refRoot(root, sn))
+			if err != nil {
+				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
+				return nil, err
+			}
+			id = eachID(chainID(chain), subj, key)
+		}
+		ref := d.refFor(id)
 		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
 		if err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)

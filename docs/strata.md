@@ -194,6 +194,38 @@ charter and the id is injective in the subject, which retires
 It also forbids rollups: fifty features cannot feed one `do:approve`. The level above reads the
 *set* instead. That is the trade single-writer is bought with.
 
+### A key on a single derive
+
+A derive may name a `key:` without fanning out:
+
+```tony
+action:
+  derive:
+  - path: [verse-dev, merge, train]
+    key:  $subject.value.sha      # one train per tip of main
+    value: {sha: $subject.value.sha}
+```
+
+The address becomes (rule, subject, key) — the fan-out's identity with one element — and it is
+there for the case a plain derive cannot say: **the same subject, decided more than once.**
+
+A merge train is the one that forced it. `git:head:verse` is a single entity whose `sha` moves;
+a rule deriving a batch from it writes ONE address, and a
+[gate](trigger-model.md#gates--whether-it-proceeds)'s id is a function of
+(trigger, gate, subject) — so the second batch arrived at an address whose motion was already
+settled and inherited the first batch's answer. Nobody was asked, and nothing in the docket said
+so. With the sha in the address, a new tip is a new subject and therefore a new question.
+
+The two install checks are the fan-out's, minus the one about the element: the key must be a
+**single reference** (one embedded in text interpolates to a string, and an address is not
+something to assemble out of prose), and it may read the **subject** — its state included — and
+nothing else. `$subject.commit` is refused here for the reason it is refused in the content: a
+key that is a function of *when* the rule fired writes a new entity on every lap.
+
+And it is the invariant rather than a hole in it. A re-fire about the same subject computes the
+same key, writes the same bytes to the same address, and dies as the no-op that lets a rule read
+a higher level safely.
+
 ## `!each` — when one answer holds many facts
 
 One firing derives one entity, which is right until a task answers with twelve findings and
