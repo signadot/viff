@@ -212,8 +212,26 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 		h.mu.Lock()
 		h.reason, h.status = out.Reason, task.Status(out.Reason)
 		h.result = tk.Result() // the driver's final answer, if any
+		// AN ERROR IS A CAUSE, NOT A STATUS, and conflating the two made every cancel read as a
+		// failure. Run returns the run's cause alongside its outcome — that is how a cancel's
+		// reason reaches a caller at all — so `err != nil` is true for a task somebody stopped
+		// on purpose, and overwriting the status with Failed threw away what the machine had
+		// just decided (exit(Cancelled), emitted as its terminal frame).
+		//
+		// It is not cosmetic: verse distinguishes the two everywhere it matters. A charter's
+		// onCancelled and onFailed are different actions, and comment-drift.tony's merge train
+		// says why in its own words — a cancel decided nothing, so the gate is asked again,
+		// where a failed run must not re-ask anybody anything. With this, a cancelled run fired
+		// onFailed and the question was never re-posed.
+		//
+		// So the error is recorded and the terminal status stands. Failed remains the fallback
+		// for a run that ended with an error and NO terminal status of its own — a loop that
+		// broke rather than one that ended.
 		if err != nil {
-			h.status, h.err = task.Failed, err.Error()
+			h.err = err.Error()
+			if !h.status.Terminal() {
+				h.status = task.Failed
+			}
 		}
 		h.mu.Unlock()
 	}()
