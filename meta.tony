@@ -1,0 +1,20 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits:
+- 7b6cb09d0bde8ca8987bce9aa310635a7f8814c5
+- 4f0026df14f4ebe8169b3b80f17d9c045e654436
+- e3f4c400c3a9113dacf857eac60a99b73b77a80b
+- 02a4c38af81a12e20ec4c872d1b8c0e2cefcdc9b
+- 02b86ed91535a1aab2d1910736dfcd81431d8d8b
+- 16198e7f5e6c1aea7331668d48c52aef1555f01f
+created: "2026-08-17T04:37:40.619795+02:00"
+duplicates: []
+id: nkptp9b3h12ksx3kg9n0
+labels:
+- bug
+- design
+related_issues: []
+status: open
+updated: "2026-10-01T13:05:26.527983+02:00"
