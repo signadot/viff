@@ -94,17 +94,23 @@ get verse:trigger:rule:x --scope me`); the record carries `scope: me`, which is 
 it is.
 
 Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store
-layers baseline underneath, so listing the charter in a scope returns both, and the `scope`
-field is what tells them apart. Whether a federation *should* inherit baseline's program is
-open, and the reason it is open is cost rather than taste — a scoped subtree watch is seeded
+layers baseline underneath, so `verse state get verse:trigger:rule:x --scope me` answers for a
+rule the scope never installed, and the `scope` field on the record is what tells the two
+apart. Whether a federation *should* inherit baseline's program is open, and the reason it is
+open is cost rather than taste — a scoped subtree watch is seeded
 with the entities the scope inherits, so installing baseline's charter into a scope would
 replay all of it over everything the scope can see, privately, per connected dev, and then
 fire again in every scope on every baseline change.
 
-To run a baseline rule's behaviour in your scope, install it there. To **replace** one, remove
-it in the scope and add your own under that name: the removal is a copy-on-write tombstone
-that hides the inherited rule from this scope alone, and the install lands in your layer.
-Baseline is untouched either way.
+The LISTING is the same set: `verse charter --scope me` answers from the scope's engine rather
+than from the layered store, so it shows what runs here and nothing else — the rules you
+installed, without baseline's underneath them.
+
+To run a baseline rule's behaviour in your scope, install it there. To **replace** one, install
+yours under baseline's name: a scoped install lands in your layer, where it is the only rule of
+that name the scope's engine holds, and baseline is untouched. Nothing has to be removed first —
+`verse charter remove <a baseline rule> --scope me` answers "no such trigger", correctly, since
+the scope holds none of them, and a rule that never ran here needs no hiding.
 
 A scope's charter comes back after a verse restart when the scope's engine is next built —
 that is, when you reconnect. Until something asks for the scope, its engine does not exist and
