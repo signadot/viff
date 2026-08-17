@@ -83,7 +83,7 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
       # PRESENT AND NON-EMPTY, in that order.
       - !has-path branches
       - !not {branches: []}
-      # UNDECIDED, which is the absence of ` + "`decided`" + `.
+      # UNDECIDED, which is the absence of `+"`decided`"+`.
       - !not.has-path decided
       # AND ABOUT THE MAIN THAT IS ACTUALLY THERE: the address carries the sha, so a new main
       # is a new train and a new question.
