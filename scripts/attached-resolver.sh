@@ -25,7 +25,9 @@
 #   deadline    the same handover, more slowly: silence past `within` moves it on the next read.
 #   exclusive   whose answer COUNTS. A person is refused, and told how to override.
 #
-# Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR.
+# Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR (the verse to
+# drive, default localhost:9797 — it is passed to the CLI as well as to curl, so both halves of
+# this script talk to the SAME verse whatever the config layers say).
 set -euo pipefail
 
 cd "$(cd "$(dirname "$0")/.." && pwd)"
@@ -404,11 +406,18 @@ while [ $# -gt 0 ]; do
 done
 set -- ${args[@]+"${args[@]}"}
 
-v() { "$BIN" "${scope[@]}" "$@"; }
-addr() { echo "http://${VERSE_ADDR:-localhost:9797}"; }
+# ONE TARGET, NAMED ONCE. Both halves of this script talk to a verse — the CLI for everything
+# and curl for the two commands that ACT as the resolver — and they used to name it two
+# different ways: the CLI resolved its address from the config layers, while curl built
+# `http://${VERSE_ADDR:-localhost:9797}`. With a config pointing at staging, the run and its
+# question were created there and the verdict was posted to localhost, which answers 404. Every
+# act failed at `answer`, and nothing said why, because both halves were behaving.
+ADDR=${VERSE_ADDR:-localhost:9797}
+v() { "$BIN" --addr "$ADDR" "${scope[@]}" "$@"; }
+addr() { echo "http://$ADDR"; }
 
 command -v curl >/dev/null || die "this one needs curl: a resolver dials in over HTTP"
-v state >/dev/null 2>&1 || die "no verse at ${VERSE_ADDR:-localhost:9797} — start one with \`./verse up\`"
+v state >/dev/null 2>&1 || die "no verse at $ADDR — start one with \`./verse up\`, or set VERSE_ADDR to name another"
 
 case "${1:-}" in
 "" | list)
