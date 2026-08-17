@@ -469,7 +469,8 @@ action inside its rule — and that same string is the id the task spawns under
 (`shape-seq.seq.0@demo:seq:1`). So the tree is not a second model of the work; it is the
 charter and the runtime read together. Statuses that come from no task are the point:
 `applied` fired but only set fields, `skipped` is a branch its parent's outcome did not
-answer to, `pending` may still fire.
+answer to, `pending` may still fire — and `failed`, with the reason beside it in `err`, is
+that same set-only branch when its write did not land.
 
 ### when — a condition on another entity
 

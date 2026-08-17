@@ -46,6 +46,11 @@ func (s *FlowNode) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Status
 	irMap["status"] = ir.FromString(string(s.Status))
 
+	// Field: Err
+	if s.Err != "" {
+		irMap["err"] = ir.FromString(string(s.Err))
+	}
+
 	// Field: Gate
 	if s.Gate != "" {
 		irMap["gate"] = ir.FromString(string(s.Gate))
@@ -132,6 +137,12 @@ func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "status", fieldNodeUnwrapped.Type)
 			}
 			s.Status = string(fieldNodeUnwrapped.String)
+		case "err":
+			// Field: Err
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "err", fieldNodeUnwrapped.Type)
+			}
+			s.Err = string(fieldNodeUnwrapped.String)
 		case "gate":
 			// Field: Gate
 			if fieldNodeUnwrapped.Type != ir.StringType {

@@ -55,6 +55,7 @@ context:
 define:
   chain: .[string]
   children: .[array(verse-flow-node)]
+  err: .[string]
   gate: .[string]
   id: .[string]
   kind: .[string]

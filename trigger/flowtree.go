@@ -55,6 +55,10 @@ type FlowNode struct {
 	ID     string `tony:"field=id,omitzero"`
 	Prompt string `tony:"field=prompt,omitzero"`
 	Status string `tony:"field=status"`
+	// Err is why a node with StatusFailed failed, for the one failure that has no task to
+	// read it off: a completion hook whose write did not resolve. A hook spawns nothing in
+	// that case, so without this the tree would say `failed` and give nowhere to look.
+	Err string `tony:"field=err,omitzero"`
 	// Pending, Gate and LastAction are the live detail, present only while a task is
 	// in flight.
 	Gate       string     `tony:"field=gate,omitzero"`
@@ -74,6 +78,13 @@ const (
 	// same kind of inference pending/skipped already are. Reporting it as pending would be
 	// worse than inferring: the act is over, and nothing is coming.
 	StatusApplied = "applied"
+	// StatusFailed is that same hook when its write did NOT land — a reference that did not
+	// resolve, a refused write. The inference above is that a hook fires when its task
+	// reaches that status, and firing is not landing: the engine records the failure on the
+	// task whose completion fired it (recordHookFailure), so unlike `applied` this one is
+	// read rather than inferred. It is spelled as the task status of the same name, because
+	// a reader of the tree is asking one question of every node.
+	StatusFailed = string(task.Failed)
 )
 
 // FlowTree is one subject's flow: every root that acted on it, with its branches.
@@ -189,10 +200,17 @@ func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
 func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Action, parentStatus string) FlowNode {
 	n := FlowNode{Chain: chain, Kind: kind, Status: StatusPending}
 	ent, didRun := run[chain]
+	failed := hookFailedAt(run, chain)
 	switch {
 	case didRun:
 		n = e.nodeFrom(chain, kind, ent)
 	case kind == "root": // nothing above it to be unreachable from
+	case failed != "":
+		// It fired and did not land. Read before the inference below, because that one
+		// answers "did this hook run" and this is the other half of the same question: a
+		// hook whose write failed spawned nothing, so `applied` is exactly what it would
+		// otherwise be called.
+		n.Status, n.Err = StatusFailed, failed
 	case act != nil && act.Spawn == nil && task.TerminalStatus(parentStatus) &&
 		kind == hookField(task.Status(parentStatus)):
 		// A set-only hook whose parent ended on exactly this status: it fired, and left no
@@ -270,6 +288,24 @@ func (e *Engine) reviseHooks(n *FlowNode, chain string, run map[string]entity.En
 		}
 		*c = e.node(chain+"."+c.Kind, c.Kind, run, h, n.Status)
 	}
+}
+
+// hookFailedAt reads the failure a completion hook at this chain recorded, empty when it
+// recorded none. A hook that fails writes a `hook` record onto the task whose completion
+// fired it (Engine.recordHookFailure) — which for a plain spawn is the task at the chain
+// above, and for a sequence's carrier is its last element — so this looks across the
+// subject's tasks by the chain the record NAMES rather than guessing which one holds it.
+//
+// A re-run cannot leave a stale one behind: the first write of a run REPLACES the record
+// (mirror.Reflect), so a chain that failed and then succeeded carries nothing here.
+func hookFailedAt(run map[string]entity.Entity, chain string) string {
+	for _, ent := range run {
+		h := entity.Get(ent.Payload, "hook")
+		if entity.Str(h, "chain") == chain && entity.Str(h, "status") == StatusFailed {
+			return entity.Str(h, "err")
+		}
+	}
+	return ""
 }
 
 // hookAction returns the action a hook field names, or nil for a field that is not one.

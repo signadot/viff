@@ -266,3 +266,75 @@ func TestFlowTreeAddressing(t *testing.T) {
 		t.Fatalf("untouched subject yielded %d trees; want 0", len(trees))
 	}
 }
+
+// A set-only hook is rendered `applied` because it left no task to say so — an inference
+// that is wrong exactly when the hook's own write did not land. The engine records that
+// failure on the task whose completion fired the hook, so the tree has it in hand and must
+// not report the act as done: a `derive` that never resolved is the case this exists for.
+func TestFlowTreeHookFailure(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := treeEngine(t, store)
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: prSubject("open")},
+		Action: Action{
+			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
+			Spawn:  &launch.Spec{Prompt: "review $subject"},
+			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
+		},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	// The task that ran, plus the failure its completion hook recorded — written here rather
+	// than provoked, because what the tree owes is to READ the record wherever it comes from.
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo:pr:7"),
+		entity.Obj{
+			"status": "done", "flow": "demo:pr:7", "chain": "review", "trigger": "review",
+			"hook": entity.Obj{"chain": "review.onDone", "status": "failed", "err": "$subject.value: no causing commit"},
+		}.Payload())
+
+	n, ok := find(onlyTree(t, eng, "demo:pr:7").Roots, "review.onDone")
+	if !ok {
+		t.Fatalf("hook node missing from the tree")
+	}
+	if n.Status != StatusFailed {
+		t.Errorf("hook status = %q; want %q — the tree reported a hook that did not land", n.Status, StatusFailed)
+	}
+	if n.Err == "" {
+		t.Errorf("hook node carries no err; the reason is the point of reporting the failure")
+	}
+}
+
+// The same, for the hook a SEQUENCE carries: it fires when the last element completes, so
+// the record lands on that element's task and not on the chain above it. The tree looks by
+// the chain the record names, which is what makes those two cases one.
+func TestFlowTreeSeqCarrierHookFailure(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := treeEngine(t, store)
+
+	if err := eng.AddTrigger(Trigger{
+		Name:      "rollout",
+		Condition: Condition{Subject: prSubject("open")},
+		Action: Action{
+			Patch:  entity.Obj{"stage": "deploying"}.Payload(),
+			Seq:    []Action{{Spawn: &launch.Spec{Prompt: "canary $subject"}}},
+			OnDone: &Action{Patch: entity.Obj{"stage": "deployed"}.Payload()},
+		},
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "rollout.seq.0@demo:pr:8"),
+		entity.Obj{
+			"status": "done", "flow": "demo:pr:8", "chain": "rollout.seq[0]", "trigger": "rollout",
+			"hook": entity.Obj{"chain": "rollout.onDone", "status": "failed", "err": "derive did not resolve"},
+		}.Payload())
+
+	n, ok := find(onlyTree(t, eng, "demo:pr:8").Roots, "rollout.onDone")
+	if !ok {
+		t.Fatalf("carrier hook node missing from the tree")
+	}
+	if n.Status != StatusFailed || n.Err == "" {
+		t.Errorf("carrier hook = %+v; want failed with a reason", n)
+	}
+}
