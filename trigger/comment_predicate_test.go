@@ -108,3 +108,26 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
 	}
 	t.Fatal("the rule never selected: a comment in its predicate is still hiding the read")
 }
+
+// THE SAME BLINDNESS, IN THE CHECK THAT KEEPS A CASCADE FINITE. `eachRef` walks a derive's
+// content looking for references it may not carry — `$subject.commit` above all, which is a
+// function of WHEN the firing happened and so makes a derive write something new on every lap.
+// It stopped at a comment wrapper too, so writing a comment above the field turned the check off
+// and the derive installed.
+func TestACommentDoesNotHideAReference(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{"plain", "{at: $subject.commit}"},
+		{"under a head comment", "# why this is here\n{at: $subject.commit}"},
+		{"the field under a comment", "{ok: 1\n# why this is here\nat: $subject.commit}"},
+	} {
+		n, err := codec.ParseNode([]byte(tc.src), codec.Tony)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if got := firstBadRef(n); got != "subject.commit" {
+			t.Errorf("%s: the content check found %q, so a derive carrying the firing's occasion "+
+				"would install", tc.name, got)
+		}
+	}
+}

@@ -164,7 +164,13 @@ func eachRef(n entity.Payload, fn func(string)) {
 		return
 	}
 	switch n.Type {
-	case ir.ObjectType, ir.ArrayType:
+	// CommentType for the reason expandInto walks it: a head comment wraps the value under it,
+	// and a walk that stops at the wrapper does not see what it holds. Here that made the
+	// derive content check — "a derive may reference its subject and never the occasion of the
+	// firing" — pass a document carrying `$subject.commit`, as long as somebody had written a
+	// comment above it. The check exists to rule out an unbounded cascade across a level; a
+	// comment must not be what turns it off.
+	case ir.ObjectType, ir.ArrayType, ir.CommentType:
 		for _, v := range n.Values {
 			eachRef(v, fn)
 		}
