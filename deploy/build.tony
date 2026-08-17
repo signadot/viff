@@ -123,12 +123,19 @@ build:
     gitSource: false
     gitMirror: "https://github.com/signadot/verse.git"
 
-    # The issues `git issue` keeps inside that same repository, reflected as `git-issue:*`. It
-    # shares gitMirror rather than taking a knob of its own: the two sources answer different
-    # questions about ONE directory, and an operator mirroring a different repository for
-    # issues than for branches is a shape nobody has wanted. Split the knob the day somebody
-    # does, not before.
+    # The issues `git issue` keeps inside a repository, reflected as `git-issue:*`.
+    #
+    # This shared gitMirror until somebody wanted otherwise, on the reasoning that the two
+    # sources answer different questions about ONE directory. What broke that is a second
+    # repository: `git issue` is used in some repositories and not others, so the set worth
+    # mirroring for issues is a SUBSET of the set worth mirroring for branches — and the
+    # shared knob made the difference unspellable, so the issue source cloned repositories
+    # with no refs/issues in them and reflected nothing from them.
+    #
+    # Empty means "whatever gitMirror says", which is what it always did, so a deployment that
+    # names no set is unchanged by the split.
     gitIssueSource: false
+    gitIssueMirror: ""
 
     slackSource: false
     slackSourceName: "workspace"
@@ -646,7 +653,32 @@ build:
               - -mirror
               - $[gitMirror]
 
-  - if: '.[gitIssueSource]'
+  # TWO BLOCKS, one knob: a set of its own when gitIssueMirror names one, and gitMirror's when
+  # it does not. A command is a list, so there is nothing to merge into and no way to write a
+  # default that a later patch overrides — the same reason llmSecretKey is spelled as a pair.
+  - if: '.[ gitIssueSource && gitIssueMirror != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-issue-source
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: git-issue-source
+              image: $[image]
+              command:
+              - sourced
+              - git-issue
+              - -addr
+              - ":9801"
+              - -state
+              - /repos
+              - -mirror
+              - $[gitIssueMirror]
+
+  - if: '.[ gitIssueSource && gitIssueMirror == "" ]'
     match:
       kind: Deployment
       metadata:

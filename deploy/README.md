@@ -341,22 +341,28 @@ re-clones; swap in a PVC if that gets expensive. For a repository that already e
 run the same binary next to it with `-repo`, or skip the deployment entirely and use
 `verse source add --dir`.
 
-`gitIssueSource` reflects the issues `git issue` keeps inside that same repository — a mirror
-clone maps every ref (`+refs/*:refs/*`), so `refs/issues/*` is already there and this needs no
-credential and no route the git connector does not already have. It is a second pod rather than
-a flag on the first because the two answer different questions about one directory and write
-disjoint slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like the git
-one, under any name you like — it is polled and posts no hints, so nothing has to match:
+`gitIssueSource` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
+every ref (`+refs/*:refs/*`), so `refs/issues/*` is already there and this needs no credential
+and no route the git connector does not already have. It is a second pod rather than a flag on
+the first because the two answer different questions about one directory and write disjoint
+slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like the git one,
+under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh
 verse source add git-issue:cluster http://git-issue-source:9801
 ```
 
+It mirrors whatever `gitMirror` names, until you say otherwise with `gitIssueMirror`. Say
+otherwise as soon as the two sets differ: `git issue` is a habit some repositories have and
+others do not, so a `gitMirror` that has grown a second repository will otherwise have this pod
+cloning one it can reflect nothing from.
+
 | knob | default | meaning |
 |---|---|---|
 | `gitSource` | `false` | deploy the git connector |
-| `gitMirror` | the verse repo | `[<id>=]<url>` to mirror — shared with `gitIssueSource` |
-| `gitIssueSource` | `false` | deploy the git-issue connector over the same mirror |
+| `gitMirror` | the verse repo | `[<id>=]<url>` to mirror; comma-separated for several |
+| `gitIssueSource` | `false` | deploy the git-issue connector |
+| `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
 | `slackSource` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
 | `slackSourceName` | `workspace` | the registration name — must match `verse source add slack:<name>` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
