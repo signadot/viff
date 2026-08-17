@@ -331,9 +331,21 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 
 // dropScope tears down the session's scope (stops its engine, deletes its overlay).
 func (cfg *connectConfig) dropScope(cc *cli.Context, scope string) {
+	// SAY WHAT HAPPENED, not what was attempted. This printed "dropped" whatever came back, so
+	// a teardown that the verse refused — or never heard — read as done, and the leftover scope
+	// is real: an overlay on disk and an engine still running over it. The session is ending
+	// either way, so this reports rather than returning; what it must not do is claim.
 	resp, err := httpPost("/scope/delete", nil) // urlFor folds ?scope=<scope>
-	if err == nil {
-		resp.Body.Close()
+	if err != nil {
+		fmt.Fprintf(cc.Err, "scope %q may still stand: %v\n", scope, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(cc.Err, "scope %q may still stand: %s: %s\n",
+			scope, resp.Status, strings.TrimSpace(string(msg)))
+		return
 	}
 	fmt.Fprintf(cc.Out, "dropped scope %q\n", scope)
 }
