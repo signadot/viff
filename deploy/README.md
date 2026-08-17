@@ -280,6 +280,24 @@ so the address has to be reachable from where the client is.
 (`http://verse:9797/sources/slack/<name>/hint`), so a registration under a different name means
 verse 404s every delivery — loud, but only if you look.
 
+⚠️ **Widening what a source reflects is two steps, and the deploy is only the first.** A
+registration stores the ownership claim as it stood when it was installed, so adding a
+repository to `gitMirror`, `gitIssueMirror` or `githubRepos` and rolling the pod leaves verse
+holding the old claim — and it FENCES the new slice out rather than letting the source write
+outside what was proved. The symptom is a source that looks healthy and reflects nothing new.
+Re-run the same `verse source add` afterwards; it updates the claim in place.
+
+```sh
+verse source check git-issue:cluster   # `owns` is what verse holds, `says` is what it claims now
+verse source add git-issue:cluster http://git-issue-source:9801   # reconcile them
+```
+
+Driven, on a source moved from one repository to two: only the first repository's entities were
+written while the claim was stale, `check` showed the two values side by side, and the second
+repository's appeared within a pass of the re-add. Removal is the other direction and needs no
+such care — but note it asks for `--forget` or `--keep`, and there is nothing to forget on a
+source you are only widening.
+
 ### Credentials
 
 The two that need one take it from a Secret, and `optional` is **false** on purpose: a Slack
