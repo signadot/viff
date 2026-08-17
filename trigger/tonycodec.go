@@ -42,26 +42,28 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if addr, ok := m.address(); ok {
 		return ir.FromString(addr), nil
 	}
-	// A PATH GOES BACK OUT AS `!verse-path`, which is the spelling it came in as and the only
-	// one that can hold it: the three dimensions have nowhere to put a fourth segment, and a
-	// segment carrying an operator has no string form at all. Without this a deep rule rendered
-	// as `{}` — it installed, was written down as a match on everything, and came back from a
-	// restart with no subject.
+	// A PATH GOES BACK OUT AS `path:`, the OBJECT form, because that is the spelling that means
+	// a path at every length. `!verse-path [a b c]` does not: three steps FOLD into the three
+	// dimensions, deliberately, so that the vector spelling names the entity `a:b:c` the way
+	// every charter written before paths does. Rendering a path with it turns a PLACE into an
+	// address with an id.
+	//
+	// Which is a restart's worth of damage. A stratum is a place — `{path: [verse-dev, drift,
+	// head]}` — and written down as `!verse-path` it came back constraining `id`, so restore
+	// refused it, and then refused every rule whose derive needed the level it named. The
+	// charter shrank across a restart, in the store's own copy of itself.
+	//
+	// Without SOME path spelling here a deep rule rendered as `{}`, which was worse again: it
+	// installed, was written down as a match on everything, and came back with no subject.
 	if m.Deep() {
 		segs := m.SegNodes()
-		vals := make([]*ir.Node, 0, len(segs)+1)
+		vals := make([]*ir.Node, 0, len(segs))
 		vals = append(vals, segs...)
-		out := ir.FromSlice(vals)
-		out.Tag = "!" + VersePathTag
+		kvs := []ir.KeyVal{{Key: ir.FromString(mKeyPath), Val: ir.FromSlice(vals)}}
 		if node, ok := predicateNode(m[mKeyValue]); ok {
-			// A predicate cannot ride on a tagged list, so the pair is written as the object
-			// form: the path under `path`, the predicate beside it.
-			return ir.FromKeyVals([]ir.KeyVal{
-				{Key: ir.FromString(mKeyPath), Val: out},
-				{Key: ir.FromString(mKeyValue), Val: node},
-			}), nil
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyValue), Val: node})
 		}
-		return out, nil
+		return ir.FromKeyVals(kvs), nil
 	}
 	// Canonical dimension order, not map order: ir.FromMap sorts, and
 	// {fields, id, kind, system} reads worse than the order people write.

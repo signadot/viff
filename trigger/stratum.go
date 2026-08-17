@@ -112,6 +112,25 @@ func (ms *Matches) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		*ms = nil
 		return nil
 	}
+	// A TAGGED ARRAY IS ONE MATCH, not a union of its steps, and the tag is what says so —
+	// `!verse-path [verse-dev, drift, finding]` is an address, and its three steps are not three
+	// matches. tonycodec's own note on the tag names this hazard ("the union form a stratum's
+	// `match` takes is already one"), and reading it wrong is not a parse error: each step reads
+	// as a bare name, which matches a system and so matches nearly everything.
+	//
+	// It cost a restart. A stratum written down as a path came back as a union that overlapped
+	// its neighbour, so restore refused it — and then refused every rule whose derive needed the
+	// level it named. The charter SHRANK across a restart, silently, in the store's own copy of
+	// itself: `verse-dev.drift` lost `ledger` and `comment-drift`, `verse-dev.merge` lost `train`
+	// and the two rules that run on it.
+	if node.Type == ir.ArrayType && tagName(node) == VersePathTag {
+		var m Match
+		if err := m.FromTonyIR(node, opts...); err != nil {
+			return err
+		}
+		*ms = Matches{m}
+		return nil
+	}
 	if node.Type == ir.ArrayType {
 		out := make(Matches, 0, len(node.Values))
 		for i, v := range node.Values {
