@@ -24,17 +24,17 @@ import (
 // So: one document, addressed like the verse itself, with the same shape at every node.
 //
 //	writes: anywhere               # baseline: no address, so it may write anywhere
-//	triggers: [ … ]
+//	rules: [ … ]
 //	strata: [ … ]
 //	children:
 //	  verse-dev:                   # nothing is installed HERE, so no `writes`
-//	    triggers: []
+//	    rules: []
 //	    strata: []
 //	    children:
 //	      drift:
 //	        writes: verse-dev.drift.*
 //	        reads: [git]
-//	        triggers: [ … ]
+//	        rules: [ … ]
 //	        strata: [ … ]
 //
 // A NODE IS A PLACE, not a package: `verse-dev` above holds no charter of its own and is there
@@ -159,7 +159,7 @@ func (n *charterNode) node() *ir.Node {
 		values = append(values, v)
 	}
 	// `writes` and `reads` say what a charter INSTALLED here may do, so they appear only where
-	// one is. `triggers` and `strata` appear at every node, empty included: a reader who learns
+	// one is. `rules` and `strata` appear at every node, empty included: a reader who learns
 	// the shape at one level has learned it at all of them, and an address that holds nothing of
 	// its own says so rather than leaving the reader to infer it from two absent keys.
 	if n.here {
@@ -168,7 +168,7 @@ func (n *charterNode) node() *ir.Node {
 			add("reads", strNodes(n.reads))
 		}
 	}
-	add("triggers", orEmptyList(n.triggers))
+	add("rules", orEmptyList(n.triggers))
 	add("strata", orEmptyList(n.strata))
 	if len(n.kidOrder) > 0 {
 		sort.Strings(n.kidOrder)

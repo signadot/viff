@@ -491,7 +491,7 @@ ok "connect disconnected"
 
 # ── status ───────────────────────────────────────────────────────────────────
 step "status"
-has "$(v status)" 'triggers' || die "status missing engine counts"
+has "$(v status)" 'rules' || die "status missing engine counts"
 ok "status reports engine counts"
 
 # ── strata: a declared level ordering, and a derive that crosses it ──────────

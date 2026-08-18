@@ -2567,7 +2567,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
 		// and this handler stops opening a root watch per call to find out.
 		StoreRev: s.Store.Head(),
-		Triggers: len(s.Eng.Triggers()),
+		Rules:    len(s.Eng.Triggers()),
 		Flows:    len(s.Eng.Flows()),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
 		Tasks:    s.Taskd.Count(),

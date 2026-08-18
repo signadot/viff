@@ -35,12 +35,12 @@ func TestStatus(t *testing.T) {
 	}
 
 	m := get()
-	for _, k := range []string{"storeRev", "triggers", "flows", "gates", "tasks", "fired"} {
+	for _, k := range []string{"storeRev", "rules", "flows", "gates", "tasks", "fired"} {
 		if _, ok := m[k]; !ok {
 			t.Fatalf("status missing %q: %v", k, m)
 		}
 	}
-	if n, _ := codec.AsInt64(m["triggers"]); n != 0 {
+	if n, _ := codec.AsInt64(m["rules"]); n != 0 {
 		t.Fatalf("triggers = %v, want 0 on a fresh verse", n)
 	}
 
@@ -54,7 +54,7 @@ func TestStatus(t *testing.T) {
 	entitytest.Set(t, srv.Store, entity.RefAt("demo", "x", "1"), entity.Obj{"k": "v"}.Payload())
 
 	m = get()
-	if n, _ := codec.AsInt64(m["triggers"]); n != 1 {
+	if n, _ := codec.AsInt64(m["rules"]); n != 1 {
 		t.Fatalf("triggers = %v, want 1 after install", n)
 	}
 	if rev, _ := codec.AsInt64(m["storeRev"]); rev < 1 {

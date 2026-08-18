@@ -177,13 +177,13 @@ define:
   gates: .[int]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
+  rules: .[int]
   runner: .[nullable(verse-runner-status)]
   runners: .[array(string)]
   sources: .[array(string)]
   storeRev: .[int]
   strata: .[array(string)]
   tasks: .[int]
-  triggers: .[int]
 signature:
   name: verse-status
 ---

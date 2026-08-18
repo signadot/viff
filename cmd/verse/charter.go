@@ -262,7 +262,7 @@ func charterHolding(node *ir.Node, name string, at []string) []string {
 		}
 		v := codec.Unwrap(node.Values[i])
 		switch key.String {
-		case "triggers", "strata":
+		case "rules", "strata":
 			if v != nil && v.Type == ir.ArrayType && namedIn(v, name) {
 				out = append(out, strings.Join(at, "."))
 			}

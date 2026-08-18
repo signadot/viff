@@ -395,11 +395,15 @@ type InboxItem struct {
 //tony:schemagen=verse-status,notag
 type Status struct {
 	StoreRev int64 `tony:"field=storeRev"`
-	Triggers int   `tony:"field=triggers"`
-	Flows    int   `tony:"field=flows"`
-	Gates    int   `tony:"field=gates"`
-	Tasks    int   `tony:"field=tasks"`
-	Fired    int   `tony:"field=fired"`
+	// Rules is how many rules BASELINE's charter holds — `triggers` until the charter tree
+	// took the word the prose has always used, and one word for one thing across both.
+	// A package's rules are not in it: a package runs in an engine of its own, which is what
+	// `charter` below exists to say.
+	Rules int `tony:"field=rules"`
+	Flows int `tony:"field=flows"`
+	Gates int `tony:"field=gates"`
+	Tasks int `tony:"field=tasks"`
+	Fired int `tony:"field=fired"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
 	// these three are things somebody put here, and a verse that has lost them looks healthy by

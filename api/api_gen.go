@@ -1835,8 +1835,8 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: StoreRev
 	irMap["storeRev"] = ir.FromInt(int64(s.StoreRev))
 
-	// Field: Triggers
-	irMap["triggers"] = ir.FromInt(int64(s.Triggers))
+	// Field: Rules
+	irMap["rules"] = ir.FromInt(int64(s.Rules))
 
 	// Field: Flows
 	irMap["flows"] = ir.FromInt(int64(s.Flows))
@@ -1957,12 +1957,12 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "storeRev", fieldNodeUnwrapped.Type)
 			}
 			s.StoreRev = int64(*fieldNodeUnwrapped.Int64)
-		case "triggers":
-			// Field: Triggers
+		case "rules":
+			// Field: Rules
 			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "triggers", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected number, got %v", "rules", fieldNodeUnwrapped.Type)
 			}
-			s.Triggers = int(*fieldNodeUnwrapped.Int64)
+			s.Rules = int(*fieldNodeUnwrapped.Int64)
 		case "flows":
 			// Field: Flows
 			if fieldNodeUnwrapped.Int64 == nil {

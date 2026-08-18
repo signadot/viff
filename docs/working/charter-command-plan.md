@@ -1,6 +1,6 @@
 # One path into the charter: a plan for `verse c`
 
-Status: **step 0 is built** (branch `charter-path`); the rest is proposal. The charter command as it stands is
+Status: **steps 0 and 2 are built** (branch `charter-path`); the rest is proposal. The charter command as it stands is
 [cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
 ([versed/charter.go](../../versed/charter.go)).
 
@@ -266,6 +266,11 @@ package named `rules` and the `--` escape; the not-found message naming the othe
 Contract, with a notice. Touches the tree builder, the CLI's own tree walking
 (`charterHolding`), the docs, and the smoke. Do it before the CLI moves, so the CLI is written
 once against the final shape.
+
+**Built, and taken BEFORE step 1** — the same argument one step earlier: a path grammar whose
+tests are written against a key that is about to move is tests written twice. Status's `triggers`
+count came with it, in the same commit and the same notice: it is the same word for the same
+thing, and renaming one surface is the drift this removes.
 
 ### 3. `verse c <path>` subsumes `show`
 
