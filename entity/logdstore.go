@@ -148,21 +148,8 @@ type LogdStore struct {
 
 	cfg LogdConfig // retained so Scope() can clone it for a scoped child
 
-	mu  sync.Mutex
-	rev int64 // highest logd commit observed (by the lazy root watch, when running)
-	// head is the highest commit this PROCESS has been told about first-hand: the commit its
-	// own write came back with, and the commit on any event a live watch delivered. It is
-	// deliberately not `rev`, and the difference is the one the two of them answer:
-	//
-	//	rev  — when did anything I care about last CHANGE. A same-value write raises no
-	//	       event, so this does not move for one, which is what makes an inert write
-	//	       observably inert (TestSameValueWriteRaisesNoCommit).
-	//	head — where is the store. A write advances it whether or not it changed anything,
-	//	       because the store's head advanced.
-	//
-	// No accessor for it syncs, which is the whole point: it is what this process knows, and
-	// a caller that must not pay a round trip — a readiness probe — can have it for free.
-	head        int64
+	mu          sync.Mutex
+	rev         int64 // highest logd commit observed (by the lazy root watch, when running)
 	subs        map[int]*observer
 	nextID      int
 	closed      bool
@@ -617,7 +604,6 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 		if err != nil {
 			return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 		}
-		s.noteHead(res.Commit)
 		return true, res.Commit, nil
 	}
 	pre := make([]pathPattern, 0, len(w.When))
@@ -631,39 +617,23 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	if err != nil {
 		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 	}
-	s.noteHead(res.Commit)
 	return true, res.Commit, nil
 }
 
-// noteHead records a commit this process has been told about first-hand. Monotonic, because
-// two writers on one session can answer out of order and head is a high-water mark.
-func (s *LogdStore) noteHead(commit int64) {
-	if commit <= 0 {
-		return
-	}
-	s.mu.Lock()
-	if commit > s.head {
-		s.head = commit
-	}
-	s.mu.Unlock()
-}
-
-// Head is the highest commit this process knows of, WITHOUT asking the store.
+// Head is the highest commit this session knows of, WITHOUT asking the store.
 //
-// It exists for callers that must not pay for the answer — a readiness probe above all, which
-// runs on a kubelet's timer rather than a person's question. Rev is the one that syncs, and
-// its sync opens a watch on the root; logd permits any number of id-bearing watches on one
-// path, so a probe that called it accumulated one per attempt (158 idle watchers in 26 minutes
-// on staging), each seeded by logd with a full read at its path.
+// It is libctl's mark (KnownCommit), raised by every answer that carries a commit — reads,
+// writes, watch events, and the ping's pong. So a busy session tracks the head from traffic it
+// already makes, and an idle one from the heartbeat it already sends: no watch, no poll, no
+// read. That is what makes it safe on a timer, which Rev is not — Rev syncs, and its sync opens
+// a watch on the ROOT that logd grants one of per call.
 //
-// It answers "where is the store, as far as I have been told", which is what readiness means
-// for a process whose job is to keep up with one. It advances on this store's own writes and
-// on any commit a live watch delivers, and it does not move while nothing is happening — which
-// is correct: nothing happening is not a reason to be unready.
+// It answers "where is the store", which advances on a write whether or not that write changed
+// anything. Rev answers "when did anything I care about last change", which does not: a
+// same-value write raises no event (TestSameValueWriteRaisesNoCommit). Two questions, and this
+// is the one nothing has to pay for.
 func (s *LogdStore) Head() int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.head
+	return s.sess.KnownCommit()
 }
 
 // writePath renders a path as a kpath: the entity's path, then a segment per field.
@@ -1576,9 +1546,6 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		if ev.Commit > s.rev {
 			s.rev = ev.Commit
 		}
-		if ev.Commit > s.head {
-			s.head = ev.Commit
-		}
 		// A State is rooted AT the watched path while a delta is rooted at the DOCUMENT, so
 		// re-root it (stateDoc, which the subtree watch shares) — otherwise the first delta
 		// grafts a second tree beside the first and every level read misses.
@@ -1618,9 +1585,6 @@ func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
 	s.mu.Lock()
 	if commit > s.rev {
 		s.rev = commit
-	}
-	if commit > s.head {
-		s.head = commit
 	}
 	s.mu.Unlock()
 	out := make([]Event, 0, len(changes))

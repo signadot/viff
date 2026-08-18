@@ -2467,16 +2467,19 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	out := api.Status{
-		// Rev, and it costs a sync — deliberately. Head is free and is what /healthz reports,
-		// but it is what this PROCESS has been told, so on a verse where nothing has committed
-		// since it started it is 0: staging, with its sources scaled off, answered `head: 0`
-		// over a store holding 7262 commits. That is correct for readiness (quiet is not
-		// unready) and wrong for a census — storeRev is the number an operator reads to judge
-		// whether anything is moving, and one that says 0 about a full store is worse than one
-		// that takes a second.
+		// Head, which no longer costs a sync and no longer lies when nothing is happening.
 		//
-		// Nothing polls this any more, which is what makes the second affordable.
-		StoreRev: s.Store.Rev(),
+		// This was Rev, deliberately, for one reason: Head used to be what this PROCESS had
+		// been told, so a verse where nothing had committed since it started reported 0 —
+		// staging, sources scaled off, answered `head: 0` over a store holding 7262 commits.
+		// An operator reads storeRev to judge whether anything is moving, and 0 about a full
+		// store is worse than a slow answer.
+		//
+		// go-tony v0.0.165 removes that: the ping carries the store's head, and libctl raises
+		// its mark from every answer that carries a commit — reads, writes, watch events, and
+		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
+		// and this handler stops opening a root watch per call to find out.
+		StoreRev: s.Store.Head(),
 		Triggers: len(s.Eng.Triggers()),
 		Flows:    len(s.Eng.Flows()),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
