@@ -471,3 +471,44 @@ func TestAPackageWithNoRulesIsStillAPackage(t *testing.T) {
 		t.Error("the level outlived the package")
 	}
 }
+
+// A RULE THE ENGINE NEVER INSTALLED IS STILL THE PACKAGE'S, and uninstall has to reach it.
+//
+// The removal walked eng.Triggers() — the rules that made it in — so a rule REFUSED at install
+// survived its own uninstall. Because packagesSeen reads the RECORDS, the package went on
+// existing afterwards: it could not be installed (the rule is still refused), could not be
+// removed (the removal cannot see it), and still counted. There was no way out of that state
+// but wiping the store, which is how it was found — a rename of the `reads:` declaration
+// refused every outward-reading rule at restart, and uninstalling the packages left their
+// rules behind on staging.
+func TestUninstallReachesARuleTheEngineNeverInstalled(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {system: notes}}`); code != 201 {
+		t.Fatalf("installing a level = %d: %s", code, msg)
+	}
+	// The record a refused rule leaves: written at the address, never in any engine. Written
+	// by hand because that is exactly the state — the install path refuses it.
+	stray := trigger.CharterRefAt("notes", "refused")
+	entitytest.Set(t, srv.Store, stray, entity.Obj{
+		"at": "notes", "name": "refused",
+		"condition": entity.Obj{"subject": entity.Obj{"system": "git", "kind": "head"}},
+		"action":    entity.Obj{"patch": entity.Obj{"seen": true}},
+	}.Payload())
+	if got := srv.packagesSeen(); len(got) != 1 {
+		t.Fatalf("packagesSeen = %v, want the package the records belong to", got)
+	}
+
+	if err := srv.removePackage("notes", false); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if _, ok, _ := srv.Store.Get(stray); ok {
+		t.Error("the refused rule outlived the uninstall, so the package cannot be taken down")
+	}
+	if got := srv.packagesSeen(); len(got) != 0 {
+		t.Errorf("the package is still listed after uninstall: %v", got)
+	}
+}

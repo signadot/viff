@@ -161,6 +161,13 @@ func (s *Server) restorePackages() {
 }
 
 // packagesSeen is the addresses that currently have a charter package, for the status surface.
+// isCharterRecord is the three kinds of record a charter is kept in. One predicate, because
+// the listing and the removal have to agree about what a package IS — a package that can be
+// seen by records the removal does not remove is a package nobody can take down.
+func isCharterRecord(r entity.Ref) bool {
+	return trigger.IsCharterRule(r) || trigger.IsStratum(r) || trigger.IsCharterPackage(r)
+}
+
 func (s *Server) packagesSeen() []string {
 	var out []string
 	// ALL THREE KINDS OF RECORD, because any one of them makes a package exist: its rules, its
@@ -175,11 +182,8 @@ func (s *Server) packagesSeen() []string {
 	// wire, filtered here — so this cost three full reads, on a function `verse charter` calls
 	// on every request and installs call again. On staging that was the difference between an
 	// answer and a timeout.
-	isCharter := func(r entity.Ref) bool {
-		return trigger.IsCharterRule(r) || trigger.IsStratum(r) || trigger.IsCharterPackage(r)
-	}
 	for _, ent := range s.Store.ListAt(
-		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharter) {
+		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharterRecord) {
 		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
 			out = append(out, at)
 		}
@@ -463,6 +467,33 @@ func (s *Server) uninstallOne(at string) error {
 		At: entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
 	}); err != nil {
 		return fmt.Errorf("%s: removing the declaration: %w", at, err)
+	}
+	// AND WHATEVER ELSE IS IN THE STORE AT THIS ADDRESS, which is not always what the engine
+	// held. A rule REFUSED at install is a record with no rule behind it — the file was applied
+	// under a declaration that has since narrowed, or its stratum never arrived, or the field
+	// it was written with was renamed — and the loop above walks eng.Triggers(), which is the
+	// rules that made it in. So the refused ones survived their own uninstall, and because
+	// packagesSeen reads the RECORDS, the package went on existing: it could not be installed,
+	// could not be removed, and still counted. There was no way out of that state but a wipe.
+	//
+	// This is the same listing packagesSeen does, with the same predicate, which is the point:
+	// what makes a package visible is what a removal has to reach.
+	left := 0
+	for _, ent := range s.Store.ListAt(
+		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharterRecord) {
+		if entity.Str(ent.Payload, trigger.AtField) != at {
+			continue
+		}
+		if _, _, err := s.Store.Write(entity.Write{At: entity.Path{Ref: ent.Ref}}); err != nil {
+			return fmt.Errorf("%s: removing %s: %w", at, ent.Ref, err)
+		}
+		left++
+	}
+	if left > 0 {
+		// Said out loud: these are records the engine never had, so their existence is news
+		// about a charter that did not fully install, not about this removal.
+		fmt.Fprintf(os.Stderr, "verse: uninstall %s: removed %d record(s) the engine had not "+
+			"installed (a refused or held rule leaves one)\n", at, left)
 	}
 	// The engine LAST, and dropped from the registry as well as cancelled: a package installed
 	// again at the same address gets a new one, and a cancelled engine left in the map would be
