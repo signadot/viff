@@ -101,11 +101,35 @@ is applied as one step, so a refusal anywhere puts back what stood before it"). 
 makes that failure ordinary rather than rare, so recursion is the change that has to fix it:
 **`POST /charter` accepts several packages and applies them all or none.**
 
-That is the one genuinely new mechanism here, and it is the one to be honest about: the existing
-atomicity is per package, inside one engine ([versed/charteratomic_test.go](../../versed/charteratomic_test.go)),
-and a transaction across N engines is not free. If it turns out to want more machinery than the
-goal deserves, the fallback is to apply in dependency order and report precisely what stood when
-it stopped — worse, but not silently worse.
+### It is not a new mechanism, and the fallback is dropped
+
+An earlier draft called this the one genuinely new thing here and kept a fallback in reserve —
+apply in dependency order, report precisely where it stopped — on the grounds that a transaction
+across N engines is not free. That reasoning was wrong about what exists, and `charterTx` says
+so in its own words:
+
+> It is not a transaction over the store — the writes have committed — but an UNDO of them in
+> reverse, which is as much as an engine holding live watches can offer.
+
+There is no transaction to generalize. What exists is a compensating undo list, built one entry
+at a time as each declaration, level and rule goes in, replayed backwards on a refusal, plus one
+`fresh` bool that drops an engine this request brought into being. Every one of those entries is
+already a closure that knows what it is putting back. **Widening it is making `at`/`eng` a
+property of each step instead of of the transaction, and `fresh` a set instead of a bool.** That
+is smaller than the fallback, which would need a dependency sort the install does not otherwise
+have.
+
+So: **atomic across packages, no fallback.** And the dependency sort is not needed for the
+install either — a rule's reads are checked against its own package's DECLARATION, and declaring
+a read of an address no package is installed at adds no edge, so file order installs correctly
+whatever the reading between them.
+
+What the wider scope does not change is the kind of guarantee, and this is the honest limit to
+write down rather than discover: the undo compensates, it does not isolate. A rule installed
+early in a request begins observing immediately and can fire before a later refusal arrives, and
+what it wrote is the world's and stays — which is already true of a single file today, and is
+the same sentence `uninstall` prints about what a package wrote. "All or none" is a promise
+about the CHARTER, never about the writes its rules made while it stood.
 
 ## Order of work
 
@@ -145,11 +169,14 @@ and the case the last defect turned up — a record the engine never installed s
 
 ### 5. `add -f <dir>`, applied as one step
 
-The walk, then the atomic apply. Order within it is the file order for reporting and the
-dependency order for installing (a package that another reads goes first).
+The walk, then the atomic apply: one `charterTx` for the request, `at`/`eng` per step, `fresh`
+as a set. File order throughout — for installing as well as for reporting, since no edge exists
+to sort by (above).
 
-Tests: a directory of two packages, one of which is refused → nothing installed; a package
-reading another in the same directory installs regardless of file order.
+Tests: a directory of two packages, one of which is refused → nothing installed, and no engine
+left standing at either address; a package reading another in the same directory installs
+regardless of file order; a rule that fired in the window is not undone, which is the limit
+stated rather than a bug.
 
 ## What this does not do
 
