@@ -235,7 +235,7 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 		if err := os.WriteFile(f, []byte(src), 0o600); err != nil {
 			t.Fatalf("write charter: %v", err)
 		}
-		if _, err := runCLI(t, "charter", "add", f); err != nil {
+		if _, err := runCLI(t, "charter", "-a", "-f", f); err != nil {
 			t.Fatalf("install: %v", err)
 		}
 	}

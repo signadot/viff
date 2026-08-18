@@ -23,10 +23,10 @@ import (
 //	verse c verse-dev.drift rules watcher   …one of them, and `… watcher action` reaches in
 //	verse c rules watcher                   baseline's, which has no address
 //	verse c --depth 0                       this address alone
-//	verse c add -f <file>                   install one (rules, levels and reads, in order)
-//	verse c rm verse-dev.drift              take that package down whole
-//	verse c rm verse-dev.drift rules watcher   …or one rule out of it
-//	verse c rm verse-dev -r                 …or a place and everything under it
+//	verse c -a demo.pr -f <file>            install a charter there (or baseline, with no path)
+//	verse c -r verse-dev.drift              take that package down whole
+//	verse c -r verse-dev.drift rules watcher   …or one rule out of it
+//	verse c -R verse-dev                    …or a place and everything under it
 //
 // ONE PATH, and `show` is gone because of it: a path that reaches a rule is the same path that
 // reaches the charter holding it, one step longer. What `show` had that a path does not is the
@@ -36,15 +36,34 @@ import (
 // The tree it prints is the SERVER's (versed/charter.go); this end asks for an address and a
 // depth and renders what comes back, which is what keeps the two from disagreeing about shape.
 
+// WHAT TO DO IS A FLAG, and the positional is a path in every case. That is what retires the
+// verb/address collision rather than escaping it: `add`, `rm` and `uninstall` were ordinary
+// words, and a package's address is a system name, so `verse c rm` had to be told apart from the
+// package at `rm` by a `--` the operator had to know about. There is nothing to tell apart now.
+//
+// It also retires two meanings of `--at`. Installing took `--at <address>`; reading took `--at`
+// to say where an address ended. Both are the positional path now: `verse c -a demo.pr -f f` is
+// where to install, and `verse c verse-dev -- rules` is where the address ends.
 type charterFlags struct {
 	// Depth is how far under the address to go: 0 is that address alone, 1 adds its immediate
 	// children, and -1 (the default) is everything under it. A charter is a program, and
 	// printing all of one is often not the question.
 	Depth int `cli:"name=depth desc='how far under the address to go: 0 is it alone, -1 (default) is everything'"`
-	// At names a charter for `show` and `remove`, where a NAME is the argument and a name is
-	// unique within a charter rather than across them. The listing needs no such flag: its
-	// address is the positional.
-	At string `cli:"name=at desc='where the address ends, for a package whose own address ends in rules|strata (same as a bare -- among the steps)'"`
+	// Add installs; the path is where, and -f is what.
+	Add bool `cli:"name=add aliases=a desc='install a charter (--file, or stdin) at the path'"`
+	// Rm removes what the path names: a package at an address, or one rule or level in it.
+	Rm bool `cli:"name=rm aliases=r desc='remove what the path names (a package, or a rule|level in one)'"`
+	// RmR is Rm over a place and everything under it.
+	//
+	// A SEPARATE LETTER rather than `-r -R`, because the recursion is the dangerous half and
+	// pairing them invites `-rR`. Note it is NOT the `-r` of `rm -r`: here `-r` is the removal
+	// and `-R` is the removal that reaches under an address. A hand that types `-r` expecting
+	// `rm`'s recursion gets the narrower thing and a refusal naming what is under it, which is
+	// the direction that error should fail in.
+	RmR bool `cli:"name=rm-recursive aliases=R desc='remove the charter at the path AND every charter under it'"`
+	// File is what an install reads. `-f -` is stdin, which is also the default when nothing
+	// says otherwise.
+	File string `cli:"name=file aliases=f desc='install from FILE (- = stdin); with --add'"`
 }
 
 var trig = &charterFlags{Depth: -1}
@@ -54,26 +73,19 @@ func charterCmd() *cli.Command {
 	trig = &charterFlags{Depth: -1} // per-invocation, like the filter flags
 	return cli.NewCommandAt(&cfg.Command, "charter").
 		WithAliases("charters", "c").
-		WithSynopsis("charter — the charter at a path (<address> [rules|strata [<name>]]); add|rm").
+		WithSynopsis("charter — the charter at a path; -a install, -r remove, -R remove under").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
-		WithSubs(charterAddCmd(), charterRmCmd()).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
 				return err
 			}
-			// `--` IN FRONT ENDS THE VERBS, so an address that collides with one is still
-			// reachable: a package at `remove` is `verse c -- remove`, and without it the verb
-			// wins every time. The collision is real rather than theoretical — a package's
-			// address is a system name, and `add` and `remove` are ordinary words.
-			if len(args) > 0 && args[0] == "--" {
-				args = args[1:]
-			} else if handled, err := dispatch(cfg.Command, cc, args); handled {
-				return err
-			}
-			// THE POSITIONALS ARE A PATH: the address, then a reach into what stands there
-			// (`verse-dev.drift rules watcher`), which is the grammar `verse state` has. A flag
-			// among them ends it, which is what lets `--depth`/`--trim` sit on either side.
+			// THE POSITIONALS ARE A PATH, whatever is being done with it: the address, then a
+			// reach into what stands there (`verse-dev.drift rules watcher`), which is the
+			// grammar `verse state` has. A flag among them ends it — which is what lets
+			// `--depth`/`-r`/`--trim` sit on either side — and a bare `--` is not a flag: it
+			// says where the ADDRESS ends, which is the one thing the server's split cannot
+			// work out on its own.
 			var steps []string
 			steps, args = args, nil
 			for i, a := range steps {
@@ -88,6 +100,20 @@ func charterCmd() *cli.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("%w: charter takes one path (an address, then rules|strata "+
 					"and a name), and %q is after it", cli.ErrUsage, args[0])
+			}
+			switch {
+			case trig.Add && (trig.Rm || trig.RmR), trig.Rm && trig.RmR:
+				return fmt.Errorf("%w: charter does one thing at a time: --add installs, "+
+					"--rm removes, --rm-recursive removes what is under an address too",
+					cli.ErrUsage)
+			case trig.Add:
+				return charterAdd(cc, joinSteps(steps), trig.File)
+			case trig.Rm, trig.RmR:
+				return charterRm(cc, steps, trig.RmR)
+			}
+			if trig.File != "" {
+				return fmt.Errorf("%w: --file is what an install reads; add --add to install it",
+					cli.ErrUsage)
 			}
 			return printCharter(cc, steps)
 		})
@@ -151,56 +177,32 @@ func cutAt(steps []string, sep string) (before, after []string, found bool) {
 	return steps, nil, false
 }
 
-type charterAddConfig struct {
-	*cli.Command
-	// --file everywhere a command reads a document (stratum add, task vector), -f kept as
-	// the alias: this was `-f` here and `--file` on vector, so the same idea had more than
-	// one spelling and knowing one told you nothing about the next.
-	File string `cli:"name=file aliases=f desc='read the charter from FILE (- = stdin); also accepts a positional [file]'"`
-	// A charter installed at an address is a PACKAGE: it runs in an engine of its own and may
-	// write only inside that address. Empty installs into the baseline charter, which may
-	// write anywhere — see docs/trigger-model.md.
-	At string `cli:"name=at desc='install as a charter package at this address (demo, demo.pr) — its rules may write only inside it'"`
-}
-
-func charterAddCmd() *cli.Command {
-	cfg := &charterAddConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add trigger(s): add --file <f> (- = stdin) | [file] | stdin; one trigger, a list, or `---`-separated documents. Format follows the file suffix (.tony/.json/.yaml)").
-		WithOpts(opts...).
-		WithRun(cfg.run)
-}
-
-func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
-	args, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
-	// Source: -f FILE, else a positional [file], else stdin. "-" (as -f or positional)
-	// is stdin.
-	src := cfg.File
-	if src == "" && len(args) >= 1 {
-		src = args[0]
-	}
+// charterAdd installs a charter — one rule, a list, or a `---`-separated file of rules, levels
+// and package declarations — at a path.
+//
+// THE PATH IS THE ADDRESS, which is what `--at` used to be. A charter installed at an address is
+// a PACKAGE: it runs in an engine of its own and may write only inside that address. An empty
+// path installs into the baseline charter, which may write anywhere (docs/trigger-model.md).
+//
+// The file is `--file`, or stdin. It is NOT the positional any more — `verse c add f.tony` used
+// to read one — because the positional means a path everywhere else in this command, and a
+// command whose argument changes meaning with a flag is the thing this whole grammar removes.
+func charterAdd(cc *cli.Context, at, file string) error {
 	// The file's suffix names its dialect; stdin and an extensionless file use --ifmt or
 	// the configured default.
-	data, srcFmt, err := codec.ReadSource(cc.In, src, inFmt())
+	data, srcFmt, err := codec.ReadSource(cc.In, file, inFmt())
 	if err != nil {
-		return fmt.Errorf("charter add: %w", err)
+		return fmt.Errorf("charter -a: %w", err)
 	}
 
 	// A charter file may hold one trigger, a list of them, or several documents separated
 	// by `---` — and, since rules declare the stratum they live in, the strata themselves.
 	defs, err := charterDefs(data, srcFmt)
 	if err != nil {
-		return fmt.Errorf("charter add: %w", err)
+		return fmt.Errorf("charter -a: %w", err)
 	}
 	if len(defs) == 0 {
-		return fmt.Errorf("charter add: no trigger found in the input")
+		return fmt.Errorf("charter -a: no trigger found in the input")
 	}
 
 	// ONE FILE MAY HOLD SEVERAL PACKAGES, and a `---` document carrying `at:` is where each
@@ -219,9 +221,9 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 	// Everything after a declaration belongs to it, until the next one. A file with no
 	// declaration is one charter, installed where `--at` says (or baseline, which is most of
 	// them), and that is the case this started as.
-	groups, err := charterGroups(defs, cfg.At)
+	groups, err := charterGroups(defs, at)
 	if err != nil {
-		return fmt.Errorf("charter add: %w", err)
+		return fmt.Errorf("charter -a: %w", err)
 	}
 	packaged := false
 	// Read before the loop, whose `g` is a group and shadows the globals this lives on.
@@ -235,13 +237,14 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 			q.Set("at", g.at)
 		}
 		if g.reads != nil && g.at == "" {
-			return fmt.Errorf("charter add: `reads:` belongs to a charter package — give " +
-				"it an address (`at:` in the declaration, or `--at`), or drop it: the " +
+			return fmt.Errorf("charter -a: `reads:` belongs to a charter package — give " +
+				"it an address (`at:` in the declaration, or the path this installs at), " +
+				"or drop it: the " +
 				"baseline charter may write anywhere, so there is no graph an import would " +
 				"be an edge in")
 		}
 		if err := postGroup("/charter", q, g.defs()); err != nil {
-			return fmt.Errorf("charter add: %w", err)
+			return fmt.Errorf("charter -a: %w", err)
 		}
 		// WHERE, in both coordinates. "baseline" is the unpackaged charter — the one that may
 		// write anywhere — and it is also the word for the default SCOPE, so a scoped install
@@ -474,51 +477,25 @@ func declaredAt(def *ir.Node) (string, error) {
 	return "", nil
 }
 
-type charterRmConfig struct {
-	*cli.Command
-	Recurse bool `cli:"name=recurse aliases=r desc='and every charter installed under this address'"`
-}
-
-// rm takes something out of the charter, and WHAT is said by the path rather than by the verb.
+// charterRm takes something out of the charter, and WHAT is said by the path rather than by a
+// verb.
 //
-//	verse c rm verse-dev.drift                take the package down whole
-//	verse c rm verse-dev.drift rules watcher  take one rule out of it
-//	verse c rm verse-dev.drift strata base    …or one level
-//	verse c rm rules watcher                  baseline's, which has no address
-//	verse c rm verse-dev -r                   a place, and every charter under it
+//	verse c -r verse-dev.drift                take the package down whole
+//	verse c -r verse-dev.drift rules watcher  take one rule out of it
+//	verse c -r verse-dev.drift strata base    …or one level
+//	verse c -r rules watcher                  baseline's, which has no address
+//	verse c -R verse-dev                      a place, and every charter under it
 //
 // IT WAS TWO VERBS: `uninstall <address>` and `remove <name>`, which differ in what they remove
 // rather than in the word, and whose arguments were different KINDS of thing — so knowing one
-// told you nothing about the other, and the pair had to be documented against each other. A
-// path says which without being asked: it ends at an address or it goes on to name something in
-// the charter there.
-//
-// `rm` rather than `remove`, and the old word is not kept as an alias. `remove <name>` meant a
-// RULE, and under this grammar a bare name is an ADDRESS — so an old habit would have found a
-// package where it meant a rule. A command that no longer exists says so; one that quietly means
-// something else does not.
+// told you nothing about the other. A path says which without being asked: it ends at an
+// address, or it goes on to name something in the charter there.
 //
 // What a removal leaves standing is what the charter WROTE — a charter's writes are the world's.
 // The server's removePackage says why at length.
-func charterRmCmd() *cli.Command {
-	cfg := &charterRmConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	return cli.NewCommandAt(&cfg.Command, "rm").
-		WithSynopsis("rm <path> [-r] — a package (<address>), or one rule|level in it (<address> rules <name>)").
-		WithOpts(opts...).
-		WithRun(cfg.run)
-}
-
-func (cfg *charterRmConfig) run(cc *cli.Context, args []string) error {
-	steps, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
+func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 	if len(steps) == 0 {
-		return fmt.Errorf("%w: charter rm wants a path — an address (`drift`, `demo pr`), or "+
+		return fmt.Errorf("%w: -r wants a path — an address (`drift`, `demo pr`), or "+
 			"one with `rules <name>` or `strata <name>` after it", cli.ErrUsage)
 	}
 	q := url.Values{}
@@ -528,21 +505,21 @@ func (cfg *charterRmConfig) run(cc *cli.Context, args []string) error {
 		steps = reach
 	}
 	q.Set("path", joinSteps(steps))
-	if cfg.Recurse {
+	if recurse {
 		q.Set("recurse", "true")
 	}
 	resp, err := httpDelete("/charter", q)
 	if err != nil {
-		return fmt.Errorf("charter rm: %w", err)
+		return fmt.Errorf("charter -r: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("charter rm: %s", strings.TrimSpace(string(msg)))
+		return fmt.Errorf("charter -r: %s", strings.TrimSpace(string(msg)))
 	}
 	if resp.StatusCode != http.StatusNoContent {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("charter rm: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("charter -r: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	// WHAT WENT is said back, because the path said it and a path is easy to mistype. The two
 	// shapes read differently on purpose: a package leaves its writes behind, and a rule removed
@@ -554,7 +531,7 @@ func (cfg *charterRmConfig) run(cc *cli.Context, args []string) error {
 			oneOfKind(kind), name, g.Scope)
 	case item:
 		fmt.Fprintf(cc.Out, "removed the %s %s\n", oneOfKind(kind), name)
-	case cfg.Recurse:
+	case recurse:
 		// `-r` reaches a PLACE as well as a charter, and often that is all it reaches — the
 		// address itself holding nothing and the charters being under it. Saying "the charter
 		// at demo" about a demo that never had one is a sentence somebody will re-check.

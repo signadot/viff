@@ -26,8 +26,23 @@ takes it.**
 
     verse c                                  the whole charter, every address
     verse c <path>                           …what stands at <path>
-    verse c add -f <file|dir> [--at <a>]     install; a directory is walked
-    verse c rm <path> [-r]                   remove what <path> names
+    verse c -a [<address>] -f <file|dir>     install; a directory is walked
+    verse c -r <path>                        remove what <path> names
+    verse c -R <address>                     …and every charter under it
+
+**WHAT TO DO IS A FLAG, and a positional is a path in every case.** The verbs were the last
+place two coordinate systems met: `add`, `rm` and `uninstall` are ordinary words and a package's
+address is a system name, so `verse c rm` had to be told apart from the package installed at
+`rm` — by a `--` the operator had to know existed. Nothing has to be told apart now.
+
+It also retires two meanings of `--at`, which is how the collision was going to reappear:
+installing took `--at <address>`, reading took `--at` to say where an address ended. Both are
+the positional path now.
+
+`-R` is not `rm -r`'s recursion, and the letters are chosen knowing that: `-r` is the removal,
+`-R` is the removal that reaches under an address. A hand that types `-r` out of habit gets the
+narrower thing and, when charters are under the address, a refusal naming them — which is the
+direction that mistake should fail in.
 
 and `<path>` walks ONE tree — the address, then into the node document that address holds:
 
@@ -286,7 +301,7 @@ tests are written against a key that is about to move is tests written twice. St
 count came with it, in the same commit and the same notice: it is the same word for the same
 thing, and renaming one surface is the drift this removes.
 
-### 3. `verse c <path>` subsumes `show`
+### 3. `verse c <path>` subsumes `show`, and the verbs become flags
 
 The positional list goes to `path=`. `show` is deleted rather than aliased — no compatibility
 path, per [contributing.md](contributing.md)'s standing rule while the users are the people
@@ -306,7 +321,7 @@ Tests: the CLI end of each path above; `--depth` still composes; a scope still a
   name arrives with its charter, so the test now asserts each path answers its own and the
   refusal names both.
 
-### 4. `verse c rm <path>` subsumes `remove` and `uninstall`
+### 4. `verse c -r <path>` subsumes `remove` and `uninstall`
 
 One verb over the same grammar: a path ending in a rule or level removes it, a path naming an
 address takes the package down, `-r` for what is under it. The removal keeps what the package
@@ -315,16 +330,20 @@ WROTE, as it does now, and keeps saying so.
 Tests: each shape; the refusal when children exist and no `-r`; a scope's tombstone wording;
 and the case the last defect turned up — a record the engine never installed still goes.
 
-**Built.** Two things:
+**Built**, first as an `rm` verb and then as `-r`/`-R`: the verb kept the collision it was meant
+to remove, and a flag has nothing to collide with. Three things:
 
 - A path that reaches INTO a rule (`rules watcher action`) is refused rather than removing the
   rule it is inside. Editing a rule through a URL is what re-installing the file is for, and the
   refusal says what a removal may name.
-- `-r` reaches a PLACE, and usually that is all it reaches: nothing is installed at `demo` while
+- `-R` reaches a PLACE, and usually that is all it reaches: nothing is installed at `demo` while
   `demo.pr` and `demo.build` are under it. "uninstalled the charter at demo" is a sentence
   somebody re-checks, so the recursive case says "at and under".
+- The install's file stops being a positional. `verse c add f.tony` read one; a positional is a
+  path everywhere now, so the file is `-f` or stdin. A command whose argument changes meaning
+  with a flag is what this grammar exists to remove.
 
-### 5. `add -f <dir>`, applied as one step
+### 5. `-a -f <dir>`, applied as one step
 
 The walk, then the atomic apply: one `charterTx` for the request, `at`/`eng` per step, `fresh`
 as a set. File order throughout — for installing as well as for reporting, since no edge exists
@@ -343,7 +362,7 @@ second operator's install waits or is told to come back.
 - **It does not add a search command.** The old search survives as an error message, which is
   where it was useful.
 - **It does not rename `add`.** `install` reads better against `uninstall`, but `uninstall` is
-  the word going away, and `verse c add` is in every charter doc in the tree.
+  the word going away. (Moot: the verbs became flags, so `add` is `-a`.)
 
 ## Open
 

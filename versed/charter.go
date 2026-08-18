@@ -432,7 +432,7 @@ func (s *Server) installCharter(r *http.Request, defs []*ir.Node) (int, error) {
 	if len(imports) > 0 && at == "" {
 		return http.StatusBadRequest, errors.New("reads: a charter with no address has nothing " +
 			"to import into — `reads:` belongs to a package, installed with " +
-			"`verse charter add --at <address>`")
+			"`verse c -a --at <address>`")
 	}
 	// FRESH BEFORE THE ENGINE, for the same reason: an install that is wholly refused must leave
 	// the address as it found it, and a package engine standing at an address nothing is installed

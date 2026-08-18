@@ -154,7 +154,7 @@ registry of doers is written by whoever runs the verse.
 
 **The reserved half is read like anything else and written only through the verbs that own
 it.** `verse state get verse:trigger:rule:review` reads a rule; `verse state put` at any
-`verse:` address is refused, and says which verb to use instead (`verse charter add`,
+`verse:` address is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
 boundary had a name, anyone who could reach the store could install a rule, stamp a task record
 or answer a question on verse's behalf — with no route positioned to say no.

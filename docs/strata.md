@@ -44,7 +44,7 @@ declared level, with rules living in one and derivations only ever climbing.
           kind: pr
 ```
 
-`verse charter add -f charter.tony` installs both halves, strata first whatever order the file
+`verse c -a -f charter.tony` installs both halves, strata first whatever order the file
 put them in. Numbers with gaps, for the reason BASIC had them: room to insert a level later
 without renumbering its neighbours.
 
@@ -67,7 +67,7 @@ rather than analysed.
 - an action's **derive** must be inside some **strictly higher** stratum's `match`.
 
 Both are checked at install, and neither reads the store. A charter that breaks either is refused
-by `verse charter add`, naming which rule and which level.
+by `verse c -a`, naming which rule and which level.
 
 A stratum's `match` does two jobs at once, and that is the economy worth noticing: it says **what
 subjects this stratum owns** and **what derivations it accepts from below**. One declaration,
@@ -365,7 +365,7 @@ stratum arrives. It has already passed every other check, so what holding defers
 question and nothing else.
 
 **A file produces held rules whenever it names a stratum it does not itself define**, which a
-charter written to sit beside another one does. `verse charter add` sends a file's own strata
+charter written to sit beside another one does. `verse c -a` sends a file's own strata
 first, so a self-contained charter never holds; one whose rules name a neighbour's stratum holds
 exactly those rules until the neighbour is installed.
 
@@ -390,7 +390,7 @@ level when they installed, so they face the ordering again, and a rule that no l
 the *change*, naming itself. Nothing is left at a level nothing checked it against — which is what
 the old refusal bought, at the price of taking the whole package down to edit one line.
 
-**And a file is applied as one step.** `verse charter add` sends a package's worth of a file in one
+**And a file is applied as one step.** `verse c -a` sends a package's worth of a file in one
 request, and a refusal anywhere puts back what stood before it: the declaration, the levels and the
 rules are all the charter or none of them are. Sent document by document, a file whose levels
 installed and whose rule was refused left the levels standing while reporting that the command had
@@ -404,14 +404,14 @@ unstratified, having been told they were ordered. Remove the rules first, or mov
 ```
 $ verse charter             # the ordering, by level
 $ verse c rules sdlc
-$ verse c rm strata sdlc # refused while rules live there
+$ verse c -r strata sdlc # refused while rules live there
 ```
 
 ## Corners
 
 **A misspelled field is named, to a depth.** An unknown field decodes silently — gomap ignores
 what it does not recognise — so `startum: sdlc` would install into the implicit stratum and report
-success, discarding the one field that says which guarantees apply. `verse charter add` refuses
+success, discarding the one field that says which guarantees apply. `verse c -a` refuses
 it, and likewise an unknown field in a `condition`, in an `action`, or in a sequence element or
 completion hook below one. It stops where the shape stops being the charter's: a `spawn` is a
 launch spec, and a `patch` or `derive` payload has the author's own keys in it.

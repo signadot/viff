@@ -117,7 +117,7 @@ shape_tony() {
 		;;
 	derive)
 		cat <<-'TONY'
-			# A charter file may hold strata as well as rules; `verse charter add` sorts them
+			# A charter file may hold strata as well as rules; `verse c -a` sorts them
 			# and installs the ordering first. A rule's subject must be inside its own
 			# stratum, and a derive must land in a strictly higher one — both checked at
 			# install, neither reading the store.
@@ -238,7 +238,7 @@ remove_shape() {
 
 install_shape() {
 	remove_shape "$1" # idempotent: add refuses a duplicate, of a rule or of a stratum
-	shape_tony "$1" | v charter add -f - >/dev/null || die "installing shape-$1 failed"
+	shape_tony "$1" | v charter -a -f - >/dev/null || die "installing shape-$1 failed"
 	ok "installed shape-$1 — $(describe "$1")"
 }
 

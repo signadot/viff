@@ -187,7 +187,7 @@ func (s *Server) packagesSeen() []string {
 	// levels, and the declaration of what it declares it reads. Reading only the rules made a package
 	// with levels and no rules INVISIBLE — which is not an exotic state, it is what a
 	// half-applied file leaves behind (the levels install, a rule is refused) and exactly when
-	// somebody needs to list it and take it down. `verse c rm <address>` answered "no
+	// somebody needs to list it and take it down. `verse c -r <address>` answered "no
 	// charter is installed" about a charter whose records were sitting in the store.
 	//
 	// ONE READ AT THE SUBTREE, not three at the root. All three kinds live under
@@ -245,7 +245,7 @@ func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
 	}
 	if confine.Stamp() == "" {
 		return fmt.Errorf("reads: a charter with no address has nothing to import into — " +
-			"`reads:` belongs to a package, installed with `verse charter add --at <address>`")
+			"`reads:` belongs to a package, installed with `verse c -a --at <address>`")
 	}
 	graph := s.packageImports()
 	graph[confine.Stamp()] = subs
@@ -407,7 +407,7 @@ func (s *Server) removePackage(at string, recurse bool) error {
 	stamp := confine.Stamp()
 	if stamp == "" {
 		return fmt.Errorf("uninstall wants the address of a charter package; baseline has none " +
-			"— its rules go one at a time (`verse c rm rules <name>`), which is what keeps " +
+			"— its rules go one at a time (`verse c -r rules <name>`), which is what keeps " +
 			"`rm` from being a way to delete a whole verse's charter by mistyping it")
 	}
 	under := s.packagesUnder(stamp)

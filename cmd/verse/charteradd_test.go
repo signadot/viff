@@ -34,7 +34,7 @@ reads: [git]
 `), 0o600); err != nil {
 		t.Fatalf("write charter: %v", err)
 	}
-	out, err := runCLI(t, "charter", "add", f)
+	out, err := runCLI(t, "charter", "-a", "-f", f)
 	if err == nil {
 		t.Fatalf("a rule writing outside its package installed: %s", out)
 	}
@@ -68,7 +68,7 @@ reads: [git]
 `), 0o600); err != nil {
 		t.Fatalf("write charter: %v", err)
 	}
-	if out, err := runCLI(t, "charter", "add", f); err != nil {
+	if out, err := runCLI(t, "charter", "-a", "-f", f); err != nil {
 		t.Fatalf("the corrected file: %v (%s)", err, out)
 	}
 	out, err = runCLI(t, "charter", "probe")
@@ -106,7 +106,7 @@ action:
 `), 0o600); err != nil {
 		t.Fatalf("write charter: %v", err)
 	}
-	if out, err := runCLI(t, "charter", "add", f); err != nil {
+	if out, err := runCLI(t, "charter", "-a", "-f", f); err != nil {
 		t.Fatalf("install: %v (%s)", err, out)
 	}
 	out, err := runCLI(t, "charter", "rules", "noted")
@@ -144,11 +144,11 @@ func TestCharterAddReAppliesAnEditedFile(t *testing.T) {
 		}
 	}
 	write("0", "first")
-	if out, err := runCLI(t, "charter", "add", f); err != nil {
+	if out, err := runCLI(t, "charter", "-a", "-f", f); err != nil {
 		t.Fatalf("install: %v (%s)", err, out)
 	}
 	write("50", "second")
-	if out, err := runCLI(t, "charter", "add", f); err != nil {
+	if out, err := runCLI(t, "charter", "-a", "-f", f); err != nil {
 		t.Fatalf("re-applying an edited file: %v (%s)", err, out)
 	}
 	out, err := runCLI(t, "charter")

@@ -161,7 +161,7 @@ therefore available before any of the mechanism above is built, and may be the r
 version on its own.
 
 **"Space" collides with "scope"**, which is already the copy-on-write overlay and already a
-`verse charter add --scope` flag. Two near-synonyms for unrelated concepts is a cost paid
+`verse c -a --scope` flag. Two near-synonyms for unrelated concepts is a cost paid
 forever by every reader, and the word to pick is the one nobody can confuse with a scope.
 
 **`galaxy` is the candidate**, on the grounds that verse's own name licenses it. It reads

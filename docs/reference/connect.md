@@ -88,7 +88,7 @@ The scope's engine observes via per-trigger subtree watches, each watching exact
 
 ## The charter a scope runs
 
-A scope runs **the rules installed into it**, and only those. `verse charter add --scope me`
+A scope runs **the rules installed into it**, and only those. `verse c -a --scope me`
 writes the rule into the scope's own layer, where it is durable and addressable (`verse state
 get verse:trigger:rule:x --scope me`); the record carries `scope: me`, which is what says whose
 it is.
@@ -109,7 +109,7 @@ installed, without baseline's underneath them.
 To run a baseline rule's behaviour in your scope, install it there. To **replace** one, install
 yours under baseline's name: a scoped install lands in your layer, where it is the only rule of
 that name the scope's engine holds, and baseline is untouched. Nothing has to be removed first —
-`verse c rm rules <a baseline rule> --scope me` answers "no such rule", correctly, since
+`verse c -r rules <a baseline rule> --scope me` answers "no such rule", correctly, since
 the scope holds none of them, and a rule that never ran here needs no hiding.
 
 A scope's charter comes back after a verse restart when the scope's engine is next built —

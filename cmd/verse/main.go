@@ -314,7 +314,7 @@ func dispatch(cmd *cli.Command, cc *cli.Context, args []string) (bool, error) {
 // been.
 //
 // A listing that IGNORED its arguments would turn a typo into a plausible answer:
-// `verse charter add-it review` printing your charter reads as success at the wrong thing.
+// `verse c -a-it review` printing your charter reads as success at the wrong thing.
 func noArgs(cmd *cli.Command, name string, args []string) error {
 	if len(args) == 0 {
 		return nil

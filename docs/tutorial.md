@@ -549,7 +549,7 @@ verse state get derived feature shape-derive@demo:derive:1
 
 Two rules, checked at install and neither reading the store: a rule's **subject** must be
 inside its own stratum, and a **derive** must land in a strictly higher one. A charter file may
-hold both strata and rules — `verse charter add` installs the ordering first.
+hold both strata and rules — `verse c -a` installs the ordering first.
 
 The derived entity's id is the *engine's*, a function of (rule, subject), so the rule name and
 the subject are both in it: no two rules can ever address the same derived entity, and a
@@ -587,10 +587,10 @@ Rules install and read back in tony, so inspecting one is a round trip rather th
 format:
 
 ```sh
-verse charter add -f charter.tony # or: cat charter.tony | verse charter add -f -
+verse c -a -f charter.tony # or: cat charter.tony | verse c -a -f -
 verse charter
 verse c rules shape-latch
-verse c rm rules shape-latch
+verse c -r rules shape-latch
 verse charter                     # and `verse c rules <name>` for one of them
 ```
 

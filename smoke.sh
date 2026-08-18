@@ -192,11 +192,11 @@ haskv "$(v --scope "$SC" state get demo:pr:1)" stage open || die "scope cannot r
 ok "baseline entity readable from the scope (read-through)"
 
 # ── reactive core: a non-gated trigger auto-advances its subject ─────────────
-step "charter add + drive (reactive core)"
+step "charter -a + drive (reactive core)"
 # The charter below is written in JSON — still accepted, and this is the check that says
 # so. It arrives on stdin with no name, so nothing declares a dialect: it parses because
 # JSON *is* tony, not because anything sniffed it.
-v charter add -f - >/dev/null <<'JSON' || die "charter add failed"
+v charter -a -f - >/dev/null <<'JSON' || die "charter -a failed"
 [ { "name": "smoke-advance",
     "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
     "gates":     [],
@@ -221,7 +221,7 @@ ok "demo:pr:2 auto-advanced open → reviewed"
 # is a named .tony file, which must be read as tony whatever the default is. It also uses a
 # block list rather than [ ... ], which the old "starts with [" sniff could not have seen.
 # Between them they are the promise: author in either syntax, get one grammar.
-step "charter add reads a .tony charter (suffix dispatch)"
+step "charter -a reads a .tony charter (suffix dispatch)"
 cat >"$tmp/charter.tony" <<'TONY'
 - name: smoke-advance-tony
   condition:
@@ -237,7 +237,7 @@ cat >"$tmp/charter.tony" <<'TONY'
 TONY
 # --file here and `-f` on the stdin case above: both spellings are exercised on purpose,
 # since smoke is the only thing that would catch the alias disappearing.
-v charter add --file "$tmp/charter.tony" >/dev/null || die "tony charter add failed"
+v charter -a --file "$tmp/charter.tony" >/dev/null || die "tony charter -a failed"
 has "$(v charter)" 'smoke-advance-tony' || die "the tony charter did not install"
 ok "installed a .tony charter (block list, suffix-dispatched)"
 
@@ -260,7 +260,7 @@ ok "a tony-authored trigger fires identically to its JSON twin"
 step "trigger subject with an id operator (JSON spelling)"
 # demo:task, not demo:pr: the charters above match every demo:pr, and a subject the fan-out
 # was supposed to exclude would then be indistinguishable from one they had already moved.
-v charter add -f - >/dev/null <<'JSON' || die "operator charter add failed"
+v charter -a -f - >/dev/null <<'JSON' || die "operator charter -a failed"
 [ { "name": "smoke-hotfix-only",
     "condition": { "when":    { "system": "demo", "kind": "note", "value": { "seen": true } },
                    "subject": { "system": "demo", "kind": "task", "id": { "glob": "hotfix-*" } } },
@@ -293,7 +293,7 @@ ok "!glob subject selected hotfix-9 and left feature-9 alone"
 # The edge is the point, and it is what a unit test cannot check end to end: the write that
 # makes the predicate FALSE must not fire it, and the one that makes it true must.
 step "trigger with an \`on\` (a cause as a rising edge)"
-v charter add -f - >/dev/null <<'JSON' || die "on-charter add failed"
+v charter -a -f - >/dev/null <<'JSON' || die "on-charter -a failed"
 [ { "name": "smoke-on-green",
     "condition": { "on":      { "system": "smokeci", "kind": "status", "value": { "state": "green" } },
                    "subject": { "system": "demo", "kind": "build", "value": { "stage": "reviewed" } } },
@@ -330,7 +330,7 @@ ok "the rising edge fired: demo:build:1 reviewed → shipped"
 # states that are not a decision cannot be typed. The short forms are exercised here rather
 # than the long ones because they are what an operator actually types at a held release.
 step "gate: an ask gate holds; answering it releases the action"
-v charter add --file - >/dev/null <<'JSON' || die "gated charter add failed"
+v charter -a --file - >/dev/null <<'JSON' || die "gated charter -a failed"
 [ { "name": "smoke-gated",
     "condition": { "subject": { "system": "demo", "kind": "release", "value": { "stage": "open" } } },
     "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
@@ -368,7 +368,7 @@ ok "the answered gate left the docket"
 # now, and was not checked here, so a docket that answered "nothing" however many motions stood
 # open got as far as a drive before anybody noticed.
 step "docket: a quorum gate posts a motion, and a vote carries it"
-v charter add --file - >/dev/null <<'TONY' || die "quorum charter add failed"
+v charter -a --file - >/dev/null <<'TONY' || die "quorum charter -a failed"
 - name: smoke-quorum
   condition:
     subject: {system: demo, kind: motion, value: {stage: open}}
@@ -533,7 +533,7 @@ cat >"$tmp/strata.tony" <<'TONY'
     patch:
       stage: awaiting-approval
 TONY
-v charter add --file "$tmp/strata.tony" >/dev/null || die "mixed strata+rules charter did not install"
+v charter -a --file "$tmp/strata.tony" >/dev/null || die "mixed strata+rules charter did not install"
 has "$(v charter)" 'smoke-sdlc' || die "the ordering did not install"
 ok "one file installs strata and rules, strata first"
 
@@ -574,7 +574,7 @@ done
 ok "the cascade crossed the level"
 
 # The refusals, over the wire: a derive that does not climb, and a stratum with rules in it.
-v charter add -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb was accepted"
+v charter -a -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb was accepted"
 - name: smoke-downward
   stratum: smoke-sdlc
   condition:
@@ -586,7 +586,7 @@ v charter add -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb
           a: 1
 TONY
 ok "a derive landing at or below its own level is refused at install"
-v charter rm strata smoke-observe >/dev/null 2>&1 && die "removed a stratum still holding rules"
+v charter -r strata smoke-observe >/dev/null 2>&1 && die "removed a stratum still holding rules"
 ok "removing a stratum with rules in it is refused"
 
 # ── restart: the charter is durable ──────────────────────────────────────────

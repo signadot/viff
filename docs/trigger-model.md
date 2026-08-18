@@ -113,8 +113,8 @@ A charter installed with `--at` is a **package**: it runs in an engine of its ow
 write only inside the address it was installed at.
 
 ```sh
-verse charter add --at notes notes-charter.tony    # its rules write under notes:*
-verse charter add charter.tony                     # baseline: may write anywhere
+verse c -a --at notes notes-charter.tony    # its rules write under notes:*
+verse c -a charter.tony                     # baseline: may write anywhere
 ```
 
 That is what lets two groups keep rules in one verse without arranging not to collide. Isolation
@@ -164,7 +164,7 @@ down.
 One file may hold SEVERAL packages: a `---` document carrying `at:` opens one, and everything
 after it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is
 two — a `drift` package that reviews and a `merge` package that gates what the review delivers —
-installed by one `verse charter add --file`. Each package goes in **as one step**: its declaration,
+installed by one `verse c -a --file`. Each package goes in **as one step**: its declaration,
 its levels and its rules install together or not at all, so a refusal anywhere puts back what stood
 before it (see [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
 
@@ -245,8 +245,8 @@ them. What it WROTE stays: a charter's writes are the world's, and `verse state 
 go.
 
 ```sh
-verse c rm merge
-verse c rm demo -r                       # …and every charter under that address
+verse c -r merge
+verse c -r demo -r                       # …and every charter under that address
 ```
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
@@ -357,7 +357,7 @@ So it was removed rather than carried. The finding and the three shapes a better
 might take are in [Goals: what is left](working/goals-residual.md); where it is headed is
 [a charter authored per change](roadmap/dynamic-charter.md).
 
-A **scoped charter** (`verse charter add --scope`) is restored the same way, when the scope's
+A **scoped charter** (`verse c -a --scope`) is restored the same way, when the scope's
 engine is next built — which is on demand, so in practice when the dev reconnects. Its record
 carries `scope: <name>`, which is what makes it restorable at all: a scoped store reads
 baseline layered underneath, so a listing in a scope returns baseline's rules and the scope's

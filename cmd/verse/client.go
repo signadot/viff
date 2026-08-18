@@ -183,7 +183,7 @@ func setFormatHeaders(req *http.Request, in codec.Format) {
 // installed and unchecked" — written into the response body on purpose, and reporting only
 // `400 Bad Request` throws away the whole of what the server said. It was thrown away wherever
 // a command handled its own status code instead of going through printBody, which is every
-// command that has a 404 of its own to name: `verse c rm strata <name>` answered a bare
+// command that has a 404 of its own to name: `verse c -r strata <name>` answered a bare
 // 400 and left the operator with nothing to act on.
 //
 // The status is the FALLBACK, for a server that refused without saying anything.
@@ -1157,10 +1157,11 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 // path below it is a person's own key names. That is the whole ergonomic win — `demo pr a.b
 // labels urgent` needs no quoting anywhere, where the one-token forms need it twice.
 func address(args []string) (string, error) {
-	// A LEADING `--` IS NOT A STEP. It is how a shell says "the options are over", and on a
-	// command whose positional can collide with a verb (`verse charter -- remove`) it is how
-	// the address wins — so every command that takes one accepts it, rather than one of them
-	// answering about an address whose first segment is two dashes.
+	// A LEADING `--` IS NOT A STEP. It is how a shell says "the options are over", and every
+	// command that takes an address accepts it rather than answering about an address whose
+	// first segment is two dashes. (`verse c` no longer NEEDS it for that: what to do there is
+	// a flag, so no positional can collide with a verb. It keeps a job of its own — saying
+	// where an address ends — which is why it is still not a step.)
 	if len(args) > 0 && args[0] == "--" {
 		args = args[1:]
 	}

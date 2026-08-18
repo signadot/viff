@@ -9,7 +9,7 @@ import (
 )
 
 // A charter installed over HTTP comes back with the comments it was written with — the
-// operator's own path, `verse charter add -f rule.tony` then `verse charter show`.
+// operator's own path, `verse c -a -f rule.tony` then `verse charter show`.
 //
 // It is worth a test at this level because the loss was invisible from either end: the
 // document arrives whole (the wire is tony and the parser is asked for comments), the rule

@@ -138,7 +138,7 @@ ENTITIES=(
 
 if $clean; then
 	step "clean"
-	for t in "${TRIGGERS[@]}"; do v charter rm rules "$t" >/dev/null 2>&1 || true; done
+	for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the rules"
 	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
 	# the address the engine chose, not by one this script invented.
@@ -199,9 +199,9 @@ fi
 # price of the shipped vocabulary, it is the same price a real deployment pays, and --clean
 # takes it back.
 step "the ordering, and the rules that cross it"
-for t in "${TRIGGERS[@]}"; do v charter rm rules "$t" >/dev/null 2>&1 || true; done
+for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
-v charter add -f - >/dev/null <<'TONY' || die "the charter did not install"
+v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 - name: lin-source
   level: 0
   match: "git"

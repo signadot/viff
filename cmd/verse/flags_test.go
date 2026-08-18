@@ -115,7 +115,7 @@ func TestCollectionsAreOneSingularCommand(t *testing.T) {
 }
 
 // A listing that IGNORES positionals turns a wrong command into a plausible answer:
-// `verse charter add-it review` would print the charter rather than say the verb is not one.
+// `verse c -a-it review` would print the charter rather than say the verb is not one.
 // `list` is called out by name, because it is the mistake a bare-listing collection invites
 // and it must not become a second way to list.
 func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {
@@ -491,7 +491,7 @@ func TestARuleInAPackageIsReachableByItsPath(t *testing.T) {
 	}
 
 	// And removing reaches it by the same path, which is the whole of `rm`'s argument.
-	if _, err := runCLI(t, "charter", "rm", "notes", "rules", "note"); err != nil {
+	if _, err := runCLI(t, "charter", "-r", "notes", "rules", "note"); err != nil {
 		t.Errorf("charter rm: %v", err)
 	}
 	if out, err := runCLI(t, "charter", "notes"); err == nil && strings.Contains(out, "name: note") {
@@ -499,26 +499,63 @@ func TestARuleInAPackageIsReachableByItsPath(t *testing.T) {
 	}
 }
 
-// `verse c` takes a PATH, and its verbs are ordinary words — so a package at `rm` is shadowed by
-// `verse c rm`. `--` ends the verbs, which is the shell's own convention for exactly this.
+// THERE IS NO VERB TO COLLIDE WITH, which is what saying the action in a FLAG buys.
 //
-// The collision moves with the verbs: this used to be about a package at `remove`, which is not
-// a verb any more, so the test follows the words that are.
-func TestADashDashReachesAnAddressThatLooksLikeAVerb(t *testing.T) {
+// A package's address is a system name and `add`, `remove` and `rm` are ordinary words, so
+// `verse c rm` had to be told apart from the package installed at `rm` — by a `--` the operator
+// had to know existed, and which every command taking an address had to accept. With `-a`/`-r`
+// there is nothing to tell apart: a positional is a path, always.
+func TestAPackageAtAVerbLikeAddressNeedsNoEscape(t *testing.T) {
 	serve(t)
 	if err := installPackageRuleAt(t, "rm"); err != nil {
 		t.Fatalf("installing at `rm`: %v", err)
 	}
-
-	// Without it, the verb wins — which is what makes the escape necessary rather than tidy.
-	if _, err := runCLI(t, "charter", "rm"); err == nil {
-		t.Error("`charter rm` with no path was read as an address")
-	}
-	out, err := runCLI(t, "charter", "--", "rm")
+	out, err := runCLI(t, "charter", "rm")
 	if err != nil {
-		t.Fatalf("charter -- rm: %v", err)
+		t.Fatalf("charter rm (the package at `rm`): %v", err)
 	}
 	if !strings.Contains(out, "writes: rm.") {
-		t.Errorf("`--` did not reach the package: %s", out)
+		t.Errorf("the package at `rm` was not reached: %s", out)
+	}
+}
+
+// `--` KEEPS ONE JOB: it says where the ADDRESS ends, for the one case the server's greedy split
+// cannot work out — a package whose own address ends in `rules` or `strata`, which shadows that
+// key of the address above it.
+func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
+	serve(t)
+	// A rule whose subject is inside the two-segment address, since a package writes only there.
+	g.Addr = testAddr
+	node, err := codec.ParseNode([]byte(`{
+		name: note,
+		condition: {subject: {system: shadow, kind: rules, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := httpPostNodeTo("/charter", url.Values{"at": []string{"shadow.rules"}}, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 201 {
+		t.Fatalf("installing at `shadow.rules`: %s", resp.Status)
+	}
+	// Greedy: the package is a longer place than `shadow`, so it wins.
+	out, err := runCLI(t, "charter", "shadow.rules")
+	if err != nil {
+		t.Fatalf("charter shadow.rules: %v", err)
+	}
+	if !strings.Contains(out, "writes: shadow.rules.") {
+		t.Errorf("the package was not reached: %s", out)
+	}
+	// …and `--` reaches the KEY of the address above it instead.
+	out, err = runCLI(t, "charter", "shadow", "--", "rules")
+	if err != nil {
+		t.Fatalf("charter shadow -- rules: %v", err)
+	}
+	if strings.Contains(out, "writes:") {
+		t.Errorf("`--` answered the package rather than the key: %s", out)
 	}
 }

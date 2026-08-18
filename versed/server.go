@@ -785,7 +785,7 @@ func (s *Server) engFor(scope string) *trigger.Engine {
 // It observes store.Scope(scope) — one dev's copy-on-write federation — and spawns
 // into that same scope. Requires Start to have captured the lifetime ctx.
 //
-// The scope's own charter is RESTORED into it, which is what makes `verse charter add
+// The scope's own charter is RESTORED into it, which is what makes `verse c -a
 // --scope me` durable in the sense the word usually carries: the rule was always written
 // down, and until this it was written down and then interpreted by nobody, because a scope's
 // engine is created on demand and restored nothing. A dev came back from a restart to a
@@ -1502,7 +1502,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 // It is not a lock on the DATA. A reader still reads it (that is the point of it being
 // entities), the engine still writes it, and a scope's own copy still layers over it. What is
 // refused is one path — the generic write — because every legitimate change to verse's own
-// state has a verb: `verse charter add`, `verse resolver add`, `verse gate approve`. A ballot
+// state has a verb: `verse c -a`, `verse resolver add`, `verse gate approve`. A ballot
 // is not among them, deliberately: `vote:*` is the world's half, since casting one is an act
 // somebody takes rather than a record verse keeps.
 func reservedWrite(ref entity.Ref) error {
