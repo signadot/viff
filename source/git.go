@@ -278,6 +278,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	}}
 
 	// Refs: refs/heads, refs/tags, refs/remotes — git:ref:<repo>/<short> {repo, name, sha, type}.
+	// That list is enforced in gitForEachRef rather than assumed; a mirror holds far more.
 	refs, err := gitForEachRef(ctx, dir)
 	if err != nil {
 		return Reflection{}, err
@@ -319,9 +320,25 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 
 type refInfo struct{ sha, typ string }
 
+// reflectedRefs is the ref space this source reflects: branches, tags, and remote-tracking
+// branches. Everything else in a repository is somebody else's namespace.
+//
+// NAMED EXPLICITLY, because `for-each-ref` with no pattern is EVERY ref, and a mirror clone
+// maps every ref the remote has (`+refs/*:refs/*`, see gitrepos.go). On GitHub that means
+// `refs/pull/<n>/head` and `refs/pull/<n>/merge` — 4739 of them on one repo we mirror — plus
+// `refs/issues/*`, which is git-issue's namespace and reflected properly by that source.
+//
+// Two costs, and the second is the one that showed. The slice grew by thousands of entities
+// nobody asked for the moment a busy remote was added. And it never settled: GitHub RECREATES
+// `refs/pull/<n>/merge` whenever the base branch moves, so every fetch after any push to main
+// changed a batch of shas, and the store took writes on every pass forever — with no activity
+// anybody watching the repository would call activity.
+var reflectedRefs = []string{"refs/heads", "refs/tags", "refs/remotes"}
+
 func gitForEachRef(ctx context.Context, dir string) (map[string]refInfo, error) {
-	out, err := gitCmd(ctx, dir, "for-each-ref",
-		"--format=%(refname:short) %(objectname) %(objecttype)")
+	args := append([]string{"for-each-ref",
+		"--format=%(refname:short) %(objectname) %(objecttype)"}, reflectedRefs...)
+	out, err := gitCmd(ctx, dir, args...)
 	if err != nil {
 		return nil, err
 	}

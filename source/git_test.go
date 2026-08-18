@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -204,5 +205,50 @@ func TestGitMirrorFailsLoudlyWhenTheRemoteIsNotThere(t *testing.T) {
 	// what a failed clone would otherwise write into a registration's lastError.
 	if !strings.Contains(err.Error(), "repository") && !strings.Contains(err.Error(), "not") {
 		t.Fatalf("error %v carries nothing git said", err)
+	}
+}
+
+// A REPOSITORY IS NOT ONLY ITS BRANCHES AND TAGS, and the rest of it is somebody else's.
+//
+// `for-each-ref` with no pattern is EVERY ref, and a mirror clone maps every ref the remote
+// has — so mirroring a GitHub repo reflected `refs/pull/<n>/head` and `.../merge` (4739 of
+// them on one repo here) and `refs/issues/*`, which is git-issue's namespace. Worse than the
+// volume: GitHub recreates the `/merge` refs whenever the base branch moves, so every fetch
+// after any push wrote a batch of new shas and the store grew on every pass with nothing
+// anybody would call activity happening.
+func TestGitReflectsBranchesAndTagsAndNothingElse(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	initRepo(t, dir)
+	sha := commit(t, dir, "a.txt", "one", "first")
+	gitRun(t, dir, "tag", "v1")
+	// The two shapes a mirror of a GitHub remote brings with it.
+	gitRun(t, dir, "update-ref", "refs/pull/7/head", sha)
+	gitRun(t, dir, "update-ref", "refs/pull/7/merge", sha)
+	gitRun(t, dir, "update-ref", "refs/issues/k0d4y1m6", sha)
+
+	g := source.NewGit()
+	g.AddRepo("r", dir)
+	rn, err := g.Reflect(context.Background(), entity.Ref{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refs []string
+	for _, e := range rn.Entities {
+		if e.Ref.Kind() == "ref" {
+			refs = append(refs, e.Ref.ID())
+		}
+	}
+	sort.Strings(refs)
+	want := []string{"r/main", "r/v1"}
+	if len(refs) != len(want) {
+		t.Fatalf("reflected %v, want only the branch and the tag (%v)", refs, want)
+	}
+	for i, r := range refs {
+		if r != want[i] {
+			t.Fatalf("reflected %v, want %v", refs, want)
+		}
 	}
 }
